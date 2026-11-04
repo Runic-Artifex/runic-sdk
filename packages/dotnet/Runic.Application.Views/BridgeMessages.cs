@@ -48,7 +48,8 @@ internal static class BridgeMessages
     internal static byte[] Rejected(string reason, string message, bool hello = false) =>
         Failure("rejected", reason, message, hello);
 
-    internal static byte[] Hello(string? path = null, bool navigationPath = false) =>
+    // grant is the connection's upload grant (blobs/1), when the connection uses blobs/1 and the host takes uploads.
+    internal static byte[] Hello(BridgeUploadGrant? grant = null, string? path = null, bool navigationPath = false) =>
         Write(writer =>
         {
             writer.WriteStartObject();
@@ -59,9 +60,26 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.TextSpliceFeature);
             writer.WriteStringValue(BridgeDispatcher.PresentationEpochFeature);
             writer.WriteStringValue(BridgeDispatcher.PresentedFeature);
+            writer.WriteStringValue(BridgeDispatcher.ViewRequestsFeature);
+            writer.WriteStringValue(BridgeDispatcher.RequestSessionFeature);
             writer.WriteStringValue(BridgeDispatcher.RegionCollectionsFeature);
+            writer.WriteStringValue(BridgeDispatcher.ClientErrorsFeature);
+            writer.WriteStringValue(BridgeDispatcher.QueryCollectionsFeature);
+            writer.WriteStringValue(BridgeDispatcher.BlobsFeature);
+            writer.WriteStringValue(BridgeDispatcher.ValidationPendingFeature);
+            writer.WriteStringValue(BridgeDispatcher.FieldFlushFeature);
+            writer.WriteStringValue(BridgeDispatcher.FieldPathsFeature);
+            writer.WriteStringValue(BridgeDispatcher.TranslationTextFeature);
             writer.WriteStringValue(BridgeDispatcher.NavigationPathFeature);
             writer.WriteEndArray();
+            if (grant is not null)
+            {
+                writer.WriteStartObject("blobs");
+                writer.WriteString("upload", grant.UploadUrl.AbsoluteUri);
+                writer.WriteString("token", grant.Token);
+                writer.WriteNumber("maximumBytes", grant.MaximumBytes);
+                writer.WriteEndObject();
+            }
             // navigation-path/1: the window's route path, on a connection that uses the feature in a window with a path region.
             if (navigationPath)
             {

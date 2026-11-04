@@ -4,6 +4,7 @@ import { connectView, disposable, viewReferences, type BridgeMemberDecoders, typ
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { NotePublishBlock, NoteQuotaExceeded, NoteSaveFailure } from "./types.js";
 export type { NotePublishBlock, NoteQuotaExceeded, NoteSaveFailure } from "./types.js";
+export { NotePublishBlockValues } from "./types.js";
 
 export interface FailureToolkitState {
   readonly title: string;

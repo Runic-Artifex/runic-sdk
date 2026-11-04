@@ -269,6 +269,12 @@ internal sealed class CodegenShapeTests
                 "    name: \"maybe\", kind: \"number\", nullable: true, integer: true,\n"),
             ("scalarSetter.ts", File.ReadAllText(Path.Combine(directory, "scalarSetter.ts")).ReplaceLineEndings("\n"),
                 "    name: \"ratio\", kind: \"number\",\n"),
+            // C1: decimals, dates and times have their own kinds; a DateTimeOffset is a datetime with an offset.
+            ("scalarSetter.ts", File.ReadAllText(Path.Combine(directory, "scalarSetter.ts")).ReplaceLineEndings("\n"),
+                "    name: \"price\", kind: \"decimal\",\n"),
+            ("codegenShape.ts", shape, "    name: \"stamp\", kind: \"datetime\", offset: true,\n"),
+            ("codegenShape.ts", shape, "    name: \"when\", kind: \"datetime\",\n"),
+            ("codegenShape.ts", shape, "    name: \"at\", kind: \"time\",\n"),
             ("reactiveRules.ts", File.ReadAllText(Path.Combine(directory, "reactiveRules.ts")).ReplaceLineEndings("\n"),
                 "    errors: state => fieldErrors(state.validation, \"name\", state.nameErrors),\n"),
             ("validatableOnly.ts", File.ReadAllText(Path.Combine(directory, "validatableOnly.ts")).ReplaceLineEndings("\n"),
@@ -325,8 +331,10 @@ internal sealed class CodegenShapeTests
             var rootImport = text.Split('\n').FirstOrDefault(line => line.EndsWith(" from \"@runic-artifex/views\";", StringComparison.Ordinal)) ?? "";
             Require(!rootImport.Contains("connectView", StringComparison.Ordinal) && !rootImport.Contains("bridgeWire", StringComparison.Ordinal),
                 $"{Path.GetFileName(path)} imports generated-code runtime from the application entry: {rootImport}");
+            // types.ts uses only its types (translation-text/1).
             Require(!text.Contains("bridgeWire.", StringComparison.Ordinal)
-                || text.Contains("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal),
+                || text.Contains("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal)
+                || text.Contains("import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal),
                 $"{Path.GetFileName(path)} uses bridgeWire without the namespace import from @runic-artifex/views/generated/wire.");
         }
 

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Query collections on Runic</title><style>
+*{box-sizing:border-box}body{margin:0;background:#11171e;color:#e3eaf0;font:16px system-ui,sans-serif}
+main{max-width:900px;margin:32px auto;padding:0 24px}h1{font-size:26px;margin-bottom:6px}p{color:#a9bacb;line-height:1.5}
+form{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}input,select,button{font:inherit;padding:8px 10px;border-radius:6px;border:1px solid #354554;background:#18222c;color:inherit}
+button{background:#8fc5d3;color:#101820;border:0;cursor:pointer}#status{margin:10px 0;font-variant-numeric:tabular-nums;color:#a9bacb}
+#scroll{height:520px;overflow:auto;border:1px solid #354554;border-radius:8px}#spacer{position:relative}
+.row{position:absolute;left:0;right:0;padding:8px 16px;border-bottom:1px solid #253341}.row.placeholder{color:#5d7286}.row.stale{opacity:.6}
+.row b{font-weight:600}.row small{display:block;color:#a9bacb;margin-top:4px}.row button{float:right;padding:4px 8px;font-size:13px}
+</style></head><body><main><h1>Query collections</h1>
+<p>100,000 products stay in .NET. The page loads only the rows it shows, sorts and filters them in .NET, and lays them out with their own heights.</p>
+<form id="query"><input id="search" placeholder="Name contains…" aria-label="Search by name">
+<select id="sort" aria-label="Sort"><option value="">Catalog order</option><option value="name">Name</option><option value="-price">Price, highest first</option><option value="stock">Stock, lowest first</option></select>
+<label><input id="inStock" type="checkbox"> In stock</label>
+<input id="goto" type="number" min="1" placeholder="Go to #" aria-label="Go to product"><button id="add" type="button">Add a product</button></form>
+<div id="status" aria-live="polite">Connecting…</div>
+<div id="scroll" aria-label="Products" tabindex="0"><div id="spacer"></div></div>
+</main><script src="webui.js"></script><script src="runic-desktop-views.js"></script><script type="module" src="main.js"></script></body></html>

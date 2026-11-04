@@ -18,13 +18,17 @@ function installBridge() {
   let hellos = 0;
   const held: (() => void)[] = [];
   const regions: Record<string, unknown>[] = [];
+  let hello: string | undefined;
   const bridge: RunicBridgeClient = {
     isConnected: () => connected,
     onConnectionChange(report) { connection.add(report); report(connected); return () => { connection.delete(report); }; },
     onMessage() { return () => {}; },
     request(text) {
-      const message = JSON.parse(text) as Record<string, unknown>;
+      const { session, ...message } = JSON.parse(text) as Record<string, unknown>;
       if (!connected) return Promise.reject(new Error("disconnected"));
+      // request-session/1: every request names the session of its connection's latest hello.
+      if (message["kind"] === "hello") hello = session as string;
+      else assert.equal(session, hello, `${String(message["kind"])} does not name the session of its hello`);
       const reply = (value: object) => Promise.resolve(JSON.stringify(value));
       switch (message["kind"]) {
         case "hello": {

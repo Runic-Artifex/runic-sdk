@@ -60,6 +60,8 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         try
         {
             Content = new WindowContentSession(Transport, sessionOptions);
+            // blobs/1: the window serves blobs and uploads at the test origin; ReadBlobAsync serves what a page loads.
+            Blobs.Attach(BridgeBlobEndpoint.Below(static () => RunicBlobs.TestOrigin));
             IDisposable? attachment = null;
             try
             {
@@ -79,7 +81,21 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         catch { Transport.Dispose(); throw; }
         Publications = new RunicPublicationLog(Transport, publicationTimeout);
         Root = new RunicViewDriver<TViewModel>(Publications, Transport, rootRoute, null, NextId);
+        _connections.Bind(Content);
     }
+
+    private readonly RunicConnections _connections = new();
+
+    /// <summary>
+    /// The window's page connections, as the window scope's <see cref="IRunicConnections"/> reports them: each test
+    /// connection that sent its <c>hello</c>, such as the one of <see cref="Root"/> and those of
+    /// <see cref="RunicViewDriver{TModel}.ForConnection"/>, until <see cref="InMemoryBridgeTransport.CloseConnection"/>.
+    /// </summary>
+    /// <remarks>
+    /// Changes arrive in a turn of the window's model context; await a command's reply or the model context before
+    /// reading <see cref="IRunicConnections.Current"/>.
+    /// </remarks>
+    public IRunicConnections Connections => _connections;
 
     /// <summary>The root ViewModel.</summary>
     public TViewModel ViewModel { get; }
@@ -96,6 +112,50 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// constructor. The caller keeps ownership of them.
     /// </summary>
     public IServiceProvider? Services { get; internal init; }
+
+    /// <summary>
+    /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> of a Window that
+    /// <see cref="RunicWindowTestHost.CreateWindowAsync{TWindow}"/> opened, else the one that
+    /// <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/> registered in
+    /// <see cref="Services"/>, or <see langword="null"/> without one.
+    /// </summary>
+    public RunicTestWindowPresentation? Presentation => WindowPresentation ??
+        Services?.GetService(typeof(RunicTestWindowPresentation)) as RunicTestWindowPresentation;
+
+    // The presentation of a Window that RunicWindowTestHost.CreateWindowAsync opened.
+    internal RunicTestWindowPresentation? WindowPresentation { get; init; }
+
+    /// <summary>
+    /// Changes the activity of <see cref="Presentation"/>, as a real window reports that it gained or lost the focus,
+    /// was minimized or hidden, and waits until the ViewModel received the change in a turn of the window's model
+    /// context.
+    /// </summary>
+    /// <param name="activity">The new activity, such as <c>new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true)</c>.</param>
+    /// <param name="cancellationToken">Cancels waiting for the turn.</param>
+    /// <exception cref="InvalidOperationException">The services resolve no <see cref="RunicTestWindowPresentation"/>.</exception>
+    public async Task SetWindowActivityAsync(RunicWindowActivity activity, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(activity);
+        var presentation = Presentation ?? throw new InvalidOperationException(
+            "The window's services resolve no RunicTestWindowPresentation. Call services.AddRunicTestWindowPresentation() " +
+            "and create the host with RunicWindowTestHost.Create(scope.ServiceProvider).");
+        presentation.SetActivity(activity);
+        await FlushWindowPresentationAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits until the changes that <see cref="Presentation"/> reported so far, such as those of a command's
+    /// <c>SetVisibleAsync</c>, reached the ViewModel: the window's presentation applies them in later turns of its
+    /// model context.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for the turn.</param>
+    /// <remarks>Call it outside a model turn; without a model context it returns at once.</remarks>
+    public async Task FlushWindowPresentationAsync(CancellationToken cancellationToken = default)
+    {
+        // Turns run in order, so a turn queued now runs after the changes queued before it.
+        if (Content.ModelContext is { } context)
+            await context.InvokeAsync(static () => { }, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// The window's platform fakes: the scope's <see cref="RunicTestPlatform"/> when <see cref="Services"/> registers
@@ -119,6 +179,56 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
 
     // Mount tokens and operation request ids the drivers issue.
     private string NextId() => Interlocked.Increment(ref _nextId).ToString(CultureInfo.InvariantCulture);
+
+    private BridgeBlobs Blobs => BridgeDispatcher.For(Transport).Blobs;
+
+    /// <summary>
+    /// Simulates a page's upload (blobs/1): stores <paramref name="content"/> as the window's host stores a page's
+    /// upload, with the window's upload limits, and returns the upload, which a command input takes, as
+    /// <c>Root.ExecuteAsync(vm => vm.AttachCommand, upload)</c>.
+    /// </summary>
+    /// <param name="content">The uploaded bytes.</param>
+    /// <param name="fileName">The file name the page reports.</param>
+    /// <param name="contentType">The media type the page reports.</param>
+    /// <param name="connectionKey">
+    /// The connection that uploads, by its transport key, as <see cref="RunicViewDriver{TModel}.ConnectionKey"/>; a command
+    /// decodes the upload only on that connection. As a page has its connection's upload token only after its
+    /// <c>hello</c>, the connection sends its <c>hello</c> first if it has not yet.
+    /// </param>
+    /// <param name="cancellationToken">Cancels storing.</param>
+    /// <exception cref="InvalidOperationException">The window refused the upload, for example over its limit.</exception>
+    public async Task<RunicUpload> UploadAsync(ReadOnlyMemory<byte> content, string fileName = "upload",
+        string contentType = "application/octet-stream", string connectionKey = InMemoryBridgeTransport.DefaultConnectionKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+        ArgumentException.ThrowIfNullOrEmpty(connectionKey);
+        using var stream = new MemoryStream(content.ToArray(), writable: false);
+        // The window keys uploads by its own key of the connection ("{transport key}#n" on this transport), as it keys the
+        // upload token that the connection's hello grants.
+        await Transport.EnsureHelloAsync(connectionKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var connection = BridgeDispatcher.For(Transport).ConnectionKeyOf(connectionKey)
+            ?? throw new InvalidOperationException($"The connection {connectionKey} closed before its upload.");
+        return await Blobs.StoreAsync(stream, fileName, contentType, connection, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Serves a blob URL from the window's state or a command result (blobs/1) as the host serves it to the page, and
+    /// returns the response: its status, headers and content. A released or unknown URL answers 404.
+    /// </summary>
+    /// <param name="url">The blob's <c>url</c>, such as <c>state.Value("avatar").GetProperty("url").GetString()</c>.</param>
+    /// <param name="range">A <c>Range</c> header to send, such as <c>bytes=0-99</c>, or <see langword="null"/>.</param>
+    /// <param name="head">Sends <c>HEAD</c> instead of <c>GET</c>.</param>
+    /// <param name="cancellationToken">Cancels the request.</param>
+    public Task<RunicServedBlob> ReadBlobAsync(string url, string? range = null, bool head = false,
+        CancellationToken cancellationToken = default) =>
+        RunicBlobs.ServeAsync(Blobs, url, range, head, cancellationToken);
+
+    /// <summary>The number of blobs whose URLs the window serves now, as a test of their release.</summary>
+    public int ServedBlobCount => Blobs.BlobCount;
+
+    /// <summary>The number of uploads that the window holds and no command claimed yet.</summary>
+    public int PendingUploadCount => Blobs.UploadCount;
 
     /// <summary>Drives the routes of presented content, such as a reference from a snapshot.</summary>
     public RunicViewDriver<TContent> View<TContent>(PageReference reference) where TContent : class
@@ -200,6 +310,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     {
         if (_disposed) return;
         _disposed = true;
+        _connections.Dispose();
         try { _attachment.Dispose(); }
         finally
         {
@@ -226,6 +337,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             CreateId = options?.CreateId ?? (() => Interlocked.Increment(ref next).ToString(CultureInfo.InvariantCulture)),
             IncludeFailureDetail = options?.IncludeFailureDetail,
             MaximumInputBytes = options?.MaximumInputBytes,
+            MaximumUploadBytes = options?.MaximumUploadBytes,
         };
     }
 }

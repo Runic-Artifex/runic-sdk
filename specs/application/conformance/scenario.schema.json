@@ -15,7 +15,7 @@
       "required": ["id", "version"],
       "properties": { "id": { "const": "runic.views" }, "version": { "const": 4 } }
     },
-    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "errors"] },
+    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "view-requests", "errors", "request-sessions", "query-collections", "blobs"] },
     "roles": {
       "type": "array",
       "minItems": 1,
@@ -28,11 +28,11 @@
       "type": "string",
       "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
     },
-    "view": { "enum": ["list", "log", "notes", "form", "wizard", "tabs"] },
+    "view": { "enum": ["list", "log", "notes", "form", "wizard", "invoice", "tabs", "catalog", "files"] },
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "region-collections/1", "navigation-path/1"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1", "region-collections/1", "client-errors/1", "query-collections/1", "blobs/1", "field-paths/1", "translation-text/1", "navigation-path/1"] }
     },
     "options": {
       "type": "object",
@@ -50,7 +50,7 @@
         "additionalProperties": false,
         "required": ["kind"],
         "properties": {
-          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close"] },
+          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close", "flush"] },
           "value": { "type": "string", "minLength": 1, "maxLength": 128 }
         },
         "if": { "properties": { "kind": { "const": "wire" } } },
@@ -153,6 +153,20 @@
           "patternProperties": { "^(note)$": true }
         },
         {
+          "required": ["flushFields"],
+          "properties": {
+            "flushFields": {
+              "description": "Producer: asks the pages to write their field drafts (field-flush/1), as before a departure guard.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id"],
+              "properties": { "id": { "$ref": "#/$defs/name" } }
+            }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
           "required": ["closeWindow"],
           "properties": {
             "closeWindow": {
@@ -161,6 +175,17 @@
               "additionalProperties": false,
               "required": ["id", "timeout"],
               "properties": { "id": { "$ref": "#/$defs/name" }, "timeout": { "type": "integer", "minimum": 0 } }
+            }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["setLocale"],
+          "properties": {
+            "setLocale": {
+              "description": "Producer: sets the window's locale (translation-text/1), or null for none.",
+              "type": ["string", "null"]
             }
           },
           "additionalProperties": false,
@@ -184,17 +209,17 @@
           "additionalProperties": false
         },
         {
-          "properties": { "op": { "const": "insert" }, "index": { "$ref": "#/$defs/index" }, "item": { "type": "object" } },
+          "properties": { "op": { "const": "insert" }, "member": { "type": "string" }, "index": { "$ref": "#/$defs/index" }, "item": { "type": "object" } },
           "required": ["op", "index", "item"],
           "additionalProperties": false
         },
         {
-          "properties": { "op": { "const": "removeAt" }, "index": { "$ref": "#/$defs/index" } },
+          "properties": { "op": { "const": "removeAt" }, "member": { "type": "string" }, "index": { "$ref": "#/$defs/index" } },
           "required": ["op", "index"],
           "additionalProperties": false
         },
         {
-          "properties": { "op": { "const": "replaceAt" }, "index": { "$ref": "#/$defs/index" }, "item": { "type": "object" } },
+          "properties": { "op": { "const": "replaceAt" }, "member": { "type": "string" }, "index": { "$ref": "#/$defs/index" }, "item": { "type": "object" } },
           "required": ["op", "index", "item"],
           "additionalProperties": false
         },
@@ -231,6 +256,16 @@
         {
           "properties": { "op": { "const": "rule" }, "rule": { "type": "string" }, "holds": { "type": "boolean" } },
           "required": ["op", "rule", "holds"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "check" }, "member": { "type": "string" }, "running": { "type": "boolean" } },
+          "required": ["op", "member", "running"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "raise" }, "request": { "type": "string" }, "input": true },
+          "required": ["op", "request", "input"],
           "additionalProperties": false
         },
         {
@@ -277,12 +312,20 @@
       "required": ["id", "op"],
       "properties": {
         "id": { "$ref": "#/$defs/name" },
-        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register", "region"] },
+        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register", "handle", "unhandle", "region", "queryRange", "setQuery", "indexOf"] },
         "route": { "type": "string" },
         "member": { "type": "string" },
+        "start": { "$ref": "#/$defs/index" },
+        "count": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "value": true,
         "input": true,
         "requestId": { "type": "string" },
+        "path": {
+          "description": "A write below the member (field-paths/1): a row key and cell names, or nested member names.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
         "baseline": {
           "type": "object",
           "additionalProperties": false,
@@ -291,6 +334,7 @@
         },
         "operation": { "$ref": "#/$defs/name" },
         "interaction": { "type": "string" },
+        "request": { "type": "string" },
         "action": { "enum": ["select", "close"] },
         "key": { "type": "string" },
         "answer": {
@@ -308,11 +352,11 @@
       "additionalProperties": false,
       "allOf": [
         {
-          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register", "region"] } } },
+          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register", "handle", "unhandle", "region", "queryRange", "setQuery", "indexOf"] } } },
           "then": { "required": ["route"] }
         },
         {
-          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start", "region"] } } },
+          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start", "region", "queryRange", "setQuery", "indexOf"] } } },
           "then": { "required": ["member"] }
         },
         {
@@ -320,8 +364,12 @@
           "then": { "required": ["action", "key"] }
         },
         {
-          "if": { "properties": { "op": { "enum": ["set", "write"] } } },
+          "if": { "properties": { "op": { "enum": ["set", "write", "setQuery", "indexOf"] } } },
           "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "queryRange" } } },
+          "then": { "required": ["start", "count"] }
         },
         {
           "if": { "properties": { "op": { "enum": ["start", "wait", "status", "cancel"] } } },
@@ -334,6 +382,10 @@
         {
           "if": { "properties": { "op": { "const": "register" } } },
           "then": { "required": ["interaction", "answer"] }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["handle", "unhandle"] } } },
+          "then": { "required": ["request"] }
         }
       ]
     },
@@ -400,9 +452,20 @@
           "required": ["route", "count"],
           "properties": { "route": { "type": "string" }, "count": { "type": "integer", "minimum": 0 } }
         },
+        "requests": {
+          "description": "Client: the inputs a handle handler of a route's view request was called with since it was registered, in order.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route", "request", "inputs"],
+          "properties": { "route": { "type": "string" }, "request": { "type": "string" }, "inputs": { "type": "array" } }
+        },
         "connection": {
           "description": "Client: the connection state the client reports; closed when it reports that the producer closed the window.",
           "const": "closed"
+        },
+        "locale": {
+          "description": "Client: the window's locale the client reports (translation-text/1), or null while the producer sets none.",
+          "type": ["string", "null"]
         },
         "presented": {
           "description": "Producer: the result of a waitPresented wait, or pending while it has not completed.",
@@ -410,6 +473,13 @@
           "additionalProperties": false,
           "required": ["id", "result"],
           "properties": { "id": { "$ref": "#/$defs/name" }, "result": { "enum": [true, false, "pending"] } }
+        },
+        "flushed": {
+          "description": "Producer: the flush of a flushFields step completed; whether every page that uses field-flush/1 answered it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "answered"],
+          "properties": { "id": { "$ref": "#/$defs/name" }, "answered": { "type": "boolean" } }
         },
         "closed": {
           "description": "Producer: the close of a closeWindow step completed; whether every page acknowledged it.",

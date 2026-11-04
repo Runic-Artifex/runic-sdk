@@ -469,6 +469,8 @@ jobs:
         run: |
           node examples/first-window-desktop/browser-smoke.mjs
           xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
+      - name: Exercise blobs and uploads on Runic Desktop
+        run: node examples/attachments/browser-smoke.mjs
       - name: Check composed View lifetime and window scopes
         run: |
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
@@ -866,6 +868,17 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --web-content
+      # B2: DesktopHost.SetColorSchemeAsync sets GTK's prefer-dark setting, and the page's prefers-color-scheme follows.
+      - name: Exercise the run-time color scheme in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # B6: DesktopWindowOptions.Owner and Modality: the GTK 3 window is transient for its owner, and a window-modal one
+      # makes the owner insensitive until it closed.
+      - name: Open owned and window-modal GTK 3 windows
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -918,6 +931,8 @@ jobs:
           for toolkit in gtk3 gtk4; do
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --spelling "$toolkit"
           done
+          # B6: an owned GTK 4 window is transient for its owner, and a window-modal one makes the owner insensitive.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --owner
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
@@ -1028,11 +1043,18 @@ jobs:
           RUNIC_TEST_DISPLAY_SCALING: "1"
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --monitors
       # DesktopWindowOptions.ColorScheme: for Dark and Light the page's prefers-color-scheme follows, and so does the
-      # window (NSWindow.effectiveAppearance on macOS, the DWM dark title bar on Windows).
+      # window (NSWindow.effectiveAppearance on macOS, the DWM dark title bar on Windows); B2: also when an open window
+      # switches with DesktopWindow and DesktopHost.SetColorSchemeAsync.
       - name: Apply the window color scheme on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # B6: an owned window has its owner's HWND as its owner on Windows and is its child window or sheet on macOS; a
+      # window-modal one disables the owner (EnableWindow) or is its sheet until it closed.
+      - name: Open owned and window-modal windows on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
       # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
       # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page
@@ -1474,7 +1496,8 @@ jobs:
           dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --dpi
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
-      # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes from Chromium.
+      # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes and
+      # blobs-probe its blobs and uploads (blobs/1) from Chromium.
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
@@ -1488,7 +1511,9 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-presentation
             GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
+            GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
             GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
           else
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
@@ -1497,7 +1522,9 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-presentation
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
+            RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
             RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
       # Development tooling, independent of the architecture: Windows x64 runs it.

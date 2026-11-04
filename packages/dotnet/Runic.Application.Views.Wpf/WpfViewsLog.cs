@@ -29,6 +29,10 @@ internal static partial class WpfViewsLog
         Message = "WPF child view cleanup failed with {ErrorType}.")]
     internal static partial void ChildViewCleanupFailed(ILogger logger, Exception exception, string errorType);
 
+    [LoggerMessage(EventId = 1130, EventName = "WindowPresentationHandlerFailed", Level = LogLevel.Error,
+        Message = "An IRunicWindowPresentation.{Handler} handler failed with {ErrorType}.")]
+    internal static partial void WindowPresentationHandlerFailed(ILogger logger, Exception exception, string handler, string errorType);
+
     internal static string ErrorType(Exception error) => error.GetType().FullName ?? error.GetType().Name;
 
     // The logger of a host: the application's ILoggerFactory, lent so that a disposed one falls back to Trace.

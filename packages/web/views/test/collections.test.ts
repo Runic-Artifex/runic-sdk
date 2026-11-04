@@ -313,3 +313,25 @@ test("changes of more rows than an engine accepts as arguments apply in parts", 
   big.validate("rows", rows);
   assert.deepEqual([rows[1], rows[2], rows[count + 1], rows[count + 2]].map(row => row!.id), [2, 1000 + count, 1000 + 2 * count - 1, 3]);
 });
+
+test("Int64 keys above 2^53 key rows exactly: add, move and remove by their decimal form (C7)", () => {
+  type LongRow = { readonly id: bigint; readonly label: string };
+  const decodeLong = (wire: unknown): LongRow => {
+    const row = bridgeWire.object(wire, value => value);
+    return { id: bridgeWire.bigint(row["id"], "-9223372036854775808", "9223372036854775807"), label: bridgeWire.string(row["label"]) };
+  };
+  const long = defineCollections({ rows: defineCollection(decodeLong, row => String(row.id)) });
+  // 2^53 and 2^53 + 1 are the same double: keys that went through a number would collide.
+  const keys = ["9007199254740992", "9007199254740993", "-9223372036854775808"];
+  assert.equal(Number(keys[0]), Number(keys[1]));
+  const wireRows = keys.map((key, index) => ({ id: key, label: `row ${index}` }));
+  let rows = long.apply("rows", [], { field: "rows", kind: "add", index: 0, oldIndex: -1, keys, items: wireRows }, false) as LongRow[];
+  assert.deepEqual(rows.map(row => row.id), [9007199254740992n, 9007199254740993n, -9223372036854775808n]);
+  rows = long.apply("rows", rows, { field: "rows", kind: "move", index: 0, oldIndex: 1, keys: ["9007199254740993"], items: [] }, false) as LongRow[];
+  assert.deepEqual(rows.map(row => row.label), ["row 1", "row 0", "row 2"]);
+  rows = long.apply("rows", rows, { field: "rows", kind: "remove", index: 0, oldIndex: 0, keys: ["9007199254740993"], items: [] }, false) as LongRow[];
+  assert.deepEqual(rows.map(row => String(row.id)), ["9007199254740992", "-9223372036854775808"]);
+  long.validate("rows", rows);
+  // The removed key names no row any more, although its number equals the first row's.
+  assert.throws(() => long.apply("rows", rows, { field: "rows", kind: "remove", index: 0, oldIndex: 0, keys: ["9007199254740993"], items: [] }, false));
+});

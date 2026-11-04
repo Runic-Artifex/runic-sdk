@@ -58,6 +58,8 @@ export function attachField<TValue>(element: FieldElement, field: FieldControlle
   return wire(element, field as unknown as FieldController<unknown, unknown, TValue>).detach;
 }
 
+const nativeTypes = new Set(["number", "date", "time", "datetime-local"]);
+
 /** A field that {@link bindField} wired to an element and a client. `dispose()` unwires it. */
 export interface BoundField<TState, TClient, TValue> extends FieldController<TState, TClient, TValue>, Disposable {}
 
@@ -72,6 +74,9 @@ export interface BoundField<TState, TClient, TValue> extends FieldController<TSt
  * save.onclick = async () => { if ((await title.commit()).error === undefined) await editor.save(); };
  * ```
  *
+ * A field bound to `<input type="number">`, `"date"`, `"time"` or `"datetime-local"` without a `locale` option uses
+ * the invariant and ISO forms those inputs take (`locale: null`) instead of the window's locale.
+ *
  * `dispose()` unwires the element and stops following the client; a value that waits to be written is still written.
  * The client stays connected: its owner disposes it.
  */
@@ -79,9 +84,13 @@ export function bindField<TClient extends ViewClient, TValue>(
   element: FieldElement,
   client: TClient,
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): BoundField<TClient["snapshot"], TClient, TValue> {
-  const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
+  // `<input type="number">` and the browser's date and time inputs take only the invariant and ISO forms, which they
+  // show in the browser's language: such a field does not follow the window's locale.
+  const native = element.tagName === "INPUT" && nativeTypes.has((element as HTMLInputElement).type);
+  const controller = createFieldController<TClient["snapshot"], TClient, TValue>(
+    field, native && options.locale === undefined ? { ...options, locale: null } : options);
   const wired = wire(element, controller as unknown as FieldController<unknown, unknown, TValue>);
   // setSource does not notify, so the element follows each state here.
   const unsubscribe = client.subscribe(state => {

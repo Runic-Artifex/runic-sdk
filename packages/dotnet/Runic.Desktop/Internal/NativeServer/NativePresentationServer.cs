@@ -64,6 +64,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
             OnMessage = &OnMessage,
             OnClosed = &OnClosed,
             OnCompleted = &OnCompleted,
+            OnReceived = &OnReceived,
         };
         nint server;
         ushort bound;
@@ -246,6 +247,24 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
         catch (Exception exception)
         {
             Debug.WriteLine($"Runic Desktop native server: a write completion could not be reported: {exception}");
+        }
+    }
+
+    // A request body read (NativeExchange.RequestBody): the token is the request's id, since a request has at most one
+    // read in flight. The chunk is copied before the callback returns.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnReceived(void* context, ulong token, uint kind, byte* data, nuint length)
+    {
+        try
+        {
+            if (From(context)._exchanges.TryGetValue(token, out var exchange))
+            {
+                exchange.BodyReceived(kind, kind == BodyReadData ? new ReadOnlySpan<byte>(data, checked((int)length)) : default);
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Runic Desktop native server: a body read could not be reported: {exception}");
         }
     }
 

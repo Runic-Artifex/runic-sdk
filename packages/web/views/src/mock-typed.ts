@@ -21,6 +21,8 @@ import {
   type MockState,
   type MockView,
 } from "./mock-bridge.js";
+import type { MockQueryLoad } from "./mock-query.js";
+import type { QueryCollectionQuery, RunicQuery } from "./query.js";
 
 /** The wire form of a content reference in a mock state, such as `{ kind: "editor", id: "1" }`. */
 export interface MockReference<TKind extends string = string> {
@@ -123,6 +125,41 @@ export interface MockTypedCollection<TItem> {
   move(key: string, index: number): void;
 }
 
+/** The rows a typed mock serves for a query collection (query-collections/1). */
+export interface MockTypedQuerySource<TRow> {
+  /** The rows in the source's own order. */
+  readonly rows: readonly TRow[];
+  /**
+   * The wire key of a row. Generated mocks default it to the row's `id` or `key` member when the row has one of the
+   * collection's key type.
+   */
+  readonly key?: (row: TRow) => string;
+  /** Milliseconds each load takes, like a database: virtual time with `manual` scheduling. Defaults to 0. */
+  readonly latency?: number;
+  /** Custom filters by name: whether a row passes with the filter's `value`. */
+  readonly custom?: Readonly<Record<string, (row: TRow, value: unknown) => boolean>>;
+  /** The query the collection starts with. */
+  readonly query?: RunicQuery;
+}
+
+/** A query collection of a typed mock: its rows, and the loads the page asked for. */
+export interface MockTypedQueryCollection<TRow> {
+  readonly query: QueryCollectionQuery;
+  readonly version: number;
+  /** The rows that match the query. */
+  readonly total: number;
+  /** The rows in the source's order. */
+  readonly rows: readonly TRow[];
+  /** Every `query-rows` request the page sent, oldest first: what it loaded, and how much. */
+  readonly loads: readonly MockQueryLoad[];
+  /** The rows in the query's order. */
+  view(): readonly TRow[];
+  /** Replaces the rows and raises the version, as .NET's `Refresh()` after rows were added or removed. */
+  setRows(rows: readonly TRow[]): void;
+  /** Raises the version, as .NET's `Invalidate(key)` after rows changed in place. */
+  invalidate(): void;
+}
+
 /** An interaction that the producer asks the browser to handle. */
 export interface MockTypedInteraction<TInput, TOutput> {
   /** Whether an open client presentation currently handles it. */
@@ -133,9 +170,21 @@ export interface MockTypedInteraction<TInput, TOutput> {
     | { readonly kind: "cancelled" | "failed" | "unhandled" }>;
 }
 
+/** A view request (view-requests/1) that the ViewModel raises for the browser to handle. */
+export interface MockTypedViewRequest<TInput> {
+  /** Whether an open client presentation of this View currently registered a handler for it. */
+  readonly handled: boolean;
+  /**
+   * Raises the request, as the ViewModel's `ViewRequest.Raise(input)` does: pushes it to every presentation of this
+   * View that registered a handler, and returns how many it reached. 0 means that none handles it; the request is
+   * not kept or replayed. Inside a command handler or `batch`, it is pushed after their state changes.
+   */
+  raise(input: TInput): number;
+}
+
 /** A client method name a failure can target, such as `save`, `startSave`, `setTitle` or `canSetViewport`. */
 export type MockMethodName<TClient> = Exclude<keyof TClient & string,
-  "snapshot" | "subscribe" | "dispose" | "interactions" | "fieldBaseline" | `recover${string}`>;
+  "snapshot" | "subscribe" | "dispose" | "interactions" | "requests" | "fieldBaseline" | `recover${string}`>;
 
 /** The typed mock of one generated client, created by a generated `mock{Name}()`. */
 export interface MockTypedView<TState, TClient, TKind extends string = string> {
@@ -182,12 +231,16 @@ export interface MockTypedViewSpec {
   /** State the client always receives, such as `canSave: true`. */
   readonly defaults: MockState;
   readonly checkedFields?: readonly string[];
+  /** Field paths by member (`field-paths/1`), such as `{ lines: [["quantity"]] }`. */
+  readonly fieldPaths?: Readonly<Record<string, readonly (readonly string[])[]>>;
   /** Text members by wire name, which frames and setters change with splices (text-splice/1). */
   readonly texts?: readonly string[];
   /** Keyed collections by wire name: a row codec and its key. */
   readonly collections?: Readonly<Record<string, FieldCodec & { key(item: never): string }>>;
   /** Region collections by wire name (region-collections/1): whether the page can close a region. */
   readonly regions?: Readonly<Record<string, { readonly close: boolean }>>;
+  /** Query collections by wire name: a row codec and, when the generator found one, its key. */
+  readonly queries?: Readonly<Record<string, FieldCodec & { key?(item: never): string }>>;
   /**
    * Setters by client method (`setTitle`): the member's wire name, and the client method of its checked write
    * (`writeTitle`) when it has one.
@@ -212,6 +265,11 @@ export interface MockTypedViewSpec {
   /** The View's operation contract, `{view}:{fingerprint}`. */
   readonly contract?: string;
   readonly interactions?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly decodeOutput: (wire: unknown) => unknown }>>;
+  /**
+   * View requests by name (view-requests/1): `encodeInput` encodes a typed input as its wire value. With `contract`,
+   * a registration of another contract is `unsupported`; without it, any contract of the name is accepted.
+   */
+  readonly requests?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly contract?: string }>>;
 }
 
 /** The loose shape of a generated mock definition. */
@@ -233,6 +291,8 @@ export interface MockTypedViewDefinition {
   readonly operations?: object;
   /** Region handlers by wire name (region-collections/1). */
   readonly regions?: object;
+  /** Query collections by wire name; the generated definition types them as {@link MockTypedQuerySource}. */
+  readonly queries?: object;
 }
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -364,12 +424,29 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     commands,
     can,
     ...(spec.checkedFields ? { checkedFields: spec.checkedFields } : {}),
+    ...(spec.fieldPaths ? { fieldPaths: spec.fieldPaths } : {}),
     ...(spec.texts ? { texts: spec.texts } : {}),
     ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
       .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
+    ...(spec.queries ? { queries: Object.fromEntries(Object.entries(spec.queries).map(([member, codec]) => {
+      const source = (definition.queries as Readonly<Record<string, MockTypedQuerySource<unknown>>> | undefined)?.[member];
+      const custom = source?.custom;
+      const key = source?.key ?? codec.key as ((row: unknown) => string) | undefined;
+      if (!key) throw new TypeError(`The mock ${spec.kind} needs queries.${member}.key: its rows have no id or key member.`);
+      return [member, {
+        rows: (source?.rows ?? []).map(row => codec.encode(row)),
+        key: (row: unknown) => key(codec.decode(row)),
+        ...(source?.latency === undefined ? {} : { latency: source.latency }),
+        ...(source?.query === undefined ? {} : { query: source.query }),
+        ...(custom === undefined ? {} : { custom: Object.fromEntries(Object.entries(custom)
+          .map(([name, filter]) => [name, (row: unknown, value: unknown) => filter(codec.decode(row), value)])) }),
+      }];
+    })) } : {}),
     operations,
     ...(spec.regions ? { regions } : {}),
     ...(spec.contract ? { contract: spec.contract } : {}),
+    ...(spec.requests ? { requests: Object.fromEntries(Object.entries(spec.requests)
+      .map(([name, request]) => [name, request.contract === undefined ? {} : { contract: request.contract }])) } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
   });
 
@@ -401,6 +478,20 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       move: (key, index) => raw.collection(field).move(key, index),
     };
   }
+  const queries: Record<string, MockTypedQueryCollection<unknown>> = {};
+  for (const [member, codec] of Object.entries(spec.queries ?? {})) {
+    const query = () => raw.query(member);
+    queries[member] = {
+      get query() { return query().query; },
+      get version() { return query().version; },
+      get total() { return query().total; },
+      get rows() { return query().rows.map(row => codec.decode(row)); },
+      get loads() { return query().loads; },
+      view: () => query().view().map(row => codec.decode(row)),
+      setRows: rows => query().setRows(rows.map(row => codec.encode(row))),
+      invalidate: () => query().invalidate(),
+    };
+  }
   const operationLog: Record<string, readonly MockTypedOperation<unknown, unknown, unknown>[]> = {};
   for (const [method, plan] of Object.entries(spec.operations ?? {}))
     Object.defineProperty(operationLog, method, { enumerable: true, get: () => raw.operations(plan.member).map(wrapOperation(method)) });
@@ -412,6 +503,13 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
         const reply = await raw.interact(name, codec.encodeInput(input), options);
         return reply.kind === "answered" ? { kind: "answered", output: codec.decodeOutput(reply.output) } : reply;
       },
+    };
+  }
+  const viewRequests: Record<string, MockTypedViewRequest<unknown>> = {};
+  for (const [name, codec] of Object.entries(spec.requests ?? {})) {
+    viewRequests[name] = {
+      get handled() { return raw.requestHandlers.includes(name); },
+      raise: input => raw.raise(name, codec.encodeInput(input)),
     };
   }
   mockBridgeInternals(bridge);
@@ -444,8 +542,10 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     renew: () => raw.renew(),
     waitPresented: timeout => raw.waitPresented(timeout),
     collections,
+    queries,
     operations: operationLog,
     interactions,
+    requests: viewRequests,
   };
   return view;
 }

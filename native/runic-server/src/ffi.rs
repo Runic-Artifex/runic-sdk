@@ -19,11 +19,11 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use bytes::Bytes;
 
 use crate::server::{
-    Body, Handler, MessageKind, RequestHead, Server, ServerConfig, ServerError, WebSocketClose, WriteOutcome,
+    Body, BodyRead, Handler, MessageKind, RequestHead, Server, ServerConfig, ServerError, WebSocketClose, WriteOutcome,
 };
 
 /// Bumped on every incompatible change of this file's types or functions.
-pub const ABI_VERSION: u32 = 2;
+pub const ABI_VERSION: u32 = 3;
 
 pub const OK: i32 = 0;
 pub const PENDING: i32 = 1;
@@ -97,6 +97,14 @@ pub type MessageCallback = unsafe extern "C" fn(
 pub type ClosedCallback =
     unsafe extern "C" fn(context: *mut c_void, connection: u64, code: i32, reason: *const u8, length: usize);
 pub type CompletedCallback = unsafe extern "C" fn(context: *mut c_void, token: u64, accepted: i32);
+/// A request body read (runic_server_read): `kind` BODY_READ_DATA with the chunk (valid during the call), BODY_READ_END
+/// or BODY_READ_FAILED.
+pub type ReceivedCallback =
+    unsafe extern "C" fn(context: *mut c_void, token: u64, kind: u32, data: *const u8, length: usize);
+
+pub const BODY_READ_DATA: u32 = 1;
+pub const BODY_READ_END: u32 = 2;
+pub const BODY_READ_FAILED: u32 = 3;
 
 #[repr(C)]
 pub struct RunicServerOptions {
@@ -113,6 +121,7 @@ pub struct RunicServerOptions {
     pub on_message: Option<MessageCallback>,
     pub on_closed: Option<ClosedCallback>,
     pub on_completed: Option<CompletedCallback>,
+    pub on_received: Option<ReceivedCallback>,
 }
 
 struct Callbacks {
@@ -122,6 +131,7 @@ struct Callbacks {
     on_message: MessageCallback,
     on_closed: ClosedCallback,
     on_completed: CompletedCallback,
+    on_received: ReceivedCallback,
 }
 
 // The host's context pointer is opaque here; the host makes its callbacks thread-safe.
@@ -180,6 +190,18 @@ impl Handler for Callbacks {
 
     fn completed(&self, token: u64, accepted: bool) {
         unsafe { (self.on_completed)(self.context, token, i32::from(accepted)) };
+    }
+
+    fn received(&self, token: u64, read: BodyRead<'_>) {
+        match read {
+            BodyRead::Data(data) => unsafe {
+                (self.on_received)(self.context, token, BODY_READ_DATA, data.as_ptr(), data.len())
+            },
+            BodyRead::End => unsafe { (self.on_received)(self.context, token, BODY_READ_END, std::ptr::null(), 0) },
+            BodyRead::Failed => unsafe {
+                (self.on_received)(self.context, token, BODY_READ_FAILED, std::ptr::null(), 0)
+            },
+        }
     }
 }
 
@@ -273,9 +295,14 @@ pub unsafe extern "C" fn runic_server_start(
     if out_server.is_null() || out_port.is_null() {
         return fail(INVALID_ARGUMENT, "an output pointer is null");
     }
-    let (Some(on_request), Some(on_aborted), Some(on_message), Some(on_closed), Some(on_completed)) =
-        (options.on_request, options.on_aborted, options.on_message, options.on_closed, options.on_completed)
-    else {
+    let (Some(on_request), Some(on_aborted), Some(on_message), Some(on_closed), Some(on_completed), Some(on_received)) = (
+        options.on_request,
+        options.on_aborted,
+        options.on_message,
+        options.on_closed,
+        options.on_completed,
+        options.on_received,
+    ) else {
         return fail(INVALID_ARGUMENT, "every callback is required");
     };
     let Ok(max_message_bytes) = usize::try_from(options.max_message_bytes) else {
@@ -288,7 +315,15 @@ pub unsafe extern "C" fn runic_server_start(
         max_message_bytes,
         receive_window: options.receive_window as usize,
     };
-    let callbacks = Callbacks { context: options.context, on_request, on_aborted, on_message, on_closed, on_completed };
+    let callbacks = Callbacks {
+        context: options.context,
+        on_request,
+        on_aborted,
+        on_message,
+        on_closed,
+        on_completed,
+        on_received,
+    };
     match Server::start(config, Arc::new(callbacks)) {
         Ok(server) => {
             unsafe {
@@ -356,6 +391,15 @@ pub unsafe extern "C" fn runic_server_write(
     };
     let data = Bytes::copy_from_slice(unsafe { RunicStr { ptr: data, len: length }.bytes() });
     outcome(server.write(id, data, token))
+}
+
+/// Reads the next chunk of request `id`'s body; on_received reports it with `token`. One read at a time per request.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn runic_server_read(server: *const Server, id: u64, token: u64) -> i32 {
+    let Some(server) = (unsafe { self::server(server) }) else {
+        return fail(INVALID_ARGUMENT, "server is null");
+    };
+    unit(server.read(id, token))
 }
 
 /// Ends a streamed body.

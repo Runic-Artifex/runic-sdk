@@ -73,6 +73,12 @@ internal sealed class GeneratedClientHarness
                 RootRoute = "dtoInteraction", ViewLocator = new TestViewLocator(), TimeProvider = TimeProvider.System,
             });
 
+        await using var catalogContext = new RunicModelContext();
+        using var catalogHost = new RunicWindowTestHost<CatalogViewModel>(
+            new CatalogViewModel(new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(5_000), CatalogRows.Fields(), row => row.Id), catalogContext),
+            (transport, content, vm) => new CatalogBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "catalog", ViewLocator = new TestViewLocator(), ModelContext = catalogContext });
+
         using var live = new GeneratedClientLiveHost()
             .Serve("dataShape", dataShapeHost.Transport)
             .Serve("typedReactive", typedHost.Transport)
@@ -81,6 +87,7 @@ internal sealed class GeneratedClientHarness
             .Serve("validation", validationHost.Transport)
             .Serve("dtoList", dtoListHost.Transport)
             .Serve("dtoInteraction", dtoInteractionHost.Transport)
+            .Serve("catalog", catalogHost.Transport)
             .Step("dataShape.expectSet", () => Require(dataShape.Duration == -new TimeSpan(1, 2, 3, 4).Add(TimeSpan.FromTicks(5_000_007))
                     && dataShape.Amount == 99.2500m && dataShape.Amount.Scale == 4
                     && dataShape.Whole is { Name: "whole-from-client", RetryAfter: 11 },

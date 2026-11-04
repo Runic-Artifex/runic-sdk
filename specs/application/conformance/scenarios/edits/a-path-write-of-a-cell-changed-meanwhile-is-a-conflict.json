@@ -1,0 +1,525 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-of-a-cell-changed-meanwhile-is-a-conflict.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "A cell's version is the revision of the publication that last changed it. A write based on an older state of the cell is a conflict with the cell's value, also when the value changed back; a write of another cell of the same row still applies.",
+  "view": "invoice",
+  "requires": [
+    "field-paths/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-invoice": {
+      "kind": "call"
+    },
+    "open-invoice-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "stale": {
+      "kind": "call"
+    },
+    "stale-request": {
+      "kind": "request"
+    },
+    "staleId": {
+      "kind": "wire",
+      "value": "w-stale"
+    },
+    "label": {
+      "kind": "call"
+    },
+    "label-request": {
+      "kind": "request"
+    },
+    "labelId": {
+      "kind": "wire",
+      "value": "w-label"
+    },
+    "retried": {
+      "kind": "call"
+    },
+    "retried-request": {
+      "kind": "request"
+    },
+    "retriedId": {
+      "kind": "wire",
+      "value": "w-retried"
+    }
+  },
+  "arrange": {
+    "model": {
+      "address": {
+        "street": "",
+        "city": "Bern"
+      },
+      "lines": [
+        {
+          "id": 1,
+          "label": "Pens",
+          "quantity": 1
+        },
+        {
+          "id": 2,
+          "label": "Ink",
+          "quantity": 4
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-invoice",
+        "op": "open",
+        "route": "invoice"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "invoice",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-invoice-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "address": {
+            "street": "",
+            "city": "Bern"
+          },
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        },
+        "fields": {
+          "address": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-invoice-request"
+    },
+    {
+      "mutate": [
+        {
+          "op": "replaceAt",
+          "member": "lines",
+          "index": 0,
+          "item": {
+            "id": 1,
+            "label": "Pens",
+            "quantity": 3
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "lines",
+            "kind": "replace",
+            "index": 0,
+            "oldIndex": 0,
+            "keys": [
+              "1"
+            ],
+            "items": [
+              {
+                "id": 1,
+                "label": "Pens",
+                "quantity": 3
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "mutate": [
+        {
+          "op": "replaceAt",
+          "member": "lines",
+          "index": 0,
+          "item": {
+            "id": 1,
+            "label": "Pens",
+            "quantity": 1
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [
+          {
+            "field": "lines",
+            "kind": "replace",
+            "index": 0,
+            "oldIndex": 0,
+            "keys": [
+              "1"
+            ],
+            "items": [
+              {
+                "id": 1,
+                "label": "Pens",
+                "quantity": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "id": "stale",
+        "op": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": "w-stale",
+        "baseline": {
+          "value": 1,
+          "version": 0
+        },
+        "value": 2
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "staleId"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": 2
+      },
+      "id": "stale-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 2,
+        "receipt": {
+          "kind": "conflict",
+          "incoming": {
+            "value": 1,
+            "version": 2
+          },
+          "message": {
+            "$any": "string",
+            "default": "The field changed."
+          }
+        }
+      },
+      "replyTo": "stale-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "stale",
+          "resolved": {
+            "kind": "conflict",
+            "incoming": {
+              "value": 1,
+              "version": 2
+            },
+            "message": {
+              "$any": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "call": {
+        "id": "label",
+        "op": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "label"
+        ],
+        "requestId": "w-label",
+        "baseline": {
+          "value": "Pens",
+          "version": 0
+        },
+        "value": "Pencils"
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "label"
+        ],
+        "requestId": {
+          "$id": "labelId"
+        },
+        "expectedVersion": 0,
+        "expectedValue": "Pens",
+        "value": "Pencils"
+      },
+      "id": "label-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 2,
+        "revision": 3,
+        "changes": [
+          {
+            "field": "lines",
+            "kind": "replace",
+            "index": 0,
+            "oldIndex": 0,
+            "keys": [
+              "1"
+            ],
+            "items": [
+              {
+                "id": 1,
+                "label": "Pencils",
+                "quantity": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 3,
+        "receipt": {
+          "kind": "applied",
+          "snapshot": {
+            "value": "Pencils",
+            "version": 3
+          }
+        }
+      },
+      "replyTo": "label-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "label",
+          "resolved": {
+            "kind": "applied",
+            "snapshot": {
+              "value": "Pencils",
+              "version": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "call": {
+        "id": "retried",
+        "op": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": "w-retried",
+        "baseline": {
+          "value": 1,
+          "version": 2
+        },
+        "value": 2
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "retriedId"
+        },
+        "expectedVersion": 2,
+        "expectedValue": 1,
+        "value": 2
+      },
+      "id": "retried-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 3,
+        "revision": 4,
+        "changes": [
+          {
+            "field": "lines",
+            "kind": "replace",
+            "index": 0,
+            "oldIndex": 0,
+            "keys": [
+              "1"
+            ],
+            "items": [
+              {
+                "id": 1,
+                "label": "Pencils",
+                "quantity": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 4,
+        "receipt": {
+          "kind": "applied",
+          "snapshot": {
+            "value": 2,
+            "version": 4
+          }
+        }
+      },
+      "replyTo": "retried-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "retried",
+          "resolved": {
+            "kind": "applied",
+            "snapshot": {
+              "value": 2,
+              "version": 4
+            }
+          }
+        }
+      }
+    }
+  ]
+}

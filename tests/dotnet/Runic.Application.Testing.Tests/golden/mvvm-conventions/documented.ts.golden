@@ -4,6 +4,7 @@ import { connectView, disposable, viewReferences, type BridgeMemberDecoders } fr
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import type { CodegenPoint, DocumentedItem, DocumentedLayout } from "./types.js";
 export type { CodegenPoint, DocumentedItem, DocumentedLayout } from "./types.js";
+export { DocumentedLayoutValues } from "./types.js";
 
 export interface DocumentedState {
   /** The current layout. */

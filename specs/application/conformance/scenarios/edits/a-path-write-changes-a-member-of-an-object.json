@@ -1,0 +1,244 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-changes-a-member-of-an-object.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "With field-paths/1 a checked write names a path below its member: writing address.street replaces the address with the street changed, publishes the member as any change, and its receipt's version is the reply's revision.",
+  "view": "invoice",
+  "requires": [
+    "field-paths/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-invoice": {
+      "kind": "call"
+    },
+    "open-invoice-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "street": {
+      "kind": "call"
+    },
+    "street-request": {
+      "kind": "request"
+    },
+    "streetId": {
+      "kind": "wire",
+      "value": "w-street"
+    }
+  },
+  "arrange": {
+    "model": {
+      "address": {
+        "street": "",
+        "city": "Bern"
+      },
+      "lines": []
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-invoice",
+        "op": "open",
+        "route": "invoice"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "invoice",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-invoice-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "address": {
+            "street": "",
+            "city": "Bern"
+          },
+          "lines": []
+        },
+        "fields": {
+          "address": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-invoice-request"
+    },
+    {
+      "call": {
+        "id": "street",
+        "op": "write",
+        "route": "invoice",
+        "member": "address",
+        "path": [
+          "street"
+        ],
+        "requestId": "w-street",
+        "baseline": {
+          "value": "",
+          "version": 0
+        },
+        "value": "Main Street 1"
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "address",
+        "path": [
+          "street"
+        ],
+        "requestId": {
+          "$id": "streetId"
+        },
+        "expectedVersion": 0,
+        "expectedValue": "",
+        "value": "Main Street 1"
+      },
+      "id": "street-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "address",
+            "kind": "set",
+            "value": {
+              "street": "Main Street 1",
+              "city": "Bern"
+            },
+            "version": 1
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "receipt": {
+          "kind": "applied",
+          "snapshot": {
+            "value": "Main Street 1",
+            "version": 1
+          }
+        }
+      },
+      "replyTo": "street-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "street",
+          "resolved": {
+            "kind": "applied",
+            "snapshot": {
+              "value": "Main Street 1",
+              "version": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "model": {
+          "address": {
+            "street": "Main Street 1",
+            "city": "Bern"
+          }
+        }
+      },
+      "role": "producer"
+    }
+  ]
+}

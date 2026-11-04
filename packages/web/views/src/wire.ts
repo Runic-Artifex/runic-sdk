@@ -268,4 +268,56 @@ export function json(value: unknown, nullable = true): unknown {
   return value;
 }
 
+/**
+ * A text reference of Runic Translations (the `text-reference` wire type, values.md): a catalog, a message key, typed
+ * arguments and an optional fallback text, as the Translations transport writes it. The page shows it in the window's
+ * language with `resolveText` or a framework's `useText`, which call the application's Translations runtime
+ * (`resolveTextReference`). Its type is structural, so a `TextReferenceWire` of a generated `transport.js` is one.
+ */
+export interface TextReference {
+  /** 1 or 2 today; a later version decodes too, and the Translations runtime shows its fallback text. */
+  readonly version: number;
+  readonly catalog: string;
+  readonly contractFingerprint: string;
+  readonly key: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
+  /** `null` only in version 1, where it means none. */
+  readonly fallbackText?: string | null;
+}
+
+/** The largest text reference, in UTF-16 code units of its JSON (at most 256 KiB of UTF-8 bytes in .NET). */
+const maximumTextReferenceLength = 256 * 1024;
+
+/**
+ * Whether a value has the shape of a {@link TextReference}, as the Translations readers check it: an integer `version`
+ * of at least 1 (a later one than the page's runtime reads still decodes, and shows its fallback text), string
+ * `catalog` and `contractFingerprint`, a nonempty `key`, an `arguments` object, and a string `fallbackText` when present,
+ * or `null` in version 1. Its arguments are checked when it is resolved.
+ */
+export function isTextReference(value: unknown): value is TextReference {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const reference = value as Record<string, unknown>;
+  const version = reference["version"];
+  const fallback = reference["fallbackText"];
+  const args = reference["arguments"];
+  return Number.isSafeInteger(version) && (version as number) >= 1
+    && typeof reference["catalog"] === "string" && typeof reference["contractFingerprint"] === "string"
+    && typeof reference["key"] === "string" && reference["key"].length > 0
+    && typeof args === "object" && args !== null && !Array.isArray(args)
+    && (fallback === undefined || typeof fallback === "string" || fallback === null && version === 1);
+}
+
+/**
+ * A `text-reference` value of the shape {@link isTextReference} checks, of JSON values. The Translations runtime checks
+ * the rest against its catalog when the page shows it.
+ */
+export function textReference(value: unknown): TextReference {
+  if (!isTextReference(value)) throw new TypeError("Expected a text reference.");
+  checkJson(value, 1);
+  if (JSON.stringify(value).length > maximumTextReferenceLength) throw new RangeError("The text reference is too large.");
+  return value;
+}
+
 export { decodeBigInt as bigint, decodeBoolean as boolean, decodeObject as object, decodeString as string };
+
+export { blob, blobRef, encodeBlob, encodeBlobRef } from "./blob-wire.js";

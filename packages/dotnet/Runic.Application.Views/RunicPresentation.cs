@@ -56,9 +56,21 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     /// <inheritdoc cref="RunicWindow{TViewModel}.Services"/>
     IServiceProvider Services { get; }
 
-    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter, CancellationToken cancellationToken);
+    /// <inheritdoc cref="RunicWindow{TViewModel}.Presentation"/>
+    IRunicWindowPresentation Presentation { get; }
+
+    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, RunicWindowOpenRequest request, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
+
+    // Whether the Window's close has started: the application closed or released it, or a close request decided to close.
+    internal bool IsClosing { get; }
+
+    // Runs action once the close starts, at once when it has started.
+    internal void WhenClosing(Action action);
+
+    // Closes the Window with timeout once it has opened, at once when it is open.
+    internal void CloseWhenOpen(TimeSpan timeout);
 }
 
 /// <summary>
@@ -93,6 +105,25 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 
     /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
     protected RunicWindow() { }
+
+    private readonly RunicWindowPresentation _presentation = new();
+
+    /// <summary>
+    /// The Window as it appears on the desktop: bring it to the front, minimize, hide or show it, and read whether it
+    /// is active, from code outside its scope, such as a status icon's handler. Its ViewModel takes the same object as
+    /// <see cref="IRunicWindowPresentation"/>.
+    /// </summary>
+    /// <remarks>
+    /// Readable before the Window opens and after it closes; its requests then report
+    /// <see cref="Runic.Platform.PlatformUnavailableReason.OwnerUnavailable"/> or
+    /// <see cref="Runic.Platform.PlatformUnavailableReason.OwnerClosed"/>.
+    /// </remarks>
+    public IRunicWindowPresentation Presentation => _presentation;
+
+    // The host's presentation of the open window (RunicWindowOpening.UsePresentation).
+    internal void AttachPresentation(IRunicWindowPresentation presentation) =>
+        _presentation.Attach(presentation, () => Volatile.Read(ref _content)?.ModelContext,
+            () => Volatile.Read(ref _content)?.Logger ?? TraceFallbackLogger.Instance);
 
     /// <summary>The window's scoped root ViewModel.</summary>
     /// <exception cref="InvalidOperationException">The window has not opened.</exception>
@@ -164,7 +195,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
     {
         var host = Host;
-        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return hostRequest(cancellationToken);
+        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return RequestFromHostAsync(hostRequest, cancellationToken);
         Task<bool> pending;
         lock (_closeGate)
         {
@@ -253,12 +284,75 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             CloseWithoutAsking();
             await host.DisposeAsync().ConfigureAwait(false);
         }
+        _presentation.Close();
         GC.SuppressFinalize(this);
     }
 
     // The application's own close abandons a pending RequestCloseAsync decision.
+    private async ValueTask<bool> RequestFromHostAsync(Func<CancellationToken, ValueTask<bool>> hostRequest, CancellationToken cancellationToken)
+    {
+        var closed = await hostRequest(cancellationToken).ConfigureAwait(false);
+        if (closed) MarkClosing();
+        return closed;
+    }
+
+    private int _closing;
+    private Action? _onClosing;
+    private readonly object _closingGate = new();
+    private int _closeWhenOpen;
+    private TimeSpan _closeWhenOpenTimeout;
+
+    bool IRunicWindow.IsClosing => Volatile.Read(ref _closing) != 0;
+
+    void IRunicWindow.WhenClosing(Action action)
+    {
+        lock (_closingGate)
+        {
+            if (_closing == 0)
+            {
+                _onClosing += action;
+                return;
+            }
+        }
+        action();
+    }
+
+    // The close started: the Window leaves IRunicWindowService.Windows at once. Hosts call it when their window closes.
+    internal void MarkClosing()
+    {
+        Action? handlers;
+        lock (_closingGate)
+        {
+            if (_closing != 0) return;
+            _closing = 1;
+            (handlers, _onClosing) = (_onClosing, null);
+        }
+        handlers?.Invoke();
+    }
+
+    void IRunicWindow.CloseWhenOpen(TimeSpan timeout)
+    {
+        _closeWhenOpenTimeout = timeout;
+        Volatile.Write(ref _closeWhenOpen, 1);
+        if (Volatile.Read(ref _host) is not null) CloseOnceOpen();
+    }
+
+    // Before the Window opened, IRunicWindowResult.CompleteAsync asked to close it.
+    private void CloseOnceOpen()
+    {
+        if (Interlocked.Exchange(ref _closeWhenOpen, 0) == 0) return;
+        _ = CloseQuietlyAsync(_closeWhenOpenTimeout);
+    }
+
+    private async Task CloseQuietlyAsync(TimeSpan timeout)
+    {
+        try { _ = await CloseAsync(timeout).ConfigureAwait(false); }
+        catch (InvalidOperationException) { /* Released meanwhile (ObjectDisposedException). */ }
+    }
+
     private void CloseWithoutAsking()
     {
+        MarkClosing();
         try { _closeWithoutAsking.Cancel(); }
         catch (AggregateException error)
         {
@@ -287,6 +381,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             }
         }
         if (_closeWithoutAsking.IsCancellationRequested) return true;
+        MarkClosing();
         _ = await host.CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
         return true;
     }
@@ -302,13 +397,16 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         catch (Exception) { await decision.CancelAsync().ConfigureAwait(false); }
     }
 
-    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter,
+    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, RunicWindowOpenRequest request,
         CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _opened, 1) != 0)
             throw new InvalidOperationException($"{GetType().Name} has already been opened; open a new instance for another window.");
-        var opened = await RunicWindowOpening.OpenAsync(host, this, options, parameter, cancellationToken).ConfigureAwait(false);
+        var opened = await RunicWindowOpening.OpenAsync(host, this, options, request, cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _host, opened);
+        // IRunicWindowService.Windows lists it until it closes.
+        (host.Services.GetService(typeof(RunicWindowService)) as RunicWindowService)?.Track(this, options, request.Key);
+        CloseOnceOpen();
     }
 
     RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>
@@ -324,6 +422,8 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     {
         Volatile.Write(ref _content, content);
         Volatile.Write(ref _bridge, bridge);
+        // IRunicWindowLocale in this scope follows and sets the window's locale from now on.
+        (Volatile.Read(ref _services)?.GetService(typeof(RunicWindowContext)) as RunicWindowContext)?.AttachContent(content);
     }
 
     // The host's close guard: CanCloseAsync in a model turn. It never throws, so a host keeps the window open on any
@@ -336,6 +436,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // field-flush/1: this window's pages write their field drafts first, so the guard sees the user's last input.
+            // A close requested in a model turn (a native menu's command) flushes too: awaiting the flush releases the
+            // turn, the drafts' writes run in turns of their own, and the guard below runs in a turn of its own.
+            if (content is not null) await content.FlushFieldsAsync(cancellationToken).ConfigureAwait(false);
             if (content?.ModelContext is { IsExecuting: false } context)
             {
                 var decision = await context.InvokeAsync(() => CanCloseAsync(cancellationToken).AsTask(), cancellationToken)

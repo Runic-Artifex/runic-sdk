@@ -1,0 +1,310 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-retry-gets-the-original-receipt.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer"
+  ],
+  "description": "A retry of a path write with the same requestId, path, expectedVersion and values gets the original receipt and is not applied again; reusing the requestId for another write is a conflict.",
+  "view": "invoice",
+  "requires": [
+    "field-paths/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-invoice-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "first": {
+      "kind": "request"
+    },
+    "retry": {
+      "kind": "request"
+    },
+    "reuse": {
+      "kind": "request"
+    },
+    "w1": {
+      "kind": "wire",
+      "value": "w-1"
+    }
+  },
+  "arrange": {
+    "model": {
+      "address": {
+        "street": "",
+        "city": "Bern"
+      },
+      "lines": [
+        {
+          "id": 1,
+          "label": "Pens",
+          "quantity": 1
+        },
+        {
+          "id": 2,
+          "label": "Ink",
+          "quantity": 4
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "invoice",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-invoice-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "address": {
+            "street": "",
+            "city": "Bern"
+          },
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        },
+        "fields": {
+          "address": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-invoice-request"
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "w1"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": 2
+      },
+      "id": "first"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "lines",
+            "kind": "replace",
+            "index": 0,
+            "oldIndex": 0,
+            "keys": [
+              "1"
+            ],
+            "items": [
+              {
+                "id": 1,
+                "label": "Pens",
+                "quantity": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "receipt": {
+          "kind": "applied",
+          "snapshot": {
+            "value": 2,
+            "version": 1
+          }
+        }
+      },
+      "replyTo": "first"
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "w1"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": 2
+      },
+      "id": "retry"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "receipt": {
+          "kind": "applied",
+          "snapshot": {
+            "value": 2,
+            "version": 1
+          }
+        }
+      },
+      "replyTo": "retry"
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "w1"
+        },
+        "expectedVersion": 1,
+        "expectedValue": 2,
+        "value": 3
+      },
+      "id": "reuse"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "receipt": {
+          "kind": "conflict",
+          "incoming": {
+            "value": 2,
+            "version": 1
+          },
+          "message": {
+            "$any": "string",
+            "default": "The request id was used for another write."
+          }
+        }
+      },
+      "replyTo": "reuse"
+    },
+    {
+      "expect": {
+        "model": {
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 2
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -15,8 +15,30 @@ export { describeBridgeError, isBridgeError } from "./describe-error.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, type BridgeDiagnosticListener } from "./diagnostics.js";
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
+export {
+  configureTranslatedText,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  textLocale,
+  textVersion,
+  windowLocale,
+  type TextReference,
+  type TextTranslations,
+} from "./translated-text.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
+export {
+  blobsFeature,
+  upload,
+  type BlobRef,
+  type HostUploadRequest,
+  type HostUploads,
+  type RunicBlob,
+  type UploadOptions,
+  type UploadProgress,
+} from "./blobs.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
+export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
 export {
   createCommandController,
   createViewController,
@@ -32,7 +54,8 @@ export {
   type ViewSource,
 } from "./controller.js";
 export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
-export type { BridgeField, BridgeFieldKind } from "./field.js";
+export type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
+export { fieldErrorsAt, fieldValidatingAt, type BridgeRowFields } from "./field-paths.js";
 export {
   createLatestOperationController,
   createOperationController,
@@ -59,7 +82,9 @@ export type {
   BridgeStreamOperation,
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
+export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {
+  commitAllFields,
   createFieldController,
   FieldError,
   type FieldCommit,
@@ -71,6 +96,21 @@ export {
   type FieldState,
 } from "./field-controller.js";
 export { attachField, bindField, commitFields, type BoundField, type FieldElement } from "./dom-field.js";
+export {
+  createFormController,
+  formFieldList,
+  formStateOf,
+  submitFields,
+  type FormController,
+  type FormField,
+  type FormFieldController,
+  type FormFields,
+  type FormFieldState,
+  type FormOptions,
+  type FormSubmitOptions,
+  type FormState,
+  type FormSubmitResult,
+} from "./form-controller.js";
 export {
   createTextFieldController,
   type TextFieldController,
@@ -85,6 +125,29 @@ export {
   type CollectionViewportController,
   type CollectionViewportOptions,
 } from "./viewport.js";
+export {
+  createQueryCollection,
+  maximumQueryRange,
+  normalizeQuery,
+  type QueryCollection,
+  type QueryCollectionQuery,
+  type QueryCollectionSnapshot,
+  type QueryCollectionState,
+  type QueryRow,
+  type RunicFilter,
+  type RunicQuery,
+  type RunicSortKey,
+} from "./query.js";
+export {
+  createQueryViewportController,
+  createRowSizes,
+  type QueryViewport,
+  type QueryViewportController,
+  type QueryViewportItem,
+  type QueryViewportOptions,
+  type RowSizeEstimate,
+  type RowSizes,
+} from "./query-viewport.js";
 
 export {
   installBackNavigation,

@@ -1,10 +1,22 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Runic.Platform;
 
 namespace MultiWindow;
 
-// The app's own settings. "system" follows the desktop's color scheme from IDesktopSettings.
-public sealed record AppSettings(string Theme = "system", string? LastFolder = null);
+// The app's own settings. "system" follows the desktop's color scheme from IDesktopSettings. Language is the Windows'
+// language, "en" or "de".
+public sealed record AppSettings(string Theme = "system", string? LastFolder = null, string Language = "en")
+{
+    // The scheme the application's windows show for Theme; NoPreference follows the desktop.
+    [JsonIgnore]
+    public DesktopColorScheme ColorScheme => Theme switch
+    {
+        "light" => DesktopColorScheme.Light,
+        "dark" => DesktopColorScheme.Dark,
+        _ => DesktopColorScheme.NoPreference,
+    };
+}
 
 [JsonSerializable(typeof(AppSettings))]
 internal sealed partial class SettingsJson : JsonSerializerContext;
@@ -28,6 +40,9 @@ public sealed class SettingsStore(string path)
                 : new();
     }
 
+    // Raised after each save, on the saving Window's thread; Program.cs applies the theme to every Window.
+    public event EventHandler<AppSettings>? Saved;
+
     public void Save(AppSettings settings)
     {
         lock (_gate)
@@ -37,5 +52,6 @@ public sealed class SettingsStore(string path)
             File.WriteAllText(temporary, JsonSerializer.Serialize(settings, SettingsJson.Default.AppSettings));
             File.Move(temporary, path, overwrite: true);
         }
+        Saved?.Invoke(this, settings);
     }
 }

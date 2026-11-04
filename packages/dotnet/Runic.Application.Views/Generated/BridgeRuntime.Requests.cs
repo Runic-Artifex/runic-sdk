@@ -11,9 +11,11 @@ namespace Runic.Application.Views.Generated;
 // the window requested before it was ready were handed to the transport.
 public partial class ViewModelBridge<T>
 {
-    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler, IBridgePresentedHandler
+    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler, IBridgePresentedHandler, IBridgeViewRequestRoute
     {
         public void Presented(BridgeConnection connection, long revision) => owner.Presented(revision);
+
+        public void PublishForViewRequest(Action<long?> deliver) => owner.PublishForViewRequest(deliver);
 
         public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
             request.Kind switch
@@ -26,6 +28,9 @@ public partial class ViewModelBridge<T>
                 "command" => owner.CommandAsync(request, cancellationToken),
                 "can" => owner.CanAsync(request, cancellationToken),
                 "region" => owner.RegionAsync(request, cancellationToken),
+                "query-rows" => owner.QueryRowsAsync(request, cancellationToken),
+                "query-set" => owner.QuerySetAsync(request, cancellationToken),
+                "query-index" => owner.QueryIndexAsync(request, cancellationToken),
                 _ => owner.HandleOperationAsync(request, cancellationToken),
             };
     }
@@ -180,7 +185,11 @@ public partial class ViewModelBridge<T>
                     try
                     {
                         if (text is not null && textSetter is not null) textSetter(_vm, text);
-                        else property.Set(_vm, value);
+                        else
+                        {
+                            using var blobs = EnterBlobs(connection.Key);
+                            property.Set(_vm, value);
+                        }
                         call.Complete(BridgeCallOutcome.Ok);
                         return RanReply(null);
                     }
@@ -223,6 +232,7 @@ public partial class ViewModelBridge<T>
     private async ValueTask<ReadOnlyMemory<byte>> WriteAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
     {
         var member = request.Member!;
+        if (request.Root.TryGetProperty("path", out var path)) return await WritePathAsync(request, path, cancellationToken).ConfigureAwait(false);
         if (_unownedCheckedFields.Contains(member))
             return EncodeFailure(new("failed", "Acknowledged field writes require a WindowContentSession."));
         if (!_checkedByMember.TryGetValue(member, out var property))
@@ -243,6 +253,7 @@ public partial class ViewModelBridge<T>
             requestId = root.GetProperty("requestId").GetString()!;
             if (requestId.Length > MaximumFieldWriteRequestIdLength) throw new FormatException("The requestId is too long.");
             BridgeRequestEnvelope.TryReadInteger(root.GetProperty("expectedVersion"), out expectedVersion);
+            using var blobs = EnterBlobs(request.Connection.Key);
             if (!hasSplice)
                 write = new(requestId, expectedVersion,
                     ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor),
@@ -294,6 +305,194 @@ public partial class ViewModelBridge<T>
         if (!waits) return reply;
         await WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
         return ReleasedIfInactive(reply);
+    }
+
+    // field-paths/1: a checked write of the value at a path below the member (specs/application/README.md, "Field paths").
+    private async ValueTask<ReadOnlyMemory<byte>> WritePathAsync(BridgeRouteRequest request, JsonElement pathElement,
+        CancellationToken cancellationToken)
+    {
+        var member = request.Member!;
+        if (!request.Connection.UsesFieldPaths)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use field-paths/1.");
+        var segments = pathElement.EnumerateArray().Select(segment => segment.GetString()!).ToArray();
+        if (!_pathTargets.TryGetValue(member, out var target))
+            return BridgeMessages.Rejected("invalid-request", $"The route {_name} has no fields below '{member}'.");
+        var rows = target.Rows is not null;
+        if (rows && segments.Length < 2)
+            return BridgeMessages.Rejected("invalid-request", $"A path in '{member}' names a row key and a cell.");
+        var key = rows ? segments[0] : "";
+        var path = rows ? segments[1..] : segments;
+        var pathIndex = target.IndexOf(path);
+        if (pathIndex < 0)
+            return BridgeMessages.Rejected("invalid-request", $"The route {_name} has no field '{string.Join('.', path)}' below '{member}'.");
+        var root = request.Root;
+        var requestId = root.GetProperty("requestId").GetString()!;
+        if (requestId.Length > MaximumFieldWriteRequestIdLength)
+            return BridgeMessages.Rejected("invalid-request", "The requestId is too long.");
+        BridgeRequestEnvelope.TryReadInteger(root.GetProperty("expectedVersion"), out var expectedVersion);
+        var expectedValue = root.GetProperty("expectedValue").Clone();
+        var value = root.GetProperty("value").Clone();
+        var expectedText = BridgeFieldPathTracker.Canonical(expectedValue);
+        var identity = string.Join('\u0001', [member, .. segments,
+            expectedVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), expectedText, BridgeFieldPathTracker.Canonical(value)]);
+        var name = rows ? $"{target.Rows!.Name}[{key}].{string.Join('.', path)}" : $"{target.Nested!.Name}.{string.Join('.', path)}";
+        var gone = rows ? $"{target.Rows!.Name} has no row '{key}'." : $"{target.Nested!.Name} is null.";
+        var connectionKey = request.Connection.Key;
+        var waits = true;
+        ReadOnlyMemory<byte> reply;
+        try
+        {
+            reply = _modelTurn.Run<ReadOnlyMemory<byte>>(() =>
+            {
+                lock (_modelGate)
+                {
+                    if (IsInactive) return BridgeMessages.Released;
+                    var call = BridgeCall.Start(BridgeCallKind.Write, ModelName, _name, member);
+                    try
+                    {
+                        BridgeFieldPathReceipt Settle(BridgeFieldPathReceipt receipt)
+                        {
+                            _fieldPaths.Retain(requestId, identity, receipt);
+                            return receipt;
+                        }
+                        byte[]? Rejected(string message, bool retain = true)
+                        {
+                            var receipt = new BridgeFieldPathReceipt("rejected", null, 0, message);
+                            if (retain) Settle(receipt);
+                            return RanReply(null, writer => receipt.Write(writer));
+                        }
+                        if (_fieldPaths.TryGetRetained(requestId, identity, out var retained, out var matches))
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            if (matches) return RanReply(null, writer => retained!.Write(writer));
+                            // A reused or expired request id is a conflict with the path's value; a row that is gone has none.
+                            var now = ReadLeaf(target, key, path);
+                            return now is null ? Rejected(gone, retain: false)!
+                                : RanReply(null, (writer, revision) => new BridgeFieldPathReceipt("conflict", now, revision,
+                                    "The request identity was already used with a different write, or expired.").Write(writer));
+                        }
+                        var container = Container(target, key, out var encoded);
+                        if (container is null)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            return Rejected(gone)!;
+                        }
+                        string? current;
+                        using (var document = JsonDocument.Parse(encoded!)) current = BridgeFieldPathTracker.LeafText(document.RootElement, path);
+                        if (current is null)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            return Rejected($"{name} cannot be written: an object on its path is null.")!;
+                        }
+                        var version = rows && target.Rows!.RowConflicts == RunicRowConflicts.Row
+                            ? _fieldPaths.RowVersionOf(member, key) : _fieldPaths.VersionOf(member, key, pathIndex);
+                        if (version > expectedVersion || current != expectedText)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            return RanReply(null, (writer, revision) => Settle(new("conflict", current, revision, version > expectedVersion
+                                && current == expectedText && rows && target.Rows!.RowConflicts == RunicRowConflicts.Row
+                                    ? $"{target.Rows.Name} row '{key}' changed after the write's baseline."
+                                    : "The write baseline no longer matches the authoritative field.")).Write(writer));
+                        }
+                        // A copy of the object or row with the path's value replaced: invalid input is refused before
+                        // anything runs, and retains nothing.
+                        object updated;
+                        try
+                        {
+                            updated = target.Paths[pathIndex].Set(container, value);
+                            if (rows && target.Rows!.Key(updated) != key)
+                                throw new FormatException($"{name} would change the row's key.");
+                        }
+                        catch (Exception error) when (error is ArgumentException or FormatException or JsonException
+                            or InvalidOperationException or KeyNotFoundException or OverflowException or InvalidCastException)
+                        {
+                            call.Complete(BridgeCallOutcome.Rejected);
+                            waits = false;
+                            return EncodeFailure(new("rejected", $"{name} has an invalid checked write.",
+                                BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
+                        }
+                        try
+                        {
+                            if (rows) target.Rows!.UpdateRow!(_vm, updated, new(path, container, connectionKey));
+                            else target.Nested!.Set(_vm, updated);
+                        }
+                        catch (Exception error)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            // The editor or setter may have changed the row or object before it failed.
+                            Container(target, key, out var afterFailure);
+                            if (afterFailure is null) return Rejected(gone)!;
+                            if (afterFailure.AsSpan().SequenceEqual(encoded))
+                                return Rejected(error.Message)!;
+                            var committed = ReadLeaf(target, key, path);
+                            return committed is null ? Rejected(gone)!
+                                : RanReply(null, (writer, revision) => Settle(new("committed-with-error", committed, revision, error.Message)).Write(writer));
+                        }
+                        call.Complete(BridgeCallOutcome.Ok);
+                        // The editor or setter may have removed the row or cleared the object.
+                        var applied = ReadLeaf(target, key, path);
+                        return applied is null ? Rejected(gone)!
+                            : RanReply(null, (writer, revision) => Settle(new("applied", applied, revision, null)).Write(writer));
+                    }
+                    catch (Exception error)
+                    {
+                        call.Complete(BridgeCallOutcome.Failed, error);
+                        ViewsLog.FieldWriteFailed(_logger, error, ModelName, name, _name, BridgeTelemetry.ErrorType(error));
+                        return RanReply(new("failed", $"Could not update {name}.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
+                    }
+                }
+            });
+        }
+        catch (ObjectDisposedException) { return BridgeMessages.Released; }
+        if (!waits) return reply;
+        await WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
+        return ReleasedIfInactive(reply);
+    }
+
+    // A path target's container now: the member's object, or the row with the key, with its encoding; null when the
+    // member is null or no row has the key. Finding a row reads keys only; it encodes just that row.
+    private object? Container(FieldPathTarget target, string key, out byte[]? encoded)
+    {
+        encoded = null;
+        if (target.Nested is { } nested)
+        {
+            var value = nested.Get(_vm);
+            if (value is null) return null;
+            encoded = WriteValue(writer => nested.Write!(writer, value));
+            return value;
+        }
+        var descriptor = target.Rows!;
+        if (descriptor.Get(_vm) is not System.Collections.IEnumerable items) return null;
+        foreach (var item in items)
+        {
+            if (item is null || descriptor.Key(item) != key) continue;
+            encoded = WriteValue(writer => descriptor.WriteItem(writer, item));
+            return item;
+        }
+        return null;
+    }
+
+    // The canonical text of the value at a path now, or null when the path reaches no value.
+    private string? ReadLeaf(FieldPathTarget target, string key, string[] path)
+    {
+        if (Container(target, key, out var encoded) is null) return null;
+        using var document = JsonDocument.Parse(encoded!);
+        return BridgeFieldPathTracker.LeafText(document.RootElement, path);
+    }
+
+    // Every container of a path target now, for a set or a full state.
+    private IEnumerable<(string, byte[])> FieldPathContainers(FieldPathTarget target)
+    {
+        if (target.Nested is not null)
+        {
+            if (Container(target, "", out var encoded) is not null) yield return ("", encoded!);
+            yield break;
+        }
+        var descriptor = target.Rows!;
+        if (descriptor.Get(_vm) is not System.Collections.IEnumerable items) yield break;
+        foreach (var item in items)
+            if (item is not null)
+                yield return (descriptor.Key(item), WriteValue(writer => descriptor.WriteItem(writer, item)));
     }
 
     // A checked write with a splice: the registry rebuilds the value from the field's value at expectedVersion. Null
@@ -374,7 +573,7 @@ public partial class ViewModelBridge<T>
             return null;
         }
         if (!present || !decode) return descriptor;
-        if (DecodeInput(descriptor, element, out input) is { } invalid)
+        if (DecodeInput(descriptor, element, request.Connection.Key, out input) is { } invalid)
         {
             refusal = invalid;
             return null;
@@ -383,9 +582,11 @@ public partial class ViewModelBridge<T>
     }
 
     // Decodes a command's input: null, or the invalid-input reply.
-    private byte[]? DecodeInput(CommandDescriptor<T> descriptor, JsonElement element, out object? input)
+    private byte[]? DecodeInput(CommandDescriptor<T> descriptor, JsonElement element, string connection, out object? input)
     {
         input = null;
+        // blobs/1: an upload in the input decodes only for the request's own connection.
+        using var blobs = EnterBlobs(connection);
         try { input = ReadInput(descriptor, element); }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
         {
@@ -418,7 +619,8 @@ public partial class ViewModelBridge<T>
         // the command's model turn, so the input of such a command is decoded there, after it.
         var scope = connection.UsesPresentationEpoch ? request.Envelope.Epoch : null;
         if (ReadCommand(request, out var key, out var refusal, decode: scope is null) is not { } descriptor) return refusal;
-        var command = new CommandRequest(scope, scope is not null && descriptor.HasInput ? request.Root.GetProperty("input") : null);
+        var command = new CommandRequest(scope, scope is not null && descriptor.HasInput ? request.Root.GetProperty("input") : null,
+            request.Connection.Key);
         ReadOnlyMemory<byte> reply;
         bool waits;
         if (IsAsynchronous(descriptor))
@@ -456,7 +658,7 @@ public partial class ViewModelBridge<T>
 
     // The epoch a command request carries on a connection that uses presentation-epoch/1, and its input, which is decoded
     // after the epoch check.
-    private readonly record struct CommandRequest(long? Epoch, JsonElement? Input);
+    private readonly record struct CommandRequest(long? Epoch, JsonElement? Input, string Connection);
 
     // In the command's model turn: the superseded reply of a command whose epoch is not the route's current one, or
     // null. A renewal that was requested but not yet published counts as a new epoch.
@@ -466,7 +668,7 @@ public partial class ViewModelBridge<T>
     // In the command's model turn, after the epoch check: decodes a scoped command's input. Null, or the invalid-input
     // reply.
     private byte[]? DecodeScopedInput(CommandDescriptor<T> descriptor, CommandRequest request, ref object? key) =>
-        request.Input is { } element ? DecodeInput(descriptor, element, out key) : null;
+        request.Input is { } element ? DecodeInput(descriptor, element, request.Connection, out key) : null;
 
     // A synchronous command, in the request's model turn. The flag says whether the reply waits for the window's pushes:
     // the command ran, or it was superseded.
@@ -645,6 +847,8 @@ public partial class ViewModelBridge<T>
                 return EncodeFailure(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
             using var invocation = EnterInvocation(descriptor, connection, cancellation);
             execution = InvokeCommandAsync(descriptor, argument, cancellation);
+            // The command's invocation lasts until its task completes, not past it (RunicInteractionInvocation.Current).
+            invocation?.EndAfter(execution);
             return null;
         }
     }
@@ -720,7 +924,11 @@ public partial class ViewModelBridge<T>
 
     // The reply of a request that ran, in its model turn: the route's revision after publishing everything pending, or
     // released: true when the request released its own route, or the reason state-withheld.
-    private byte[] RanReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeMore = null)
+    private byte[] RanReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeMore = null) =>
+        RanReply(error, writeMore is null ? null : (writer, _) => writeMore(writer));
+
+    // writeMore receives the reply's revision.
+    private byte[] RanReply(BridgeFailure? error, Action<Utf8JsonWriter, long>? writeMore)
     {
         if (IsInactive) return EncodeRanReply(error, revision: null, released: true);
         var revision = PublishForReply();
@@ -733,7 +941,8 @@ public partial class ViewModelBridge<T>
                 : error with { Reason = BridgeFailure.StateWithheld };
             return EncodeRanReply(withheld, revision: null, released: false);
         }
-        return EncodeRanReply(error, revision, released: false, writeMore);
+        var at = revision.Value;
+        return EncodeRanReply(error, revision, released: false, writeMore is null ? null : writer => writeMore(writer, at));
     }
 
     private static byte[] EncodeRanReply(BridgeFailure? error, long? revision, bool released, Action<Utf8JsonWriter>? writeMore = null) =>
@@ -785,7 +994,7 @@ public partial class ViewModelBridge<T>
     }
 
     // A command invocation reaches the interactions of the requesting connection's presentation.
-    private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, BridgeConnection connection, CancellationToken token) =>
+    private RunicInteractionInvocation.InvocationScope? EnterInvocation(CommandDescriptor<T> descriptor, BridgeConnection connection, CancellationToken token) =>
         _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, connection.ClientKey, connection.Key, descriptor.Name, token);
 
     private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>
@@ -807,6 +1016,9 @@ public partial class ViewModelBridge<T>
 
     private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, object? argument, CancellationToken token)
     {
+        // blobs/1: a result's blobs belong to the route. The scope flows through the command's awaits into the
+        // generated code that encodes its result.
+        using var blobs = EnterBlobs(null);
         if (descriptor.ExecuteStreamAsync is { } executeStream)
             return await executeStream(_vm, new BridgeOperationExecution(descriptor.CreateStream!()), token, argument).ConfigureAwait(false);
         if (descriptor.ExecuteResultAsync is { } executeResult)

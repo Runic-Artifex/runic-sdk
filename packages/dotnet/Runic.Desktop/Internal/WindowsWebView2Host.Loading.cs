@@ -97,6 +97,7 @@ internal sealed partial class WindowsWebView2Host
         {
             Native.ShowWindow(_window, maximize ? SwMaximize : SwShow);
         }
+        BlockOwner();
         // A placement saved full-screen opens full-screen on the monitor of its restored bounds.
         if (options.Placement is { FullScreen: true } && !options.Kiosk)
         {
@@ -239,7 +240,7 @@ internal sealed partial class WindowsWebView2Host
     }
 
     // HKCU\…\Themes\Personalize\AppsUseLightTheme, which Windows sets from Settings > Personalization > Colors.
-    private static bool SystemUsesDarkTheme()
+    internal static bool SystemUsesDarkTheme()
     {
         const uint RegistryDword = 0x00000010; // RRF_RT_REG_DWORD
         var currentUser = new nint(unchecked((int)0x80000001));

@@ -1,0 +1,246 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "view-requests.next-mounted-keeps-the-latest-request-for-the-next-registration.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "view-requests",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "Two reveal requests (next-mounted) raised before any presentation handles reveal: the next registration receives the latest one, once.",
+  "view": "notes",
+  "requires": [
+    "view-requests/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-notes": {
+      "kind": "call"
+    },
+    "open-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "handle-reveal": {
+      "kind": "call"
+    },
+    "register": {
+      "kind": "request"
+    },
+    "revealContract": {
+      "kind": "provided"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-notes",
+        "op": "open",
+        "route": "notes"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-request"
+    },
+    {
+      "mutate": [
+        {
+          "op": "raise",
+          "request": "reveal",
+          "input": {
+            "id": 1
+          }
+        }
+      ]
+    },
+    {
+      "mutate": [
+        {
+          "op": "raise",
+          "request": "reveal",
+          "input": {
+            "id": 2
+          }
+        }
+      ]
+    },
+    {
+      "call": {
+        "id": "handle-reveal",
+        "op": "handle",
+        "route": "notes",
+        "request": "reveal"
+      }
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "reveal",
+            "contract": {
+              "$id": "revealContract"
+            }
+          }
+        ]
+      },
+      "id": "register"
+    },
+    {
+      "receive": {
+        "kind": "view-request",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "revision": 0,
+        "name": "reveal",
+        "contract": {
+          "$id": "revealContract"
+        },
+        "input": {
+          "id": 2
+        }
+      },
+      "unordered": true
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "ok"
+      },
+      "replyTo": "register",
+      "unordered": true
+    },
+    {
+      "expect": {
+        "requests": {
+          "route": "notes",
+          "request": "reveal",
+          "inputs": [
+            {
+              "id": 2
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

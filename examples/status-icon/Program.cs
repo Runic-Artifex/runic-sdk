@@ -25,6 +25,8 @@ var services = new ServiceCollection();
 services.AddRunicReactiveModelContext();
 services.AddScoped<CounterViewModel>();
 services.AddRunicBridges();
+// IRunicWindowPresentation, which the counter's Hide command uses.
+services.AddRunicWindowService();
 // Registers the application's IDesktopStatusIcon and IDesktopLoginStartup, among the other platform services.
 services.AddRunicPlatformServices(ApplicationId);
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
@@ -74,8 +76,8 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
             continue;
         }
         if (closed is { IsCompleted: true }) { await window!.DisposeAsync(); window = null; }
-        // The primary click, "Open window" and a second launch open the counter, or bring the open one forward.
-        // The launch's or the click's activation token lets the desktop give the Window focus.
+        // The primary click, "Open window" and a second launch open the counter, or bring the open one forward, also
+        // when its Hide command hid it. The launch's or the click's activation token lets the desktop give it focus.
         var context = (item as ApplicationLaunch)?.PlatformContext ?? (item as DesktopStatusIconActivation)?.PlatformContext;
         if (item is ApplicationLaunch || item is DesktopStatusIconActivation { Kind: DesktopStatusIconActivationKind.Primary } or DesktopStatusIconActivation { CommandId: "open" })
         {
@@ -84,8 +86,8 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
                 window = await host.OpenWindowAsync<CounterWindow>(new RunicWindowOptions { Width = 480, Height = 320 }, context);
                 closed = window.WaitForCloseAsync().AsTask();
             }
-            else if (window.Host is DesktopBridgeWindow<CounterViewModel> open)
-                await DesktopPlatformServices.PresentAsync(open.NativeOwner, context);
+            else
+                await window.Presentation.PresentAsync(context);
         }
     }
     if (window is not null) await window.DisposeAsync();

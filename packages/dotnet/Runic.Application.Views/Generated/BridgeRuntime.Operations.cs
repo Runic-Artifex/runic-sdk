@@ -24,10 +24,10 @@ public partial class ViewModelBridge<T>
     {
         switch (request.Kind)
         {
-            case "interactions" or "interaction-reply":
+            case "interactions" or "interaction-reply" or "view-requests":
                 // A Bridge without a window has no presentations to register or answer.
                 if (_content is null)
-                    return new(request.Kind == "interactions"
+                    return new(request.Kind is "interactions" or "view-requests"
                         ? """{"ok":true,"registration":"ignored"}"""u8.ToArray()
                         : """{"ok":true,"result":"stale"}"""u8.ToArray());
                 return new(_content.Interactions.Handle(request));
@@ -85,7 +85,7 @@ public partial class ViewModelBridge<T>
         {
             var admission = descriptor.ResolveArgumentAsync is null
                 ? _modelTurn.Run(() => IsInactive ? null : Admit(content, descriptor, request.Connection, operation, () =>
-                    TryDecodeInput(descriptor, hasInput ? input : null, out var key) is { } invalid ? (invalid, null)
+                    TryDecodeInput(descriptor, hasInput ? input : null, request.Connection.Key, out var key) is { } invalid ? (invalid, null)
                     : !TryResolve(descriptor, key, out var argument) ? (BridgeFailure.UnresolvedKey, null)
                     : IsAvailable(descriptor, argument) ? (null, argument) : (BridgeFailure.Unavailable, argument)))
                 : await AdmitResolvingAsync(content, descriptor, request.Connection, operation, hasInput ? input : null,
@@ -121,7 +121,7 @@ public partial class ViewModelBridge<T>
         var released = _modelTurn.Run(() =>
         {
             if (IsInactive) return true;
-            invalid = TryDecodeInput(descriptor, input, out var key);
+            invalid = TryDecodeInput(descriptor, input, connection.Key, out var key);
             if (invalid is null) resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited.Token).AsTask();
             return false;
         });
@@ -172,29 +172,35 @@ public partial class ViewModelBridge<T>
         var retirement = descriptor.Retirement is RunicOperationRetirement.Keep ? null
             : new BridgeOperationRetirement(descriptor.Retirement, _vm, content.PresentingOwners(_vm), _name);
         Func<long?> terminalRevision = () => _modelTurn.Run(PublishForReply);
-        IDisposable Enter(CancellationToken cancellation) =>
+        RunicInteractionInvocation.InvocationScope Enter(CancellationToken cancellation) =>
             RunicInteractionInvocation.Enter(content, _name, connection.ClientKey, connection.Key, descriptor.Name, cancellation);
         var admission = descriptor.ExecuteStreamAsync is { } executeStream
             ? content.Operations.AcceptUnlessRefused(operation, refusal, descriptor.CreateStream!(),
                 (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = Enter(cancellation);
-                    return executeStream(_vm, execution, cancellation, argument);
+                    using var blobs = EnterBlobs(null);
+                    var task = executeStream(_vm, execution, cancellation, argument);
+                    invocation.EndAfter(task);
+                    return task;
                 }), retirement, terminalRevision)
             : content.Operations.AcceptUnlessRefused(operation, refusal,
                 cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = Enter(cancellation);
-                    return InvokeCommandAsync(descriptor, argument, cancellation);
+                    var task = InvokeCommandAsync(descriptor, argument, cancellation);
+                    invocation.EndAfter(task);
+                    return task;
                 }), retirement, terminalRevision);
         return admission with { Member = operation.Member };
     }
 
     // Decodes a start's input; returns invalid-input when it does not decode, or null with the decoded value.
-    private static string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, out object? value)
+    private string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, string connection, out object? value)
     {
         value = null;
         if (input is not { } element) return null;
+        using var blobs = EnterBlobs(connection);
         try
         {
             value = descriptor.ReadInput?.Invoke(element);

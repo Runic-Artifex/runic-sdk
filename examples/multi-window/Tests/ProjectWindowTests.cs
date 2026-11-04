@@ -60,6 +60,19 @@ public sealed class ProjectWindowTests : IAsyncDisposable
 
         await Assert.That(_first.Root.Snapshot().Read(vm => vm.Theme)).IsEqualTo("dark");
         await Assert.That(new SettingsStore(_settingsPath).Load()).IsEqualTo(new AppSettings(Theme: "dark"));
+        await Assert.That(new AppSettings(Theme: "dark").ColorScheme).IsEqualTo(DesktopColorScheme.Dark);
+        await Assert.That(new AppSettings().ColorScheme).IsEqualTo(DesktopColorScheme.NoPreference);
+    }
+
+    [Test]
+    public async Task Saving_the_theme_tells_the_application()
+    {
+        var store = _services.GetRequiredService<SettingsStore>();
+        AppSettings? saved = null;
+        store.Saved += (_, settings) => saved = settings;
+        (await _first.Root.ExecuteAsync(vm => vm.ChooseThemeCommand, "\"light\"")).ThrowIfFailed();
+
+        await Assert.That(saved?.ColorScheme).IsEqualTo(DesktopColorScheme.Light);
     }
 
     [Test]
@@ -70,6 +83,42 @@ public sealed class ProjectWindowTests : IAsyncDisposable
             await Task.Delay(10);
 
         await Assert.That(_first.Root.Snapshot().Read(vm => vm.DesktopScheme)).IsEqualTo("Dark");
+    }
+
+    [Test]
+    public async Task The_saved_language_is_the_window_locale_and_a_switch_saves_it()
+    {
+        await Assert.That(_first.Content.Locale).IsEqualTo("en");
+        (await _first.Root.ExecuteAsync(vm => vm.ChooseLanguageCommand, "\"de\"")).ThrowIfFailed();
+
+        // The page follows the Window's locale; the other Window keeps its own until it switches.
+        await Assert.That(_first.Content.Locale).IsEqualTo("de");
+        await Assert.That(_second.Content.Locale).IsEqualTo("en");
+        await Assert.That(_first.Root.Snapshot().Read(vm => vm.Language)).IsEqualTo("de");
+        await Assert.That(new SettingsStore(_settingsPath).Load().Language).IsEqualTo("de");
+    }
+
+    [Test]
+    public async Task Renaming_reports_a_status_the_page_translates()
+    {
+        await Assert.That(_first.Root.Snapshot().Read(vm => vm.Status).Key).IsEqualTo("ready");
+        (await _first.Root.ExecuteAsync(vm => vm.RenameCommand, "\"Atlas\"")).ThrowIfFailed();
+
+        var status = _first.Root.Snapshot().Read(vm => vm.Status);
+        await Assert.That(status.Key).IsEqualTo("renamed");
+        await Assert.That(status.Arguments["title"].Value).IsEqualTo("Atlas");
+        await Assert.That(status.FallbackText).IsEqualTo("Renamed to Atlas.");
+    }
+
+    [Test]
+    public async Task A_long_title_has_a_validation_message_the_page_translates()
+    {
+        (await _first.Root.SetAsync(vm => vm.Draft, new string('x', ProjectViewModel.MaximumTitleLength + 1))).ThrowIfFailed();
+
+        var error = _first.Root.Snapshot()["validation"].GetProperty("errors")[0];
+        await Assert.That(error.GetProperty("message").GetString()).IsEqualTo("The title must be at most 40 characters.");
+        await Assert.That(error.GetProperty("text").GetProperty("key").GetString()).IsEqualTo("title_too_long");
+        await Assert.That(error.GetProperty("text").GetProperty("arguments").GetProperty("max").GetProperty("value").GetString()).IsEqualTo("40");
     }
 
     public async ValueTask DisposeAsync()
@@ -97,7 +146,7 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     }
 
     // Desktop preferences that report one color scheme and never change.
-    private sealed class FixedDesktopSettings(DesktopColorScheme scheme) : IDesktopSettings
+    internal sealed class FixedDesktopSettings(DesktopColorScheme scheme) : IDesktopSettings
     {
         private PlatformResult<DesktopAppearance> Current => new PlatformResult<DesktopAppearance>.Success(new DesktopAppearance(scheme));
 

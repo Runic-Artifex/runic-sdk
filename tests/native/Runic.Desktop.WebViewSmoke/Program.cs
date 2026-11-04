@@ -79,7 +79,12 @@ try
         // Must run before the first await, as --zoom.
         MacOsWebContentSmoke.Run(CreateHostOptions());
     }
-    else if (args.Contains("--color-scheme", StringComparer.Ordinal) && !OperatingSystem.IsLinux())
+    else if (args.Contains("--owner", StringComparer.Ordinal))
+    {
+        // B6. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
+        Environment.ExitCode = OwnerSmoke.Run(CreateHostOptions());
+    }
+    else if (args.Contains("--color-scheme", StringComparer.Ordinal))
     {
         // Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = ColorSchemeSmoke.Run(CreateHostOptions());
@@ -161,6 +166,14 @@ static async Task RunAsyncSmoke()
         await probe.ExerciseAsync();
     }
     if (!SmokeSoak.Enabled) await RunWindowStateSmokeAsync(host);
+    if (!SmokeSoak.Enabled)
+    {
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(ActivitySmoke.Page()) });
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        await ActivitySmoke.ExerciseAsync(window);
+        await window.CloseAsync();
+        await ActivitySmoke.CheckClosedAsync(window);
+    }
     if (!SmokeSoak.Enabled) await FileDropSmoke.RunAsync(host);
     if (!SmokeSoak.Enabled && OperatingSystem.IsWindows())
     {
@@ -449,6 +462,10 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
             await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), WindowStateSmoke.RestoreOptions(saved!),
                 (_, window) => WindowStateSmoke.ExerciseRestoredAsync(window, saved!));
             Console.WriteLine("Window state passed: off-screen placement fitted to a monitor, change events, restore bounds, saved after close, restored maximized.");
+            DesktopWindow? active = null;
+            await RunMacOsWindowAsync(host, ActivitySmoke.Page(), new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+                async (_, window) => { active = window; await ActivitySmoke.ExerciseAsync(window); });
+            await ActivitySmoke.CheckClosedAsync(active!);
             await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), new DesktopWindowOptions { Browser = BrowserKind.Embedded },
                 async (_, window) =>
                 {

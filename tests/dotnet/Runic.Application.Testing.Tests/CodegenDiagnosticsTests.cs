@@ -228,6 +228,90 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // field-paths/1 (C4 review): row editors whose rows cannot be copied exactly, query collections, objects in a row
+    // that cannot be copied, and an editor named when its rows' type cannot come from the page.
+    [Test]
+    public async Task RowEditorsAreCheckedAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-row-editors-{Guid.NewGuid():N}");
+        const string Rows = Preamble;
+        try
+        {
+            // A class that is not sealed would lose a derived row's members.
+            var open = await GenerateAsync(generator, temporaryRoot, "OpenRow", Rows + """
+                public class OpenLine { public int Id { get; set; } public int Quantity { get; set; } }
+                public sealed class OpenViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(OpenLine.Id))] public System.Collections.ObjectModel.ObservableCollection<OpenLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, OpenLine line) { }
+                }
+                public sealed partial class OpenWindow : RunicWindow<OpenViewModel>;
+                """).ConfigureAwait(false);
+            Require(open.Contains("error RUNICBRIDGE052:", StringComparison.Ordinal)
+                && open.Contains("OpenViewModel.UpdateLine: the rows of Lines cannot be copied", StringComparison.Ordinal)
+                && open.Contains("not sealed", StringComparison.Ordinal), open);
+
+            // A sealed class with a member the page does not see and no way to copy it.
+            var hidden = await GenerateAsync(generator, temporaryRoot, "HiddenRow", Rows + """
+                public sealed class HiddenLine { public int Id { get; set; } public int Quantity { get; set; } [RunicIgnore] public long DatabaseId { get; set; } }
+                public sealed class HiddenViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(HiddenLine.Id))] public System.Collections.ObjectModel.ObservableCollection<HiddenLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, HiddenLine line) { }
+                }
+                public sealed partial class HiddenWindow : RunicWindow<HiddenViewModel>;
+                """).ConfigureAwait(false);
+            Require(hidden.Contains("error RUNICBRIDGE052:", StringComparison.Ordinal) && hidden.Contains("(DatabaseId)", StringComparison.Ordinal), hidden);
+
+            // A query collection cannot be edited yet.
+            var query = await GenerateAsync(generator, temporaryRoot, "QueryRows", Rows + """
+                public sealed record QueryLine(int Id, int Quantity);
+                public sealed class RunicQueryCollection<TRow, TKey> : System.Collections.ObjectModel.ObservableCollection<TRow>;
+                public sealed class QueryViewModel : FixtureModel
+                {
+                    public RunicQueryCollection<QueryLine, int> Lines { get; } = [];
+                    [RunicRowEditor(nameof(Lines))] public void UpdateLine(int id, QueryLine line) { }
+                }
+                public sealed partial class QueryWindow : RunicWindow<QueryViewModel>;
+                """).ConfigureAwait(false);
+            Require(query.Contains("error RUNICBRIDGE050:", StringComparison.Ordinal) && query.Contains("a query collection", StringComparison.Ordinal), query);
+
+            // An object inside an editable row that cannot be copied has no fields below it, with a warning.
+            var (exitCode, nested, _) = await RunGeneratorAsync(generator, temporaryRoot, "NestedRow", Rows + """
+                public class Product { public string Code { get; set; } = ""; }
+                public sealed record NestedLine(int Id, int Quantity, Product Product);
+                public sealed class NestedViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(NestedLine.Id))] public System.Collections.ObjectModel.ObservableCollection<NestedLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, NestedLine line, RunicRowEdit edit) { }
+                }
+                public sealed partial class NestedWindow : RunicWindow<NestedViewModel>;
+                """).ConfigureAwait(false);
+            Require(exitCode == 0 && nested.Contains("warning RUNICBRIDGE053:", StringComparison.Ordinal)
+                && nested.Contains("NestedLine.Product has no fields below it", StringComparison.Ordinal), nested);
+
+            // A row type that cannot come from the page names the editor that makes it.
+            var oneWay = await GenerateAsync(generator, temporaryRoot, "OneWayRow", Rows + """
+                public sealed record OneWayLine(int Id, IntPtr Handle);
+                public sealed class OneWayViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(OneWayLine.Id))] public System.Collections.ObjectModel.ObservableCollection<OneWayLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, OneWayLine line) { }
+                }
+                public sealed partial class OneWayWindow : RunicWindow<OneWayViewModel>;
+                """).ConfigureAwait(false);
+            Require(oneWay.Contains("OneWayViewModel.UpdateLine is their [RunicRowEditor]", StringComparison.Ordinal), oneWay);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     // RUNICBRIDGE032: an observable collection of DTO rows that is not a [RunicCollection] is a located warning that
     // names the rows' key when they have one; a keyed collection, a plain list and an observable list of strings are not.
     [Test]
@@ -264,7 +348,7 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(exitCode == 0 && warnings.Length == 2
                     && At("ObservableCollection<Task> Tasks", "CollectionsViewModel.Tasks: an observable collection of Task rows that is not a [RunicCollection]")
                     && At("ObservableCollection<Task> Tasks", "[RunicCollection(nameof(Task.Id))]")
-                    && At("ObservableCollection<Note> Notes", "[RunicCollection(nameof(Note.Key))] with a string, Guid or Int32 key property")
+                    && At("ObservableCollection<Note> Notes", "[RunicCollection(nameof(Note.Key))] with a string, Guid, Int32 or Int64 key property")
                     && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE032")}", StringComparison.Ordinal)),
                 $"Observable rows without a key were not reported as located RUNICBRIDGE032 warnings.\n{output}");
         }
@@ -335,6 +419,12 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed class CountLogViewModel : FixtureModel { [RunicAppendOnlyText] public int Count => 0; }
                 public sealed partial class CountLogWindow : RunicWindow<CountLogViewModel>;
                 """, "RUNICBRIDGE008", "public int Count", "CountLogViewModel.Count: RunicAppendOnlyText requires a read-only string state property.").ConfigureAwait(false);
+            // blobs/1: a RunicBlob only goes to the page; a command takes a RunicUpload instead.
+            await RejectAt("BlobInput", """
+                public sealed class BlobInputViewModel : FixtureModel { public IRelayCommand<RunicBlob> AttachCommand { get; } = new RelayCommand<RunicBlob>(_ => { }); }
+                public sealed partial class BlobInputWindow : RunicWindow<BlobInputViewModel>;
+                """, "RUNICBRIDGE065", "public IRelayCommand<RunicBlob> AttachCommand",
+                "A RunicBlob only goes to the page", "Take a RunicUpload").ConfigureAwait(false);
             // A nested DTO member points at the DTO property, not the ViewModel.
             await RejectAt("NestedValue", """
                 public sealed class Row
@@ -506,6 +596,33 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PromptWindow : RunicWindow<PromptViewModel>;
                 """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
                 "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
+            // RUNICBRIDGE035: a ViewRequest or ViewQuestion is a get-only property, in either MVVM flavor.
+            await RejectAt("SettableViewRequest", """
+                public sealed class FocusViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; set; } = new();
+                }
+                public sealed partial class FocusWindow : RunicWindow<FocusViewModel>;
+                """, "RUNICBRIDGE035", "public ViewRequest<string> Focus",
+                "FocusViewModel.Focus: a view request is application-owned and cannot have a public setter.").ConfigureAwait(false);
+            await RejectAt("HiddenViewQuestion", """
+                public sealed class AskViewModel : FixtureModel
+                {
+                    public ViewQuestion<string, bool> Confirm { private get; set; } = new();
+                }
+                public sealed partial class AskWindow : RunicWindow<AskViewModel>;
+                """, "RUNICBRIDGE035", "public ViewQuestion<string, bool> Confirm",
+                "AskViewModel.Confirm: a view question needs a public getter.").ConfigureAwait(false);
+            // A view request's name is a member of the View beside its commands and interactions.
+            await RejectAt("ViewRequestNameCollision", """
+                public sealed class FocusCommandViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; } = new();
+                    public IRelayCommand FocusCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class FocusCommandWindow : RunicWindow<FocusCommandViewModel>;
+                """, "RUNICBRIDGE004", "public sealed class FocusCommandViewModel",
+                "generated view name 'focus' conflicts between FocusCommand and Focus view request").ConfigureAwait(false);
             // RUNICBRIDGE012: a misplaced, repeated or unsupported failure declaration.
             await RejectAt("FailureOnState", """
                 public sealed class StateFailureViewModel : FixtureModel { [RunicFailure(typeof(string))] public string Title { get; set; } = ""; }
@@ -567,6 +684,25 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PayloadFailureWindow : RunicWindow<PayloadFailureViewModel>;
                 """, "RUNICBRIDGE003", "public object Value", "PayloadFailureViewModel.SaveCommand.failure.value").ConfigureAwait(false);
             await RejectKeyDiagnosticsAsync((name, members, code, declaration, expected) => RejectAt(name, members, code, declaration, expected)).ConfigureAwait(false);
+            // query-collections/1: RUNICBRIDGE060 at the query collection property.
+            await RejectAt("QuerySetter", """
+                public sealed record QueryRow(int Id, string Label);
+                public sealed class QuerySetterViewModel : FixtureModel { public RunicQueryCollection<QueryRow, int> Rows { get; set; } = null!; }
+                public sealed partial class QuerySetterWindow : RunicWindow<QuerySetterViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, int> Rows",
+                "QuerySetterViewModel.Rows: a RunicQueryCollection must be get-only").ConfigureAwait(false);
+            await RejectAt("QueryKey", """
+                public sealed record QueryRow(long Id, string Label);
+                public sealed class QueryKeyViewModel : FixtureModel { public RunicQueryCollection<QueryRow, long> Rows { get; } = null!; }
+                public sealed partial class QueryKeyWindow : RunicWindow<QueryKeyViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, long> Rows",
+                "QueryKeyViewModel.Rows: a RunicQueryCollection key is a string, Guid or Int32, not Int64.").ConfigureAwait(false);
+            await RejectAt("QueryAttributes", """
+                public sealed record QueryRow(int Id, string Label);
+                public sealed class QueryAttributesViewModel : FixtureModel { [RunicCollection("Id")] public RunicQueryCollection<QueryRow, int> Rows { get; } = null!; }
+                public sealed partial class QueryAttributesWindow : RunicWindow<QueryAttributesViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, int> Rows",
+                "QueryAttributesViewModel.Rows: a RunicQueryCollection has its own keys").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow : RunicWindow<ObjectViewModel>;
@@ -763,6 +899,18 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PlainWindow : RunicWindow<PlainViewModel>;
                 """, "--di-composition", "Fixture.Composition").ConfigureAwait(false);
             var registration = File.ReadAllText(Path.Combine(composition, "RunicBridgeComposition.g.cs"));
+            // View requests and questions need no ReactiveUI adapter, and a request also needs a content session.
+            var toolkitOnly = await GenerateValidAsync(generator, temporaryRoot, "ViewRequestsWithoutAdapter", Preamble + """
+                public sealed class NoteViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; } = new();
+                    public ViewQuestion<string, bool> Confirm { get; } = new();
+                }
+                public sealed partial class NoteWindow : RunicWindow<NoteViewModel>;
+                """, "--reactiveui-flavor", "none", "--di-composition", "Fixture.Composition").ConfigureAwait(false);
+            var toolkitRegistration = File.ReadAllText(Path.Combine(toolkitOnly, "RunicBridgeComposition.g.cs"));
+            Require(!toolkitRegistration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.NoteViewModel, global::System.IDisposable>", StringComparison.Ordinal),
+                $"DI composition registered a transport-only factory for a view request ViewModel.\n{toolkitRegistration}");
             Require(!registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Runic.Application.Views.WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),

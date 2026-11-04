@@ -78,6 +78,9 @@ internal abstract class PresentationExchange
     // The response body. The first write sends the status and headers.
     internal abstract Stream ResponseBody { get; }
 
+    // The request body, read once; an empty stream for a server that does not deliver bodies.
+    internal virtual Stream RequestBody => Stream.Null;
+
     // Sends the whole file as the body; the server may answer a byte range.
     internal abstract Task SendFileAsync(string path, CancellationToken cancellationToken);
 

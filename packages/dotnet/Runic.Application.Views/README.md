@@ -347,8 +347,7 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
   once the Window closes, so a command doesn't need to keep it. Keep the
   returned Window to wait for it or to close it; disposing it earlier is safe.
   A release failure is logged as event 1051.
-- Runic has no owned or modal Windows, so there is no owner parameter. The new
-  Window's ViewModel is resolved from DI like the first one's. To give it input
+- The new Window's ViewModel is resolved from DI like the first one's. To give it input
   of its own, pass a parameter (since 0.14): `OpenWindowAsync<TWindow, TParameter>(parameter, options)`
   hands it to the new Window's scope, where the ViewModel, or a scoped service
   it uses, takes `IRunicWindowParameter<TParameter>`. Each Window gets its own,
@@ -370,9 +369,119 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
   A test that builds such a ViewModel by hand passes
   `new RunicWindowParameter<PartRequest>(request)`.
 - A test registers a fake that records the requested Window types after the
-  application's services. The parameter overload has a default implementation
-  that throws `NotSupportedException`, so a fake overrides it only when the
-  application uses it.
+  application's services. The parameter overload, and the members below (since
+  0.16), have default implementations that throw `NotSupportedException`, so a
+  fake overrides only what the application uses. To run the real service, open
+  the first Window with `RunicWindowTestHost.CreateWindowAsync<TWindow>(services)`
+  from Runic.Application.Testing, which opens every Window headless.
+
+#### Finding, activating and opening Windows for a result
+
+Since 0.16, the service also manages the open Windows:
+
+- `Windows` lists every Window that a host opened with these services, through
+  the service or `host.OpenWindowAsync`, in the order they opened, until its
+  close starts: the application closed it, a close request decided to close it,
+  `CompleteAsync` completed it, or the user closed it. `WindowsChanged` reports
+  each open and close, one change at a time and in order, on a thread-pool
+  thread, each with its own `Windows` list. It is not raised in any Window's
+  model context, so a ViewModel posts what it does to its own.
+  `ObserveWindows()` returns the list now and after each change as a plain
+  `IObservable`, without System.Reactive; `ObserveWindows(context)` delivers each
+  list in a turn of `context`, such as the subscribing ViewModel's
+  `IRunicModelContext`. A handler that throws is logged as event 1181.
+- `FindOrOpenAsync<TWindow, TParameter>(key, parameter, options, activation)`
+  brings the open `TWindow` with that key to the front, or opens a new one with
+  the key. The key belongs to the Window type and is compared with `Equals`; two
+  calls with the same key at once open one Window, and a Window whose close has
+  started is never found, so the next call opens a new one. When the call that
+  opens is cancelled, a call that was waiting for it, and was not cancelled
+  itself, looks again and opens the Window; a failed open fails every waiting
+  call. `FindWindow<TWindow>(key)` only looks it up.
+- `ActivateAsync(window, activation)` shows a hidden Window, restores a
+  minimized one and asks for the focus with `IRunicWindowPresentation.PresentAsync`.
+  When a window-modal Window blocks it, that Window comes forward after it.
+- `OpenForResultAsync<TWindow, TParameter, TResult>(parameter, options)` opens a
+  Window and returns its `RunicWindowResult<TResult>` once it closed. The
+  Window's ViewModel takes `IRunicWindowResult<TResult>` and calls
+  `CompleteAsync(value)`, which sets the result and closes the Window without
+  asking its close guard; the command that called it finishes normally, since
+  the close gives accepted operations up to 5 seconds. A ViewModel that completes
+  in its constructor, before its Window opened, closes the Window once it opened.
+  A Window that closes
+  without a result, by the user or the application, returns a result whose
+  `HasValue` is `false` (the default value). Cancelling the opener's token closes
+  the Window without asking and throws `OperationCanceledException`.
+
+```csharp
+public sealed partial class ShellViewModel(IRunicWindowService windows, IRunicWindowContext window) : ObservableObject
+{
+    [ObservableProperty] private string _account = "Household";
+
+    // Open the document in a Window of its own, or bring the open one to the front.
+    [RelayCommand]
+    private async Task OpenDocumentAsync(string path) =>
+        await windows.FindOrOpenAsync<DocumentWindow, DocumentRequest>(path, new DocumentRequest(path));
+
+    // A dialog over this Window that returns the account chosen, if any.
+    [RelayCommand]
+    private async Task ChooseAccountAsync(CancellationToken cancellationToken)
+    {
+        var chosen = await windows.OpenForResultAsync<AccountWindow, AccountRequest, string>(new AccountRequest(Account),
+            new RunicWindowOptions { Owner = window.Window, Modality = RunicWindowModality.Window }, cancellationToken);
+        if (chosen.TryGetValue(out var account)) Account = account;
+    }
+}
+
+public sealed partial class AccountViewModel(IRunicWindowResult<string> result) : ObservableObject
+{
+    [RelayCommand]
+    private async Task ChooseAsync(string account) => await result.CompleteAsync(account);
+}
+```
+
+With ReactiveUI the commands are `ReactiveCommand.CreateFromTask` with the same
+bodies, as in the
+[multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window).
+
+#### Owned and window-modal Windows
+
+`RunicWindowOptions.Owner` names the open Window a new Window belongs to; a
+ViewModel names its own with `IRunicWindowContext.Window`. `Modality =
+RunicWindowModality.Window` makes the owner take no input until the new Window
+closes, and needs an owner; the application's other Windows stay usable.
+
+| Host | Owned | Window-modal |
+| --- | --- | --- |
+| Runic Desktop, Windows (WebView2) | The owner's `HWND` is the window's owner: it stays above it and has no taskbar button. | The owner is disabled (`EnableWindow`) while the window is shown, and enabled before it is destroyed, so the owner is activated again. |
+| Runic Desktop, macOS (WKWebView) | A child window of the owner's `NSWindow`: it stays above it and moves with it. | A sheet of the owner's `NSWindow`; it ignores the window's position. A sheet has no title bar, so no close button, and Esc does not close it: give its page a Cancel button (`IRunicWindowContext.RequestCloseAsync`). AppKit shows one sheet of an owner at a time: a second window modal to the same owner is queued and stays invisible until the first ends; `FocusAsync` focuses the visible one. |
+| Runic Desktop, Linux (GTK 3 and GTK 4) | `transient_for` the owner's GTK window. | The owner's GTK window is insensitive while the window is shown. `gtk_window_set_modal` is not used: it would block every window of the application. |
+| WPF | `WpfPlatformServices.ForDesktopWindowOwner(window)` gives a Runic Desktop window a WPF owner. | As on Windows. |
+| CS-WebUI, serve-only mode, a browser fallback | Not available: the Window opens on its own. | Not available. |
+
+On Runic Desktop an owned Window hides and shows with its owner
+(`SetVisibleAsync`). A window-modal Window blocks its owner while it is shown: one
+opened `Hidden` blocks it from its first show, and hiding it lets the owner take
+input again, as everywhere. Several Windows can be modal to one owner, and a
+modal Window can open its own modal Window; an owner takes input again when the
+last one that blocks it closed or was hidden. A blocked owner takes no input, its
+title bar included, and ignores the user's and the window manager's close on
+every platform (on Linux too), so its own close confirmation never shows behind
+its modal Window.
+
+When a guarded owner closes, by `RequestCloseAsync` or the user, and when the
+application quits, the guards of the Windows it owns are asked first, innermost
+first, the last opened first: one that refuses keeps the owner open with them,
+and a window-modal one that agrees closes before the owner's own guard is asked.
+An owner without a guard, and the application's own close (`CloseAsync`,
+`DisposeAsync`), close its owned Windows without asking, so a pending
+`OpenForResultAsync` returns no result. The owner's `IRunicWindowPresentation.Features` include
+`OwnedWindows` where the host can own Windows. A host that cannot opens the
+Window on its own and logs `WindowOwnerIgnored` (event 1180), as it does for an
+owner that has closed or belongs to another host; `ValidateWindow` on CS-WebUI
+reports `window-owner-unsupported`.
+
+
 
 #### Windows from another service provider
 
@@ -627,6 +736,262 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
 
+### Who is connected, and who called
+
+A Window's page can be open more than once: a CS-WebUI window with WebUI's
+`MultiClient` configuration is shared by every browser that reaches it, and
+any page gets a new connection when it reloads. `IRunicConnections` (since
+0.16), which `AddRunicWindowService()` registers per scope, lists the
+Window's page connections and tells a command which one invoked it:
+
+- `Current` lists the connections that completed their `hello`, in the order
+  they connected, until the transport reports them closed. Each is a
+  `RunicConnection(ConnectionKey, ClientKey)` with opaque keys: compare and
+  store them, but do not parse them or show them to users.
+- `Connected` and `Disconnected` are plain .NET events, raised in a turn of
+  the Window's model context, as a command body runs, so a handler may change
+  state the page sees. `Current` changes in the same turn. The turn runs in no
+  command's invocation, so a handler has no `Caller`. A connection the Window
+  already had when the service was bound is reported with `Connected` too; one
+  that closes before its `Connected` turn runs is never reported. Once a
+  closing Window's model context takes no more turns, `Current` still follows
+  the connections but no event is raised, and closing the Window raises no
+  `Disconnected`. A handler that throws is logged as event 1230
+  `ConnectionHandlerFailed`, and the other handlers still run.
+- `Caller` is the connection whose command, operation or in-page menu click
+  of this Window runs on the current asynchronous flow, and `null` elsewhere:
+  in the window scope (`RunicInteractionInvocation.EnterWindow`), or when the
+  command belongs to another Window. It stays the same through the command's
+  `await`s, also after its connection closed, until the command ends.
+- **A page's invocation ends with its command.** An invocation with a
+  connection identity, a page's command, operation or in-page menu click,
+  ends when the work that entered it does: a bridged command or operation
+  when its task completes, and a command the Bridge runs synchronously when
+  `Execute` returns. An in-page menu click ends with the command's task when
+  the command is a CommunityToolkit `IAsyncRelayCommand` (Runic reads its
+  `ExecutionTask`), and otherwise when `Execute` returns: an async
+  ReactiveCommand, or another `ICommand` that starts work it does not return,
+  asks the clicking page before its first `await`. Work a command started
+  that runs on after that, such as a timer, `Task.Run` or a background loop,
+  has no invocation: its `Caller` is `null`, and its questions and view
+  requests follow the rules outside a scope instead of reaching the page.
+  Such work enters `RunicInteractionInvocation.EnterWindow(viewModel)` to
+  reach the window's page.
+- **The window scope does not end.** A native menu-bar command, a host
+  shortcut, the window's close decision and `EnterWindow` name no page, so
+  their scope flows with the work they start: an async native-menu command
+  that asks after an `await` still reaches the window's one page.
+- **A navigation keeps the identity that started it.** A navigation runs its
+  leave guards and other hooks in an invocation with the identity of the
+  code that started it, until the navigation ends: a guard of a Back that a
+  synchronous command starts without awaiting it (`_ = Main.BackAsync()`)
+  still asks the page that clicked.
+- A connection key is never reused within a Window: the window gives every
+  connection its own key (`0:1#2` on CS-WebUI), and a command of a closed
+  page never reaches the page that took its slot.
+- `connections.WhenChanged()` is an `IObservable<IReadOnlyList<RunicConnection>>`
+  that emits `Current` when subscribed and after each change. It needs no
+  System.Reactive and works with both ReactiveUI flavors.
+
+`OpenWindowAsync` binds the service to the Window it opens when the
+Window's Bridge attaches, on Runic Desktop and on CS-WebUI. A Runic Desktop
+window has one page connection, and a new one after each reload; a native
+menu bar or host shortcut has no page, so its command has no `Caller`. A WPF
+`RunicViewHost` creates no Window scope, so the service it would resolve from
+the application's provider lists nothing and raises nothing; there,
+`RunicInteractionInvocation.Current` still names the page's connection during
+a command.
+
+"Who else is viewing", with CommunityToolkit.Mvvm. Each page's claims live in
+a `RunicConnectionState`, so they go when the page disconnects:
+
+```csharp
+public sealed partial class BoardViewModel : ObservableObject, IDisposable
+{
+    private readonly IRunicConnections _connections;
+    // The cards each page claimed; removed with the page.
+    private readonly RunicConnectionState<HashSet<string>> _claims;
+
+    public BoardViewModel(IRunicConnections connections)
+    {
+        _connections = connections;
+        _claims = new(connections, _ => []);
+        connections.Connected += (_, _) => Viewers = connections.Current.Count;
+        connections.Disconnected += (_, _) => Viewers = connections.Current.Count;
+    }
+
+    // "3 people are viewing this board"
+    [ObservableProperty]
+    public partial int Viewers { get; private set; }
+
+    [RelayCommand]
+    private void Claim(string cardId)
+    {
+        // The page that clicked, as the transport authenticated it.
+        if (_claims.TryGetCaller(out var claimed)) claimed.Add(cardId);
+    }
+
+    public void Dispose() => _claims.Dispose();
+}
+```
+
+Do not broadcast connection keys, or claims tied to them, in state that every
+page sees together with other users' data unless the application's own
+sign-in decided who may see whom: a viewer count says nothing about anyone, a
+list of keys and what each page did does.
+
+With ReactiveUI:
+
+```csharp
+_viewers = connections.WhenChanged().Select(list => list.Count).ToProperty(this, vm => vm.Viewers);
+```
+
+**Per-connection state.** `RunicConnectionState<T>` keeps one value per
+connection, such as a draft, a selection or a cursor that each page keeps for
+itself. It creates a value on first use, only for a connection that `Current`
+lists, with the Window's own `RunicConnection` (a `RunicConnection` whose
+client key is not the connection's gets nothing). It removes the value,
+disposing an `IDisposable` one, when the connection's `Disconnected` is
+raised, and disposes the rest when it is disposed; a `Dispose` that throws is
+logged as event 1231 `ConnectionStateDisposeFailed` and the others still run.
+Its factory runs under its lock and must not call `TryGet` of the same state.
+Dispose it with the ViewModel:
+
+```csharp
+// In a ViewModel whose primary constructor takes IRunicConnections connections:
+private readonly RunicConnectionState<Draft> _drafts = new(connections, _ => new Draft());
+
+[RelayCommand]
+private void Type(string text)
+{
+    if (_drafts.TryGetCaller(out var draft)) draft.Text = text;
+}
+```
+
+**Trust.** Only the Bridge runtime sets the caller: it enters
+`RunicInteractionInvocation` with the identity that the Window's transport
+authenticated for the request, never values in the request's JSON, and
+application code cannot enter one with an identity.
+`RunicInteractionInvocation.Current?.ConnectionKey` and `ClientKey` are the
+same values, for code that has no `IRunicConnections`. The keys tell pages
+apart; they do not say who the user is. On CS-WebUI every client that reaches
+the window's server can connect, so an application that shares a window with
+`MultiClient` authenticates its users itself and maps a connection to a user
+after its own sign-in; see the
+[CS-WebUI security notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md#security).
+
+In tests, `RunicWindowTestHost.Connections` lists the test connections and
+`host.Root.ForConnection("bob-tab", clientKey: "bob")` drives the Window as a
+second page; see
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#several-pages-of-one-window).
+### Presenting, hiding and observing a ViewModel's own Window
+
+`IRunicWindowPresentation` is the Window a ViewModel belongs to as it appears on
+the desktop. `AddRunicWindowService()` registers it per scope, next to
+`IRunicWindowContext`, so the ViewModel takes it in its constructor and never
+casts `IRunicWindow.Host` to a host's type:
+
+| Member | What it does |
+| --- | --- |
+| `PresentAsync(activation)` | Brings the Window to the front: shows a hidden one, restores a minimized one and asks for the keyboard focus, with the launch's activation token where the desktop needs one. |
+| `MinimizeAsync()` | Minimizes it to the taskbar or Dock. |
+| `SetVisibleAsync(visible)` | Hides it without closing it, for example to a status icon, or shows it again. |
+| `SetFullScreenAsync(fullScreen)` | Enters or leaves full screen. |
+| `SetDocumentEditedAsync(edited)` | Marks unsaved changes where the platform shows them: the dot in the macOS close button. |
+| `SetColorSchemeAsync(scheme)` | Switches it between light and dark; the page's `prefers-color-scheme` follows. |
+| `IsActive`, `IsMinimized`, `IsVisible`, `Activity` | Whether it has the keyboard focus, is minimized and is shown, with `ActivityChanged` and `PropertyChanged`. |
+| `Features` | What the host can do now. |
+
+With CommunityToolkit.Mvvm, a ViewModel that polls less while the user works
+elsewhere and hides to the status area:
+
+```csharp
+public sealed partial class InboxViewModel : ObservableObject
+{
+    private readonly IRunicWindowPresentation _window;
+
+    public InboxViewModel(IRunicWindowPresentation window)
+    {
+        _window = window;
+        window.ActivityChanged += (_, e) => PollInterval = e.Activity.IsActive ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(1);
+    }
+
+    [ObservableProperty]
+    public partial TimeSpan PollInterval { get; private set; } = TimeSpan.FromSeconds(5);
+
+    [RelayCommand]
+    private async Task HideToTrayAsync() => await _window.SetVisibleAsync(false);
+}
+```
+
+With ReactiveUI, observe a property with `WhenAnyValue`, or the activity as an
+`IObservable<RunicWindowActivity>` from `ObserveActivity()`, which needs no
+System.Reactive and composes with either flavor:
+
+```csharp
+public InboxViewModel(IRunicWindowPresentation window)
+{
+    _pollInterval = window.WhenAnyValue(w => w.IsActive)
+        .Select(active => active ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(1))
+        .ToProperty(this, x => x.PollInterval);
+    HideToTrayCommand = ReactiveCommand.CreateFromTask(async token => { await window.SetVisibleAsync(false, token); });
+}
+```
+
+- The changes are raised in a turn of the Window's model context, as a command
+  runs, so a handler sets ViewModel state directly.
+- Requests return `PlatformResult<PlatformUnit>`, as the platform services do,
+  and never throw for what a host cannot do: `BackendUnavailable` for a feature
+  the host lacks, `OwnerUnavailable` before the Window opens or in a scope that
+  no Window opened, `OwnerClosed` once it closed. A desktop may refuse to take
+  the focus from the application the user works in; Windows then flashes the
+  taskbar button and `PresentAsync` reports `PermissionDenied`.
+- Where the host reports no activity (no `RunicWindowPresentationFeatures.Activity`),
+  the Window counts as active and visible (`RunicWindowActivity.Assumed`), so
+  work that pauses while it is inactive keeps running. A closed Window reports
+  `RunicWindowActivity.Closed`. Unknown counts as active, so check
+  `Features.HasFlag(RunicWindowPresentationFeatures.Activity)` before you rely
+  on `IsActive == true`: code that notifies only while the Window is inactive
+  never notifies on CS-WebUI or in an installed browser, and should notify
+  there whatever `IsActive` says.
+- On Linux a minimized window is only a hint: Wayland compositors do not tell
+  an application that its window was minimized. A GTK 4 window (GTK 4.12 and
+  later) reports itself not visible once the compositor stops showing it; a
+  GTK 3 window on Wayland stays visible and only loses the focus.
+- The color scheme is not every Window's own. Without
+  `RunicWindowPresentationFeatures.PerWindowColorScheme` it is shared, and
+  `SetColorSchemeAsync` changes every Window that shares it: on Linux every GTK
+  window of the application, on Windows the windows that share a WebView2
+  profile (`DesktopWindowOptions.ProfilePath`). `ColorScheme` reports what each
+  Window shows, also after another Window or the application changed it, and
+  raises `PropertyChanged`. On Runic Desktop the application's scheme
+  (`DesktopHost.SetColorSchemeAsync`) is applied to a shared scheme last, so it
+  wins over the Windows' own, whatever order they are in.
+- Code outside the scope, such as a status icon's handler, reads the same
+  object from `IRunicWindow.Presentation`:
+  `await window.Presentation.PresentAsync(launch.PlatformContext)`.
+- Tests register `RunicTestWindowPresentation` with
+  `AddRunicTestWindowPresentation()` from Runic.Application.Testing. It
+  records each request and lets the test change the activity, and reaches the
+  ViewModel through the same per-Window presentation as a host's.
+- This is not a ViewModel activation hook (the I-142 proposal, which was
+  dropped): it reports the native window, not whether a View currently shows
+  the ViewModel. Use the View lifetime hooks for that.
+
+| Host | Present | Minimize | Hide and show | Full screen | Document edited | Color scheme | Activity |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Runic Desktop, WebView2 | Yes | Yes | Yes | Yes | No | Yes; shared by the windows of a configured `ProfilePath` | Yes |
+| Runic Desktop, WKWebView | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes | Yes | Yes | Yes | No | Yes, shared by every window of the application | Yes; minimized only on X11 |
+| Runic Desktop, an installed browser after a fallback | No | No | No | No | No | No | No |
+| WPF, `WpfPlatformServices.ForWindowPresentation(window)` | Yes | Yes | Yes | Yes | No | Title bar and the pages of `RunicViewHost`s | Yes |
+| CS-WebUI | Yes | WebView only | No | No | No | No | No |
+
+A custom Runic Desktop window host provides the activity and the color scheme
+through `IDesktopActivityWindowHost` and `IDesktopColorSchemeWindowHost`; a
+custom Window host gives the Window its own presentation with
+`RunicWindowOpening<TViewModel>.UsePresentation` once the native window exists.
+
 ### What the page sees of a close
 
 Every close of a Window (`CloseAsync`, `RequestCloseAsync` once it decided,
@@ -674,7 +1039,13 @@ The host asks once for each id when the Window opens, and again after
 while its declared `IsEnabled` and its command's `CanExecute(parameter)` are
 `true`, following `CanExecuteChanged`, and runs `Execute(parameter)` in the
 model turn, where `parameter` is the item's `CommandParameter` (`null` for
-none). One command can therefore serve several items, such as one per zoom
+none). An item that a page clicks in its in-page menu bar runs as a command
+of that page: its questions, interactions and view requests reach only that
+page. One that the native bar or a host shortcut runs has no page and runs in
+the window's interaction scope, so it reaches the one page presentation of the
+Window that handles it, as during a close decision (see
+[Asking the page](#asking-the-page-view-requests-and-questions)).
+One command can therefore serve several items, such as one per zoom
 level in a radio group:
 
 ```csharp
@@ -1267,6 +1638,8 @@ so a malformed reply never reaches application state.
 | A type with `[RunicCodec]` | The codec's TypeScript type | Whatever the codec writes. |
 | `JsonElement`, `JsonElement?`, `JsonNode?` | `unknown` | Any JSON value, as it is. A `JsonElement` holds JSON `null` as a value; a default `JsonElement`, which holds none, is written as `null`. `JsonNode?` and `JsonElement?` are C# `null` for JSON `null`. |
 | `JsonNode` | `NonNullable<unknown>` | Any JSON value except `null`, which a `JsonNode` cannot hold. `JsonObject`, `JsonArray`, `JsonValue` and `JsonDocument` fail the build: declare a `JsonNode`, or a DTO for a known shape. |
+| `RunicBlob` | `RunicBlob` (`{url, type, size, name}`) | A URL the host serves, never the bytes; see [Blobs and uploads](#blobs-and-uploads). To the page only. |
+| `RunicUpload` | `BlobRef` (`{id, name, type, size}`) | A file the page uploaded with `client.upload(file)`; see [Blobs and uploads](#blobs-and-uploads). |
 
 Other framework types, such as `object`, `char`, `Uri` and tuples, fail the
 build with a `RUNICBRIDGE` diagnostic that names the member.
@@ -1340,7 +1713,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033` and `034` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -1682,7 +2055,9 @@ shared code or the Vite configuration reads as a
 
 - **Translations.** The page can import the app's `t()` and its message
   tables through the alias, and take the locale from `navigator.language`,
-  which usually follows the system language (`LANG` on Linux). Include the
+  which usually follows the system language (`LANG` on Linux), or from the
+  window's locale that the application sets, which also translates the text the
+  ViewModels produce; see [Translated text](#translated-text). Include the
   message tables in `RunicApplicationFrontendInput`, so an edited translation
   rebuilds the page.
 - **Hosts.** The page loads `runic-views.js`, so it needs no host-specific
@@ -1743,6 +2118,96 @@ Each field retains at most 64 receipts within a default 256 KiB encoded-value
 and receipt-metadata budget. Evicted or oversized receipts leave bounded
 request-ID tombstones; reconcile authoritative state before issuing a new ID.
 The write may have succeeded even when its receipt could not be retained.
+
+## Editable rows and nested fields
+
+Since 0.16 a page edits the members of an object and the cells of a keyed
+collection's rows one field at a time, with drafts, conflicts and validation,
+and without a command per cell (`field-paths/1`,
+[field paths](../../../specs/application/README.md#field-paths)):
+
+```csharp
+public sealed record Address(string Street, string PostalCode, string City);
+public sealed record InvoiceLine(int Id, string Product, int Quantity, decimal Price);
+
+public sealed partial class InvoiceViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial Address Address { get; set; } = new("", "", "");
+
+    [RunicCollection(nameof(InvoiceLine.Id))]
+    public ObservableCollection<InvoiceLine> Lines { get; } = [];
+
+    [RunicRowEditor]
+    internal void UpdateLine(int id, InvoiceLine line)
+    {
+        if (line.Quantity > 10_000) throw new ArgumentException("At most 10,000 per line.");
+        Lines[Lines.IndexOf(Lines.Single(existing => existing.Id == id))] = line;
+        OnPropertyChanged(nameof(Total));
+    }
+}
+```
+
+```ts
+const street = useField(invoice, InvoiceFields.address.street, { commit: "pause" });
+const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { commit: "pause" });
+```
+
+- **Object members.** A settable member whose value is a DTO, such as
+  `Address`, also has a field for each of its members, down to three objects
+  deep: `InvoiceFields.address.street`, `InvoiceFields.address.geo.lat`. A
+  write copies the member's value with that one member changed and assigns the
+  copy with the setter, so the setter's validation, normalization and change
+  notification run as for a whole value. An object on the path that is `null`
+  rejects the write.
+- **Copies.** The generated copy keeps what the page does not see, such as a
+  `[RunicIgnore]` database id: a record or struct is copied with `with`, a
+  sealed class with its copy constructor or `Clone()`, and a sealed class whose
+  settable members are all on the wire through its codec. A class that is not
+  sealed, or one with hidden settable members and no copy constructor or
+  `Clone()`, cannot be copied exactly and has no fields below it; as rows it is
+  `RUNICBRIDGE052`, as an object inside a row warning `RUNICBRIDGE053`.
+  `[RunicNoField]` leaves a member of a row or object without a field.
+- **Rows.** A `[RunicCollection]` with a `[RunicRowEditor]` method has a field
+  for each row member except the key: `InvoiceFields.lines.at(key).quantity`.
+  The method takes the row's key and the row with the one cell changed, and
+  optionally a `RunicRowEdit` with the changed cell (`Path`), the row before the
+  edit (`Previous`) and the page's `ConnectionKey`; it replaces the row
+  (`Lines[index] = line`), may normalize it and updates what depends on it. Throw to refuse the change: the page keeps its draft and shows
+  the message. Without a collection name the attribute finds the collection by
+  its row type; `[RunicRowEditor(nameof(Lines))]` names it. A collection without
+  a row editor stays read-only for the page. `RUNICBRIDGE050` and `RUNICBRIDGE051`
+  report editors that match no collection, several, or have another signature.
+- **Conflicts.** Each field path is a checked field with its own version: the
+  revision at which a publication last changed it. A write that is based on an
+  older state of the cell than the cell's last change is a `conflict`, also when
+  the value changed back, and keeps the page's draft until the user retries or
+  resets it. A change of another cell of the same row, or another member of the
+  same object, is not a conflict. A write of a row that was removed is rejected,
+  and a row removed and added again under its key is a new row. With
+  `[RunicRowEditor(Conflicts = RunicRowConflicts.Row)]` any change of the row
+  after the page's state is a conflict instead, so a price typed for a line
+  whose product another user changed meanwhile is not applied.
+- **Receipts.** An editor that removes the row is `rejected`; one that changes
+  the row and then throws is `committed-with-error`.
+- **Cost.** The window keeps a digest of each field path's value per row. A
+  publication compares only the rows its changes carry; a reset of the
+  collection or a full state compares every row. `[RunicRowEditor]` does not
+  apply to query collections yet (`RUNICBRIDGE050`).
+- **Validation.** A field's `errors` are the `validation` messages at its path
+  and below: a cell's path names its row by index, such as
+  `["lines", 2, "quantity"]`, which the generated descriptor finds from the row's
+  key. Rows report their messages as any DTO does: an `INotifyDataErrorInfo`
+  row (an immutable record whose `GetErrors` reads its own values), or a
+  `RunicValidationMessage` of the ViewModel with the member path
+  `Lines[2].Quantity`. A nested `ReactiveValidationObject` reports its rules at
+  its members' paths, such as `["address", "street"]`.
+- **Tests.** `RunicViewDriver.WritePathAsync(vm => vm.Lines, ["7", "quantity"], 3)`
+  writes a cell as the page does; pass `expectedVersion` to write from an older
+  state and observe a `RunicFieldWriteReceiptKind.Conflict`.
+
+The [invoice grid example](../../../examples/invoice-grid/README.md) edits an
+address and the cells of an invoice's lines this way.
 
 ## Commands whose parameter has no wire form
 
@@ -1872,6 +2337,125 @@ that reports completes the wait; a hidden or minimized page reports after its
 next timer. It returns `false` at the timeout, which runs on the window's
 `TimeProvider`, also when no page uses the `presented/1` feature. Only waits ask
 the page to report, so an idle or typing page sends nothing extra.
+
+## Asking the page: view requests and questions
+
+A ViewModel reaches its web View in two ways, in both MVVM flavors (since
+0.16):
+
+- a **view request**, `ViewRequest<T>`, is one-way: focus a field, scroll a row
+  into view, scroll to the top, show a toast. The ViewModel raises it and
+  carries on; nothing waits for the page.
+- a **view question**, `ViewQuestion<TInput, TOutput>`, waits for the page's
+  answer, such as a confirmation. It is the flavor-neutral counterpart of a
+  ReactiveUI `Interaction<TInput, TOutput>`, so a CommunityToolkit ViewModel can
+  ask the page too.
+
+Expose both as get-only properties:
+
+```csharp
+public sealed record FocusTarget(string Field);
+public sealed record DiscardRequest(string Title);
+
+public sealed partial class EditorViewModel : ObservableObject
+{
+    public ViewRequest<FocusTarget> Focus { get; } = new(ViewRequestDelivery.NextMounted);
+    public ViewRequest<string> Toast { get; } = new(ViewRequestDelivery.Broadcast);
+    public ViewQuestion<DiscardRequest, bool> ConfirmDiscard { get; } = new((_, _) => ValueTask.FromResult(false));
+
+    [RelayCommand]
+    private void AddItem()
+    {
+        var item = new Item();
+        Items.Add(item);
+        Focus.Raise(new FocusTarget($"item-{item.Id}"));
+    }
+
+    [RelayCommand]
+    private async Task DiscardAsync(CancellationToken token)
+    {
+        if (await ConfirmDiscard.AskAsync(new DiscardRequest(Title), token)) Reset();
+    }
+}
+```
+
+The page handles them with the generated client, while the component that
+owns the field is mounted:
+
+```ts
+const stopFocus = editor.requests.focus.handle(({ field }) => document.getElementById(field)?.focus());
+const stopConfirm = editor.interactions.confirmDiscard.handle(({ title }, { signal }) => confirmDialog(`Discard ${title}?`, signal));
+```
+
+`Raise` publishes what the ViewModel changed before it, and the page runs the
+handler once it has rendered that state, so the new item's element exists
+when `focus` runs. A request is not state: a snapshot or a reconnect never
+repeats it, it needs no reset, and it never reaches another window.
+`Drop` and `NextMounted` requests that a command raises reach only the page
+that invoked it; a `Broadcast` reaches every connection of the window, as a
+state change does. Each request declares where it goes with `ViewRequestDelivery`:
+
+| Delivery | Inside a command a page invoked | Elsewhere (window scope, timer, startup) | With no such presentation, or several |
+| --- | --- | --- | --- |
+| `Drop` (default) | that page's presentation that handles it | the window's one presentation that handles it | dropped, logged at Debug as event 1120 |
+| `NextMounted` | the same | the same | kept, the latest one wins, for the next presentation of the window that handles it (event 1121) |
+| `Broadcast` | every presentation of the window that handles it, on every connection | the same | dropped |
+
+`Drop` is the default because most requests only make sense for what the
+user is looking at now: a focus or a scroll that arrives after the user moved
+on is worse than none. Use `NextMounted` for a request about a page that is
+about to appear, such as focusing the first field of an item that a command
+opens. A request raised outside a command for a ViewModel that several windows
+present is dropped. A `NextMounted` request a command keeps waits for that
+page and is gone when its connection closes, also when the command raised it
+on a ViewModel that nothing presents yet, such as an item it opens. One raised
+outside any scope before any window presents the ViewModel waits for the
+first window that does; one raised in a window's scope waits for that window. "The one
+presentation" counts every route of the window that presents the ViewModel,
+so a ViewModel shown in two panes has two. `Raise` never waits: outside the
+model's turn it publishes and sends in the next turn. An input that does not fit the window's input limit makes
+`Raise` throw `ArgumentException`.
+
+`AskAsync` asks the page in the same scopes as an interaction (see
+[Leave confirmation in a web View](../Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+for the table). When no page can answer it runs the fallback, or fails with
+`RunicInteractionUnhandledException` when there is none. The page's
+cancellation, its presentation closing, a timeout (by default two minutes, at
+most ten, set with the constructor's `timeout`) and the caller's token fail it
+as interactions do.
+
+**Work that no page started.** A timer, a notification's `Activated` handler
+or other background work of a window enters the window scope explicitly, so
+its questions and interactions reach the window's one presentation that
+handles them, as during a close decision:
+
+```csharp
+using (RunicInteractionInvocation.EnterWindow(viewModel))
+    if (await ConfirmReload.AskAsync(path)) await ReloadAsync();
+```
+
+`EnterWindow` finds the one window that presents the ViewModel and enters no
+scope when none or several do, or when a command that a page of that window
+invoked is current: that command keeps reaching only its own page.
+`TryEnterWindow(viewModel, out var scope)` returns whether it entered the
+scope. It never carries a page's identity: only a command that a page's
+transport delivered can reach that page's presentation alone. A menu item a
+page clicks in its in-page menu bar runs as that page's command; one that the
+native bar or a host shortcut runs is in the window scope
+([Menu bar commands](#menu-bar-commands)).
+
+**Fallbacks that no longer answer (since 0.16).** A .NET handler or fallback
+that used to answer a question asked by a command on another route of the
+window, or by a menu-bar command, is now skipped while a page has a handler
+mounted for it, also a 0.15 page on a 0.16 host, since interaction handlers
+are not a new feature. Remove such a fallback, or keep it for when no page is
+mounted.
+
+Pages and hosts of earlier releases keep working: the producer sends requests
+only to pages that list the protocol feature `view-requests/1`, and a page of
+this release registers no request handlers with an earlier host. Tests answer and
+collect both through `RunicViewDriver.MountPresentation()`; see
+[Runic.Application.Testing](../Runic.Application.Testing/README.md#interactions).
 
 ## Operation results and parameterised queries
 
@@ -2034,7 +2618,8 @@ and [`@runic-artifex/views`](https://github.com/Runic-Artifex/runic-sdk/tree/mai
 A route publishes each change of its state as a frame. What a frame costs
 depends on the member:
 
-- A `[RunicCollection(nameof(Row.Id))]` list publishes only the rows that were
+- A `[RunicCollection(nameof(Row.Id))]` list (the key a `string`, `Guid`, `int` or
+  `long` row property) publishes only the rows that were
   added, removed, moved or replaced, and a row's own property change replaces
   that row. Use it for any list that can grow beyond a few dozen rows or
   changes often.
@@ -2042,6 +2627,8 @@ depends on the member:
   whole when the encoding differs from what the page has. The generator reports
   an observable collection of DTO rows that is not a `[RunicCollection]` as
   `RUNICBRIDGE032`.
+- A list too large to hold or send, such as a database table, is a
+  [query collection](#query-collections): each page loads only the rows it shows.
 
 A notification requests a publication unit, and a route starts its units at
 least 8 ms apart: the first change after a pause is published at once, and the
@@ -2052,6 +2639,155 @@ at most about 125 frames a second per route. A setter, command or checked write
 is not delayed: it publishes its change, with any change that waits for the
 interval, before it replies. Wrap a bulk change in a `BridgeSnapshotBatch`
 (below) to publish it as one frame when the batch ends.
+
+## Query collections
+
+A list too large to send, such as 500,000 rows of a database table, stays where it is: expose it as a
+`RunicQueryCollection<TRow, TKey>` over a row source, and each page loads only the rows it shows. The page sorts,
+filters and scrolls it; the ViewModel needs no viewport commands.
+
+```csharp
+public sealed record Order(int Id, string Customer, decimal Amount, DateTime Placed);
+
+public sealed class OrdersViewModel : ObservableObject
+{
+    public OrdersViewModel(Func<ShopContext> database, IRunicModelContext context)
+    {
+        var fields = new RunicQueryFields<Order>()
+            .AddText("customer", order => order.Customer)
+            .Add("amount", order => order.Amount)
+            .Add("placed", order => order.Placed)
+            .AddCustom("mine", (orders, _) => orders.Where(order => order.Customer == Environment.UserName));
+        Orders = new(new RunicQueryableRowSource<Order, int>(() => database().Orders, fields, order => order.Id),
+            order => order.Id, new RunicQueryCollectionOptions { ModelContext = context });
+    }
+
+    /// <summary>Every order, as the page sorts and filters it.</summary>
+    public RunicQueryCollection<Order, int> Orders { get; }
+}
+```
+
+- **State.** The property's member in the page's state is `{ query, total, version }`: the sort and filter, the number
+  of matching rows (`null` until counted, and again after a query change until a page reads rows of the new query; a
+  refresh keeps the old total until its new count), and a version that increases when loaded rows may be out of date. The rows
+  are not state. Each page reads the rows of its range with the generated client's `queries.orders.setRange(start,
+  count)`, and .NET answers that page alone (`query-collections/1`, [protocol](../../../specs/application/README.md#query-collections)).
+  Two CS-WebUI clients or two windows that scroll the same list therefore don't move each other's rows, and a page that
+  scrolls far sends only its own range.
+- **Query.** `RunicQuery` is a list of sort keys and filters: `equals`, `contains`, `range` and `custom`, the escape
+  hatch for a filter the typed model lacks (a full-text search, "rows I own"). The query is ViewModel state that every
+  presentation shares, like any other member: the page changes it with `queries.orders.setQuery(...)`, .NET with
+  `SetQuery`, and the ViewModel reads `Orders.Query` (to export the filtered rows, or to show the filter in a title).
+  A sort one page sets shows on every page of the ViewModel. Give each presentation its own ViewModel for independent
+  queries.
+- **Row source.** `IRunicRowSource<TRow, TKey>` has `CountAsync`, `LoadAsync(query, range)`, which may also return the
+  total, as from `COUNT(*) OVER ()`, `IndexOfAsync(query, key)` and `Validate(query)`. `RunicQueryableRowSource` runs
+  a query over any `IQueryable<T>`: an in-memory list (`rows.AsQueryable()`) or a database table through Entity
+  Framework Core or another LINQ provider. `RunicQueryFields<TRow>` lists the fields a page may use and maps them to
+  `Where` and `OrderBy` expressions that the provider translates; a query that names another field, an unknown filter
+  operator, or a value the field cannot read is rejected as invalid input, and never becomes the collection's query.
+  A source of your own implements `Validate`: the page's field names, custom filter names and values are untrusted
+  input, so accept only what the source supports by name. A `custom` filter's delegate also receives untrusted JSON;
+  `Validate` runs it once over no rows, so an argument it rejects is invalid input when the page sets the query. A source with asynchronous LINQ (`ToListAsync`) or an HTTP API implements the interface itself with
+  `fields.Apply(...)`. The collection orders by the row key last, so a range is stable.
+- **Loading.** The collection reads the source in pages of `PageSize` rows (100), never in a model turn. Loads, counts
+  and key searches share `MaximumConcurrentLoads` (4) slots, so no burst of requests runs more source calls at once.
+  Requests that need the same page share its load, a load that no request waits for any more is cancelled (a page that
+  scrolled past it), a failed page is not kept, and at most `MaximumCachedPages` (64) pages stay cached, least recently
+  used first. A query change cancels the count and key searches of the old query, and the new query is counted when a
+  page next reads rows, so a burst of query changes counts the last one. A range at or past a counted total reads
+  nothing. Memory and traffic therefore stay bounded whatever the list's length:
+  `QueryCollectionTests.ScrollingHalfAMillionRowsKeepsMemoryAndTrafficBoundedAsync` scrolls 500,000 rows with two pages
+  at once, with at most 16 cached pages, about 1.9 KB per 40-row reply and no row in any frame. `Statistics` reports
+  what was loaded.
+- **Fairness.** The Bridge admits per connection and collection 2 `query-rows`, 1 `query-set` and 1 `query-index` in
+  flight, and answers more `busy` at once, so one page cannot take every slot of the source from another; the page's
+  client retries them after a short delay.
+- **Cancellation of synchronous LINQ.** `RunicQueryableRowSource` checks cancellation between the rows it reads, so a
+  cancelled load or search frees its slot at its next row. A synchronous provider cannot interrupt a call before its first
+  row, such as a `Count()` or a slow query plan: that call completes in the background, in its slot. A source with
+  asynchronous LINQ (`CountAsync`, `ToListAsync` with the token) is interrupted at once.
+- **Changes.** Call `Invalidate(key)` after a row changed in place: the cached page that holds it is discarded and the
+  version raised, so pages load their range again, mostly from the cache. Call `Refresh()` after rows were added or
+  removed, which moves the rows after them: every page and the count are taken again. `SetQuery` does the same for a
+  new query. The generated Bridge binds the ViewModel's model context to the collection, so these changes are published in
+  its turns. A collection used without a Bridge raises them in its `ModelContext`, or the `SynchronizationContext` it was
+  created on (a WPF View's UI thread); without either, it logs event 1193 once and raises them where they happen.
+- **Scroll to a key.** A page's `scrollToKey(key)` asks .NET for the row's position in the current query
+  (`IndexOfAsync`, a `query-index` request) and scrolls there, for example to bring a search result into view.
+- **WPF.** A WPF View binds `Orders.CreateView()` as an `ItemsControl`'s `ItemsSource` with a virtualizing panel: the
+  list has `Total` items, loads the pages its panel reads, shows `null` for a row until its page arrives, and resets when
+  the version changes. Each View creates its own, as each page has its own range.
+- **Tests.** `RunicViewDriver.QueryRowsAsync`, `SetQueryAsync` and `IndexOfAsync` send what a page sends, also on a second
+  connection, and `RunicTestRowSource` serves rows with latency and records every load, count and search.
+
+The generator reports a query collection with a setter, `[RunicCollection]` or `[RunicAppendOnlyText]`, a key other than
+`string`, `Guid` or `Int32`, or rows that are not DTOs as `RUNICBRIDGE060`.
+
+### DynamicData
+
+The core has no DynamicData dependency. A `SourceCache` is a row source through `RunicQueryableRowSource` over
+`cache.Items.AsQueryable()`, and its changes invalidate the collection:
+
+```csharp
+_changes = cache.Connect().Subscribe(changes =>
+{
+    // Adds and removes move the rows after them; updates stay where they are.
+    if (changes.Adds > 0 || changes.Removes > 0 || changes.Moves > 0) Rows.Refresh();
+    else Rows.Invalidate(changes.Select(change => change.Key));
+});
+```
+
+The [DynamicData example](../../../examples/dynamicdata) shows both: `SortAndVirtualize` over a cache, and a 100,000-row
+query collection with sort, filter and variable row heights.
+
+### Trees
+
+A tree keeps row changes when it is flattened: publish the visible rows, each with its depth, parent key and whether it
+is expanded, in a keyed collection or a query collection, and expand or collapse by inserting or removing the children's
+rows. The page then renders a flat list with indentation, and an expand sends one `add` frame of the children instead of
+a new tree.
+
+```csharp
+public sealed record TreeRow(string Key, string? ParentKey, int Depth, string Label, bool HasChildren, bool Expanded);
+
+public sealed partial class FolderTreeViewModel(IFolders folders) : ObservableObject
+{
+    private readonly ObservableCollection<TreeRow> _rows = [];
+
+    [RunicCollection(nameof(TreeRow.Key))]
+    public ReadOnlyObservableCollection<TreeRow> Rows => field ??= new(_rows);
+
+    // The page sends the row's key; Row resolves it.
+    [RelayCommand, RunicCommandKey(nameof(Row))]
+    private void Toggle(TreeRow row)
+    {
+        var index = _rows.IndexOf(row);
+        if (row.Expanded) Collapse(index);
+        else Expand(index, [.. folders.Children(row.Key).Select(child =>
+            new TreeRow(child.Key, row.Key, row.Depth + 1, child.Name, child.HasChildren, Expanded: false))]);
+    }
+
+    private TreeRow? Row(string key) => _rows.FirstOrDefault(row => row.Key == key);
+
+    private void Expand(int index, IReadOnlyList<TreeRow> children)
+    {
+        _rows[index] = _rows[index] with { Expanded = true };
+        for (var offset = 0; offset < children.Count; offset++) _rows.Insert(index + 1 + offset, children[offset]);
+    }
+
+    // The row's descendants are the rows after it that are deeper.
+    private void Collapse(int index)
+    {
+        _rows[index] = _rows[index] with { Expanded = false };
+        while (index + 1 < _rows.Count && _rows[index + 1].Depth > _rows[index].Depth) _rows.RemoveAt(index + 1);
+    }
+}
+```
+
+For a tree too large to publish, use a query collection whose row source returns the visible rows of the tree in
+depth-first order: keep the expanded keys in the ViewModel, let the source filter rows whose ancestors are all expanded
+(a `custom` filter or a `path` column), and call `Refresh()` after an expand or collapse.
 
 ## Batch synchronous model updates
 
@@ -2190,6 +2926,235 @@ property invalid.
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.
 
+### Field drafts before departures
+
+A web page may hold what the user typed for a moment before it writes it, such
+as a field with `commit: "pause"`. With `field-flush/1` (0.16 hosts and pages),
+the window asks its pages to write those drafts before it asks a departure guard:
+before the guards of a navigation of the window's model context
+(`RunicDraftFlush`, which the navigator awaits), and before the close guard of a
+Window with `GuardClose`, from `RequestCloseAsync` (also inside a model turn, such
+as a native menu's command) or the close button. It asks only its own pages,
+waits up to 1 second (event 1140 when a page does not answer) and then decides
+on the ViewModel's state. A disposed window is asked nothing, and a page that a
+push cannot reach does not delay the decision. In tests, set
+`InMemoryBridgeTransport.FieldFlush` to write what a page would; the mock bridge
+has `flushFields()`.
+
+### Validation in progress
+
+An asynchronous rule, such as one that asks a server whether a user name is
+taken, can report that it is still checking. Implement `IRunicPendingValidation`
+on the ViewModel, or on a DTO of its state, usually by delegating to a
+`RunicPendingValidation`. The Bridge then reports the pending member paths in
+`validation.pending` (the `validation-pending/1` feature), and the page's field
+shows `validating`. Paths are relative CLR property paths, as in
+`RunicValidationMessage.MemberPaths`, and `""` is the object itself. A pending
+path is not an error: it does not set `hasErrors`.
+
+```csharp
+public sealed partial class SignUpViewModel : ObservableValidator, IRunicPendingValidation
+{
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+
+    [ObservableProperty, CustomValidation(typeof(SignUpViewModel), nameof(ValidateUserName))]
+    public partial string UserName { get; set; } = "";
+
+    // CommunityToolkit: the check runs while the name is pending. Each check cancels the previous one of the
+    // same path, so the result of an older name never overwrites that of a newer one.
+    partial void OnUserNameChanged(string value) => _ = Pending.Track(nameof(UserName), async cancellationToken =>
+    {
+        var taken = await _users.ExistsAsync(value, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _taken = taken;
+        ValidateProperty(UserName, nameof(UserName));
+    });
+}
+```
+
+With ReactiveUI.Validation, `TrackPending` follows a rule's state stream and
+marks the member pending while the state is the one the rule starts each check
+with:
+
+```csharp
+var checking = new ValidationState(true, "Checking…");
+var states = ValidationAsync.ForLatest(this.WhenAnyValue(vm => vm.UserName), CheckUserNameAsync, checking, scheduler)
+    .TrackPending(Pending, nameof(UserName), state => ReferenceEquals(state, checking));
+this.ValidationRule(vm => vm.UserName, states);
+```
+
+`Track(path, cancellationToken => …)` cancels the previous check that it
+started for the path, and a check that ignores its token still does not
+complete after a newer one: its task is cancelled. `Track(path, () => …)`
+does not cancel; overlapping checks of a path are counted, as with
+`Begin(path)`, which returns a lease for any other check. `validation.pending`
+lists the paths sorted; when the limits cut it, `pendingTruncated` is set. WPF binds `Pending[UserName]` or `Pending.HasPending`. In
+tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
+`PendingValidation` read the projection.
+
+## Translated text
+
+Text that a ViewModel produces, such as a status line or a validation
+message, can follow the window's language without a call per string. The
+ViewModel produces a text reference of
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/transport.md)
+(a message key, typed arguments and a fallback text) instead of a sentence, and
+the page formats it with its Translations runtime (the `translation-text/1`
+feature). When the language changes, the page formats the references it has
+again.
+
+**Values.** A member, DTO member, command input or result of type
+`Runic.Translations.TranslationReference` crosses the Bridge as the reference's
+transport JSON, and is a `TextReference` in TypeScript. The Views packages do
+not depend on Runic Translations: the generator recognizes the type by name, and
+the generated code, compiled into your application, calls its serializer. Add
+the `Runic.Translations` package and the generated catalog to the .NET project
+as the [Translations guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)
+shows. `RunicTextReference` holds a reference's JSON where Views code needs one:
+
+```csharp
+public partial class EditorViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial TranslationReference Status { get; set; } = NotesText.Ready();
+
+    [RelayCommand]
+    private async Task SaveAsync()
+    {
+        await _store.SaveAsync(Title);
+        Status = NotesText.Saved(Title);
+    }
+}
+
+// NotesText.Saved: a reference with a fallback for a page that cannot translate it.
+public static TranslationReference Saved(string title) => new(NotesTextCatalog.CatalogId,
+    NotesTextCatalog.ContractFingerprint, "saved",
+    new Dictionary<string, TranslationReferenceArgument> { ["title"] = new(TextArgumentType.String, title) },
+    $"Saved {title}.");
+```
+
+**Validation messages.** Give a validation message a reference, and the page
+shows the error's `text` in the window's language, with the message as the
+fallback. `{name}Errors` keeps the messages.
+
+- `RunicValidationMessage`: set `Text = RunicTextReference.Create(reference,
+  TranslationReferenceJsonContext.Default.TranslationReference)`.
+- DataAnnotations and CommunityToolkit `ObservableValidator`: return a
+  `RunicValidationResult(message, text, memberNames)` from a
+  `[CustomValidation]` method or a `ValidationAttribute`. The built-in
+  attributes have no reference; their messages stay as they are.
+- ReactiveUI.Validation: pass a rule a state whose `IValidationText` also
+  implements `IRunicTextReferenceSource`, or add a component that implements
+  it:
+
+  ```csharp
+  sealed class TranslatedText(TranslationReference reference) : IValidationText, IRunicTextReferenceSource
+  {
+      private readonly string _message = reference.FallbackText ?? reference.Key;
+      public RunicTextReference? Text { get; } =
+          RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
+      public int Count => 1;
+      public string this[int index] => _message;
+      public IEnumerator<string> GetEnumerator() { yield return _message; }
+      IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+      public string ToSingleLine(string? separator) => _message;
+  }
+
+  this.ValidationRule(vm => vm.Title, this.WhenAnyValue(vm => vm.Title).Select(title => title.Length <= 80
+      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.TitleTooLong(80)))));
+  ```
+
+- Any other entry of `GetErrors` can implement `IRunicTextReferenceSource`.
+
+**The window's language.** The application owns the window's locale: take
+`IRunicWindowLocale` in the ViewModel's constructor and set `Locale`, for
+example from the application's settings, before the window opens, and again
+from a language switch command. A language switch on the page must call that
+command: a page that sets its Translations runtime's locale itself is set back
+to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
+locale of its Translations runtime, so the page's own messages switch too, and
+formats the references again. `null`, the default, leaves each page in its own
+language. A Window that the application creates itself sets
+`WindowContentSession.Locale`. The service raises `PropertyChanged`, so C# text,
+such as a tray menu, can follow with the generated C# catalog's
+`ITranslationManager`.
+
+```csharp
+public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings settings) : ObservableObject
+{
+    public void Initialize() => locale.Locale = settings.Language;   // "de", "pt-BR" or null
+
+    [RelayCommand]
+    private void SwitchLanguage(string language)
+    {
+        locale.Locale = language;
+        settings.Language = language;
+    }
+}
+```
+
+**The page.** Connect the page's Translations runtime once, in `main.ts`, with
+`configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
+Runic Translations and its Vite plugin:
+
+```ts
+import { configureTranslatedText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
+
+const locale = createLocaleSource({ initialLocale: navigator.language });
+configureLocaleResolver(locale.getLocale);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+});
+```
+
+Then show references with the framework's helper. Field errors
+(`useField(...).errors`, `injectField`, `createFieldController`) already show
+validation messages in the window's language. A `number`, `decimal`,
+`bigint`, `date`, `time` or `datetime` field without its own `locale` option
+shows and reads its text in the window's locale (`1,5`, `03.11.2026, 21:30` in
+`de`; `11/03/2026, 9:30 PM` in `en-US`), and formats it again when the locale
+changes, but not while the user edits a draft. Dates and times also accept the
+ISO form, and the ViewModel still receives the invariant and ISO values. Use a
+text input for such a field (`inputmode="decimal"` for numbers):
+`<input type="number">`, `type="date"`, `type="time"` and `datetime-local` take
+only the invariant and ISO forms, so a field bound to one of them takes
+`locale: null`.
+
+**Server rendering.** `configureTranslatedText` configures the page's runtime,
+which is shared by everything on the page. Under SvelteKit or Angular server
+rendering, call it in the browser only (in `onMount`, a `+layout.ts` with
+`export const ssr = false`, or behind `isPlatformBrowser`), or render on the
+server with `resolveTextReference(reference, m, { locale })` and the request's
+locale instead of the shared configuration. The server has no window locale.
+
+| Framework | Status line | Validation error |
+| --- | --- | --- |
+| React | `useText(view.state?.status)` | `useText(error.text, error.message)` |
+| Vue | `useText(() => view.state.value?.status)` | `useText(() => error.text, () => error.message)` |
+| Svelte | `useText(() => view.state?.status).current` | `useText(() => error.text, () => error.message).current` |
+| Angular | `{{ state.status \| runicText }}` or `injectText(() => …)` | `{{ error.text \| runicText: error.message }}` |
+| Effect | `texts(state.status)` | `texts(error.text, error.message)` |
+| None | `resolveText(state.status)` with `subscribeText` | `resolveText(error.text, error.message)` |
+
+A reference that the page cannot translate, such as one of another catalog,
+whose arguments no longer match, or of a later Translations transport version
+than the page's runtime reads, shows its fallback text. Without a configured
+runtime, every reference shows its fallback text. The text is plain: render it
+as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
+`windowLocale()`) reads the window's locale, for example for `lang`.
+
+**Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
+or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
+`IRunicWindowLocale` of the services' scope to the window, so
+`host.Content.Locale` shows what the ViewModel set. In page tests, the mock
+bridge's `setWindowLocale("de")` pushes a locale as the application does.
+
 ## Shared DTO exclusions
 
 Public readable DTO properties are part of the Bridge contract, including
@@ -2281,9 +3246,144 @@ editor bound to a `string`, or lower it, with `RunicWindowOptions.MaximumInputBy
 set none), `WindowContentSessionOptions.MaximumInputBytes` for a session you
 create, or `RunicWindowTestHostOptions.MaximumInputBytes` in tests. A value must
 be between 1 KiB and 64 MiB; another one throws `ArgumentOutOfRangeException`.
+Binary data does not need a larger limit: a `RunicBlob` crosses as a URL and a
+`RunicUpload` streams over HTTP, outside the Bridge (see
+[Blobs and uploads](#blobs-and-uploads)), so a `byte[]` member, which crosses
+as a JSON array of numbers, is only for small values.
 The WPF host uses the default. Independently of the limit, exact number strings
 (`long`, `ulong`, `BigInteger`, `decimal`) are at most 4 096 characters, and a
 window runs at most 64 awaited command calls at once.
+
+## Blobs and uploads
+
+Images, thumbnails and downloads that a ViewModel produces, and files the user
+picks in the page, cross as `RunicBlob` and `RunicUpload` (Views protocol
+feature `blobs/1`, `specs/application/README.md`, "Blobs and uploads"). Their
+bytes never cross the Bridge as JSON, so neither the input limit nor JSON
+encoding applies, and a large file streams instead of being buffered.
+
+**A blob for the page.** Expose a `RunicBlob` as a state property, in a DTO or
+collection row, or as a command or operation result:
+
+```csharp
+public sealed partial class ProfileViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial RunicBlob? Avatar { get; private set; }
+
+    public void ShowAvatar(string path) => Avatar = RunicBlob.FromFile(path, "image/png", "avatar.png");
+
+    [RelayCommand]
+    private Task<RunicBlob> ExportAsync() => Task.FromResult(RunicBlob.FromStream(
+        token => ValueTask.FromResult<Stream>(File.OpenRead(_reportPath)), "text/csv", fileName: "report.csv",
+        disposition: RunicBlobDisposition.Attachment));
+}
+```
+
+The page receives `{url, type, size, name}` and uses `url` directly:
+
+```tsx
+{state.avatar && <img src={state.avatar.url} alt="" />}
+<a href={report.url} download={report.name ?? undefined}>Download</a>
+```
+
+- `FromBytes` keeps bytes in memory, `FromFile` opens the file for each request
+  and `FromStream` calls its function for each request; the host streams the
+  content and answers byte ranges of a seekable stream, which `<video>` and
+  `<audio>` need. Create a new `RunicBlob` for new content: a URL's content
+  never changes, and the browser caches it as immutable.
+- The URL is a capability of the Window: unguessable, and served only to the
+  Window's page (on Runic Desktop and WPF only to the browser client that holds
+  the Window's cookie).
+- How long a URL works:
+  - A blob in a state property, or in a DTO or list inside it: until the
+    property holds another value. Set it to `null` or a new blob, and the old
+    URL answers 404.
+  - A blob in a row of a `[RunicCollection]`: until that row leaves the
+    collection or is replaced by a row with another blob. Any number of rows
+    stays served, so a list of 1,500 thumbnails keeps all 1,500.
+  - A blob in a command or operation result, or in an interaction input: until
+    its View is released (interactions: until the Window closes). A Window
+    keeps at most 1,024 of these; beyond that the least recently sent ones are
+    released, and event 1208 `BlobEvicted` is logged once per request with
+    their number. Results the page still needs belong in state instead.
+  - Any blob: until you call `blob.Release()`, which ends its URLs in every
+    Window at once. Release a download or a thumbnail a long-lived View no
+    longer shows. If the blob crosses the Bridge again, it gets a new URL.
+  - Every blob: until the Window closes.
+- The response carries the blob's `ContentType`, `X-Content-Type-Options:
+  nosniff` and a sandboxing `Content-Security-Policy`, so an HTML or SVG blob
+  opened in the Window runs no script in the application's origin.
+  `Disposition` sets `Content-Disposition` (`inline` by default, `attachment`
+  to download on navigation) with `FileName`.
+- A property that holds a `RunicBlob` is read-only for the page, whatever its
+  setter. A `RunicBlob` command input fails the build with RUNICBRIDGE065: the
+  page sends files as uploads.
+
+**An upload from the page.** A command takes a `RunicUpload`:
+
+```csharp
+[RelayCommand]
+private async Task AttachAsync(RunicUpload file, CancellationToken cancellationToken)
+{
+    // Everything about an upload comes from the page: check what you read before you use it.
+    await file.SaveAsAsync(Path.Combine(_attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
+    Attachments.Add(new Attachment(file.FileName, file.Length));
+}
+```
+
+The page uploads the file over HTTP, then calls the command with the reference:
+
+```ts
+const file = input.files![0]!;
+const ref = await client.upload(file, { signal, onProgress: ({ loaded, total }) => setProgress(loaded / total) });
+await client.attach(ref);
+```
+
+- `client.upload` exists on generated clients whose contract takes a
+  `RunicUpload`; `upload` from `@runic-artifex/views` does the same for any
+  page. The content streams to the host with the connection's token; the
+  Bridge carries only the reference.
+- An upload decodes only for the Window and the page connection that uploaded
+  it, and only once: the first `OpenReadAsync` (a seekable stream; disposing it
+  deletes the content), `SaveAsAsync` (a rename on the same volume, otherwise a
+  copy) or `Discard` claims it, and a later request that names it is rejected
+  as invalid input. An unclaimed upload is deleted when its connection closes,
+  when the Window closes, or after 10 minutes.
+- `FileName`, `ContentType` and the content are untrusted. `FileName` is
+  reduced to a file name without directories or control characters; never use
+  it as a path.
+- An upload whose body sends nothing for 30 seconds is dropped (HTTP 408), on
+  every host.
+- Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
+  and `MaximumWindowUploadBytes` (unclaimed uploads of a Window at once, default
+  1 GiB), with host defaults `RunicDesktopHostOptions.MaximumUploadBytes` and
+  `RunicCsWebUiHostOptions.MaximumUploadBytes`, and
+  `WindowContentSessionOptions` for a session you create. The WPF host uses the
+  defaults.
+- Uploads are stored in a new folder of each Window, `runic-uploads-{random}`
+  with mode 0700, below the temporary directory when no other user can change
+  it (it is the user's own, or sticky such as `/tmp`), otherwise below
+  `$XDG_CACHE_HOME/runic/uploads` (`~/.cache/runic/uploads`). The host reads an
+  upload through the file it created, never through its path again, so a link
+  put in its place is not followed. The folder is deleted when the Window
+  closes; folders left by a crash are deleted by the next run once nothing
+  changed them for a day.
+
+| Host | Where blobs and uploads are served | Bound to |
+| --- | --- | --- |
+| Runic Desktop (Kestrel or the native server), WPF `RunicViewHost` | the Window's surface, `/_runic/blobs/` and `/_runic/upload`, same origin as the page | the Window and its browser client (cookie, and the launch code of an installed browser); an upload also to its connection |
+| CS-WebUI | a loopback listener of each Window, `http://localhost:{port}/` (also bound on `127.0.0.1`; only `127.0.0.1` where `localhost` cannot be bound), with CORS for the page's origin, serving loopback peers only | the Window; an upload also to its connection. CS-WebUI's file dialogs are unavailable, so an upload is how a file gets in. A page `Content-Security-Policy` must allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
+| `Runic.Application.Testing` | in memory, `http://runic.test/` | `RunicWindowTestHost.UploadAsync` and `ReadBlobAsync` |
+
+In tests, `RunicBlob.FromBytes` makes blobs, `RunicUpload.FromBytes` makes an
+upload for a ViewModel without a Window, `RunicWindowTestHost.UploadAsync`
+simulates a page's upload that a command then takes, and
+`RunicWindowTestHost.ReadBlobAsync(url)` returns what the host serves for a URL
+from the state: status, headers and content. On the page side,
+`@runic-artifex/views/mock` grants uploads (`MockBridge.uploads`,
+`uploadContent`, `failNextUpload`) and `mockBlob(content)` makes a `RunicBlob`
+whose URL loads in a test.
 
 ## Declared failures
 
@@ -2767,6 +3867,54 @@ the application body that `RunicDesktopHost.Run` rethrows. The
 shows how to log it from `AppDomain.UnhandledException`, capture a dump, keep
 NativeAOT symbols and what to attach to a bug report.
 
+### Page errors
+
+An error in the page, such as a `TypeError` in a click handler or a promise
+nothing awaited, stays in the web view's console unless the page reports it.
+Call `installErrorReporting()` of `@runic-artifex/views` once when the page
+starts, before the first View connects:
+
+```ts
+import { installErrorReporting } from "@runic-artifex/views";
+
+installErrorReporting({
+  // Optional: remove application data from messages before they leave the page.
+  redact: report => ({ ...report, message: report.message.replace(/\d{12,19}/g, "[number]") }),
+});
+```
+
+The page then reports uncaught errors (`window.onerror`), unhandled promise
+rejections and the errors the Views runtime catches, such as a subscriber that
+threw, to the .NET host. The host logs each one as event 1150 `PageError` in
+the category `Runic.Application.Views.Page`
+(`RunicViewsTelemetry.PageLogCategory`), with the stack last. That is where a
+crash reporter or log forwarder that reads `ILogger` picks it up, beside the
+host's own errors; filter or route the category on its own, for example
+`builder.AddFilter(RunicViewsTelemetry.PageLogCategory, LogLevel.Error)`.
+
+Reports are bounded and redacted before they leave the page: the message is
+cut at 1024 characters and the stack at 30 lines and 4096 characters, every
+URL loses its query and fragment, and `redact` can change or drop a report. At
+most 10 reports go out per minute (`maxReportsPerMinute`); repeats of one error
+within the minute are counted, and the count arrives as `Dropped`. The host
+treats a report as untrusted input: it cuts texts again (message and URL at
+2048 characters, stack at 8192, never between the halves of a surrogate pair),
+removes control characters and the bidirectional embeddings, overrides and
+isolates (U+202A-U+202E, U+2066-U+2069), and starts every stack line with
+`    | `, so in a plain-text sink a page's text stays inside its entry and
+cannot pass for a line the host wrote. The text itself still comes from the
+page: read it as the page's claim. The host logs at most 10 reports per
+connection and 30 per window a minute, so a page that reloads or reconnects
+gets no fresh budget, and logs event 1151 `PageErrorsSuppressed` or 1152
+`WindowPageErrorsSuppressed` once when it starts counting.
+
+Reporting is a Views protocol 4 feature, `client-errors/1`
+([page errors](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#page-errors)):
+a page and host of 0.16 or later use it, and with an earlier host the page
+drops its reports. The returned function removes the reporter. Errors still
+reach the console and `onBridgeDiagnostic` as before. Page errors carry no
+trace id; correlate them with the host's spans by time and route.
+
 | Event ID | Name | Level | Logged when | Properties |
 | --- | --- | --- | --- | --- |
 | 1000 | `BridgeCommandFailed` | Error | A command throws. | `Model`, `Member`, `Route`, `ErrorType` |
@@ -2794,7 +3942,12 @@ NativeAOT symbols and what to attach to a bug report.
 | 1023 | `BridgeMailboxOverflowed` | Warning | The mailbox of a connection whose transport cannot push to one connection (CS-WebUI) exceeds 1,024 pushes or 4 MiB, so its oldest pushes are dropped. Once per connection. | `Connection`, `Dropped` |
 | 1024 | `BridgeReplyWaitExceeded` | Warning | A setter, checked write, command or operation start waited 5 s for the pushes its window had to deliver before the reply, and replied without them: the page did not take pushes, or code blocked a route's delivery. Once per window. | `Route`, `LimitSeconds`, `Pending` |
 | 1025 | `BridgeCollectionChangedOutsideModelTurn` | Warning | A collection that a Bridge observes changed outside its window's model turn, such as a DynamicData `Bind` without `ObserveOn` the window's scheduler: the change waited for a turn and can race the window. Once per Bridge and field. | `Model`, `Field`, `Route` |
+| 1190 | `BridgeQueryRowsFailed` | Error | A query collection's row source threw while loading a page's range, or its rows could not be encoded. The page's `query-rows` is answered `failed`, and its range shows the error. | `Model`, `Member`, `Route`, `Start`, `End`, `ErrorType` |
+| 1191 | `BridgeQueryIndexFailed` | Error | A query collection's row source threw in `IndexOfAsync`. The page's `query-index` is answered `failed`. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1193 | `QueryCollectionWithoutModelContext` | Warning | A query collection raised a property change outside any model or synchronization context, on the thread its load completed on: it was used without a Bridge and without `RunicQueryCollectionOptions.ModelContext`. Once per collection. | `Row` |
+| 1192 | `BridgeQuerySetFailed` | Error | Changing a query collection's query threw something other than the `ArgumentException` of an invalid query. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1026 | `WindowCloseUnacknowledged` | Debug | A Window's close waited for its pages that use `presented/1` until its timeout or 5 s, and some did not acknowledge it (`RunicWindowCloseResult.PagesAcknowledged` is `false`). | `Pages` |
+| 1140 | `FieldFlushUnanswered` | Debug | Before a departure guard or a close guard, the window asked its pages that use `field-flush/1` to write their field drafts, and some did not answer within 1 s; the departure is decided on the state as it is. | `Pages` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
 | 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. An exception raised in a Bridge call's flow, such as by a plain `Execute` in a wrapper command, is held until the outermost Bridge call in that flow ends, and not logged if a call received it or an exception wrapping it. Still logged when hand-written code receives and handles it from a plain `Execute`; never when it ran the command with `RunAsync`. A streamed operation holds nothing. Also logged after the Bridge detached, with its logger, for an execution that a Bridge call or `RunAsync` stopped awaiting when it was cancelled, such as an operation that a retiring navigation entry cancels. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
@@ -2809,13 +3962,34 @@ NativeAOT symbols and what to attach to a bug report.
 | 1100 | `HotReloadRestartRequired` | Error | A Hot Reload edit changed a generated Bridge contract; restart the application. The `RUNIC_IDE_CONTRACT_RESTART_REQUIRED` line also goes to standard error. | `Mismatch` |
 | 1101 | `HotReloadRestartNotificationFailed` | Warning | A `RunicViewsHotReload.RestartRequired` handler throws. | `ErrorType` |
 | 1102 | `HotReloadRefreshFailed` | Warning | Refreshing a Bridge after a Hot Reload update throws. | `Model`, `ErrorType` |
+| 1200 | `BlobServeFailed` | Warning | A `RunicBlob` could not be opened or streamed to the page; the request fails. | `ErrorType` |
+| 1201 | `UploadRejected` | Information | The window refused an upload: no valid token, too large, no room, idle for 30 seconds, or the connection closed. | `Reason`, `Detail` |
+| 1202 | `UploadReceiveFailed` | Warning | An upload could not be stored: the client went away, the disk is full, or no private upload folder could be created. Its slot, bytes and partial file are freed. | `ErrorType` |
+| 1203 | `UploadExpired` | Debug | An upload that no command claimed within 10 minutes was deleted. | `Length` |
+| 1204 | `BlobRequestDenied` | Warning | A blob or upload request came from another origin or site than the window's page (CS-WebUI; Runic Desktop reports it as a Desktop diagnostic). | `Request`, `Reason` |
+| 1205 | `BlobsUnavailable` | Warning | A `RunicBlob` crossed the Bridge, but the window's host serves no blobs, so its URL is empty. Once per window. | |
+| 1206 | `BlobCleanupFailed` | Warning | A stored upload could not be deleted. | `ErrorType` |
+| 1207 | `BlobEndpointFailed` | Warning | CS-WebUI could not start a window's blob endpoint; the window opens without blobs and uploads. | `ErrorType` |
+| 1208 | `BlobEvicted` | Warning | A window holds more blobs of command results and interaction inputs than its limit (1,024), so the least recently sent ones' URLs were released; logged once per request or publication. State and collection rows never count. Release results a View no longer shows with `RunicBlob.Release()`. | `Count`, `Maximum` |
 | 1110 | `ViewHostFallbackShown` | Warning | A WPF `RunicViewHost` cannot open its web presentation and shows its `Fallback`. | `ErrorType` |
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
+| 1120 | `ViewRequestDropped` | Debug | A `ViewRequest<T>` found no single presentation to deliver to, or several windows present its ViewModel, and was dropped ([Asking the page](#asking-the-page-view-requests-and-questions)). | `Name`, `Reason` |
+| 1121 | `ViewRequestKept` | Debug | A `NextMounted` view request found no single presentation and is kept for the next one that handles it. | `Name` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1130 | `WindowPresentationHandlerFailed` | Error | An `IRunicWindowPresentation.ActivityChanged` or `PropertyChanged` handler threw; later handlers and changes still run. | `Handler`, `ErrorType` |
+| 1150 | `PageError` | Error | A page that called `installErrorReporting()` reports an uncaught error, unhandled rejection or runtime-caught error (`client-errors/1`). Category `Runic.Application.Views.Page`; see [page errors](#page-errors). | `Source`, `ErrorName`, `ErrorMessage`, `PageUrl`, `Route`, `Dropped`, `Client`, `ErrorStack` |
+| 1151 | `PageErrorsSuppressed` | Warning | A page's connection reports more than 10 errors in a minute; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
+| 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
+| 1170 | `WindowLocaleChanged` | Debug | The application set the window's locale (`IRunicWindowLocale`, `WindowContentSession.Locale`), which pages with `translation-text/1` follow. | `Locale` |
+| 1171 | `ValidationTextTooLarge` | Warning | A validation message's text reference is larger than 16 KiB, so its error carries only the message. | `Key`, `Bytes`, `Limit` |
+| 1180 | `WindowOwnerIgnored` | Warning | A Window opens without its `RunicWindowOptions.Owner`: the host cannot own Windows (CS-WebUI, serve-only mode, a browser), or the owner has closed or belongs to another host. | `Window`, `Owner`, `Reason` |
+| 1181 | `WindowsChangedHandlerFailed` | Error | An `IRunicWindowService.WindowsChanged` handler threw; later handlers still run. | `ErrorType` |
 | 1210 | `BridgeRegionRequestFailed` | Error | `SelectAsync` or `RemoveAsync` of a region collection threw for a page's `select{Name}` or `close{Name}`; the call fails. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1211 | `BridgeRegionRequestUnresolved` | Debug | A page's `select{Name}` or `close{Name}` named a key that the region collection no longer has, such as a tab that closed meanwhile; the call rejects with `unresolved-key`. | `Model`, `Member`, `Route`, `Key` |
+| 1230 | `ConnectionHandlerFailed` | Error | A handler of `IRunicConnections.Connected` or `Disconnected` throws; the other handlers still run ([Who is connected, and who called](#who-is-connected-and-who-called)). | `Event`, `ErrorType` |
+| 1231 | `ConnectionStateDisposeFailed` | Error | A value of a `RunicConnectionState<T>` throws from `Dispose`, on its connection's disconnect or the state's disposal; the other values are still disposed. | `ValueType`, `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -2848,16 +4022,18 @@ NativeAOT symbols and what to attach to a bug report.
 | 3019 | `DesktopQuitConfirmationFailed` | Error | `DesktopHostOptions.ConfirmQuitAsync` threw; the application keeps running. | `ErrorType` |
 | 3020 | `DesktopReopenHandlerFailed` | Error | A `DesktopHost.ReopenRequested` handler threw; later handlers still run. | `ErrorType` |
 | 3021 | `EmbeddedConnectionDeadlineExtended` | Warning | An embedded WebView had requested nothing after `ConnectionTimeout` but was still loading the page, so Runic Desktop kept waiting, up to four times the timeout. Once per presentation, also when the page then connects. | `TimeoutSeconds`, `Progress` (what the WebView was doing), `LimitSeconds` |
+| 3040 | `WindowActivityHandlerFailed` | Error | A `DesktopWindow.ActivityChanged` handler threw; later handlers and events still run. | `ErrorType` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1210-1211 use the category `Runic.Application.Views`
-(`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102, 1130, 1140, 1180-1181, 1190-1193 and 1210-1211 use the category `Runic.Application.Views`
+(`RunicViewsTelemetry.LogCategory`); event 1130 uses the logger of the Window's session; the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
-`Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's
+`Runic.Application.Views.Wpf` and the factory of the host's `Services`; so does event 1130 of
+`WpfPlatformServices.ForWindowPresentation`, with the factory passed to it. Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,
 or `Trace` without one.

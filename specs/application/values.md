@@ -92,7 +92,21 @@ Examples: `P1DT2H3M4.5S`, `PT0.0000001S`, `-PT1H`, `P1D`, and the extremes `-P10
 | object | object | one member per field the contract defines, named by its wire name (below) |
 | union | object | a member `$case` (string) names the case; the other members are the fields of that case |
 | content reference | `{"kind", "id"}` or `null` | `kind` is the presented View's kind name and `id` the content's id (see [Content](README.md#content)) |
+| `text-reference` | object | a text reference of Runic Translations ([below](#text-reference)) |
 | custom | any | a value type with its own codec; its contract specifies its JSON |
+
+### Blobs and uploads
+
+Two value types of the feature [`blobs/1`](README.md#blobs-and-uploads) name binary content that crosses outside the
+message channel:
+
+| Type | JSON | Rules |
+| --- | --- | --- |
+| `blob` | `{"url": string, "type": string, "size": integer or null, "name": string or null}` | written by the producer only. `url` is a capability URL of the window's host, or `""` when the host serves no blobs; `type` a media type; `size` the length in bytes (0 … 2^53−1) or `null` when unknown; `name` the file name of a download or `null`. A reader ignores other members. |
+| `upload` | `{"id": string, "name": string, "type": string, "size": integer}` | `id` names an upload of the request's connection (16 to 64 characters of `A–Z`, `a–z`, `0–9`, `-` and `_`); a producer reads only `id` and rejects one that names no unclaimed upload of the connection. The producer writes the upload's record as it stored it. |
+
+Both are contract-bound: their normal form is the same JSON, but whether a `blob` URL serves or an `upload` id decodes
+depends on the window, so the value vectors do not cover them; the scenarios of the `blobs` set do.
 
 For objects and unions:
 
@@ -101,6 +115,36 @@ For objects and unions:
   field.
 - A reader ignores members the type does not define.
 - `$case` is reserved: no object field is named `$case`.
+
+### `text-reference`
+
+A text reference identifies a message of a Runic Translations catalog, its typed arguments and an optional fallback
+text, so that the page shows it in the window's language ([translated text](README.md#translated-text)). Its JSON is
+the reference as the
+[Translations transport](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/specs/translations/transport-v2.md)
+writes it:
+
+```json
+{"version":2,"catalog":"notes","contractFingerprint":"sha256:…","key":"title_too_long",
+ "arguments":{"max":{"type":"int64","value":"80"}},"fallbackText":"Title must be at most 80 characters."}
+```
+
+- **Valid.** An object with an integer `version` of at least 1 (an integer token: `2.0` is not a version), string
+  `catalog` and `contractFingerprint`, a non-empty string `key`, an object `arguments`, and, when present, a string
+  `fallbackText`, which version 1 may also write as `null` for none; of at most 256 KiB of UTF-8. These are the
+  rules every Translations reader applies before it looks at the version, so a reference of a later transport version
+  than the page reads is still a valid value: the rest of the state decodes, and the page shows its fallback text.
+  A reader MAY apply the Translations transport's further rules for the versions it reads, such as the canonical
+  argument forms and the nesting limits, and then rejects a value that breaks them as invalid input; the .NET
+  producer does so for a command input of type `TranslationReference`.
+- **Normal form.** The value as written. The Translations writers write one form for a reference, so two references
+  are the same value when they are canonically equal.
+- **Resolution** is not the reader's: the page formats a reference with its Translations runtime when it shows it,
+  which checks the version, key and arguments against what it reads and its catalog, and otherwise falls back to
+  `fallbackText` ([translated text](README.md#translated-text)).
+
+The type needs no feature: the generated client and the producer of one build agree on it. Only the window's locale
+and the `text` of validation errors are the feature `translation-text/1`.
 
 ### Names
 

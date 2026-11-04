@@ -239,6 +239,26 @@ with a `FieldError`. `errors` follows the member's validation in the View's stat
 }
 ```
 
+### Row cells and nested members
+
+Since 0.16, `InvoiceFields.address.street` and `InvoiceFields.lines.at(line.id).quantity` are fields too
+(`field-paths/1`): a member of an object member, and a cell of a row that .NET edits with `[RunicRowEditor]`. Call
+`injectField(view, InvoiceFields.lines.at(line.id).quantity)` in the row's component, or bind it with
+`[runicField]`; `at(key)` returns the same descriptor for the same key. Such a field always writes checked, conflicts
+only when another writer changed the same cell, and shows the messages .NET reports at the cell's validation path. See
+[Fields below a member and row cells](../views/README.md#fields-below-a-member-and-row-cells).
+
+### Forms: `injectForm(fields, options?)`
+
+Signals over `injectField` handles (`dirty`, `editing`, `validating`, `pending`, `valid`, `submitting`, `state`), and a
+`submit` that writes every field before its command (`createFormController` in `@runic-artifex/views`). It needs no
+injection context.
+
+```ts
+readonly form = injectForm({ title: this.title, step: this.step }, { dirty: computed(() => this.editor.state()?.isDirty === true) });
+// <button [disabled]="!form.valid() || form.submitting()" (click)="form.submit(() => editor.client()!.save())">Save</button>
+```
+
 ### `[runicField]` and Reactive Forms
 
 `@runic-artifex/angular/forms` needs `@angular/forms` (an optional peer; the main
@@ -620,6 +640,25 @@ export class AppMenuBar {
 }
 ```
 
+## Translated text
+
+`injectText(() => source, () => fallback?)` is a signal of a text reference in
+the window's language, and the `runicText` pipe does the same in templates; both
+follow a language switch. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`injectWindowLocale()` reads the window's locale. The pipe formats again only
+when its value, fallback or the language changed. Under server rendering, call
+`configureTranslatedText` behind `isPlatformBrowser`, or render on the server
+with `resolveTextReference` and the request's locale.
+
+```ts
+@Component({
+  imports: [RunicTextPipe],
+  template: `<p>{{ view.state()?.status | runicText }}</p>
+    @for (error of view.state()?.validation.errors; track $index) { <li>{{ error.text | runicText: error.message }}</li> }`,
+})
+```
+
 ## Errors
 
 The `error()` signal of `injectView` and of a command or operation is typed
@@ -693,6 +732,46 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
+## View requests
+
+A `ViewRequest<T>` property of the ViewModel asks the View for a one-way
+presentation action, such as focusing a field or showing a toast, and is
+`client.requests.<name>` on the generated client. Register the page's
+handler in an `effect`: `handle((input, { signal }) => …)` returns the function
+that removes it, so pass that to `onCleanup`, and Angular removes the handler
+when the client changes or the component is destroyed:
+
+```ts
+import { Component, effect, ElementRef, input, viewChild } from "@angular/core";
+import { injectView } from "@runic-artifex/angular";
+import type { EditPageReference } from "./generated/edit";
+
+@Component({ selector: "edit-page", template: `<input #name>` })
+export class EditPage {
+  readonly page = input.required<EditPageReference>();
+  readonly view = injectView(this.page);
+  readonly name = viewChild<ElementRef<HTMLInputElement>>("name");
+
+  constructor() {
+    effect(onCleanup => {
+      const remove = this.view.client()?.requests.focus.handle(({ member }) => {
+        if (member === "name") this.name()?.nativeElement.focus();
+      });
+      if (remove) onCleanup(remove);
+    });
+  }
+}
+```
+
+`input` is typed from the request's `ViewRequest<T>`. The handler runs once
+the page painted the state the request was raised with, so the field of that
+state is rendered; `signal` aborts when the handler is replaced or removed, the
+client is disposed or the connection is lost. A request is never replayed: one
+raised before the effect ran, or while the page is disconnected, is not
+delivered later. See [View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests) for the rules, and in a frontend
+test raise one with the generated mock's `requests.<name>.raise(input)` (the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing)).
+
 ## Collection viewports
 
 `injectCollectionViewport(element, options)` follows a fixed-row-height scroll
@@ -724,6 +803,19 @@ export class RowsPage {
     });
   }
 }
+```
+
+## Query collections
+
+`injectQueryCollection(element, collection, options)` follows a scroll container for a
+[query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it loads the rows the container shows,
+with placeholders until they arrive, and lays them out with variable heights. `viewport` is a signal of the
+`QueryViewport` (`items` with `top` and `size`, `totalSize`, `total`, `query`, `loading`, `error`); `observe(element,
+index)` measures a rendered row, and `scrollToKey`, `scrollToIndex`, `setQuery` and `retry` act on the collection.
+
+```ts
+readonly list = injectQueryCollection(viewChild<ElementRef<HTMLElement>>("scroller"),
+  () => this.view.client()?.queries.rows, () => ({ estimateSize: 32 }));
 ```
 
 ## Back and the URL

@@ -50,12 +50,18 @@ internal sealed class BridgeRequestEnvelope : IDisposable
 
     // The request kinds of Views routes. hello and receive belong to the connection, and reserved routes (runic.*)
     // define their own kinds.
+    internal const int MaximumFieldPathSegments = 64;
+    internal const int MaximumFieldPathSegmentLength = 2_048;
+
     internal static bool IsViewKind(string kind) => kind switch
     {
         "open" or "snapshot" or "close" or "set" or "write" or "command" or "can" or "start" or "status" or "watch"
-            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "region" => true,
-        _ => false,
+            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "view-requests" or "region" => true,
+        _ => IsQueryKind(kind),
     };
+
+    // The request kinds of query-collections/1.
+    internal static bool IsQueryKind(string kind) => kind is "query-rows" or "query-set" or "query-index";
 
     // The requests that observe or cancel an operation by its identity.
     internal static bool IsOperationObservation(string kind) =>
@@ -122,6 +128,10 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                         ? $"The navigation path is longer than {MaximumNavigationPath} characters." : null),
                     _ => "The navigation request's action is not back or open.",
                 };
+            // flush-reply (field-flush/1): the id of the flush it answers.
+            case "flush-reply":
+                return root.TryGetProperty("id", out var flushId) && flushId.ValueKind == JsonValueKind.String
+                    && IsIdentifier(flushId.GetString()!) ? null : "The flush-reply's id is not an identifier.";
         }
 
         if (root.TryGetProperty("route", out var routeElement))
@@ -130,6 +140,8 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return "The request's route is not a route name.";
             Route = routeElement.GetString();
         }
+        // client-error (client-errors/1): a page's error report, without a route of its own.
+        if (Kind == "client-error") return BridgeClientErrors.Check(root);
         // presented (presented/1): the revision a page painted of a route.
         if (Kind == "presented")
             return Route is null ? "The request has no route." : Integer(root, "revision", minimum: 0);
@@ -184,6 +196,21 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                     ?? Integer(root, "generation", minimum: 0)
                     ?? (root.TryGetProperty("handlers", out var registered)
                         ? Handlers(registered) : "The request has no handlers.");
+            case "view-requests":
+                return Identifier(root, "presentation")
+                    ?? Integer(root, "generation", minimum: 1)
+                    ?? (root.TryGetProperty("requests", out var requests)
+                        ? requests.ValueKind == JsonValueKind.Array && requests.GetArrayLength() > MaximumViewRequests
+                            ? $"The request lists more than {MaximumViewRequests} view requests." : Handlers(requests)
+                        : "The request has no requests.");
+            // query-collections/1 (specs/application/README.md, "Query collections").
+            case "query-rows":
+                return ReadMember(root) ?? Integer(root, "start", minimum: 0) ?? Integer(root, "count", minimum: 0);
+            case "query-set":
+                return ReadMember(root) ?? (root.TryGetProperty("query", out var query) && query.ValueKind == JsonValueKind.Object
+                    ? null : "The request has no query object.");
+            case "query-index":
+                return ReadMember(root) ?? String(root, "key");
             case "interaction-reply":
                 return Identifier(root, "presentation")
                     ?? Identifier(root, "requestId")
@@ -234,6 +261,16 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     // (text-splice/1): exactly one of value and splice, and no expectedValue with a splice.
     private static string? WriteValue(JsonElement root)
     {
+        // field-paths/1: a path below the member, of 1 to 64 nonempty strings (row keys and member wire names).
+        if (root.TryGetProperty("path", out var path))
+        {
+            if (path.ValueKind != JsonValueKind.Array || path.GetArrayLength() is < 1 or > MaximumFieldPathSegments)
+                return $"The request's path is not an array of 1 to {MaximumFieldPathSegments} segments.";
+            foreach (var segment in path.EnumerateArray())
+                if (segment.ValueKind != JsonValueKind.String || segment.GetString() is not { Length: > 0 and <= MaximumFieldPathSegmentLength })
+                    return $"The request's path segments are not nonempty strings of at most {MaximumFieldPathSegmentLength} characters.";
+            if (root.TryGetProperty("splice", out _)) return "A write with a path has no splice.";
+        }
         if (!root.TryGetProperty("splice", out var splice)) return Present(root, "expectedValue") ?? Present(root, "value");
         if (root.TryGetProperty("value", out _)) return "The request has both a value and a splice.";
         if (root.TryGetProperty("expectedValue", out _)) return "The request has both an expectedValue and a splice.";
@@ -245,6 +282,9 @@ internal sealed class BridgeRequestEnvelope : IDisposable
             ?? Integer(splice, "delete", minimum: 0)
             ?? String(splice, "text");
     }
+
+    // view-requests/1: the view requests one registration lists.
+    internal const int MaximumViewRequests = 64;
 
     private static string? Handlers(JsonElement handlers)
     {

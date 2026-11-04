@@ -18,7 +18,7 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //
 // - CreateWindow creates the window of one scenario: a WindowContentSession on settings.Transport with
 //   settings.TimeProvider and settings.MaximumInputBytes, failure detail off (IncludeFailureDetail = false), whose root
-//   View is `view` ("list", "log", "notes", "form", "wizard" or "tabs"), serving the route of that name, with the values of arrange.model
+//   View is `view` ("list", "log", "notes", "form", "wizard", "invoice" or "tabs"), serving the route of that name, with the values of arrange.model
 //   (generators expanded; members it does not list keep their defaults). The notes View also serves the detail View in
 //   its detail slot with the content id 0123456789abcdef0123456789abcdef.
 // - IConformanceWindow.MutateAsync applies the mutations of one mutate step to the root View's model, as one
@@ -48,6 +48,9 @@ internal interface IConformanceWindow : IDisposable
     Task<bool> Wait(string id);
 
     Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout);
+
+    // field-flush/1: asks the pages to write their field drafts, as before a departure guard; whether every page answered.
+    Task<bool> FlushFieldsAsync();
 }
 
 // What the runner gives the window: its transport (the ScenarioTransport), its virtual clock and its input limit
@@ -65,6 +68,8 @@ internal static class ConformanceViews
 internal sealed class DotNetConformanceViews : IConformanceViews
 {
     internal const string DetailId = "0123456789abcdef0123456789abcdef";
+    // The origin of the windows' blob URLs and upload endpoint (blobs/1).
+    internal static readonly Uri BlobOrigin = new("http://conformance.test/");
 
     public IConformanceWindow CreateWindow(string view, JsonObject model, ConformanceWindowSettings settings)
     {
@@ -83,6 +88,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                 ? () => Interlocked.Increment(ref ids).ToString("x32", CultureInfo.InvariantCulture)
                 : () => Interlocked.Increment(ref ids) == 1 ? DetailId : $"id{ids}",
         });
+        // blobs/1: the window serves its blobs and uploads below the corpus's origin.
+        BridgeDispatcher.For(settings.Transport).Blobs.Attach(BridgeBlobEndpoint.Below(static () => BlobOrigin));
         try
         {
             return view switch
@@ -97,9 +104,15 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new FormBridge(settings.Transport, vm, content)),
                 "wizard" => new Window<WizardViewModel>(session, WizardViewModel.Create(model),
                     (vm, content) => new WizardBridge(settings.Transport, vm, content)),
+                "invoice" => new Window<InvoiceViewModel>(session, InvoiceViewModel.Create(model),
+                    (vm, content) => new InvoiceBridge(settings.Transport, vm, content)),
                 "tabs" => new Window<TabsViewModel>(session,
                     RunicModelTurns.Run(session.ModelContext!, () => TabsViewModel.Create(model, session.ModelContext!)),
                     (vm, content) => new TabsAttachment(new TabsBridge(settings.Transport, vm, content), vm)),
+                "catalog" => new Window<CatalogConformanceViewModel>(session, CatalogConformanceViewModel.Create(model, session.ModelContext),
+                    (vm, content) => new CatalogConformanceBridge(settings.Transport, vm, content)),
+                "files" => new Window<FilesViewModel>(session, FilesViewModel.Create(model),
+                    (vm, content) => new FilesBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }
@@ -164,6 +177,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         public Task<bool> Wait(string id) => _waits[id];
 
         public Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout) => _session.DrainAsync(timeout).AsTask();
+
+        public Task<bool> FlushFieldsAsync() => _session.FlushFieldsAsync();
 
         public void Dispose()
         {
@@ -546,8 +561,12 @@ internal sealed partial class NotesViewModel : ConformanceModel
             input => Rows.Add(new((Rows.Count == 0 ? 0 : Rows.Max(row => row.Id)) + 1, (string)input!)));
         RemoveRowCommand = new(_ => true, row => Rows.Remove((ConformanceRow)row!));
         ClearCommand = new(_ => Rows.Count > 0, _ => Rows.ResetTo([]));
-        // Appends "!" to the title without announcing the change.
-        TouchCommand = new(_ => true, _ => _title += "!");
+        // Appends "!" to the title without announcing the change, then asks the page to focus it.
+        TouchCommand = new(_ => true, _ =>
+        {
+            _title += "!";
+            Focus.Raise(new NotesFocus("title"));
+        });
         SaveCommand = new(_ => true, _ =>
         {
             if (Title.Length == 0) throw new RunicFailureException<NotesSaveFailure>(new NotesSaveFailure.TitleRequired());
@@ -651,6 +670,7 @@ internal sealed partial class NotesViewModel : ConformanceModel
             case "assign": Assign(mutation["member"]!.GetValue<string>(), mutation["value"]); break;
             case "progress": OnProgress(mutation); break;
             case "finish": OnFinish(mutation); break;
+            case "raise": OnRaise(mutation); break;
             default: throw new NotSupportedException($"The notes View has no mutation {mutation.ToJsonString()}.");
         }
     }
@@ -676,6 +696,7 @@ internal sealed partial class NotesViewModel : ConformanceModel
     private partial Task ConfirmClearAsync(CancellationToken token);
     partial void OnProgress(JsonObject mutation);
     partial void OnFinish(JsonObject mutation);
+    partial void OnRaise(JsonObject mutation);
     private partial JsonNode? ProvideOperationId(string id);
     internal static partial BridgeInteractionDescriptor<NotesViewModel>[]? CreateInteractions();
 }

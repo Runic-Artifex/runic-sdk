@@ -419,15 +419,17 @@ internal static class Gtk4Runtime
 
 [SupportedOSPlatform("linux")]
 internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost,
-    IDesktopPlacementWindowHost
+    IDesktopPlacementWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
-        DesktopWindowCapabilities.FileDrag;
+        DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
+        DesktopWindowCapabilities.Ownership;
     private DesktopWindowState? _state;
+    private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
     // when a hidden window is first shown, and the X event connection that reports moves.
     private (int X, int Y)? _normalPosition;
@@ -473,6 +475,57 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    public event EventHandler? ActivityChanged;
+
+    // GTK's application-wide prefer-dark setting, or libadwaita's style manager (GtkColorScheme): every window follows.
+    public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
+        new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
+        {
+            GetWindow();
+            Runic.Desktop.Internal.GtkColorScheme.Apply(GtkSettingsGetDefault(), colorScheme, GtkSettingsResetProperty.Value);
+        }, cancellationToken));
+
+    // GTK thread only: after the window gained or lost the focus (notify::is-active), was shown or hidden
+    // (notify::visible), or its surface was minimized, restored or suspended (GdkToplevel's notify::state). Wayland
+    // compositors report no minimized state; GTK 4.12 and later report a window the compositor stopped showing, such
+    // as a minimized one, as suspended, which counts as not visible here.
+    private void UpdateActivity()
+    {
+        if (_window is not { } window || !IsOpen) return;
+        var surface = window.GetSurface();
+        var state = surface is null ? 0 : ToplevelGetState(surface.Handle.DangerousGetHandle());
+        var minimized = (state & GdkToplevelStateMinimized) != 0;
+        var hidden = minimized || (state & GdkToplevelStateSuspended) != 0;
+        // A hidden window is never active: GTK can keep is-active set on a window it just unmapped.
+        var visible = !hidden && window.GetVisible();
+        var activity = new DesktopWindowActivity
+        {
+            IsActive = visible && window.IsActive,
+            IsMinimized = minimized,
+            IsVisible = visible,
+        };
+        if (Equals(activity, Volatile.Read(ref _activity))) return;
+        Volatile.Write(ref _activity, activity);
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private const int GdkToplevelStateMinimized = 1 << 0;
+    // GTK 4.12.
+    private const int GdkToplevelStateSuspended = 1 << 16;
+
+    // GTK 4's gtk_settings_reset_property, for GtkColorScheme.
+    private static readonly Lazy<nint> GtkSettingsResetProperty = new(static () =>
+        System.Runtime.InteropServices.NativeLibrary.TryLoad("libgtk-4.so.1", out var gtk)
+        && System.Runtime.InteropServices.NativeLibrary.TryGetExport(gtk, "gtk_settings_reset_property", out var reset) ? reset : 0);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gdk_toplevel_get_state")]
+    private static partial int ToplevelGetState(nint toplevel);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_settings_get_default")]
+    private static partial nint GtkSettingsGetDefault();
 
     public bool SupportsCloseConfirmation => true;
 
@@ -645,6 +698,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // one keeps the position as the bounds it restores to, which a move would replace.
     private void Present(Gtk.Window window)
     {
+        try { PresentCore(window); }
+        finally { BlockOwner(window.Handle.DangerousGetHandle()); }
+    }
+
+    private void PresentCore(Gtk.Window window)
+    {
         if (_pendingPosition is not { } position)
         {
             window.Present();
@@ -686,6 +745,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             }
             else
             {
+                // A hidden window-modal window lets its owner take input again, as a macOS sheet that ended does.
+                UnblockOwner();
                 GetWindow().Hide();
             }
         }, cancellationToken));
@@ -890,6 +951,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 // Before presenting, so the window maps maximized and keeps the restored default size.
                 window.Maximize();
             }
+            ApplyOwner(window.Handle.DangerousGetHandle(), options);
             if (!options.Hidden)
             {
                 Present(window);
@@ -915,6 +977,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             registered = true;
             Volatile.Write(ref _isOpen, 1);
             UpdateState();
+            UpdateActivity();
             // The window is realized, also when hidden, so it has its X11 surface.
             StartGlobalMenu(options, window);
         }
@@ -1039,6 +1102,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         if (Volatile.Read(ref _forceClose) != 0)
         {
             return false;
+        }
+        // A window that a window-modal window blocks ignores the window manager's close, as a disabled Win32 window and a
+        // macOS window with a sheet do: the user answers the modal window first.
+        if (_window is { } own && ModalOwners.Count(own.Handle.DangerousGetHandle()) > 0)
+        {
+            return true;
         }
 
         if (_options?.CloseRequested is { } closeRequested)
@@ -1738,6 +1807,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 try
                 {
                     UpdateState();
+                    UpdateActivity();
                 }
                 catch
                 {
@@ -1754,7 +1824,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         internal static void Connect(Gtk4WindowHost host, Gtk.ApplicationWindow window)
         {
             var native = window.Handle.DangerousGetHandle();
-            foreach (var property in (string[])["default-width", "default-height", "maximized", "fullscreened"])
+            foreach (var property in (string[])["default-width", "default-height", "maximized", "fullscreened", "is-active", "visible"])
             {
                 ConnectNotify(host, native, property);
             }
@@ -1764,6 +1834,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 var nativeSurface = surface.Handle.DangerousGetHandle();
                 ConnectNotify(host, nativeSurface, "width");
                 ConnectNotify(host, nativeSurface, "height");
+                // GdkToplevel's state: minimized and restored.
+                ConnectNotify(host, nativeSurface, "state");
             }
         }
 
@@ -1801,8 +1873,70 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     private void OnDestroyed()
     {
+        ReleaseOwner();
         QueueCleanupAfterDestroy();
     }
+
+    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A shown window-modal window makes the owner
+    // insensitive (BlockOwner) until the last window modal to it closed or was hidden; gtk_window_set_modal would block
+    // every window of the application.
+    private void ApplyOwner(nint window, DesktopWindowHostOptions options)
+    {
+        if (options.OwnerHandle == 0) return;
+        GtkWindowSetTransientFor(window, options.OwnerHandle);
+        if (options.Modality != DesktopWindowModality.Window) return;
+        // Held until the window closed, so the owner can be made sensitive again also after it was destroyed.
+        _ = GObjectRef(options.OwnerHandle);
+        _modalOwner = options.OwnerHandle;
+    }
+
+    // The owner of a window-modal window, referenced while it is open, and whether it blocks the owner now.
+    private nint _modalOwner;
+    private bool _blocking;
+
+    // GTK thread: the window is shown.
+    private void BlockOwner(nint window)
+    {
+        if (_modalOwner == 0 || _blocking || window == 0) return;
+        _blocking = true;
+        if (ModalOwners.Acquire(_modalOwner)) GtkWidgetSetSensitive(_modalOwner, 0);
+    }
+
+    // GTK thread.
+    private void UnblockOwner()
+    {
+        if (!_blocking) return;
+        _blocking = false;
+        if (ModalOwners.Release(_modalOwner)) GtkWidgetSetSensitive(_modalOwner, 1);
+    }
+
+    // GTK thread: the window closed, so the owner it blocked takes input again.
+    private void ReleaseOwner()
+    {
+        var owner = _modalOwner;
+        if (owner == 0) return;
+        UnblockOwner();
+        _modalOwner = 0;
+        GObjectUnref(owner);
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_window_set_transient_for")]
+    private static partial void GtkWindowSetTransientFor(nint window, nint parent);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_set_sensitive")]
+    private static partial void GtkWidgetSetSensitive(nint widget, int sensitive);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_sensitive")]
+    private static partial int GtkWidgetGetSensitive(nint widget);
+
+    // The owner's sensitivity, for the GTK 4 smoke. GTK thread.
+    internal static bool IsSensitive(nint widget) => GtkWidgetGetSensitive(widget) != 0;
+
+    [System.Runtime.InteropServices.LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_ref")]
+    private static partial nint GObjectRef(nint instance);
+
+    [System.Runtime.InteropServices.LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")]
+    private static partial void GObjectUnref(nint instance);
 
     // close-request and destroy on the window, connected through GObject rather than as GirCore events: a GirCore
     // handler that has run keeps a reference to the window, so a window closed through its close request (the title
@@ -1886,6 +2020,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     {
         var window = GetWindow();
         var webView = GetWebView();
+        // Before the window goes, so the owner takes input again first.
+        ReleaseOwner();
         window.Destroy();
         CleanupNative(window, webView);
     }
@@ -1910,6 +2046,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             return;
         }
+        ReleaseOwner();
         ReleaseDragOut();
         _drops?.Dispose();
         Gtk4FileDrops.Disconnect(this);

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Runic.Application.Views;
 
 namespace Runic.Application.Testing;
@@ -40,6 +41,9 @@ public sealed record RunicBridgeMessage(string Json, string? ConnectionKey)
 /// </remarks>
 public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDisposable
 {
+    // RunicTestWindow: why the page takes no input now, such as a window-modal Window that blocks it, or null.
+    internal Func<string?>? InputBlocked { get; set; }
+
     /// <summary>The connection key of requests that name none.</summary>
     public const string DefaultConnectionKey = "connection-1";
 
@@ -80,6 +84,15 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// The field drafts of the test's pages (<c>field-flush/1</c>). When it is set before a connection's first request,
+    /// the connection lists <c>field-flush/1</c> in its hello and answers each <c>flush</c> push as a page does: it
+    /// awaits this function with the connection's key, in which the test writes what the page would (for example
+    /// <c>driver.Set(vm =&gt; vm.Title, "typed")</c>), and then sends <c>flush-reply</c>. A departure that the window
+    /// starts, such as a navigation with a departure guard or <c>RequestCloseAsync</c>, waits for it up to 1 second.
+    /// </summary>
+    public Func<string, ValueTask>? FieldFlush { get; set; }
+
     /// <summary>Records a push to one open connection.</summary>
     public ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
@@ -87,8 +100,29 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
             if (_disposed || !_connections.Contains(connectionKey)) return ValueTask.FromResult(false);
-        Record(new(Encoding.UTF8.GetString(message.Span), connectionKey));
+        var json = Encoding.UTF8.GetString(message.Span);
+        Record(new(json, connectionKey));
+        if (FieldFlush is { } flush && RunicViewPublication.HeaderOf(json).Kind == "flush") _ = AnswerFlushAsync(flush, json, connectionKey);
         return ValueTask.FromResult(true);
+    }
+
+    // field-flush/1: the page writes its drafts, then answers the flush.
+    private async Task AnswerFlushAsync(Func<string, ValueTask> flush, string json, string connectionKey)
+    {
+        await Task.Yield();
+        string id;
+        using (var push = JsonDocument.Parse(json)) id = push.RootElement.GetProperty("id").GetString()!;
+        try { await flush(connectionKey).ConfigureAwait(false); }
+        finally
+        {
+            await RequestAsync(RunicJson.Write(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("kind", "flush-reply");
+                writer.WriteString("id", id);
+                writer.WriteEndObject();
+            }), connectionKey, null, CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Sends one request on a connection and blocks the calling thread until its reply.</summary>
@@ -175,6 +209,25 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         get { lock (_gate) return _messaged.Task; }
     }
 
+    // Test presentations that answer the pushes to their connection (RunicTestPresentation).
+    private readonly List<Action<RunicBridgeMessage>> _pushListeners = [];
+    private Task _listened = Task.CompletedTask;
+
+    // Calls listener with each push to one connection, on the thread pool, until the lease is disposed.
+    internal IDisposable OnTargetedPush(Action<RunicBridgeMessage> listener)
+    {
+        lock (_gate) _pushListeners.Add(listener);
+        return new PushListenerLease(this, listener);
+    }
+
+    private sealed class PushListenerLease(InMemoryBridgeTransport owner, Action<RunicBridgeMessage> listener) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (owner._gate) owner._pushListeners.Remove(listener);
+        }
+    }
+
     private readonly Dictionary<(string Connection, string Route, string Member), int> _edits = [];
 
     // The next edit number of a member on a connection, as a generated setter numbers its edits.
@@ -232,10 +285,17 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteString("name", "Runic.Application.Testing");
                 writer.WriteString("version", "1.0.0");
                 writer.WriteEndObject();
-                // The drivers' region requests (SelectRegionAsync, CloseRegionAsync) need region-collections/1. The
-                // feature adds a request kind only, so the window's other messages are those of the base protocol.
+                // Test presentations take view requests (RunicTestPresentation); a connection that registers none
+                // receives none, so the feature changes nothing else. The drivers' region requests (SelectRegionAsync,
+                // CloseRegionAsync) need region-collections/1, which adds a request kind only, and the request kinds of
+                // query collections (RunicViewDriver.QueryRowsAsync) need query-collections/1; no feature changes a push.
                 writer.WriteStartArray("features");
+                writer.WriteStringValue("view-requests/1");
                 writer.WriteStringValue("region-collections/1");
+                writer.WriteStringValue("query-collections/1");
+                // field-paths/1: RunicViewDriver.WritePath writes field paths below a member.
+                writer.WriteStringValue("field-paths/1");
+                if (FieldFlush is not null) writer.WriteStringValue("field-flush/1");
                 // The host's Back and route path requests (NavigateBackAsync, OpenNavigationPathAsync). A window without a
                 // path region pushes nothing for it.
                 writer.WriteStringValue("navigation-path/1");
@@ -301,6 +361,14 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
             }
             _messaged.TrySetResult();
             _messaged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            // The window pushes while it holds its own locks: listeners, which may answer with a request, run later.
+            if (message.ConnectionKey is not null && _pushListeners.Count > 0)
+            {
+                Action<RunicBridgeMessage>[] listeners = [.. _pushListeners];
+                // In push order, one at a time.
+                _listened = _listened.ContinueWith(_ => { foreach (var listener in listeners) listener(message); },
+                    CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            }
         }
     }
 

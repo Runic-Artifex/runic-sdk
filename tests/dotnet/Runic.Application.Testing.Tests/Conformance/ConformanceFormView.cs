@@ -10,17 +10,30 @@ namespace Runic.Application.Testing.Tests.Conformance;
 // The form View (specs/application/conformance/README.md, "Test Views"): a ReactiveValidationObject with a rule of
 // name and the approval rule, which names no member. The ValidationContext is read and observed as the generated
 // Bridge of such a ViewModel does.
-internal sealed class FormViewModel : ReactiveValidationObject, IConformanceModel
+internal sealed class FormViewModel : ReactiveValidationObject, IConformanceModel, IRunicPendingValidation
 {
     internal const string NameTooLong = "Name must be at most 8 characters.";
     internal const string ApprovalRequired = "Approval is required.";
+    // translation-text/1: the text reference of the name rule's message.
+    internal const string NameTooLongText = """{"version":2,"catalog":"conformance","contractFingerprint":"sha256:0000000000000000000000000000000000000000000000000000000000000000","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}""";
 
-    private readonly ValidationSignal _shortName = new(true);
+    private readonly NameRule _shortName = new();
     private readonly ValidationSignal _approval = new(true);
+    // validation-pending/1: the asynchronous check of name, which check mutations start and end.
+    private readonly RunicPendingValidation _pending = new();
+    private IDisposable? _nameCheck;
+
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => _pending.PendingMemberPaths;
+
+    event EventHandler? IRunicPendingValidation.PendingChanged
+    {
+        add => _pending.PendingChanged += value;
+        remove => _pending.PendingChanged -= value;
+    }
 
     internal FormViewModel()
     {
-        this.ValidationRule(vm => vm.Name, _shortName, NameTooLong);
+        this.ValidationRule(vm => vm.Name, _shortName);
         this.ValidationRule(_approval, ApprovalRequired);
     }
 
@@ -30,7 +43,7 @@ internal sealed class FormViewModel : ReactiveValidationObject, IConformanceMode
         set
         {
             this.RaiseAndSetIfChanged(ref field, value);
-            _shortName.Value = value.Length <= 8;
+            _shortName.Holds = value.Length <= 8;
         }
     } = "";
 
@@ -56,6 +69,14 @@ internal sealed class FormViewModel : ReactiveValidationObject, IConformanceMode
             case "rule" when mutation["rule"]!.GetValue<string>() == "approval":
                 _approval.Value = mutation["holds"]!.GetValue<bool>();
                 break;
+            case "check" when mutation["member"]!.GetValue<string>() == "name":
+                if (mutation["running"]!.GetValue<bool>()) _nameCheck ??= _pending.Begin(nameof(Name));
+                else
+                {
+                    _nameCheck?.Dispose();
+                    _nameCheck = null;
+                }
+                break;
             default:
                 throw new NotSupportedException($"The form View has no mutation {mutation.ToJsonString()}.");
         }
@@ -79,9 +100,55 @@ internal sealed class FormViewModel : ReactiveValidationObject, IConformanceMode
             if (validation.IsValid) continue;
             var properties = validation is ReactiveUI.Validation.Components.Abstractions.IValidatesProperties { PropertyCount: > 0 } named
                 ? named.Properties.ToArray() : null;
-            errors.Add(new(validation.Text?.ToSingleLine(" ") ?? string.Empty, properties));
+            var message = validation.Text?.ToSingleLine(" ") ?? string.Empty;
+            var text = validation.Text is IRunicTextReferenceSource { Text: { } carried } ? carried : null;
+            errors.Add(text is null ? new System.ComponentModel.DataAnnotations.ValidationResult(message, properties) : new RunicValidationResult(message, text, properties));
         }
         return errors;
+    }
+
+    // The name rule: while it does not hold, its text is the message with its text reference.
+    private sealed class NameRule : IObservable<ReactiveUI.Validation.States.IValidationState>
+    {
+        private static readonly ReactiveUI.Validation.States.IValidationState Invalid =
+            new ReactiveUI.Validation.States.ValidationState(false, new ReferenceText());
+        private readonly List<IObserver<ReactiveUI.Validation.States.IValidationState>> _observers = [];
+        private bool _holds = true;
+
+        internal bool Holds
+        {
+            set
+            {
+                if (_holds == value) return;
+                _holds = value;
+                foreach (var observer in _observers.ToArray()) observer.OnNext(State);
+            }
+        }
+
+        private ReactiveUI.Validation.States.IValidationState State =>
+            _holds ? ReactiveUI.Validation.States.ValidationState.Valid : Invalid;
+
+        public IDisposable Subscribe(IObserver<ReactiveUI.Validation.States.IValidationState> observer)
+        {
+            _observers.Add(observer);
+            observer.OnNext(State);
+            return new Subscription(() => _observers.Remove(observer));
+        }
+
+        private sealed class Subscription(Action dispose) : IDisposable
+        {
+            public void Dispose() => dispose();
+        }
+    }
+
+    private sealed class ReferenceText : ReactiveUI.Validation.Collections.IValidationText, IRunicTextReferenceSource
+    {
+        public RunicTextReference? Text { get; } = RunicTextReference.Parse(NameTooLongText);
+        public int Count => 1;
+        public string this[int index] => index == 0 ? NameTooLong : throw new ArgumentOutOfRangeException(nameof(index));
+        public IEnumerator<string> GetEnumerator() { yield return NameTooLong; }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        public string ToSingleLine(string? separator) => NameTooLong;
     }
 
     private static IDisposable? Observe(object owner, Action changed) =>

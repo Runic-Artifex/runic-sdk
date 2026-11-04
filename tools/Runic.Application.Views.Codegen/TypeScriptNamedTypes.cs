@@ -151,9 +151,47 @@ internal static partial class TypeScriptNamedTypes
         foreach (var entry in Entries.OrderBy(entry => entry.Name, StringComparer.Ordinal))
         {
             source.Append(Resolve(entry.Definition!));
+            if (ValuesName(entry) is { } values)
+            {
+                // C8: the names .NET writes, in declaration order: the first declared name of each value, as the enum
+                // codec and the field descriptors' `choices` do. Aliases stay readable through the type.
+                var written = new HashSet<object>();
+                var names = entry.Node.EnumCases.Where(@case => written.Add(@case.Field.GetRawConstantValue()!))
+                    .Select(@case => JsonSerializer.Serialize(@case.WireName));
+                source.AppendLine($"/** The values of {{@link {entry.Name}}} that .NET writes, in declaration order. */");
+                source.AppendLine($"export const {values} = [{string.Join(", ", names)}] as const satisfies readonly {entry.Name}[];");
+            }
             source.AppendLine();
         }
-        return source.ToString().TrimEnd() + Environment.NewLine;
+        var module = source.ToString().TrimEnd() + Environment.NewLine;
+        // A text reference member is typed by the decoder module (translation-text/1).
+        return module.Contains("bridgeWire.", StringComparison.Ordinal)
+            ? "import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";" + Environment.NewLine + Environment.NewLine + module
+            : module;
+    }
+
+    /// <summary>
+    /// The name of an enum's value list (<c>{Enum}Values</c>), or <see langword="null"/> when the enum has no cases or
+    /// another named type already has that name.
+    /// </summary>
+    private static string? ValuesName(Entry entry)
+    {
+        if (entry.Node.Kind != BridgeWireKind.Enum || entry.Node.EnumCases.Count == 0 || entry.Name is null) return null;
+        var name = entry.Name + "Values";
+        return Entries.Any(other => other.Name == name) ? null : name;
+    }
+
+    /// <summary>
+    /// The enum value lists of the named types a module text references, which the module re-exports, except names
+    /// the module declares itself.
+    /// </summary>
+    internal static IReadOnlyList<string> UsedValues(string text)
+    {
+        var declared = DeclaredNames(text).ToHashSet(StringComparer.Ordinal);
+        return Placeholder().Matches(text)
+            .Select(match => ValuesName(Entries[int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)]))
+            .OfType<string>().Where(name => !declared.Contains(name))
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
     }
 
     private static string Candidate(Entry entry, int level)

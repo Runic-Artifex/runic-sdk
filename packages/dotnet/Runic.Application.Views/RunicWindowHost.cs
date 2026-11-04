@@ -76,8 +76,17 @@ public static class RunicWindowHostExtensions
         where TWindow : class, IRunicWindow, new()
     {
         ArgumentNullException.ThrowIfNull(host);
+        return await OpenAsync<TWindow>(host, options, RunicWindowOpenRequest.Plain, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Every open: the options, and what the open hands to the Window's scope.
+    internal static async ValueTask<TWindow> OpenAsync<TWindow>(IRunicWindowHost host, RunicWindowOptions? options,
+        RunicWindowOpenRequest request, CancellationToken cancellationToken)
+        where TWindow : class, IRunicWindow, new()
+    {
+        ArgumentNullException.ThrowIfNull(host);
         var window = new TWindow();
-        await window.OpenAsync(host, options ?? RunicWindowOptions.Default, null, cancellationToken).ConfigureAwait(false);
+        await window.OpenAsync(host, options ?? RunicWindowOptions.Default, request, cancellationToken).ConfigureAwait(false);
         return window;
     }
 
@@ -111,9 +120,8 @@ public static class RunicWindowHostExtensions
     {
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(parameter);
-        var window = new TWindow();
-        await window.OpenAsync(host, options ?? RunicWindowOptions.Default, parameter, cancellationToken).ConfigureAwait(false);
-        return window;
+        return await OpenAsync<TWindow>(host, options, new RunicWindowOpenRequest(parameter, null, null), cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -172,6 +180,49 @@ public sealed record RunicWindowOptions
     public int? MaximumInputBytes { get; init; }
 
     /// <summary>
+    /// The open Window this Window belongs to, or <see langword="null"/>, the default, for a Window of its own. A
+    /// ViewModel names its own Window with <see cref="IRunicWindowContext.Window"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On Runic Desktop an owned Window stays above its owner, has no taskbar button of its own, and hides and shows with
+    /// it. A guarded owner's close asks its owned Windows' guards first, innermost first; any other close of the owner
+    /// closes them without asking. See <c>DesktopWindowOptions.Owner</c>. A host that cannot own
+    /// Windows, such as CS-WebUI, a browser fallback or serve-only mode, opens it on its own and logs
+    /// <c>WindowOwnerIgnored</c> (event 1180); the owner's <see cref="IRunicWindowPresentation.Features"/> include
+    /// <see cref="RunicWindowPresentationFeatures.OwnedWindows"/> where it can. The owner must be open and opened by the
+    /// same host.
+    /// </para>
+    /// </remarks>
+    public IRunicWindow? Owner { get; init; }
+
+    /// <summary>
+    /// Whether the Window blocks its <see cref="Owner"/> while it is open. The default is
+    /// <see cref="RunicWindowModality.None"/>; <see cref="RunicWindowModality.Window"/> needs an <see cref="Owner"/>.
+    /// </summary>
+    /// <remarks>
+    /// A window-modal Window keeps the owner from taking input, and from being closed by the user, while it is shown: on
+    /// Windows the owner is disabled, on macOS the Window is the owner's sheet (a second one is queued until the first
+    /// ends, and a sheet has no close button, so its page needs a Cancel), and on Linux the owner's GTK window is
+    /// insensitive. The application's other Windows
+    /// stay usable. <see cref="IRunicWindowService.ActivateAsync"/> of the owner brings the modal Window forward too.
+    /// </remarks>
+    public RunicWindowModality Modality { get; init; }
+
+    /// <summary>
+    /// The largest file the page may upload to the window (<see cref="WindowContentSessionOptions.MaximumUploadBytes"/>),
+    /// at least 1 KiB. <see langword="null"/>, the default, uses the host's default, or else 256 MiB.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
+    /// The most bytes that the window's unclaimed uploads may take at once
+    /// (<see cref="WindowContentSessionOptions.MaximumWindowUploadBytes"/>), at least 1 KiB. <see langword="null"/>, the
+    /// default, is 1 GiB.
+    /// </summary>
+    public long? MaximumWindowUploadBytes { get; init; }
+
+    /// <summary>
     /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
     /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
     /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
@@ -209,6 +260,12 @@ public sealed record RunicWindowOptions
         if (Width is <= 0) throw new ArgumentOutOfRangeException(nameof(Width), Width, "The width must be positive.");
         if (Height is <= 0) throw new ArgumentOutOfRangeException(nameof(Height), Height, "The height must be positive.");
         BridgeInputLimit.ThrowIfInvalid(MaximumInputBytes, nameof(MaximumInputBytes));
+        if (!Enum.IsDefined(Modality))
+            throw new ArgumentOutOfRangeException(nameof(Modality), Modality, "The modality is not defined.");
+        if (Modality != RunicWindowModality.None && Owner is null)
+            throw new ArgumentException("A window-modal Window needs an Owner: set Owner, or Modality to None.", nameof(Modality));
+        BridgeInputLimit.ResolveUpload(MaximumUploadBytes, nameof(MaximumUploadBytes));
+        BridgeInputLimit.ResolveUpload(MaximumWindowUploadBytes, nameof(MaximumWindowUploadBytes));
     }
 }
 
@@ -233,6 +290,9 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
         _attach = attach;
     }
 
+    // The key of IRunicWindowService.FindOrOpenAsync, for the test host.
+    internal object? Key { get; init; }
+
     /// <summary>The Window's DI scope. The host owns it from <see cref="IRunicWindowHost.OpenAsync{TViewModel}"/> on.</summary>
     public AsyncServiceScope Scope { get; }
 
@@ -254,6 +314,8 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
             ? _attachWithContent(transport, content, ViewModel)
             : _attach!(transport, ViewModel);
         Window.AttachedBridge(content, bridge);
+        // IRunicConnections in this scope follows this Window's page connections.
+        (Scope.ServiceProvider.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(content);
         return bridge;
     }
 
@@ -288,6 +350,38 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
     }
 
     /// <summary>
+    /// Gives the Window's <see cref="IRunicWindowPresentation"/> the host's own: the window's scope and
+    /// <see cref="IRunicWindow.Presentation"/> forward their requests to it from now on, and raise its activity changes
+    /// in the Window's model turns.
+    /// </summary>
+    /// <remarks>
+    /// Call it once the native window exists, after <see cref="AttachBridge"/>. A host without a native window, such as
+    /// one that only serves the page, does not call it: requests then report
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. The host's presentation may raise its events on any thread.
+    /// </remarks>
+    /// <param name="presentation">The host's presentation of this window.</param>
+    /// <exception cref="InvalidOperationException">The Window already has a presentation.</exception>
+    public void UsePresentation(IRunicWindowPresentation presentation)
+    {
+        ArgumentNullException.ThrowIfNull(presentation);
+        Window.AttachPresentation(presentation);
+    }
+
+    /// <summary>
+    /// Logs <c>WindowOwnerIgnored</c> (event 1180): the host opens the Window without its
+    /// <see cref="RunicWindowOptions.Owner"/>, for <paramref name="reason"/>.
+    /// </summary>
+    /// <param name="reason">Why, as it reads in a sentence, such as <c>CS-WebUI cannot own windows</c>.</param>
+    public void ReportOwnerIgnored(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        if (Options.Owner is not { } owner) return;
+        var logger = Scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(RunicViewsTelemetry.LogCategory)
+            ?? TraceFallbackLogger.Instance;
+        ViewsLog.WindowOwnerIgnored(logger, Window.GetType().Name, owner.GetType().Name, reason);
+    }
+
+    /// <summary>
     /// Logs <c>WindowCloseGuardUnavailable</c> (event 1053): the Window guards its close, but
     /// <paramref name="presentation"/>, such as <c>CS-WebUI</c>, cannot keep its window open, so it opens unguarded.
     /// </summary>
@@ -304,7 +398,7 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
 internal static class RunicWindowOpening
 {
     public static async ValueTask<IBridgeWindow> OpenAsync<TViewModel>(IRunicWindowHost host, RunicWindow<TViewModel> window,
-        RunicWindowOptions options, object? parameter, CancellationToken cancellationToken)
+        RunicWindowOptions options, RunicWindowOpenRequest request, CancellationToken cancellationToken)
         where TViewModel : class
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -334,7 +428,7 @@ internal static class RunicWindowOpening
             // IRunicWindowContext in this scope closes this Window, also from the ViewModel resolved below.
             (scope.ServiceProvider.GetService(typeof(RunicWindowContext)) as RunicWindowContext)?.Bind(window);
             // IRunicWindowParameter<T> in this scope reads the parameter of this open.
-            if (parameter is not null)
+            if (request.Parameter is { } parameter)
             {
                 if (scope.ServiceProvider.GetService(typeof(RunicWindowParameter)) is not RunicWindowParameter slot)
                 {
@@ -343,6 +437,18 @@ internal static class RunicWindowOpening
                     throw new RunicWindowConfigurationException(missing);
                 }
                 slot.Set(parameter);
+            }
+            // IRunicWindowResult<T> in this scope completes this open's result.
+            if (request.Result is { } result)
+            {
+                if (scope.ServiceProvider.GetService(typeof(RunicWindowResultHolder)) is not RunicWindowResultHolder holder)
+                {
+                    var missing = new[] { WindowParameterNotRegistered(result.ResultType) };
+                    Log(services, missing);
+                    throw new RunicWindowConfigurationException(missing);
+                }
+                holder.Set(result);
+                result.Bind(window);
             }
             // The Bridge factories come first, so a missing Bridge constructs no ViewModel. Containers without
             // IServiceProviderIsService are checked here, before the ViewModel and native window.
@@ -359,7 +465,7 @@ internal static class RunicWindowOpening
             }
             var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
             window.DataContext = viewModel;
-            opening = new RunicWindowOpening<TViewModel>(scope, viewModel, window, options, attachWithContent, attach);
+            opening = new RunicWindowOpening<TViewModel>(scope, viewModel, window, options, attachWithContent, attach) { Key = request.Key };
         }
         catch
         {

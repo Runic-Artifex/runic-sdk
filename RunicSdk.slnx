@@ -2,6 +2,8 @@
   <Folder Name="/examples/">
     <Project Path="examples/dotnet/Runic.Administration.Console/Runic.Administration.Console.csproj" />
     <Project Path="examples/first-window/FirstWindow.csproj" />
+    <Project Path="examples/invoice-grid/InvoiceGrid.csproj" />
+    <Project Path="examples/attachments/Attachments.csproj" />
     <Project Path="examples/first-window-desktop/FirstWindowDesktop.csproj" />
     <Project Path="examples/status-icon/StatusIconSample.csproj" />
     <Project Path="examples/multi-window/MultiWindow.csproj" />
@@ -10,6 +12,7 @@
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
     <Project Path="examples/document-tabs/DocumentTabs.csproj" />
     <Project Path="examples/document-tabs/Tests/DocumentTabs.Tests.csproj" />
+    <Project Path="examples/query-collections/QueryCollectionsExample.csproj" />
     <Project Path="examples/wpf-hybrid-editor/Model/HybridNotes.Model.csproj" />
     <Project Path="examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj" />
     <Project Path="examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj" />

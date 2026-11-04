@@ -58,6 +58,11 @@ internal sealed class BridgeTypeGraph
     /// <summary>Emits the JSON-wire expression for one public TypeScript collection item.</summary>
     internal string EncodeItemTypeScript(string expression) => EncodeTypeScript(Root.Element!, expression);
 
+    // field-paths/1: the TypeScript type, decoder and encoder of one node of the graph, such as a row's cell.
+    internal static string NodeTypeScriptType(BridgeTypeNode node) => TypeScriptType(node);
+    internal static string NodeTypeScriptDecoder(BridgeTypeNode node, string expression) => EmitTypeScriptDecoder(node, expression);
+    internal static string NodeTypeScriptEncoder(BridgeTypeNode node, string expression) => EncodeTypeScript(node, expression);
+
     /// <summary>
     /// Makes a codec expression safe as a concise arrow-function body. A DTO
     /// encoder (or a custom codec) can emit an object literal, which
@@ -78,7 +83,8 @@ internal sealed class BridgeTypeGraph
 
     // Emits a self-contained direct codec class. The caller normally embeds it
     // in the generated bridge file and passes `Write`/`Read` to BridgeValueCodec.
-    internal void AppendCSharpCodec(StringBuilder source, string className, string accessibility = "private")
+    internal void AppendCSharpCodec(StringBuilder source, string className, string accessibility = "private",
+        (BridgeTypeNode Container, IReadOnlyList<BridgeFieldLeaf> Leaves)? fieldPaths = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         if (string.IsNullOrWhiteSpace(className)) throw new ArgumentException("A codec class name is required.", nameof(className));
@@ -88,6 +94,7 @@ internal sealed class BridgeTypeGraph
         source.AppendLine($"    internal static {CSharpNodeType(Root)} Read(global::System.Text.Json.JsonElement element) => Read{Root.Id}(element);");
         if (Root.Element is { } element)
             source.AppendLine($"    internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => Write{element.Id}(writer, ({CSharpNodeType(element)})value!);");
+        if (fieldPaths is { } paths) AppendFieldPathSetters(source, paths.Container, paths.Leaves);
         source.AppendLine();
         foreach (var node in Nodes.OrderBy(node => node.Id))
         {
@@ -97,6 +104,66 @@ internal sealed class BridgeTypeGraph
             source.AppendLine();
         }
         source.AppendLine("}");
+    }
+
+    // field-paths/1: SetPath{i} copies the container (an object member's value or a row) with the value at leaf i
+    // replaced by the decoded wire value, one object at a time from the leaf up: With{node}_{member} copies one object
+    // with one member changed, as BridgeFieldLeaf.CopyOf decided. Members the page does not see are kept.
+    private static void AppendFieldPathSetters(StringBuilder source, BridgeTypeNode container, IReadOnlyList<BridgeFieldLeaf> leaves)
+    {
+        var helpers = new HashSet<(int, int)>();
+        var withs = new StringBuilder();
+        for (var index = 0; index < leaves.Count; index++)
+        {
+            var chain = leaves[index].Chain;
+            source.AppendLine($"    internal static object SetPath{index}(object container, global::System.Text.Json.JsonElement value)");
+            source.AppendLine("    {");
+            source.AppendLine($"        var c0 = ({NonNullCSharpType(container)})container;");
+            var owners = new BridgeTypeNode[chain.Length];
+            owners[0] = container;
+            for (var level = 1; level < chain.Length; level++)
+            {
+                owners[level] = chain[level - 1].Type;
+                var access = $"c{level - 1}.{chain[level - 1].Property.Name}";
+                source.AppendLine(chain[level - 1].Type.IsNullable
+                    ? $"        var c{level} = {access} ?? throw new global::System.InvalidOperationException(\"{chain[level - 1].WireName} is null.\");"
+                    : $"        var c{level} = {access};");
+            }
+            var expression = $"Read{chain[^1].Type.Id}(value)";
+            for (var level = chain.Length - 1; level >= 0; level--)
+            {
+                expression = $"With{owners[level].Id}_{chain[level].Index}(c{level}, {expression})";
+                if (helpers.Add((owners[level].Id, chain[level].Index))) AppendWith(withs, owners[level], chain[level]);
+            }
+            source.AppendLine($"        return {expression};");
+            source.AppendLine("    }");
+        }
+        source.Append(withs);
+    }
+
+    // A node's C# type with its own nullable annotations and those of its type arguments, as its codec declares it,
+    // but not null itself: the copies of field paths run on objects that the path reached.
+    private static string NonNullCSharpType(BridgeTypeNode node)
+    {
+        var type = CSharpNodeType(node);
+        return node.IsNullable && type.EndsWith('?') ? type[..^1] : type;
+    }
+
+    private static void AppendWith(StringBuilder pending, BridgeTypeNode owner, BridgeTypeMember member)
+    {
+        var type = NonNullCSharpType(owner);
+        var signature = $"    private static {type} With{owner.Id}_{member.Index}({type} c, {CSharpNodeType(member.Type)} v)";
+        var property = member.Property.Name;
+        var body = BridgeFieldLeaf.CopyOf(owner).Kind switch
+        {
+            BridgeFieldCopy.With => $" => c with {{ {property} = v }};",
+            BridgeFieldCopy.Constructor => $" {{ var copy = new {type}(c); copy.{property} = v; return copy; }}",
+            BridgeFieldCopy.Clone => $" {{ var copy = c.Clone(); copy.{property} = v; return copy; }}",
+            // Every settable member of the class is on the wire: its codec copies it.
+            BridgeFieldCopy.Wire => $" {{ using var copy = global::Runic.Application.Views.Generated.BridgeFieldPath.ReplaceMember(writer => Write{owner.Id}(writer, c), {JsonSerializer.Serialize(member.WireName)}, writer => Write{member.Type.Id}(writer, v)); return Read{owner.Id}(copy.RootElement){(owner.IsNullable && !owner.NonNullableType.IsValueType ? "!" : owner.IsNullable ? ".Value" : "")}; }}",
+            _ => throw new InvalidOperationException($"{type} cannot be copied."),
+        };
+        pending.AppendLine(signature + body);
     }
 
     private static void AppendFingerprint(List<string> parts, string scope, BridgeTypeNode node,
@@ -135,6 +202,10 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Array or BridgeWireKind.List => $"readonly {ArrayElement(TypeScriptType(node.Element!))}[]",
             BridgeWireKind.StringDictionary => $"Readonly<Record<string, {TypeScriptType(node.Value!)}>>",
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptType,
+            BridgeWireKind.TextReference => "bridgeWire.TextReference",
+            // An inline type import: DTOs declared in a shared module need no import statement for it.
+            BridgeWireKind.Blob => "import(\"@runic-artifex/views\").RunicBlob",
+            BridgeWireKind.Upload => "import(\"@runic-artifex/views\").BlobRef",
             // Any JSON value. A JsonNode is never JSON null; null is its C# null.
             BridgeWireKind.Json => node.IsNullable || node.NonNullableType == typeof(JsonElement) ? "unknown" : "NonNullable<unknown>",
             _ => throw new InvalidOperationException($"No TypeScript form exists for {node.Kind}.")
@@ -263,7 +334,10 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => {DecodeMembersTypeScript(node, node, "value", null)})",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
+            BridgeWireKind.TextReference => $"bridgeWire.textReference({expression})",
             BridgeWireKind.Json => JsonTypeScript(node, expression),
+            BridgeWireKind.Blob => $"bridgeWire.blob({expression})",
+            BridgeWireKind.Upload => $"bridgeWire.blobRef({expression})",
             _ => throw new InvalidOperationException($"No TypeScript decoder exists for {node.Kind}.")
         };
         return node.IsNullable && node.Kind is not BridgeWireKind.Json ? $"({expression} === null ? null : {nonNull})" : nonNull;
@@ -335,6 +409,9 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptEncoderExpression.Replace("$value", value, StringComparison.Ordinal),
+            BridgeWireKind.TextReference => $"bridgeWire.textReference({value})",
+            BridgeWireKind.Blob => $"bridgeWire.encodeBlob({value})",
+            BridgeWireKind.Upload => $"bridgeWire.encodeBlobRef({value})",
             _ => value,
         };
         return node.IsNullable
@@ -435,6 +512,19 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Custom:
                 source.AppendLine($"        {CSharpType(node.CustomCodec!.CodecType)}.Write(writer, {value});");
                 break;
+            // The application references Runic.Translations; the Views packages do not (BridgeTextReferences).
+            case BridgeWireKind.TextReference when BridgeTextReferences.IsTranslationReference(node.NonNullableType):
+                source.AppendLine($"        global::System.Text.Json.JsonSerializer.Serialize(writer, {value}, global::Runic.Translations.TranslationReferenceJsonContext.Default.TranslationReference);");
+                break;
+            case BridgeWireKind.TextReference:
+                source.AppendLine($"        {value}.WriteTo(writer);");
+                break;
+            case BridgeWireKind.Blob:
+                source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteBlob(writer, {value});");
+                break;
+            case BridgeWireKind.Upload:
+                source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteUpload(writer, {value});");
+                break;
             // A default JsonElement holds no value; it crosses as null.
             case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
                 source.AppendLine($"        if ({value}.ValueKind is global::System.Text.Json.JsonValueKind.Undefined) writer.WriteNullValue(); else {value}.WriteTo(writer);");
@@ -514,6 +604,16 @@ internal sealed class BridgeTypeGraph
                 break;
             case BridgeWireKind.Custom:
                 source.AppendLine($"        return {CSharpType(node.CustomCodec!.CodecType)}.Read(element);"); break;
+            // TranslationReference.Parse applies the Translations transport's checks and limits; it throws JsonException.
+            case BridgeWireKind.TextReference when BridgeTextReferences.IsTranslationReference(node.NonNullableType):
+                source.AppendLine("        return global::Runic.Translations.TranslationReference.Parse(element.GetRawText());"); break;
+            case BridgeWireKind.TextReference:
+                source.AppendLine("        return global::Runic.Application.Views.RunicTextReference.Read(element);"); break;
+            // A settable property that holds a blob: the page cannot set it (blobs/1).
+            case BridgeWireKind.Blob:
+                source.AppendLine("        throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"A blob is never read from the page; send an upload instead.\");"); break;
+            case BridgeWireKind.Upload:
+                source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadUpload(element);"); break;
             // The element belongs to a document that is disposed after the call.
             case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
                 source.AppendLine("        return element.Clone();"); break;
@@ -690,7 +790,7 @@ internal sealed class BridgeTypeGraph
             }
             catch (BridgeTypeGraphException error) when (error.Member is null && origin is not null)
             {
-                throw new BridgeTypeGraphException(error.Path, error.Detail, origin);
+                throw new BridgeTypeGraphException(error.Path, error.Detail, origin, error.Code);
             }
         }
 
@@ -710,6 +810,16 @@ internal sealed class BridgeTypeGraph
             var node = new BridgeTypeNode(_nextId++, type, nullable) { Nullability = annotations, Direction = direction };
             Nodes.Add(node);
             if (TryScalar(type, out var scalar)) { node.Kind = scalar; return node; }
+            // blobs/1: a blob goes to the page only; the page sends files as uploads.
+            if (type == typeof(Runic.Application.Views.RunicBlob))
+            {
+                if (direction == BridgeValueDirection.FromPage)
+                    throw new BridgeTypeGraphException(path, "A RunicBlob only goes to the page: it cannot be a command input or an interaction result. Take a RunicUpload, which the page creates with client.upload(file).",
+                        code: BridgeDiagnosticCodes.Blob);
+                node.Kind = BridgeWireKind.Blob;
+                return node;
+            }
+            if (type == typeof(Runic.Application.Views.RunicUpload)) { node.Kind = BridgeWireKind.Upload; return node; }
             if (type.IsEnum)
             {
                 if (type.IsDefined(typeof(FlagsAttribute), inherit: false))
@@ -737,6 +847,11 @@ internal sealed class BridgeTypeGraph
             {
                 node.Kind = BridgeWireKind.Custom;
                 node.CustomCodec = CustomCodecDescription.Create(type, custom.CodecType, path);
+                return node;
+            }
+            if (BridgeTextReferences.Is(type))
+            {
+                node.Kind = BridgeWireKind.TextReference;
                 return node;
             }
             if (type == typeof(JsonElement) || type == typeof(System.Text.Json.Nodes.JsonNode))
@@ -1052,8 +1167,14 @@ internal enum BridgeWireKind
     None, Boolean, Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Single, Double, Decimal,
     String, Guid, DateOnly, TimeOnly, DateTime, DateTimeOffset, TimeSpan, BigInteger, Enum, Array, List,
     StringDictionary, Dto, Union, Custom,
+    /// <summary>A text reference of Runic Translations: a RunicTextReference or a Runic.Translations.TranslationReference.</summary>
+    TextReference,
     /// <summary>Any JSON value: a JsonElement or a JsonNode.</summary>
     Json,
+    /// <summary>A RunicBlob (blobs/1): a URL the host serves, written to the page only.</summary>
+    Blob,
+    /// <summary>A RunicUpload (blobs/1): a file the page uploaded, named by its id.</summary>
+    Upload,
 }
 
 internal sealed class BridgeTypeNode(int id, Type nonNullableType, bool isNullable)
@@ -1123,11 +1244,13 @@ internal sealed record CustomCodecDescription(Type CodecType, string TypeScriptT
     }
 }
 
-internal sealed class BridgeTypeGraphException(string path, string message, MemberInfo? member = null)
+internal sealed class BridgeTypeGraphException(string path, string message, MemberInfo? member = null, string? code = null)
     : NotSupportedException($"{path}: {message}")
 {
     internal string Path { get; } = path;
     internal string Detail { get; } = message;
+    /// <summary>The diagnostic code, when it is not RUNICBRIDGE003 (a value type that is not a bridge value).</summary>
+    internal string? Code { get; } = code;
     /// <summary>The declaration the diagnostic points at, when known.</summary>
     internal MemberInfo? Member { get; } = member;
 }
@@ -1208,4 +1331,19 @@ internal static class ContractNullability
 internal static class TypeExtensions
 {
     internal static Type? GetGenericTypeDefinitionOrNull(this Type type) => type.IsGenericType ? type.GetGenericTypeDefinition() : null;
+}
+
+/// <summary>
+/// The text reference types (translation-text/1). <c>Runic.Translations.TranslationReference</c> is recognized by its
+/// name and assembly, so the Views packages need no reference to Runic Translations: the generated code, compiled into
+/// the application that references it, calls its parser and source-generated serializer.
+/// </summary>
+internal static class BridgeTextReferences
+{
+    internal const string TranslationReferenceName = "Runic.Translations.TranslationReference";
+
+    internal static bool Is(Type type) => type == typeof(RunicTextReference) || IsTranslationReference(type);
+
+    internal static bool IsTranslationReference(Type type) =>
+        type.FullName == TranslationReferenceName && type.Assembly.GetName().Name == "Runic.Translations";
 }

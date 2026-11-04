@@ -27,20 +27,71 @@ namespace Runic.Application.Testing;
 /// (await editor.ExecuteAsync(vm => vm.RenameCommand, new RenameInput("Groceries", Pinned: true))).ThrowIfFailed();
 /// </code>
 /// </example>
-public sealed class RunicViewDriver<TModel> where TModel : class
+public sealed partial class RunicViewDriver<TModel> where TModel : class
 {
     private readonly RunicPublicationLog _publications;
     private readonly InMemoryBridgeTransport _transport;
     private readonly Func<string> _nextId;
+    // The connection and client this driver's requests use; ForConnection sets them.
+    private readonly string _connectionKey;
+    private readonly string? _clientKey;
 
     internal RunicViewDriver(RunicPublicationLog publications, InMemoryBridgeTransport transport, string route,
-        PageReference? reference, Func<string> nextId)
+        PageReference? reference, Func<string> nextId, string? connectionKey = null, string? clientKey = null)
     {
         _publications = publications;
         _transport = transport;
         _nextId = nextId;
+        _connectionKey = connectionKey ?? InMemoryBridgeTransport.DefaultConnectionKey;
+        _clientKey = clientKey;
         Route = route;
         Reference = reference;
+    }
+
+    /// <summary>
+    /// The connection this driver's requests use: <see cref="InMemoryBridgeTransport.DefaultConnectionKey"/>, or the one
+    /// passed to <see cref="ForConnection"/>.
+    /// </summary>
+    public string ConnectionKey => _connectionKey;
+
+    /// <summary>
+    /// The client of this driver's connection: the one passed to <see cref="ForConnection"/>, else
+    /// <see cref="InMemoryBridgeTransport.DefaultClientKey"/>.
+    /// </summary>
+    public string ClientKey => _clientKey ?? InMemoryBridgeTransport.DefaultClientKey;
+
+    /// <summary>
+    /// The window's own connection for this driver's connection, as <see cref="IRunicConnections"/> reports it, while it is
+    /// open; <see langword="null"/> before its first request and after it closed.
+    /// </summary>
+    /// <remarks>
+    /// The window gives each connection a key of its own, which no later connection reuses: on this transport, whose keys
+    /// can repeat, it is <see cref="ConnectionKey"/> with a <c>#n</c> suffix. Compare a command's
+    /// <see cref="IRunicConnections.Caller"/> with it.
+    /// </remarks>
+    public RunicConnection? Connection =>
+        BridgeDispatcher.For(_transport).ConnectionKeyOf(_connectionKey) is { } key ? new RunicConnection(key, ClientKey) : null;
+
+    /// <summary>
+    /// Returns a driver of this route whose requests, and the drivers and operations it returns, use another page
+    /// connection, as a second browser tab of a multi-client window does.
+    /// </summary>
+    /// <remarks>
+    /// The connection sends its <c>hello</c> with its first request, and then is one of the window's
+    /// <see cref="IRunicConnections.Current"/>; a command it executes runs with it as
+    /// <see cref="IRunicConnections.Caller"/>. Close it with <see cref="InMemoryBridgeTransport.CloseConnection"/>.
+    /// <code>
+    /// var bob = host.Root.ForConnection("bob-tab", clientKey: "bob");
+    /// (await bob.ExecuteAsync(vm =&gt; vm.JoinCommand)).ThrowIfFailed();
+    /// </code>
+    /// </remarks>
+    /// <param name="connectionKey">The connection's key, as the transport would authenticate it.</param>
+    /// <param name="clientKey">The client's key; by default <see cref="InMemoryBridgeTransport.DefaultClientKey"/>.</param>
+    /// <returns>The driver of the same route on that connection.</returns>
+    public RunicViewDriver<TModel> ForConnection(string connectionKey, string? clientKey = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(connectionKey);
+        return new(_publications, _transport, Route, Reference, _nextId, connectionKey, clientKey);
     }
 
     /// <summary>The route: the root name, or <c>content{id}</c> for presented content.</summary>
@@ -56,8 +107,8 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     internal async ValueTask<string> SendAsync(Action<Utf8JsonWriter> writeMembers, string? connectionKey = null,
         string? clientKey = null, CancellationToken cancellationToken = default)
     {
-        var connection = connectionKey ?? InMemoryBridgeTransport.DefaultConnectionKey;
-        await _transport.EnsureHelloAsync(connection, clientKey, cancellationToken).ConfigureAwait(false);
+        var connection = connectionKey ?? _connectionKey;
+        clientKey ??= _clientKey;
         var json = RunicJson.Write(writer =>
         {
             writer.WriteStartObject();
@@ -65,6 +116,10 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WriteString("route", Route);
             writer.WriteEndObject();
         });
+        // A Window that a window-modal Window blocks takes no input from its page, as on the desktop.
+        if (_transport.InputBlocked?.Invoke() is { } blocked && IsInput(json))
+            throw new InvalidOperationException(blocked);
+        await _transport.EnsureHelloAsync(connection, clientKey, cancellationToken).ConfigureAwait(false);
         return await _transport.RequestAsync(json, connection, clientKey, cancellationToken).ConfigureAwait(false);
     }
 
@@ -78,6 +133,14 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <exception cref="InvalidOperationException">The route answered with a failure, such as <c>released</c>.</exception>
     public async Task<RunicViewState<TModel>> SnapshotAsync(CancellationToken cancellationToken = default) =>
         ReadState(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false), "snapshot");
+
+    // The page's input: a command, an operation start, a property set or a checked write.
+    private static bool IsInput(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty("kind", out var kind)
+            && kind.GetString() is "command" or "start" or "set" or "write";
+    }
 
     private static void WriteSnapshot(Utf8JsonWriter writer) => writer.WriteString("kind", "snapshot");
 
@@ -113,7 +176,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             ? StateAfter(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false))
             : null);
 
-    private int NextEdit(string member) => _transport.NextEdit(InMemoryBridgeTransport.DefaultConnectionKey, Route, member);
+    private int NextEdit(string member) => _transport.NextEdit(_connectionKey, Route, member);
 
     /// <summary>
     /// Sends the generated setter's <c>set</c> request with the next edit number of the member, blocking the calling
@@ -402,7 +465,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WriteString("operation", requestId);
             writer.WriteString("contract", Contract);
         }, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return new(_transport, Route, Contract, member, requestId, reply);
+        return new(_transport, Route, Contract, member, requestId, reply, _connectionKey, _clientKey);
     }
 
     /// <summary>
@@ -438,6 +501,86 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             ? StateAfter(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false))
             : null;
         return new($"{Route} write {field}", reply, state);
+    }
+
+    /// <summary>
+    /// Writes a field path below a member (<c>field-paths/1</c>), as a generated field path descriptor such as
+    /// <c>InvoiceFields.lines.at(7).quantity</c> does, blocking the calling thread. The path is in wire names: for a
+    /// <see cref="RunicCollectionAttribute"/> collection, the row's key and then the cell, such as <c>["7", "quantity"]</c>;
+    /// for an object member, its members, such as <c>["street"]</c>. The baseline is the path's value in the current
+    /// state (<see langword="null"/> when the path reaches no value) and, unless given, the state's revision.
+    /// </summary>
+    /// <remarks>Prefer <see cref="WritePathAsync{TValue}"/> in suites that run tests in parallel; see the class remarks.</remarks>
+    public RunicFieldWriteReceipt<TModel> WritePath<TValue>(Expression<Func<TModel, object?>> member, IReadOnlyList<string> path,
+        TValue value, long? expectedVersion = null)
+    {
+        var (field, write) = WritePathRequest(member, path, value, expectedVersion, Snapshot());
+        var reply = Send(write);
+        var state = reply.Contains("\"revision\"", StringComparison.Ordinal) ? StateAfter(Send(WriteSnapshot)) : null;
+        return new($"{Route} write {field}", reply, state);
+    }
+
+    /// <summary>
+    /// Writes a field path below a member (<c>field-paths/1</c>), as <see cref="WritePath{TValue}"/> does, without
+    /// blocking a thread. A cell that changed after <paramref name="expectedVersion"/> is a
+    /// <see cref="RunicFieldWriteReceiptKind.Conflict"/>.
+    /// </summary>
+    /// <param name="member">The object member or keyed collection, such as <c>vm => vm.Lines</c>.</param>
+    /// <param name="path">The path below it in wire names: a row key and the cell, or the object's members.</param>
+    /// <param name="value">The value to write.</param>
+    /// <param name="expectedVersion">The baseline version; by default the state's revision.</param>
+    /// <param name="cancellationToken">Stops waiting for the replies.</param>
+    public async Task<RunicFieldWriteReceipt<TModel>> WritePathAsync<TValue>(Expression<Func<TModel, object?>> member,
+        IReadOnlyList<string> path, TValue value, long? expectedVersion = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = await SnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var (field, write) = WritePathRequest(member, path, value, expectedVersion, snapshot);
+        var reply = await SendAsync(write, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var state = reply.Contains("\"revision\"", StringComparison.Ordinal)
+            ? StateAfter(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false))
+            : null;
+        return new($"{Route} write {field}", reply, state);
+    }
+
+    private (string Field, Action<Utf8JsonWriter> Write) WritePathRequest<TValue>(Expression<Func<TModel, object?>> property,
+        IReadOnlyList<string> path, TValue value, long? expectedVersion, RunicViewState<TModel> snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Count == 0) throw new ArgumentException("A field path needs at least one segment.", nameof(path));
+        var member = RunicMembers.Property(property);
+        var field = RunicMembers.WireName(member);
+        var container = snapshot[field];
+        var leaf = path;
+        if (RunicMembers.CollectionKeys(typeof(TModel)).TryGetValue(field, out var key))
+        {
+            container = container.ValueKind == JsonValueKind.Array
+                ? container.EnumerateArray().FirstOrDefault(row => row.ValueKind == JsonValueKind.Object && RunicMembers.KeyOf(row, key) == path[0])
+                : default;
+            if (container.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException($"{typeof(TModel).Name}.{member.Name} has no row '{path[0]}'.");
+            leaf = path.Skip(1).ToArray();
+        }
+        // A path that reaches no value, such as one below a null object, is based on null; the window rejects it.
+        foreach (var segment in leaf)
+            container = container.ValueKind == JsonValueKind.Object && container.TryGetProperty(segment, out var next) ? next : default;
+        var expected = container.ValueKind == JsonValueKind.Undefined ? JsonDocument.Parse("null").RootElement : container.Clone();
+        var version = expectedVersion ?? snapshot.Revision;
+        var requestId = $"write{_nextId()}";
+        var encoded = RunicWireValue.Encode(value, typeof(TValue));
+        return ($"{field}.{string.Join('.', path)}", writer =>
+        {
+            writer.WriteString("kind", "write");
+            writer.WriteString("member", field);
+            writer.WriteStartArray("path");
+            foreach (var segment in path) writer.WriteStringValue(segment);
+            writer.WriteEndArray();
+            writer.WriteString("requestId", requestId);
+            writer.WriteNumber("expectedVersion", version);
+            writer.WritePropertyName("expectedValue");
+            expected.WriteTo(writer);
+            writer.WritePropertyName("value");
+            writer.WriteRawValue(encoded);
+        });
     }
 
     private (string Field, Action<Utf8JsonWriter> Write) WriteRequest<TValue>(Expression<Func<TModel, TValue>> property,
@@ -533,6 +676,44 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             .ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Opens a presentation of this route that acts as a page's View: it handles every <see cref="ViewRequest{T}"/> of
+    /// <typeparamref name="TModel"/>, so <see cref="RunicTestPresentation{TModel}.TakeViewRequests"/> returns the
+    /// requests it receives, and answers the interactions its <c>Handle</c> registers. Blocks the calling thread until
+    /// it is open.
+    /// </summary>
+    /// <param name="presentation">The presentation id; the host issues <c>test-presentation{n}</c> when omitted.</param>
+    /// <param name="clientKey">The client identity, for tests of several browser clients.</param>
+    /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
+    /// <returns>The presentation; dispose it to stop answering, or unmount it.</returns>
+    /// <exception cref="InvalidOperationException">The open or the registration was not answered <c>ok</c>; the message names the reply.</exception>
+    public RunicTestPresentation<TModel> MountPresentation(string? presentation = null, string? clientKey = null, string? connectionKey = null) =>
+        MountPresentationAsync(presentation, clientKey, connectionKey).GetAwaiter().GetResult();
+
+    /// <summary>Opens a presentation that acts as a page's View, as <see cref="MountPresentation"/> does, without blocking a thread.</summary>
+    /// <param name="presentation">The presentation id; the host issues <c>test-presentation{n}</c> when omitted.</param>
+    /// <param name="clientKey">The client identity, for tests of several browser clients.</param>
+    /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
+    /// <param name="cancellationToken">Stops waiting for the replies.</param>
+    /// <returns>The presentation; dispose it to stop answering, or unmount it.</returns>
+    /// <exception cref="InvalidOperationException">The open or the registration was not answered <c>ok</c>; the message names the reply.</exception>
+    public async Task<RunicTestPresentation<TModel>> MountPresentationAsync(string? presentation = null, string? clientKey = null,
+        string? connectionKey = null, CancellationToken cancellationToken = default)
+    {
+        var id = await MountAsync(presentation, clientKey, connectionKey, cancellationToken).ConfigureAwait(false);
+        var mounted = new RunicTestPresentation<TModel>(this, _transport, id, clientKey, connectionKey);
+        try { await mounted.RegisterViewRequestsAsync(cancellationToken).ConfigureAwait(false); }
+        catch
+        {
+            mounted.Dispose();
+            throw;
+        }
+        return mounted;
+    }
+
+    // The generated contract fingerprint of the ViewModel, which interaction and view request contracts start with.
+    internal static string ContractFingerprint => Fingerprint.Value;
+
     private static void WriteOpen(Utf8JsonWriter writer, string presentation)
     {
         writer.WriteString("kind", "open");
@@ -622,7 +803,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             || reference.Kind.Length > kind.Length && !char.IsUpper(reference.Kind[kind.Length]))
             throw new InvalidOperationException(
                 $"{typeof(TModel).Name}.{member.Name} presents '{reference.Kind}', not {typeof(TContent).Name}.");
-        return new(_publications, _transport, $"content{reference.Id}", reference, _nextId);
+        return new(_publications, _transport, $"content{reference.Id}", reference, _nextId, _connectionKey, _clientKey);
     }
 
     private static class Fingerprint

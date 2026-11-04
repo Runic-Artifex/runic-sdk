@@ -373,9 +373,10 @@ internal sealed class WindowsWebView2Controller : IDisposable
     // DesktopWindowOptions.ColorScheme for the page's prefers-color-scheme and WebView2's own controls. The preferred color
     // scheme belongs to the profile, so windows sharing a ProfilePath share it; NoPreference leaves the profile as it is.
     // A runtime without ICoreWebView2_13 keeps the system's scheme.
-    internal void SetPreferredColorScheme(Runic.Platform.DesktopColorScheme colorScheme)
+    // followSystem: a NoPreference set while the window is open returns the profile to Auto (DesktopWindow.SetColorSchemeAsync).
+    internal void SetPreferredColorScheme(Runic.Platform.DesktopColorScheme colorScheme, bool followSystem = false)
     {
-        if (colorScheme == Runic.Platform.DesktopColorScheme.NoPreference) return;
+        if (colorScheme == Runic.Platform.DesktopColorScheme.NoPreference && !followSystem) return;
         nint webView13;
         try { webView13 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView13Interface); }
         catch (InvalidCastException) { return; }

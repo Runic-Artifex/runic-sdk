@@ -102,7 +102,7 @@ test("a checked write is based on the value and version the draft started from, 
   client.set({ title: "Draft 12" });
   client.calls[1]!.resolve({ kind: "applied", snapshot: { value: "Draft 12", version: 6 } });
   await flush();
-  assert.deepEqual(controller.current, { value: "Draft 12", text: "Draft 12", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "Draft 12", text: "Draft 12", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
   // The next draft starts from the state's version again.
   client.versions.title = 9;
   controller.inputText("Next");
@@ -149,7 +149,7 @@ test("a conflict keeps the draft and writes nothing until retry or reset", async
   client.set({ title: "Again" });
   controller.reset();
   controller.setSource({ state: client.snapshot, client });
-  assert.deepEqual(controller.current, { value: "Again", text: "Again", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "Again", text: "Again", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
 });
 
 test("a conflict whose incoming value is the value sent is an applied write", async () => {
@@ -158,7 +158,7 @@ test("a conflict whose incoming value is the value sent is an applied write", as
   client.set({ title: "Same" });
   client.calls[0]!.resolve({ kind: "conflict", incoming: { value: "Same", version: 4 }, message: "Changed." });
   await flush();
-  assert.deepEqual(controller.current, { value: "Same", text: "Same", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "Same", text: "Same", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
 });
 
 test("committed-with-error drops the draft and reports the error; applied.validation is errors without a state source", async () => {
@@ -341,7 +341,7 @@ test("a checked field against the mock bridge: applied, then a conflict with ano
   controller.inputText("b");
   controller.commit();
   await until(() => !controller.current.editing);
-  assert.deepEqual(controller.current, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
   // Another writer changes the field after the draft started: the write conflicts and keeps the draft.
   controller.inputText("c");
   await view.set("title", "other");
@@ -350,7 +350,7 @@ test("a checked field against the mock bridge: applied, then a conflict with ano
   assert.equal(controller.current.value, "c");
   assert.equal((controller.current.conflict as FieldBaseline<string> | undefined)?.value, "other");
   controller.reset();
-  assert.deepEqual(controller.current, { value: "other", text: "other", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "other", text: "other", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
   controller.dispose();
   view.dispose();
 });
@@ -407,7 +407,7 @@ test("with notifications paced by animation frames, a settled write drops the dr
     controller.inputText("b ");
     const state = await controller.commit();
     // The producer trimmed the value; the field shows it without waiting for an animation frame.
-    assert.deepEqual(state, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined });
+    assert.deepEqual(state, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
     assert.equal(controller.current, state);
     for (const frame of frames.splice(0)) frame();
     assert.deepEqual(controller.current, state);
@@ -417,4 +417,282 @@ test("with notifications paced by animation frames, a settled write drops the dr
     host.requestAnimationFrame = saved.request;
     host.cancelAnimationFrame = saved.cancel;
   }
+});
+
+test("locale-aware text forms (C1): numbers, decimals and whole numbers read and show the locale's separators", () => {
+  const field = <T>(definition: Partial<BridgeField<Client, State, T>>, options: Parameters<typeof createFieldController<State, Client, T>>[1] = {}) => {
+    const values: unknown[] = [];
+    let shown = undefined as T;
+    const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false, ...options });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    return {
+      parse(text: string): unknown {
+        values.length = 0;
+        controller.inputText(text);
+        return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+      },
+      show(value: T) { shown = value; controller.reset(); return controller.current.text; },
+      controller,
+    };
+  };
+  const german = field<number>({ kind: "number" }, { locale: "de-DE" });
+  assert.equal(german.parse("1,5"), 1.5);
+  assert.equal(german.parse("1.234,5"), 1234.5);
+  assert.equal(german.parse("1.5"), "invalid-text", "a group separator that does not separate thousands is not ignored");
+  assert.equal(german.parse("-0,25"), -0.25);
+  assert.equal(german.show(1234.5), "1234,5", "no grouping while editing");
+  assert.equal(german.controller.format(-0.5), "-0,5");
+  const invariant = field<number>({ kind: "number" });
+  assert.equal(invariant.parse("1,5"), "invalid-text");
+  assert.equal(invariant.parse("0x10"), "invalid-text", "only decimal numbers");
+  assert.equal(invariant.show(1.5), "1.5");
+  const french = field<number>({ kind: "number" }, { locale: "fr-FR" });
+  assert.equal(french.parse("1 234,5"), 1234.5);
+  assert.equal(french.parse("1 234,5"), 1234.5, "a plain space for the narrow no-break space");
+  assert.equal(french.parse("2.5"), 2.5, "a `.` where it is not the group separator");
+  const arabic = field<number>({ kind: "number" }, { locale: "ar-EG" });
+  assert.equal(arabic.parse(arabic.controller.format(12.5)), 12.5, "locale digits round-trip");
+
+  const price = field<string>({ kind: "decimal" }, { locale: "de-DE" });
+  assert.equal(price.parse("1.234,50"), "1234.50", "exact, trailing zeros kept");
+  assert.equal(price.parse("-0,00"), "0.00", "negative zero loses its sign");
+  assert.equal(price.parse("007,5"), "7.5");
+  assert.equal(price.parse("0,1234567890123456789012345678"), "0.1234567890123456789012345678");
+  assert.equal(price.parse("0,12345678901234567890123456789"), "invalid-text", "at most 28 digits after the point");
+  assert.equal(price.parse("79228162514264337593543950336"), "invalid-text", "below 2^96");
+  assert.equal(price.parse("abc"), "invalid-text");
+  assert.equal(price.parse(""), "invalid-text");
+  assert.equal(price.show("1234.50"), "1234,50");
+  const scaled = field<string>({ kind: "decimal" }, { scale: 2 });
+  assert.equal(scaled.parse("1.25"), "1.25");
+  assert.equal(scaled.parse("1.255"), "invalid-text");
+  assert.equal(field<number>({ kind: "number" }, { scale: 1 }).parse("1.25"), "invalid-text");
+  assert.equal(field<string | null>({ kind: "decimal", nullable: true }).parse(" "), null);
+  assert.equal(field<bigint>({ kind: "bigint" }, { locale: "en-US" }).parse("9,007,199,254,740,993"), 9007199254740993n);
+  assert.throws(() => createFieldController({ read: () => "", write: async () => undefined }, { scale: -1 }), RangeError);
+});
+
+test("date, time and datetime fields read and show the forms of native date inputs (C1)", () => {
+  const field = <T>(definition: Partial<BridgeField<Client, State, T>>, initial: T) => {
+    const values: unknown[] = [];
+    let shown = initial;
+    const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    return {
+      parse(text: string): unknown {
+        values.length = 0;
+        controller.inputText(text);
+        return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+      },
+      show(value: T) { shown = value; controller.reset(); return controller.current.text; },
+    };
+  };
+  const date = field<string>({ kind: "date" }, "2026-11-03");
+  assert.equal(date.show("2026-11-03"), "2026-11-03");
+  assert.equal(date.parse("2024-02-29"), "2024-02-29");
+  assert.equal(date.parse("2026-02-29"), "invalid-text");
+  assert.equal(date.parse("03.11.2026"), "invalid-text");
+  assert.equal(field<string | null>({ kind: "date", nullable: true }, null).parse(""), null);
+
+  const time = field<string>({ kind: "time" }, "10:30:00");
+  assert.equal(time.show("10:30:00"), "10:30", "zero seconds are not shown, as in <input type=time>");
+  assert.equal(time.show("10:30:05.5"), "10:30:05.5");
+  assert.equal(time.parse("09:15"), "09:15:00");
+  assert.equal(time.parse("09:15:30.1200"), "09:15:30.12");
+  assert.equal(time.parse("24:00"), "invalid-text");
+
+  const local = field<string>({ kind: "datetime" }, "2026-11-03T10:30:00");
+  assert.equal(local.show("2026-11-03T10:30:00"), "2026-11-03T10:30");
+  assert.equal(local.parse("2026-11-03T11:45"), "2026-11-03T11:45:00");
+  assert.equal(local.parse("2026-11-03T11:45+02:00"), "2026-11-03T11:45:00+02:00", "an offset typed is kept");
+  assert.equal(local.parse("2026-11-03T11:45+15:00"), "invalid-text");
+
+  // The page's local time for an instant with an offset, as datetime-local shows it.
+  const instant = new Date(Date.UTC(2026, 10, 3, 9, 30, 0));
+  const localText = `${instant.getFullYear()}-${String(instant.getMonth() + 1).padStart(2, "0")}-${String(instant.getDate()).padStart(2, "0")}T${String(instant.getHours()).padStart(2, "0")}:${String(instant.getMinutes()).padStart(2, "0")}`;
+  const offset = field<string>({ kind: "datetime", offset: true }, "2026-11-03T09:30:00Z");
+  assert.equal(offset.show("2026-11-03T09:30:00Z"), localText);
+  const minutes = -instant.getTimezoneOffset();
+  const zone = minutes === 0 ? "Z" : `${minutes < 0 ? "-" : "+"}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, "0")}:${String(Math.abs(minutes) % 60).padStart(2, "0")}`;
+  assert.equal(offset.parse(localText), `${localText}:00${zone}`, "a local text gets the page's offset");
+  assert.equal(offset.parse("2026-11-03T09:30:00+00:00"), "2026-11-03T09:30:00Z", "offset-date-time writes a zero offset as Z");
+  const utc = field<string>({ kind: "datetime" }, "2026-11-03T09:30:00Z");
+  assert.equal(utc.show("2026-11-03T09:30:00Z"), localText);
+  assert.equal(utc.parse(localText), "2026-11-03T09:30:00Z", "a DateTime in UTC stays in UTC");
+});
+
+test("date, time and datetime fields in a locale show its numeric form and read it and the ISO form (E5)", () => {
+  const field = <T>(kind: "date" | "time" | "datetime", locale: string | null, initial: T) => {
+    const values: unknown[] = [];
+    let shown = initial;
+    const controller = createFieldController<State, Client, T>(
+      { kind, read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, { coalesce: false, locale });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    return {
+      parse(text: string): unknown {
+        values.length = 0;
+        controller.inputText(text);
+        return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+      },
+      message(text: string): string | undefined { controller.inputText(text); return (controller.current.error as Error | undefined)?.message; },
+      show(value: T) { shown = value; controller.reset(); return controller.current.text; },
+    };
+  };
+  // The order and separators of each locale, with a four-digit year and two-digit days and months.
+  const dates = { de: "03.11.2026", "en-US": "11/03/2026", "en-GB": "03/11/2026", ja: "2026/11/03" } as const;
+  for (const [locale, text] of Object.entries(dates)) {
+    const date = field<string>("date", locale, "2026-11-03");
+    assert.equal(date.show("2026-11-03"), text, locale);
+    assert.equal(date.parse(text), "2026-11-03", `${locale} round-trips`);
+    assert.equal(date.parse("2026-11-03"), "2026-11-03", `${locale} reads the ISO form`);
+    assert.equal(date.parse("2024-02-29"), "2024-02-29", `${locale} reads the ISO form`);
+  }
+  const german = field<string>("date", "de", "2026-11-03");
+  assert.equal(german.parse("3.11.2026"), "2026-11-03", "a day or month of one digit");
+  assert.equal(german.parse(" 29.02.2024 "), "2024-02-29");
+  assert.equal(german.parse("29.02.2026"), "invalid-text", "not a date");
+  assert.equal(german.parse("03.11.26"), "invalid-text", "a two-digit year is ambiguous");
+  assert.equal(german.parse("03.11"), "invalid-text");
+  assert.equal(german.parse("03.11.2026x"), "invalid-text");
+  assert.equal(german.parse("11/03/2026"), "2026-03-11", "another separator, in the locale's order");
+  assert.equal(german.message("3.11"), "3.11 is not a date (DD.MM.YYYY or YYYY-MM-DD).");
+  const american = field<string>("date", "en-US", "2026-11-03");
+  assert.equal(american.parse("1/2/2026"), "2026-01-02", "month first");
+  assert.equal(american.parse("23/11/2026"), "invalid-text", "there is no month 23");
+  assert.equal(american.message("x"), "x is not a date (MM/DD/YYYY or YYYY-MM-DD).");
+  assert.equal(field<string>("date", "en-GB", "2026-11-03").parse("1/2/2026"), "2026-02-01", "day first");
+  assert.equal(field<string>("date", "ar-EG", "2026-11-03").parse("٠٣/١١/٢٠٢٦"), "2026-11-03", "the locale's digits");
+
+  // Hour cycles: 24 hours in de, en-GB and ja, 12 hours with a day period in en-US.
+  const time24 = field<string>("time", "de", "21:05:00");
+  assert.equal(time24.show("21:05:00"), "21:05");
+  assert.equal(time24.show("09:05:30"), "09:05:30");
+  assert.equal(time24.parse("21:05"), "21:05:00");
+  assert.equal(time24.parse("9:05"), "09:05:00");
+  assert.equal(time24.parse("21:05:30,5"), "21:05:30.5", "a fraction after the locale's decimal separator");
+  assert.equal(time24.parse("25:00"), "invalid-text");
+  assert.equal(time24.parse("21:5"), "invalid-text", "minutes have two digits");
+  assert.equal(field<string>("time", "ja", "09:05:00").show("09:05:00"), "9:05", "ja does not pad hours");
+  assert.equal(field<string>("time", "en-GB", "09:05:00").show("09:05:00"), "09:05");
+  const time12 = field<string>("time", "en-US", "21:05:00");
+  assert.equal(time12.show("21:05:00"), "9:05 PM");
+  assert.equal(time12.show("00:30:00"), "12:30 AM");
+  assert.equal(time12.show("12:00:00"), "12:00 PM");
+  assert.equal(time12.parse("9:05 PM"), "21:05:00");
+  assert.equal(time12.parse("9:05 pm"), "21:05:00");
+  assert.equal(time12.parse("12:30 AM"), "00:30:00");
+  assert.equal(time12.parse("12:00 PM"), "12:00:00");
+  assert.equal(time12.parse("9:05:30 AM"), "09:05:30");
+  assert.equal(time12.parse("21:05"), "21:05:00", "without a day period, the ISO 24-hour form");
+  assert.equal(time12.parse("13:05 PM"), "invalid-text", "a 12-hour time has no hour 13");
+  assert.equal(time12.parse("9:05 PM PM"), "invalid-text");
+  assert.equal(time12.message("noon"), "noon is not a time (h:mm AM or hh:mm or hh:mm:ss).");
+
+  const dateTime = field<string>("datetime", "en-US", "2026-11-03T21:05:00");
+  assert.equal(dateTime.show("2026-11-03T21:05:00"), "11/03/2026, 9:05 PM");
+  assert.equal(dateTime.parse("11/03/2026, 9:15 PM"), "2026-11-03T21:15:00");
+  assert.equal(dateTime.parse("11/03/2026 21:15"), "2026-11-03T21:15:00");
+  assert.equal(dateTime.parse("2026-11-03T21:15"), "2026-11-03T21:15:00", "the ISO form");
+  assert.equal(dateTime.parse("2026-11-03T21:15+02:00"), "2026-11-03T21:15:00+02:00", "an ISO offset is kept");
+  assert.equal(dateTime.parse("11/03/2026"), "invalid-text", "a date without a time");
+  assert.equal(dateTime.parse("02/30/2026, 9:15 PM"), "invalid-text");
+  const germanDateTime = field<string>("datetime", "de", "2026-11-03T21:05:00");
+  assert.equal(germanDateTime.show("2026-11-03T21:05:00"), "03.11.2026, 21:05");
+  assert.equal(germanDateTime.parse("03.11.2026, 21:15"), "2026-11-03T21:15:00");
+  assert.equal(field<string>("datetime", "ja", "2026-11-03T21:05:00").show("2026-11-03T21:05:30"), "2026/11/03 21:05:30");
+
+  // `locale: null` is the ISO form of the browser's inputs.
+  const iso = field<string>("date", null, "2026-11-03");
+  assert.equal(iso.show("2026-11-03"), "2026-11-03");
+  assert.equal(iso.parse("03.11.2026"), "invalid-text");
+  assert.equal(field<string>("time", null, "21:05:00").show("21:05:00"), "21:05");
+});
+
+test("parse and format options replace the kind's text form (C1)", () => {
+  const values: unknown[] = [];
+  const controller = createFieldController<State, Client, number>({ kind: "number", read: state => state.step, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, {
+    coalesce: false,
+    format: value => `${value} %`,
+    parse: text => { const value = Number(text.replace("%", "").trim()); if (!Number.isFinite(value)) throw new Error("Enter a percentage."); return value; },
+  });
+  controller.setSource({ state: { title: "", step: 25, titleErrors: [] }, client: fakeClient({ title: "", step: 25, titleErrors: [] }) });
+  assert.equal(controller.current.text, "25 %");
+  controller.inputText("30 %");
+  assert.deepEqual(values, [30]);
+  controller.inputText("lots");
+  assert.ok(controller.current.error instanceof FieldError);
+  assert.equal((controller.current.error as FieldError).kind, "invalid-text");
+  assert.equal((controller.current.error as FieldError).message, "Enter a percentage.");
+  assert.equal(controller.current.text, "lots");
+});
+
+test("a descriptor's constraints are the controller's (C8)", () => {
+  const constraints = { required: true, maxLength: 40 } as const;
+  const controller = createFieldController({ ...title, constraints });
+  assert.equal(controller.field.constraints, constraints);
+  assert.equal(createFieldController(title).field.constraints, undefined);
+});
+
+test("a DateTimeOffset edit keeps the value's offset: unchanged text, and a local time in a DST overlap (C1 review)", () => {
+  const zone = process.env["TZ"];
+  process.env["TZ"] = "Europe/Berlin";
+  try {
+    assert.equal(new Date(Date.UTC(2026, 9, 25, 1, 30)).getHours(), 2, "the runtime follows TZ");
+    const field = <T>(definition: Partial<BridgeField<Client, State, T>>, initial: T) => {
+      const values: unknown[] = [];
+      let shown = initial;
+      const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false });
+      controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+      return {
+        text: () => controller.current.text,
+        parse(text: string): unknown { values.length = 0; controller.inputText(text); return values[0]; },
+      };
+    };
+    // 2026-10-25 02:30 occurs twice in Berlin: +02:00, then +01:00 after the clocks go back at 03:00.
+    const second = field<string>({ kind: "datetime", offset: true }, "2026-10-25T02:30:00.1234567+01:00");
+    assert.equal(second.text(), "2026-10-25T02:30:00.1234567");
+    assert.equal(second.parse("2026-10-25T02:30:00.1234567"), "2026-10-25T02:30:00.1234567+01:00", "unchanged text is the value");
+    assert.equal(second.parse("2026-10-25T02:45"), "2026-10-25T02:45:00+01:00", "the overlap keeps the previous offset");
+    const first = field<string>({ kind: "datetime", offset: true }, "2026-10-25T02:30:00+02:00");
+    assert.equal(first.parse("2026-10-25T02:45"), "2026-10-25T02:45:00+02:00");
+    // Another zone's offset: unchanged text keeps it; an edit outside an overlap gets the page's offset.
+    const tokyo = field<string>({ kind: "datetime", offset: true }, "2026-07-01T18:00:00+09:00");
+    assert.equal(tokyo.parse(tokyo.text()), "2026-07-01T18:00:00+09:00");
+    assert.equal(tokyo.parse("2026-07-01T12:00"), "2026-07-01T12:00:00+02:00");
+    // A UTC DateTime in the overlap stays at the instant nearest its value.
+    const utc = field<string>({ kind: "datetime" }, "2026-10-25T01:30:00Z");
+    assert.equal(utc.text(), "2026-10-25T02:30");
+    assert.equal(utc.parse("2026-10-25T02:45"), "2026-10-25T01:45:00Z");
+  } finally {
+    if (zone === undefined) delete process.env["TZ"]; else process.env["TZ"] = zone;
+  }
+});
+
+test("scale counts the digits of the number, not of the text typed (C1 review)", () => {
+  const parse = (text: string, scale: number, locale?: string) => {
+    const values: unknown[] = [];
+    const controller = createFieldController<State, Client, number>({ kind: "number", read: () => 0, write: (_client, value) => { values.push(value); return Promise.resolve(); } },
+      { scale, ...locale === undefined ? {} : { locale } });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    controller.inputText(text);
+    return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+  };
+  assert.equal(parse("1.50e2", 0), 150);
+  assert.equal(parse("2.50", 1), 2.5, "trailing zeros are not digits of the number");
+  assert.equal(parse("1e-7", 6), "invalid-text");
+  assert.equal(parse("1e-7", 7), 1e-7);
+  assert.equal(parse("1,500", 0, "en-US"), 1500, "a group separator is not a decimal point");
+});
+
+test("a nullable UTC DateTime that starts as null needs a parse that writes UTC (C1 review, documented)", () => {
+  const write = (options: Parameters<typeof createFieldController<State, Client, string | null>>[1]) => {
+    const values: unknown[] = [];
+    const controller = createFieldController<State, Client, string | null>({ kind: "datetime", nullable: true, read: () => null, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, options);
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    controller.inputText("2026-07-01T12:00");
+    return values[0];
+  };
+  assert.equal(write({}), "2026-07-01T12:00:00", "without a value to follow, the text stays a local date and time");
+  const utc = write({ parse: text => text.trim() === "" ? null : new Date(text).toISOString().replace(/\.000Z$/, "Z") }) as string;
+  assert.match(utc, /^2026-07-01T\d{2}:00:00Z$/);
 });

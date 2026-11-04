@@ -11,28 +11,35 @@ public sealed partial class EditorViewModel : ObservableObject, INavigationIniti
 {
     private readonly INoteStore _store;
     private readonly LeaveConfirmation _leave;
+    // The edited values against the last saved note: IsDirty, Accept after a save, Revert on discard.
+    private readonly RunicEditSession<(string Title, string Body)> _session;
     private Note _saved = new(0, "", "");
     private bool _disposed;
 
     public EditorViewModel(INoteStore store, AppRegions regions)
     {
         _store = store;
+        _session = new(this, () => (Title, Body), saved => (Title, Body) = saved);
+        _session.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(_session.IsDirty)) return;
+            OnPropertyChanged(nameof(IsDirty));
+            SaveCommand.NotifyCanExecuteChanged();
+        };
         _leave = LeaveConfirmation.InDialog(regions.Dialog,
             () => NavigationTarget.Create<ConfirmViewModel, string>("Discard unsaved changes?"),
             () => IsDirty, Discard);
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDirty), nameof(ValidationMessage))]
+    [NotifyPropertyChangedFor(nameof(ValidationMessage))]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private string title = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDirty))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private string body = "";
 
-    public bool IsDirty => Title != _saved.Title || Body != _saved.Body;
+    public bool IsDirty => _session.IsDirty;
     public string ValidationMessage => string.IsNullOrWhiteSpace(Title) ? "Enter a title." : "";
 
     private string _error = "";
@@ -56,7 +63,8 @@ public sealed partial class EditorViewModel : ObservableObject, INavigationIniti
             // The store has written the note; a late Cancel no longer undoes it.
             if (_disposed) return;
             _saved = submitted;
-            RefreshDraftState(); // Later edits remain dirty after this save.
+            // Edits typed while the save ran remain dirty after it.
+            _session.Accept((submitted.Title, submitted.Body));
             Status = "Saved.";
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -75,7 +83,7 @@ public sealed partial class EditorViewModel : ObservableObject, INavigationIniti
         _saved = _store.Get(id);
         Title = _saved.Title;
         Body = _saved.Body;
-        RefreshDraftState();
+        _session.Accept();
         return ValueTask.CompletedTask;
     }
 
@@ -85,23 +93,16 @@ public sealed partial class EditorViewModel : ObservableObject, INavigationIniti
 
     private void Discard()
     {
-        Title = _saved.Title;
-        Body = _saved.Body;
+        _session.Revert();
         Error = "";
         Status = "Changes discarded.";
-        RefreshDraftState();
-    }
-
-    private void RefreshDraftState()
-    {
-        OnPropertyChanged(nameof(IsDirty));
-        SaveCommand.NotifyCanExecuteChanged();
     }
 
     public void Dispose()
     {
         _disposed = true;
         SaveCommand.Cancel();
+        _session.Dispose();
     }
 }
 

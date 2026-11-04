@@ -4,9 +4,14 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { translationTextFeature, validationPendingFeature } from "./validation.js";
+import { clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
+import { evaluateMockQuery, type MockQueryCollection, type MockQueryLoad, type MockQuerySource } from "./mock-query.js";
+import { normalizeQuery, type QueryCollectionQuery } from "./query.js";
+import { blobsFeature, type BlobRef } from "./blob-wire.js";
+import type { HostUploadRequest } from "./blobs.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -68,6 +73,27 @@ export interface MockBridgeOptions {
    * requests; without it they are `unavailable`. Use {@link MockBridge.pushNavigationPath} for a change the application makes.
    */
   readonly navigation?: MockNavigation;
+  /**
+   * blobs/1: whether the mock takes uploads, and its per-upload limit in bytes. By default it takes uploads of up to
+   * 256 MiB; `false` grants none, so `upload()` rejects with `unavailable`.
+   */
+  readonly uploads?: false | { readonly maximumBytes?: number };
+}
+
+/** An upload the mock received (blobs/1). */
+export interface MockUpload {
+  /** The reference `upload()` resolved with, which a command input carries. */
+  readonly ref: BlobRef;
+  /** The uploaded content. */
+  readonly content: Blob;
+}
+
+/** How the mock answers the next upload instead of storing it ({@link MockBridge.failNextUpload}). */
+export interface MockUploadFailure {
+  /** The HTTP status: 413 for too large, 507 or 429 for capacity, another one for a failure. */
+  readonly status: number;
+  readonly reason?: string;
+  readonly message?: string;
 }
 
 /** A `navigation` request (navigation-path/1): the window's Back, or a route path to open. */
@@ -238,8 +264,25 @@ export interface MockViewDefinition {
   readonly can?: Readonly<Record<string, MockAvailability>>;
   /** Row keys of each keyed collection field, which `collection(field)` edits with indexed changes. */
   readonly collections?: Readonly<Record<string, (item: unknown) => string>>;
+  /**
+   * Query collections by member wire name (query-collections/1): their rows, which the mock filters, sorts and serves
+   * by range like a .NET row source, optionally with latency. The mock keeps the member's state (`query`, `total`,
+   * `version`); `query(member)` changes its rows and shows the loads it served.
+   */
+  readonly queries?: Readonly<Record<string, MockQuerySource>>;
   /** Wire names of checked fields (`write` and their `fields` versions). */
   readonly checkedFields?: readonly string[];
+  /**
+   * Field paths by member (`field-paths/1`): the member names below an object member, or below a row of a keyed
+   * collection (whose `collections` entry gives the rows' keys), such as `{ lines: [["quantity"]] }`. A write of a
+   * field path rebuilds the object or the row and applies it with `rows` or `set`, or by replacing it.
+   */
+  readonly fieldPaths?: Readonly<Record<string, readonly (readonly string[])[]>>;
+  /**
+   * Row editors by keyed collection, such as `{ lines: (state, key, row) => … }`: they receive a row with one cell
+   * changed and return a state patch, or throw to reject it. Without one, the row replaces the row with its key.
+   */
+  readonly rows?: Readonly<Record<string, (state: MockState, key: string, row: unknown) => Partial<MockState> | void | Promise<Partial<MockState> | void>>>;
   /**
    * Wire names of text members (string members other than append-only text fields). On a connection that uses
    * `text-splice/1`, frames change them with splices, and setters accept splices, as a producer does.
@@ -254,6 +297,12 @@ export interface MockViewDefinition {
   readonly streams?: readonly string[];
   /** The View's operation contract, `{view}:{fingerprint}`. Defaults to `mock.{route}:mock`. */
   readonly contract?: string;
+  /**
+   * The View's view requests by name (view-requests/1), such as `{ focus: {} }`. A registration that names another
+   * request, or a contract other than a `contract` given here, is `unsupported`, as a producer answers it. Generated
+   * typed mocks fill it in.
+   */
+  readonly requests?: Readonly<Record<string, { readonly contract?: string }>>;
   /**
    * Region collections by member wire name (region-collections/1). The member's state value is
    * `{ regions: [{ key, content }], selected }`; `region` requests select or close its regions by key.
@@ -337,6 +386,8 @@ export interface MockView {
   pushFailure(failure: { readonly kind?: BridgeErrorKind; readonly message: string; readonly detail?: BridgeFailureDetail }): void;
   /** Edits a field declared in `collections`. */
   collection(field: string): MockCollection;
+  /** A query collection declared in `queries`. */
+  query(member: string): MockQueryCollection;
   /** Publishes the collection edits and updates made by `edit` as one frame. */
   batch(edit: () => void): void;
   /** Answers the next `times` requests of `kind` (and `member`) of this route with `failure`. */
@@ -347,6 +398,16 @@ export interface MockView {
   readonly interactionHandlers: readonly string[];
   /** Pushes an interaction request to the presentation that handles it, as a producer does. */
   interact(name: string, input: unknown, options?: MockInteractionOptions): Promise<MockInteractionReply>;
+  /** View request names (view-requests/1) that an open presentation of this route on the connection registered. */
+  readonly requestHandlers: readonly string[];
+  /**
+   * Raises a view request (view-requests/1), as a ViewModel's `ViewRequest.Raise` does: pushes `view-request` with
+   * the route's current revision and `input` (the wire value) to every presentation of this route on the connection
+   * that registered `name`, and returns how many it pushed to. 0 means that no presentation handles it; the request is
+   * not kept for a later registration. The mock runs no command scope or delivery rule: every registered
+   * presentation of the route receives it.
+   */
+  raise(name: string, input: unknown): number;
   /**
    * The route's presentation epoch (presentation-epoch/1): the revision of its first state, then of each renewal. On a
    * connection that uses the feature, `open` and `snapshot` replies and `state` pushes carry it, and a `command` that
@@ -390,6 +451,8 @@ export type MockInterceptor = (request: MockCall) =>
 export interface MockBridge extends RunicBridgeClient {
   /** Every request in order, including `hello` and rejected ones. */
   readonly calls: readonly MockCall[];
+  /** client-errors/1: the error reports the page sent with `installErrorReporting`, in order. */
+  readonly clientErrors: readonly MockClientError[];
   /** The virtual time in milliseconds, which only `advance()` moves. */
   readonly now: number;
   /** Queued requests, replies, pushes and timers that are due now or later. */
@@ -423,6 +486,21 @@ export interface MockBridge extends RunicBridgeClient {
    * the path region does, and makes it the path of later `hello` replies.
    */
   pushNavigationPath(path: string | null, operation: "push" | "back" | "replace"): void;
+  /**
+   * Asks the page to write its field drafts before a departure, as the application does before it asks a departure
+   * guard (field-flush/1): pushes `flush` and resolves with whether the page answered `flush-reply` within `timeout`
+   * milliseconds (default 1000; virtual time with `manual` scheduling). `true` at once when the connection does not
+   * use the feature, which the application then skips.
+   */
+  flushFields(timeout?: number): Promise<boolean>;
+  /**
+   * Sets the window's locale as the application does with `IRunicWindowLocale` (translation-text/1): pushes `locale` to
+   * the connection when it uses the feature, and again after the `hello` of each later connection. `null` stops pushing
+   * it; the page keeps the language it shows.
+   */
+  setWindowLocale(locale: string | null): void;
+  /** The window's locale that {@link MockBridge.setWindowLocale} set, or `null`. */
+  readonly windowLocale: string | null;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
   /**
@@ -434,6 +512,30 @@ export interface MockBridge extends RunicBridgeClient {
   flushUntil<T>(promise: Promise<T>): Promise<T>;
   /** Moves the virtual clock, delivering timed work in order. */
   advance(milliseconds: number): Promise<void>;
+  /** blobs/1: every upload the mock stored, in order. */
+  readonly uploads: readonly MockUpload[];
+  /** blobs/1: the content of an upload, by its reference or id; undefined for one the mock did not store. */
+  uploadContent(upload: BlobRef | string): Blob | undefined;
+  /** blobs/1: answers the next upload with an HTTP failure instead of storing it. */
+  failNextUpload(failure: MockUploadFailure): void;
+  /**
+   * blobs/1: receives an upload as a host does (the host bridge's `upload`, which `upload()` calls). It reports
+   * progress at half and at the end of the content, one latency apart, and stops when the request's signal aborts.
+   */
+  upload(request: HostUploadRequest): Promise<{ readonly status: number; readonly body: string }>;
+}
+
+/** A `client-error` request the mock producer received (client-errors/1). */
+export interface MockClientError {
+  readonly kind: "client-error";
+  readonly source: string;
+  readonly message: string;
+  readonly name?: string;
+  readonly stack?: string;
+  readonly url?: string;
+  readonly route?: string;
+  /** Reports the page counted but did not send since the previous one. */
+  readonly dropped?: number;
 }
 
 /** Creates a mock producer. Install it with {@link installMockBridge}. */
@@ -444,8 +546,12 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature,
-  navigationPathFeature];
+const mockFeatures: readonly string[] = [
+  textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
+  clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
+  translationTextFeature, navigationPathFeature,
+];
+const defaultUploadBytes = 256 * 1_048_576;
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -549,6 +655,9 @@ interface Presentation {
   readonly connection: number;
   handlers: { readonly name: string; readonly contract: string }[];
   generation: number;
+  /** view-requests/1: the registered view requests and their generation (0 before the first registration). */
+  requests: { readonly name: string; readonly contract: string }[];
+  requestGeneration: number;
 }
 
 /** The mock's state of one View route. */
@@ -571,6 +680,8 @@ interface MockRegisteredView {
   revision: number;
   /** The revision of the last publication that changed each text member. */
   readonly textChanged: Map<string, number>;
+  /** field-paths/1: the revision of the last publication that changed each field path, by container and path. */
+  readonly pathChanged: Map<string, number>;
   /** presentation-epoch/1: the current epoch, and whether a renewal waits for its publication. */
   epoch: number;
   renewing: boolean;
@@ -578,8 +689,12 @@ interface MockRegisteredView {
   running: number;
   /** presented/1: the pending waits of `waitPresented`. */
   readonly presentWaits: Set<PresentWait>;
+  /** view-requests/1: requests raised inside `batch` or a command handler, pushed after its changes. */
+  readonly raised: { readonly name: string; readonly input: unknown }[];
   /** region-collections/1: the request of each region collection whose decision is pending. */
   readonly regionRequests: Map<string, PendingRegionRequest>;
+  /** The query collections (query-collections/1): rows, loads, and the ordered rows of the current version. */
+  readonly queries: Map<string, MockQueryRecord>;
   handle: MockView;
 }
 
@@ -589,6 +704,14 @@ interface PendingRegionRequest {
   supersede(): void;
   /** Settles once the request's effects are published. */
   readonly result: Promise<{ readonly outcome: RegionOutcome } | { readonly error: unknown }>;
+}
+
+interface MockQueryRecord {
+  readonly source: MockQuerySource;
+  rows: readonly unknown[];
+  readonly loads: MockQueryLoad[];
+  ordered: { readonly version: number; readonly rows: readonly unknown[] } | undefined;
+  handle: MockQueryCollection;
 }
 
 interface PresentWait {
@@ -612,12 +735,14 @@ interface Connection {
   readonly pending: Set<(error: Error) => void>;
   /** presented/1: the window's close on this connection, and how it ends. */
   closing?: { readonly result: Promise<boolean>; finish(acknowledged: boolean): void };
+  /** field-flush/1: the flushes waiting for flush-reply, by id. */
+  flushes: Map<string, (answered: boolean) => void>;
 }
 
 interface Task { readonly due: number; readonly sequence: number; readonly run: () => void }
 
 const newConnection = (id: number): Connection =>
-  ({ id, session: undefined, edits: new Map(), editTexts: new Map(), features: new Set(), held: [], pending: new Set() });
+  ({ id, session: undefined, edits: new Map(), editTexts: new Map(), features: new Set(), held: [], pending: new Set(), flushes: new Map() });
 
 export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const manual = options.scheduling === "manual";
@@ -642,6 +767,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const messageListeners = new Set<(message: string) => void>();
   const closedSessions = new Set<string>();
   const calls: MockCall[] = [];
+  const clientErrors: MockClientError[] = [];
   // Pushes that follow a request's reply, such as the `present` of a wait to a presentation that just opened.
   const afterReply = new WeakMap<MockCall, () => void>();
   const tasks: Task[] = [];
@@ -658,6 +784,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   let outboundChain: Promise<void> = Promise.resolve();
   let inboundChain: Promise<void> = Promise.resolve();
   let reorderQueue: (() => void)[] | undefined;
+  // blobs/1: the per-upload limit, or undefined when the mock takes no uploads; stored uploads; the next failure.
+  const uploadLimit = options.uploads === false ? undefined : options.uploads?.maximumBytes ?? defaultUploadBytes;
+  const uploads: MockUpload[] = [];
+  const uploadFailures: MockUploadFailure[] = [];
 
   const schedule = (due: number, run: () => void, order = sequence++) => {
     const task = { due, sequence: order, run };
@@ -761,6 +891,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       for (const field of indexedFields) changes.push({ field, kind: "set", value: view.state[field] as unknown });
       indexed.length = 0;
     }
+    const before = view.published;
     view.published = view.state;
     if (view.renewing) {
       // presentation-epoch/1: a renewal is published as a full state at a new revision, also when nothing changed.
@@ -768,6 +899,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       view.revision = ++revision;
       view.epoch = view.revision;
       for (const field of texts) view.textChanged.set(field, view.revision);
+      trackPaths(view, before);
       pushMessage({ kind: "state", route: view.route, revision: view.revision, ...epochOf(view), state: view.state, ...fieldsOf(view) });
       return;
     }
@@ -775,7 +907,105 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const base = view.revision;
     view.revision = ++revision;
     for (const field of texts) view.textChanged.set(field, view.revision);
+    trackPaths(view, before);
     pushMessage({ kind: "frame", route: view.route, baseRevision: base, revision: view.revision, changes: [...indexed, ...changes] });
+  }
+
+  // field-paths/1: the containers of a member with field paths, by container key: the object, or each row by its key.
+  function containersOf(view: MockRegisteredView, state: MockState, member: string): Map<string, unknown> {
+    const containers = new Map<string, unknown>();
+    const keyOf = view.definition.collections?.[member];
+    const value = state[member];
+    if (keyOf === undefined) { if (value !== null && value !== undefined) containers.set(member, value); }
+    else if (Array.isArray(value)) for (const row of value) containers.set(`${member}\u0000${keyOf(row)}`, row);
+    return containers;
+  }
+
+  function leafOf(container: unknown, path: readonly string[]): { readonly value: unknown } | undefined {
+    let value = container;
+    for (const segment of path) {
+      if (value === null || typeof value !== "object" || Array.isArray(value) || !Object.hasOwn(value, segment)) return undefined;
+      value = (value as Record<string, unknown>)[segment];
+    }
+    return { value };
+  }
+
+  // Each field path that a publication changed, or whose row it added, takes the publication's revision.
+  function trackPaths(view: MockRegisteredView, before: MockState): void {
+    for (const [member, paths] of Object.entries(view.definition.fieldPaths ?? {})) {
+      if (sameJson(before[member], view.state[member])) continue;
+      const old = containersOf(view, before, member);
+      const now = containersOf(view, view.state, member);
+      // A removed row is forgotten: added again under its key, it starts at its new revision.
+      for (const key of old.keys()) {
+        if (now.has(key)) continue;
+        for (const changed of [...view.pathChanged.keys()]) if (changed.startsWith(`${key}\u0000`)) view.pathChanged.delete(changed);
+      }
+      for (const [key, container] of now) {
+        const previous = old.get(key);
+        for (const path of paths)
+          if (previous === undefined || !sameJson(leafOf(previous, path)?.value, leafOf(container, path)?.value))
+            view.pathChanged.set(`${key}\u0000${path.join("\u0000")}`, view.revision);
+      }
+    }
+  }
+
+  async function writePath(view: MockRegisteredView, message: Record<string, unknown>): Promise<Reply> {
+    const member = message["member"] as string;
+    const segments = message["path"];
+    if (!Array.isArray(segments) || segments.length === 0 || segments.some(segment => typeof segment !== "string" || segment.length === 0)
+      || typeof message["requestId"] !== "string" || !isSafe(message["expectedVersion"]) || Object.hasOwn(message, "splice")
+      || !Object.hasOwn(message, "value") || !Object.hasOwn(message, "expectedValue"))
+      return invalidRequest(`${member} has an invalid path write.`);
+    const keyOf = view.definition.collections?.[member];
+    const key = keyOf === undefined ? undefined : segments[0] as string;
+    const path = (keyOf === undefined ? segments : segments.slice(1)) as string[];
+    if (!view.definition.fieldPaths?.[member]?.some(declared => sameJson(declared, path)))
+      return invalidRequest(`${member} has no field ${path.join(".")}.`);
+    const reply = (receipt: Record<string, unknown>) => ok({ revision: view.revision, receipt });
+    const id = `${member}\u0000${message["requestId"]}`;
+    const request = canonicalJson([segments, message["expectedVersion"], message["expectedValue"], message["value"]]);
+    const container = () => containersOf(view, view.state, member).get(key === undefined ? member : `${member}\u0000${key}`);
+    const current = () => leafOf(container(), path);
+    const previous = view.writes.get(id);
+    const gone = key === undefined ? `${member} is null.` : `${member} has no row ${key}.`;
+    if (previous) {
+      if (previous.request === request) return reply(previous.receipt);
+      const now = current();
+      return reply(now === undefined ? { kind: "rejected", message: gone }
+        : { kind: "conflict", incoming: { value: now.value, version: view.revision }, message: "The request identity was already used with a different checked write." });
+    }
+    const retain = (receipt: Record<string, unknown>) => { view.writes.set(id, { request, receipt }); return reply(receipt); };
+    const target = container();
+    const leaf = current();
+    if (target === undefined || leaf === undefined) return retain({ kind: "rejected", message: gone });
+    const changed = view.pathChanged.get(`${key === undefined ? member : `${member}\u0000${key}`}\u0000${path.join("\u0000")}`) ?? 0;
+    if (changed > (message["expectedVersion"] as number) || !sameJson(leaf.value, message["expectedValue"]))
+      return retain({ kind: "conflict", incoming: { value: leaf.value, version: view.revision }, message: "The field baseline no longer matches." });
+    const rebuild = (value: unknown, at: number): unknown => at === path.length ? message["value"]
+      : { ...(value as Record<string, unknown>), [path[at]!]: rebuild((value as Record<string, unknown>)[path[at]!], at + 1) };
+    const updated = rebuild(target, 0);
+    try {
+      if (key === undefined) {
+        const patch = await view.definition.set?.[member]?.(view.state, updated);
+        commit(view, { ...view.state, [member]: updated, ...(patch ?? {}) });
+      } else {
+        const editor = view.definition.rows?.[member];
+        const patch = editor === undefined
+          ? { [member]: (view.state[member] as unknown[]).map(row => keyOf!(row) === key ? updated : row) }
+          : await editor(view.state, key, updated);
+        commit(view, { ...view.state, ...(patch ?? {}) });
+      }
+    } catch (error) {
+      // A handler that changed the object or row before it failed committed that change.
+      const after = container();
+      const failure = failureFromError(error).message;
+      if (after === undefined) return retain({ kind: "rejected", message: gone });
+      return retain(sameJson(after, target) ? { kind: "rejected", message: failure }
+        : { kind: "committed-with-error", snapshot: { value: current()?.value ?? null, version: view.revision }, message: failure });
+    }
+    const applied = current();
+    return retain(applied === undefined ? { kind: "rejected", message: gone } : { kind: "applied", snapshot: { value: applied.value, version: view.revision } });
   }
 
   /** The `epoch` member of a reply or state on a connection that uses presentation-epoch/1. */
@@ -829,6 +1059,9 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     });
   }
 
+  // translation-text/1: the window's locale (setWindowLocale).
+  let windowLocale: string | null = null;
+
   function closeWindow(timeout: number): Promise<boolean> {
     const owner = connection;
     if (owner.closing) return owner.closing.result;
@@ -850,9 +1083,111 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return result;
   }
 
+  let flushes = 0;
+  function flushFields(timeout: number): Promise<boolean> {
+    const owner = connection;
+    if (!connected || owner.session === undefined || !owner.features.has(fieldFlushFeature)) return Promise.resolve(true);
+    const id = `flush-${++flushes}`;
+    const result = new Promise<boolean>(resolve => {
+      let stop = () => {};
+      const finish = (answered: boolean) => {
+        if (!owner.flushes.delete(id)) return;
+        stop();
+        resolve(answered);
+      };
+      owner.flushes.set(id, finish);
+      stop = timeoutAfter(timeout, () => finish(false));
+    });
+    pushMessage({ kind: "flush", id });
+    return result;
+  }
+
   function commit(view: MockRegisteredView, next: MockState): void {
     view.state = next;
     publish(view);
+  }
+
+  // query-collections/1: the member's published state, and its rows in the query's order.
+  const queryState = (view: MockRegisteredView, member: string) =>
+    view.state[member] as { readonly query: QueryCollectionQuery; readonly total: number | null; readonly version: number };
+  function orderedRows(view: MockRegisteredView, member: string): readonly unknown[] {
+    const record = view.queries.get(member)!;
+    const state = queryState(view, member);
+    if (record.ordered?.version !== state.version)
+      record.ordered = { version: state.version, rows: evaluateMockQuery(record.rows, state.query, record.source) };
+    return record.ordered.rows;
+  }
+  // A new version of the member: its query, rows or a refresh. Publishes the state with its new total.
+  function bumpQuery(view: MockRegisteredView, member: string, query: QueryCollectionQuery): void {
+    const record = view.queries.get(member)!;
+    const state = queryState(view, member);
+    const version = state.version + 1;
+    const rows = evaluateMockQuery(record.rows, query, record.source);
+    record.ordered = { version, rows };
+    commit(view, { ...view.state, [member]: { query, total: rows.length, version } });
+  }
+  function registerQuery(view: MockRegisteredView, member: string, source: MockQuerySource, state: Record<string, unknown>): void {
+    const query = normalizeQuery(source.query ?? {});
+    const record: MockQueryRecord = { source, rows: [...source.rows], loads: [], ordered: undefined, handle: undefined as unknown as MockQueryCollection };
+    record.handle = {
+      get query() { return queryState(view, member).query; },
+      get version() { return queryState(view, member).version; },
+      get total() { return orderedRows(view, member).length; },
+      get rows() { return record.rows; },
+      get loads() { return record.loads; },
+      view: () => orderedRows(view, member),
+      setRows(rows) {
+        record.rows = [...rows];
+        bumpQuery(view, member, queryState(view, member).query);
+      },
+      invalidate() { bumpQuery(view, member, queryState(view, member).query); },
+    };
+    view.queries.set(member, record);
+    if (state[member] === undefined)
+      state[member] = { query, total: evaluateMockQuery(record.rows, query, source).length, version: 1 };
+  }
+  // Waits for a query source's latency.
+  const queryLatency = (source: MockQuerySource) => source.latency ? bridge.sleep(source.latency) : Promise.resolve();
+
+  async function queryRequest(view: MockRegisteredView, kind: string, member: string | undefined, message: Record<string, unknown>): Promise<Reply> {
+    if (!connection.features.has(queryCollectionsFeature)) return invalidRequest(`${kind} needs the feature ${queryCollectionsFeature}.`);
+    const record = member === undefined ? undefined : view.queries.get(member);
+    if (member === undefined || !record) return invalidRequest(`${view.route} has no query collection ${String(member)}.`);
+    switch (kind) {
+      case "query-rows": {
+        const start = message["start"];
+        const count = message["count"];
+        if (!isSafe(start) || !isSafe(count)) return invalidRequest("The query-rows request has no start and count.");
+        if (count > 1_000) return failed("rejected", "A query-rows request reads at most 1000 rows.", { reason: "invalid-input" });
+        const version = queryState(view, member).version;
+        const rows = orderedRows(view, member);
+        record.loads.push({ start, count, version });
+        await queryLatency(record.source);
+        const page = rows.slice(start, start + count);
+        return ok({ version, total: rows.length, start, keys: page.map(record.source.key), rows: page });
+      }
+      case "query-set": {
+        let query: QueryCollectionQuery;
+        try {
+          query = normalizeQuery(message["query"] as never);
+          evaluateMockQuery([], query, record.source);
+          for (const filter of query.filters)
+            if (filter.op === "custom" && !record.source.custom?.[filter.field]) throw new RangeError(`No custom filter '${filter.field}'.`);
+        } catch (error) {
+          return failed("rejected", `The query of ${member} is not valid: ${error instanceof Error ? error.message : String(error)}`, { reason: "invalid-input" });
+        }
+        if (JSON.stringify(query) !== JSON.stringify(queryState(view, member).query)) bumpQuery(view, member, query);
+        return ok({ revision: view.revision });
+      }
+      default: {
+        const key = message["key"];
+        if (typeof key !== "string") return invalidRequest("The query-index request has no key.");
+        const version = queryState(view, member).version;
+        const index = orderedRows(view, member).findIndex(row => record.source.key(row) === key);
+        await queryLatency(record.source);
+        return ok({ version, index });
+      }
+    }
   }
 
   function collectionOf(view: MockRegisteredView, field: string): MockCollection {
@@ -1111,6 +1446,65 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return request.reply.promise;
   }
 
+  /* ------------------------------------------------------------- view requests */
+
+  /** A `view-requests` registration, with the outcomes of a producer (specs/application/README.md, "View requests"). */
+  function registerRequests(view: MockRegisteredView, message: Record<string, unknown>): Reply {
+    const listed = message["requests"];
+    const generation = message["generation"];
+    if (typeof message["presentation"] !== "string" || !isSafe(generation) || generation === 0 || !Array.isArray(listed) || listed.length > 64
+      || listed.some(item => !isRecord(item) || typeof item["name"] !== "string" || item["name"].length === 0 || typeof item["contract"] !== "string"))
+      return invalidRequest("The view-requests request is invalid.");
+    const requests = listed as Presentation["requests"];
+    const presentation = view.presentations.get(message["presentation"]);
+    if (!presentation || presentation.connection !== connection.id) return ok({ registration: "ignored" });
+    const known = view.definition.requests ?? {};
+    if (requests.some(request => !Object.hasOwn(known, request.name)
+      || known[request.name]!.contract !== undefined && known[request.name]!.contract !== request.contract))
+      return ok({ registration: "unsupported" });
+    const identities = (items: Presentation["requests"]) => new Set(items.map(item => canonicalJson([item.name, item.contract])));
+    const next = identities(requests);
+    const current = identities(presentation.requests);
+    if (generation < presentation.requestGeneration || generation === presentation.requestGeneration
+      && (next.size !== current.size || [...next].some(item => !current.has(item))))
+      return ok({ registration: "stale" });
+    presentation.requestGeneration = generation;
+    presentation.requests = requests.map(request => ({ name: request.name, contract: request.contract }));
+    return ok({ registration: "ok" });
+  }
+
+  /** The presentations of the route on the connection that registered `name`, with the contract they registered. */
+  function requestTargets(view: MockRegisteredView, name: string): { readonly presentation: string; readonly contract: string }[] {
+    if (!connected || connection.session === undefined || !connection.features.has(viewRequestsFeature)) return [];
+    return [...view.presentations.values()].filter(item => item.connection === connection.id).flatMap(item => {
+      const request = item.requests.find(entry => entry.name === name);
+      return request ? [{ presentation: item.id, contract: request.contract }] : [];
+    });
+  }
+
+  /**
+   * Raises a view request. Inside `batch` or a command handler it is pushed after their changes are published, so its
+   * revision includes them, as a producer publishes what is pending before it pushes the request.
+   */
+  function raise(view: MockRegisteredView, name: string, input: unknown): number {
+    const targets = requestTargets(view, name);
+    if (targets.length === 0) return 0;
+    if (view.batching || view.running > 0) view.raised.push({ name, input });
+    else pushRequest(view, name, input);
+    return targets.length;
+  }
+
+  function pushRequest(view: MockRegisteredView, name: string, input: unknown): void {
+    for (const target of requestTargets(view, name))
+      pushMessage({ kind: "view-request", route: view.route, presentation: target.presentation, revision: view.revision, name, contract: target.contract, input });
+  }
+
+  /** Pushes the requests raised inside a batch or command handler, once it published its changes. */
+  function pushRaised(view: MockRegisteredView): void {
+    if (view.batching || view.running > 0) return;
+    for (const request of view.raised.splice(0)) pushRequest(view, request.name, request.input);
+  }
+
   /* ------------------------------------------------------------ requests */
 
   function available(view: MockRegisteredView, member: string, input: unknown): boolean {
@@ -1231,7 +1625,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return reply;
   }
 
-  async function answer(message: Record<string, unknown>, call: MockCall): Promise<Reply> {
+  async function answer(message: Record<string, unknown>, call: MockCall, session: unknown): Promise<Reply> {
     for (const interceptor of [...interceptors]) {
       const reply = await interceptor(call);
       if (reply === undefined) continue;
@@ -1260,17 +1654,39 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (closedSessions.has(message["session"])) return refuseHeld({ ...released(), ...identity });
       connection.session = message["session"];
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
+      // translation-text/1: a page that connects to a window with a locale is told it.
+      if (windowLocale !== null && connection.features.has(translationTextFeature)) pushMessage({ kind: "locale", locale: windowLocale });
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
-      return ok({ ...identity, features: mockFeatures,
+      // blobs/1: the connection's upload grant.
+      const grant = connection.features.has(blobsFeature) && uploadLimit !== undefined
+        ? { blobs: { upload: "mock:upload", token: `mock-upload-token-${connection.id}`, maximumBytes: uploadLimit } } : {};
+      return ok({ ...identity, features: mockFeatures, ...grant,
         ...(connection.features.has(navigationPathFeature) && navigationPath !== undefined ? { navigationPath } : {}) });
     }
     if (connection.session === undefined) return noHello();
+    // request-session/1: a request of another page, which names another session or none, never acts for this one.
+    if (connection.features.has(requestSessionFeature) && session !== connection.session) return noHello();
     if (kind === "receive") return ok({ messages: [] });
     if (kind === "closing-reply") {
       if (!connection.features.has(presentedFeature)) return invalidRequest("closing-reply needs the feature presented/1.");
       // Without a pending close it changes nothing.
       connection.closing?.finish(true);
+      return ok();
+    }
+    if (kind === "flush-reply") {
+      if (!connection.features.has(fieldFlushFeature)) return invalidRequest("flush-reply needs the feature field-flush/1.");
+      if (typeof message["id"] !== "string") return invalidRequest("The flush-reply has no id.");
+      connection.flushes.get(message["id"])?.(true);
+      return ok();
+    }
+    if (kind === "view-requests" && !connection.features.has(viewRequestsFeature))
+      return invalidRequest("view-requests needs the feature view-requests/1.");
+    if (kind === "client-error") {
+      // client-errors/1: the producer logs the report; the mock records it in clientErrors.
+      if (!connection.features.has(clientErrorsFeature) || typeof message["source"] !== "string" || typeof message["message"] !== "string")
+        return invalidRequest("client-error needs the feature client-errors/1, a source and a message.");
+      clientErrors.push(message as unknown as MockClientError);
       return ok();
     }
     if (kind === "presented" && (!connection.features.has(presentedFeature) || !isSafe(message["revision"])))
@@ -1315,7 +1731,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         }
         if (existing && existing.connection !== connection.id) return ok({ ...state(), presentation: "ignored" });
         const handlers = Array.isArray(message["handlers"]) ? message["handlers"] as Presentation["handlers"] : undefined;
-        view.presentations.set(id, existing ?? { id, connection: connection.id, handlers: handlers ?? [], generation: 0 });
+        view.presentations.set(id, existing ?? { id, connection: connection.id, handlers: handlers ?? [], generation: 0, requests: [], requestGeneration: 0 });
         // presented/1: a wait that is pending reaches a presentation that opens, after the open reply.
         if (view.presentWaits.size !== 0) afterReply.set(call, () => offerPresent(view));
         return ok({ ...state(), presentation: "ok", ...(handlers === undefined ? {} : { registration: "ok" }) });
@@ -1351,7 +1767,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         } catch (error) { return errorReply(view, error, true); }
         return ok({ revision: view.revision });
       }
-      case "write": return writeChecked(view, message, connection.features.has(textSpliceFeature));
+      case "write":
+        if (Object.hasOwn(message, "path"))
+          return connection.features.has(fieldPathsFeature) ? writePath(view, message) : invalidRequest("A write with a path needs the feature field-paths/1.");
+        return writeChecked(view, message, connection.features.has(textSpliceFeature));
       case "command": case "can": {
         if (member === undefined) return invalidRequest("The request has no member.");
         const handler = view.definition.commands?.[member];
@@ -1373,9 +1792,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           view.running--;
           if (isRecord(patch)) commit(view, { ...view.state, ...patch });
           else publishRenewal(view);
+          pushRaised(view);
         } catch (error) {
           view.running--;
           publishRenewal(view);
+          pushRaised(view);
           return errorReply(view, error, true);
         }
         return ok({ revision: view.revision });
@@ -1439,6 +1860,9 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           }
         return ok({ registration: "ok" });
       }
+      case "view-requests": return registerRequests(view, message);
+      case "query-rows": case "query-set": case "query-index":
+        return queryRequest(view, kind, member, message);
       case "interaction-reply": {
         const request = typeof message["requestId"] === "string" ? view.requests.get(message["requestId"]) : undefined;
         if (!request || request.presentation.id !== message["presentation"]) return ok({ result: "stale" });
@@ -1480,8 +1904,46 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     for (const listener of [...connectionListeners]) listener(value);
   }
 
+  async function receiveUpload(request: HostUploadRequest): Promise<{ readonly status: number; readonly body: string }> {
+    const answer = (status: number, value: unknown) => ({ status, body: JSON.stringify(value) });
+    const failure = (status: number, reason: string, message: string) =>
+      answer(status, { ok: false, error: { kind: reason === "released" ? "released" : reason === "failed" ? "failed" : "rejected", reason, message } });
+    const aborted = () => request.signal?.reason ?? new DOMException("The upload was aborted.", "AbortError");
+    if (request.signal?.aborted) throw aborted();
+    if (!connected || request.token !== `mock-upload-token-${connection.id}` || uploadLimit === undefined)
+      return failure(403, "forbidden", "The upload token is not valid for an open connection of this window.");
+    const total = request.content.size;
+    // One step of the transfer, paced as the mock's replies are: virtual time with manual scheduling, otherwise at
+    // once or after the latency.
+    const step = () => new Promise<void>((resolve, reject) => {
+      const stop = () => reject(aborted());
+      if (request.signal?.aborted) { stop(); return; }
+      request.signal?.addEventListener("abort", stop, { once: true });
+      const done = () => { request.signal?.removeEventListener("abort", stop); resolve(); };
+      if (manual) schedule(now + sample(), done);
+      else if (latency === undefined) queueMicrotask(done);
+      else void realDelay(sample()).then(done);
+    });
+    await step();
+    request.onProgress?.({ loaded: Math.floor(total / 2), total });
+    await step();
+    if (total > uploadLimit) return failure(413, "too-large", `The upload is larger than the window's limit of ${uploadLimit} bytes.`);
+    const next = uploadFailures.shift();
+    if (next) return failure(next.status, next.reason ?? (next.status === 413 ? "too-large" : "failed"), next.message ?? "The mock refused the upload.");
+    request.onProgress?.({ loaded: total, total });
+    // An id of the spec's form (16 to 64 characters).
+    const ref: BlobRef = { id: `mock-upload-${String(uploads.length + 1).padStart(8, "0")}`, name: request.name, type: request.type, size: total };
+    uploads.push({ ref, content: request.content });
+    return answer(201, { ok: true, upload: ref });
+  }
+
   const bridge: MockBridge = {
     calls,
+    clientErrors,
+    uploads,
+    uploadContent: upload => uploads.find(entry => entry.ref.id === (typeof upload === "string" ? upload : upload.id))?.content,
+    failNextUpload(failure) { uploadFailures.push(failure); },
+    upload: receiveUpload,
     get now() { return now; },
     get pending() { return tasks.length; },
     isConnected: () => connected,
@@ -1492,6 +1954,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         if (!isRecord(parsed)) throw new TypeError("A request is a JSON object.");
         message = parsed;
       } catch (error) { return Promise.reject(error); }
+      // The session a request names (request-session/1) is checked against its connection's hello, and is not part of
+      // the recorded message, which tests compare with the request they expect.
+      const session = message["kind"] === "hello" ? undefined : message["session"];
+      if (message["kind"] !== "hello" && "session" in message) {
+        const { session: _, ...rest } = message;
+        message = rest;
+      }
       const call: MockCall = {
         kind: typeof message["kind"] === "string" ? message["kind"] : "",
         ...(typeof message["route"] === "string" ? { route: message["route"] } : {}),
@@ -1507,7 +1976,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const settle = (run: () => void) => toPage(() => { owner.pending.delete(drop); run(); });
         toProducer(() => {
           if (connection !== owner) return;
-          const run = () => admitted(call.kind, () => answer(message, call)).then(
+          const run = () => admitted(call.kind, () => answer(message, call, session)).then(
             reply => { settle(() => resolve(JSON.stringify(reply))); afterReply.get(call)?.(); },
             error => settle(() => reject(error)));
           // A request that arrives before the hello waits for it, up to 5 seconds, and is then admitted in arrival
@@ -1534,12 +2003,14 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(route)) throw new RangeError("A mock route has 1 to 128 letters, digits, '_' or '-'.");
       const state = { ...definition.state };
       const view: MockRegisteredView = {
-        route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
+        route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), pathChanged: new Map(), presentations: new Map(),
         requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
         // The first state begins the route's first epoch.
-        epoch: revision, renewing: false, running: 0, presentWaits: new Set(), regionRequests: new Map(),
+        epoch: revision, renewing: false, running: 0, presentWaits: new Set(), raised: [], regionRequests: new Map(), queries: new Map(),
         handle: undefined as unknown as MockView,
       };
+      for (const [member, source] of Object.entries(definition.queries ?? {})) registerQuery(view, member, source, state);
+      view.published = view.state = { ...state };
       view.handle = {
         route,
         get state() { return view.state; },
@@ -1551,6 +2022,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
             error: { kind: failure.kind ?? "failed", message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) } });
         },
         collection: field => collectionOf(view, field),
+        query(member) {
+          const record = view.queries.get(member);
+          if (!record) throw new RangeError(`The mock View ${view.route} declares no query collection ${member}.`);
+          return record.handle;
+        },
         batch(edit) {
           if (view.batching) { edit(); return; }
           view.batching = true;
@@ -1558,6 +2034,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           finally {
             view.batching = false;
             publish(view);
+            pushRaised(view);
           }
         },
         failNext(match, failure, times = 1) { bridge.failNext({ route, ...match }, failure, times); },
@@ -1568,6 +2045,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
             .flatMap(item => item.handlers.map(handler => handler.name)))];
         },
         interact: (name, input, options) => interact(view, name, input, options),
+        get requestHandlers() {
+          return [...new Set([...view.presentations.values()].filter(item => item.connection === connection.id)
+            .flatMap(item => item.requests.map(request => request.name)))];
+        },
+        raise: (name, input) => raise(view, name, input),
         get epoch() { return view.epoch; },
         renew() {
           view.renewing = true;
@@ -1614,6 +2096,16 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       navigationPath = path;
       if (connected && connection.features.has(navigationPathFeature)) pushMessage({ kind: "navigation-path", path, operation });
     },
+    flushFields: (timeout = 1_000) => flushFields(timeout),
+    setWindowLocale(locale) {
+      if (locale !== null && !(typeof locale === "string" && locale.length <= 64 && /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/.test(locale)))
+        throw new RangeError("The window's locale is a tag such as \"de\" or \"pt-BR\", or null.");
+      if (windowLocale === locale) return;
+      windowLocale = locale;
+      if (connected && connection.session !== undefined && connection.features.has(translationTextFeature))
+        pushMessage({ kind: "locale", locale });
+    },
+    get windowLocale() { return windowLocale; },
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {
       let settled = false;

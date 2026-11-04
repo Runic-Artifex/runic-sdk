@@ -202,6 +202,34 @@ or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
 and text forms.
 
+#### Row cells and nested members
+
+Since 0.16, `InvoiceFields.address.street` and `InvoiceFields.lines.at(line.id).quantity` are fields too
+(`field-paths/1`): a member of an object member, and a cell of a row that .NET edits with `[RunicRowEditor]`. Bind
+each cell in the row's component; `at(key)` returns the same descriptor for the same key, so the field survives
+re-renders and moves:
+
+```tsx
+function LineRow({ invoice, line }: { invoice: InvoiceView; line: InvoiceLine }) {
+  const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { commit: "pause" });
+  return <td><input {...quantity.inputProps} />{quantity.conflict && <button onClick={quantity.retry}>Keep mine</button>}</td>;
+}
+```
+
+Such a field always writes checked, conflicts only when another writer changed the same cell, and shows the messages
+.NET reports at the cell's validation path. See [Fields below a member and row cells](../views/README.md#fields-below-a-member-and-row-cells).
+
+### Forms: `useForm(fields, options?)`
+
+One state over a component's field handles, and a `submit` that writes every field before its command
+(`createFormController` in `@runic-artifex/views`). `dirty` counts drafts not written yet and the `dirty` option, such
+as the View's `isDirty`; `pending` is true while a draft, a check (`validating`) or a submit runs.
+
+```tsx
+const form = useForm({ title, step }, { dirty: editor.state?.isDirty });
+<button disabled={!form.valid || form.submitting} onClick={() => form.submit(() => editor.client!.save())}>Save</button>
+```
+
 ### Text inputs: `useTextField(view, read, write, options?)`
 
 Binds a controlled text input to a member through the framework-neutral
@@ -553,6 +581,23 @@ With Radix (`@radix-ui/react-menubar`) the open menu is the root's controlled
 Check items are `Menubar.CheckboxItem checked`, radio groups
 `Menubar.RadioGroup value` with `Menubar.RadioItem`.
 
+## `useText(value, fallback?)`
+
+Shows a text reference that a ViewModel produced, such as a status line or a
+validation error's `text`, in the window's language, and renders again when the
+language changes. A string shows as it is; `null` and `undefined` show
+`fallback`. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`useWindowLocale()` reads the window's locale.
+
+```tsx
+const status = useText(view.state?.status);
+<p>{status}</p>
+function ErrorLine({ error }: { error: BridgeValidationMessage }) {
+  return <li>{useText(error.text, error.message)}</li>;
+}
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed
@@ -618,6 +663,35 @@ the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
+## View requests
+
+A `ViewRequest<T>` property of the ViewModel asks the View for a one-way
+presentation action, such as focusing a field or showing a toast, and is
+`client.requests.<name>` on the generated client. Register the page's
+handler in an effect: `handle((input, { signal }) => …)` returns the function
+that removes it, so React removes the handler when the page unmounts or its
+client changes:
+
+```tsx
+export function EditPage({ page }: { page: EditPageReference }) {
+  const { client } = useView(page);
+  const name = useRef<HTMLInputElement>(null);
+  useEffect(() => client?.requests.focus.handle(({ member }) => {
+    if (member === "name") name.current?.focus();
+  }), [client]);
+  return <input ref={name} />;
+}
+```
+
+`input` is typed from the request's `ViewRequest<T>`. The handler runs once
+the page painted the state the request was raised with, so the field of that
+state is rendered; `signal` aborts when the handler is replaced or removed, the
+client is disposed or the connection is lost. A request is never replayed: one
+raised before the effect ran, or while the page is disconnected, is not
+delivered later. See [View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests) for the rules, and in a frontend
+test raise one with the generated mock's `requests.<name>.raise(input)` (the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing)).
+
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, ref }`.
@@ -634,6 +708,25 @@ useEffect(() => {
 return <div ref={ref} style={{ height: 480, overflow: "auto" }}>
   <div style={{ height: viewport.totalSize }}>
     <div style={{ transform: `translateY(${viewport.offset}px)` }}>{/* state.rows */}</div>
+  </div>
+</div>;
+```
+
+## `useQueryCollection(collection, options)`
+
+Follows a scroll container for a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it
+loads the rows the container shows, with placeholders until they arrive, and lays them out with variable heights
+(`estimateSize` for rows not measured yet). It returns the `QueryViewport` (`items` with `top` and `size`, `totalSize`,
+`total`, `query`, `loading`, `error`), `ref` for the container, `measure(index)` for each row, and `scrollToKey`,
+`scrollToIndex`, `setQuery` and `retry`:
+
+```tsx
+const list = useQueryCollection(client.queries.rows, { estimateSize: 32 });
+return <div ref={list.ref} style={{ height: 480, overflow: "auto" }}>
+  <div style={{ height: list.totalSize, position: "relative" }}>
+    {list.items.map(item => <div key={item.key ?? `p${item.index}`} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
+      {item.row?.label ?? "…"}
+    </div>)}
   </div>
 </div>;
 ```

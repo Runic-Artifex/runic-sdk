@@ -11,7 +11,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Application.Views.Wpf;
 
 /// <summary>Native platform services for the application's own WPF windows.</summary>
-public static class WpfPlatformServices
+public static partial class WpfPlatformServices
 {
     /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher, screen-reader announcements, message boxes, taskbar badge and progress, and drags owned by it.</summary>
     /// <param name="window">The window, on its own thread.</param>
@@ -91,6 +91,35 @@ public static class WpfPlatformServices
         if (OperatingSystem.IsWindowsVersionAtLeast(8) && message != 0 && (uint)message == DesktopPlatformServices.WindowsTaskbarButtonCreatedMessage)
             DesktopPlatformServices.WindowsTaskbarButtonCreated(window);
         return 0;
+    }
+
+    /// <summary>
+    /// The owner for a Runic Desktop window that belongs to a WPF <paramref name="window"/>
+    /// (<see cref="DesktopWindowOptions.Owner"/>): the Desktop window stays above it, and with
+    /// <see cref="DesktopWindowModality.Window"/> the WPF window takes no input until the Desktop window closed, as for
+    /// <see cref="Window.ShowDialog"/>.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// await surface.OpenWindowAsync(new DesktopWindowOptions
+    /// {
+    ///     Owner = WpfPlatformServices.ForDesktopWindowOwner(mainWindow),
+    ///     Modality = DesktopWindowModality.Window,
+    /// });
+    /// </code>
+    /// Call it on the window's UI thread. It creates the window's handle if the window has none yet
+    /// (<see cref="WindowInteropHelper.EnsureHandle"/>). Runic Desktop does not watch a WPF owner: close the Desktop window
+    /// before the WPF window closes. The other way round, a WPF dialog that belongs to a Runic Desktop window sets
+    /// <c>new WindowInteropHelper(dialog).Owner = desktopWindow.NativeHandle</c> before <see cref="Window.ShowDialog"/>.
+    /// </remarks>
+    /// <param name="window">The WPF window that owns the Desktop window.</param>
+    /// <returns>An owner with the window's <c>HWND</c>.</returns>
+    /// <exception cref="InvalidOperationException">The caller is not on the window's UI thread.</exception>
+    public static DesktopWindowOwner ForDesktopWindowOwner(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        window.VerifyAccess();
+        return DesktopWindowOwner.FromNativeHandle(new WindowInteropHelper(window).EnsureHandle());
     }
 
     /// <summary>Brings a WPF window to the front, for example for a launch that another copy of the application forwarded.</summary>

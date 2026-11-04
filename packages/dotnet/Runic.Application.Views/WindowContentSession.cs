@@ -92,9 +92,12 @@ public sealed class WindowContentSession : IDisposable
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
         MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
+        var maximumUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumUploadBytes, nameof(options.MaximumUploadBytes));
+        var maximumWindowUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumWindowUploadBytes, nameof(options.MaximumWindowUploadBytes));
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+        PageLogger = loggerFactory?.CreateLogger(RunicViewsTelemetry.PageLogCategory) ?? TraceFallbackLogger.Instance;
         HasLogger = loggerFactory is not null;
         var contextLogger = loggerFactory?.CreateLogger<RunicModelContext>();
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -122,15 +125,23 @@ public sealed class WindowContentSession : IDisposable
             _operations = operations;
             _interactions = interactions;
             _fieldWrites = fieldWrites;
+            // A navigation a command of this window starts keeps the command's identity for its guards.
+            RunicInteractionInvocation.FlowIntoNavigation();
             // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
-            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider);
+            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger);
+            dispatcher.Blobs.Configure(maximumUploadBytes, maximumWindowUploadBytes);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
+            // A departure of this window's models flushes its pages first (field-flush/1).
+            if (ModelContext is { } flushContext)
+                _draftFlush = Runic.Navigation.RunicDraftFlush.Register(flushContext,
+                    cancellationToken => new ValueTask(FlushFieldsAsync(cancellationToken)));
             _rootNavigation = AttachRootToNavigator(rootModel);
         }
         catch
         {
+            _draftFlush?.Dispose();
             _connectionObserver?.Dispose();
             try { fieldWrites?.Dispose(); }
             finally
@@ -160,6 +171,30 @@ public sealed class WindowContentSession : IDisposable
     /// attaches to it.
     /// </summary>
     public IRunicModelContext? ModelContext => _rootModelLease?.Context ?? _sessionModelContext;
+
+    /// <summary>
+    /// The window's locale, a BCP 47 tag such as <c>de</c> or <c>pt-BR</c>, or <see langword="null"/> while the
+    /// application sets none and each page keeps its own. Setting it pushes it to the window's pages (feature
+    /// <c>translation-text/1</c>), which show text references, such as validation messages, in that language and set the
+    /// locale of their Translations runtime; a page that connects later receives it after its <c>hello</c>. It can be set
+    /// from any thread.
+    /// </summary>
+    /// <remarks>
+    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>.
+    /// Setting <see langword="null"/> after a locale leaves the pages in the language they show.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
+    public string? Locale
+    {
+        get => BridgeDispatcher.For(_transport).Locale;
+        set
+        {
+            if (BridgeDispatcher.For(_transport).SetLocale(value)) LocaleChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Raised on the setting thread after <see cref="Locale"/> changed.</summary>
+    public event EventHandler? LocaleChanged;
 
     /// <summary>Gets whether the window's root ViewModel receives dropped files (<see cref="IRunicFileDropTarget"/>).</summary>
     public bool AcceptsFileDrops => _rootModel is IRunicFileDropTarget;
@@ -201,6 +236,12 @@ public sealed class WindowContentSession : IDisposable
     // Failures of this window's Bridges, operations and mounts. Without a
     // logger factory this is the Trace fallback.
     internal ILogger Logger { get; }
+
+    // The request dispatcher of the window's transport, which owns its connections.
+    internal BridgeDispatcher Dispatcher => BridgeDispatcher.For(_transport);
+
+    // The errors the window's pages report (client-errors/1), in their own category.
+    internal ILogger PageLogger { get; }
 
     internal bool HasLogger { get; }
 
@@ -413,6 +454,14 @@ public sealed class WindowContentSession : IDisposable
         var acknowledged = await pages.WaitAsync(cancellationToken).ConfigureAwait(false);
         return new(result.Drained, result.RemainingRunningOperations, result.Remaining) { PagesAcknowledged = acknowledged };
     }
+
+    // field-flush/1: asks the window's pages to write their field drafts; true when every page answered. A disposed
+    // session asks nothing.
+    internal Task<bool> FlushFieldsAsync(CancellationToken cancellationToken = default) =>
+        Volatile.Read(ref _draftFlush) is null ? Task.FromResult(true) : BridgeDispatcher.For(_transport).FlushFieldsAsync(cancellationToken);
+
+    // field-flush/1: the window's registration with RunicDraftFlush for its model context, until it is disposed.
+    private IDisposable? _draftFlush;
 
     // How long a close waits at most for its pages' closing-reply (presented/1).
     internal static readonly TimeSpan CloseAcknowledgementLimit = TimeSpan.FromSeconds(5);
@@ -871,6 +920,9 @@ public sealed class WindowContentSession : IDisposable
         IDisposable[] attachments;
         RootPresentations[] rootMounts;
         IDisposable[] links;
+        // field-flush/1: no departure waits for this window's pages any more, nor for a flush already in progress.
+        Interlocked.Exchange(ref _draftFlush, null)?.Dispose();
+        BridgeDispatcher.For(_transport).SettleFlushes();
         lock (_gate)
         {
             if (_disposed) return;
@@ -910,6 +962,8 @@ public sealed class WindowContentSession : IDisposable
         Capture(_operations.Dispose, errors);
         Capture(_interactions.Dispose, errors);
         Capture(_fieldWrites.Dispose, errors);
+        // blobs/1: the window's blob URLs stop working and its unclaimed uploads are deleted.
+        Capture(BridgeDispatcher.For(_transport).Blobs.Dispose, errors);
 
         IRunicModelContextLease[] modelLeases;
         IRunicModelContextLease? rootModelLease;

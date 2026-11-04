@@ -94,6 +94,12 @@ public sealed class PropertyDescriptor<T>
     public bool RegionCollection { get; init; }
     /// <summary>Whether a <c>region</c> request of a <see cref="RegionCollection"/> property may close a region.</summary>
     public bool RegionClose { get; init; }
+    /// <summary>
+    /// Writes one row of a <see cref="RunicQueryCollection{TRow, TKey}"/> property, whose rows a page reads with
+    /// <c>query-rows</c> (<c>query-collections/1</c>); <see langword="null"/> for any other property. <see cref="Get"/>
+    /// returns the collection.
+    /// </summary>
+    public Action<Utf8JsonWriter, object?>? QueryRowWriter { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
@@ -171,6 +177,13 @@ public sealed class CheckedPropertyDescriptor<T>(
     internal Func<JsonElement, object?>? Read { get; } = readValue;
     internal Action<Utf8JsonWriter, object?>? Write { get; } = writeValue;
 
+    /// <summary>
+    /// The paths below the member that accept checked writes with <c>field-paths/1</c>, such as <c>["street"]</c> of an
+    /// address, with the generated copy of the member's value with that path changed; <see langword="null"/> when none
+    /// do. A path write assigns the copy with the setter.
+    /// </summary>
+    public IReadOnlyList<BridgeFieldPath>? FieldPaths { get; init; }
+
     // A detached copy of a mutable value: decode what the generated writer wrote.
     internal object? Snapshot(object? value)
     {
@@ -189,6 +202,47 @@ public sealed class CheckedPropertyDescriptor<T>(
     {
         public new bool Equals(object? left, object? right) => BridgeCanonicalJson.Equal(owner.Write!, left, right);
         public int GetHashCode(object? value) => BridgeCanonicalJson.Hash(owner.Write!, value);
+    }
+}
+
+/// <summary>One field path below a member or a row (<c>field-paths/1</c>). Created by generated bridges.</summary>
+/// <param name="path">The wire member names below the member or the row, such as <c>["street"]</c>.</param>
+/// <param name="set">
+/// Returns a copy of the object or row with the value at the path replaced by the decoded wire value, keeping every
+/// member the wire does not carry. It throws <see cref="FormatException"/>, <see cref="JsonException"/>,
+/// <see cref="ArgumentException"/> or <see cref="OverflowException"/> for a value that is not valid input.
+/// </param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed class BridgeFieldPath(string[] path, Func<object, JsonElement, object> set)
+{
+    /// <summary>The wire member names below the member or the row.</summary>
+    public IReadOnlyList<string> Path { get; } = path ?? throw new ArgumentNullException(nameof(path));
+
+    /// <summary>Copies the object or row with the value at the path replaced.</summary>
+    public Func<object, JsonElement, object> Set { get; } = set ?? throw new ArgumentNullException(nameof(set));
+
+    internal string[] Segments { get; } = path;
+
+    /// <summary>
+    /// The JSON object that <paramref name="writeObject"/> writes, with its member <paramref name="member"/> replaced
+    /// by what <paramref name="writeValue"/> writes: the copy of a sealed class whose settable members are all on the
+    /// wire, for its generated codec to read back.
+    /// </summary>
+    public static JsonDocument ReplaceMember(Action<Utf8JsonWriter> writeObject, string member, Action<Utf8JsonWriter> writeValue)
+    {
+        ArgumentNullException.ThrowIfNull(writeObject);
+        ArgumentNullException.ThrowIfNull(member);
+        ArgumentNullException.ThrowIfNull(writeValue);
+        static byte[] Write(Action<Utf8JsonWriter> write)
+        {
+            var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+            using (var writer = new Utf8JsonWriter(buffer)) write(writer);
+            return buffer.WrittenSpan.ToArray();
+        }
+        var owner = System.Text.Json.Nodes.JsonNode.Parse(Write(writeObject)) as System.Text.Json.Nodes.JsonObject
+            ?? throw new FormatException("The value to copy is not an object.");
+        owner[member] = System.Text.Json.Nodes.JsonNode.Parse(Write(writeValue));
+        return JsonDocument.Parse(owner.ToJsonString());
     }
 }
 
@@ -353,12 +407,20 @@ internal interface IBridgeDetachmentSignal
 internal static class BridgeSnapshotPublication
 {
     private static readonly AsyncLocal<Func<bool>?> IsInactive = new();
+    // The logger of the bridge whose state is being written, for the writers it calls, such as BridgeValidation.
+    private static readonly AsyncLocal<Microsoft.Extensions.Logging.ILogger?> CurrentLogger = new();
 
-    public static IDisposable Enter(Func<bool> isInactive)
+    internal static Microsoft.Extensions.Logging.ILogger Logger => CurrentLogger.Value ?? TraceFallbackLogger.Instance;
+
+    public static IDisposable Enter(Func<bool> isInactive) => Enter(isInactive, null);
+
+    public static IDisposable Enter(Func<bool> isInactive, Microsoft.Extensions.Logging.ILogger? logger)
     {
         var previous = IsInactive.Value;
+        var previousLogger = CurrentLogger.Value;
         IsInactive.Value = isInactive;
-        return new Scope(previous);
+        CurrentLogger.Value = logger;
+        return new Scope(previous, previousLogger);
     }
 
     public static void ThrowIfInactive()
@@ -366,14 +428,16 @@ internal static class BridgeSnapshotPublication
         if (IsInactive.Value?.Invoke() == true) throw new BridgeSnapshotDetachedException();
     }
 
-    private sealed class Scope(Func<bool>? previous) : IDisposable
+    private sealed class Scope(Func<bool>? previous, Microsoft.Extensions.Logging.ILogger? previousLogger) : IDisposable
     {
         private Func<bool>? _previous = previous;
+        private int _disposed;
 
         public void Dispose()
         {
-            var previous = Interlocked.Exchange(ref _previous, null);
-            IsInactive.Value = previous;
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            IsInactive.Value = Interlocked.Exchange(ref _previous, null);
+            CurrentLogger.Value = previousLogger;
         }
     }
 }
@@ -428,6 +492,11 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly Dictionary<string, PropertyDescriptor<T>> _settable = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckedPropertyBinding> _checkedByMember = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CommandDescriptor<T>> _commandsByMember = new(StringComparer.Ordinal);
+    // field-paths/1: the members with field paths below them, by wire name, and the versions of those paths.
+    private readonly Dictionary<string, FieldPathTarget> _pathTargets = new(StringComparer.Ordinal);
+    private readonly BridgeFieldPathTracker _fieldPaths = new();
+    // Query collections (query-collections/1) by wire name.
+    private readonly Dictionary<string, PropertyDescriptor<T>> _queryCollections = new(StringComparer.Ordinal);
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
@@ -531,6 +600,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var property in properties.Where(property => property.CanWrite))
             _settable[property.WireName] = property;
         foreach (var command in commands) _commandsByMember[command.Member] = command;
+        foreach (var descriptor in checkedProperties)
+            if (descriptor is { FieldPaths.Count: > 0, ValueKind: CheckedFieldValueKind.Json, Write: not null })
+                _pathTargets[descriptor.WireName] = new(descriptor.WireName, descriptor.FieldPaths, descriptor, null);
+        foreach (var descriptor in _keyedCollections)
+            if (descriptor is { FieldPaths.Count: > 0, UpdateRow: not null })
+                _pathTargets[descriptor.Name] = new(descriptor.Name, descriptor.FieldPaths, null, descriptor);
+        foreach (var property in properties.Where(property => property.QueryRowWriter is not null))
+            _queryCollections[property.WireName] = property;
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();
@@ -541,7 +618,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (dataSubscriptions is { Length: > 0 })
                 bindings.Add(_dataSubscriptions = new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
                     rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
-                    observeValidation: validationReader?.Observe, collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
+                    observeValidation: BridgeValidation.ObserveWithPending(validationReader?.Observe), collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
             // Register the per-window observer before this Bridge subscribes
             // its publisher. A synchronous setter then advances the
             // field version before any published state can describe the value.
@@ -585,6 +662,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             // A rule that names no member changes neither ErrorsChanged nor a property (ReactiveValidationObject
             // raises ErrorsChanged only for the members its rules named before), so its changes are observed here.
             if (validationReader?.Observe(_vm, ScheduleUnit) is { } validation) bindings.Add(validation);
+            // validation-pending/1: a check that starts or ends changes only validation.pending.
+            if (BridgeValidation.ObservePending(_vm, ScheduleUnit) is { } pendingValidation) bindings.Add(pendingValidation);
             foreach (var command in _commands)
             {
                 var value = command.Get(_vm);
@@ -761,6 +840,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (ReferenceEquals(previous.Source, next)) continue;
             previous.Subscription?.Dispose();
             _observed.Remove(property.Name);
+            // A query collection publishes in this ViewModel's model turns (query-collections/1).
+            if (next is IBridgeQueryCollection query) query.Bind(_modelContextLease?.Context ?? _content?.ModelContext, _logger);
             var subscription = next switch
             {
                 NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),
@@ -820,9 +901,19 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _content?.NextRevision();
         }
         _modelTurn.RunForTeardown(DisposeCore);
+        // blobs/1: the URLs of the blobs the route encoded stop working.
+        _blobs?.ReleaseRoute(this);
         Interlocked.Exchange(ref _modelContextLease, null)?.Dispose();
         GC.SuppressFinalize(this);
     }
+
+    // blobs/1: the Window's blobs and uploads, which the route's codecs reach through BridgeBlobScope.
+    private BridgeBlobs Blobs => _blobs ??= BridgeDispatcher.For(_transport).Blobs;
+    private BridgeBlobs? _blobs;
+
+    // Enters the scope of the route's encodes and decodes; connection is the key of the request's connection, or null
+    // outside a request.
+    private BridgeBlobScope.Restore EnterBlobs(string? connection) => BridgeBlobScope.Enter(Blobs, this, connection);
 
     private void DisposeCore()
     {
@@ -846,6 +937,21 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     void IBridgeDetachmentSignal.BeginDetaching() => Interlocked.Exchange(ref _detaching, 1);
 
     private bool IsInactive => _disposed || Volatile.Read(ref _detaching) != 0;
+
+    // A member with field paths: a settable object member (Nested) or a keyed collection with a row editor (Rows).
+    private sealed class FieldPathTarget(string member, IReadOnlyList<BridgeFieldPath> paths, CheckedPropertyDescriptor<T>? nested,
+        BridgeCollectionDescriptor<T>? rows)
+    {
+        private readonly Dictionary<string, int> _indexes = paths.Select((path, index) => (Key: BridgeFieldPathTracker.PathKey(path.Segments), index))
+            .ToDictionary(entry => entry.Key, entry => entry.index, StringComparer.Ordinal);
+        public string Member { get; } = member;
+        public IReadOnlyList<BridgeFieldPath> Paths { get; } = paths;
+        public string[][] Segments { get; } = [.. paths.Select(path => path.Segments)];
+        public CheckedPropertyDescriptor<T>? Nested { get; } = nested;
+        public BridgeCollectionDescriptor<T>? Rows { get; } = rows;
+        // The index of a declared path, or -1.
+        public int IndexOf(string[] path) => _indexes.TryGetValue(BridgeFieldPathTracker.PathKey(path), out var index) ? index : -1;
+    }
 
     private sealed record CheckedPropertyBinding(CheckedPropertyDescriptor<T> Descriptor,
         BridgeFieldWriteRegistry<object?> Registry);

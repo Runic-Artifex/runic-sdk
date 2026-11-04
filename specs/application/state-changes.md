@@ -48,8 +48,8 @@ Every change has `field`, the wire name of a state member, and `kind`.
 ### Keyed collections
 
 A **keyed collection** is a member whose value is an array of rows (objects), each with a **key**: a row field that
-the contract names. The row field is a `string`, `uuid` or `int32`; its key is the string itself, the normal form of
-the `uuid`, or the decimal form of the `int32`. Keys are nonempty and unique within the field, and rows are never
+the contract names. The row field is a `string`, `uuid`, `int32` or `int64`; its key is the string itself, the normal
+form of the `uuid`, or the decimal form of the `int32` or `int64` (its normal form, which is also its JSON string). Keys are nonempty and unique within the field, and rows are never
 `null`.
 
 The indexed changes have all six members:
@@ -69,6 +69,9 @@ The indexed changes have all six members:
 | `remove` | first removed row | equal to `index` | keys of the removed rows | `[]` | Removes `keys.length` rows at `index`. |
 | `replace` | first replaced row | equal to `index` | keys of the old rows | the new rows, as many as `keys` | Replaces `keys.length` rows at `index` with `items`. New rows may have other keys. |
 | `move` | final position after removal | first moved row | keys of the moved rows | `[]` | Removes `keys.length` rows at `oldIndex`, then inserts them at `index`. |
+
+With `field-paths/1`, a page may also write one cell of a row ([field paths](README.md#field-paths)). The producer
+replaces the row with one of the same key, which a frame reports as a `replace` like any other change of the row.
 
 ### `text`
 
@@ -163,6 +166,9 @@ encoding with the encoding it last published on the route, by [canonical equalit
 Every member that differs becomes a `set`, except that a text member may become splices (below). A checked field whose
 version changed is a `set` with the new version, even when its value is equal. A string's encoding is equal exactly
 when the strings are equal, so a producer MAY compare text members as strings.
+
+A [query collection](README.md#query-collections)'s member is a value member like the others: its `query`, `total`
+and `version` are compared, and its rows, which the state never holds, are read with `query-rows`.
 
 This comparison is deliberately not driven by change notifications: members that are computed from others and never
 announce a change, availability members and validation results stay correct. Its cost is the encoding of the members

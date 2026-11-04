@@ -20,6 +20,11 @@ import {
   createTextFieldController,
   createViewController,
   onBridgeConnection,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  textVersion,
+  windowLocale,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
   type BridgeField,
@@ -34,6 +39,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type TextReference,
   regionEntries,
   type RegionCollection,
   type RegionEntry,
@@ -591,15 +597,6 @@ export type FieldHandle<TValue> = FieldState<TValue> & {
 
 const noFieldErrors: readonly string[] = Object.freeze([]);
 
-/** The text a field shows for a value, as the field controller formats it. */
-function formatFieldValue(value: unknown): string {
-  switch (typeof value) {
-    case "string": return value;
-    case "number": case "bigint": case "boolean": return String(value);
-    default: return "";
-  }
-}
-
 /**
  * Binds an element to one View member while the component is mounted, through `createFieldController`: pass a
  * generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. Spread `inputProps` on
@@ -622,7 +619,7 @@ function formatFieldValue(value: unknown): string {
 export function useField<TClient extends ViewClient, TValue>(
   view: TextFieldView<TClient>,
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   type State = TClient["snapshot"];
   const latest = useRef(field);
@@ -633,11 +630,16 @@ export function useField<TClient extends ViewClient, TValue>(
     ...field.nullable === undefined ? {} : { nullable: field.nullable },
     ...field.integer === undefined ? {} : { integer: field.integer },
     ...field.choices === undefined ? {} : { choices: field.choices },
+    ...field.offset === undefined ? {} : { offset: field.offset },
+    ...field.constraints === undefined ? {} : { constraints: field.constraints },
+    // field-paths/1: a field below a member (InvoiceFields.lines.at(key).quantity) always writes checked.
+    ...field.checkedOnly === undefined ? {} : { checkedOnly: field.checkedOnly },
     read: state => latest.current.read(state),
     write: (client, value) => latest.current.write(client, value),
     ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
     ...field.baseline === undefined ? {} : { baseline: client => latest.current.baseline!(client) },
     ...field.errors === undefined ? {} : { errors: state => latest.current.errors!(state) },
+    ...field.validating === undefined ? {} : { validating: state => latest.current.validating!(state) },
   }, options));
   const { state, client } = view;
   useEffect(() => {
@@ -662,9 +664,10 @@ export function useField<TClient extends ViewClient, TValue>(
   const value = current.editing ? current.value
     : state === undefined ? (kind === "text" || kind === undefined ? "" : undefined) as TValue
     : field.read(state);
-  const text = Object.is(value, current.value) ? current.text : formatFieldValue(value);
+  const text = Object.is(value, current.value) ? current.text : controller.format(value);
   const errors = field.errors === undefined ? current.errors : state === undefined ? noFieldErrors : field.errors(state);
   const invalid = errors.length > 0 || current.error !== undefined;
+  const validating = field.validating === undefined ? current.validating : state !== undefined && field.validating(state);
   const inputProps = kind === "boolean"
     ? { checked: value === true, onChange: actions.onCheck, onBlur: actions.onBlur, "aria-invalid": invalid }
     : {
@@ -672,7 +675,7 @@ export function useField<TClient extends ViewClient, TValue>(
       onCompositionEnd: actions.onCompositionEnd, onBlur: actions.onBlur, "aria-invalid": invalid,
     };
   return {
-    value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict,
+    value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict, validating,
     inputProps: inputProps as FieldInputProps<TValue>,
     input: actions.input, commit: actions.commit, retry: actions.retry, reset: actions.reset,
   };
@@ -714,9 +717,44 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 
 const serverConnectionState = (): BridgeConnectionState => "connecting";
 
+/**
+ * Renders a text reference that a ViewModel produced, such as a status line or a validation message's `text`, in the
+ * window's language (`resolveText`), and renders again when the language changes. A string renders as it is;
+ * `null` and `undefined` render `fallback`. Configure the page's Translations runtime once with
+ * `configureTranslatedText`; without one, a reference shows its fallback text.
+ *
+ * ```tsx
+ * const status = useText(view.state?.status);
+ * <p>{status}</p>
+ * {view.state?.validation.errors.map(error => <ErrorLine key={error.message} error={error} />)}
+ * function ErrorLine({ error }) { return <li>{useText(error.text, error.message)}</li>; }
+ * ```
+ */
+export function useText(value: TextReference | string | null | undefined, fallback?: string): string {
+  const version = useSyncExternalStore(subscribeText, textVersion, textVersion);
+  // version is the language the text resolves in.
+  return useMemo(() => resolveText(value, fallback), [value, fallback, version]);
+}
+
+/**
+ * Renders the window's locale that the application set (`IRunicWindowLocale` in .NET), or `null` while it sets none,
+ * for example to set `lang` on an element. The server snapshot is `null`.
+ */
+export function useWindowLocale(): string | null {
+  return useSyncExternalStore(subscribeWindowLocale, windowLocale, serverWindowLocale);
+}
+
+const subscribeWindowLocale = (onChange: () => void) => onWindowLocale(() => onChange());
+const serverWindowLocale = (): string | null => null;
+
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
+export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
+export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+// blobs/1: uploads from the page and the blob values of state.
+export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";
 export {
   regionEntries,
   selectedRegion,
@@ -736,8 +774,12 @@ export {
   type NavigationReply,
 } from "@runic-artifex/views";
 export {
+  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
+export {
   FieldError,
   type BridgeField,
+  type BridgeFieldConstraints,
   type BridgeFieldKind,
   type FieldBaseline,
   type FieldDefinition,

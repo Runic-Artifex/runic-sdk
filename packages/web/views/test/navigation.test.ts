@@ -39,7 +39,9 @@ function installHost(options: { features?: readonly string[]; stack?: (string | 
           ...(features.includes("navigation-path/1") && pathAtHello ? { navigationPath: stack.at(-1) ?? null } : {}) });
       if (message["kind"] !== "navigation")
         return JSON.stringify({ ok: false, error: { kind: "rejected", reason: "invalid-request", message: "unexpected" } });
-      requests.push(message);
+      // request-session/1: every request names the hello's session; the recorded request leaves it out.
+      const { session: _session, ...request } = message;
+      requests.push(request);
       if (options.delay) await tick(options.delay);
       let outcome: object | null = committed;
       if (refuse) outcome = refusedOutcome;

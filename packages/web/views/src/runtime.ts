@@ -2,23 +2,78 @@
 // every generated module and every copy of this package through `runic.views.generated-client-runtime`. It owns
 // the connection (`hello` per connection, its features, and the requests sent with it), the only `onMessage`
 // listener, which dispatches pushes by kind and route, the page's edit numbers and the reconnect of open routes.
-import { randomId } from "./clock.js";
+import { clock, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
-  invalidResponse, presentationEpochFeature, presentedFeature, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+  clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, invalidResponse, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush,
+  viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
+import { translationTextFeature, validationPendingFeature } from "./validation.js";
+import { reportWindowLocale } from "./translated-text.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
+import { commitAllFields, commitDrafts } from "./field-controller.js";
+import { blobsFeature, readBlobGrant, type BlobGrant } from "./blob-wire.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature,
-  navigationPathFeature];
+// How long a window close waits for the page's field drafts to be written, within the host's 5-second limit.
+const closingFlushLimit = 2_000;
+// How long a flush (field-flush/1) waits for the drafts' writes before it answers, within the host's 1-second limit.
+const flushLimit = 800;
+
+/**
+ * Writes the page's field drafts when the user may be about to leave without the page knowing: a keyboard shortcut
+ * (a key with Ctrl, Cmd or Alt that produces no character, seen before the page's own handlers) or the window losing
+ * focus, as when a native menu opens. It helps hosts and pages without field-flush/1 too. Returns the function that removes the listeners.
+ */
+function flushOnDeparture(): () => void {
+  const page = globalThis as { readonly addEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void;
+    readonly removeEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void };
+  if (typeof page.addEventListener !== "function" || typeof page.removeEventListener !== "function") return () => {};
+  const keydown = (event: unknown) => {
+    const key = event as {
+      readonly ctrlKey?: boolean; readonly metaKey?: boolean; readonly altKey?: boolean; readonly key?: unknown;
+      readonly getModifierState?: (modifier: string) => boolean;
+    };
+    if (key.ctrlKey !== true && key.metaKey !== true && key.altKey !== true) return;
+    // Typing, not a shortcut: AltGr (which Windows reports as Ctrl and Alt) and macOS Option produce characters such
+    // as @ € { [ \ | on many layouts, and a key that produces a character without Ctrl or Cmd is text too.
+    if (typeof key.getModifierState === "function" && key.getModifierState("AltGraph")) return;
+    const character = typeof key.key === "string" && [...key.key].length === 1;
+    if (character && (key.metaKey !== true && key.ctrlKey !== true || key.ctrlKey === true && key.altKey === true && key.metaKey !== true)) return;
+    void commitAllFields();
+  };
+  const blur = (event: unknown) => {
+    // The window's own blur, not one of an element inside it.
+    if ((event as { readonly target?: unknown }).target === globalThis) void commitAllFields();
+  };
+  page.addEventListener("keydown", keydown, true);
+  page.addEventListener("blur", blur, true);
+  return () => {
+    page.removeEventListener!("keydown", keydown, true);
+    page.removeEventListener!("blur", blur, true);
+  };
+}
+
+// Resolves when `promise` settles or after `milliseconds`, whichever is first.
+function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = clock.set(resolve, milliseconds);
+    void promise.finally(() => { clock.clear(timer); resolve(); });
+  });
+}
+
+export const clientFeatures: readonly string[] = [
+  textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
+  clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
+  translationTextFeature, navigationPathFeature,
+];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -66,6 +121,11 @@ export interface SharedRuntime {
   readonly navigationPath?: string | null | undefined;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
+  /**
+   * Resolves once the current connection's `hello` succeeded, so `features` is final for it; rejects when there is
+   * no connection or the hello fails. A runtime of an earlier release does not have it.
+   */
+  ready?(): Promise<void>;
   /** Registers a handler for pushes of `kind` on `route`. */
   onPush(kind: Push["kind"], route: string, handler: PushHandler): () => void;
   /** Registers a handler for invalid pushes that name `route`. */
@@ -76,6 +136,11 @@ export interface SharedRuntime {
    */
   onWindowPush?(kind: WindowPushKind, handler: PushHandler): () => void;
   onConnection(listener: ConnectionListener): () => void;
+  /**
+   * blobs/1: the current connection's upload grant, after its `hello` succeeded; undefined when the producer grants
+   * none. Rejects as `request` does without a connection. A runtime of an earlier release does not have it.
+   */
+  blobGrant?(): Promise<BlobGrant | undefined>;
   /** Stops listening to the host bridge. */
   dispose(): void;
 }
@@ -108,11 +173,13 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   let connection = 0;
   let disposed = false;
   // The hello of the current connection, and whether its reply arrived and succeeded.
-  let hello: { readonly connection: number; readonly promise: Promise<void>; done: boolean } | undefined;
+  let hello: { readonly connection: number; readonly session: string; readonly promise: Promise<void>; done: boolean } | undefined;
   // The features in use on the current connection.
   let features: ReadonlySet<string> = new Set<string>();
   // navigation-path/1: the hello reply's path of the current connection.
   let navigationPath: string | null | undefined;
+  // The upload grant of the current connection (blobs/1).
+  let grant: BlobGrant | undefined;
   // A producer of another protocol: every call of the page fails from then on.
   let refused: string | undefined;
   let versionReported = false;
@@ -149,10 +216,29 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
    * presented/1 (specs/application/README.md, "Window close"): the application closes the window. The page delivers what it has, lets one frame
    * render it, acknowledges with `closing-reply` and reports `closed`, which a following drop does not change.
    */
+  /**
+   * field-flush/1 (specs/application/README.md, "Field flush"): the application is about to decide a departure. The
+   * page writes its field drafts, waits for their writes up to `flushLimit`, and answers `flush-reply`.
+   */
+  async function flush(id: string): Promise<void> {
+    if (!features.has(fieldFlushFeature)) return;
+    const current = connection;
+    const drafts = commitDrafts();
+    if (drafts !== undefined) await firstOf(drafts, flushLimit);
+    if (disposed || connection !== current || !connected) return;
+    await runtime.request({ kind: "flush-reply", id }).catch(() => undefined);
+  }
+
   async function closing(): Promise<void> {
     if (!features.has(presentedFeature)) return;
     const current = connection;
     flushNotifications();
+    // Drafts that wait, such as commit: "pause" ones, are written before the close is acknowledged (C2).
+    const drafts = commitDrafts();
+    if (drafts !== undefined) {
+      await firstOf(drafts, closingFlushLimit);
+      flushNotifications();
+    }
     await nextFrame();
     // A new connection is a new window session: its producer did not close it.
     if (disposed || connection !== current) return;
@@ -186,9 +272,11 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   function greet(): Promise<void> {
     if (hello?.connection === connection) return hello.promise;
     const current = connection;
+    // A new random session for each connection; with request-session/1 every request of the connection names it.
+    const session = randomId();
     const promise = (async () => {
       const reply = await send({
-        kind: "hello", protocol: bridgeProtocol, session: randomId(),
+        kind: "hello", protocol: bridgeProtocol, session,
         client: { name: clientName, version: viewsVersion }, features: clientFeatures,
       }, undefined);
       if (reply["protocol"] !== bridgeProtocol && (reply["protocol"] !== undefined || reply.ok)) {
@@ -204,6 +292,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
         features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
         const path = reply["navigationPath"];
         navigationPath = features.has(navigationPathFeature) && (path === null || typeof path === "string") ? path : undefined;
+        grant = features.has(blobsFeature) ? readBlobGrant(reply["blobs"]) : undefined;
       }
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
       if (implementation.name === runicProducerName && implementation.version !== viewsVersion && !versionReported) {
@@ -215,7 +304,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
         });
       }
     })();
-    const entry = { connection: current, promise, done: false };
+    const entry = { connection: current, session, promise, done: false };
     hello = entry;
     // A failed hello is sent again by the next request, unless the producer was refused.
     promise.then(() => { entry.done = true; }, () => { if (hello?.promise === promise) hello = undefined; });
@@ -255,6 +344,9 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       // Observed at once: it is awaited only after the request's reply, when the reply came before the hello's.
       settled.catch(() => undefined);
       const pipelined = entry?.promise === greeting && !entry.done;
+      // request-session/1: the request names its connection's session, also before the hello's reply; a producer
+      // without the feature ignores the member.
+      if (entry !== undefined) message = { ...message, session: entry.session };
       let reply: Reply;
       try { reply = await send(message, route); }
       catch (error) {
@@ -272,6 +364,11 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       }
       return reply;
     },
+    ready() {
+      if (refused !== undefined) return Promise.reject(refusal(undefined));
+      if (!connected) return Promise.reject(new BridgeError("disconnected", "The Bridge is disconnected."));
+      return greet();
+    },
     onPush: (kind, route, handler) => add(pushHandlers, key(kind, route), handler),
     onInvalidPush: (route, handler) => add(invalidHandlers, route, handler),
     onWindowPush: (kind, handler) => add(windowHandlers, kind, handler),
@@ -279,12 +376,22 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       connectionListeners.add(listener);
       return () => { connectionListeners.delete(listener); };
     },
+    async blobGrant() {
+      if (refused !== undefined) throw refusal(undefined);
+      if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.");
+      const current = connection;
+      await greet();
+      return connection === current ? grant : undefined;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       stopMessages();
       stopConnection();
       stopClosing();
+      stopFlush();
+      stopFallback();
+      stopLocale();
       connected = false;
       reportWindowClosed(false);
       for (const listener of [...connectionListeners]) {
@@ -295,6 +402,13 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   };
 
   const stopClosing = add(windowHandlers, "closing", () => { void closing(); });
+  const stopFlush = add(windowHandlers, "flush", push => { void flush((push as { readonly id: string }).id); });
+  const stopFallback = flushOnDeparture();
+  // translation-text/1: the producer sends `locale` only to connections that list the feature, also right after the
+  // hello, before its reply may have arrived, so it is applied whatever the features read so far.
+  const stopLocale = add(windowHandlers, "locale", push => {
+    reportWindowLocale((push as Extract<Push, { kind: "locale" }>).locale);
+  });
   // A closed window of an earlier Bridge does not close this one.
   reportWindowClosed(false);
   const stopMessages = bridge.onMessage(message => dispatch(message));
@@ -309,6 +423,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     hello = undefined;
     features = new Set<string>();
     navigationPath = undefined;
+    grant = undefined;
     // Each connection starts with `hello`; a request that needs it waits for it, and a failed one is sent again.
     if (next) void greet().catch(() => undefined);
     // The first report states the connection the page starts on; routes open on it themselves.

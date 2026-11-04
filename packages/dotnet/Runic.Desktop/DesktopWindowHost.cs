@@ -143,6 +143,43 @@ public interface IDesktopSpellCheckingWindowHost : IDesktopWindowHost
     ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default);
 }
 
+/// <summary>An optional native host that reports whether its window is active, minimized and visible.</summary>
+/// <remarks>
+/// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>, reads <see cref="Activity"/> when
+/// <see cref="ActivityChanged"/> is raised, and passes it to <see cref="DesktopWindow.Activity"/> and
+/// <see cref="DesktopWindow.ActivityChanged"/>. Report <see cref="DesktopWindowCapabilities.Activity"/> in
+/// <see cref="IDesktopWindowHost.Capabilities"/>, and raise the event when the window gains or loses the keyboard focus,
+/// is minimized or restored, and is shown or hidden.
+/// </remarks>
+public interface IDesktopActivityWindowHost : IDesktopWindowHost
+{
+    /// <summary>Gets the window's current activity, or <see langword="null"/> before the window has reported one.</summary>
+    /// <remarks>Called from any thread; keep it cheap. After the window closed, report it inactive and not visible.</remarks>
+    DesktopWindowActivity? Activity { get; }
+
+    /// <summary>Occurs after <see cref="Activity"/> has changed. It may be raised on the window's owning thread.</summary>
+    event EventHandler? ActivityChanged;
+}
+
+/// <summary>An optional native host that changes its window's light or dark appearance while it is open.</summary>
+/// <remarks>
+/// Runic Desktop finds it by type and calls <see cref="SetColorSchemeAsync"/> after
+/// <see cref="DesktopWindow.SetColorSchemeAsync"/> and <see cref="DesktopHost.SetColorSchemeAsync"/>. Report
+/// <see cref="DesktopWindowCapabilities.ColorScheme"/> in <see cref="IDesktopWindowHost.Capabilities"/>. The page's
+/// <c>prefers-color-scheme</c> should follow, as it does for <see cref="DesktopWindowHostOptions.ColorScheme"/>.
+/// </remarks>
+public interface IDesktopColorSchemeWindowHost : IDesktopWindowHost
+{
+    /// <summary>Changes the window's appearance.</summary>
+    /// <param name="colorScheme">
+    /// The scheme to show, already resolved: the window's own, else the application's
+    /// (<see cref="DesktopHost.ColorScheme"/>). <see cref="DesktopColorScheme.NoPreference"/> follows the system.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the window and its page show the scheme.</returns>
+    ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default);
+}
+
 /// <summary>An optional native host that shows the menu bar and context menus.</summary>
 /// <remarks>
 /// <para>
@@ -429,6 +466,27 @@ public sealed record DesktopWindowHostOptions
     /// </remarks>
     public bool GlobalMenu { get; init; } = true;
 
+    /// <summary>
+    /// Gets the native handle of the window that owns this one, from <see cref="DesktopWindowOptions.Owner"/>, or zero
+    /// for a window of its own. It is the kind <see cref="IDesktopWindowHost.NativeHandle"/> reports, such as a
+    /// <c>GtkWindow*</c>.
+    /// </summary>
+    /// <remarks>
+    /// A host reporting <see cref="DesktopWindowCapabilities.Ownership"/> keeps the window above its owner, as a
+    /// toolkit's transient or owned window does. Use the handle only on the window's UI thread, and only while opening
+    /// and closing the window. Runic Desktop passes zero to a host without the capability.
+    /// </remarks>
+    public nint OwnerHandle { get; init; }
+
+    /// <summary>Gets whether the window blocks its owner, from <see cref="DesktopWindowOptions.Modality"/>.</summary>
+    /// <remarks>
+    /// With <see cref="DesktopWindowModality.Window"/>, a host reporting <see cref="DesktopWindowCapabilities.Ownership"/>
+    /// makes the owner take no input, and ignore the user's close, while the window is shown (a hidden one does not
+    /// block it), and leaves the application's other windows usable. Several windows may be modal to one owner at once: the owner takes input again when the last
+    /// of them closed. It is <see cref="DesktopWindowModality.None"/> when <see cref="OwnerHandle"/> is zero.
+    /// </remarks>
+    public DesktopWindowModality Modality { get; init; }
+
     /// <summary>Gets the monitor to open on, from <see cref="DesktopWindowOptions.MonitorId"/>; <see langword="null"/> when a placement's position or the platform decides.</summary>
     /// <remarks>A host implementing <see cref="IDesktopPlacementWindowHost"/> applies it; others ignore it.</remarks>
     public string? MonitorId { get; init; }
@@ -514,7 +572,20 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         {
             menuHost.MenuBarPlacementChanged += OnMenuBarPlacementChanged;
         }
+        if (_host is IDesktopActivityWindowHost activityHost)
+        {
+            activityHost.ActivityChanged += OnActivityChanged;
+        }
     }
+
+    public event EventHandler? ActivityChanged;
+
+    public DesktopWindowActivity? Activity => _host is IDesktopActivityWindowHost activityHost ? activityHost.Activity : null;
+
+    public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
+        _host is IDesktopColorSchemeWindowHost schemeHost
+            ? schemeHost.SetColorSchemeAsync(colorScheme, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This window host cannot change its color scheme."));
 
     public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default) =>
         _host is IDesktopDragSourceWindowHost dragHost
@@ -615,6 +686,8 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             Language = options.Language,
             SpellChecking = options.SpellChecking,
             SpellCheckingLanguages = options.SpellCheckingLanguages,
+            OwnerHandle = options.OwnerHandle,
+            Modality = options.Modality,
         }, cancellationToken);
 
     public ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
@@ -667,6 +740,10 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         {
             menuHost.MenuBarPlacementChanged -= OnMenuBarPlacementChanged;
         }
+        if (_host is IDesktopActivityWindowHost activityHost)
+        {
+            activityHost.ActivityChanged -= OnActivityChanged;
+        }
         await _host.DisposeAsync().ConfigureAwait(false);
     }
 
@@ -677,4 +754,6 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     private void OnFilesDropped(object? sender, DesktopFileDropEventArgs eventArgs) => FilesDropped?.Invoke(this, eventArgs);
 
     private void OnMenuBarPlacementChanged(object? sender, EventArgs eventArgs) => MenuBarPlacementChanged?.Invoke(this, eventArgs);
+
+    private void OnActivityChanged(object? sender, EventArgs eventArgs) => ActivityChanged?.Invoke(this, eventArgs);
 }

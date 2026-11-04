@@ -9,8 +9,26 @@ export type Message = Readonly<Record<string, unknown>>;
  * route's epoch, and a `command` may carry the epoch it was issued for; a stale one is `superseded`.
  */
 export const presentationEpochFeature = "presentation-epoch/1";
+/**
+ * request-session/1 (specs/application/README.md, "Request sessions"): every request names the session of its
+ * connection's `hello`, so a request of another page never acts for this connection.
+ */
+export const requestSessionFeature = "request-session/1";
 /** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
 export const presentedFeature = "presented/1";
+/** `view-requests/1` (specs/application/README.md, "View requests"): the producer pushes one-way `view-request`s to presentations that registered handlers. */
+export const viewRequestsFeature = "view-requests/1";
+/** `client-errors/1` (specs/application/README.md, "Page errors"): the page reports its errors with `client-error` requests. */
+export const clientErrorsFeature = "client-errors/1";
+/**
+ * `query-collections/1` (specs/application/README.md, "Query collections"): a page reads the rows of a query collection
+ * for its own range (`query-rows`), changes its query (`query-set`) and finds a key's position (`query-index`).
+ */
+export const queryCollectionsFeature = "query-collections/1";
+/** `field-flush/1` (specs/application/README.md, "Field flush"): `flush` asks the page to write its field drafts before a departure is decided. */
+export const fieldFlushFeature = "field-flush/1";
+/** `field-paths/1` (specs/application/README.md, "Field paths"): a checked write names a path below its member. */
+export const fieldPathsFeature = "field-paths/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -43,10 +61,17 @@ export type Push =
   | Message & { readonly kind: "interaction-cancelled"; readonly route: string; readonly presentation: string; readonly requestId: string;
     readonly ownerEpoch: number; readonly message?: string }
   | Message & { readonly kind: "menu-bar"; readonly route: string; readonly state: Message }
+  /** view-requests/1: a one-way request for a presentation, handled once the page painted `route` at `revision`. */
+  | Message & { readonly kind: "view-request"; readonly route: string; readonly presentation: string; readonly revision: number;
+    readonly name: string; readonly contract: string; readonly input: unknown }
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
   /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
   | Message & { readonly kind: "closing"; readonly route?: undefined }
+  /** field-flush/1: write the page's field drafts, then answer `flush-reply` with `id`; a window-level push. */
+  | Message & { readonly kind: "flush"; readonly id: string; readonly route?: undefined }
+  /** translation-text/1: the window's locale, or null when the application sets none; a window-level push. */
+  | Message & { readonly kind: "locale"; readonly route?: undefined; readonly locale: string | null }
   /** navigation-path/1: the window's route path changed; a window push. */
   | Message & { readonly kind: "navigation-path"; readonly route?: undefined; readonly path: string | null;
     readonly operation: "push" | "back" | "replace" };
@@ -119,6 +144,7 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   stream: reply => isObject(reply["page"]),
   interactions: reply => isString(reply["registration"]),
   "interaction-reply": reply => isString(reply["result"]),
+  "view-requests": reply => isString(reply["registration"]),
   receive: reply => Array.isArray(reply["messages"]),
   "menu-bar-watch": reply => isObject(reply["state"]),
   "menu-bar-shortcuts": reply => isObject(reply["state"]),
@@ -129,6 +155,12 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   // navigation-path/1: the outcome, null when no route matched, and the window's path after the request.
   navigation: reply => (reply["outcome"] === null || isObject(reply["outcome"]) && isString(reply["outcome"]["kind"]))
     && (reply["path"] === undefined || reply["path"] === null || isString(reply["path"])),
+  "flush-reply": () => true,
+  "query-rows": reply => isSafe(reply["version"]) && (reply["total"] === null || isSafe(reply["total"])) && isSafe(reply["start"])
+    && Array.isArray(reply["keys"]) && Array.isArray(reply["rows"]) && reply["keys"].length === reply["rows"].length
+    && reply["keys"].every(key => isString(key) && key.length > 0),
+  "query-set": reply => isSafe(reply["revision"]),
+  "query-index": reply => isSafe(reply["version"]) && Number.isSafeInteger(reply["index"]) && (reply["index"] as number) >= -1,
 };
 
 /**
@@ -190,7 +222,11 @@ function invalidChanges(changes: unknown): string | undefined {
   return undefined;
 }
 
-const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing", "navigation-path"]);
+const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing",
+  "view-request", "flush", "locale", "navigation-path"]);
+
+// A locale tag the producer may push: letters, digits and '-', starting with a letter, at most 64 characters.
+const localeTag = /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/;
 
 /** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
 export function epochOf(message: Message): number | undefined {
@@ -200,7 +236,7 @@ export function epochOf(message: Message): number | undefined {
 
 const offsetDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/;
 
-/** Reads one push (specs/application, "Publication", "Operations", "Interactions"). */
+/** Reads one push (specs/application, "Publication", "Operations", "Interactions", "View requests"). */
 export function readPush(text: unknown): PushReading {
   const push = parseMessage(text);
   if (!push || !isString(push["kind"])) return { result: "invalid", reason: "The push is not a JSON object with a kind." };
@@ -216,6 +252,13 @@ export function readPush(text: unknown): PushReading {
     if (!(push["path"] === null || isString(push["path"])) || !(operation === "push" || operation === "back" || operation === "replace"))
       return invalid("The navigation-path push is invalid.");
     return { result: "valid", push: { ...push, route: undefined } as Push };
+  }
+  if (kind === "flush") return isString(push["id"]) ? { result: "valid", push: push as Push } : invalid("The flush push has no id.");
+  if (kind === "locale") {
+    const locale = push["locale"];
+    if (locale !== null && !(isString(locale) && locale.length <= 64 && localeTag.test(locale)))
+      return { result: "invalid", kind, reason: "The locale push has no locale tag." };
+    return { result: "valid", push: { kind: "locale", locale } as Push };
   }
   if (route === undefined) return invalid("The push has no route.");
   switch (kind) {
@@ -249,6 +292,10 @@ export function readPush(text: unknown): PushReading {
       break;
     case "present":
       if (!isSafe(push["revision"])) return invalid("The present push has no revision.");
+      break;
+    case "view-request":
+      if (!isString(push["presentation"]) || !isSafe(push["revision"]) || !isString(push["name"]) || !isString(push["contract"]) || !has(push, "input"))
+        return invalid("The view request push is invalid.");
       break;
   }
   return { result: "valid", push: push as Push };

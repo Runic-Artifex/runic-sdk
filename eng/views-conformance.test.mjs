@@ -390,11 +390,24 @@ const requestRules = {
     && isMember(m.name) && typeof m.contract === "string" && ["answered", "cancelled", "failed"].includes(m.outcome)
     && ((m.outcome === "answered") === ("output" in m)),
   receive: () => true,
+  // README.md, "View requests" (view-requests/1): a positive generation and at most 64 requests.
+  "view-requests": m => isRoute(m.route) && isIdentifier(m.presentation) && Number.isSafeInteger(m.generation) && m.generation > 0
+    && isHandlers(m.requests) && m.requests.length <= 64,
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
   // README.md, "Navigation paths" (navigation-path/1): the window's Back, or a route path to open; no route.
   navigation: m => m.route === undefined && (m.action === "back" || (m.action === "open" && typeof m.path === "string" && m.path.length <= 2048)),
+  // README.md, "Field flush" (field-flush/1).
+  "flush-reply": m => typeof m.id === "string" && m.id.length > 0,
+  // README.md, "Page errors" (client-errors/1).
+  "client-error": m => isIdentifier(m.source) && m.source.length <= 32 && typeof m.message === "string"
+    && ["name", "stack", "url"].every(name => m[name] === undefined || typeof m[name] === "string")
+    && (m.route === undefined || isRoute(m.route)) && (m.dropped === undefined || isSafe(m.dropped)),
+  // README.md, "Query collections" (query-collections/1).
+  "query-rows": m => isRoute(m.route) && isMember(m.member) && isSafe(m.start) && isSafe(m.count),
+  "query-set": m => isRoute(m.route) && isMember(m.member) && isObject(m.query),
+  "query-index": m => isRoute(m.route) && isMember(m.member) && typeof m.key === "string",
 };
 
 export function readRequest(text, limits = {}) {
@@ -459,6 +472,11 @@ const pushRules = {
   closing: () => true,
   // navigation-path/1: the window's route path, a push without a route.
   "navigation-path": m => (m.path === null || typeof m.path === "string") && ["push", "back", "replace"].includes(m.operation),
+  // field-flush/1: a window-level push like closing.
+  flush: m => typeof m.id === "string" && m.id.length > 0,
+  // view-requests/1.
+  "view-request": m => isRoute(m.route) && isIdentifier(m.presentation) && isSafe(m.revision) && isMember(m.name)
+    && typeof m.contract === "string" && "input" in m,
 };
 export function readPush(text) {
   let message;
@@ -487,12 +505,18 @@ const replyRules = {
   stream: m => isObject(m.page) && typeof m.page.kind === "string",
   interactions: m => typeof m.registration === "string",
   "interaction-reply": m => typeof m.result === "string",
+  "view-requests": m => typeof m.registration === "string",
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
   presented: () => true,
   "closing-reply": () => true,
   // navigation-path/1: the outcome (null when no route matched) and, with a path region, the path after it.
   navigation: m => (m.outcome === null || (isObject(m.outcome) && typeof m.outcome.kind === "string"))
     && (m.path === undefined || m.path === null || typeof m.path === "string"),
+  "flush-reply": () => true,
+  "query-rows": m => isSafe(m.version) && (m.total === null || isSafe(m.total)) && isSafe(m.start) && Array.isArray(m.keys)
+    && Array.isArray(m.rows) && m.keys.length === m.rows.length && m.keys.every(key => typeof key === "string" && key.length > 0),
+  "query-set": m => withRevision(m),
+  "query-index": m => isSafe(m.version) && Number.isSafeInteger(m.index) && m.index >= -1,
 };
 export function readReply(request, text) {
   let message;
@@ -582,8 +606,8 @@ test("the message vectors match the reference readers of the message catalogue",
 // ---------------------------------------------------------------------------
 // Scenarios are self-contained.
 
-const clientExpectations = new Set(["state", "call", "operation", "diagnostics", "notifications", "connection"]);
-const producerExpectations = new Set(["model", "presented", "closed"]);
+const clientExpectations = new Set(["state", "call", "operation", "diagnostics", "notifications", "connection", "requests"]);
+const producerExpectations = new Set(["model", "presented", "closed", "flushed"]);
 function visit(value, callback) {
   callback(value);
   if (Array.isArray(value)) value.forEach(item => visit(item, callback));
@@ -617,7 +641,7 @@ export function scenarioProblems(scenario) {
   };
   const roles = new Set(scenario.roles);
   const connected = new Set(), created = new Set(), requests = new Map(), replied = new Set(), calls = new Set();
-  const started = { wait: new Set(), close: new Set() };
+  const started = { wait: new Set(), close: new Set(), flush: new Set() };
   const start = (kind, id, where) => {
     if (started[kind].has(id)) problem(`${where}: ${kind} ${id} is started twice`);
     use(id, kind, where);
@@ -668,11 +692,12 @@ export function scenarioProblems(scenario) {
         replied.add(step.replyTo);
       }
     }
-    if (step.mutate || step.delivery || step.closeWindow) {
+    if (step.mutate || step.delivery || step.closeWindow || step.flushFields) {
       if (!roles.has("producer")) problem(`${where}: a producer step in a client-only scenario`);
     }
     for (const mutation of step.mutate ?? []) if (mutation.op === "waitPresented") start("wait", mutation.id, where);
     if (step.closeWindow) start("close", step.closeWindow.id, where);
+    if (step.flushFields) start("flush", step.flushFields.id, where);
     if (step.delivery && !(scenario.requires ?? []).includes("held-delivery")) problem(`${where}: delivery needs held-delivery`);
     if (step.advance && !(scenario.requires ?? []).includes("virtual-clock")) problem(`${where}: advance needs virtual-clock`);
     if (step.call) {
@@ -686,8 +711,8 @@ export function scenarioProblems(scenario) {
       const [kind, value] = Object.entries(step.expect)[0];
       if (clientExpectations.has(kind) && !roles.has("client")) problem(`${where}: a client expectation in a producer-only scenario`);
       if (producerExpectations.has(kind) && !roles.has("producer")) problem(`${where}: a ${kind} expectation in a client-only scenario`);
-      if (kind === "presented" || kind === "closed") {
-        const startKind = kind === "presented" ? "wait" : "close";
+      if (kind === "presented" || kind === "closed" || kind === "flushed") {
+        const startKind = kind === "presented" ? "wait" : kind === "closed" ? "close" : "flush";
         if (!started[startKind].has(value.id)) problem(`${where}: ${startKind} ${value.id} was not started`);
         used.set(value.id, startKind);
         if (declared[value.id]?.kind !== startKind) problem(`${where}: ${value.id} is not a ${startKind} id`);
@@ -728,7 +753,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "errors"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "view-requests", "errors", "request-sessions", "query-collections", "blobs"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

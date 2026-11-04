@@ -51,7 +51,11 @@ public static class BridgeContractShape
         {
             var interaction = BridgeMvvmConventions.Interaction(property.PropertyType);
             var command = BridgeMvvmConventions.TypedCommand(property.PropertyType);
-            var kind = interaction is not null ? "interaction" : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
+            // A ViewRequest<T> is a one-way view request, never state. Only models with one add the kind, so other
+            // fingerprints stay.
+            var request = RunicViewConventions.ViewRequest(property.PropertyType);
+            var kind = interaction is not null ? "interaction" : request is not null ? "request"
+                : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
             if (kind == "command" && command is not null)
             {
@@ -89,9 +93,19 @@ public static class BridgeContractShape
                 AppendType(parts, interaction.GenericTypeArguments[1], ContractAnnotation(property, interaction, nullability, 1), $"{model.Name}.{property.Name}.output", [], honorJsonIgnore);
                 continue;
             }
+            if (kind == "request" && request is not null)
+            {
+                AppendType(parts, request.GenericTypeArguments[0], ContractAnnotation(property, request, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
+                continue;
+            }
             if (kind != "state") continue;
             if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is { } collection)
+            {
                 parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
+                // field-paths/1: only an editable collection adds a part, so other models keep their fingerprint.
+                if (BridgeRowEditors.For(model, property) is { } editor)
+                    parts.Add($"row-editor:{TypeName(model)}:{WireName(property)}:{editor.Name}");
+            }
             if (property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null)
                 parts.Add($"append-only-text:{TypeName(model)}:{WireName(property)}");
             else if (property.PropertyType == typeof(string) && property.GetCustomAttribute<RunicCodecAttribute>(true) is null)
@@ -108,6 +122,13 @@ public static class BridgeContractShape
             if (RegionCollection(property) is { } regions)
             {
                 parts.Add($"region-collection:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}:region:{TypeName(regions.ContentType)}:close:{regions.PageCanClose}");
+                continue;
+            }
+            // A query collection's wire value is {query, total, version}; its rows cross in query-rows replies.
+            if (QueryCollectionArguments(property.PropertyType) is { } query)
+            {
+                parts.Add($"query-collection:{TypeName(model)}:{WireName(property)}:key:{TypeName(query.Key)}");
+                AppendType(parts, query.Row, null, $"{model.Name}.{WireName(property)}.row", [], honorJsonIgnore);
                 continue;
             }
             // A NavigationSelection slot's wire value is its SelectedIndex, a nullable number.
@@ -187,6 +208,13 @@ public static class BridgeContractShape
         {
             var shape = custom.CodecType.GetCustomAttribute<RunicCodecShapeAttribute>();
             parts.Add($"custom:{path}:codec:{TypeName(custom.CodecType)}:ts:{shape?.TypeScriptType ?? "missing"}:decoder:{shape?.DecoderExpression ?? "missing"}:encoder:{shape?.EncoderExpression ?? "missing"}");
+            return;
+        }
+        // translation-text/1: a Runic text reference, or Runic.Translations.TranslationReference by name.
+        if (type == typeof(RunicTextReference) || type.FullName == "Runic.Translations.TranslationReference"
+            && type.Assembly.GetName().Name == "Runic.Translations")
+        {
+            parts.Add($"text-reference:{path}");
             return;
         }
         if (type == typeof(System.Text.Json.JsonElement) || type == typeof(System.Text.Json.Nodes.JsonNode))
@@ -278,6 +306,11 @@ public static class BridgeContractShape
     internal static bool IsNavigationSelection(Type type) => type == typeof(NavigationSelection);
     internal static RunicRegionCollectionAttribute? RegionCollection(PropertyInfo property) =>
         property.GetCustomAttribute<RunicRegionCollectionAttribute>(true);
+
+    // The row and key types of a RunicQueryCollection<TRow, TKey> property type, or null for another type.
+    internal static (Type Row, Type Key)? QueryCollectionArguments(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(RunicQueryCollection<,>)
+            ? (type.GenericTypeArguments[0], type.GenericTypeArguments[1]) : null;
     private static Type[] ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
     private static PresentationView[] DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
     private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }
@@ -287,4 +320,36 @@ public static class BridgeContractShape
     private static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal) ? model.Name[..^"ViewModel".Length] : model.Name;
     private static string TypeName(Type type) { if (type.IsArray) return TypeName(type.GetElementType()!) + "[]"; if (!type.IsGenericType) return type.FullName ?? type.Name; var name = type.GetGenericTypeDefinition().FullName!; name = name[..name.IndexOf('`')]; return name + "<" + string.Join(",", type.GetGenericArguments().Select(TypeName)) + ">"; }
     private sealed record PresentationView(Type ViewType, Type ModelType, string? Contract);
+}
+
+// field-paths/1: the [RunicRowEditor] methods of a model and the collections they edit. Only BridgeContractShape uses it.
+[RequiresUnreferencedCode("Reflects over arbitrary model and collection types; used only by code generation and Hot Reload.")]
+internal static class BridgeRowEditors
+{
+    // The methods of the model that declare RunicRowEditor, public or not.
+    internal static MethodInfo[] Declared([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods
+        | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type model) =>
+        [.. model.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(method => method.IsDefined(typeof(RunicRowEditorAttribute), true))
+            .OrderBy(method => method.Name, StringComparer.Ordinal)];
+
+    // The row type of a collection property: its IEnumerable<T> element.
+    internal static Type? RowType(Type collection) => collection.IsArray ? collection.GetElementType()
+        : collection.IsGenericType && collection.GetGenericTypeDefinition() == typeof(IEnumerable<>) ? collection.GenericTypeArguments[0]
+        : collection.GetInterfaces().FirstOrDefault(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            ?.GenericTypeArguments[0];
+
+    // Whether an editor names the collection, or, naming none, takes its row type as the second parameter.
+    internal static bool Edits(MethodInfo editor, PropertyInfo collection)
+    {
+        var attribute = editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!;
+        if (attribute.Collection is { } name) return name == collection.Name;
+        var parameters = editor.GetParameters();
+        return parameters.Length is 2 or 3 && RowType(collection.PropertyType) is { } row && parameters[1].ParameterType == row;
+    }
+
+    // The first editor of a collection, by method name.
+    internal static MethodInfo? For([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods
+        | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type model, PropertyInfo collection) =>
+        Declared(model).FirstOrDefault(editor => Edits(editor, collection));
 }

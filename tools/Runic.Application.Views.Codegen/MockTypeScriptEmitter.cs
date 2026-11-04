@@ -24,7 +24,10 @@ internal sealed record MockOperation(string Method, string Member, string InputT
     internal string TypeArguments => FailureType is null ? $"{InputType}, {ResultType}" : $"{InputType}, {ResultType}, {FailureType}";
 }
 internal sealed record MockInteraction(string Name, string InputType, string OutputType, string EncodeInput, string DecodeOutput);
+internal sealed record MockViewRequest(string Name, string InputType, string EncodeInput);
 internal sealed record MockCollection(string WireName, string ItemType, string Encode, string Decode, string Key);
+// A query collection (query-collections/1). Key: the default key expression of `item`, when the rows have an id or key member.
+internal sealed record MockQuery(string WireName, string ItemType, string Encode, string Decode, string? Key);
 
 internal sealed record MockTypeScriptPlan(
     string ShortName,
@@ -34,14 +37,17 @@ internal sealed record MockTypeScriptPlan(
     IReadOnlyList<MockContentField> ContentFields,
     IReadOnlyList<(string Field, string Default)> Defaults,
     IReadOnlyList<string> CheckedFields,
+    IReadOnlyList<(string Member, string[][] Paths)> FieldPaths,
     IReadOnlyList<string> Texts,
     IReadOnlyList<string> ScopedCommands,
     IReadOnlyList<MockSetter> Setters,
     IReadOnlyList<MockCommand> Commands,
     IReadOnlyList<MockOperation> Operations,
     IReadOnlyList<MockInteraction> Interactions,
+    IReadOnlyList<MockViewRequest> Requests,
     IReadOnlyList<MockCollection> Collections,
-    string Contract);
+    string Contract,
+    IReadOnlyList<MockQuery>? Queries = null);
 
 internal static class MockTypeScriptEmitter
 {
@@ -53,7 +59,9 @@ internal static class MockTypeScriptEmitter
 
         var optional = plan.Defaults.Select(entry => Quote(entry.Field)).ToArray();
         var content = plan.ContentFields.Select(field => Quote(field.WireName)).ToArray();
-        var omitted = optional.Concat(content).ToArray();
+        var queryCollections = plan.Queries ?? [];
+        // The mock keeps a query collection's state; the definition gives its rows.
+        var omitted = optional.Concat(content).Concat(queryCollections.Select(query => Quote(query.WireName))).ToArray();
         var kinds = string.Join(" | ", plan.Kinds.Select(Quote));
         body.AppendLine($"/** The state of a mock {name}: the client state, with content as `{{ kind, id }}` and command state optional. */");
         body.Append($"export type {state} = ");
@@ -118,6 +126,14 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    readonly {Key(field.WireName)}?: {Ref("MockRegionHandler")}<{state}>;");
             body.AppendLine("  };");
         }
+        if (queryCollections.Count > 0)
+        {
+            body.AppendLine("  /** The rows of each query collection, which the mock filters, sorts and serves by range. */");
+            body.AppendLine("  readonly queries?: {");
+            foreach (var query in queryCollections)
+                body.AppendLine($"    readonly {Key(query.WireName)}?: {Ref("MockTypedQuerySource")}<{query.ItemType}>;");
+            body.AppendLine("  };");
+        }
         if (plan.Operations.Count > 0)
         {
             body.AppendLine("  /** Operation handlers; without one an operation runs its command handler and succeeds. */");
@@ -132,10 +148,14 @@ internal static class MockTypeScriptEmitter
         var members = new List<string>();
         if (plan.Collections.Count > 0)
             members.Add($"  readonly collections: {{ {string.Join(" ", plan.Collections.Select(collection => $"readonly {Key(collection.WireName)}: {Ref("MockTypedCollection")}<{collection.ItemType}>;"))} }};");
+        if (queryCollections.Count > 0)
+            members.Add($"  readonly queries: {{ {string.Join(" ", queryCollections.Select(query => $"readonly {Key(query.WireName)}: {Ref("MockTypedQueryCollection")}<{query.ItemType}>;"))} }};");
         if (plan.Operations.Count > 0)
             members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly {Ref("MockTypedOperation")}<{operation.TypeArguments}>[];"))} }};");
         if (plan.Interactions.Count > 0)
             members.Add($"  readonly interactions: {{ {string.Join(" ", plan.Interactions.Select(interaction => $"readonly {interaction.Name}: {Ref("MockTypedInteraction")}<{interaction.InputType}, {interaction.OutputType}>;"))} }};");
+        if (plan.Requests.Count > 0)
+            members.Add($"  readonly requests: {{ {string.Join(" ", plan.Requests.Select(request => $"readonly {request.Name}: {Ref("MockTypedViewRequest")}<{request.InputType}>;"))} }};");
         var baseType = $"{Ref("MockTypedView")}<{state}, {name}Client, {kinds}>";
         if (members.Count == 0) body.AppendLine($"export interface {name}Mock extends {baseType} {{}}");
         else
@@ -161,6 +181,8 @@ internal static class MockTypeScriptEmitter
         body.AppendLine(plan.Defaults.Count == 0 ? "  defaults: {}," : $"  defaults: {{ {string.Join(", ", plan.Defaults.Select(entry => $"{Key(entry.Field)}: {entry.Default}"))} }},");
         if (plan.CheckedFields.Count > 0)
             body.AppendLine($"  checkedFields: [{string.Join(", ", plan.CheckedFields.Select(Quote))}],");
+        if (plan.FieldPaths.Count > 0)
+            body.AppendLine($"  fieldPaths: {{ {string.Join(", ", plan.FieldPaths.Select(entry => $"{Key(entry.Member)}: [{string.Join(", ", entry.Paths.Select(path => $"[{string.Join(", ", path.Select(Quote))}]"))}]"))} }},");
         if (plan.Texts.Count > 0)
             body.AppendLine($"  texts: [{string.Join(", ", plan.Texts.Select(Quote))}],");
         if (plan.ScopedCommands.Count > 0)
@@ -174,6 +196,13 @@ internal static class MockTypeScriptEmitter
         }
         if (regions.Length > 0)
             body.AppendLine($"  regions: {{ {string.Join(", ", regions.Select(field => $"{Key(field.WireName)}: {{ close: {(field.Close ? "true" : "false")} }}"))} }},");
+        if (queryCollections.Count > 0)
+        {
+            body.AppendLine("  queries: {");
+            foreach (var query in queryCollections)
+                body.AppendLine($"    {Key(query.WireName)}: {{ encode: (value: unknown) => {Encode(query.Encode, query.ItemType)}, decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(query.Decode)}{(query.Key is null ? "" : $", key: (item: {query.ItemType}) => {query.Key}")} }},");
+            body.AppendLine("  },");
+        }
         if (plan.Setters.Count > 0)
         {
             body.AppendLine("  setters: {");
@@ -202,6 +231,13 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    {interaction.Name}: {{ encodeInput: (value: unknown) => {Encode(interaction.EncodeInput, interaction.InputType)}, decodeOutput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(interaction.DecodeOutput)} }},");
             body.AppendLine("  },");
         }
+        if (plan.Requests.Count > 0)
+        {
+            body.AppendLine("  requests: {");
+            foreach (var request in plan.Requests)
+                body.AppendLine($"    {request.Name}: {{ encodeInput: (value: unknown) => {Encode(request.EncodeInput, request.InputType)} }},");
+            body.AppendLine("  },");
+        }
         body.AppendLine("};");
         body.AppendLine();
         body.AppendLine($"/**");
@@ -220,7 +256,9 @@ internal static class MockTypeScriptEmitter
         if (plan.Commands.Count > 0) mockImports.Add("type " + Import("MockCommandHandler"));
         if (plan.Operations.Count > 0) mockImports.AddRange(["type " + Import("MockTypedOperation"), "type " + Import("MockTypedOperationHandler")]);
         if (plan.Collections.Count > 0) mockImports.Add("type " + Import("MockTypedCollection"));
+        if (queryCollections.Count > 0) mockImports.AddRange(["type " + Import("MockTypedQueryCollection"), "type " + Import("MockTypedQuerySource")]);
         if (plan.Interactions.Count > 0) mockImports.Add("type " + Import("MockTypedInteraction"));
+        if (plan.Requests.Count > 0) mockImports.Add("type " + Import("MockTypedViewRequest"));
         if (plan.ContentFields.Count > 0) mockImports.Add("type " + Import("MockReference"));
         if (regions.Length > 0) mockImports.AddRange(["type " + Import("MockRegionCollection"), "type " + Import("MockRegionHandler")]);
         var module = new StringBuilder();

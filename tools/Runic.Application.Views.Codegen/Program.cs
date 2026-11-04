@@ -371,6 +371,27 @@ static void ApplyOperationRetirement(Type model, IReadOnlyList<PropertyInfo> com
             $"{model.Name}: RunicOperationRetirement on the class applies to its operations (asynchronous Bridge commands), but it has none; it has no effect here.", model);
 }
 
+// A RunicQueryCollection<TRow, TKey> member (query-collections/1): get-only, without the attributes of other collections,
+// with DTO rows and a string, Guid or Int32 key. Its rows are discovered as a list of TRow, for the row codec and decoder.
+static (BridgeTypeGraph Rows, Type Key) QueryCollectionPlan(Type model, PropertyInfo property, Type row, Type key, bool honorJsonIgnore)
+{
+    if (property.SetMethod?.IsPublic == true)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: a RunicQueryCollection must be get-only; the page changes its query with setQuery.", property);
+    if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is not null || property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: a RunicQueryCollection has its own keys; remove [RunicCollection] or [RunicAppendOnlyText].", property);
+    if (key != typeof(string) && key != typeof(Guid) && key != typeof(int))
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: a RunicQueryCollection key is a string, Guid or Int32, not {key.Name}.", property);
+    var rows = BridgeTypeGraph.Discover(typeof(IReadOnlyList<>).MakeGenericType(row), rootPath: $"{model.Name}.{property.Name}",
+        origin: property, honorJsonIgnore: honorJsonIgnore, direction: BridgeValueDirection.ToPage);
+    if (rows.Root.Element is not { Kind: BridgeWireKind.Dto })
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: the rows of a RunicQueryCollection are DTOs, not {row.Name}.", property);
+    return (rows, key);
+}
+
 // An observable collection of DTO rows (ObservableCollection<T>, ReadOnlyObservableCollection<T>) that is not a
 // [RunicCollection] is published by comparison: every change of a row encodes and sends the whole list again, so such a
 // list grows expensive as it grows (RUNICBRIDGE032). A plain list or array is a value the ViewModel replaces and is
@@ -386,11 +407,12 @@ static void WarnObservableCollectionsWithoutKeys(Type model, IReadOnlyDictionary
             || graph.Root.Element is not { Kind: BridgeWireKind.Dto } row) continue;
         var key = row.Members.Select(member => member.Property)
             .FirstOrDefault(member => member.Name is "Id" or "Key"
-                && (member.PropertyType == typeof(string) || member.PropertyType == typeof(Guid) || member.PropertyType == typeof(int)));
+                && (member.PropertyType == typeof(string) || member.PropertyType == typeof(Guid) || member.PropertyType == typeof(int)
+                    || member.PropertyType == typeof(long)));
         Diagnostics.Warn(BridgeDiagnosticCodes.CollectionWithoutKey,
             $"{model.Name}.{property.Name}: an observable collection of {row.NonNullableType.Name} rows that is not a [RunicCollection] "
             + "publishes every change by encoding and sending the whole list. Declare "
-            + (key is null ? $"[RunicCollection(nameof({row.NonNullableType.Name}.Key))] with a string, Guid or Int32 key property of the rows"
+            + (key is null ? $"[RunicCollection(nameof({row.NonNullableType.Name}.Key))] with a string, Guid, Int32 or Int64 key property of the rows"
                 : $"[RunicCollection(nameof({row.NonNullableType.Name}.{key.Name}))]")
             + $" to publish row changes, or suppress {BridgeDiagnosticCodes.CollectionWithoutKey} with NoWarn for a list that stays small.",
             property);
@@ -500,7 +522,7 @@ static void GenerateCompositionRegistration(string path, string compositionType,
         var modelType = $"global::{model.FullName}";
         var bridgeType = BridgeTypeName(model, name);
         // GenerateOne decided whether the bridge constructor requires a content
-        // session (ViewModel content or interactions). Only offer the
+        // session (ViewModel content, interactions or view requests). Only offer the
         // transport-only factory when it can actually construct the bridge.
         if (!contentRequired.Contains(model))
         {
@@ -629,9 +651,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var contractFingerprint = BridgeContractShape.Compute(model);
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
+    var requests = InteractionCodeEmitter.DiscoverRequests(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
         || MvvmCodegenConventions.All.Any(convention => InspectCommand(model, property, () => convention.InspectCommand(property)) is not null)).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property))
+        .Except(requests.Select(plan => plan.Property))
         .Where(property => !IsCommandAvailability(model, property, commands)).ToArray();
     var duplicateWireName = properties.GroupBy(WireName, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
     if (duplicateWireName is not null)
@@ -639,7 +663,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             $"{model.Name}: state properties {string.Join(" and ", duplicateWireName.Select(property => property.Name))} share the generated wire name '{duplicateWireName.Key}'.",
             duplicateWireName.Last());
     var nullability = new NullabilityInfoContext();
-    if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0)
+    if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0 && requests.Length == 0)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
             $"{model.Name}: a ViewModel needs at least one state property, command, or interaction.", model);
     var contentProperties = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
@@ -648,10 +672,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var regionSlots = new HashSet<PropertyInfo>();
     // NavigationSelection slots: state whose wire value is the selection's SelectedIndex, or null for -1.
     var selectionSlots = new HashSet<PropertyInfo>();
+    // field-paths/1: a query collection's rows come from a row source page by page; editing them is not supported yet.
+    // The check goes by the type's name, before the collection's own checks, so it applies as soon as
+    // RunicQueryCollection<TRow, TKey> exists.
+    foreach (var editor in Runic.Application.Views.Generated.BridgeRowEditors.Declared(model))
+        if (editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Collection is { } named && model.GetProperty(named) is { } namedProperty
+            && namedProperty.PropertyType.IsGenericType && namedProperty.PropertyType.GetGenericTypeDefinition().Name.StartsWith("RunicQueryCollection", StringComparison.Ordinal))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditor,
+                $"{model.Name}.{editor.Name}: [RunicRowEditor] names {named}, a query collection, whose rows cannot be edited from the page yet.", editor);
     // Region collections (region-collections/1): a [RunicRegionCollection] NavigationSelection presented with every
     // region's key and content, and the selected index.
     var regionCollections = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
+    // RunicQueryCollection<TRow, TKey> members (query-collections/1): the graph of their rows, as a list of TRow, and the key.
+    var queryCollections = new Dictionary<PropertyInfo, (BridgeTypeGraph Rows, Type Key)>();
     foreach (var property in properties)
     {
         if (property.GetMethod is null)
@@ -677,6 +711,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollection,
                     $"{model.Name}.{property.Name}: no ViewModel with a registered View is a {collectionContent.Name}, so the region collection can present nothing.", property);
             regionCollections.Add(property, collectionModels);
+            continue;
+        }
+        if (BridgeContractShape.QueryCollectionArguments(property.PropertyType) is { } query)
+        {
+            queryCollections.Add(property, QueryCollectionPlan(model, property, query.Row, query.Key, honorJsonIgnore));
             continue;
         }
         if (BridgeContractShape.NavigationRegionContent(property.PropertyType) is { } regionContent)
@@ -746,10 +785,30 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
                     $"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.", property);
         }
-        valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
-            nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore,
-            property.SetMethod?.IsPublic == true ? BridgeValueDirection.Both : BridgeValueDirection.ToPage));
+        // field-paths/1: the rows of an editable collection also come from the page, rebuilt with one cell changed.
+        var fromPage = property.SetMethod?.IsPublic == true || property.GetCustomAttribute<RunicCollectionAttribute>(true) is not null
+            && Runic.Application.Views.Generated.BridgeRowEditors.For(model, property) is not null;
+        BridgeTypeGraph valueGraph;
+        try
+        {
+            // blobs/1: a property that holds a RunicBlob only goes to the page, whatever its setter (PageSettable).
+            valueGraph = BridgeTypeGraph.Discover(property.PropertyType,
+                nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore, BridgeValueDirection.ToPage);
+            if (fromPage && !valueGraph.Nodes.Any(node => node.Kind == BridgeWireKind.Blob))
+                valueGraph = BridgeTypeGraph.Discover(property.PropertyType,
+                    nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore, BridgeValueDirection.Both);
+        }
+        catch (BridgeTypeGraphException error) when (property.SetMethod?.IsPublic != true && fromPage)
+        {
+            var editor = Runic.Application.Views.Generated.BridgeRowEditors.For(model, property)!;
+            throw new BridgeTypeGraphException(error.Path,
+                $"{error.Detail} The rows also come from the page because {model.Name}.{editor.Name} is their [RunicRowEditor].", error.Member ?? editor);
+        }
+        valueProperties.Add(property, valueGraph);
     }
+    // Whether the page sets the property: a public setter, unless the property holds a RunicBlob (blobs/1).
+    bool PageSettable(PropertyInfo property) => property.SetMethod?.IsPublic == true
+        && !(valueProperties.TryGetValue(property, out var graph) && graph.Nodes.Any(node => node.Kind == BridgeWireKind.Blob));
     var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
     foreach (var property in properties)
     {
@@ -760,12 +819,41 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Collection,
                 $"{model.Name}.{property.Name}: RunicCollection requires a nonnullable, read-only collection of nonnullable DTO rows.", property);
         var key = item.Members.SingleOrDefault(member => member.Property.Name == attribute.KeyProperty);
-        if (key is null || key.Type.IsNullable || key.Type.NonNullableType != typeof(string) && key.Type.NonNullableType != typeof(Guid) && key.Type.NonNullableType != typeof(int))
+        if (key is null || key.Type.IsNullable || key.Type.NonNullableType != typeof(string) && key.Type.NonNullableType != typeof(Guid) && key.Type.NonNullableType != typeof(int)
+            && key.Type.NonNullableType != typeof(long))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Collection,
-                $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid or Int32 row property.", property);
+                $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid, Int32 or Int64 row property.", property);
         incrementalCollections.Add(property, key.Property);
     }
     WarnObservableCollectionsWithoutKeys(model, valueProperties, incrementalCollections);
+    // field-paths/1: [RunicRowEditor] methods make a keyed collection's cells writable from the page.
+    var rowEditors = new Dictionary<PropertyInfo, MethodInfo>();
+    foreach (var editor in Runic.Application.Views.Generated.BridgeRowEditors.Declared(model))
+    {
+        var named = editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Collection;
+        var targets = incrementalCollections.Keys.Where(property => Runic.Application.Views.Generated.BridgeRowEditors.Edits(editor, property)).ToArray();
+        if (targets.Length != 1)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditor, targets.Length == 0
+                ? $"{model.Name}.{editor.Name}: [RunicRowEditor] {(named is null ? "matches no [RunicCollection] property by its row type" : $"names {named}, which is not a [RunicCollection] property of {model.Name}")}."
+                : $"{model.Name}.{editor.Name}: [RunicRowEditor] matches {string.Join(" and ", targets.Select(target => target.Name))}; name one, such as [RunicRowEditor(nameof({targets[0].Name}))].", editor);
+        var collection = targets[0];
+        var key = incrementalCollections[collection];
+        var rowType = valueProperties[collection].Root.Element!.NonNullableType;
+        var parameters = editor.GetParameters();
+        if (editor.IsStatic || editor.IsGenericMethodDefinition || editor.ReturnType != typeof(void) || parameters.Length is not (2 or 3)
+            || parameters[0].ParameterType != key.PropertyType || parameters[1].ParameterType != rowType
+            || parameters.Length == 3 && parameters[2].ParameterType != typeof(RunicRowEdit)
+            || !(editor.IsPublic || editor.IsAssembly || editor.IsFamilyOrAssembly))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditor,
+                $"{model.Name}.{editor.Name}: a [RunicRowEditor] for {collection.Name} must be a public or internal instance method void {editor.Name}({BridgeTypeGraph.CSharpType(key.PropertyType)} key, {BridgeTypeGraph.CSharpType(rowType)} row), optionally with a third parameter RunicRowEdit edit.", editor);
+        // RUNICBRIDGE052: a row that cannot be copied exactly would lose what the page does not see.
+        if (BridgeFieldLeaf.CopyOf(valueProperties[collection].Root.Element!) is { Kind: BridgeFieldCopy.None } refused)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowCopy,
+                $"{model.Name}.{editor.Name}: the rows of {collection.Name} cannot be copied with one cell changed: {refused.Reason}. Make {BridgeTypeGraph.CSharpType(rowType)} a record, or seal it and give it a copy constructor or a Clone() method.", editor);
+        if (!rowEditors.TryAdd(collection, editor))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditors,
+                $"{model.Name}: {collection.Name} has two [RunicRowEditor] methods, {rowEditors[collection].Name} and {editor.Name}.", editor);
+    }
     // Append-only text (#300): a read-only string state property.
     var textFields = properties.Where(property => property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null).ToArray();
     foreach (var property in textFields)
@@ -903,8 +991,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // IValidatableViewModel has validation without INotifyDataErrorInfo too.
     var validationContextFlavors = ValidationContextFlavors(validationTypes);
     WarnUnrecognizedValidatable(model, validationTypes);
+    // C3: an object that reports validation in progress (IRunicPendingValidation) has the validation member too.
     var hasValidation = hasErrors || validationContextFlavors.Length > 0 || valueProperties.Values.Any(graph =>
-        graph.Nodes.Any(node => typeof(INotifyDataErrorInfo).IsAssignableFrom(node.Type)));
+        graph.Nodes.Any(node => typeof(INotifyDataErrorInfo).IsAssignableFrom(node.Type)))
+        || validationTypes.Any(type => typeof(Runic.Application.Views.IRunicPendingValidation).IsAssignableFrom(type));
     if (hasValidation && properties.FirstOrDefault(property => WireName(property) == "validation") is { } validationProperty)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}.{validationProperty.Name}: validation is reserved for generated validation state. Alias the model property.", validationProperty);
@@ -912,10 +1002,27 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // supports the scalar codecs that the ordinary Bridge already serializes
     // without reflection.
     var checkedProperties = properties
-        .Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)).ToArray();
+        .Where(property => PageSettable(property) && valueProperties.ContainsKey(property)).ToArray();
     var needsCheckedWriter = checkedProperties.Length > 0;
-    InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions,
+    // field-paths/1: the field paths below settable object members and below the rows of editable collections.
+    var nestedPaths = checkedProperties
+        .Where(property => valueProperties[property].Root.Kind == BridgeWireKind.Dto)
+        .Select(property => (Property: property, Leaves: BridgeFieldLeaf.Of(valueProperties[property].Root, null, null)))
+        .Where(entry => entry.Leaves.Count > 0).ToDictionary(entry => entry.Property, entry => entry.Leaves);
+    var rowPaths = rowEditors.Keys
+        .Select(property => (Property: property, Leaves: BridgeFieldLeaf.Of(valueProperties[property].Root.Element!, incrementalCollections[property],
+            // RUNICBRIDGE053: an object inside an editable row that cannot be copied has no fields below it.
+            (member, reason) => Diagnostics.Warn(BridgeDiagnosticCodes.RowObjectCopy,
+                $"{model.Name}.{property.Name}: {member.DeclaringType?.Name}.{member.Name} has no fields below it: {reason}. Mark it [RunicNoField], make its type a record, or seal it and give it a copy constructor or a Clone() method.", member))))
+        .ToDictionary(entry => entry.Property, entry => entry.Leaves);
+    var hasFieldPaths = nestedPaths.Count > 0 || rowPaths.Values.Any(leaves => leaves.Count > 0);
+    // blobs/1: a client whose command inputs or settable members take a RunicUpload gets upload().
+    var usesUploads = commandPlans.Values.Any(plan => plan.InputGraph?.Nodes.Any(node => node.Kind == BridgeWireKind.Upload) == true)
+        || valueProperties.Any(entry => PageSettable(entry.Key) && entry.Value.Nodes.Any(node => node.Kind == BridgeWireKind.Upload));
+    InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions, requests,
         checkedProperties, WireName, hasErrors, hasValidation);
+    // Interactions and view requests are attached to the presentations of a WindowContentSession.
+    var presented = interactions.Length > 0 || requests.Length > 0;
 
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
@@ -924,7 +1031,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     AppendNamespace(cs, BridgeNamespace);
     cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.Generated.ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
-    if (interactions.Length > 0)
+    if (presented)
         cs.AppendLine("    private readonly global::System.IDisposable? _rootInteractionMount;");
     if (hasContent)
     {
@@ -938,7 +1045,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var property in properties)
     {
         // A setter reads the request's value with the member's codec.
-        var setter = property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)
+        var setter = PageSettable(property) && valueProperties.ContainsKey(property)
             ? $"(vm, value) => vm.{property.Name} = {property.Name}ValueCodec.Read(value)"
             : "null";
         var descriptorNames = $"\"{property.Name}\", \"{WireName(property)}\"";
@@ -953,6 +1060,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             // The runtime observes the selection, its regions and their Current, and answers region requests.
             var close = BridgeContractShape.RegionCollection(property)!.PageCanClose ? "true" : "false";
             cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, null, static vm => vm.{property.Name}) {{ RegionCollection = true, RegionClose = {close} }},");
+            continue;
+        }
+        if (queryCollections.ContainsKey(property))
+        {
+            // The runtime observes the collection's query, total and version, and pages read its rows with query-rows.
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, null, static vm => vm.{property.Name}) {{ QueryRowWriter = {property.Name}RowsCodec.WriteItem }},");
             continue;
         }
         if (selectionSlots.Contains(property))
@@ -975,7 +1088,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         foreach (var property in checkedProperties)
         {
             var type = valueProperties[property].RootCSharpType();
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, readValue: element => {property.Name}ValueCodec.Read(element), writeValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
+            var paths = nestedPaths.TryGetValue(property, out var nested) ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(nested, property.Name + "ValueCodec")} }}" : "";
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, readValue: element => {property.Name}ValueCodec.Read(element), writeValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)){paths},");
         }
         cs.AppendLine("        ],");
     }
@@ -983,10 +1097,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var command in commands)
         cs.AppendLine($"            {commandPlans[command].DescriptorFor(command, fullType)},");
     cs.AppendLine($"        ], \"{contractFingerprint}\", content,");
-    if (interactions.Length > 0)
+    if (presented)
     {
         cs.AppendLine("        [");
-        foreach (var descriptor in InteractionCodeEmitter.CSharpDescriptors(interactions, fullType))
+        foreach (var descriptor in InteractionCodeEmitter.CSharpDescriptors(interactions, fullType)
+            .Concat(InteractionCodeEmitter.CSharpRequestDescriptors(requests, fullType)))
             cs.AppendLine($"            {descriptor},");
         cs.AppendLine("        ],");
     }
@@ -1002,13 +1117,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var keyExpression = key.PropertyType == typeof(string) ? keyAccess
             : key.PropertyType == typeof(Guid) ? keyAccess + ".ToString(\"D\")"
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}),");
+        // field-paths/1: a row editor receives the copied row with its key, and the edit when it takes one.
+        var editable = rowEditors.TryGetValue(property, out var editor)
+            ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(rowPaths[property], property.Name + "ValueCodec")}, UpdateRow = static (vm, row, edit) => vm.{editor.Name}((({itemType})row!).{key.Name}, ({itemType})row!{(editor.GetParameters().Length == 3 ? ", edit" : "")})"
+                + (editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Conflicts == RunicRowConflicts.Row ? ", RowConflicts = global::Runic.Application.Views.RunicRowConflicts.Row" : "") + " }"
+            : "";
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}){editable},");
     }
     cs.AppendLine(validationContextFlavors.Length > 0 ? "        ], validationReader: ValidationReader" : "        ]");
     cs.AppendLine("        )");
     cs.AppendLine("    {");
     if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
-    if (interactions.Length > 0)
+    if (presented)
     {
         cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
         cs.AppendLine($"        _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation(\"{prefix}\") : null;");
@@ -1026,7 +1146,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     foreach (var (property, graph) in valueProperties)
     {
-        graph.AppendCSharpCodec(cs, property.Name + "ValueCodec");
+        graph.AppendCSharpCodec(cs, property.Name + "ValueCodec",
+            fieldPaths: nestedPaths.TryGetValue(property, out var nestedLeaves) ? (graph.Root, nestedLeaves)
+                : rowPaths.TryGetValue(property, out var rowLeaves) && rowLeaves.Count > 0 ? (graph.Root.Element!, rowLeaves) : null);
+        cs.AppendLine();
+    }
+    foreach (var (property, plan) in queryCollections)
+    {
+        plan.Rows.AppendCSharpCodec(cs, property.Name + "RowsCodec");
         cs.AppendLine();
     }
     foreach (var (command, plan) in commandPlans)
@@ -1036,6 +1163,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.FailureGraph is { } failure) { failure.AppendCSharpCodec(cs, command.Name + "FailureCodec"); cs.AppendLine(); }
     }
     InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
+    InteractionCodeEmitter.AppendCSharpRequestCodecs(cs, requests);
     foreach (var convention in MvvmCodegenConventions.All)
         convention.AppendSupportTypes(cs, commandPlans.Values);
     // The state members in order (specs/application, "State and revisions"). Each writes its value; the runtime writes
@@ -1198,6 +1326,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             writer.AppendLine("writer.WriteEndArray();");
             stateMembers.Add((jsonName, writer.ToString()));
         }
+        else if (queryCollections.ContainsKey(property))
+            stateMembers.Add((jsonName, $"global::Runic.Application.Views.Generated.BridgeQueryWire.WriteState(writer, vm.{property.Name})"));
         else if (valueProperties.ContainsKey(property))
             stateMembers.Add((jsonName, $"{property.Name}ValueCodec.Write(writer, {(selectionSlots.Contains(property) ? SelectionIndex(property) : $"vm.{property.Name}")})"));
         else throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated value codec.");
@@ -1261,11 +1391,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         cs.AppendLine($"{indent}]");
     }
-    if (hasContent || interactions.Length > 0)
+    if (hasContent || presented)
     {
         cs.AppendLine("    public override void Dispose()");
         cs.AppendLine("    {");
-        if (interactions.Length > 0) cs.AppendLine("        _rootInteractionMount?.Dispose();");
+        if (presented) cs.AppendLine("        _rootInteractionMount?.Dispose();");
         cs.AppendLine("        base.Dispose();");
         if (hasContent) cs.AppendLine("        _content.ClearOwner(_owner);");
         cs.AppendLine("    }");
@@ -1331,6 +1461,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     + ")[]" + (nullability.Create(property).ReadState == NullabilityState.Nullable ? " | null" : "")
             : valueProperties.TryGetValue(property, out var valueGraph)
                 ? valueGraph.TypeScriptType()
+            : queryCollections.ContainsKey(property) ? Ref("QueryCollectionState")
                 : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
         var stateDocumentation = XmlDocumentation.Summary(property);
         if (valueProperties.TryGetValue(property, out var documentedGraph))
@@ -1350,6 +1481,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("}");
     ts.AppendLine();
     InteractionCodeEmitter.AppendTypeScriptSurface(ts, interactions, shortName);
+    InteractionCodeEmitter.AppendTypeScriptRequestSurface(ts, requests, shortName);
     if (needsCheckedWriter)
     {
         ts.AppendLine($"export interface {shortName}CheckedFields {{");
@@ -1364,7 +1496,24 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
     ts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{");
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
-    foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
+    if (requests.Length > 0) ts.AppendLine($"  readonly requests: {shortName}ViewRequests;");
+    if (queryCollections.Count > 0)
+    {
+        ts.AppendLine("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");
+        ts.AppendLine("  readonly queries: {");
+        foreach (var (property, plan) in queryCollections)
+        {
+            XmlDocumentation.Append(ts, "    ", XmlDocumentation.Summary(property));
+            ts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;");
+        }
+        ts.AppendLine("  };");
+    }
+    if (usesUploads)
+    {
+        XmlDocumentation.Append(ts, "  ", "Uploads a file to the window's .NET host over HTTP (blobs/1) and resolves with the reference that a command's\n`RunicUpload` input takes. `options.onProgress` reports the bytes sent; `options.signal` aborts the upload.");
+        ts.AppendLine("  upload(content: Blob, options?: import(\"@runic-artifex/views\").UploadOptions): Promise<import(\"@runic-artifex/views\").BlobRef>;");
+    }
+    foreach (var property in properties.Where(PageSettable))
     {
         XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
@@ -1379,6 +1528,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         ts.AppendLine("  /** The value and version of a checked field that a `write…` call is based on. */");
         ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>;");
+    }
+    if (hasFieldPaths)
+    {
+        ts.AppendLine("  /** A checked write of a field path below a member (field-paths/1); `{View}Fields` descriptors call it. */");
+        ts.AppendLine($"  writePath<T>(member: string, path: readonly string[], write: {Ref("BridgeFieldWriteRequest")}, decode: (wire: unknown) => T): Promise<{Ref("FieldWriteReceipt")}<T>>;");
+        ts.AppendLine("  /** The version a field path write is based on: the revision of the state the client shows. */");
+        ts.AppendLine("  fieldPathVersion(): number;");
     }
     foreach (var command in commands)
     {
@@ -1458,6 +1614,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var field = WireName(property);
         if (valueProperties.TryGetValue(property, out var graph))
             memberDecoders.Add((field, graph.EmitTypeScriptDecoder("wire")));
+        else if (queryCollections.ContainsKey(property))
+            memberDecoders.Add((field, $"{Ref("decodeQueryCollectionState")}(wire)"));
         else if (contentProperties.TryGetValue(property, out var pages))
         {
             var decoder = $"{{ const reference = {Ref("contentReference")}(wire); return {ContentDecoder(property, pages, "reference")}; }}";
@@ -1494,10 +1652,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("};");
     ts.AppendLine($"const {Ref("bridgeContract")} = \"{model.FullName}:{contractFingerprint}\";");
     InteractionCodeEmitter.AppendTypeScriptDefinitions(ts, interactions);
+    InteractionCodeEmitter.AppendTypeScriptRequestDefinitions(ts, requests);
     if (needsCheckedWriter)
         ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
     OperationTypeScriptEmitter.AppendCodecs(ts, operationPlans);
     ts.AppendLine();
+    if (queryCollections.Count > 0)
+    {
+        ts.AppendLine($"const {Ref("queryDefinitions")} = {{");
+        foreach (var (property, plan) in queryCollections)
+        {
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineQueryCollection")}<{plan.Rows.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(plan.Rows.EmitItemTypeScriptDecoder("wire"))}),");
+        }
+        ts.AppendLine("};");
+    }
     var hasDeltaFields = incrementalCollections.Count > 0 || textFields.Length > 0;
     if (hasDeltaFields)
     {
@@ -1518,6 +1686,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (textMembers.Length > 0 ? $", texts: [{string.Join(", ", textMembers.Select(property => JsonSerializer.Serialize(WireName(property))))}]" : "")
         + (scopedCommands.Length > 0 ? $", scopedCommands: [{string.Join(", ", scopedCommands.Select(member => JsonSerializer.Serialize(member)))}]" : "")
         + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}, handlers: options?.handlers" : "")
+        + (requests.Length > 0 ? $", requests: {Ref("requestDefinitions")}" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
     // A View with interactions takes their handlers when it connects, so the producer can ask them from the first
     // request on (specs/application, "Presentations").
@@ -1534,11 +1703,22 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    get snapshot() { return view.snapshot; },");
     ts.AppendLine("    subscribe: view.subscribe,");
     ts.AppendLine("    dispose: view.dispose,");
+    if (usesUploads) ts.AppendLine($"    upload: {Ref("upload")},");
     if (interactions.Length > 0)
         ts.AppendLine($"    interactions: view.interactions as unknown as {shortName}Interactions,");
+    if (requests.Length > 0)
+        ts.AppendLine($"    requests: view.requests as unknown as {shortName}ViewRequests,");
+    if (queryCollections.Count > 0)
+        ts.AppendLine("    queries: { " + string.Join(", ", queryCollections.Keys.Select(property =>
+            $"{TsLiteralKey(WireName(property))}: view.queryCollection({JsonSerializer.Serialize(WireName(property))}, {Ref("queryDefinitions")}[{JsonSerializer.Serialize(WireName(property))}])")) + " },");
     if (needsCheckedWriter)
         ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
-    foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
+    if (hasFieldPaths)
+    {
+        ts.AppendLine("    writePath<T>(member: string, path: readonly string[], write: " + Ref("BridgeFieldWriteRequest") + ", decode: (wire: unknown) => T) { return view.write<T>(member, { ...write, path }, decode); },");
+        ts.AppendLine("    fieldPathVersion() { return view.fieldPathVersion(); },");
+    }
+    foreach (var property in properties.Where(PageSettable))
     {
         // A setter sends the member's value as an edit (specs/application, "Edits").
         var member = JsonSerializer.Serialize(WireName(property));
@@ -1597,23 +1777,31 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasValidation) publicImports.Add("type " + Import("BridgeValidationState"));
     publicImports.Add("type " + Import("BridgeConnectOptions"));
     publicImports.Add("type " + Import("ViewClient"));
-    if (needsCheckedWriter) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt"), "type " + Import("BridgeField")]);
+    if (needsCheckedWriter || hasFieldPaths) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt"), "type " + Import("BridgeField")]);
+    if (rowPaths.Values.Any(leaves => leaves.Count > 0)) publicImports.Add("type " + Import("BridgeRowFields"));
     if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type " + Import("BridgeOutcome"));
     if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type " + Import("BridgeOperation"));
     if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
+    if (requests.Length > 0) publicImports.Add("type " + Import("BridgeViewRequestContext"));
     if (regionCollections.Count > 0) publicImports.AddRange(["type " + Import("RegionCollection"), "type " + Import("RegionOutcome")]);
+    if (queryCollections.Count > 0) publicImports.AddRange(["type " + Import("QueryCollection"), "type " + Import("QueryCollectionState")]);
     var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences"), "type " + Import("BridgeMemberDecoders") };
     if (operationPlans.Length > 0) runtimeImports.Add("type " + Import("BridgeOperationCodec"));
     if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
     if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
+    if (queryCollections.Count > 0) runtimeImports.AddRange([Import("defineQueryCollection"), Import("decodeQueryCollectionState")]);
     if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));
     if (interactions.Length > 0) runtimeImports.Add(Import("defineInteractions"));
+    if (requests.Length > 0) runtimeImports.Add(Import("defineRequests"));
     if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
     if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
     if (regionCollections.Count > 0) runtimeImports.Add(Import("regionCollection"));
-    if (hasValidation && needsCheckedWriter) runtimeImports.Add(Import("fieldErrors"));
+    if (hasValidation && needsCheckedWriter) { runtimeImports.Add(Import("fieldErrors")); runtimeImports.Add(Import("fieldValidating")); }
+    if (hasFieldPaths) { runtimeImports.Add(Import("fieldPath")); runtimeImports.Add("type " + Import("BridgeFieldWriteRequest")); }
+    if (rowPaths.Values.Any(leaves => leaves.Count > 0)) runtimeImports.Add(Import("rowFields"));
+    if (usesUploads) runtimeImports.Add(Import("upload"));
     ts.Clear();
     ts.AppendLine("// <auto-generated />");
     ts.AppendLine(publicImports.All(name => name.StartsWith("type ", StringComparison.Ordinal))
@@ -1642,9 +1830,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             regionCollections.ContainsKey(entry.Key) && BridgeContractShape.RegionCollection(entry.Key)!.PageCanClose)).ToArray(),
         MockDefaults(),
         checkedProperties.Select(WireName).ToArray(),
+        nestedPaths.Select(entry => (WireName(entry.Key), entry.Value.Select(leaf => leaf.Path).ToArray()))
+            .Concat(rowPaths.Where(entry => entry.Value.Count > 0).Select(entry => (WireName(entry.Key), entry.Value.Select(leaf => leaf.Path).ToArray()))).ToArray(),
         textMembers.Select(WireName).ToArray(),
         scopedCommands,
-        properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
+        properties.Where(property => PageSettable(property) && valueProperties.ContainsKey(property))
             .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
                 checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),
         commands.Select(command =>
@@ -1667,65 +1857,282 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }).ToArray(),
         interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
             plan.Output.TypeScriptType(), plan.Input.EncodeTypeScript("typed"), plan.Output.EmitTypeScriptDecoder("wire"))).ToArray(),
+        requests.Select(plan => new MockViewRequest(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
+            plan.Input.EncodeTypeScript("typed"))).ToArray(),
         incrementalCollections.Select(entry =>
         {
             var graph = valueProperties[entry.Key];
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == entry.Value);
             return new MockCollection(WireName(entry.Key), graph.ItemTypeScriptType(), graph.EncodeItemTypeScript("typed"),
                 graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
-        }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)), model);
+        }).ToArray(), $"{model.FullName}:{contractFingerprint}",
+        queryCollections.Select(entry =>
+        {
+            var rows = entry.Value.Rows;
+            // The mock's default key: a row member named Id or Key of the collection's key type.
+            var keyMember = rows.Root.Element!.Members.FirstOrDefault(member => member.Property.Name is "Id" or "Key"
+                && member.Type.NonNullableType == entry.Value.Key && !member.Type.IsNullable);
+            return new MockQuery(WireName(entry.Key), rows.ItemTypeScriptType(), rows.EncodeItemTypeScript("typed"),
+                rows.EmitItemTypeScriptDecoder("wire"), keyMember is null ? null : $"String({TsAccess("item", keyMember.WireName)})");
+        }).ToArray()), Path.GetFileNameWithoutExtension(typescriptPath)), model);
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
-    return hasContent || interactions.Length > 0;
+    return hasContent || presented;
 
     // Field descriptors (F1): one BridgeField per settable value member, which useField, injectField and
     // createFieldController bind an input to. Every such member is a checked field, so each has its checked write.
     void AppendFieldDescriptors()
     {
-        if (checkedProperties.Length == 0) return;
+        if (checkedProperties.Length == 0 && rowPaths.Count == 0) return;
         ts.AppendLine();
-        XmlDocumentation.Append(ts, "", $"Descriptors of the {shortName} ViewModel's settable members, for `useField`, `injectField` and\n`createFieldController`.");
+        XmlDocumentation.Append(ts, "", $"Descriptors of the {shortName} ViewModel's settable members, for `useField`, `injectField` and\n`createFieldController`."
+            + (hasFieldPaths ? "\nFields below a member (`address.street`) and the cells of editable rows (`lines.at(key).quantity`) are\nchecked fields too (field-paths/1)." : ""));
         ts.AppendLine($"export const {shortName}Fields: {{");
         foreach (var property in checkedProperties)
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeField")}<{clientName}, {shortName}State, {TsPropertyType(property)}>;");
+            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeField")}<{clientName}, {shortName}State, {TsPropertyType(property)}>"
+                + (nestedPaths.TryGetValue(property, out var nested) ? " & " + LeafTypes(nested, []) : "") + ";");
+        foreach (var (property, leaves) in rowPaths.Where(entry => entry.Value.Count > 0))
+            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {Ref("BridgeRowFields")}<{LeafTypes(leaves, [])}>;");
         ts.AppendLine("} = {");
         foreach (var property in checkedProperties)
         {
             var wire = WireName(property);
             var name = JsonSerializer.Serialize(wire);
             var root = valueProperties[property].Root;
-            var kind = root.Kind switch
-            {
-                BridgeWireKind.Boolean => "boolean",
-                BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16 or
-                BridgeWireKind.Int32 or BridgeWireKind.UInt32 or BridgeWireKind.Single or BridgeWireKind.Double => "number",
-                BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => "bigint",
-                BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.DateOnly or BridgeWireKind.TimeOnly or BridgeWireKind.DateTime
-                    or BridgeWireKind.DateTimeOffset or BridgeWireKind.TimeSpan or BridgeWireKind.Decimal => "text",
-                BridgeWireKind.Enum => "choice",
-                _ => "value",
-            };
-            var traits = $"name: {name}, kind: \"{kind}\"";
-            if (root.IsNullable) traits += ", nullable: true";
-            if (root.Kind is BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16
-                or BridgeWireKind.Int32 or BridgeWireKind.UInt32) traits += ", integer: true";
-            if (root.Kind == BridgeWireKind.Enum)
-            {
-                // The names .NET writes: the first declared name of each value, as the enum codec does.
-                var written = new HashSet<object>();
-                traits += $", choices: [{string.Join(", ", root.EnumCases.Where(@case => written.Add(@case.Field.GetRawConstantValue()!))
-                    .Select(@case => JsonSerializer.Serialize(@case.WireName)))}]";
-            }
             ts.AppendLine($"  {TsLiteralKey(wire)}: {{");
-            ts.AppendLine($"    {traits},");
+            ts.AppendLine($"    name: {name}, {FieldTraits(root, property)},");
             ts.AppendLine($"    read: state => {TsAccess("state", wire)},");
             ts.AppendLine($"    write: (client, value) => client.set{property.Name}(value),");
             ts.AppendLine($"    checked: (client, value, options) => client.write{property.Name}(value, options),");
             ts.AppendLine($"    baseline: client => client.fieldBaseline({name}),");
             if (hasValidation)
+            {
                 ts.AppendLine($"    errors: state => {Ref("fieldErrors")}(state.validation, {name}{(hasErrors ? ", " + TsAccess("state", wire + "Errors") : "")}),");
+                ts.AppendLine($"    validating: state => {Ref("fieldValidating")}(state.validation, {name}),");
+            }
+            if (nestedPaths.TryGetValue(property, out var nested))
+                foreach (var line in LeafValues(nested, [], wire, $"container: state => {TsAccess("state", wire)}",
+                    root.IsNullable ? $"NonNullable<{TsPropertyType(property)}>" : TsPropertyType(property)))
+                    ts.AppendLine("    " + line);
             ts.AppendLine("  },");
         }
+        foreach (var (property, leaves) in rowPaths.Where(entry => entry.Value.Count > 0))
+        {
+            var wire = WireName(property);
+            var graph = valueProperties[property];
+            var keyMember = graph.Root.Element!.Members.Single(member => member.Property == incrementalCollections[property]);
+            var row = $"row: {{ key, rows: state => {TsAccess("state", wire)}, keyOf: item => String({TsAccess("item", keyMember.WireName)}) }}";
+            ts.AppendLine($"  {TsLiteralKey(wire)}: {Ref("rowFields")}({JsonSerializer.Serialize(wire)}, key => ({{");
+            foreach (var line in LeafValues(leaves, [], wire, row, graph.ItemTypeScriptType()))
+                ts.AppendLine("    " + line);
+            ts.AppendLine("  })),");
+        }
         ts.AppendLine("};");
+    }
+
+    // field-paths/1: the type of the descriptors below prefix, such as { readonly street: BridgeField<…> }.
+    string LeafTypes(IReadOnlyList<BridgeFieldLeaf> leaves, string[] prefix)
+    {
+        var members = leaves.Where(leaf => leaf.Path.Length == prefix.Length + 1 && leaf.Path.Take(prefix.Length).SequenceEqual(prefix))
+            .Select(leaf =>
+            {
+                var children = leaves.Any(other => other.Path.Length > leaf.Path.Length && other.Path.Take(leaf.Path.Length).SequenceEqual(leaf.Path));
+                return $"readonly {TsPropertyName(leaf.Path[^1])}: {Ref("BridgeField")}<{clientName}, {shortName}State, {BridgeTypeGraph.NodeTypeScriptType(leaf.Node)}>"
+                    + (children ? " & " + LeafTypes(leaves, leaf.Path) : "");
+            });
+        return $"{{ {string.Join("; ", members)} }}";
+    }
+
+    // field-paths/1: the descriptors below prefix, one fieldPath per path; a path with paths below it spreads its
+    // descriptor and adds theirs.
+    IEnumerable<string> LeafValues(IReadOnlyList<BridgeFieldLeaf> leaves, string[] prefix, string member, string locate, string containerType)
+    {
+        foreach (var leaf in leaves.Where(leaf => leaf.Path.Length == prefix.Length + 1 && leaf.Path.Take(prefix.Length).SequenceEqual(prefix)))
+        {
+            var node = leaf.Node;
+            var valueType = BridgeTypeGraph.NodeTypeScriptType(node);
+            var read = "value";
+            for (var index = 0; index < leaf.Chain.Length; index++)
+            {
+                var optional = index > 0 && leaf.Chain[index - 1].Type.IsNullable;
+                var segment = leaf.Chain[index].WireName;
+                read = IsTypeScriptIdentifier(segment) && segment != "__proto__"
+                    ? $"{read}{(optional ? "?." : ".")}{segment}"
+                    : $"{read}{(optional ? "?." : "")}[{JsonSerializer.Serialize(segment)}]";
+            }
+            if (leaf.Chain.Take(leaf.Chain.Length - 1).Any(member => member.Type.IsNullable)) read += $" as {valueType}";
+            var spec = $"{Ref("fieldPath")}<{clientName}, {shortName}State, {valueType}, {containerType}>({{ member: {JsonSerializer.Serialize(member)}, "
+                + $"path: [{string.Join(", ", leaf.Path.Select(segment => JsonSerializer.Serialize(segment)))}], {locate}, "
+                + $"read: (value: {containerType}) => {read}, "
+                + $"encode: (value: {valueType}) => {BridgeTypeGraph.ArrowBody(BridgeTypeGraph.NodeTypeScriptEncoder(node, "value"))}, "
+                + $"decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(BridgeTypeGraph.NodeTypeScriptDecoder(node, "wire"))}, "
+                + FieldTraits(node, leaf.Chain[^1].Property)
+                + (hasValidation ? ", validation: state => state.validation" : "") + " })";
+            var children = LeafValues(leaves, leaf.Path, member, locate, containerType).ToArray();
+            if (children.Length == 0)
+            {
+                yield return $"{TsLiteralKey(leaf.Path[^1])}: {spec},";
+                continue;
+            }
+            yield return $"{TsLiteralKey(leaf.Path[^1])}: {{ ...{spec},";
+            foreach (var child in children) yield return "  " + child;
+            yield return "},";
+        }
+    }
+
+    // A field's kind and the traits that go with it, from its wire type and its property's DataAnnotations.
+    string FieldTraits(BridgeTypeNode root, PropertyInfo property)
+    {
+        var kind = root.Kind switch
+        {
+            BridgeWireKind.Boolean => "boolean",
+            BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16 or
+            BridgeWireKind.Int32 or BridgeWireKind.UInt32 or BridgeWireKind.Single or BridgeWireKind.Double => "number",
+            BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => "bigint",
+            // C1: kinds with their own text form (locale numbers, the ISO forms of native date inputs).
+            BridgeWireKind.Decimal => "decimal",
+            BridgeWireKind.DateOnly => "date",
+            BridgeWireKind.TimeOnly => "time",
+            BridgeWireKind.DateTime or BridgeWireKind.DateTimeOffset => "datetime",
+            BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.TimeSpan => "text",
+            BridgeWireKind.Enum => "choice",
+            _ => "value",
+        };
+        var traits = $"kind: \"{kind}\"";
+        if (root.IsNullable) traits += ", nullable: true";
+        if (root.Kind is BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16
+            or BridgeWireKind.Int32 or BridgeWireKind.UInt32) traits += ", integer: true";
+        if (root.Kind == BridgeWireKind.DateTimeOffset) traits += ", offset: true";
+        if (FieldConstraints(property) is { } constraints) traits += $", constraints: {constraints}";
+        if (root.Kind == BridgeWireKind.Enum)
+        {
+            // The names .NET writes: the first declared name of each value, as the enum codec does.
+            var written = new HashSet<object>();
+            traits += $", choices: [{string.Join(", ", root.EnumCases.Where(@case => written.Add(@case.Field.GetRawConstantValue()!))
+                .Select(@case => JsonSerializer.Serialize(@case.WireName)))}]";
+        }
+        return traits;
+    }
+
+    // C8: the DataAnnotations a page can mirror on its input (`required`, `maxlength`, `min`, `max`, `pattern`). They
+    // describe the C# validation; .NET still validates.
+    static string? FieldConstraints(PropertyInfo property)
+    {
+        var parts = new List<string>();
+        static string Number(object value) => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
+        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RequiredAttribute>(true) is not null) parts.Add("required: true");
+        var stringLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.StringLengthAttribute>(true);
+        var minLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.MinLengthAttribute>(true)?.Length;
+        if (stringLength is { MinimumLength: > 0 } && (minLength is null || stringLength.MinimumLength > minLength)) minLength = stringLength.MinimumLength;
+        if (minLength is > 0) parts.Add($"minLength: {minLength}");
+        var maxLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.MaxLengthAttribute>(true)?.Length;
+        if (maxLength is <= 0) maxLength = null; // [MaxLength] without a length allows the most the store does.
+        if (stringLength is not null && (maxLength is null || stringLength.MaximumLength < maxLength)) maxLength = stringLength.MaximumLength;
+        if (maxLength is not null) parts.Add($"maxLength: {maxLength}");
+        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RangeAttribute>(true) is { } range)
+        {
+            // Numeric bounds are numbers. Decimal bounds (Range(typeof(decimal), "0", "9.99")) are their invariant text,
+            // and date and time bounds their ISO form, the forms an input's min and max take. A bound that does not
+            // read as its type is left out.
+            static string Bound(object value, Type operand)
+            {
+                var invariant = System.Globalization.CultureInfo.InvariantCulture;
+                var text = Convert.ToString(value, invariant) ?? "";
+                const System.Globalization.DateTimeStyles styles = System.Globalization.DateTimeStyles.None;
+                return value switch
+                {
+                    double d when double.IsInfinity(d) || double.IsNaN(d) => "",
+                    int or double => Number(value),
+                    _ when operand == typeof(decimal) => decimal.TryParse(text, System.Globalization.NumberStyles.Number, invariant, out var number)
+                        ? JsonSerializer.Serialize(number.ToString(invariant)) : "",
+                    _ when operand == typeof(DateOnly) => DateOnly.TryParse(text, invariant, styles, out var date)
+                        ? JsonSerializer.Serialize(date.ToString("yyyy-MM-dd", invariant)) : "",
+                    _ when operand == typeof(TimeOnly) => TimeOnly.TryParse(text, invariant, styles, out var time)
+                        ? JsonSerializer.Serialize(time.ToString("HH:mm:ss", invariant)) : "",
+                    _ when operand == typeof(DateTime) => DateTime.TryParse(text, invariant, styles, out var moment)
+                        ? JsonSerializer.Serialize(moment.TimeOfDay == TimeSpan.Zero ? moment.ToString("yyyy-MM-dd", invariant)
+                            : moment.ToString("yyyy-MM-ddTHH:mm:ss", invariant)) : "",
+                    _ when operand == typeof(DateTimeOffset) => DateTimeOffset.TryParse(text, invariant, styles, out var instant)
+                        ? JsonSerializer.Serialize(instant.ToString("yyyy-MM-ddTHH:mm:sszzz", invariant)) : "",
+                    _ when operand == typeof(string) || operand == typeof(int) || operand == typeof(double) => JsonSerializer.Serialize(text),
+                    _ => "",
+                };
+            }
+            var min = Bound(range.Minimum, range.OperandType);
+            var max = Bound(range.Maximum, range.OperandType);
+            if (min.Length != 0) parts.Add($"min: {min}");
+            if (max.Length != 0) parts.Add($"max: {max}");
+            if (range.MinimumIsExclusive) parts.Add("minExclusive: true");
+            if (range.MaximumIsExclusive) parts.Add("maxExclusive: true");
+        }
+        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RegularExpressionAttribute>(true) is { } regex
+            && SimplePattern(regex.Pattern))
+            // Relaxed escaping keeps + < > & readable; the text is TypeScript, not HTML.
+            parts.Add($"pattern: {JsonSerializer.Serialize(regex.Pattern, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })}");
+        return parts.Count == 0 ? null : "{ " + string.Join(", ", parts) + " }";
+    }
+
+    // A .NET pattern that a browser's pattern attribute reads the same way. Browsers compile it with the v flag, which
+    // rejects ( ) [ { } / | and a lone - inside a character class, and doubled punctuators such as && or --. Rejected
+    // too: inline options, named and balancing groups, lookbehind, the .NET-only anchors \A \Z \z \G, Unicode
+    // categories (\p, \P), named backreferences (\k), and \d \w \b (Unicode in .NET, ASCII in JavaScript).
+    static bool SimplePattern(string pattern)
+    {
+        var inClass = false;
+        var classOpen = -1;
+        // In a class: the previous item is one character, which a - can follow to make a range.
+        var single = false;
+        // In a class: the next character ends a range, so it cannot start another.
+        var rangeEnd = false;
+        for (var index = 0; index < pattern.Length; index++)
+        {
+            var character = pattern[index];
+            if (character == '\\')
+            {
+                if (++index >= pattern.Length || "AZzGpPkKdDwWbB".Contains(pattern[index], StringComparison.Ordinal)) return false;
+                if (inClass)
+                {
+                    single = !rangeEnd && pattern[index] is not ('s' or 'S');
+                    rangeEnd = false;
+                }
+                continue;
+            }
+            if (inClass)
+            {
+                if (character == '^' && index == classOpen + 1) continue;
+                if (character == ']')
+                {
+                    // []…] is a literal ] in .NET and an empty class in JavaScript.
+                    if (index == classOpen + 1 || index == classOpen + 2 && pattern[classOpen + 1] == '^') return false;
+                    inClass = false;
+                    continue;
+                }
+                if ("()[{}/|".Contains(character, StringComparison.Ordinal)) return false;
+                if (index + 1 < pattern.Length && pattern[index + 1] == character
+                    && "&!#$%*+,.:;<=>?@^`~-".Contains(character, StringComparison.Ordinal)) return false;
+                if (character == '-')
+                {
+                    if (!single || index + 1 >= pattern.Length || pattern[index + 1] == ']') return false;
+                    single = false;
+                    rangeEnd = true;
+                    continue;
+                }
+                single = !rangeEnd;
+                rangeEnd = false;
+                continue;
+            }
+            if (character == '[')
+            {
+                inClass = true;
+                classOpen = index;
+                single = rangeEnd = false;
+                continue;
+            }
+            if (character == '(' && index + 1 < pattern.Length && pattern[index + 1] == '?'
+                && !(index + 2 < pattern.Length && pattern[index + 2] is ':' or '=' or '!')) return false;
+        }
+        if (inClass) return false;
+        try { _ = new System.Text.RegularExpressions.Regex(pattern); } catch (ArgumentException) { return false; }
+        return true;
     }
 
     string TsPropertyType(PropertyInfo property) => valueProperties.TryGetValue(property, out var graph)
@@ -1795,7 +2202,11 @@ static void AppendValidationContextReader(StringBuilder cs, IReadOnlyList<string
         cs.AppendLine("                if (validation.IsValid) continue;");
         cs.AppendLine($"                var properties = validation is global::{flavor}.Components.Abstractions.IValidatesProperties {{ PropertyCount: > 0 }} validatesProperties");
         cs.AppendLine("                    ? global::System.Linq.Enumerable.ToArray(validatesProperties.Properties) : null;");
-        cs.AppendLine("                errors.Add(new(validation.Text?.ToSingleLine(\" \") ?? string.Empty, properties));");
+        // translation-text/1: a component, or its text, that carries a text reference gives the error its text.
+        cs.AppendLine("                var message = validation.Text?.ToSingleLine(\" \") ?? string.Empty;");
+        cs.AppendLine("                var text = validation is global::Runic.Application.Views.IRunicTextReferenceSource { Text: { } own } ? own");
+        cs.AppendLine("                    : validation.Text is global::Runic.Application.Views.IRunicTextReferenceSource { Text: { } carried } ? carried : null;");
+        cs.AppendLine("                errors.Add(text is null ? new global::System.ComponentModel.DataAnnotations.ValidationResult(message, properties) : new global::Runic.Application.Views.RunicValidationResult(message, text, properties));");
         cs.AppendLine("            }");
         cs.AppendLine("            return errors;");
         cs.AppendLine("        }");
@@ -2089,6 +2500,20 @@ static class BridgeDiagnosticCodes
     internal const string Toolchain = "RUNICBRIDGE033";
     /// <summary>Warning: a RunicPresentationScoped declaration reaches no Bridge command.</summary>
     internal const string PresentationScoped = "RUNICBRIDGE034";
+    /// <summary>A ViewRequest or ViewQuestion member is not a get-only property.</summary>
+    internal const string ViewMember = "RUNICBRIDGE035";
+    /// <summary>A [RunicRowEditor] method matches no keyed collection, or several, or has an unsupported signature.</summary>
+    internal const string RowEditor = "RUNICBRIDGE050";
+    /// <summary>A keyed collection has two [RunicRowEditor] methods.</summary>
+    internal const string RowEditors = "RUNICBRIDGE051";
+    /// <summary>The rows of a [RunicRowEditor] collection cannot be copied with one cell changed.</summary>
+    internal const string RowCopy = "RUNICBRIDGE052";
+    /// <summary>Warning: an object inside an editable row cannot be copied, so it has no fields below it.</summary>
+    internal const string RowObjectCopy = "RUNICBRIDGE053";
+    /// <summary>A RunicQueryCollection member has an unsupported shape.</summary>
+    internal const string QueryCollection = "RUNICBRIDGE060";
+    /// <summary>A RunicBlob is read from the page: a command input, an interaction result or a checked field.</summary>
+    internal const string Blob = "RUNICBRIDGE065";
     /// <summary>A [RunicRegionCollection] is not on a get-only NavigationSelection property, or names an unsupported content type.</summary>
     internal const string RegionCollection = "RUNICBRIDGE070";
     /// <summary>A region collection's generated select or close method collides with another client member.</summary>
@@ -2133,6 +2558,13 @@ static class BridgeDiagnosticCodes
         (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
+        (ViewMember, "error", "A ViewRequest or ViewQuestion member is not a get-only property"),
+        (RowEditor, "error", "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"),
+        (RowEditors, "error", "A keyed collection has more than one [RunicRowEditor] method"),
+        (RowCopy, "error", "The rows of a [RunicRowEditor] collection cannot be copied with one cell changed"),
+        (RowObjectCopy, "warning", "An object inside an editable row cannot be copied, so it has no fields below it"),
+        (QueryCollection, "error", "A RunicQueryCollection member has an unsupported shape"),
+        (Blob, "error", "A RunicBlob is read from the page: a command input, an interaction result or a checked field"),
         (RegionCollection, "error", "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"),
         (RegionCollectionName, "error", "A region collection's select or close client method collides with another client member"),
     ];
@@ -2210,7 +2642,7 @@ static class Diagnostics
         var code = error switch
         {
             BridgeDiagnosticException diagnostic => diagnostic.Code,
-            BridgeTypeGraphException => BridgeDiagnosticCodes.ValueType,
+            BridgeTypeGraphException graph => graph.Code ?? BridgeDiagnosticCodes.ValueType,
             ReflectionTypeLoadException or FileNotFoundException or FileLoadException or BadImageFormatException
                 or TypeLoadException => BridgeDiagnosticCodes.AssemblyLoad,
             // A wrong argument or build property, or output the generator cannot write.
@@ -2273,7 +2705,7 @@ static class TypeScriptModules
     internal static readonly HashSet<string> ReservedParameterNames = new(StringComparer.Ordinal)
     {
         "view", "route", "mount", "requestId", "bridgeWire", "BridgeError", "JSON", "String", "Number", "Object",
-        "globalThis", "hydrate", "bridgeContract", "collectionDefinitions", "interactionDefinitions", "checkedFieldNames",
+        "globalThis", "hydrate", "bridgeContract", "collectionDefinitions", "interactionDefinitions", "requestDefinitions", "checkedFieldNames",
         "arguments", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete",
         "do", "else", "enum", "eval", "export", "extends", "false", "finally", "for", "function", "if", "implements",
         "import", "in", "instanceof", "interface", "let", "new", "null", "package", "private", "protected", "public",
@@ -2318,9 +2750,11 @@ static class TypeScriptModules
         foreach (var (path, text) in Pending)
         {
             var used = TypeScriptNamedTypes.Used(text);
+            var values = TypeScriptNamedTypes.UsedValues(text);
             var imports = used.Count == 0 ? ""
                 : $"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";{Environment.NewLine}"
-                  + $"export type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";";
+                  + $"export type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";"
+                  + (values.Count == 0 ? "" : $"{Environment.NewLine}export {{ {string.Join(", ", values)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
             var resolved = TypeScriptNamedTypes.Resolve(text)
                 .Replace(NamedTypeImports + Environment.NewLine, imports.Length == 0 ? "" : imports + Environment.NewLine, StringComparison.Ordinal);
             WriteFile(path, resolved);
@@ -2512,3 +2946,75 @@ internal static class CommandDescriptorSyntax
         return result;
     }
 }
+
+// field-paths/1: one field path below a member or a row: its wire names and the members it passes through. A path
+// names a member that the page reads and that the copy of its object can change, down to three objects deep; an
+// object member has its own descriptor and those of its members. [RunicNoField] leaves a member out.
+internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
+{
+    internal BridgeTypeNode Node => Chain[^1].Type;
+
+    internal static List<BridgeFieldLeaf> Of(BridgeTypeNode owner, PropertyInfo? key, Action<PropertyInfo, string>? skipped)
+    {
+        var leaves = new List<BridgeFieldLeaf>();
+        if (CopyOf(owner).Kind == BridgeFieldCopy.None) return leaves;
+        Visit(owner, [], []);
+        return leaves;
+
+        void Visit(BridgeTypeNode node, string[] prefix, BridgeTypeMember[] chain)
+        {
+            var copy = CopyOf(node).Kind;
+            var parameters = node.Constructor?.GetParameters() ?? [];
+            foreach (var member in node.Members)
+            {
+                if (!member.Readable || member.Absent || member.Property == key) continue;
+                if (member.Property.GetCustomAttribute<RunicNoFieldAttribute>(true) is not null) continue;
+                var settable = copy switch
+                {
+                    BridgeFieldCopy.With => member.Writable,
+                    BridgeFieldCopy.Constructor or BridgeFieldCopy.Clone => member.Writable && !IsInitOnly(member.Property),
+                    _ => member.Writable || parameters.Any(parameter => string.Equals(parameter.Name, member.Property.Name, StringComparison.OrdinalIgnoreCase)),
+                };
+                if (!settable) continue;
+                string[] path = [.. prefix, member.WireName];
+                BridgeTypeMember[] next = [.. chain, member];
+                leaves.Add(new(path, next));
+                if (member.Type.Kind != BridgeWireKind.Dto || prefix.Length >= 2 || member.Type == owner || chain.Any(step => step.Type == member.Type)) continue;
+                if (CopyOf(member.Type) is { Kind: BridgeFieldCopy.None } refused)
+                {
+                    skipped?.Invoke(member.Property, refused.Reason!);
+                    continue;
+                }
+                Visit(member.Type, path, next);
+            }
+        }
+    }
+
+    // How an object of a node is copied with one member changed, or why it cannot be copied exactly: a record or a
+    // struct with `with`, a sealed class with its copy constructor or Clone(), or a sealed class whose every settable
+    // member is on the wire through its codec. A class that is not sealed would lose a derived type's members.
+    internal static (BridgeFieldCopy Kind, string? Reason) CopyOf(BridgeTypeNode node)
+    {
+        var type = node.NonNullableType;
+        if (type.IsValueType || type.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance) is not null) return (BridgeFieldCopy.With, null);
+        if (!type.IsSealed) return (BridgeFieldCopy.None, $"{BridgeTypeGraph.CSharpType(type)} is a class that is not sealed, so a derived row would lose its own members");
+        if (type.GetConstructor([type]) is { IsPublic: true }) return (BridgeFieldCopy.Constructor, null);
+        if (type.GetMethod("Clone", BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes) is { } clone && clone.ReturnType == type)
+            return (BridgeFieldCopy.Clone, null);
+        var hidden = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.SetMethod?.IsPublic == true && property.GetIndexParameters().Length == 0
+                && !node.Members.Any(member => member.Property.Name == property.Name))
+            .Select(property => property.Name).ToArray();
+        return hidden.Length > 0
+            ? (BridgeFieldCopy.None, $"{BridgeTypeGraph.CSharpType(type)} has settable members the page does not see ({string.Join(", ", hidden)}) and no copy constructor or Clone()")
+            : (BridgeFieldCopy.Wire, null);
+    }
+
+    private static bool IsInitOnly(PropertyInfo property) =>
+        property.SetMethod?.ReturnParameter.GetRequiredCustomModifiers().Any(modifier => modifier.FullName == "System.Runtime.CompilerServices.IsExternalInit") == true;
+
+    internal static string CSharpPaths(IReadOnlyList<BridgeFieldLeaf> leaves, string codec) =>
+        $"[{string.Join(", ", leaves.Select((leaf, index) => $"new([{string.Join(", ", leaf.Path.Select(segment => JsonSerializer.Serialize(segment)))}], {codec}.SetPath{index})"))}]";
+}
+
+internal enum BridgeFieldCopy { None, With, Constructor, Clone, Wire }

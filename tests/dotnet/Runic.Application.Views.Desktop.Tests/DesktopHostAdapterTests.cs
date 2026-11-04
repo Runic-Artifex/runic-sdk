@@ -609,14 +609,20 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public bool Drags { get; init; }
     // A window host that reports its state, from this state at open, or none when it is null.
     public DesktopWindowState? InitialState { get; init; }
+    // A window host that reports its activity from this one at open, and changes its color scheme; none when it is null.
+    public DesktopWindowActivity? InitialActivity { get; init; }
+    // A window host that owns windows (DesktopWindowCapabilities.Ownership).
+    public bool Owns { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
         var host = new NativeDispatchHost
         {
+            Owns = Owns,
             SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
             Placement = MenuBarPlacement,
             Drags = Drags,
+            InitialActivity = InitialActivity,
         };
         Hosts.Add(host);
         return host;
@@ -625,8 +631,24 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 
 // A headless embedded host whose "native thread" is a dedicated worker.
 sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost,
-    IDesktopDragSourceWindowHost
+    IDesktopDragSourceWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost
 {
+    public DesktopWindowActivity? InitialActivity { get; init; }
+    public DesktopWindowActivity? Activity { get; private set; }
+    public event EventHandler? ActivityChanged;
+    public void Report(DesktopWindowActivity activity)
+    {
+        Activity = activity;
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public System.Collections.Concurrent.ConcurrentQueue<DesktopColorScheme> Schemes { get; } = new();
+    public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+    {
+        Schemes.Enqueue(colorScheme);
+        return ValueTask.CompletedTask;
+    }
+    public int Focused;
+    public System.Collections.Concurrent.ConcurrentQueue<bool> Visibility { get; } = new();
     // Drags end with a copy.
     public bool Drags { get; init; }
     public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default) =>
@@ -667,7 +689,10 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         (ContextMenus ? DesktopWindowCapabilities.ContextMenu : DesktopWindowCapabilities.None) |
         (Placement != DesktopMenuBarPlacement.None ? DesktopWindowCapabilities.MenuBar : DesktopWindowCapabilities.None) |
         (Drags ? DesktopWindowCapabilities.FileDrag : DesktopWindowCapabilities.None) |
-        (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State);
+        (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State) |
+        (InitialActivity is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme) |
+        (Owns ? DesktopWindowCapabilities.Ownership : DesktopWindowCapabilities.None);
+    public bool Owns { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
     {
@@ -690,7 +715,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         await completion.Task.ConfigureAwait(false);
     }
     public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
-    { Options = options; State = InitialState; _open = true; return ValueTask.CompletedTask; }
+    { Options = options; State = InitialState; Activity = InitialActivity; _open = true; return ValueTask.CompletedTask; }
     // The URLs the window's WebView was navigated to after it opened.
     public System.Threading.Channels.Channel<Uri> Navigations { get; } = System.Threading.Channels.Channel.CreateUnbounded<Uri>();
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default)
@@ -703,12 +728,20 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         if (_open) { _open = false; Closed?.Invoke(this, EventArgs.Empty); }
         return ValueTask.CompletedTask;
     }
-    public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    public ValueTask FocusAsync(CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref Focused);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
+    {
+        Visibility.Enqueue(visible);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask DisposeAsync() { _open = false; return ValueTask.CompletedTask; }
 }

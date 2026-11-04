@@ -53,6 +53,12 @@ public sealed class RunicWindowTestHostOptions
     public int? MaximumInputBytes { get; init; }
 
     /// <summary>
+    /// The largest upload of the window (<see cref="WindowContentSessionOptions.MaximumUploadBytes"/>), which
+    /// <c>UploadAsync</c> also applies. <see langword="null"/>, the default, is 256 MiB.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
     /// How long a driver waits for a state publication. Delivery runs off the calling
     /// thread, so this is real time. Defaults to five seconds.
     /// </summary>

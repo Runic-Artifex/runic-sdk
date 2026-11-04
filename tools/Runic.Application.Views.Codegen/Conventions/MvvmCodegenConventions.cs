@@ -108,6 +108,12 @@ internal abstract class MvvmInteraction
     internal abstract Type Input { get; }
     internal abstract Type Output { get; }
 
+    /// <summary>The diagnostic for a member of this interaction that is not a get-only property.</summary>
+    internal virtual string ShapeDiagnostic => BridgeDiagnosticCodes.Interaction;
+
+    /// <summary>What a diagnostic calls the member.</summary>
+    internal virtual string Kind => "interaction";
+
     /// <summary>The descriptor expression for the bridge's <c>interactions:</c> argument.</summary>
     internal abstract string Descriptor(GeneratedInteractionPlan plan, string modelType, string publicName,
         string inputCodec, string outputCodec);
@@ -117,7 +123,8 @@ internal static class MvvmCodegenConventions
 {
     // A command is matched by the first module that recognises it. Every module
     // still inspects it, so a shape error from any of them is reported.
-    internal static readonly MvvmCodegenConvention[] All = [ToolkitCodegenConvention.Instance, ReactiveUICodegenConvention.Instance];
+    internal static readonly MvvmCodegenConvention[] All =
+        [ToolkitCodegenConvention.Instance, ReactiveUICodegenConvention.Instance, RunicViewCodegenConvention.Instance];
 
     internal static MvvmCodegenConvention? ForOption(string option) =>
         All.FirstOrDefault(convention => convention.Options.Contains(option, StringComparer.Ordinal));

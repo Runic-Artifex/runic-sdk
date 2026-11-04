@@ -1,0 +1,157 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.flush-skips-a-connection-without-the-feature.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "presentations",
+  "roles": [
+    "producer"
+  ],
+  "description": "A connection whose hello does not list field-flush/1 gets no flush push, and a flush completes at once as answered; a flush-reply on it is invalid-request.",
+  "view": "wizard",
+  "requires": [
+    "presented/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-wizard-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "flush": {
+      "kind": "flush"
+    },
+    "flush-reply-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "wizard",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-wizard-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "page": 1,
+          "canNext": true,
+          "canBack": false,
+          "canPing": true
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-wizard-request"
+    },
+    {
+      "flushFields": {
+        "id": "flush"
+      }
+    },
+    {
+      "expect": {
+        "flushed": {
+          "id": "flush",
+          "answered": true
+        }
+      }
+    },
+    {
+      "send": {
+        "kind": "flush-reply",
+        "id": "flush-1"
+      },
+      "id": "flush-reply-request"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-request",
+          "message": {
+            "$any": "string",
+            "default": "The connection does not use field-flush/1."
+          }
+        }
+      },
+      "replyTo": "flush-reply-request"
+    }
+  ]
+}

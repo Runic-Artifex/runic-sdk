@@ -7,6 +7,9 @@ using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests.Conformance;
 
+// The input of the notes View's focus request.
+internal sealed record NotesFocus(string Member);
+
 // The operations and the interaction of the notes test View (specs/application/conformance/README.md, "notes"):
 //
 // - slowImport runs until a finish mutation and reports each progress mutation from its own flow
@@ -19,6 +22,27 @@ namespace Runic.Application.Testing.Tests.Conformance;
 internal sealed partial class NotesViewModel
 {
     internal const string ConfirmContract = "conformance.notes.confirm.v1";
+    // The view requests (view-requests/1): focus (drop), reveal (next-mounted) and toast (broadcast).
+    internal const string FocusContract = "conformance.notes.focus.v1";
+    internal const string RevealContract = "conformance.notes.reveal.v1";
+    internal const string ToastContract = "conformance.notes.toast.v1";
+
+    public ViewRequest<NotesFocus> Focus { get; } = new();
+    public ViewRequest<int> Reveal { get; } = new(ViewRequestDelivery.NextMounted);
+    public ViewRequest<string> Toast { get; } = new(ViewRequestDelivery.Broadcast);
+
+    // raise: a view request outside any scope, as a timer of the application raises it.
+    partial void OnRaise(JsonObject mutation)
+    {
+        var input = mutation["input"]!;
+        switch (mutation["request"]!.GetValue<string>())
+        {
+            case "focus": Focus.Raise(new NotesFocus(input["member"]!.GetValue<string>())); break;
+            case "reveal": Reveal.Raise(input["id"]!.GetValue<int>()); break;
+            case "toast": Toast.Raise(input["text"]!.GetValue<string>()); break;
+            default: throw new NotSupportedException($"The notes View has no view request {mutation.ToJsonString()}.");
+        }
+    }
     internal const string ContractFingerprint = "conformance-notes";
 
     // The step the running slowImport waits for. Its continuation runs inline, in the mutate step's turn and unit.
@@ -82,11 +106,23 @@ internal sealed partial class NotesViewModel
     {
         "contract" => $"{typeof(NotesViewModel).FullName}:{ContractFingerprint}",
         "confirmContract" => ConfirmContract,
+        "focusContract" => FocusContract,
+        "revealContract" => RevealContract,
+        "toastContract" => ToastContract,
         _ => null,
     };
 #pragma warning restore CA1822
 
-    internal static partial BridgeInteractionDescriptor<NotesViewModel>[]? CreateInteractions() => [new ConfirmInteraction()];
+    internal static partial BridgeInteractionDescriptor<NotesViewModel>[]? CreateInteractions() =>
+    [
+        new ConfirmInteraction(),
+        ViewRequestDescriptor.Create<NotesViewModel, NotesFocus>("focus", FocusContract, model => model.Focus,
+            static input => new JsonObject { ["member"] = input.Member }.ToJsonString()),
+        ViewRequestDescriptor.Create<NotesViewModel, int>("reveal", RevealContract, model => model.Reveal,
+            static input => new JsonObject { ["id"] = input }.ToJsonString()),
+        ViewRequestDescriptor.Create<NotesViewModel, string>("toast", ToastContract, model => model.Toast,
+            static input => new JsonObject { ["text"] = input }.ToJsonString()),
+    ];
 
     private static string EncodeQuestion(string question) =>
         new JsonObject { ["question"] = question }.ToJsonString();

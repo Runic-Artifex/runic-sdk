@@ -16,7 +16,8 @@ export interface FieldView<TClient extends ViewClient> {
   readonly client: Signal<TClient | undefined>;
 }
 
-export interface InjectFieldOptions extends FieldOptions {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface InjectFieldOptions<TValue = any> extends FieldOptions<TValue> {
   /** Required outside an injection context. */
   readonly injector?: Injector;
 }
@@ -39,6 +40,8 @@ export interface FieldHandle<TValue> {
   readonly errors: Signal<readonly string[]>;
   /** The producer's value and version while a checked write's `conflict` keeps the draft. */
   readonly conflict: Signal<FieldBaseline<TValue> | undefined>;
+  /** The member's validation is in progress, such as an asynchronous rule that is still checking: show "checking…". */
+  readonly validating: Signal<boolean>;
   /** The definition's `kind`, `nullable`, `integer` and `choices`. */
   readonly field: FieldController<unknown, unknown, TValue>["field"];
   /** The user changed the value, such as a checkbox's `checked`. */
@@ -83,7 +86,7 @@ function textOf(event: Event | string): string {
 export function injectField<TClient extends ViewClient, TValue>(
   view: FieldView<TClient>,
   field: BridgeField<TClient, TClient["snapshot"], TValue> | FieldDefinition<TClient, TClient["snapshot"], TValue>,
-  { injector: provided, ...options }: InjectFieldOptions = {},
+  { injector: provided, ...options }: InjectFieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   if (!provided) assertInInjectionContext(injectField);
   const injector = provided ?? inject(Injector);
@@ -106,6 +109,7 @@ export function injectField<TClient extends ViewClient, TValue>(
     error: computed(() => current().error),
     errors: computed(() => current().errors),
     conflict: computed(() => current().conflict),
+    validating: computed(() => current().validating),
     field: controller.field,
     input(value) { controller.input(value); },
     inputText(event) { controller.inputText(textOf(event)); },

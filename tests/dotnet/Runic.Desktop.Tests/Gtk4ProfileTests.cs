@@ -295,20 +295,26 @@ public sealed class Gtk4ProfileTests
             DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
             DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
         const DesktopWindowCapabilities placement = DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
+        // Every built-in host owns windows and makes them window-modal (B6).
+        const DesktopWindowCapabilities ownership = DesktopWindowCapabilities.Ownership;
+        // Activity and the run-time color scheme: WebView2 and WKWebView without conditions; GTK 3 once GTK has loaded.
+        // WebView2 and WKWebView switch each window alone; WebView2 loses that for a configured ProfilePath (WebUiWindow).
+        const DesktopWindowCapabilities presentation = DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
+            DesktopWindowCapabilities.PerWindowColorScheme;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag,
+                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership,
                 advertised);
         else if (OperatingSystem.IsMacOS())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement
-                | DesktopWindowCapabilities.FileDrag, advertised);
+                | DesktopWindowCapabilities.FileDrag | presentation | ownership, advertised);
         else if (OperatingSystem.IsLinux())
-            Assert.Equal(known | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag,
-                advertised);
+            Assert.Equal(known | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
+                ownership, advertised);
         // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
             known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag);
+            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership);
     }
 
     [Test]

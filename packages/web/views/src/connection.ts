@@ -3,7 +3,7 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import {
-  epochOf, isObject, presentationEpochFeature, presentedFeature, replyError, type Change, type Message, type Push, type Reply,
+  epochOf, fieldPathsFeature, isObject, presentationEpochFeature, presentedFeature, queryCollectionsFeature, replyError, viewRequestsFeature, type Change, type Message, type Push, type Reply,
 } from "./protocol.js";
 import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
@@ -12,12 +12,14 @@ import { reportToInspector } from "./inspector.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
 import { deferNotification, flushNotifications, nextFrame } from "./notifications.js";
-// Interactions, operations and keyed collections are injected by the generated
-// clients that use them, so this module imports only their types.
+// Interactions, view requests, operations and keyed collections are injected by the
+// generated clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
 import type { BridgeInteractionContext, BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
 import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
+import type { BridgeViewRequests, ViewRequestSession, ViewRequestSurface } from "./requests.js";
 import { regionCollectionsFeature, regionOutcome, type RegionOutcome } from "./regions.js";
+import type { QueryCollection, QueryCollectionDefinition, QueryCollectionState } from "./query.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -102,6 +104,8 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
    * An `undefined` entry registers nothing, so a generated `connect{Name}` can pass its typed options through.
    */
   readonly handlers?: Readonly<Record<string, ((input: never, context: BridgeInteractionContext) => unknown) | undefined>>;
+  /** The client's view requests, from `defineRequests` (`view-requests/1`). */
+  readonly requests?: BridgeViewRequests;
   /** The keyed collections and append-only text fields, from `defineCollections`. */
   readonly collections?: BridgeCollections;
   /** `bridgeOperations`, for a client with operations. */
@@ -110,6 +114,11 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
 
 /** A checked write's request members, with the values already encoded as the field's wire type. */
 export interface BridgeFieldWriteRequest {
+  /**
+   * A field path below the member (`field-paths/1`): a row key and cell names, or member names. A write with a path
+   * needs the feature; without it the call rejects with a `failed` BridgeError and sends nothing.
+   */
+  readonly path?: readonly string[];
   readonly requestId: string;
   readonly expectedVersion: number;
   readonly expectedValue: unknown;
@@ -127,12 +136,17 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   readonly route: string;
   readonly interactions: Readonly<Record<string, InteractionSurface>>;
   /**
+   * The View's view requests by name (specs/application/README.md, "View requests"), whose handlers this
+   * presentation registers; an empty object for a View without view requests.
+   */
+  readonly requests: Readonly<Record<string, ViewRequestSurface>>;
+  /**
    * A generated setter: sends `set` with the member's next edit number and exposes `value` (decoded with the
    * member's decoder) in `snapshot` until the edit's revision arrives or the edit fails. A superseded edit resolves
    * like an applied one.
    */
   set(member: string, value: unknown): Promise<TState>;
-  /** Runs a command after the presentation's interaction handlers are registered. */
+  /** Runs a command after the presentation's interaction and view request handlers are registered. */
   command(member: string, input?: unknown): Promise<TState>;
   /**
    * Runs a command that declares a failure type, like `command`. Its declared failure resolves
@@ -150,12 +164,19 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   write<T>(member: string, request: BridgeFieldWriteRequest, decode: (value: unknown) => T): Promise<FieldWriteReceipt<T>>;
   /** The value and version of a checked field in the producer's state, which a `write` call is based on. */
   fieldBaseline(field: string): FieldBaseline<unknown>;
+  /** The version a field path write is based on (`field-paths/1`): the route's revision. */
+  fieldPathVersion(): number;
   /** Starts `member` as an operation with the id `operation`. */
   start<TResult, TFailure = never>(member: string, operation: string, input: unknown,
     codec: BridgeOperationCodec<TResult, TFailure>): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
   /** Returns the operation of `member` with the id `operation`, for example after the page reloaded. */
   recover<TResult, TFailure = never>(member: string, operation: string,
     codec: BridgeOperationCodec<TResult, TFailure>): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
+  /**
+   * The rows of the query collection `member` for this presentation (`query-collections/1`), disposed with the
+   * presentation. Each call creates another, with its own range.
+   */
+  queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow>;
 }
 
 /** The scope of an operation: its route's request channel and revision waits. Internal to the runtime. */
@@ -163,7 +184,7 @@ export interface RouteOperationScope extends OperationScope {
   readonly runtime: SharedRuntime;
   /** Throws a `disconnected` BridgeError when the Bridge is disconnected, or `released` when the View was released. */
   assertConnected(): void;
-  /** Resolves when the producer acknowledged the presentation's interaction handlers. */
+  /** Resolves when the producer acknowledged the presentation's interaction and view request handlers. */
   ready(): Promise<void>;
   /** Resolves once the route reached `revision`, at once when the route is not open. */
   waitForRevision(revision: number): Promise<void>;
@@ -186,7 +207,12 @@ interface Lease {
   /** The epoch of `current` (presentation-epoch/1): what a scoped command of this presentation was issued for. */
   epoch: number | undefined;
   readonly listeners: Set<(state: unknown) => void>;
+  /** Runtime observers of the delivered state, such as query collections; they do not count as subscribers. */
+  readonly observers: Set<() => void>;
+  /** The presentation's query collections, disposed with it. */
+  readonly queries: Set<Disposable>;
   interactions: InteractionSession | undefined;
+  requests: ViewRequestSession | undefined;
 }
 
 interface Overlay {
@@ -493,6 +519,7 @@ class RouteEntry {
       if (reply!["presentation"] !== "ignored") {
         lease.registered = true;
         lease.interactions?.opened(typeof reply!["registration"] === "string" ? reply!["registration"] : undefined);
+        lease.requests?.opened();
         return;
       }
       if (attempt === reopenAttempts || lease.disposed || !this.live()) return;
@@ -519,6 +546,7 @@ class RouteEntry {
     for (const lease of this.presentations) {
       lease.registered = false;
       lease.interactions?.paused();
+      lease.requests?.paused();
     }
     // A recovery stops at once; the new connection opens the route again.
     this.backoff?.cancel();
@@ -613,6 +641,9 @@ class RouteEntry {
       for (const listener of [...lease.listeners]) {
         try { listener(exposed); } catch (error) { reportBridgeError(error, this.route); }
       }
+      for (const observer of [...lease.observers]) {
+        try { observer(); } catch (error) { reportBridgeError(error, this.route); }
+      }
     }
   }
 
@@ -639,9 +670,7 @@ class RouteEntry {
       if (![...this.presentations].some(lease => !lease.disposed && lease.listeners.size > 0))
         await new Promise<void>(resolve => { this.subscribed = resolve; });
       if (!current()) return;
-      await this.waitForRevision(revision);
-      flushNotifications();
-      await nextFrame();
+      await this.painted(revision);
       if (!current()) return;
       // A higher revision was asked for meanwhile: wait for it too, and report it once.
       if (this.presentWanted !== revision) continue;
@@ -651,6 +680,17 @@ class RouteEntry {
       // A failed report changes nothing on the page; the producer's wait ends at its timeout.
       await this.runtime.request({ kind: "presented", route: this.route, revision: painted }, this.route).catch(() => undefined);
     }
+  }
+
+  /**
+   * Resolves once the page painted the route at `revision` or later (specs/application/README.md, "Painted states",
+   * steps 1 to 3): the route reached `revision`, its state was delivered to the subscribers of its presentations, and
+   * one animation frame passed. `present` reports and view requests wait for it.
+   */
+  async painted(revision: number): Promise<void> {
+    await this.waitForRevision(revision);
+    flushNotifications();
+    await nextFrame();
   }
 
   /** A presentation of the route got a subscriber. */
@@ -768,7 +808,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     new Set(options.texts ?? []));
   if (!existing) runtime.routes.set(route, entry);
   const lease: Lease = {
-    id: randomId(), disposed: false, registered: false, current: undefined, epoch: undefined, listeners: new Set(), interactions: undefined,
+    id: randomId(), disposed: false, registered: false, current: undefined, epoch: undefined, listeners: new Set(), observers: new Set(),
+    queries: new Set(), interactions: undefined, requests: undefined,
   };
   entry.presentations.add(lease);
 
@@ -785,6 +826,13 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   if (options.interactions) lease.interactions = options.interactions({
     route, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
   });
+  if (options.requests) lease.requests = options.requests({
+    route, presentation: lease.id, live, request,
+    enabled: () => runtime.features?.has(viewRequestsFeature) === true,
+    connection: () => runtime.connection,
+    onPush: (kind, handler) => runtime.onPush(kind, route, handler),
+    painted: revision => entry.painted(revision),
+  });
   for (const [name, handler] of Object.entries(options.handlers ?? {})) {
     if (handler === undefined) continue;
     const surface = lease.interactions?.surface[name];
@@ -795,7 +843,11 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     if (lease.disposed) return;
     lease.disposed = true;
     lease.interactions?.dispose();
+    lease.requests?.dispose();
     lease.listeners.clear();
+    for (const query of [...lease.queries]) query[Symbol.dispose]();
+    lease.queries.clear();
+    lease.observers.clear();
     entry.presentations.delete(lease);
     if (lease.registered && runtime.connected) {
       // The producer also closes the presentation with the connection, so a closed transport is expected here.
@@ -822,7 +874,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   lease.epoch = entry.exposedEpoch;
   presentationRefreshes.set(dispose, () => { if (live() && runtime.connected) void entry.recover(); });
 
-  const ready = async () => { await lease.interactions?.ready(); };
+  // A command waits for the handlers registered before it, so a request it raises can reach them.
+  const ready = async () => { await lease.interactions?.ready(); await lease.requests?.ready(); };
   const current = () => lease.current as TState;
   // A call that ran resolves once the route reached its revision; a failed one rejects after that.
   const settled = async (reply: Reply): Promise<void> => {
@@ -872,6 +925,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     },
     dispose,
     interactions: lease.interactions?.surface ?? {},
+    requests: lease.requests?.surface ?? {},
     set: (member, value) => observed(route, async () => {
       assertConnected();
       // The splice is computed against what the page shows before this edit.
@@ -948,13 +1002,16 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       return reply["value"] as boolean;
     }),
     write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(route, async (): Promise<FieldWriteReceipt<T>> => {
-      const identity = { kind: "write", route, member, requestId: write.requestId, expectedVersion: write.expectedVersion } as const;
+      if (write.path !== undefined && runtime.features?.has(fieldPathsFeature) !== true)
+        throw new BridgeError("failed", `The .NET host does not accept writes below ${member} (field-paths/1); use the Runic packages of one release.`, { route });
+      const identity = { kind: "write", route, member, ...write.path === undefined ? {} : { path: write.path },
+        requestId: write.requestId, expectedVersion: write.expectedVersion } as const;
       const full = { ...identity, expectedValue: write.expectedValue, value: write.value };
       // text-splice/1 (README "Text splices in write"): a checked text member's write sends a splice of expectedValue
       // when it keeps at least 64 code units of it.
       const { expectedValue, value } = write;
       let splice: Readonly<Record<string, unknown>> | undefined;
-      if (typeof expectedValue === "string" && typeof value === "string" && runtime.features?.has(textSpliceFeature) === true
+      if (write.path === undefined && typeof expectedValue === "string" && typeof value === "string" && runtime.features?.has(textSpliceFeature) === true
         && entry.texts.has(member) && entry.checkedFields.includes(member)) {
         const single = singleSplice(expectedValue, value);
         if (expectedValue.length - single.delete >= minimumKept) splice = { length: expectedValue.length, ...single };
@@ -991,11 +1048,39 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       if (version === undefined) throw new BridgeError("failed", "The checked field baseline is unavailable for this connection.", { route });
       return { value: entry.state[field], version };
     },
+    fieldPathVersion() {
+      if (!live() || entry.state === undefined || entry.revision === undefined)
+        throw runtime.connected ? new BridgeError("released", "This View was released.", { route }) : new BridgeError("disconnected", "The Bridge is disconnected.", { route });
+      return entry.revision;
+    },
     start: (member, operation, input, codec) => observed(route, () => {
       if (operation.length === 0) throw new RangeError("An operation id is required.");
       return operations().start(operationScope, member, operation, input, codec);
     }),
     recover: (member, operation, codec) => observed(route, () => operations().recover(operationScope, member, operation, codec)),
+    queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow> {
+      // query-collections/1: a producer that completed its hello without the feature does not know the request kinds.
+      const supported = () => {
+        const features = runtime.features;
+        if (features !== undefined && features.size > 0 && !features.has(queryCollectionsFeature))
+          throw new BridgeError("failed", `The .NET host does not implement ${queryCollectionsFeature}; use the Runic packages of one release.`, { route });
+      };
+      const collection = definition.create({
+        route, member,
+        state: () => (isObject(lease.current) ? lease.current[member] : undefined) as QueryCollectionState | undefined,
+        onState: observer => { lease.observers.add(observer); return () => { lease.observers.delete(observer); }; },
+        request: async message => { supported(); return request(message); },
+        setQuery: query => observed(route, async () => {
+          supported();
+          const reply = await request({ kind: "query-set", route, member, query });
+          if (!reply.ok) return failure(reply, "The query could not be set.");
+          await settled(reply);
+        }),
+      }, definition);
+      if (lease.disposed) collection[Symbol.dispose]();
+      else lease.queries.add(collection);
+      return collection;
+    },
   };
 }
 

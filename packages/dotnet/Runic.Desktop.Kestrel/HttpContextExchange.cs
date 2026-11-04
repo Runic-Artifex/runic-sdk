@@ -58,6 +58,18 @@ internal sealed class HttpContextExchange(HttpContext context)
 
     internal override Stream ResponseBody => context.Response.Body;
 
+    // An upload (blobs/1) is limited by the window's own upload limits, which it checks while it reads, not by Kestrel's
+    // 30 MB default.
+    internal override Stream RequestBody
+    {
+        get
+        {
+            if (context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+                limit.MaxRequestBodySize = null;
+            return context.Request.Body;
+        }
+    }
+
     internal override Task SendFileAsync(string path, CancellationToken cancellationToken) =>
         context.Response.SendFileAsync(path, cancellationToken);
 

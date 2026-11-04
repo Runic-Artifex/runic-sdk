@@ -73,6 +73,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        if (options.MaximumUploadBytes is < 1_024)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
+        _maximumUploadBytes = options.MaximumUploadBytes;
         _assets = options.Assets;
         _menuBar = new CsWebUiMenuBar(options.MenuBar ?? throw new ArgumentNullException(nameof(options), "MenuBar is null."));
     }
@@ -100,6 +103,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     private readonly bool? _includeFailureDetail;
     private readonly Runic.Assets.IAssetSource? _assets;
     private readonly int? _maximumInputBytes;
+    private readonly long? _maximumUploadBytes;
 
     private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
 
@@ -187,6 +191,26 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        var browser = ValidateBrowser();
+        return options.Owner is null ? browser : [.. browser, OwnerUnsupported];
+    }
+
+    /// <summary>
+    /// The code of the warning <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/> reports for a
+    /// <see cref="RunicWindowOptions.Owner"/>: CS-WebUI opens every Window on its own.
+    /// </summary>
+    public const string OwnerUnsupportedCode = "window-owner-unsupported";
+
+    private static readonly RunicWindowDiagnostic OwnerUnsupported = new(OwnerUnsupportedCode,
+        "CS-WebUI cannot own windows or make one modal, so the Window opens on its own.",
+        "Remove RunicWindowOptions.Owner and Modality on CS-WebUI, or run on Runic Desktop.")
+    {
+        Severity = RunicWindowDiagnosticSeverity.Warning,
+        Option = "RunicWindowOptions.Owner",
+    };
+
+    private IReadOnlyList<RunicWindowDiagnostic> ValidateBrowser()
+    {
         if (Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1" || ShowWindow is not null || UseWebView) return [];
         var configured = Environment.GetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(configured)) return [];
@@ -233,6 +257,8 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
                 IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
+                MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
+                MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,
             });
             var menuLogger = (scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(CsWebUiLog.LogCategory))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
@@ -242,6 +268,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var menu = menuRoutes;
             var bindings = new Bindings(menuRoutes);
             menuRoutes = null;
+            // blobs/1: the window's blobs and uploads, from a loopback listener of its own (CsWebUiBlobEndpoint).
+            if (CsWebUiBlobEndpoint.Start(BridgeDispatcher.For(transport).Blobs, window, menuLogger) is { } blobEndpoint)
+                bindings.Add(blobEndpoint);
             host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, bindings, viewModel);
             var attachment = opening.AttachBridge(transport, content);
             try { host.Attach(attachment); }
@@ -250,7 +279,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             MenuCommandBinding? menuCommands = null;
             if (MenuCommandBinding.Binds(viewModel))
             {
-                menuCommands = await MenuCommandBinding.BindViewModelAsync(_menuBar, content.ModelContext, viewModel!, menuLogger)
+                menuCommands = await MenuCommandBinding.BindViewModelAsync(_menuBar, content.ModelContext, viewModel!, menuLogger, content)
                     .ConfigureAwait(false);
                 bindings.Add(menuCommands);
             }
@@ -258,6 +287,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             // A browser window closes without asking the application, and WebUI reports the close only after it
             // happened: a guarded Window opens unguarded, with a warning (D018.10).
             if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("CS-WebUI");
+            opening.ReportOwnerIgnored("CS-WebUI cannot own windows");
 
             var options = opening.Options;
             var windowName = opening.Window.GetType().Name;
@@ -277,6 +307,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             }
             if (loop is null) Show();
             else host.WebUiClosed = await loop.ShowAsync(Show, cancellationToken).ConfigureAwait(false);
+            // Serve-only shows no window: the Window then has no presentation.
+            if (Environment.GetEnvironmentVariable(CsWebUiBridgeWindow<TViewModel>.ServeOnlyEnvironmentVariable) != "1")
+                opening.UsePresentation(new CsWebUiWindowPresentation(native, UseWebView && ShowWindow is null));
             return host;
         }
         catch
@@ -300,7 +333,22 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     {
         private readonly object _gate = new();
         private MenuCommandBinding? _commands;
+        private CsWebUiBlobEndpoint? _blobs;
         private bool _disposed;
+
+        // blobs/1: the window's blob endpoint (CsWebUiBlobEndpoint).
+        internal void Add(CsWebUiBlobEndpoint blobs)
+        {
+            lock (_gate)
+            {
+                if (!_disposed)
+                {
+                    _blobs = blobs;
+                    return;
+                }
+            }
+            blobs.Dispose();
+        }
 
         internal void Add(MenuCommandBinding commands)
         {
@@ -318,14 +366,20 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         public void Dispose()
         {
             MenuCommandBinding? commands;
+            CsWebUiBlobEndpoint? blobs;
             lock (_gate)
             {
                 if (_disposed) return;
                 _disposed = true;
                 commands = _commands;
+                blobs = _blobs;
             }
             try { routes.Dispose(); }
-            finally { commands?.Dispose(); }
+            finally
+            {
+                try { commands?.Dispose(); }
+                finally { blobs?.Dispose(); }
+            }
         }
     }
 

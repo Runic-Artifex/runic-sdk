@@ -462,6 +462,52 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.requests.view-requests",
+      "description": "view-requests/1: the view requests a presentation handles.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","presentation":"p-1","generation":1,"requests":[{"name":"focus","contract":"Tests.Notes:fp-1:request:Focus"}]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.view-requests-empty",
+      "description": "view-requests/1: a registration without requests unregisters them.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","presentation":"p-1","generation":2,"requests":[]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.view-requests-with-generation-zero",
+      "description": "view-requests/1: the generation is a positive integer.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","presentation":"p-1","generation":0,"requests":[{"name":"focus","contract":"Tests.Notes:fp-1:request:Focus"}]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.view-requests-without-requests",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","presentation":"p-1","generation":1}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.view-requests-without-a-presentation",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","generation":1,"requests":[{"name":"focus","contract":"Tests.Notes:fp-1:request:Focus"}]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.view-requests-without-a-contract",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","presentation":"p-1","generation":1,"requests":[{"name":"focus"}]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.view-requests-with-65-requests",
+      "description": "view-requests/1: a registration lists at most 64 view requests.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"view-requests","route":"notes","presentation":"p-1","generation":1,"requests":[{"name":"r0","contract":"Tests.Notes:fp-1:request:R"},{"name":"r1","contract":"Tests.Notes:fp-1:request:R"},{"name":"r2","contract":"Tests.Notes:fp-1:request:R"},{"name":"r3","contract":"Tests.Notes:fp-1:request:R"},{"name":"r4","contract":"Tests.Notes:fp-1:request:R"},{"name":"r5","contract":"Tests.Notes:fp-1:request:R"},{"name":"r6","contract":"Tests.Notes:fp-1:request:R"},{"name":"r7","contract":"Tests.Notes:fp-1:request:R"},{"name":"r8","contract":"Tests.Notes:fp-1:request:R"},{"name":"r9","contract":"Tests.Notes:fp-1:request:R"},{"name":"r10","contract":"Tests.Notes:fp-1:request:R"},{"name":"r11","contract":"Tests.Notes:fp-1:request:R"},{"name":"r12","contract":"Tests.Notes:fp-1:request:R"},{"name":"r13","contract":"Tests.Notes:fp-1:request:R"},{"name":"r14","contract":"Tests.Notes:fp-1:request:R"},{"name":"r15","contract":"Tests.Notes:fp-1:request:R"},{"name":"r16","contract":"Tests.Notes:fp-1:request:R"},{"name":"r17","contract":"Tests.Notes:fp-1:request:R"},{"name":"r18","contract":"Tests.Notes:fp-1:request:R"},{"name":"r19","contract":"Tests.Notes:fp-1:request:R"},{"name":"r20","contract":"Tests.Notes:fp-1:request:R"},{"name":"r21","contract":"Tests.Notes:fp-1:request:R"},{"name":"r22","contract":"Tests.Notes:fp-1:request:R"},{"name":"r23","contract":"Tests.Notes:fp-1:request:R"},{"name":"r24","contract":"Tests.Notes:fp-1:request:R"},{"name":"r25","contract":"Tests.Notes:fp-1:request:R"},{"name":"r26","contract":"Tests.Notes:fp-1:request:R"},{"name":"r27","contract":"Tests.Notes:fp-1:request:R"},{"name":"r28","contract":"Tests.Notes:fp-1:request:R"},{"name":"r29","contract":"Tests.Notes:fp-1:request:R"},{"name":"r30","contract":"Tests.Notes:fp-1:request:R"},{"name":"r31","contract":"Tests.Notes:fp-1:request:R"},{"name":"r32","contract":"Tests.Notes:fp-1:request:R"},{"name":"r33","contract":"Tests.Notes:fp-1:request:R"},{"name":"r34","contract":"Tests.Notes:fp-1:request:R"},{"name":"r35","contract":"Tests.Notes:fp-1:request:R"},{"name":"r36","contract":"Tests.Notes:fp-1:request:R"},{"name":"r37","contract":"Tests.Notes:fp-1:request:R"},{"name":"r38","contract":"Tests.Notes:fp-1:request:R"},{"name":"r39","contract":"Tests.Notes:fp-1:request:R"},{"name":"r40","contract":"Tests.Notes:fp-1:request:R"},{"name":"r41","contract":"Tests.Notes:fp-1:request:R"},{"name":"r42","contract":"Tests.Notes:fp-1:request:R"},{"name":"r43","contract":"Tests.Notes:fp-1:request:R"},{"name":"r44","contract":"Tests.Notes:fp-1:request:R"},{"name":"r45","contract":"Tests.Notes:fp-1:request:R"},{"name":"r46","contract":"Tests.Notes:fp-1:request:R"},{"name":"r47","contract":"Tests.Notes:fp-1:request:R"},{"name":"r48","contract":"Tests.Notes:fp-1:request:R"},{"name":"r49","contract":"Tests.Notes:fp-1:request:R"},{"name":"r50","contract":"Tests.Notes:fp-1:request:R"},{"name":"r51","contract":"Tests.Notes:fp-1:request:R"},{"name":"r52","contract":"Tests.Notes:fp-1:request:R"},{"name":"r53","contract":"Tests.Notes:fp-1:request:R"},{"name":"r54","contract":"Tests.Notes:fp-1:request:R"},{"name":"r55","contract":"Tests.Notes:fp-1:request:R"},{"name":"r56","contract":"Tests.Notes:fp-1:request:R"},{"name":"r57","contract":"Tests.Notes:fp-1:request:R"},{"name":"r58","contract":"Tests.Notes:fp-1:request:R"},{"name":"r59","contract":"Tests.Notes:fp-1:request:R"},{"name":"r60","contract":"Tests.Notes:fp-1:request:R"},{"name":"r61","contract":"Tests.Notes:fp-1:request:R"},{"name":"r62","contract":"Tests.Notes:fp-1:request:R"},{"name":"r63","contract":"Tests.Notes:fp-1:request:R"},{"name":"r64","contract":"Tests.Notes:fp-1:request:R"}]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
       "id": "messages.requests.region",
       "description": "region-collections/1: select or close the region of a region collection that a key names.",
       "operation": "read-request",
@@ -529,6 +575,43 @@
       "description": "A path is at most 2048 characters.",
       "operation": "read-request",
       "input": {"encoding":"json","value":{"kind":"navigation","action":"open","path":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error",
+      "description": "client-errors/1: the page reports an uncaught error.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error","name":"TypeError","message":"x is not a function","stack":"TypeError: x is not a function\n    at load (main.js:10:5)","url":"https://app.example/index.html","route":"editor","dropped":2}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.client-error-with-only-its-required-members",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"unhandled-rejection","message":""}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.client-error-without-a-message",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error-with-a-source-that-is-not-an-identifier",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"an error","message":"x"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error-with-a-stack-that-is-not-a-string",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error","message":"x","stack":["at load"]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error-with-a-negative-dropped",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error","message":"x","dropped":-1}},
       "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     }
   ]

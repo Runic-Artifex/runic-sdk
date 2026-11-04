@@ -126,11 +126,22 @@ internal interface IBridgePresentationRoute
 {
     TimeProvider TimeProvider { get; }
 
+    // The window of the route, or null for a Bridge without one (RunicInteractionInvocation.EnterWindow).
+    WindowContentSession? Content { get; }
+
     void Renew();
 
     void AddPresentedWait(BridgePresentedWait wait);
 
     void AddFirstStateWait(BridgePresentedWait wait);
+}
+
+// A route's handler that publishes what is pending for a view request and calls deliver with the route's revision, or
+// null when it was released (view-requests/1): inline inside the model's turn, otherwise in a later turn, without
+// waiting for it.
+internal interface IBridgeViewRequestRoute
+{
+    void PublishForViewRequest(Action<long?> deliver);
 }
 
 // A Bridge, or what wraps it, whose route's open presentations resumed on it after a suspension.

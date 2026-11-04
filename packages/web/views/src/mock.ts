@@ -34,7 +34,10 @@ export {
   type MockState,
   type MockView,
   type MockViewDefinition,
+  type MockUpload,
+  type MockUploadFailure,
 } from "./mock-bridge.js";
+export { mockBlob, type MockBlobOptions } from "./mock-blob.js";
 export type {
   MockCommandHandler,
   MockFailureOf,
@@ -49,6 +52,10 @@ export type {
   MockTypedOperation,
   MockTypedOperationHandler,
   MockTypedOperationOutcome,
+  MockTypedQueryCollection,
+  MockTypedQuerySource,
   MockTypedView,
+  MockTypedViewRequest,
 } from "./mock-typed.js";
+export type { MockQueryCollection, MockQueryLoad, MockQuerySource } from "./mock-query.js";
 export { installMockMenuBar, type MockMenuBar, type MockMenuBarOptions } from "./mock-menu-bar.js";

@@ -236,6 +236,20 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.replies.view-requests",
+      "operation": "read-reply",
+      "request": "view-requests",
+      "input": {"encoding":"json","value":{"ok":true,"registration":"ok"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.view-requests-without-a-registration",
+      "operation": "read-reply",
+      "request": "view-requests",
+      "input": {"encoding":"json","value":{"ok":true}},
+      "expect": {"result":"invalid"}
+    },
+    {
       "id": "messages.replies.region",
       "description": "region-collections/1: the outcome of a region request that settled.",
       "operation": "read-reply",

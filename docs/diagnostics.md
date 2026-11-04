@@ -80,6 +80,13 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
+| [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
+| [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
+| [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
+| [`RUNICBRIDGE053`](#runicbridge053) | Warning | Generator | An object inside an editable row cannot be copied, so it has no fields below it |
+| [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator | A `RunicQueryCollection` member has an unsupported shape |
+| [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
 | [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
 
@@ -117,8 +124,8 @@ A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
 ### RUNICBRIDGE004
 
 Two generated names collide: ViewModel names, presentation kinds, state wire
-names, the reserved `validation` field, interactions, client members, or
-generated files (including a hand-written `types.ts`). Since 0.13 (Views
+names, the reserved `validation` field, interactions, view requests, client
+members, or generated files (including a hand-written `types.ts`). Since 0.13 (Views
 protocol 4) requests name their kind and member, so host route names no longer
 collide, and a state member may be named `revision`. A
 generated TypeScript module that declares one name twice would collide too.
@@ -621,6 +628,93 @@ generated client sends no presentation epoch for anything it would have scoped.
 method whose command the Bridge exposes. See
 [Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
 
+### RUNICBRIDGE035
+
+A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` member of a ViewModel
+(since 0.16) has no public getter or has a public setter. The generated Bridge
+attaches the instance it reads when the ViewModel is presented, so a replaced
+instance would never reach the page.
+
+**Fix:** expose the member as a get-only property, such as
+`public ViewRequest<FocusTarget> Focus { get; } = new();`. See
+[View requests](../specs/application/README.md#view-requests).
+
+### RUNICBRIDGE050
+
+An error from the Bridge generator (since 0.16). A `[RunicRowEditor]` method
+must edit exactly one `[RunicCollection]` property of its ViewModel and have the
+shape `void UpdateLine(TKey key, TRow row)`, optionally with a third parameter
+`RunicRowEdit edit`: a public or internal instance method whose first parameter
+is the collection's key type and whose second is its row type. A query
+collection's rows cannot be edited yet. Without a collection name the attribute finds the collection by
+the row type, so two collections of one row type need the name.
+
+**Fix:** name the collection, as in `[RunicRowEditor(nameof(Lines))]`, put the
+attribute on a collection that has `[RunicCollection]`, or change the method's
+parameters and return type. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE051
+
+An error from the Bridge generator (since 0.16). Two `[RunicRowEditor]` methods
+edit the same collection, so the Bridge cannot tell which one applies a cell's
+change.
+
+**Fix:** keep one row editor per collection. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE052
+
+An error from the Bridge generator (since 0.16). A cell write copies the row with
+the one cell changed and passes the copy to the row editor. The copy must keep
+everything the row holds, also what the page does not see, such as a
+`[RunicIgnore]` database id, and a derived row's own members. The generator
+copies a record or a struct with `with`, and a sealed class with its copy
+constructor, its `Clone()` method, or, when every settable member is on the
+wire, through its codec. A class that is not sealed, or a sealed class with
+settable members the page does not see and no copy constructor or `Clone()`,
+cannot be copied exactly.
+
+**Fix:** make the row type a record, or seal it and add a copy constructor
+(`public InvoiceLine(InvoiceLine other)`) or a `Clone()` method. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE053
+
+A warning from the Bridge generator (since 0.16). An object member inside an
+editable row, such as a line's `Product`, cannot be copied exactly for the
+reasons of [`RUNICBRIDGE052`](#runicbridge052), so its members get no fields of
+their own. The member itself is still a field: a write replaces its whole value.
+
+**Fix:** make its type a record, or seal it and add a copy constructor or a
+`Clone()` method, or mark the member `[RunicNoField]`.
+
+### RUNICBRIDGE060
+
+An error from the Bridge generator (since 0.16). A `RunicQueryCollection<TRow, TKey>`
+ViewModel property cannot be bridged: it has a public setter, it also carries
+`[RunicCollection]` or `[RunicAppendOnlyText]`, its key is not a `string`,
+`Guid` or `Int32`, or its rows are not DTOs. RUNICBRIDGE061 to RUNICBRIDGE064
+are reserved for query collections.
+
+**Fix:** expose the collection as a get-only property of DTO rows with a
+supported key, and remove the other collection attributes; the page changes
+the query with `setQuery`. See
+[Query collections](../packages/dotnet/Runic.Application.Views/README.md#query-collections).
+
+### RUNICBRIDGE065
+
+An error from the Bridge generator (since 0.16). A `RunicBlob` is a value that
+.NET serves to the page (feature `blobs/1`): it crosses as a URL, never as
+bytes, so the page cannot send one back. This code reports a `RunicBlob` where
+the page would supply it: a command input, an interaction result, or a member
+of a DTO that is one. A state property that holds a `RunicBlob` is read-only
+for the page whatever its setter, so it needs no change.
+
+**Fix:** take a `RunicUpload` instead. The page uploads the file with
+`client.upload(file)` and passes the resulting `BlobRef` to the command. See
+[Blobs and uploads](../packages/dotnet/Runic.Application.Views/README.md#blobs-and-uploads).
+
 ### RUNICBRIDGE070
 
 An error from the Bridge generator (since 0.16). `[RunicRegionCollection]` is
@@ -649,7 +743,6 @@ method can collide.
 **Fix:** rename the region collection property or the other member, such as a
 `SelectDocuments` command beside a `Documents` region collection. See
 [Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
-
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

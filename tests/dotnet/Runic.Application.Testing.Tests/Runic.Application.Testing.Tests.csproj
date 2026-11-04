@@ -39,6 +39,8 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <!-- #478: a ReactiveValidationObject read through its ValidationContext. -->
     <PackageReference Include="RunicArtifex.ReactiveUI.Validation" />
+    <!-- translation-text/1: TranslationReference crosses the Bridge without a Views dependency on it. -->
+    <PackageReference Include="Runic.Translations" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <!-- Compiles small invalid ViewModel assemblies for generator diagnostics tests. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />

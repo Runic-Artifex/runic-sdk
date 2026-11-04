@@ -10,11 +10,28 @@
   </head>
   <body>
     <h1 id="title">Connecting</h1>
+    <p><output id="status" aria-live="polite"></output></p>
     <form id="rename">
-      <label>Project title <input id="new-title" required /></label>
+      <label>Project title <input id="new-title" required aria-describedby="title-error" /></label>
       <button type="submit">Rename in every Window</button>
+      <p id="title-error"></p>
     </form>
+    <p>
+      <label>Language, saved in the app's settings file
+        <select id="language">
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </label>
+    </p>
     <p><button id="new-window" type="button">New Window</button></p>
+    <fieldset>
+      <legend>Documents, each in its own Window</legend>
+      <button type="button" data-document="notes.md">notes.md</button>
+      <button type="button" data-document="plan.md">plan.md</button>
+      <p>Opening a document that is open already brings its Window to the front.</p>
+    </fieldset>
+    <p>Pay from <output id="account"></output> <button id="choose-account" type="button">Choose account…</button></p>
     <fieldset>
       <legend>Theme, saved in the app's settings file</legend>
       <button type="button" data-theme="system">System</button>
