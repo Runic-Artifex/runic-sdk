@@ -37,6 +37,7 @@ internal static class RunicWireValue
             case DateTimeOffset moment: BridgeWire.WriteDateTimeOffset(writer, moment); return;
             case DateTime moment: BridgeWire.WriteDateTime(writer, moment); return;
             case TimeSpan duration: BridgeWire.WriteTimeSpan(writer, duration); return;
+            case RunicUpload upload: BridgeWire.WriteUpload(writer, upload); return;
         }
         if (target.IsEnum || value is Enum)
         {

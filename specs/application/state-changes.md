@@ -167,6 +167,9 @@ Every member that differs becomes a `set`, except that a text member may become 
 version changed is a `set` with the new version, even when its value is equal. A string's encoding is equal exactly
 when the strings are equal, so a producer MAY compare text members as strings.
 
+A [query collection](README.md#query-collections)'s member is a value member like the others: its `query`, `total`
+and `version` are compared, and its rows, which the state never holds, are read with `query-rows`.
+
 This comparison is deliberately not driven by change notifications: members that are computed from others and never
 announce a change, availability members and validation results stay correct. Its cost is the encoding of the members
 other than collections, once per publication.

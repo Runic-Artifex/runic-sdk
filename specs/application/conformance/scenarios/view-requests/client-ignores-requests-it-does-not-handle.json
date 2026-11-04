@@ -1,0 +1,272 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "view-requests.client-ignores-requests-it-does-not-handle.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "view-requests",
+  "roles": [
+    "client"
+  ],
+  "requires": [
+    "view-requests/1"
+  ],
+  "description": "The client ignores a view-request of another presentation, of another contract, or without a handler, and calls the handler for its own.",
+  "view": "notes",
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-notes": {
+      "kind": "call"
+    },
+    "open-notes-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "handle-focus": {
+      "kind": "call"
+    },
+    "register": {
+      "kind": "request"
+    },
+    "focusContract": {
+      "kind": "provided"
+    },
+    "otherContract": {
+      "kind": "wire",
+      "value": "Tests.Notes:other"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-notes",
+        "op": "open",
+        "route": "notes"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-notes-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "call": {
+        "id": "handle-focus",
+        "op": "handle",
+        "route": "notes",
+        "request": "focus"
+      }
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          }
+        ]
+      },
+      "id": "register"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "ok"
+      },
+      "replyTo": "register"
+    },
+    {
+      "receive": {
+        "kind": "view-request",
+        "route": "notes",
+        "presentation": "p-other",
+        "revision": 0,
+        "name": "focus",
+        "contract": {
+          "$id": "focusContract"
+        },
+        "input": {
+          "member": "other presentation"
+        }
+      }
+    },
+    {
+      "receive": {
+        "kind": "view-request",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "revision": 0,
+        "name": "focus",
+        "contract": {
+          "$id": "otherContract"
+        },
+        "input": {
+          "member": "other contract"
+        }
+      }
+    },
+    {
+      "receive": {
+        "kind": "view-request",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "revision": 0,
+        "name": "toast",
+        "contract": "Tests.Notes:toast",
+        "input": {
+          "text": "no handler"
+        }
+      }
+    },
+    {
+      "receive": {
+        "kind": "view-request",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "revision": 0,
+        "name": "focus",
+        "contract": {
+          "$id": "focusContract"
+        },
+        "input": {
+          "member": "title"
+        }
+      }
+    },
+    {
+      "expect": {
+        "requests": {
+          "route": "notes",
+          "request": "focus",
+          "inputs": [
+            {
+              "member": "title"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

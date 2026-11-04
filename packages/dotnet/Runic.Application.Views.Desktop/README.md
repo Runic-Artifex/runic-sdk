@@ -463,6 +463,23 @@ The same Window and `async host => ...` body run on CS-WebUI with
   boxes: task dialogs on Windows, also for a WPF window, sheets on macOS and GTK
   message or alert dialogs on Linux; see
   [Message boxes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#message-boxes).
+- `AddRunicPlatformServices()` also registers `IDesktopPowerEvents`, one singleton
+  created by `DesktopPlatformServices.CreatePowerEvents()`: sleep, wake, session
+  lock and battery events from `WM_POWERBROADCAST` and WTS on Windows, `NSWorkspace`
+  and IOKit on macOS, and logind and UPower on Linux. It decides on first use: once a
+  `RunicDesktopHost` with `ServeOnly` was built on the provider, or under
+  `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable` and opens no watches; see
+  [Power events](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#power-events).
+- `AddRunicPlatformServices()` also registers `IDesktopRecentDocuments`, the
+  application's recent documents (`DesktopPlatformServices.CreateRecentDocuments()`):
+  Open Recent and the Dock on macOS, Recent items and the Jump List on Windows,
+  and `recently-used.xbel` on Linux, the same lists as
+  `DesktopHost.NoteRecentDocumentAsync`, with each outcome as a `PlatformResult`.
+  It decides on first use: once a `RunicDesktopHost` with `ServeOnly` was built on
+  the provider, or under `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable`.
+  With `AddRunicPlatformServices(applicationId)` Linux names the application by its
+  ID; see
+  [Document apps](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#document-apps).
 - `AddRunicPlatformServices()` also registers `IApplicationPlatformServices`, the
   one instance of `DesktopPlatformServices.ForApplication()`: the application's
   `FileLauncher` opens URIs and files and reveals files without a window, also
@@ -512,6 +529,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `SendAsync` to one connection, both as raw data to `__runicViewsPush`. A
   connection is one authenticated WebSocket; its Desktop connection id is
   both its connection and its client key, so a reconnect is a new connection.
+  A Window's `IRunicConnections` (since 0.16) therefore lists the page's one
+  connection, a new one after each reload, and its `Caller` is that connection
+  during a page's command or in-page menu click, and `null` for the native menu
+  bar and host shortcuts
+  ([Who is connected, and who called](../Runic.Application.Views/README.md#who-is-connected-and-who-called)).
   The requests of one connection are admitted in the order the page sent
   them. Disposing the transport removes the capability and stops pushes; the
   surface stays open. The per-route `Bind`, `BindAsync`, `Publish`,
@@ -730,6 +752,14 @@ The serve-only protocol, the same on both hosts:
 - **URL.** Each window writes one `RUNIC_APPLICATION_URL=<url>` line to
   standard output once its surface serves. The first line is the first
   window's.
+- **Window.** Directly after its URL line, in the same write, each window
+  writes `RUNIC_APPLICATION_WINDOW=<url> <type>`: its URL again and the full
+  name of its Window class, such as `MyApp.SettingsWindow`, separated by a
+  space. The type has no spaces: a closed generic Window type is written as
+  its generic definition's full name with its arguments' names without
+  namespaces, such as ``MyApp.DocumentWindow`1[Report]``. Hosts before 0.16 write no such line, and a parser that only reads
+  `RUNIC_APPLICATION_URL=` lines ignores it. Read the first two
+  space-separated fields; a later release may add more after them.
 - **Stop.** Writing a line to standard input ends serving for every window
   serving at that moment; end of input, such as `</dev/null`, does not. On
   Runic Desktop a window the application opens after that line serves until

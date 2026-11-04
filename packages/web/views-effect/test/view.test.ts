@@ -1,15 +1,15 @@
 import {
   BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOperation, type CollectionViewport,
-  type CollectionViewportController, type ViewClient,
+  type CollectionViewportController, type QueryCollectionState, type ViewClient,
 } from "@runic-artifex/views";
-import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
+import { bridgeOperations, connectView, decodeQueryCollectionState, defineQueryCollection } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
-import { installMockBridge, mockFailure, type MockBridge, type MockCall, type MockView } from "@runic-artifex/views/mock";
+import { createMockBridge, installMockBridge, mockFailure, type MockBridge, type MockCall, type MockView } from "@runic-artifex/views/mock";
 import { Cause, Context, Effect, Exit, Fiber, Layer, ManagedRuntime, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  catchCase, clientLayer, command, connect, connectionStates, followViewport, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
+  catchCase, clientLayer, command, connect, connectionStates, followViewport, fromBridgeError, indexOfKey, operation, queryCollectionChanges, setQuery, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
   type ViewError, type ViewOperationError, type ViewportRange,
 } from "../dist/index.js";
 
@@ -554,5 +554,29 @@ describe("declared failures", () => {
       .toEqualTypeOf<Effect.Effect<number, ViewDomainFailure<{ readonly limit: number }>>>();
     expect(await Effect.runPromise(Effect.flip(catchCase(mixed, { titleRequired: () => Effect.succeed(0), titleTaken: () => Effect.succeed(1) }))))
       .toMatchObject({ _tag: "ViewDomainFailure", failure: { limit: 3 } });
+  });
+});
+
+describe("query collections", () => {
+  test("stream a collection's rows, set its query and find a key", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("catalog", {
+      state: {},
+      queries: { rows: { rows: Array.from({ length: 500 }, (_, id) => ({ id, label: `row ${id}` })), key: row => String((row as { id: number }).id),
+        custom: { even: row => (row as { id: number }).id % 2 === 0 } } },
+    });
+    const client = await connectView<{ readonly rows: QueryCollectionState }>({ contract: "catalog:query", route: "catalog", members: { rows: decodeQueryCollectionState } });
+    const collection = client.queryCollection("rows", defineQueryCollection(wire => wire as { readonly id: number; readonly label: string }));
+    collection.setRange(10, 3);
+    const loaded = await Effect.runPromise(queryCollectionChanges(collection).pipe(
+      Stream.filter(snapshot => snapshot.rows.length === 3 && snapshot.rows.every(row => row.status === "loaded")),
+      Stream.take(1), Stream.runCollect));
+    expect([...loaded][0]!.rows.map(row => row.row?.id)).toEqual([10, 11, 12]);
+    await Effect.runPromise(setQuery(collection, { filters: [{ field: "even", op: "custom" }] }));
+    expect(await Effect.runPromise(indexOfKey(collection, "20"))).toBe(10);
+    expect(await Effect.runPromise(indexOfKey(collection, "21"))).toBeUndefined();
+    const rejected = await Effect.runPromise(Effect.flip(setQuery(collection, { filters: [{ field: "odd", op: "custom" }] })));
+    expect(rejected._tag).toBe("ViewRejected");
+    client.dispose();
   });
 });

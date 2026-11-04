@@ -101,18 +101,19 @@ namespace Runic.Application.Views.CsWebUi
             remove { }
         }
 
-        public Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken)
+        public Task<(bool Enabled, bool? Checked)[]> GetStatesAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken)
         {
-            var result = new bool[items.Count];
-            for (var index = 0; index < items.Count; index++) result[index] = CanExecute(items[index]);
+            var result = new (bool Enabled, bool? Checked)[items.Count];
+            for (var index = 0; index < items.Count; index++)
+                result[index] = (CanExecute(items[index]), (commands is not null ? commands.IsChecked(items[index]) : null) ?? items[index].IsChecked);
             return Task.FromResult(result);
         }
 
-        public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken)
+        public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, BridgeConnection invoker, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!CanExecute(item)) return ValueTask.FromResult(false);
-            commands!.Execute(item);
+            commands!.Execute(item, invoker);
             return ValueTask.FromResult(true);
         }
 

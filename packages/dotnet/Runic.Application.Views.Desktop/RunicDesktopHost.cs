@@ -105,7 +105,12 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        if (options.MaximumUploadBytes is < 1_024)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
+        _maximumUploadBytes = options.MaximumUploadBytes;
         _serveOnly = options.ServeOnly;
+        // Serve-only services decide on first use (DesktopServeOnlyState).
+        DesktopServeOnlyState.RecordFor(services, options.ServeOnly);
     }
 
     private readonly bool _serveOnly;
@@ -118,6 +123,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private readonly bool? _includeFailureDetail;
     private readonly int? _maximumInputBytes;
+    private readonly long? _maximumUploadBytes;
     private readonly string? _contentSecurityPolicy;
     private readonly Runic.Assets.IAssetSource? _assets;
 
@@ -419,6 +425,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 LoggerFactory = loggerFactory,
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
+                MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
+                MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,
             });
             // The reserved route of an in-page menu bar, served before the page loads. The transport reports closed
             // connections to the window's dispatcher, which releases their mounts and menu bar watches.
@@ -438,16 +446,20 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
+                opening.ReportOwnerIgnored("serve-only mode shows no window");
                 owner.ServeUntil(ServeOnlyStopped());
                 // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
                 // (S1; native-server.yml checks that serve-only startup does without it).
-                Console.Out.WriteLine("RUNIC_APPLICATION_URL=" + surface.Url);
+                // One write, so another window's lines cannot come between the URL line older parsers read and the
+                // window line that names the Window type (README, "Automation").
+                Console.Out.Write(ServeOnlyAnnouncement.Lines(surface.Url.ToString(), opening.Window.GetType()));
                 Console.Out.Flush();
                 return owner;
             }
             var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options));
             if (Placement is { } choosePlacement && choosePlacement(opening.Window) is { } placement)
                 windowOptions = windowOptions with { Placement = placement };
+            windowOptions = OwnedWindowOptions(opening, windowOptions);
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
             // A browser fallback opens without close confirmation; Runic Desktop reports
             // close-confirmation-unavailable for the options, and this names the Window.
@@ -458,16 +470,22 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            // A native close (the user, the window manager) starts the Window's close: it leaves IRunicWindowService.Windows.
+            var closingWindow = opening.Window;
+            presentation.Closed += (_, _) => closingWindow.MarkClosing();
+            // IRunicWindowPresentation of the Window's scope follows this window from now on.
+            var nativeOwner = (IDesktopNativeOwnerSource)owner;
+            opening.UsePresentation(new DesktopWindowPresentation(presentation, () => nativeOwner.NativeOwnerOrNull) { Present = Present });
             MenuCommandBinding? menu = null;
-            if (viewModel is IRunicMenuCommandSource menuCommands)
+            if (MenuCommandBinding.Binds(viewModel))
             {
                 var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                menu = await MenuCommandBinding.BindAsync(menuSource, content.ModelContext, menuCommands.GetMenuCommand, menuLogger)
+                menu = await MenuCommandBinding.BindViewModelAsync(menuSource, content.ModelContext, viewModel, menuLogger, content)
                     .ConfigureAwait(false);
                 if (!owner.SetMenuCommands(menu)) menu = null;
             }
-            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation), menu);
+            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation, menu), menu);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
         }
@@ -540,6 +558,35 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         return options;
     }
 
+    // RunicWindowOptions.Owner and Modality: the owner's Desktop window, when it is an open embedded window of this host's
+    // Desktop that can own windows. Otherwise the Window opens on its own (event 1180).
+    private static DesktopWindowOptions OwnedWindowOptions<TViewModel>(RunicWindowOpening<TViewModel> opening, DesktopWindowOptions options)
+        where TViewModel : class
+    {
+        if (opening.Options.Owner is not { } owner) return options;
+        DesktopWindow? window = null;
+        try { window = (owner.Host as IDesktopNativeOwnerSource)?.WindowOrNull; }
+        catch (InvalidOperationException) { /* The owner has not opened. */ }
+        var reason = window switch
+        {
+            null => "the owner is not an open Runic Desktop window",
+            { IsOpen: false } => "the owner has closed",
+            _ when !window.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership) =>
+                "the owner's presentation cannot own windows, such as an installed browser",
+            _ => null,
+        };
+        if (reason is not null)
+        {
+            opening.ReportOwnerIgnored(reason);
+            return options;
+        }
+        return options with
+        {
+            Owner = DesktopWindowOwner.FromWindow(window!),
+            Modality = opening.Options.Modality == RunicWindowModality.Window ? DesktopWindowModality.Window : DesktopWindowModality.None,
+        };
+    }
+
     private const string ConfirmCloseOption = $"{nameof(DesktopWindowOptions)}.{nameof(DesktopWindowOptions.ConfirmCloseAsync)}";
 
     private static RunicWindowDiagnostic ToWindowDiagnostic(DesktopDiagnostic diagnostic) =>
@@ -553,7 +600,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
 
-    private static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
+    internal static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
 
     private static readonly object s_serveOnlyGate = new();
     // Completes when the next line is read; replaced by each line, so a Window that opens later waits for a new one.

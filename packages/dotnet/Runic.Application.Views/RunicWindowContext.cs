@@ -33,6 +33,16 @@ public interface IRunicWindowContext
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The Window of this scope, for example as the <see cref="RunicWindowOptions.Owner"/> of a dialog it opens, or
+    /// <see langword="null"/> outside a Window's scope.
+    /// </summary>
+    /// <remarks>
+    /// It is set before the ViewModel is resolved, so a constructor may keep it, but the Window opens only after the
+    /// constructor returned. The default implementation, for a test fake, returns <see langword="null"/>.
+    /// </remarks>
+    IRunicWindow? Window => null;
 }
 
 /// <summary>
@@ -114,6 +124,15 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
         if (locale is not null) content.Locale = locale;
         content.LocaleChanged += (_, _) => PropertyChanged?.Invoke(this, LocaleArgs);
     }
+    // The presentation of a scope that no Window opened: it reports OwnerUnavailable.
+    private RunicWindowPresentation? _unbound;
+
+    // IRunicWindowPresentation of this scope: the Window's, once OpenWindowAsync bound it.
+    internal IRunicWindowPresentation Presentation =>
+        Volatile.Read(ref _window)?.Presentation
+        ?? Volatile.Read(ref _unbound)
+        ?? Interlocked.CompareExchange(ref _unbound, new RunicWindowPresentation(), null)
+        ?? _unbound!;
 
     // Called by OpenWindowAsync in the Window's new scope, before it resolves the ViewModel.
     internal void Bind(IRunicWindow window)
@@ -121,6 +140,8 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
         if (Interlocked.CompareExchange(ref _window, window, null) is { } bound && !ReferenceEquals(bound, window))
             throw new InvalidOperationException("The window context is already bound to another Window.");
     }
+
+    public IRunicWindow? Window => Volatile.Read(ref _window);
 
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
     {

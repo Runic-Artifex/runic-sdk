@@ -79,6 +79,12 @@ no change is pending. `State` and `Error` are read-only dependency properties:
 use a `Trigger` or `DataTrigger` on `State` in XAML, and the CLR `StateChanged`
 event in code. The host borrows the model, services and context: it
 never creates or disposes a ViewModel, a scope or a navigation entry.
+Because it creates no Window scope, `IRunicConnections` (since 0.16) is not
+bound to a `RunicViewHost`'s page: resolved from its services it lists no
+connection and raises no events. During a command of the page,
+`RunicInteractionInvocation.Current?.ConnectionKey` names the page's
+connection
+([Who is connected, and who called](../Runic.Application.Views/README.md#who-is-connected-and-who-called)).
 
 `WebContent` sets what the page may do beyond the application's origins, as
 `DesktopWindowOptions.WebContent` does for a Desktop window: external
@@ -307,3 +313,65 @@ running instance take the foreground because the forwarding launch allows it
 result is `Failed` with `PermissionDenied`. A closed window, or one whose
 dispatcher shut down, reports `OwnerClosed`. `Window.Activate()` alone neither
 restores the window nor reports a refusal.
+
+## A Runic Desktop window over a WPF window
+
+A Runic Desktop window that a WPF application opens on its `DesktopHost` can
+belong to a WPF window, and block it as `ShowDialog` does (since 0.16):
+
+```csharp
+var dialog = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Owner = WpfPlatformServices.ForDesktopWindowOwner(mainWindow),
+    Modality = DesktopWindowModality.Window,
+});
+await dialog.WaitForCloseAsync();
+```
+
+`ForDesktopWindowOwner` is called on the window's UI thread and creates the
+window's handle if it has none yet. The Desktop window stays above the WPF
+window, and with `DesktopWindowModality.Window` the WPF window is disabled until
+the Desktop window closed. Runic does not follow the WPF window's life: close
+the Desktop window before its owner. The other way round, a WPF dialog belongs
+to a Runic Desktop window with
+`new WindowInteropHelper(dialog).Owner = desktopWindow.NativeHandle` before
+`dialog.ShowDialog()`.
+
+## The window's presentation for its ViewModels
+
+`WpfPlatformServices.ForWindowPresentation(window, loggerFactory)` gives the
+ViewModels a WPF window shows the same `IRunicWindowPresentation` a Runic
+Window's ViewModel takes on Runic Desktop. It belongs to one window, and a
+second call with the window returns the same one. Call it on the UI thread and
+hand it to that window's ViewModels:
+
+```csharp
+// One window: a singleton is that window's.
+services.AddSingleton(WpfPlatformServices.ForWindowPresentation(mainWindow, loggerFactory));
+
+// Several windows: one per window, for the ViewModels of that window only.
+var editor = new EditorWindow();
+editor.DataContext = new EditorViewModel(WpfPlatformServices.ForWindowPresentation(editor, loggerFactory));
+```
+
+A singleton registration in an application with several windows would give
+every ViewModel the first window's presentation; create one per window, for
+example in the window's own DI scope or where the window is created.
+
+`PresentAsync` is `WpfPlatformServices.PresentAsync`; `MinimizeAsync` minimizes
+the window, `SetVisibleAsync` calls `Show()` and `Hide()`, and full screen hides
+the window's frame and maximizes it, and leaving restores the frame and state it
+had. `SetColorSchemeAsync` sets the title bar's dark mode, once the window has a
+handle if it has none yet, and the page's `prefers-color-scheme` of every
+`RunicViewHost` in the window, including one added later or still starting; the
+application's WPF controls keep the theme the application gives them.
+`NoPreference` gives the title bar the system's apps theme as it is at the time
+of the call. `SetDocumentEditedAsync` reports `Unavailable(BackendUnavailable)`,
+as on Windows generally. `IsActive`, `IsMinimized` and `IsVisible` follow
+`Activated`, `Deactivated`, `StateChanged` and `IsVisibleChanged`, and the
+changes are raised on the window's dispatcher, the ViewModels' thread in WPF. A
+handler that throws is logged as event 1130 (`WindowPresentationHandlerFailed`,
+category `Runic.Application.Views.Wpf`, or `Trace` without a logger factory)
+and does not stop the others; a change that a handler causes, such as restoring
+the window from an `ActivityChanged` handler, is raised after that handler
+returns. Once the window closes, requests report `OwnerClosed`.

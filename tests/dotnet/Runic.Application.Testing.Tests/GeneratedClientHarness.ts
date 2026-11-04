@@ -103,8 +103,36 @@ expect(JSON.stringify(dtoList.snapshot.entries) === '[{"name":"replaced","count"
 dtoList.dispose();
 await live.step("dtoList.expectReplaced");
 
+// Query collections (query-collections/1): the state carries the query, total and version; each presentation reads only
+// its own range of rows; the query is shared ViewModel state; a key's position comes from the source.
+const catalogModule = await load("catalog");
+const catalog = await catalogModule.connectCatalog();
+expect(catalog.snapshot.rows.version === 0 && catalog.snapshot.rows.query.sort.length === 0, "The query state did not decode.");
+const catalogRows = catalog.queries.rows;
+const second = (await catalogModule.connectCatalog()).queries.rows;
+catalogRows.setRange(1000, 10);
+second.setRange(4990, 20);
+await until(() => [...catalogRows.current.rows, ...second.current.rows].every(row => row.status === "loaded"), "The ranges did not load.");
+expect(catalogRows.current.rows[0]!.row!.id === 1000 && catalogRows.current.rows[0]!.key === "1000" && catalogRows.current.total === 5000,
+  "The first presentation's range did not decode.");
+expect(second.current.count === 10 && second.current.rows[9]!.row!.label === "row 4999", "The second presentation's range did not end at the last row.");
+await catalogRows.setQuery({ sort: [{ field: "size", descending: true }], filters: [{ field: "label", op: "contains", value: "9" }] });
+expect(catalog.snapshot.rows.version === 1 && catalog.snapshot.rows.query.filters[0]?.op === "contains", "setQuery did not publish the query.");
+catalogRows.setRange(0, 5);
+await until(() => catalogRows.current.rows.length === 5 && catalogRows.current.rows.every(row => row.status === "loaded" && !row.stale), "The sorted range did not load.");
+expect(catalogRows.current.rows.every(row => row.row!.size === 6 && row.row!.label.includes("9")), "The rows do not follow the query.");
+expect(await catalogRows.indexOf(catalogRows.current.rows[3]!.key!) === 3, "indexOf did not find a key in the query's order.");
+expect(await catalogRows.indexOf("100") === undefined, "indexOf found a row the filter excludes.");
+await expectThrows(() => catalogRows.setQuery({ sort: [{ field: "owner" }] }), "A query with an unknown field was accepted.");
+catalog.dispose();
+
 await live.close();
 console.log("GENERATED_CLIENT_OK");
+
+async function until(condition: () => boolean, message: string): Promise<void> {
+  for (let attempt = 0; attempt < 500 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 10));
+  expect(condition(), message);
+}
 
 async function expectThrows(action: () => Promise<unknown>, message: string): Promise<void> {
   try { await action(); }

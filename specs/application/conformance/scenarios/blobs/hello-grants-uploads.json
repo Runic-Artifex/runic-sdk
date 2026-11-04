@@ -1,0 +1,50 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.hello-grants-uploads.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer"],
+  "description": "A hello that lists blobs/1 is answered with the connection's upload grant: the URL the page uploads files to, the connection's token and the window's upload limit. A connection that does not list the feature gets no grant.",
+  "view": "files",
+  "requires": ["blobs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "c2": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "hello-c2": {"kind":"request"},
+    "session-1": {"kind":"wire","value":"s-1"},
+    "session-2": {"kind":"wire","value":"s-2"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session-1"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["blobs/1"]},"id":"hello-c1","connection":"c1"},
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["blobs/1"]},
+        "blobs": {
+          "upload": {"$any":"string","default":"http://conformance.test/_runic/upload"},
+          "token": {"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+          "maximumBytes": 268435456
+        }
+      },
+      "replyTo": "hello-c1",
+      "connection": "c1"
+    },
+    {"connect":"c2"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session-2"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}},"id":"hello-c2","connection":"c2"},
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["blobs/1"]}
+      },
+      "replyTo": "hello-c2",
+      "connection": "c2"
+    }
+  ]
+}

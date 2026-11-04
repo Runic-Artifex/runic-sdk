@@ -4,16 +4,19 @@ import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
-  injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
-  ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle, type ViewRegistry,
+  injectBridgeConnection, injectCollectionViewport, injectCommand, injectQueryCollection, injectLatestOperation, injectMenuBar, injectOperation, injectView,
+  RunicViewOutlet, ViewOutlet, RegionOutlets, regionEntries, selectedRegion, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle,
+  type RegionCollection, type RegionOutletsMode, type RegionPanelAttributes, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
+import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
 import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
-import { connectView } from "@runic-artifex/views/generated";
+import { connectView, decodeQueryCollectionState, defineQueryCollection } from "@runic-artifex/views/generated";
+import type { QueryCollectionState } from "@runic-artifex/views";
 import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 
 // Hoisted above the imports, so it sees the warnings Angular logs while the package's
@@ -102,6 +105,20 @@ Component({
   template: `<runic-view-outlet [content]="content()" [registry]="registry" />`,
 })(LegacyHost);
 
+// Region collections: one outlet per region, keyed by the region's key.
+class RegionsHost {
+  readonly collection = signal<RegionCollection<Page> | undefined>(undefined);
+  readonly mode = signal<RegionOutletsMode>("keep-mounted");
+  readonly panelProps = signal<((entry: { readonly key: string }) => RegionPanelAttributes) | undefined>(undefined);
+  readonly registry = registry;
+}
+Component({
+  selector: "test-regions-host",
+  standalone: true,
+  imports: [RegionOutlets],
+  template: `<runic-region-outlets [collection]="collection()" [registry]="registry" [mode]="mode()" [panelProps]="panelProps()"><span class="fallback">No documents</span></runic-region-outlets>`,
+})(RegionsHost);
+
 beforeAll(() => {
   TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
 });
@@ -180,6 +197,26 @@ describe("ViewOutlet", () => {
     expect(typeof root.injectCollectionViewport).toBe("function");
   });
 
+  test("injectQueryCollection loads the rows its container shows and scrolls to a key", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("catalog", {
+      state: {},
+      queries: { rows: { rows: Array.from({ length: 10_000 }, (_, id) => ({ id, label: `row ${id}` })), key: row => String((row as { id: number }).id) } },
+    });
+    const client = await connectView<{ readonly rows: QueryCollectionState }>({ contract: "catalog:query", route: "catalog", members: { rows: decodeQueryCollectionState } });
+    const collection = client.queryCollection("rows", defineQueryCollection(wire => wire as { readonly id: number; readonly label: string }));
+    const element = document.createElement("div");
+    Object.defineProperty(element, "clientHeight", { configurable: true, value: 100 });
+    const container = signal<HTMLElement | null>(element);
+    const list = TestBed.runInInjectionContext(() => injectQueryCollection(container, () => collection, () => ({ estimateSize: 20, overscan: 0 })));
+    TestBed.tick();
+    for (let round = 0; round < 50 && !list.viewport().items.every(item => item.status === "loaded"); round++) await bridge.flush();
+    expect(list.viewport().items.map(item => item.row?.id)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(await list.scrollToKey("2500")).toBe(true);
+    expect(element.scrollTop).toBe(50_000);
+    client.dispose();
+  });
+
   test("the deprecated RunicViewOutlet alias renders the same outlet", () => {
     const fixture = TestBed.createComponent(LegacyHost);
     fixture.detectChanges();
@@ -194,6 +231,90 @@ describe("ViewOutlet", () => {
     TestBed.createComponent(Host).detectChanges();
     TestBed.createComponent(LegacyHost).detectChanges();
     expect(warnings.filter(warning => warning.includes("NG0912"))).toEqual([]);
+  });
+});
+
+describe("RegionOutlets", () => {
+  const counter: Page = { kind: "counter", connect: async () => undefined };
+  const welcome: Page = { kind: "welcome", connect: async () => undefined };
+
+  function render(mode: RegionOutletsMode = "keep-mounted") {
+    counterMounts = 0;
+    const fixture = TestBed.createComponent(RegionsHost);
+    fixture.componentInstance.mode.set(mode);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const show = (collection: RegionCollection<Page> | undefined) => { fixture.componentInstance.collection.set(collection); fixture.detectChanges(); };
+    const regions = () => [...element.querySelectorAll<HTMLElement>("[data-region-key]")]
+      .map(region => `${region.dataset["regionKey"]}${region.hidden ? "" : "*"}:${region.textContent?.trim()}`);
+    return { element, show, regions };
+  }
+
+  test("keeps every region mounted and shows only the selected one", () => {
+    const { element, show, regions } = render();
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 1 });
+    expect(regions()).toEqual(["7:counter:counter", "9*:welcome:welcome", "11:"]);
+    const welcomeElement = element.querySelector("test-welcome");
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 0 });
+    expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
+    expect(counterMounts).toBe(1);
+    expect(element.querySelector("test-welcome")).toBe(welcomeElement);
+  });
+
+  test("sets panelProps on each wrapper and hides a panel with hidden and display: none", () => {
+    counterMounts = 0;
+    const fixture = TestBed.createComponent(RegionsHost);
+    const host = fixture.componentInstance;
+    host.panelProps.set(entry => ({
+      id: `panel-${entry.key}`, role: "tabpanel", "aria-labelledby": `tab-${entry.key}`, "data-region-key": "overridden", hidden: "", style: "display: block",
+      title: entry.key === "7" ? "first" : null,
+    }));
+    host.collection.set({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const [first, second] = [...element.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    expect([first!.id, first!.getAttribute("aria-labelledby"), first!.dataset["regionKey"], first!.title]).toEqual(["panel-7", "tab-7", "7", "first"]);
+    expect([second!.id, second!.dataset["regionKey"], second!.hasAttribute("title")]).toEqual(["panel-9", "9", false]);
+    expect([first!.hidden, first!.style.display]).toEqual([false, ""]);
+    expect([second!.hidden, second!.style.display]).toEqual([true, "none"]);
+    host.collection.set({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 1 });
+    host.panelProps.set(entry => ({ id: `panel-${entry.key}`, role: "tabpanel" }));
+    fixture.detectChanges();
+    expect([first!.hidden, first!.style.display, first!.hasAttribute("title"), first!.hasAttribute("aria-labelledby")]).toEqual([true, "none", false, false]);
+    expect([second!.hidden, second!.style.display]).toEqual([false, ""]);
+  });
+
+  test("remounts only the region whose content changed", () => {
+    const { element, show } = render();
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    const welcomeElement = element.querySelector("test-welcome");
+    show({ regions: [{ key: "7", content: { kind: "counter", connect: async () => undefined } }, { key: "9", content: welcome }], selected: 0 });
+    expect(counterMounts).toBe(2);
+    expect(element.querySelector("test-welcome")).toBe(welcomeElement);
+  });
+
+  test("renders only the selected region in selected mode", () => {
+    const { show, regions } = render("selected");
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 1 });
+    expect(regions()).toEqual(["9*:welcome:welcome"]);
+    expect(counterMounts).toBe(0);
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    expect(regions()).toEqual(["7*:counter:counter"]);
+    expect(counterMounts).toBe(1);
+  });
+
+  test("renders projected content without a region", () => {
+    const { element, show } = render();
+    expect(element.querySelector(".fallback")?.textContent).toBe("No documents");
+    show({ regions: [], selected: null });
+    expect(element.querySelector(".fallback")?.textContent).toBe("No documents");
+    show({ regions: [{ key: "7", content: welcome }], selected: 0 });
+    expect(element.querySelector(".fallback")).toBeNull();
+  });
+
+  test("re-exports the region helpers", () => {
+    expect(regionEntries).toBe(viewsRegionEntries);
+    expect(selectedRegion).toBe(viewsSelectedRegion);
   });
 });
 
@@ -519,10 +640,11 @@ describe("injectBridgeConnection", () => {
   test("requires an injection context or an injector, and is a root export (0.11)", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
-      "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "commitAllFields", "configureTranslatedText",
+      "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "commitAllFields", "configureTranslatedText",
       "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
-      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectText", "injectTextField", "injectView",
-      "injectViewResource", "injectWindowLocale", "onBridgeConnection", "resolveText", "windowLocale",
+      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectText",
+      "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "onBridgeConnection",
+      "regionEntries", "resolveText", "selectedRegion", "upload", "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

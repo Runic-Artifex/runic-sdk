@@ -127,6 +127,23 @@ test("runic-desktop-views.js sends a request on __runicViews and resolves with t
   expect(calls).toEqual([["__runicViews", message, true]]);
 });
 
+// request-session/1: a request that page code sends itself, without the
+// session of the page's hello, gets it, so the producer runs it for this page;
+// the runtime's own requests, which name it, go out unchanged.
+test("runic-desktop-views.js names the page's session in a request that has none", async () => {
+  const sent = [];
+  const context = loadDesktop(fakeDesktop(), { isConnected: () => true, call: async (name, message) => { sent.push(message); return '{"ok":true}'; } });
+  const bridge = context.__runicBridge;
+  await bridge.request('{"kind":"snapshot","route":"before"}');
+  await bridge.request('{"kind":"hello","protocol":4,"session":"s-page","client":{"name":"c","version":"0"}}');
+  await bridge.request('{"kind":"snapshot","route":"raw"}');
+  const own = '{"kind":"snapshot","route":"own","session":"s-page"}';
+  await bridge.request(own);
+  expect(sent[0]).toBe('{"kind":"snapshot","route":"before"}');
+  expect(JSON.parse(sent[2])).toEqual({ kind: "snapshot", route: "raw", session: "s-page" });
+  expect(sent[3]).toBe(own);
+});
+
 // 0.14 T2: webui.js's `request` sends the call right behind the token check; the
 // script prefers it to webui.call, which waits for the token reply.
 test("runic-desktop-views.js sends a request through webui.js's request when it has one", async () => {
@@ -473,6 +490,54 @@ test("runic-cswebui.js drains the mailbox in order with one pending receive", as
   await settle();
   expect(received.length).toBe(2);
   expect(webui.receives().length).toBe(3);
+});
+
+// request-session/1: WebUI can give a closed connection's slot to a new page
+// before .NET learned of the close, so the receive names the session of the
+// hello this page sent on its connection, and names none before that hello.
+test("runic-cswebui.js names the session of the page's hello in its receive", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const stop = bridge.onMessage(() => {});
+  expect(webui.receives().length).toBe(1);
+  const hello = '{"kind":"hello","protocol":4,"session":"s-page","client":{"name":"t","version":"1"},"features":["request-session/1"]}';
+  const greeting = bridge.request(hello);
+  webui.answer(webui.open(receiveRequest)[0], noHello);
+  webui.answer(webui.open(hello)[0], '{"ok":true}');
+  await greeting;
+  await settle();
+  const named = webui.calls.filter(call => call.message === '{"kind":"receive","session":"s-page"}');
+  expect(named.length).toBe(1);
+  webui.answer(named[0], '{"ok":true,"messages":[]}');
+  await settle();
+  expect(webui.calls.filter(call => call.message === '{"kind":"receive","session":"s-page"}').length).toBe(2);
+
+  // A new connection starts without a session until its own hello.
+  webui.online = false;
+  await poll();
+  const sentBefore = webui.calls.length;
+  webui.online = true;
+  await poll();
+  await settle();
+  const after = webui.calls.slice(sentBefore).filter(call => call.message.startsWith('{"kind":"receive"'));
+  expect(after.length).toBeGreaterThan(0);
+  expect(after.every(call => call.message === receiveRequest)).toBe(true);
+  stop();
+});
+
+test("runic-cswebui.js names the page's session in a request that has none", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const hello = '{"kind":"hello","protocol":4,"session":"s-page","client":{"name":"t","version":"1"}}';
+  const greeting = bridge.request(hello);
+  webui.answer(webui.open(hello)[0], '{"ok":true}');
+  await greeting;
+  void bridge.request('{"kind":"snapshot","route":"raw"}');
+  const own = '{"kind":"snapshot","route":"own","session":"s-page"}';
+  void bridge.request(own);
+  const [raw, unchanged] = webui.calls.slice(-2).map(call => call.message);
+  expect(JSON.parse(raw)).toEqual({ kind: "snapshot", route: "raw", session: "s-page" });
+  expect(unchanged).toBe(own);
 });
 
 test("runic-cswebui.js pauses the mailbox until a request settles after no-hello", async () => {

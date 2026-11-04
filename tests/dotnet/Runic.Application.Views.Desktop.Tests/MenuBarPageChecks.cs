@@ -14,8 +14,8 @@ using static DesktopChecks;
 
 // B10 PR 4: the in-page menu bar (specs/desktop/menu-bar-page.md, protocol 2). A Page window's bar state reaches the page
 // through the reserved Views route runic.menu-bar, which pushes each new state to a watching connection, follows
-// CanExecute, and the page's invoke runs the item through DesktopWindow.TryExecuteMenuItemAsync: the window's commands,
-// then the application's.
+// CanExecute, and the page's invoke runs the item with the page's identity: the window's commands as that page's command
+// invocation, then, through DesktopWindow.TryExecuteMenuItemAsync, the application's.
 internal sealed class MenuBarPageChecks
 {
     private static readonly IReadOnlyList<DesktopMenu> Bar =
@@ -106,6 +106,18 @@ internal sealed class MenuBarPageChecks
             revision = state["revision"]!.GetValue<long>();
             Require(await InvokeAsync(page, revision, key, cancellation) == "executed", "The page could not run Save.");
             await viewModel.Save.Executed.Task.WaitAsync(cancellation);
+            // The page's click runs the Window's command as that page's command invocation (A2), not in the window scope.
+            Require(viewModel.SaveScope is { ConnectionKey: not null, ClientKey: not null, Route: "runic.menu-bar" },
+                "The page's click did not run with the page's identity.");
+            // An item the page's own commands do not run, as when Save became runnable only after the page checked, asks
+            // the application's commands only: the Window's target would run it without the page's identity.
+            var saves = 0;
+            viewModel.Save.Ran += () => saves++;
+            var pageWindow = new DesktopMenuBarPageWindow(presentation, DesktopMenuBarPresentation.Page, commands: null);
+            Require(!await pageWindow.TryExecuteAsync((DesktopMenuItem)Bar[0].Items[1], new BridgeConnection("page", "page-client"), cancellation),
+                "A page's click fell back to the Window's own target.");
+            await Task.Delay(100, cancellation);
+            Require(saves == 0, "The Window's own target ran a page's click without its identity.");
             // The application's command runs through the same path as the native bar: the window's target cannot run it.
             var newKey = Item(state, "file.new")!["key"]!.GetValue<string>();
             Require(await InvokeAsync(page, revision, newKey, cancellation) == "executed", "The application's command did not run.");
@@ -192,6 +204,59 @@ internal sealed class MenuBarPageChecks
             }
         }
     }
+
+    // B3: the page's check marks follow the root ViewModel's IRunicMenuCheckedSource, pushed when it raises PropertyChanged.
+    [Test, NotInParallel(Order = 44)]
+    public async Task PageCheckMarksFollowTheViewModel()
+    {
+        IReadOnlyList<DesktopMenu> bar =
+        [
+            new("View",
+            [
+                new DesktopMenuItem("Word wrap", "view.wrap") { IsChecked = false },
+                new DesktopMenuItem("Small", "view.zoom") { RadioGroup = "zoom", IsChecked = true, CommandParameter = "80" },
+                new DesktopMenuItem("Large", "view.zoom") { RadioGroup = "zoom", IsChecked = false, CommandParameter = "150" },
+            ]),
+        ];
+        var services = new ServiceCollection();
+        services.AddScoped<CheckedMenuViewModel>();
+        services.AddScoped<Func<IBridgeTransport, CheckedMenuViewModel, IDisposable>>(_ => static (_, _) => new NoopAttachment());
+        await using var provider = services.BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory { MenuBarPlacement = DesktopMenuBarPlacement.Page }, WaitForConnection = false,
+            MenuBar = bar,
+        });
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, MenuBarPresentation = DesktopMenuBarPresentation.Page },
+        });
+        var window = await host.OpenWindowAsync<CheckedMenuWindow>();
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
+        var cancellation = timeout.Token;
+        try
+        {
+            using var page = await DesktopWireClient.ConnectAsync(RunicDesktopHost.GetSurface(window)!, cancellation);
+            static bool? Checked(JsonObject state, int index) => Items(state).ElementAtOrDefault(index)?["checked"]?.GetValue<bool>();
+            var state = await StateAsync(page, cancellation);
+            while (Checked(state, 0) != true || Checked(state, 1) != false || Checked(state, 2) != true)
+                state = await WaitAsync(page, state, cancellation);
+
+            window.ViewModel.WordWrap = false;
+            window.ViewModel.Zoom = 80;
+            while (Checked(state, 0) != false || Checked(state, 1) != true || Checked(state, 2) != false)
+                state = await WaitAsync(page, state, cancellation);
+        }
+        finally
+        {
+            await window.DisposeAsync();
+        }
+    }
+
+    // The items of the state's first menu.
+    private static IEnumerable<JsonObject> Items(JsonObject state) =>
+        state["menus"]!.AsArray()[0]!["entries"]!.AsArray().Select(static entry => entry!.AsObject()).Where(static entry => entry["kind"]!.GetValue<string>() == "item");
 
     // Completes the hello and watches the bar: the reply's state, and later states as pushes.
     private static async Task<JsonObject> StateAsync(DesktopWireClient page, CancellationToken cancellationToken)

@@ -63,6 +63,9 @@ if (Array.IndexOf(args, "--global-menu") is var globalMenu and >= 0)
 if (Array.IndexOf(args, "--global-menu-session") is var globalMenuSession and >= 0 && globalMenuSession + 2 < args.Length)
     return GlobalMenuSessionSmoke.Run(args[globalMenuSession + 1], args[globalMenuSession + 2]);
 
+// --owner (B6): owned and window-modal GTK 4 windows.
+if (args.Contains("--owner", StringComparer.Ordinal)) return OwnerGtk4Smoke.Run();
+
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
@@ -551,12 +554,35 @@ static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
     for (var waited = 0; await MappedAsync() && waited < 5000; waited += 20) await Task.Delay(20);
     if (await MappedAsync() || !window.IsOpen)
         throw new InvalidOperationException("HideAsync did not unmap the GTK 4 window or closed it.");
+    // B1: the window reports itself hidden (notify::visible).
+    for (var waited = 0; window.Activity is not { IsVisible: false } && waited < 5000; waited += 20) await Task.Delay(20);
+    if (window.Activity is not { IsVisible: false, IsActive: false })
+        throw new InvalidOperationException($"The hidden GTK 4 window reported {window.Activity}.");
     if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "GTK4 visibility")
         throw new InvalidOperationException("The hidden GTK 4 window's page stopped answering.");
     await window.SetVisibleAsync(true);
     for (var waited = 0; !await MappedAsync() && waited < 5000; waited += 20) await Task.Delay(20);
     if (!await MappedAsync())
         throw new InvalidOperationException("SetVisibleAsync(true) did not map the GTK 4 window again.");
+    for (var waited = 0; window.Activity is not { IsVisible: true } && waited < 5000; waited += 20) await Task.Delay(20);
+    if (window.Activity is not { IsVisible: true } || !window.Capabilities.HasFlag(DesktopWindowCapabilities.Activity))
+        throw new InvalidOperationException($"The shown GTK 4 window reported {window.Activity}.");
+    // B2: the application's scheme sets GTK's color-scheme settings, which WebKitGTK's prefers-color-scheme follows, and
+    // NoPreference resets them, so the page shows the desktop's scheme again: the one it had before.
+    var system = await surface.ExecuteJavaScriptAsync("return String(matchMedia('(prefers-color-scheme: dark)').matches);");
+    foreach (var scheme in new[] { DesktopColorScheme.Dark, DesktopColorScheme.Light, DesktopColorScheme.NoPreference })
+    {
+        await host.SetColorSchemeAsync(scheme);
+        var expected = scheme == DesktopColorScheme.NoPreference ? system : scheme == DesktopColorScheme.Dark ? "true" : "false";
+        var dark = "";
+        for (var waited = 0; dark != expected && waited < 5000; waited += 100)
+        {
+            dark = await surface.ExecuteJavaScriptAsync("return String(matchMedia('(prefers-color-scheme: dark)').matches);");
+            if (dark != expected) await Task.Delay(100);
+        }
+        if (dark != expected)
+            throw new InvalidOperationException($"With the application's scheme {scheme} the GTK 4 page's prefers-color-scheme: dark is {dark}.");
+    }
     // A permission request reaches the window's permission-request handler, which denies it without a grant; the
     // handler must not keep the view from being released when the window closes.
     await surface.ExecuteJavaScriptAsync("Notification.requestPermission().then(result => window.__permission = result); return 'asked';");
@@ -576,7 +602,9 @@ static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
     await Task.Delay(200);
     if (window.IsOpen || Volatile.Read(ref raised) != 1)
         throw new InvalidOperationException($"DesktopWindow.Closed was raised {raised} times for one user close.");
-    Console.WriteLine("GTK4 smoke: hide, show, a denied permission request, the native close and the Closed event passed.");
+    if (window.Activity is not { IsVisible: false, IsActive: false })
+        throw new InvalidOperationException($"The closed GTK 4 window reported {window.Activity}.");
+    Console.WriteLine("GTK4 smoke: hide, show, the activity, the run-time color scheme, a denied permission request, the native close and the Closed event passed.");
 }
 
 // I-146: on X11 a window opens at its requested position, reports it in its state and moves.

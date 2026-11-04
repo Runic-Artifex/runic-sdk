@@ -7,7 +7,8 @@ namespace Runic.Application.Views;
 /// <remarks>
 /// Supports immutable replacements and property notifications on row objects.
 /// Notifications below a row remain supported through full snapshots. Keys must not change
-/// during a row's lifetime. Each presentation should own its viewport collection.
+/// during a row's lifetime. A list too large to publish whole is a <see cref="RunicQueryCollection{TRow, TKey}"/>, whose
+/// rows each presentation reads for its own range.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class RunicCollectionAttribute(string keyProperty) : Attribute

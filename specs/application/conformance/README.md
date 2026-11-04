@@ -90,10 +90,13 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
 | `setLocale` | sets the window's locale, a tag or `null` ([translated text](../README.md#translated-text)) | skips it |
-| `expect` | checks `model`, `presented` or `closed` | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
+| `expect` | checks `model`, `presented` or `closed`; a `model` expectation waits until it matches | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
-passes only through `advance`.
+passes only through `advance`. A producer runner's `expect` with `model` waits the same way: it reads the model again
+until every member matches, up to the same timeout (scaled like the runner's other timeouts, such as by
+`RUNIC_TEST_TIMEOUT_SCALE` in the .NET runner). A scenario uses it to wait for work the producer does on its own, such as
+a guard that a request asks, before its next step.
 
 Where the protocol leaves the order of messages open, such as a reply and the frame or reply of a request admitted
 after it ([reply order](../README.md#reply-order)), the steps mark them with `unordered: true`. The `receive` steps with
@@ -131,6 +134,12 @@ Messages are compared **by JSON value**, never by bytes or member order, with th
   `{"$rows": [start, count, width?]}` expands to `count` rows of the `list` View with ids from `start` and the label
   `"row {id}"`, padded with `.` to `width` characters. `{"$adds": [start, count, width?]}` expands to one `add` change
   per such row, at the index equal to its id.
+- **Sessions.** A client that implements [`request-session/1`](../README.md#request-sessions) names the session of
+  its connection's `hello` in every request. A client runner requires that a request's `session`, when present, is
+  the session of the connection's `hello`, and then compares the request without it unless the step's message lists
+  `session`. The scenarios of `request-sessions` list it; the others leave it out, so they hold for clients with and
+  without the feature. A producer runner sends what the step lists, so only a scenario whose `hello` lists the
+  feature sends `session`.
 - Failure detail is off in every scenario.
 
 ### Calls
@@ -146,12 +155,17 @@ A `call` names the client operation in language-neutral terms; the runner maps i
 | `start` | `route`, `member`, `operation`, `input?` | Start an operation with the id `operation`. |
 | `wait`, `status`, `cancel` | `operation` | Wait for the operation's terminal status, read its status, or cancel it. |
 | `register` | `route`, `interaction`, `answer` | Register a handler that answers `{output}`, `cancel`s, `fail`s or `never` answers. |
+| `handle`, `unhandle` | `route`, `request` | Register a [view request](../README.md#view-requests) handler of the route that records each input it is called with, or unregister it. |
+| `region` | `route`, `member`, `action`, `key` | Select or close the region with `key` of a region collection ([region collections](../README.md#region-collections)): `action` is `select` or `close`. |
+| `queryRange` | `route`, `member`, `start`, `count` | Show `count` rows of the query collection from `start`. It resolves with the keys of the range's rows once they are all loaded at the current version. |
+| `setQuery` | `route`, `member`, `value` | Change the query collection's query to `value`. |
+| `indexOf` | `route`, `member`, `value` | Find the position of the row with the key `value`; resolves with it, or `null`. |
 
 Expectations of the client:
 
 - `state`: the state the client exposes for the route, after the [setter overlay](../README.md#client-overlay).
 - `call`: `pending`, `resolved` (with the call's value: `null` for calls without one, the boolean of `can`, a checked
-  write's receipt, an operation's terminal status without `revision`), or `rejected` with the error's `kind` and the
+  write's receipt, an operation's terminal status without `revision`, a region request's `outcome`), or `rejected` with the error's `kind` and the
   `reason` or `failure` given.
 - `operation`: the last status the client observed, without `revision`.
 - `diagnostics`: the codes of every diagnostic reported since the scenario started, in order.
@@ -159,6 +173,9 @@ Expectations of the client:
 - `connection`: the connection state the client reports. `closed` means that it reports that the producer closed the
   window ([window close](../README.md#window-close)).
 - `locale`: the window's locale the client reports, or `null` ([translated text](../README.md#translated-text)).
+- `requests`: `{route, request, inputs}`, the inputs the `handle` handler of that route and request was called with
+  since it was registered, in order. The runner waits for them as for a `receive` step, since a handler runs once the
+  page painted the request's revision.
 
 Expectations of the producer:
 
@@ -179,6 +196,10 @@ Expectations of the producer:
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
+| `view-requests/1` | The implementation implements the feature [`view-requests/1`](../README.md#view-requests). |
+| `request-session/1` | The implementation implements the feature [`request-session/1`](../README.md#request-sessions). |
+| `region-collections/1` | The implementation implements the feature [`region-collections/1`](../README.md#region-collections). |
+| `query-collections/1` | The implementation implements the feature [`query-collections/1`](../README.md#query-collections). Its scenarios list it in the `default` of both `hello` steps. |
 | `field-paths/1` | The implementation implements the feature [`field-paths/1`](../README.md#field-paths). Its scenarios list the feature in the `default` of both `hello` steps, beside `text-splice/1`. |
 | `translation-text/1` | The implementation implements the feature [`translation-text/1`](../README.md#translated-text). |
 
@@ -189,10 +210,10 @@ always `{"$any":"array","default":[…]}`, also when the scenario requires a fea
 features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
 without the feature. None of `presentation-epoch/1`, `presented/1` and `translation-text/1` is in use in them, so their messages carry no
-`epoch` and no `present`, `closing` or `locale` push. A scenario that requires `presentation-epoch/1`, `presented/1` or `translation-text/1` lists the
-feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use whichever runner writes the
-`hello` or its reply; a producer scenario that checks a connection without the feature, such as
-`locale-is-not-pushed-without-the-feature`, lists only `text-splice/1`.
+`epoch` and no `present`, `closing` or `locale` push. A scenario that requires `presentation-epoch/1`, `presented/1`,
+`view-requests/1`, `region-collections/1` or `translation-text/1` lists the feature in the `default` of both `hello`
+steps, beside `text-splice/1`, so it is in use whichever runner writes the `hello` or its reply; one that shows the
+producer without the feature, such as `locale-is-not-pushed-without-the-feature`, lists only `text-splice/1`.
 
 ### Identifiers
 
@@ -212,7 +233,11 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out; field flush (`flush-*`): a flush that the client answers, and a connection without the feature, which is not asked |
+| [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request`; a close of a region whose close is pending, which joins it; a select that supersedes a pending close |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
+| [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
+| [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
+| [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version and an unknown total before its reply, and the rows in its order with the count they start; a filter that changes the total, and a client that asks for no position past it; a query the source rejects, and an unknown filter `op` (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views
@@ -250,6 +275,15 @@ The model of the protocol-3 text fixtures. Members: `log`, a nullable append-onl
 | `canClear`, `canTouch`, `canSave`, `canConfirmClear` | `boolean` | availability members ([commands](../README.md#commands-and-availability)) |
 | `isSlowImportExecuting`, `isConfirmClearExecuting` | `boolean` | execution members |
 
+View requests ([view requests](../README.md#view-requests)), whose contracts are the provided ids `focusContract`,
+`revealContract` and `toastContract`:
+
+| Request | Input | Delivery | Raised by |
+| --- | --- | --- | --- |
+| `focus` | `{member: string}` | `drop` | the `touch` command, with `{"member":"title"}` after its effect; the `raise` mutation |
+| `reveal` | `{id: int32}` | `next-mounted` | the `raise` mutation |
+| `toast` | `{text: string}` | `broadcast` | the `raise` mutation |
+
 Its `fields` are `{"note": {"version"}}`, starting at version 0. Its text members are `title`, `note` and `summary`.
 Commands:
 
@@ -258,7 +292,7 @@ Commands:
 | `addRow` | `string` (the label) | when the label is not empty | appends `{id, label}`, with `id` one more than the largest id (1 for the first row) |
 | `removeRow` | the key of a row (a key command) | always | removes the row; a key of no row is `unresolved-key` |
 | `clear` | none | when there are rows | removes every row, as a reset |
-| `touch` | none | always | appends `!` to `title` without announcing the change |
+| `touch` | none | always | appends `!` to `title` without announcing the change, then raises the `focus` view request |
 | `save` | none | always | fails with its declared failure `{"$case": "titleRequired"}` when `title` is empty; otherwise changes nothing |
 | `annotate` | `string` | always | sets the `detail` View's `lastAction` to the input; changes nothing in `notes` |
 | `slowImport` | `{source: string, limit: int32}` | while it is not executing | asynchronous; runs until a `finish` mutation; reports `progress` mutations; `finish` with `rows` appends rows with those labels and succeeds with their number (`int32`); `finish` with `failure` fails with that declared failure (`{"$case": "sourceMissing"}`); `finish` with `outcome: "cancelled"` ends cancelled, which the command honours only after `cancel` |
@@ -321,6 +355,41 @@ Its `fields` are `{"address": {"version"}}`, starting at version 0. Its row edit
 refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address`, and
 `insert`, `replaceAt` and `removeAt` with `member` `lines`.
 
+### `tabs`
+
+A View with region collections ([region collections](../README.md#region-collections)). Members:
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `documents` | region collection of `page` Views; the page may close a region | three regions with the keys `"1"`, `"2"` and `"3"`, which present the `page` Views `one`, `two` and `three` with the ids `00000000000000000000000000000001`, `…02` and `…03`; the first is selected |
+| `pinned` | region collection of `page` Views; the page may not close a region | no regions |
+
+The model value `veto` (`boolean`, default `false`) is not a state member; `assign` sets it and publishes nothing.
+While it is `true`, the departure guard of every page refuses, so a `select` that leaves a page and a `close` of a page
+are `Rejected` with the rejection `Guard`. Otherwise a request commits, with the arrival `None`. After a `holdGuard`
+mutation, the next ask of a page's departure guard stays pending until a `settleGuard` mutation answers it, or until a
+later request supersedes the one that asked. The model value `asks` (`int32`, read-only) counts the asks of the pages'
+departure guards.
+
+### `page`
+
+The content View that each region of the `tabs` View presents, of kind `page`. Member: `title` (`string`, a text
+member), the View's name.
+
+### `files`
+
+A View of [blobs and uploads](../README.md#blobs-and-uploads) (`blobs/1`). The window's blob URLs and upload endpoint
+are below `http://conformance.test/`.
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `avatar` | nullable `blob` | `null`; the model and `assign` give it as `{type, text, name}`, whose `text` is its UTF-8 content |
+| `lastUpload` | nullable `string` | `null`; the file name of the last upload `attach` claimed |
+
+| Command | Input | Available | Effect |
+| --- | --- | --- | --- |
+| `attach` | `upload` | always | claims the upload and sets `lastUpload` to its file name |
+
 ### Mutations
 
 | `op` | Members | Effect |
@@ -335,4 +404,20 @@ refuses a negative `quantity` with the message `Quantity must not be negative.` 
 | `rule` | `rule`, `holds` | sets whether a rule of the `form` View holds, announcing no member change |
 | `check` | `member`, `running` | starts or ends the asynchronous check of a `form` member, announcing no member change |
 | `renew` | none | renews the root View's route ([presentation epochs](../README.md#presentation-epochs)), as one unit |
+| `holdGuard` | none | the next ask of a departure guard of the `tabs` View's pages stays pending |
+| `settleGuard` | `allow` | answers the held ask, also one that is still to come: `true` lets the page be left or closed, `false` refuses |
 | `waitPresented` | `id`, `timeout` | starts a wait of `timeout` milliseconds until a page painted the root View ([painted states](../README.md#painted-states)), named `id` |
+| `raise` | `request`, `input` | raises a view request of the `notes` View outside any scope ([view requests](../README.md#view-requests)) |
+
+### `catalog`
+
+A query collection ([`query-collections/1`](../README.md#query-collections)). Members:
+
+| Member | Type | Notes |
+| --- | --- | --- |
+| `rows` | query collection of `{id: int32, label: string}`, keyed by `id` | `arrange.model.rows` are the source's rows; its first state already has `total`. After a query change the total is `null` until a range is read, which counts it. |
+
+The row source has the fields `id` (sort, `equals`, `range`) and `label` (sort, `equals`, `contains` ignoring case), and
+the custom filter `even`, which keeps rows with an even `id`. Rows are ordered by the sort keys, then by `id`. The
+mutation `reset` replaces the source's rows, as after rows were added or removed (a refresh: a new version and a new
+count); `replaceAt` replaces one row in place (a new version). `expect.model` reads `rows` as the query.

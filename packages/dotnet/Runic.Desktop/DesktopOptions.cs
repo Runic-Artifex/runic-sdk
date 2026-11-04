@@ -598,6 +598,31 @@ public enum DesktopWindowCapabilities
     /// The window can start native drags of files, text and URIs out of it (<see cref="DesktopWindow.StartDragAsync"/>).
     /// </summary>
     FileDrag = 1 << 15,
+
+    /// <summary>
+    /// The window reports whether it is active, minimized and visible (<see cref="DesktopWindow.Activity"/> and
+    /// <see cref="DesktopWindow.ActivityChanged"/>).
+    /// </summary>
+    Activity = 1 << 16,
+
+    /// <summary>
+    /// The window changes its light or dark appearance while it is open (<see cref="DesktopWindow.SetColorSchemeAsync"/>).
+    /// </summary>
+    ColorScheme = 1 << 17,
+
+    /// <summary>
+    /// <see cref="DesktopWindow.SetColorSchemeAsync"/> changes this window only. Without it, but with
+    /// <see cref="ColorScheme"/>, the scheme is shared: on Linux by every GTK window of the process, on Windows by the
+    /// windows that share a WebView2 profile (<see cref="DesktopWindowOptions.ProfilePath"/>), and a call changes all of
+    /// them.
+    /// </summary>
+    PerWindowColorScheme = 1 << 18,
+
+    /// <summary>
+    /// The window can be opened owned by another window and window-modal to it (<see cref="DesktopWindowOptions.Owner"/>
+    /// and <see cref="DesktopWindowOptions.Modality"/>), and can own windows itself.
+    /// </summary>
+    Ownership = 1 << 19,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
@@ -761,6 +786,41 @@ public sealed record DesktopWindowOptions
     /// </para>
     /// </remarks>
     public DesktopColorScheme ColorScheme { get; init; }
+
+    /// <summary>
+    /// Gets the window this window belongs to, or <see langword="null"/>, the default, for a window of its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An owned window stays above its owner and is not shown in the taskbar on its own: on Windows its owner is the
+    /// owner's <c>HWND</c>, on macOS it is a child window of the owner's <c>NSWindow</c> (a sheet when it is
+    /// window-modal), and on Linux it is <c>transient_for</c> the owner's GTK window. When the owner is a
+    /// <see cref="DesktopWindow"/> (<see cref="DesktopWindowOwner.FromWindow"/>), a close the owner's
+    /// <see cref="ConfirmCloseAsync"/> decides, and a quit, first ask the confirmation of the windows it owns, innermost
+    /// first; any other close of the owner closes them without asking. Hiding or showing the owner with
+    /// <see cref="DesktopWindow.SetVisibleAsync"/> hides or shows them with it.
+    /// </para>
+    /// <para>
+    /// Only the embedded window applies it, on a host whose capabilities include
+    /// <see cref="DesktopWindowCapabilities.Ownership"/>. An installed browser or another host ignores it and
+    /// <see cref="DesktopHost.Validate"/> reports <c>window-option-unsupported</c>. An owner that is not open, or that
+    /// is an installed browser, is ignored when the window opens and reported as <c>window-owner-unavailable</c>.
+    /// </para>
+    /// </remarks>
+    public DesktopWindowOwner? Owner { get; init; }
+
+    /// <summary>
+    /// Gets whether the window blocks its <see cref="Owner"/> while it is open. The default is
+    /// <see cref="DesktopWindowModality.None"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DesktopWindowModality.Window"/> needs an <see cref="Owner"/>. The owner then takes no input, and ignores
+    /// the user's close, while this window is shown: on Windows it is disabled (<c>EnableWindow</c>), on macOS the window
+    /// is a sheet of the owner (AppKit queues a second sheet of one owner until the first ends), and on Linux the
+    /// owner's GTK window is insensitive. A <see cref="Hidden"/> window blocks its owner from its first show. Other
+    /// windows of the application stay usable.
+    /// </remarks>
+    public DesktopWindowModality Modality { get; init; }
 
     /// <summary>Gets the path of the embedded window's icon file, or <see langword="null"/> for the default icon.</summary>
     public string? IconFile { get; init; }

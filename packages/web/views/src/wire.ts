@@ -319,3 +319,5 @@ export function textReference(value: unknown): TextReference {
 }
 
 export { decodeBigInt as bigint, decodeBoolean as boolean, decodeObject as object, decodeString as string };
+
+export { blob, blobRef, encodeBlob, encodeBlobRef } from "./blob-wire.js";

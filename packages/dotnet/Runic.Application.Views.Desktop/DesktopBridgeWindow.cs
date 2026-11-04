@@ -24,6 +24,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     private readonly AsyncServiceScope _scope;
     private readonly DesktopSurface _surface;
     private readonly DesktopBridgeTransport _transport;
+
+    // The window's Views transport, for tests of its dispatcher.
+    internal DesktopBridgeTransport Transport => _transport;
     private readonly WindowContentSession _content;
     private readonly IDisposable _connectionBinding;
     private IDisposable? _attachment;

@@ -90,6 +90,10 @@ A SPA without `desktop` exports `ssr` and `prerender` from `runicSpaPageOptions`
 the same way. A Desktop SPA exports neither: SvelteKit rejects page options with
 the hash router.
 
+
+Large lists work in SvelteKit pages through `@runic-artifex/svelte`'s `useQueryCollection`, which loads the rows a
+container shows from a .NET query collection and renders nothing on the server.
+
 ## Fields
 
 Pages bind inputs with `useField` from `@runic-artifex/svelte` and the generated
@@ -114,6 +118,32 @@ holds the member's validation messages; see the
 [`@runic-artifex/svelte` README](https://www.npmjs.com/package/@runic-artifex/svelte).
 This package's entry is the build-time adapter, which runs in Node, so it does not
 re-export the browser bindings.
+
+## View requests
+
+A ViewModel's `ViewRequest<T>`, such as a request to focus a field, is
+`client.requests.<name>` on the generated client. A page registers its handler
+in `$effect` with `@runic-artifex/svelte`, and returns the function `handle`
+returns, so the handler goes away with the page:
+
+```svelte
+<script lang="ts">
+  import { useView } from "@runic-artifex/svelte";
+  import type { EditorPageReference } from "$lib/generated/editor.js";
+
+  let { page }: { page: EditorPageReference } = $props();
+  const editor = useView(() => page);
+  let title: HTMLInputElement | undefined = $state();
+  $effect(() => editor.client?.requests.focus.handle(({ member }) => {
+    if (member === "title") title?.focus();
+  }));
+</script>
+
+<input bind:this={title}>
+```
+
+The handler runs once the page painted the state the request was raised with,
+and a request is never replayed; see [View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests).
 
 ## Connecting in `load`
 

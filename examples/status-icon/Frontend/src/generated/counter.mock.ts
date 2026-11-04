@@ -5,7 +5,7 @@ import type { MockBridge, MockTypedView, MockCommandHandler, MockTypedOperation,
 import type { CounterClient, CounterState } from "./counter.js";
 
 /** The state of a mock Counter: the client state, with content as `{ kind, id }` and command state optional. */
-export type CounterMockState = Omit<CounterState, "canIncrement" | "isIncrementExecuting"> & Partial<Pick<CounterState, "canIncrement" | "isIncrementExecuting">>;
+export type CounterMockState = Omit<CounterState, "canIncrement" | "isIncrementExecuting" | "canHide" | "isHideExecuting"> & Partial<Pick<CounterState, "canIncrement" | "isIncrementExecuting" | "canHide" | "isHideExecuting">>;
 
 export interface CounterMockDefinition {
   /** Presents the mock as content on route `content{id}`; omit it for the root route `counter`. */
@@ -13,30 +13,34 @@ export interface CounterMockDefinition {
   readonly state: CounterMockState;
   readonly commands?: {
     readonly increment?: MockCommandHandler<CounterMockState>;
+    readonly hide?: MockCommandHandler<CounterMockState>;
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
     readonly increment?: MockTypedOperationHandler<CounterMockState, void, void> | "manual";
+    readonly hide?: MockTypedOperationHandler<CounterMockState, void, void> | "manual";
   };
 }
 
 export interface CounterMock extends MockTypedView<CounterMockState, CounterClient, "counter"> {
-  readonly operations: { readonly increment: readonly MockTypedOperation<void, void>[]; };
+  readonly operations: { readonly increment: readonly MockTypedOperation<void, void>[]; readonly hide: readonly MockTypedOperation<void, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {
   kind: "counter",
   route: "counter",
-  contract: "StatusIconSample.CounterViewModel:94E13113B7E71AFC1789CFB0BAC9CDA9E2BEBAA621AD805BBF2A3ADEB3575981",
+  contract: "StatusIconSample.CounterViewModel:0C5139B243CE41368857833A409BBF0B4B357F0987010DE12C67036485AF437D",
   fields: {
     count: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },
   },
-  defaults: { canIncrement: true, isIncrementExecuting: false },
+  defaults: { canIncrement: true, isIncrementExecuting: false, canHide: true, isHideExecuting: false },
   commands: {
     increment: { member: "increment", available: "canIncrement" },
+    hide: { member: "hide", available: "canHide" },
   },
   operations: {
     increment: { member: "increment" },
+    hide: { member: "hide" },
   },
 };
 

@@ -282,6 +282,38 @@ already have. A `RunicViewDriver<T>` has:
   and the text `Texts` (`RunicTextChange`)), or `Failure`. `Revision` names the
   revision of each.
 
+### Several pages of one window
+
+Each driver sends its requests on the transport's test connection,
+`connection-1` of client `client-1`. `host.Root.ForConnection(connectionKey,
+clientKey)` (since 0.16) returns a driver of the same route on another
+connection, as a second browser tab of a multi-client CS-WebUI window. The
+drivers it returns from `View<T>`, and the operations it starts, use that
+connection too. A connection sends its `hello` with its first request, and
+`host.Transport.CloseConnection(key)` closes it as a page that leaves does.
+
+The window's `IRunicConnections` (see
+[Who is connected, and who called](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#who-is-connected-and-who-called))
+then lists the connections, and a command runs with its driver's connection as
+`Caller`. `host.Connections` reads the same list. A window opened with
+`RunicWindowTestHost.Create(services)` binds the `IRunicConnections` of
+`services`, such as the scope the ViewModel took it from:
+
+```csharp
+var bob = host.Root.ForConnection("bob-tab", clientKey: "bob");
+(await host.Root.ExecuteAsync(vm => vm.ClaimCommand)).ThrowIfFailed();
+(await bob.ExecuteAsync(vm => vm.ClaimCommand)).ThrowIfFailed();
+Assert.Equal(["connection-1", "bob-tab"], host.Connections.Current.Select(c => c.ConnectionKey));
+
+host.Transport.CloseConnection("bob-tab");
+await host.Content.ModelContext!.InvokeAsync(() => { }); // Disconnected runs in a model turn
+Assert.Single(host.Connections.Current);
+```
+
+`Connected` and `Disconnected` are raised in a turn of the window's model
+context: a command's reply comes after the `Connected` of its connection, and
+after `CloseConnection` a test awaits a model turn before it reads the list.
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host
@@ -392,9 +424,53 @@ retained entry, retirement of a parent's child regions, racing navigation and
 closing the window while the dialog asks; [ConfirmNavigationTests](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-view-first/Tests/ConfirmNavigationTests.cs)
 tests the dialog page on its own with `RunicTestNavigationEntry`.
 
+A [region collection](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+(since 0.16) reads as a `RunicRegionCollectionState`, and the drivers send the
+page's select and close requests by key:
+
+```csharp
+var tabs = (await host.Root.SnapshotAsync()).Regions(vm => vm.Documents);
+// tabs.Keys, tabs.Regions[i].Content (a PageReference or null), tabs.Selected
+var closed = await host.Root.CloseRegionAsync(vm => vm.Documents, tabs.Keys[0]);
+// closed.RegionOutcome: Committed, or Rejected with Guard when a page refused
+```
+
+`SelectRegionAsync` and `CloseRegionAsync` return a `RunicCallReply` with the
+state after the request; a key that no region has fails with `ErrorReason`
+`unresolved-key`. The test connection's `hello` lists `region-collections/1`
+for these requests; it adds a request kind only, so the other messages are
+those of the base protocol.
+
 ### Interactions
 
-A test answers a ReactiveUI `Interaction`, such as the question of a
+A test can act as the page: `RunicViewDriver.MountPresentation()` (since 0.16) opens a
+presentation that answers the ViewModel's questions and interactions with the
+handlers the test registers, and receives its view requests:
+
+```csharp
+using var page = await host.Root.MountPresentationAsync();
+page.Handle(vm => vm.ConfirmDiscard, request => request.Title == "Draft");           // a ViewQuestion<,>
+page.Handle<DiscardNoteRequest, bool>(vm => vm.ConfirmLeave, request => true);        // a ReactiveUI Interaction<,>
+(await host.Root.ExecuteAsync(vm => vm.DiscardCommand)).ThrowIfFailed();
+
+var focus = await page.NextViewRequestAsync();
+Assert.Equal(new FocusTarget("title"), focus.Input<FocusTarget>());
+Assert.Empty(page.TakeViewRequests(vm => vm.Focus));
+```
+
+The presentation handles every `ViewRequest<T>` of the ViewModel from the
+moment it opens, so the requests reach it by their delivery; one that
+`Mount()` opened handles none. `Handle` registers one more handler, as the
+generated client's `interactions.<name>.handle` does, and replaces an earlier
+one of the same member; `HandleAsync` takes an asynchronous answer, which is
+cancelled when .NET cancels the request. An answer that throws answers
+`failed`. `RunicViewRequest.Input<T>()` reads the input with System.Text.Json's
+web defaults; `InputJson` is the wire JSON. Pass `clientKey` and
+`connectionKey` to `MountPresentation` to act as one of several pages: a command sent
+on that connection reaches only its presentation. Dispose the presentation to
+stop answering, or call `Unmount()`.
+
+A test can also answer a ReactiveUI `Interaction`, such as the question of a
 `ReactiveLeaveConfirmation.WithInteraction` guard, with a .NET handler on the
 ViewModel. ReactiveUI asks the latest handler first, so a handler the test
 registers answers before a fallback registered in the ViewModel's constructor;
@@ -411,26 +487,171 @@ using var handler = detail.ConfirmDiscard.RegisterHandler(context =>
 });
 ```
 
-This is the supported test path for a question that a web View answers in the
-browser. The host does not run the generated TypeScript client, and a
-driver's `Mount()` opens a presentation without registering any
-interaction handler, so the question never waits for a browser: it goes to
-the .NET handlers. The test still covers everything the ViewModel decides: the
-guard, the prompt's input, and what each answer keeps or discards. With no
-handler that answers, the departure fails closed with ReactiveUI's
-`UnhandledInteractionException`, as in the application.
+A driver's `Mount()` opens a presentation without registering any
+interaction handler, so with only mounted presentations a question never waits
+for a browser: it goes to the .NET handlers. With no handler that answers, the
+departure fails closed with ReactiveUI's `UnhandledInteractionException`, as
+in the application.
 
 The browser's side is tested with the frontend: the generated typed mock's
 `interactions.<name>.request(input)` resolves with the answer of the handler
-the View registered with `interactions.<name>.handle(...)`; see the
+the View registered with `interactions.<name>.handle(...)`, and
+`requests.<name>.raise(input)` calls the View's `requests.<name>.handle(...)`
+handler; see the
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 Which View is asked for which departure, and the fallback when none is
 mounted, are covered by the SDK's own tests and described in
 [Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view).
 
-CommunityToolkit.Mvvm has no interaction type: a Toolkit guard asks in a
-dialog region, and a test answers it by executing the dialog's command through
-its driver, as in [Navigation](#navigation).
+A CommunityToolkit ViewModel asks the page with a `ViewQuestion<TInput, TOutput>`,
+which `Handle` answers as above; a Toolkit guard that asks in a dialog region
+is answered by executing the dialog's command through its driver, as in
+[Navigation](#navigation).
+
+### The Window's presentation
+
+A ViewModel that takes `IRunicWindowPresentation` presents, hides or minimizes
+its Window and reacts to its activity. `AddRunicTestWindowPresentation()`
+registers a recording `RunicTestWindowPresentation` per scope as the host of the
+scope's presentation, in place of the real one, so the application's own
+registration method runs unchanged. The ViewModel gets the same per-Window
+presentation an application does, with the fake as its host: a change reaches
+the ViewModel in a turn of the window's model context after the request that
+caused it completed, a handler that throws is logged (event 1130) without
+stopping the others, and once the scope is disposed requests report
+`OwnerClosed`. `host.Presentation` returns the fake;
+`host.SetWindowActivityAsync` changes its activity and waits until the
+ViewModel received it, and `host.FlushWindowPresentationAsync` waits for the
+changes a command's requests caused:
+
+```csharp
+await using var services = new ServiceCollection().AddInbox().AddRunicTestWindowPresentation().BuildServiceProvider();
+await using var scope = services.CreateAsyncScope();
+using var host = RunicWindowTestHost.Create<InboxViewModel>(scope.ServiceProvider);
+
+(await host.Root.ExecuteAsync(vm => vm.HideToTrayCommand)).ThrowIfFailed();
+Assert.Equal([new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.SetVisible) { Value = false }],
+    host.Presentation!.Requests);
+
+await host.SetWindowActivityAsync(new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true));
+Assert.Equal(TimeSpan.FromMinutes(1), host.ViewModel.PollInterval);
+```
+
+The fake behaves like a desktop window: `PresentAsync` shows, restores and
+activates it, `MinimizeAsync` minimizes it, `SetVisibleAsync(false)` hides it,
+and `SetVisibleAsync(true)` shows it again without restoring it, so a minimized
+window stays minimized, as Win32's `SW_SHOW` leaves it. `IsFullScreen`,
+`IsDocumentEdited` and `ColorScheme` follow their requests, and `PresentCount`
+counts the presentations. Set `Features` to test a host that cannot do
+something (the request then reports `BackendUnavailable` and changes nothing),
+and `Respond` to answer with another result, such as a desktop that refuses the
+focus.
+
+`AddRunicTestWindowPresentation(immediate: true)` makes the fake itself the
+scope's presentation, and a ViewModel built by hand can take a
+`new RunicTestWindowPresentation()`. Used directly, the fake raises its changes
+at once on the calling thread, inside the request, and keeps answering after
+the scope ends; a change its own handlers cause is still raised after them.
+
+### The Window's presentation
+
+A ViewModel that takes `IRunicWindowPresentation` presents, hides or minimizes
+its Window and reacts to its activity. `AddRunicTestWindowPresentation()`
+registers a recording `RunicTestWindowPresentation` per scope as the host of the
+scope's presentation, in place of the real one, so the application's own
+registration method runs unchanged. The ViewModel gets the same per-Window
+presentation an application does, with the fake as its host: a change reaches
+the ViewModel in a turn of the window's model context after the request that
+caused it completed, a handler that throws is logged (event 1130) without
+stopping the others, and once the scope is disposed requests report
+`OwnerClosed`. `host.Presentation` returns the fake;
+`host.SetWindowActivityAsync` changes its activity and waits until the
+ViewModel received it, and `host.FlushWindowPresentationAsync` waits for the
+changes a command's requests caused:
+
+```csharp
+await using var services = new ServiceCollection().AddInbox().AddRunicTestWindowPresentation().BuildServiceProvider();
+await using var scope = services.CreateAsyncScope();
+using var host = RunicWindowTestHost.Create<InboxViewModel>(scope.ServiceProvider);
+
+(await host.Root.ExecuteAsync(vm => vm.HideToTrayCommand)).ThrowIfFailed();
+Assert.Equal([new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.SetVisible) { Value = false }],
+    host.Presentation!.Requests);
+
+await host.SetWindowActivityAsync(new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true));
+Assert.Equal(TimeSpan.FromMinutes(1), host.ViewModel.PollInterval);
+```
+
+The fake behaves like a desktop window: `PresentAsync` shows, restores and
+activates it, `MinimizeAsync` minimizes it, `SetVisibleAsync(false)` hides it,
+and `SetVisibleAsync(true)` shows it again without restoring it, so a minimized
+window stays minimized, as Win32's `SW_SHOW` leaves it. `IsFullScreen`,
+`IsDocumentEdited` and `ColorScheme` follow their requests, and `PresentCount`
+counts the presentations. Set `Features` to test a host that cannot do
+something (the request then reports `BackendUnavailable` and changes nothing),
+and `Respond` to answer with another result, such as a desktop that refuses the
+focus.
+
+`AddRunicTestWindowPresentation(immediate: true)` makes the fake itself the
+scope's presentation, and a ViewModel built by hand can take a
+`new RunicTestWindowPresentation()`. Used directly, the fake raises its changes
+at once on the calling thread, inside the request, and keeps answering after
+the scope ends; a change its own handlers cause is still raised after them.
+
+### Windows and their close decision
+
+`RunicWindowTestHost.Create` drives one ViewModel. To test a Window, its close
+guard and the Windows its ViewModels open, open it with
+`RunicWindowTestHost.CreateWindowAsync<TWindow>(services)` (since 0.16). It
+opens a real `RunicWindow` headless, as a host does: in a new scope of the
+application's root services, with its parameter, result and close guard, and with
+the application's own `IRunicWindowService` (`AddRunicWindowService()`), so
+`FindOrOpenAsync`, `ActivateAsync` and `OpenForResultAsync` open test Windows
+too.
+
+```csharp
+await using var services = new ServiceCollection().AddMyApplication().BuildServiceProvider();
+await using var shell = await RunicWindowTestHost.CreateWindowAsync<ShellWindow>(services);
+
+// A guarded editor keeps unsaved changes.
+(await shell.Root<ShellViewModel>().ExecuteAsync(vm => vm.OpenDocumentCommand, "\"notes.md\"")).ThrowIfFailed();
+var editor = shell.OpenedWindows.Single();
+Assert.Equal("notes.md", editor.Key);
+Assert.False(await editor.RequestUserCloseAsync());
+
+// A modal dialog that returns a value.
+var choosing = shell.Root<ShellViewModel>().ExecuteAsync(vm => vm.ChooseAccountCommand);
+var dialog = await shell.WaitForOpenedWindowAsync<AccountWindow>();
+Assert.True(shell.IsBlocked);
+(await dialog.Root<AccountViewModel>().ExecuteAsync(vm => vm.ChooseCommand, "\"Savings\"")).ThrowIfFailed();
+(await choosing).ThrowIfFailed();
+```
+
+- `RequestUserCloseAsync()` is the user's close button: a Window with
+  `GuardClose` asks `CanCloseAsync`, and the result tells whether it closed. It
+  shares one decision with `IRunicWindow.RequestCloseAsync`, as on Runic Desktop.
+- `OpenedWindows` lists the Windows opened after this one, including closed
+  ones, each with `Window`, `ViewModel`, `Parameter`, `Key`, `Owner`,
+  `Modality`, `IsOpen` and its `Root<TViewModel>()` driver;
+  `WaitForOpenedWindowAsync<TWindow>()` waits for one, for example a dialog
+  whose command is still waiting for its result. `Host<TViewModel>()` is the
+  Window's `RunicWindowTestHost<TViewModel>`.
+- Each Window has a `RunicTestWindowPresentation` (`Presentation`), the one its
+  scope registers or a new one, so activation shows as `PresentCount`.
+- As on Runic Desktop: an owned Window closes when its owner closes, hides and
+  shows with its owner's `SetVisibleAsync`, and an owner's close asks its owned
+  Windows' guards first, innermost first. `IsBlocked` is `true` while a
+  window-modal Window it owns is open. The test host does not pass where the
+  desktop cannot: on a blocked Window `RequestUserCloseAsync()` and its page's
+  commands, operation starts, sets and writes throw `InvalidOperationException`
+  (snapshots still read it); the application's `RequestCloseAsync` still works.
+- `DisposeAsync` of the Window `CreateWindowAsync` returned closes the whole test
+  application; that of an entry of `OpenedWindows` closes only that Window and
+  the Windows it owns.
+- All Windows share one clock (a `FakeTimeProvider` unless the options name
+  another) and one id source. Disposing the result closes and releases every
+  Window. A command that closes its own Window is cancelled by the close, as on
+  every host, so don't assert its reply.
 
 ### Collections and frames
 
@@ -457,6 +678,88 @@ tracker.Verify();                                          // the frames match a
 Publications are delivered off the calling thread, so waits use real time,
 `RunicWindowTestHostOptions.PublicationTimeout` (five seconds by default). A route's
 frames go to its tracker or to `TakePublications`, not both.
+
+### Platform services
+
+A ViewModel that shows a file dialog, a message box or a context menu, or uses
+the clipboard, takes `IFileDialogs`, `IDesktopMessageBoxes`, `IDesktopClipboard`
+or `IWindowPlatformServices` in its constructor. `services.AddRunicTestPlatform()`
+registers scripted, recording fakes for them: one `RunicTestPlatform` per window
+scope and one `RunicTestNotifications` for the application. It replaces the
+registrations of `AddRunicPlatformServices()` whether it runs before or after
+it. `RunicWindowTestHost.Create` returns the scope's platform as `Platform`:
+
+```csharp
+services.AddRunicTestPlatform();
+await using var scope = provider.CreateAsyncScope();
+using var host = RunicWindowTestHost.Create<EditorViewModel>(scope.ServiceProvider);
+
+host.Platform!.FileDialogs.EnqueueOpen("notes.txt", "Hello");
+var saved = host.Platform.FileDialogs.EnqueueSave("notes-copy.txt");
+host.Platform.MessageBoxes.EnqueueAnswer("save");
+
+(await host.Root.ExecuteAsync(vm => vm.OpenCommand)).ThrowIfFailed();
+(await host.Root.ExecuteAsync(vm => vm.SaveAsCommand)).ThrowIfFailed();
+
+Assert.Equal("Hello", saved.ReadAllText());
+Assert.Equal("Import notes", host.Platform.FileDialogs.Calls[0].OpenOptions?.Title);
+```
+
+Each fake takes the next queued response and records the call:
+
+- **File dialogs.** `EnqueueOpen(file)` answers an open-file or open-document
+  dialog, `EnqueueOpenFiles(...)` an open-files dialog, `EnqueueSave(name)` a
+  save dialog, `EnqueueOpenDirectory(path)` a directory dialog, and
+  `EnqueueDismissed()`, `EnqueueUnavailable(reason)` and `EnqueueFailed(code)` any
+  dialog. A dialog with an empty queue is dismissed; a response for another kind
+  of dialog throws `InvalidOperationException` from the dialog call. `Calls`
+  lists each dialog with its options and outcome.
+- **Files and leases.** A `RunicTestFile` is in memory. Its leases follow the
+  real rules: a read lease is consumed once, a save lease has one open write
+  transaction at a time (`ResourceBusy` otherwise), a commit happens once, and
+  it reports `NotCommitted(Conflict)` when the file no longer holds what the
+  application last saw. `file.Write(...)` or `file.Delete()` acts as another
+  writer; `file.EnqueueCommitResult(...)` scripts a failed or uncertain commit,
+  and `EnqueueCommitResult(new FileCommitResult.CommitUnknown(code), applied: true)`
+  an uncertain one whose write landed, as a real lease can report;
+  `file.WriteUnavailable` acts as a read-only grant. `ReadAllText()`,
+  `ReadAllBytes()` and `CommittedWrites` show what the application saved.
+- **Message boxes.** `EnqueueAnswer(buttonId)` chooses a button. An unscripted
+  box is answered as Esc would be: with its cancel button, or `null`.
+- **Context menus.** `ContextMenus.EnqueueChoice(commandId)` chooses an item of
+  `ShowContextMenuAsync`; a disabled item throws, since the user could not
+  choose it. An unscripted menu is dismissed.
+- **Clipboard.** `Clipboard.SetText(...)` or `SetContent(...)` is what another
+  application copied; `Content` and `Writes` are what the application copied.
+  Writes, limits and watches follow the real clipboard.
+- **Notifications.** `Shown`, `Current` and `Removed` record the application's
+  notifications, and `Activate(id, actionId)` raises `Activated`.
+- **Launcher and announcements.** `Launches` and `Announcements` record files and
+  URIs handed to native applications and screen-reader announcements.
+
+The fakes check their arguments with the real services' rules. Disposing the host
+closes the platform, as closing a window does: every service then reports
+`OwnerClosed`, file leases are released and clipboard watches end. Monitors, the
+menu bar, taskbar badges and progress, and drags report `BackendUnavailable`. A
+ViewModel built by the test can take a `new RunicTestPlatform()` directly.
+
+### Query collections
+
+A driver reads a `RunicQueryCollection` as a page does: `QueryRowsAsync(vm => vm.Rows, start, count)` returns the
+range's keys and rows (`connectionKey:` reads it as another page), `SetQueryAsync(vm => vm.Rows, query)` changes the
+query and returns the state after it, and `IndexOfAsync(vm => vm.Rows, key)` finds a row. `RunicTestRowSource<TRow, TKey>`
+serves a list through `RunicQueryFields`, waits `Latency` on the host's clock, and records `Loads`, `RowsLoaded`,
+`Counts`, `Searches` and `MaximumConcurrency`, so a test can assert what scrolling and sorting loaded:
+
+```csharp
+var source = new RunicTestRowSource<Order, int>(orders, fields, order => order.Id);
+using var host = RunicWindowTestHost.Create(services, new OrdersViewModel(source, context));
+var rows = await host.Root.QueryRowsAsync(vm => vm.Orders, 500, 40);
+Assert.Equal(1, source.Loads.Count);
+(await host.Root.SetQueryAsync(vm => vm.Orders, new RunicQuery([new RunicSortKey("amount", Descending: true)]))).ThrowIfFailed();
+```
+
+The test connection's `hello` lists `query-collections/1`.
 
 ### Lower level
 
@@ -613,6 +916,28 @@ and that a slow reply does not hold up the next request.
   the window holds, not only navigation entries. It is a test-only view of window
   internals, which `WindowContentSession` does not expose.
 
+## Blobs and uploads
+
+A window of `RunicWindowTestHost` serves its blobs below `http://runic.test/`
+(Views feature `blobs/1`). `ReadBlobAsync(url)` returns what the host serves
+for a blob URL of the state or a result, as `RunicServedBlob`: status, headers
+and content, with `range` for a byte range and `head` for `HEAD`. A replaced or
+released URL answers 404, and `ServedBlobCount` counts the URLs the window
+still serves. `UploadAsync(bytes, fileName, contentType)` simulates a page's
+upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes`)
+and returns the `RunicUpload` that a command input takes;
+`PendingUploadCount` counts the uploads no command claimed.
+
+```csharp
+var upload = await host.UploadAsync("hello"u8.ToArray(), "notes.txt", "text/plain");
+await host.Root.ExecuteAsync(vm => vm.AttachCommand, upload);
+var avatar = host.Root.Snapshot().Get(vm => vm.Avatar).GetProperty("url").GetString()!;
+var served = await host.ReadBlobAsync(avatar);   // served.StatusCode, served.ContentType, served.Content
+```
+
+A ViewModel test without a window uses `RunicUpload.FromBytes` and
+`RunicBlob.FromBytes`, and reads a blob with `RunicBlob.OpenReadAsync`.
+
 ## The whole application in a browser
 
 `RunicWindowTestHost` runs the ViewModels without a page. To test the real page
@@ -654,6 +979,24 @@ or environment variables to the `ProcessStartInfo` before starting it;
 arguments, working directory and environment and leaves the `ProcessStartInfo`
 unchanged, so it can start the application again.
 
+An application that opens more than one Window writes a URL for each.
+`Urls` lists those written so far, in the order the Windows opened, and
+`WaitForWindowUrlAsync` waits for one, by its position or by its Window type:
+
+```csharp
+var settings = await app.WaitForWindowUrlAsync("SettingsWindow", TimeSpan.FromSeconds(10));
+var second = await app.WaitForWindowUrlAsync(1, TimeSpan.FromSeconds(10));
+```
+
+The type is the Window class's full name or its name without the namespace,
+as the host names it on its `RUNIC_APPLICATION_WINDOW=` line from 0.16 on.
+A closed generic Window type has no spaces there: its generic definition's
+name with its arguments' names without namespaces, such as
+``DocumentWindow`1[Report]``.
+A wait that runs out throws `TimeoutException` and leaves the application
+running. A wait on an application that has exited throws
+`InvalidOperationException`.
+
 `StopAsync` writes a line to standard input, which ends serving on every
 platform, and returns the exit code. When the application has not exited within
 its `timeout` (30 seconds), its process tree is killed and `TimeoutException`
@@ -682,3 +1025,68 @@ browser. A test in TypeScript can follow the same protocol, described in the
 [Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 section: start the application with `RUNIC_APPLICATION_SERVE_ONLY=1`, read the
 `RUNIC_APPLICATION_URL=` line, and write a line to its standard input to stop it.
+
+### Platform services in a browser test
+
+The application in a serve-only browser test runs in its own process, so a test
+scripts its platform fakes through files. The application opts in from a test
+build: call `services.AddRunicServeOnlyTestPlatform()` after its own
+`AddRunicPlatformServices()`. It does nothing unless the process runs with both
+`RUNIC_APPLICATION_SERVE_ONLY=1` and `RUNIC_TEST_PLATFORM_DIRECTORY` set. Then
+it registers the fakes only when the build opted in as well: the application's
+entry assembly must carry `[assembly: RunicServeOnlyTestPlatform]`, or the call
+throws `InvalidOperationException`. It also throws when the directory is
+missing or, outside Windows, when users other than its owner can write to it
+(`RunicServeOnlyTestPlatform.Create()` makes it `0700`). When the fakes are
+active, the first window logs warning 1158 `ServeOnlyTestPlatformActive` in the
+category `Runic.Application.Testing`. Production builds must not reference this
+package, so keep the call, the attribute and the reference behind a test-only
+build, for example:
+
+```xml
+<ItemGroup Condition="'$(Configuration)' == 'E2E'">
+  <PackageReference Include="Runic.Application.Testing" />
+</ItemGroup>
+<PropertyGroup Condition="'$(Configuration)' == 'E2E'">
+  <DefineConstants>$(DefineConstants);RUNIC_E2E</DefineConstants>
+</PropertyGroup>
+<ItemGroup Condition="'$(Configuration)' == 'E2E'">
+  <!-- The build-time opt-in that AddRunicServeOnlyTestPlatform checks at run time. -->
+  <AssemblyAttribute Include="Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute" />
+</ItemGroup>
+```
+
+```csharp
+services.AddRunicPlatformServices();
+#if RUNIC_E2E
+services.AddRunicServeOnlyTestPlatform();
+#endif
+```
+
+The test creates a `RunicServeOnlyTestPlatform`, which owns a temporary directory,
+points the application at it and queues responses before the page action:
+
+```csharp
+using var platform = RunicServeOnlyTestPlatform.Create();
+var start = platform.Configure(RunicServeOnlyApplication.CreateStartInfo(appPath));
+await using var app = await RunicServeOnlyApplication.StartAsync(start);
+await page.GotoAsync(app.Url.ToString());
+
+platform.EnqueueSaveFile("report.csv");
+await page.GetByRole(AriaRole.Button, new() { Name = "Export" }).ClickAsync();
+var commit = await platform.WaitForEventAsync(e => e.Operation == "commit");
+Assert.Equal("a,b\n", commit.GetText("content"));
+```
+
+`EnqueueOpenFile`, `EnqueueSaveFile`, `EnqueueOpenDirectory`,
+`EnqueueFileDialogDismissed`, `EnqueueMessageBoxAnswer`,
+`EnqueueContextMenuChoice` and `SetClipboard` script the fakes. `ReadEvents()`
+and `WaitForEventAsync(match)` return each call the application made, such as
+`fileDialogs.saveFile` with its `title`, `fileDialogs.commit` with the file and
+its base64 `content`, `clipboard.write`, `messageBoxes.show` with the `button`
+chosen and `notifications.show`. Every window of the application shares one
+platform, since the script is one queue; closing a window does not close it.
+A scripted line that the application cannot apply, such as malformed JSON or an
+unknown service, does not fail the application's call: it is recorded as a
+`script.error` event with the `message`, and `WaitForEventAsync` then throws
+`InvalidOperationException` with that message.

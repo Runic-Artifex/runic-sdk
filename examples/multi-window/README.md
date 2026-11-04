@@ -1,10 +1,12 @@
 # Multi-window project
 
-Several Windows on one project, with ReactiveUI ViewModels on Runic Desktop. A command opens another Window, a rename in one Window shows in every
-Window, and the app's theme setting is saved in a settings file and can follow
-the desktop's color scheme. The status line and the title's validation message
-are shown in English or German, and switching the language changes them without
-a call per string.
+Several Windows on one project, with ReactiveUI ViewModels on Runic Desktop. A command opens another Window, a
+document opens in a Window of its own or brings the open one to the front, a window-modal "choose account" dialog
+returns the account chosen, a rename in one Window shows in every
+Window, and the app's theme setting is saved in a settings file, switches every
+Window between light and dark at once, and can follow the desktop's color scheme.
+The status line and the title's validation message are shown in English or
+German, and switching the language changes them without a call per string.
 
 | File | What it does |
 | --- | --- |
@@ -12,10 +14,13 @@ a call per string.
 | [`ProjectViewModel.cs`](ProjectViewModel.cs) | A `ReactiveObject` whose `ReactiveCommand`s take no scheduler. Opens a Window with `IRunicWindowService`, applies renames from other Windows with `TryPost`, and watches `IDesktopSettings`. |
 | [`ProjectText.cs`](ProjectText.cs) | The status line and validation message as Runic Translations text references (`TranslationReference`): a key, typed arguments and an English fallback. |
 | [`Frontend/src/translations.ts`](Frontend/src/translations.ts) | The page's English and German messages for those keys, passed to `configureTranslatedText`. |
+| [`DocumentWindow.cs`](DocumentWindow.cs) | A document Window. `ProjectViewModel.OpenDocumentCommand` opens it with `IRunicWindowService.FindOrOpenAsync`, keyed by its path, so a second request focuses it. |
+| [`AccountWindow.cs`](AccountWindow.cs) | The "choose account" dialog. `ProjectViewModel.ChooseAccountCommand` opens it with `OpenForResultAsync`, owned by the project Window and window-modal to it; its ViewModel completes `IRunicWindowResult<string>`, and Cancel returns no result. |
 | [`ProjectService.cs`](ProjectService.cs) | The shared, thread-safe project title, with an event after each rename. |
-| [`SettingsStore.cs`](SettingsStore.cs) | The app's own settings, in a JSON file in the per-user application data folder, written atomically. |
-| [`Program.cs`](Program.cs) | Opens the first Window; the application ends when it closes. |
+| [`SettingsStore.cs`](SettingsStore.cs) | The app's own settings, in a JSON file in the per-user application data folder, written atomically, with an event after each save. |
+| [`Program.cs`](Program.cs) | Applies the saved theme with `DesktopHost.SetColorSchemeAsync`, and each new choice as it is saved, then opens the first Window; the application ends when it closes. |
 | [`Tests/ProjectWindowTests.cs`](Tests/ProjectWindowTests.cs) | Drives two Windows without a browser, with a fake window service, a temporary settings file and fixed desktop preferences. |
+| [`Tests/DocumentAndAccountWindowTests.cs`](Tests/DocumentAndAccountWindowTests.cs) | Opens the project Window with `RunicWindowTestHost.CreateWindowAsync`, so the real window service opens the document and account Windows headless: one Window per document, and a dialog that blocks the project and returns its choice. |
 
 Each Window opens in its own DI scope, so it has its own ViewModel and model
 context. Two Windows can run commands at the same moment on two threads, so

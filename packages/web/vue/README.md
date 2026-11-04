@@ -296,6 +296,70 @@ markup (including any `role`) is yours:
 </ViewOutlet>
 ```
 
+### Region collections
+
+A .NET `[RunicRegionCollection]` member, such as `state.documents`, lists
+regions that each keep their own back stack. `<RegionOutlets>` renders a
+`ViewOutlet` for each region, keyed by the region's key, inside a
+`<div data-region-key>`. The default `mode="keep-mounted"` keeps every region mounted
+and sets `hidden` and an inline `display: none` on all but the selected one, so
+a tab keeps its component, scroll position and unsent input. Author CSS cannot
+show a hidden panel without `!important`. `mode="selected"` renders only the
+selected region. The default slot renders while there is no region, and the
+`missing` slot is passed to each outlet. A region with `content: null` renders
+nothing.
+
+The package has no tab bar. Build one with `regionEntries` and the generated
+`selectDocuments(key)` and `closeDocuments(key)`. The `panelProps(entry)` prop returns attributes for each region's wrapper,
+such as `id`, `role="tabpanel"` and `aria-labelledby`, so each tab can name its
+panel in `aria-controls`. `hidden` and `data-region-key` stay controlled by the
+outlet, and a returned `style` is merged with its `display: none`.
+
+```vue
+<script setup lang="ts">
+const tabId = (key: string) => `document-tab-${key}`;
+const panelId = (key: string) => `document-panel-${key}`;
+async function close(key: string) {
+  if ((await client.value?.closeDocuments(key))?.kind !== "Committed") return;
+  await nextTick();
+  const selected = selectedRegion(state.value?.documents);
+  if (selected) document.getElementById(tabId(selected.key))?.focus();
+}
+</script>
+
+<template>
+  <div role="tablist">
+    <span v-for="tab in regionEntries(state?.documents)" :key="tab.key">
+      <button :id="tabId(tab.key)" role="tab" :aria-selected="tab.selected" :aria-controls="panelId(tab.key)"
+        @click="client?.selectDocuments(tab.key)">
+        {{ tab.content?.kind ?? "Empty" }}
+      </button>
+      <button aria-label="Close" @click="close(tab.key)">×</button>
+    </span>
+  </div>
+  <RegionOutlets :collection="state?.documents" :registry="documentPages"
+    :panel-props="tab => ({ id: panelId(tab.key), role: 'tabpanel', 'aria-labelledby': tabId(tab.key) })">
+    <p>No open documents</p>
+  </RegionOutlets>
+</template>
+```
+
+`selected` changes only when a switch or close commits. A departure guard can
+keep the current tab, so highlight `selected` and do not move the highlight
+before the request settles. `select…` and `close…` resolve to the .NET
+`NavigationOutcome`, such as `{ kind: "Rejected", rejection: "Guard" }`.
+
+Closing the selected tab removes its button, and the next tab becomes selected
+when the close commits. After `closeDocuments` resolves with `kind: "Committed"`,
+move focus to the button of the new selected tab, as `close` above does.
+
+In both modes the region collection keeps presenting every region's content,
+so the pages of hidden tabs stay live and still receive state. `"selected"`
+mode only unmounts the components of the regions that are not selected.
+
+`regionEntries`, `selectedRegion` and the region types are re-exported from
+`@runic-artifex/views`.
+
 ## `useCommand(command)`
 
 Returns `{ run, pending, error, failure, reset }`, with `pending`, `error` and
@@ -574,6 +638,44 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
+## View requests
+
+A `ViewRequest<T>` property of the ViewModel asks the View for a one-way
+presentation action, such as focusing a field or showing a toast, and is
+`client.requests.<name>` on the generated client. Register the page's
+handler in `watchEffect`: `handle((input, { signal }) => …)` returns the function
+that removes it, so pass that to `onCleanup`, and Vue removes the handler when
+the client changes or the component unmounts:
+
+```vue
+<script setup lang="ts">
+import { useTemplateRef, watchEffect } from "vue";
+import { useView } from "@runic-artifex/vue";
+import type { EditPageReference } from "./generated/edit.js";
+
+const props = defineProps<{ page: EditPageReference }>();
+const { client } = useView(() => props.page);
+const name = useTemplateRef<HTMLInputElement>("name");
+watchEffect(onCleanup => {
+  const remove = client.value?.requests.focus.handle(({ member }) => {
+    if (member === "name") name.value?.focus();
+  });
+  if (remove) onCleanup(remove);
+});
+</script>
+
+<template><input ref="name"></template>
+```
+
+`input` is typed from the request's `ViewRequest<T>`. The handler runs once
+the page painted the state the request was raised with, so the field of that
+state is rendered; `signal` aborts when the handler is replaced or removed, the
+client is disposed or the connection is lost. A request is never replayed: one
+raised before the effect ran, or while the page is disconnected, is not
+delivered later. See [View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests) for the rules, and in a frontend
+test raise one with the generated mock's `requests.<name>.raise(input)` (the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing)).
+
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.
@@ -598,3 +700,26 @@ watch(() => [viewport.value.start, viewport.value.size] as const, ([start, size]
   </div>
 </template>
 ```
+
+## `useQueryCollection(collection, options)`
+
+Follows a scroll container for a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it
+loads the rows the container shows, with placeholders until they arrive, and lays them out with variable heights.
+Pass the collection or a getter (`() => client.value?.queries.rows`) and the options. `viewport` is a ref of the
+`QueryViewport` (`items` with `top` and `size`, `totalSize`, `total`, `query`, `loading`, `error`); bind `attach` to the
+container and `measure` to each row, and call `scrollToKey`, `scrollToIndex`, `setQuery` or `retry`:
+
+```vue
+<script setup lang="ts">
+const list = useQueryCollection(() => client.value?.queries.rows, { estimateSize: 32 });
+</script>
+<template>
+  <div :ref="list.attach" style="height: 480px; overflow: auto">
+    <div :style="{ height: `${list.viewport.value.totalSize}px`, position: 'relative' }">
+      <div v-for="item in list.viewport.value.items" :key="item.key ?? `p${item.index}`" :ref="el => list.measure(el, item.index)"
+        :style="{ position: 'absolute', top: `${item.top}px`, width: '100%' }">{{ item.row?.label ?? "…" }}</div>
+    </div>
+  </div>
+</template>
+```
+

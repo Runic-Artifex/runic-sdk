@@ -100,7 +100,11 @@ public sealed class DesktopHost : IAsyncDisposable
     /// and when the path arrives as an open request, reopen the document with
     /// <c>IDesktopFileBookmarks.OpenDocumentAsync</c>.
     /// </para>
-    /// <para>Windows and Linux: the call checks its argument and does nothing.</para>
+    /// <para>
+    /// Windows: <c>SHAddToRecentDocs</c>, which also fills the application's Jump List. Linux: the freedesktop.org
+    /// <c>recently-used.xbel</c> that GTK and KDE read. A failure there is not reported; use
+    /// <see cref="IDesktopRecentDocuments"/> (<c>DesktopPlatformServices.CreateRecentDocuments</c> of Runic Windows) for the result.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="path"/> is empty, not fully qualified, or contains a NUL character.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is <see langword="null"/>.</exception>
@@ -112,7 +116,9 @@ public sealed class DesktopHost : IAsyncDisposable
         ValidateDocumentPath(path, nameof(path));
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
-        return OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken) : ValueTask.CompletedTask;
+        return OperatingSystem.IsMacOS()
+            ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken)
+            : IgnoreResultAsync(RecentDocuments.Shared.AddAsync(path, cancellationToken));
     }
 
     /// <summary>Empties the application's recent documents, as Clear Menu in Open Recent does.</summary>
@@ -120,7 +126,8 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <returns>A task that completes when the list is empty.</returns>
     /// <remarks>
     /// On macOS this calls <c>NSDocumentController.clearRecentDocuments:</c> on the main thread, which
-    /// <see cref="DesktopEventLoop"/> serves. Windows and Linux: does nothing.
+    /// <see cref="DesktopEventLoop"/> serves. Windows: removes the application's Jump List destinations. Linux: removes the
+    /// application from <c>recently-used.xbel</c>, and the documents only it had.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
@@ -128,8 +135,13 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
-        return OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.ClearRecentDocumentsAsync(cancellationToken) : ValueTask.CompletedTask;
+        return OperatingSystem.IsMacOS()
+            ? MacOsWkWebViewHost.ClearRecentDocumentsAsync(cancellationToken)
+            : IgnoreResultAsync(RecentDocuments.Shared.ClearAsync(cancellationToken));
     }
+
+    // Windows and Linux report a failure as a result (IDesktopRecentDocuments); these methods keep returning nothing.
+    private static async ValueTask IgnoreResultAsync(ValueTask<PlatformResult<PlatformUnit>> request) => _ = await request.ConfigureAwait(false);
 
     // A document's path for the platform's document conventions: fully qualified, without NUL.
     internal static void ValidateDocumentPath(string path, string parameterName)
@@ -184,6 +196,82 @@ public sealed class DesktopHost : IAsyncDisposable
     }
 
     private IReadOnlyList<string> _spellCheckingLanguages;
+
+    private int _colorScheme;
+
+    /// <summary>
+    /// Gets the application's light or dark appearance, from the last <see cref="SetColorSchemeAsync"/>;
+    /// <see cref="DesktopColorScheme.NoPreference"/>, the default, follows the system.
+    /// </summary>
+    /// <remarks>A window with its own scheme (<see cref="DesktopWindow.ColorScheme"/>) shows that one instead.</remarks>
+    public DesktopColorScheme ColorScheme => (DesktopColorScheme)Volatile.Read(ref _colorScheme);
+
+    /// <summary>
+    /// Switches the application between light and dark while it runs: every open embedded window without a scheme of its
+    /// own, and the windows that open later without one, show <paramref name="colorScheme"/>.
+    /// </summary>
+    /// <param name="colorScheme">
+    /// <see cref="DesktopColorScheme.Light"/> or <see cref="DesktopColorScheme.Dark"/>, or
+    /// <see cref="DesktopColorScheme.NoPreference"/> to follow the system again.
+    /// </param>
+    /// <param name="cancellationToken">Cancels waiting for the windows' native threads.</param>
+    /// <returns>A task that completes when every open window shows the scheme.</returns>
+    /// <remarks>
+    /// <para>
+    /// A window shows its own <see cref="DesktopWindowOptions.ColorScheme"/>, or the one of its last
+    /// <see cref="DesktopWindow.SetColorSchemeAsync"/>, when that is not <see cref="DesktopColorScheme.NoPreference"/>;
+    /// otherwise it shows this one. The page's <c>prefers-color-scheme</c> and form controls follow, as does the window's
+    /// frame: on Windows the WebView2 profile's preferred color scheme and the title bar's dark mode; on macOS
+    /// <c>NSApp.appearance</c>, which menus, alerts and panels follow too, and each window's appearance; on Linux GTK's
+    /// <c>gtk-application-prefer-dark-theme</c> setting, and the libadwaita style manager when the application has
+    /// initialized libadwaita.
+    /// </para>
+    /// <para>
+    /// What stays as it was: installed browsers follow their own theme, and on Linux a GTK theme without a dark variant,
+    /// or a WebKitGTK that reads only the GTK theme's name, keeps its appearance. With
+    /// <see cref="DesktopHostOptions.WindowHostFactory"/>, each window applies the scheme when its host implements
+    /// <see cref="IDesktopColorSchemeWindowHost"/>, as the GTK 4 host does.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="colorScheme"/> is not a defined value.</exception>
+    /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (!Enum.IsDefined(colorScheme)) throw new ArgumentOutOfRangeException(nameof(colorScheme));
+        cancellationToken.ThrowIfCancellationRequested();
+        Volatile.Write(ref _colorScheme, (int)colorScheme);
+        if (OperatingSystem.IsMacOS()) await Internal.MacOsWkWebViewHost.SetApplicationColorSchemeAsync(colorScheme, cancellationToken).ConfigureAwait(false);
+        var surfaces = _surfaces.Values.ToArray();
+        // The windows whose scheme is their own first; then the shared schemes, so the application's is applied last
+        // and wins over any window's own, whatever order the windows come in.
+        foreach (var surface in surfaces)
+        {
+            await surface.ApplyApplicationColorSchemeAsync(shared: false, cancellationToken).ConfigureAwait(false);
+        }
+        foreach (var surface in surfaces)
+        {
+            if (await surface.ApplyApplicationColorSchemeAsync(shared: true, cancellationToken).ConfigureAwait(false) is { } scope)
+                SharedColorSchemeApplied(scope, colorScheme);
+        }
+    }
+
+    // The last scheme applied to each shared scope (DesktopWindow.ColorSchemeScope): GTK's process, a WebView2 profile.
+    private readonly Dictionary<string, DesktopColorScheme> _sharedColorSchemes = new(StringComparer.Ordinal);
+
+    internal DesktopColorScheme SharedColorScheme(string scope)
+    {
+        lock (_sharedColorSchemes) return _sharedColorSchemes.GetValueOrDefault(scope);
+    }
+
+    // A scheme was applied to a shared scope: every open window that shares it shows it now.
+    internal void SharedColorSchemeApplied(string scope, DesktopColorScheme colorScheme)
+    {
+        lock (_sharedColorSchemes) _sharedColorSchemes[scope] = colorScheme;
+        foreach (var surface in _surfaces.Values.ToArray())
+            if (surface.CurrentWindow is { ColorSchemeScope: var windowScope } window && windowScope == scope) window.ShowsColorScheme(colorScheme);
+    }
 
     /// <summary>
     /// Gets the languages the embedded windows' spell checker checks: <see cref="DesktopHostOptions.SpellCheckingLanguages"/>,
@@ -620,6 +708,7 @@ public sealed class DesktopHost : IAsyncDisposable
     // Asks each window's close guard in turn; a window whose guard agrees closes. False when one keeps its window.
     internal async Task<bool> RequestWindowsCloseAsync()
     {
+        // Owned windows are asked through their owners, innermost first, as a dialog is answered before the window it blocks.
         foreach (var surface in _surfaces.Values.ToArray())
         {
             if (IsShutdownRequested) return true;

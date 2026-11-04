@@ -25,9 +25,11 @@ sealed class DesktopWireClient : IDisposable
         _token = token;
     }
 
-    public static async Task<DesktopWireClient> ConnectAsync(DesktopSurface surface, CancellationToken cancellationToken)
+    // With cookies, the client is the page whose document set them: the bootstrap and the WebSocket carry its cookie.
+    public static async Task<DesktopWireClient> ConnectAsync(DesktopSurface surface, CancellationToken cancellationToken,
+        System.Net.CookieContainer? cookies = null)
     {
-        using var http = new HttpClient();
+        using var http = cookies is null ? new HttpClient() : new HttpClient(new HttpClientHandler { CookieContainer = cookies });
         var bootstrap = await http.GetStringAsync(new Uri(surface.Url, "webui.js"), cancellationToken);
         var token = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
         var credential = Between(bootstrap, "const SESSION_CREDENTIAL = \"", "\"");
@@ -36,6 +38,7 @@ sealed class DesktopWireClient : IDisposable
         {
             socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
             socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+            if (cookies is not null) socket.Options.Cookies = cookies;
             await socket.ConnectAsync(new UriBuilder(surface.Url) { Scheme = "ws", Path = $"{surface.Url.AbsolutePath}_webui_ws_connect" }.Uri,
                 cancellationToken);
             var client = new DesktopWireClient(socket, token);

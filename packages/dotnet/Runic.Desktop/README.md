@@ -123,9 +123,15 @@ macOS conventions on top:
 | --- | --- | --- |
 | `window.SetRepresentedFileAsync(path)` | The title bar's proxy icon and the path menu of Command-click on the title (`NSWindow.representedURL`); `null` removes them | Nothing |
 | `window.SetDocumentEditedAsync(edited)` | The dot in the close button (`NSWindow.documentEdited`) | Nothing |
-| `host.NoteRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Nothing |
-| `host.ClearRecentDocumentsAsync()` | Empties them, as Clear Menu does | Nothing |
+| `host.NoteRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Windows: Recent items and the Jump List (`SHAddToRecentDocs`). Linux: `recently-used.xbel`, which GTK and KDE file choosers list |
+| `host.ClearRecentDocumentsAsync()` | Empties them, as Clear Menu does | Windows: the application's Jump List destinations. Linux: this application's entries |
 | `MacOSDesktopOptions.OpenRecentMenu` | Adds Open Recent at the top of the standard File menu | Ignored |
+
+The recent documents are also `IDesktopRecentDocuments` of Runic.Platform,
+which reports each outcome as a `PlatformResult`; Runic Windows get it from
+`AddRunicPlatformServices` (`DesktopPlatformServices.CreateRecentDocuments`),
+so a ViewModel can note the document it opened. The host's two methods ignore
+a failure on Windows and Linux.
 
 ```csharp
 var options = new DesktopHostOptions
@@ -540,6 +546,114 @@ follows the system. A [custom window host](#custom-window-hosts) receives the
 option in `DesktopWindowHostOptions.ColorScheme`, and reports
 `color-scheme-unsupported` from `ValidateOptions` if it cannot apply it.
 
+#### Switching while the application runs
+
+`DesktopHost.SetColorSchemeAsync` switches the whole application, for example
+when the user picks a theme in the settings; `DesktopWindow.SetColorSchemeAsync`
+switches one open window. Both need `DesktopWindowCapabilities.ColorScheme`,
+which every built-in embedded window reports:
+
+```csharp
+await host.SetColorSchemeAsync(DesktopColorScheme.Dark);   // every window without its own scheme
+await window.SetColorSchemeAsync(DesktopColorScheme.Light); // this window, until it returns to NoPreference
+```
+
+A window shows its own scheme (`DesktopWindowOptions.ColorScheme`, or its last
+`SetColorSchemeAsync`) when that is `Light` or `Dark`; with `NoPreference` it
+shows the application's (`DesktopHost.ColorScheme`), and that, by default, the
+system's. Windows that open later follow the application's scheme too. The
+page's `prefers-color-scheme` and form controls change at once, without a
+reload. `DesktopWindow.ColorScheme` reports the scheme the window shows now,
+and changes only once the window applied it: a switch that fails leaves it.
+
+| Window host | What a switch sets |
+| --- | --- |
+| Windows, WebView2 | The profile's preferred color scheme and the title bar's dark mode (`DWMWA_USE_IMMERSIVE_DARK_MODE`, attribute 19 on Windows 10 1809 to 1909). `NoPreference` returns the profile to the system's scheme and gives the title bar the system's apps theme as it is at the time of the call; a later change of the system's theme does not reach the title bar |
+| macOS, WKWebView | `NSWindow.appearance`; the application's scheme also sets `NSApp.appearance`, which menus, alerts and panels follow |
+| Linux, GTK 3 | GTK's `gtk-application-prefer-dark-theme` setting, which WebKitGTK's `prefers-color-scheme` follows |
+| Linux, GTK 4 | GTK's `gtk-interface-color-scheme` (GTK 4.20 or later) and `gtk-application-prefer-dark-theme`; the libadwaita style manager instead when the application has initialized libadwaita |
+| WPF `RunicWebView` | The child WebView2's preferred color scheme |
+| Installed browsers | Nothing: `DesktopWindow.SetColorSchemeAsync` throws `DesktopException` (`window-capability-unavailable`), and the application's scheme skips them |
+
+Some schemes are not a window's own. A window reports
+`DesktopWindowCapabilities.PerWindowColorScheme` when its scheme is; without
+it, the scheme is shared:
+
+- **Linux.** GTK's settings, and the libadwaita style manager, belong to the
+  process, so every GTK window shares one scheme.
+- **Windows, a configured `ProfilePath`.** WebView2 keeps the preferred color
+  scheme per profile, so the windows that share a `DesktopWindowOptions.ProfilePath`
+  share it. A window without one gets a profile of its own and keeps its own scheme.
+
+`DesktopWindow.SetColorSchemeAsync` on a shared scheme changes every window
+that shares it, and `ColorScheme` of each reports the change.
+`DesktopHost.SetColorSchemeAsync` first switches the windows whose scheme is
+their own, then applies the application's scheme to every shared one, so the
+application's scheme wins whatever order the windows are in. On Linux
+`NoPreference` resets GTK's settings (`gtk_settings_reset_property`, GTK 3.20
+and GTK 4), so they follow the desktop again, also when the user changes it
+later. A GTK theme without a dark variant keeps its own colors in the window's
+frame, though the page still follows. A custom window host switches by
+implementing `IDesktopColorSchemeWindowHost`, and reports
+`PerWindowColorScheme` when the scheme is the window's alone; Runic treats the
+windows of a configured `ProfilePath` as sharing it.
+
+Runic Windows reach the same switch host-neutrally through
+`IRunicWindowPresentation.SetColorSchemeAsync` (Runic.Application.Views).
+
+### Owned and window-modal windows
+
+`DesktopWindowOptions.Owner` makes a window belong to another, and
+`Modality = DesktopWindowModality.Window` makes the owner take no input until the
+window closed (since 0.16):
+
+```csharp
+var dialog = await dialogSurface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Owner = DesktopWindowOwner.FromWindow(mainWindow),
+    Modality = DesktopWindowModality.Window,
+});
+```
+
+- On Windows the owner's `HWND` is the window's owner: it stays above the owner
+  and has no taskbar button. A window-modal window disables the owner
+  (`EnableWindow`) while it is shown and enables it again before it is destroyed,
+  so Windows activates the owner rather than another application.
+- On macOS the window is a child window of the owner's `NSWindow`, which keeps it
+  above the owner and moves it with it; a window-modal one is the owner's sheet,
+  which ignores the window's position. A sheet has no title-bar close button and
+  Esc does not close it, so its page needs a Cancel button. AppKit shows one
+  sheet of an owner at a time: a second window modal to the same owner is queued,
+  invisible, until the first ends, and `FocusAsync` focuses the visible one.
+- On Linux the window is `transient_for` the owner's GTK window (GTK 3 and GTK 4).
+  A window-modal one makes the owner insensitive while it is shown.
+  `gtk_window_set_modal` is not used: GTK makes such a window modal to every
+  window of the application. A blocked owner ignores the window manager's close,
+  as a disabled Win32 window and a macOS window with a sheet do.
+- A window-modal window opened `Hidden` blocks its owner from its first show, and
+  hiding it lets the owner take input again. Several windows can be modal to one
+  owner, and a modal window can have its own; an owner takes input again when the
+  last one that blocks it closed or was hidden.
+
+With a `DesktopWindow` owner, the windows it owns are in `owner.OwnedWindows`,
+`SetVisibleAsync(false)` on the owner hides them first and showing it shows them
+again, and `FocusAsync` on a blocked owner focuses its modal window after it. A
+close the owner's `ConfirmCloseAsync` decides (the user's, or
+`RequestCloseAsync`) and a quit first ask the `ConfirmCloseAsync` of the windows
+it owns, innermost first and the last opened first: one that refuses keeps the
+owner open, and a window-modal one that agrees closes before the owner is asked.
+`CloseAsync`, `DisposeAsync` and the close of an owner without a confirmation
+close the owned windows without asking. `DesktopWindowOwner.FromNativeHandle(handle)`
+takes a window of another framework, such as WPF
+(`WpfPlatformServices.ForDesktopWindowOwner`), whose life Runic does not follow.
+
+An installed browser ignores `Owner`, and `DesktopHost.Validate` reports
+`window-option-unsupported`. An owner that is not an open embedded window when
+the window opens is ignored and reported as `window-owner-unavailable`, and the
+window opens on its own. `Modality` without `Owner` is invalid. Custom window
+hosts receive the owner in `DesktopWindowHostOptions.OwnerHandle` and `Modality`
+when they report `DesktopWindowCapabilities.Ownership`; every built-in host does.
+
 ## Title bar and drag regions on macOS
 
 `DesktopWindowOptions.MacOS.TitleBar` gives the macOS window the custom header
@@ -659,6 +773,34 @@ macOS nothing happens. To print there, or to print a document rather than the
 page, write it to a PDF or HTML file in .NET and open it with
 `IDesktopFileLauncher.LaunchAsync` from Runic.Platform; the user prints it from
 the default application, such as Preview. CI does not check printing.
+
+## Window activity
+
+An embedded window whose `Capabilities` include `DesktopWindowCapabilities.Activity`
+reports in `DesktopWindow.Activity` whether it is active (has the desktop's
+keyboard focus), minimized and visible, and raises
+`DesktopWindow.ActivityChanged` after each change, so an application can pause
+polling or animations nobody sees, or decide whether to notify:
+
+```csharp
+window.ActivityChanged += (_, e) => poller.Interval = e.Activity.IsActive ? fast : slow;
+```
+
+Every built-in embedded window reports it from its own events: `WM_ACTIVATE`
+and `WM_WINDOWPOSCHANGED` on Windows, the key-window, miniaturize and occlusion
+notifications on macOS, `notify::is-active`, `notify::visible` and the
+iconified state on Linux (GTK 3 and GTK 4). The event runs on the thread pool,
+never concurrently, and changes that arrive while a handler runs are combined;
+a handler that throws is logged as event 3040, `WindowActivityHandlerFailed`.
+A minimized or hidden window is neither active nor visible, and a closed one
+reports itself inactive and hidden in a last event. Wayland compositors do not
+report that a window was minimized: the GTK 4 window (GTK 4.12 and later)
+reports a window the compositor stopped showing as not visible, and the GTK 3
+window on Wayland only reports that it lost the focus. An installed browser, and
+a custom window host without `IDesktopActivityWindowHost`, report `null`.
+
+`DesktopWindow.FocusAsync` restores a minimized window on Windows before it
+activates it, as it already did on macOS and Linux.
 
 ## Window state and restore
 
@@ -840,8 +982,13 @@ such as one per recent file or zoom level. AppKit asks `CanExecute` whenever it
 shows a menu or matches a key, on its main thread, so keep it cheap; an item
 that no target can run is disabled. An item or menu declared with
 `IsEnabled = false` is disabled without asking, a disabled menu disables its
-items too, and `IsChecked` shows a check mark as declared: build the bar again
-with `SetMenuBar` when the state changes. Items with the same `RadioGroup` in
+items too. An item declared with `IsChecked` is a check item whose mark
+follows the target's `IsChecked(item)`, asked where `CanExecute` is: as a menu
+opens (macOS, Win32, GTK 3 and 4, a desktop's global menu) and when an in-page
+bar's state is built. The key window's target is asked first and the
+application's next; the first non-null answer decides, also one equal to the
+declaration, and the default `null` leaves the item to the declaration. Marks
+therefore follow the front window without `SetMenuBar`. Items with the same `RadioGroup` in
 one menu are radio items, of which one is checked (`DesktopHost.Validate`
 reports `menu-radio-checked` for more); macOS shows them with the check mark.
 `AccessKey` is a letter or digit that Windows and Linux underline and open with
@@ -1701,11 +1848,15 @@ The optional interfaces each add one feature:
 | `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
 | `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
+| `IDesktopActivityWindowHost` | `DesktopWindow.Activity` and `ActivityChanged` ([Window activity](#window-activity)) | `DesktopWindowCapabilities.Activity` |
+| `IDesktopColorSchemeWindowHost` | `DesktopWindow` and `DesktopHost.SetColorSchemeAsync` in an open window ([Light and dark windows](#light-and-dark-windows)) | `DesktopWindowCapabilities.ColorScheme`, and `PerWindowColorScheme` when the scheme is the window's alone |
+| Any host | The owner's native handle in `DesktopWindowHostOptions.OwnerHandle` and `Modality` ([Owned and window-modal windows](#owned-and-window-modal-windows)) | `DesktopWindowCapabilities.Ownership` |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 
-The GTK 4 host implements the first three and `IDesktopSpellCheckingWindowHost`, and its factory the last two;
-`RunicWebView` implements `IDesktopFileDropWindowHost`. A host that reports
+The GTK 4 host implements the first three, `IDesktopSpellCheckingWindowHost`, `IDesktopActivityWindowHost` and
+`IDesktopColorSchemeWindowHost`, and its factory the last two; `RunicWebView` implements `IDesktopFileDropWindowHost`
+and `IDesktopColorSchemeWindowHost`. A host that reports
 `DesktopWindowCapabilities.Announcements` implements `AnnounceAsync`
 ([Accessibility](#accessibility)). Report events of an open window, such as a
 crashed web process, through `DesktopWindowHostOptions.DiagnosticSink`, from any

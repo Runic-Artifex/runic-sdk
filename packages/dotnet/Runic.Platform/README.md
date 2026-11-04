@@ -217,8 +217,19 @@ save of Save As, and again each time the document is reopened. Reopen with
 keeps the bookmark's access until it is disposed, while a dialog's lease is
 released when its window closes. A path from a launch or a drop becomes a
 document through `CreateAsync(path)` and then `OpenDocumentAsync(bookmark)`.
-On macOS, Runic Desktop also lists the document in Open Recent and the Dock,
-and marks the window's represented file and unsaved changes
+`IDesktopRecentDocuments` lists the document where the desktop offers it for
+reopening: `AddAsync(document.LocalPath)` after open and Save As, and
+`ClearAsync()` for a Clear Recent command. macOS shows it in Open Recent and the
+Dock, Windows in Recent items and the application's Jump List
+(`SHAddToRecentDocs`; clearing removes only the application's Jump List
+entries), and Linux in the recent files of GTK and KDE file choosers
+(`recently-used.xbel`, under the application ID or else the entry assembly's
+name; clearing removes only this application's entries, a write keeps the newest
+500, and a file that is not a bookmark file is left alone and reported as
+`Failed(IOError)`). Runic Desktop registers it for Runic Windows; CS-WebUI and
+serve-only Runic Desktop, by `RunicDesktopHostOptions.ServeOnly` or
+`RUNIC_APPLICATION_SERVE_ONLY=1`, report `Unavailable`. On macOS, Runic Desktop also marks the window's
+represented file and unsaved changes
 ([Document apps on macOS](../Runic.Desktop/README.md#document-apps-on-macos)).
 In the App Sandbox those lists give no access: keep each bookmark with the
 document's `LocalPath`, note that path for the lists, and when Open Recent or the
@@ -247,7 +258,10 @@ ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesk
 `IDesktopMonitors`, `IDesktopMessageBoxes` or `IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
 them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
-capabilities all report that reason. Tests can use the same instance.
+capabilities all report that reason. Tests can use the same instance, or the
+scripted, recording fakes of `RunicTestPlatform` in
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#platform-services),
+which hand out in-memory file leases and answer message boxes and context menus.
 
 `AnnounceAsync(message, priority)` asks the screen reader to speak a status
 message for the window, such as "Saved", through the platform's accessibility
@@ -1240,6 +1254,42 @@ fresh state once it is back; without a source it reports `Unavailable` once and
 waits. `DesktopPlatformServices.CreateNetworkStatus()` and
 `AddRunicPlatformServices()` create one instance for the application. Hosts without a
 provider register `DesktopNetworkStatus.Unavailable(reason)`.
+
+## Power events
+
+`IDesktopPowerEvents` reports sleep, wake, session lock and battery changes:
+`ReadAsync` returns a `DesktopPowerState` (`IsOnBattery`, `IsLowPower` and
+`IsLocked`, each `null` when the platform does not say), and `WatchAsync` reports
+the current state as `StateChanged`, then each `DesktopPowerEvent`: `Suspending`,
+`Resumed`, `Locked`, `Unlocked`, or `StateChanged` when the battery or low-power
+state changes, with the state after it. A repeated event and a `StateChanged` that
+changes nothing are not reported. A reader that falls behind loses no
+`Suspending`, `Resumed`, `Locked` or `Unlocked`; state changes waiting between
+them are combined into the latest. `DesktopPowerEventKind` is open.
+
+```csharp
+await foreach (var result in power.WatchAsync(cancellationToken))
+{
+    if (result is not PlatformResult<DesktopPowerEvent>.Success(var change)) continue;
+    if (change.Kind == DesktopPowerEventKind.Resumed) await sync.ReconnectAsync();
+    autoRefresh.Enabled = change.State is { IsOnBattery: not true, IsLowPower: not true, IsLocked: not true };
+}
+```
+
+`Suspending` is a hint: the application gets little or no time, and Runic does not
+delay the sleep, so save what must not be lost as it changes.
+
+| Platform | Source |
+| --- | --- |
+| Windows | `WM_POWERBROADCAST` on a hidden window (with `RegisterSuspendResumeNotification`, also on modern standby), `WTSRegisterSessionNotification` for lock and unlock, and `GetSystemPowerStatus` for the battery and Battery Saver, read again on each power status or saver change |
+| macOS | `NSWorkspace`'s will-sleep and did-wake notifications and the screen lock notifications, delivered at once also while the application is inactive, on the main run loop that Runic Desktop's event loop runs; IOKit's providing power source and `NSProcessInfo`'s Low Power Mode (macOS 12) |
+| Linux | logind's `PrepareForSleep` and the session's `Lock`, `Unlock` and `LockedHint`, UPower's `OnBattery`, and the `power-saver` profile, on the system bus. Each source is optional; none answering is `Unavailable(BackendUnavailable)` with the `power-events-unavailable` diagnostic. When a source's daemon restarts, the watch reports `Unavailable` for the few seconds until it reconnects, then the current state: events in that gap, such as a sleep and wake, are missed. Inside Flatpak, allow the names with `--system-talk-name` |
+
+`DesktopPlatformServices.CreatePowerEvents()` and `AddRunicPlatformServices()`
+create one instance for the application; serve-only Runic Desktop (by
+`RunicDesktopHostOptions.ServeOnly`, decided on first use, or
+`RUNIC_APPLICATION_SERVE_ONLY=1`) and CS-WebUI register
+`DesktopPowerEvents.Unavailable(reason)`.
 
 ## Thumbnails
 

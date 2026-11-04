@@ -58,6 +58,13 @@ public sealed record RunicCsWebUiHostOptions
     public int? MaximumInputBytes { get; init; }
 
     /// <summary>
+    /// The largest file the page may upload to Windows whose <see cref="RunicWindowOptions.MaximumUploadBytes"/> is
+    /// <see langword="null"/> (<see cref="WindowContentSessionOptions.MaximumUploadBytes"/>), at least 1 KiB.
+    /// <see langword="null"/>, the default, is 256 MiB. The host reads it when each Window opens.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
     /// The menus of each window's menu bar, which the page renders, since a CS-WebUI window has no native bar; empty, the
     /// default, for none. <see cref="RunicCsWebUiHost.SetMenuBar"/> replaces them.
     /// </summary>

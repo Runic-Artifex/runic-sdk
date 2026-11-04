@@ -1,6 +1,8 @@
 import {
   isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
+  type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
+  upload as uploadBlob, type BlobRef, type UploadOptions,
 } from "@runic-artifex/views";
 import type * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -150,6 +152,25 @@ export function command<A>(run: () => PromiseLike<A>):
       : Effect.fail(new ViewDomainFailure({ message: "The command failed with its declared failure.", failure: value.failure,
         requestId: undefined }) as ViewDomainFailureOf<BridgeOutcomeFailure<A>>);
   }));
+}
+
+/**
+ * Uploads a file to the window's .NET host (blobs/1) and succeeds with the reference that a command's `RunicUpload`
+ * input takes. Interruption aborts the upload, and the host deletes what it received. Bridge failures become tagged
+ * errors: `ViewUnavailable` when the host takes no uploads, `ViewRejected` at the window's limits.
+ *
+ * ```ts
+ * const ref = yield* upload(file, { onProgress: ({ loaded, total }) => report(loaded / total) });
+ * yield* command(() => editor.attach(ref));
+ * ```
+ */
+export function upload(content: Blob, options: Omit<UploadOptions, "signal"> = {}): Effect.Effect<BlobRef, ViewError> {
+  return Effect.tryPromise({ try: signal => uploadBlob(content, { ...options, signal }), catch: cause => cause }).pipe(
+    Effect.catch(cause => {
+      const failure = viewFailure(cause);
+      return failure === undefined ? Effect.die(cause) : Effect.fail(failure);
+    }),
+  );
 }
 
 export interface OperationOptions {
@@ -349,4 +370,49 @@ export function followViewport<A, E, R>(controller: CollectionViewportController
     Stream.switchMap(range => Stream.fromEffect(request(range))),
     Stream.runDrain,
   );
+}
+
+/**
+ * The rows a query collection (`client.queries.{name}`) shows for its range: its current snapshot, then each change,
+ * keeping only the latest one a slow consumer has not read. Set the range with `collection.setRange`, or follow a
+ * container with {@link queryViewportChanges}.
+ */
+export function queryCollectionChanges<TRow>(collection: QueryCollection<TRow>): Stream.Stream<QueryCollectionSnapshot<TRow>> {
+  return Stream.callback<QueryCollectionSnapshot<TRow>>(queue => Effect.acquireRelease(
+    Effect.sync(() => {
+      Queue.offerUnsafe(queue, collection.current);
+      return collection.subscribe(() => { Queue.offerUnsafe(queue, collection.current); });
+    }),
+    unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
+ * The layout of a query viewport (`createQueryViewportController`): the rows a scroll container shows, with variable
+ * heights. The controller loads them while the stream runs; keep the latest value only.
+ */
+export function queryViewportChanges<TRow>(controller: QueryViewportController<TRow>): Stream.Stream<QueryViewport<TRow>> {
+  return Stream.callback<QueryViewport<TRow>>(queue => Effect.acquireRelease(
+    Effect.sync(() => {
+      Queue.offerUnsafe(queue, controller.current);
+      return controller.subscribe(() => { Queue.offerUnsafe(queue, controller.current); });
+    }),
+    unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
+ * Changes a query collection's sort and filter, which every presentation of the ViewModel shares. Fails with a
+ * `ViewError`, such as `ViewRejected` (reason `invalid-input`) for a query .NET rejects.
+ */
+export function setQuery<TRow>(collection: QueryCollection<TRow>, query: RunicQuery): Effect.Effect<void, ViewError> {
+  return attempt(() => collection.setQuery(query), viewFailure);
+}
+
+/**
+ * The position of the row with `key` in a query collection's current query, or `undefined` when no row has it: what
+ * a search scrolls to with `QueryViewportController.scrollToIndex`.
+ */
+export function indexOfKey<TRow>(collection: QueryCollection<TRow>, key: string): Effect.Effect<number | undefined, ViewError> {
+  return attempt(() => collection.indexOf(key), viewFailure);
 }

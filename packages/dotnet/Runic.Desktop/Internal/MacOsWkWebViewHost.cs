@@ -54,6 +54,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         internal static DesktopStandardMenuTitles Titles = MacOsMainMenu.English;
         // The logger of menu command failures (event 3014) while no key window's command path has one.
         internal static Microsoft.Extensions.Logging.ILogger? MenuLogger;
+        // DesktopHost.SetColorSchemeAsync, and whether NSApp.appearance was set from it.
+        internal static int ColorScheme;
+        internal static bool ColorSchemeApplied;
     }
 
     internal static void SetStandardMenuTitles(DesktopStandardMenuTitles titles) => Volatile.Write(ref HostSettings.Titles, titles);
@@ -111,7 +114,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
-        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag;
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
+        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme |
+        DesktopWindowCapabilities.Ownership;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -120,6 +125,61 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public event EventHandler? StateChanged;
+
+    private DesktopWindowActivity? _activity;
+
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    public event EventHandler? ActivityChanged;
+
+    // Main thread only: after the window became or resigned key, was miniaturized or restored, was ordered in or out,
+    // or its occlusion changed, as when the application is hidden.
+    private void UpdateActivity()
+    {
+        if (_window == 0) return;
+        var minimized = Api.SendBool(_window, "isMiniaturized");
+        var activity = new DesktopWindowActivity
+        {
+            IsActive = !minimized && Api.SendBool(_window, "isKeyWindow"),
+            IsMinimized = minimized,
+            IsVisible = !minimized && Api.SendBool(_window, "isVisible"),
+        };
+        if (Equals(activity, Volatile.Read(ref _activity))) return;
+        Volatile.Write(ref _activity, activity);
+        try
+        {
+            ActivityChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    // DesktopWindow.SetColorSchemeAsync: the window's appearance, which its web view and the page's prefers-color-scheme
+    // follow; nil for NoPreference, so the window inherits NSApp.appearance and with it the application's scheme.
+    public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+        => InvokeAsync(() => Api.SendVoidNint(_window, "setAppearance:", Api.NamedAppearance(colorScheme)), cancellationToken);
+
+    // DesktopHost.SetColorSchemeAsync: NSApp.appearance, which menus, alerts and windows without their own appearance
+    // follow. Applied now while AppKit runs, else when the first window launches the application.
+    internal static ValueTask SetApplicationColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken)
+    {
+        Volatile.Write(ref HostSettings.ColorScheme, (int)colorScheme);
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable || Api.SharedApplicationIfCreated() == 0) return ValueTask.CompletedTask;
+        if (!IsMainThread && !DesktopEventLoop.IsRunning) return ValueTask.CompletedTask;
+        return InvokeOnMainAsync(static () => ApplyApplicationAppearance(Api.SharedApplicationIfCreated()), cancellationToken);
+    }
+
+    // Main thread only.
+    private static void ApplyApplicationAppearance(nint application)
+    {
+        var scheme = (DesktopColorScheme)Volatile.Read(ref HostSettings.ColorScheme);
+        // A host that never set a scheme leaves NSApp.appearance to the application.
+        if (application == 0 || (scheme == DesktopColorScheme.NoPreference && !HostSettings.ColorSchemeApplied)) return;
+        HostSettings.ColorSchemeApplied = true;
+        Api.SendVoidNint(application, "setAppearance:", Api.NamedAppearance(scheme));
+    }
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => IsMainThread;
@@ -190,9 +250,81 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask FocusAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+            if (_sheet)
+            {
+                // A sheet comes forward with its parent; a hidden one is attached again.
+                Api.SendVoidNint(_parentWindow, "makeKeyAndOrderFront:", 0);
+                if (!_attached) BeginSheet();
+                // AppKit shows one sheet of an owner at a time and queues the others: the visible one takes the focus.
+                var visible = Api.SendNint(_parentWindow, "attachedSheet");
+                Api.SendVoid(visible != 0 ? visible : _window, "makeKeyWindow");
+            }
+            else
+            {
+                Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+                AttachToParent();
+            }
             Api.SendVoidBool(_application, "activateIgnoringOtherApps:", true);
         }, cancellationToken);
+
+    // DesktopWindowOptions.Owner: the owner's NSWindow. An owned window is its child window, ordered above it and moving
+    // with it; a window-modal one is its sheet, which blocks the owner until it ends.
+    private nint _parentWindow;
+    private bool _sheet;
+    private bool _attached;
+
+    // Main thread. Shows a window-modal window as the owner's sheet.
+    private void BeginSheet()
+    {
+        if (_parentWindow == 0 || _attached) return;
+        _attached = true;
+        Api.SendVoidNintNint(_parentWindow, "beginSheet:completionHandler:", _window, 0);
+    }
+
+    // Main thread. Makes a shown owned window the owner's child window (NSWindowAbove).
+    private void AttachToParent()
+    {
+        if (_parentWindow == 0 || _sheet || _attached) return;
+        _attached = true;
+        Api.SendVoidNintLong(_parentWindow, "addChildWindow:ordered:", _window, 1);
+    }
+
+    // Main thread. Ends the sheet or detaches the child window, before it is hidden or closed. An owner that closed first
+    // ended and detached it already (DetachOwnedWindows).
+    private void DetachFromParent()
+    {
+        if (_parentWindow == 0 || !_attached) return;
+        _attached = false;
+        if (_sheet)
+        {
+            if (Api.Contains(Api.SendNint(_parentWindow, "sheets"), _window)) Api.SendVoidNint(_parentWindow, "endSheet:", _window);
+        }
+        else if (Api.SendNint(_window, "parentWindow") == _parentWindow)
+        {
+            Api.SendVoidNint(_parentWindow, "removeChildWindow:", _window);
+        }
+    }
+
+    // Main thread. The window closes: it ends its sheets, the queued ones included, and detaches its child windows, before
+    // AppKit releases it, so no owned window messages it afterwards.
+    private void DetachOwnedWindows()
+    {
+        var sheets = Api.SendNint(_window, "sheets");
+        for (var count = Api.Count(sheets); count > 0; count--)
+            Api.SendVoidNint(_window, "endSheet:", Api.SendNintUlong(sheets, "objectAtIndex:", (ulong)(count - 1)));
+        var children = Api.SendNint(_window, "childWindows");
+        for (var count = Api.Count(children); count > 0; count--)
+            Api.SendVoidNint(_window, "removeChildWindow:", Api.SendNintUlong(children, "objectAtIndex:", (ulong)(count - 1)));
+    }
+
+    // Main thread. The owned window closed: it leaves its owner and releases the reference it held since it opened.
+    private void ReleaseParent()
+    {
+        DetachFromParent();
+        var parent = _parentWindow;
+        _parentWindow = 0;
+        if (parent != 0) Api.SendVoid(parent, "release");
+    }
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidNint(_window, "miniaturize:", 0), cancellationToken);
@@ -233,14 +365,23 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            if (visible)
+            if (visible && _sheet)
+            {
+                BeginSheet();
+            }
+            else if (visible)
             {
                 Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+                AttachToParent();
             }
             else
             {
+                // A sheet or child window leaves its owner first, so the owner shown again does not bring it back.
+                DetachFromParent();
                 Api.SendVoidNint(_window, "orderOut:", 0);
             }
+            // Ordering a window out sends no delegate notification but an occlusion change, which may come later.
+            UpdateActivity();
         }, cancellationToken);
 
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default)
@@ -315,7 +456,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         if (IsOpen)
         {
-            await InvokeAsync(() => Api.SendVoid(_window, "close"), cancellationToken).ConfigureAwait(false);
+            await InvokeAsync(() =>
+            {
+                DetachFromParent();
+                Api.SendVoid(_window, "close");
+            }, cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -358,6 +503,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         // DesktopEventLoop.Run's AppKit loop sends finishLaunching once; without it, the first window does.
         MacOsApplication.EnsureLaunched(_application);
+        ApplyApplicationAppearance(_application);
         InstallMainMenu(_application);
         ApplyMenuBar(_application);
 
@@ -462,9 +608,22 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Volatile.Write(ref _isOpen, 1);
         ApplyTrafficLights();
         Navigate(url);
+        _parentWindow = options.OwnerHandle;
+        // Held while this window is open: an owner that closes from code first must still answer endSheet: and
+        // removeChildWindow: (ReleaseParent).
+        if (_parentWindow != 0) _ = Api.SendNint(_parentWindow, "retain");
+        _sheet = _parentWindow != 0 && options.Modality == DesktopWindowModality.Window;
         if (!options.Hidden)
         {
-            Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+            if (_sheet)
+            {
+                BeginSheet();
+            }
+            else
+            {
+                Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+                AttachToParent();
+            }
             Api.SendVoidBool(_application, "activateIgnoringOtherApps:", true);
         }
         if (options.Kiosk)
@@ -485,6 +644,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
         }
         UpdateState();
+        UpdateActivity();
     }
 
     // Keeps a restored window on a screen that exists now: the frame, title bar included, moves into the visible
@@ -629,6 +789,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void WindowActivityChanged(nint self, nint selector, nint notification)
+    {
+        try
+        {
+            if (Hosts.TryGetValue(Api.SendNint(notification, "object"), out var host) && host.IsOpen) host.UpdateActivity();
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void WindowGeometryChanged(nint self, nint selector, nint notification)
     {
         try
@@ -637,6 +810,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             if (Hosts.TryGetValue(window, out var host) && host.IsOpen)
             {
                 host.UpdateState();
+                // windowDidDeminiaturize: restores the activity too.
+                host.UpdateActivity();
                 // AppKit lays the title bar out again after a resize.
                 host.ApplyTrafficLights();
             }
@@ -930,6 +1105,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         ? chain.CanExecute(item)
         : MenuCommandChain.CanExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
 
+    // The check mark of a declared check or radio item, from the same command path.
+    internal static bool? IsMenuCommandChecked(DesktopMenuItem item) => KeyWindowCommands() is { } chain
+        ? chain.IsChecked(item)
+        : MenuCommandChain.IsChecked(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
+
     internal static bool ExecuteMenuCommand(DesktopMenuItem item) => KeyWindowCommands() is { } chain
         ? chain.TryExecute(item)
         : MenuCommandChain.TryExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
@@ -947,14 +1127,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    // AppKit asks before it shows a menu or answers a key equivalent. Only the declared items depend on a command.
+    // AppKit asks before it shows a menu or answers a key equivalent. Only the declared items depend on a command. A check
+    // or radio item also takes its check mark from the key window's command path here, so it follows the front window.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static byte ValidateMenuItem(nint self, nint selector, nint item)
     {
         try
         {
             if (!Api.HasAction(item, MenuCommandAction)) return 1;
-            return Declared(item) is { Enabled: true } declared && (declared.Entry is not DesktopMenuItem menuItem || CanExecuteMenuCommand(menuItem))
+            if (Declared(item) is not { } declared) return 0;
+            if (declared.Entry is DesktopMenuItem { IsChecked: not null } toggle)
+                // NSControlStateValueOn and Off.
+                Api.SendVoidNint(item, "setState:", IsMenuCommandChecked(toggle) == true ? 1 : 0);
+            return declared.Enabled && (declared.Entry is not DesktopMenuItem menuItem || CanExecuteMenuCommand(menuItem))
                 ? (byte)1 : (byte)0;
         }
         catch
@@ -1061,7 +1246,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     items.Add(item);
                     Api.SendVoidNint(native, "setTag:", items.Count);
                     Api.SendVoidBool(native, "setEnabled:", enabled && item.IsEnabled && MenuCommandChain.CanExecute(item, null, application, logger));
-                    if (item.IsChecked is { } isChecked) Api.SendVoidNint(native, "setState:", isChecked ? 1 : 0);
+                    if (MenuCommandChain.IsChecked(item, null, application, logger) is { } isChecked) Api.SendVoidNint(native, "setState:", isChecked ? 1 : 0);
                     Api.SendVoidNint(menu, "addItem:", native);
                     Api.SendVoid(native, "release");
                     break;
@@ -1308,6 +1493,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             return;
         }
+        // A window closed another way, such as Quit, leaves its owner too; a closing owner lets go of its windows first.
+        DetachOwnedWindows();
+        ReleaseParent();
         Hosts.TryRemove(_window, out _);
         WebViews.TryRemove(_webView, out _);
         EndDrags();
@@ -1385,6 +1573,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         foreach (var selector in (string[])["windowDidMove:", "windowDidResize:", "windowDidDeminiaturize:", "windowDidChangeScreen:"])
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowGeometryChanged, "v@:@");
+        }
+        foreach (var selector in (string[])["windowDidBecomeKey:", "windowDidResignKey:", "windowDidMiniaturize:", "windowDidChangeOcclusionState:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowActivityChanged, "v@:@");
         }
         // The frame changes during the full-screen animation; the restorable bounds must not follow it.
         foreach (var selector in (string[])["windowWillEnterFullScreen:", "windowWillExitFullScreen:"])
@@ -2234,6 +2426,22 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal void SendVoidNint(nint receiver, string selector, nint value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, nint, void>)_messageSend)(receiver, Selector(selector), value);
+
+        // -[NSArray count], zero for nil.
+        internal int Count(nint array) => array == 0 ? 0 : (int)SendNint(array, "count");
+
+        // -[NSArray containsObject:], false for nil.
+        internal bool Contains(nint array, nint item) =>
+            array != 0 && ((delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)_messageSend)(array, Selector("containsObject:"), item) != 0;
+
+        internal nint SendNintUlong(nint receiver, string selector, ulong value) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, ulong, nint>)_messageSend)(receiver, Selector(selector), value);
+
+        internal void SendVoidNintNint(nint receiver, string selector, nint first, nint second) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(receiver, Selector(selector), first, second);
+
+        internal void SendVoidNintLong(nint receiver, string selector, nint first, long second) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, void>)_messageSend)(receiver, Selector(selector), first, second);
 
         internal void SendVoidBool(nint receiver, string selector, bool value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, byte, void>)_messageSend)(receiver, Selector(selector), value ? (byte)1 : (byte)0);

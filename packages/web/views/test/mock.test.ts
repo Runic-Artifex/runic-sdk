@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeError, BridgeOperationUncertainError, createOperationController, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
-import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions } from "../dist/generated.js";
+import { BridgeError, BridgeOperationUncertainError, createOperationController, onBridgeDiagnostic, type BridgeDiagnostic,
+  type RegionCollection } from "../dist/index.js";
+import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, regionCollection } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
-import { createMockBridge, installMockBridge, type MockBridge, type MockBridgeOptions, type MockTypedCollection,
+import { createMockBridge, installMockBridge, type MockBridge, type MockBridgeOptions, type MockRegionHandler, type MockRegionRequest, type MockTypedCollection,
   type MockTypedInteraction, type MockTypedOperation, type MockTypedView } from "../dist/mock.js";
 import { mockTypedView } from "../dist/generated-mock.js";
 
@@ -247,8 +248,10 @@ test("an expired operation reports expired, as a producer does after its retenti
   assert.deepEqual(await operation.status(), { contract, requestId: "request-1", kind: "expired" });
   assert.deepEqual(await operation.wait(), { contract, requestId: "request-1", kind: "expired" });
   assert.equal((await operation.cancel()).kind, "expired");
+  // On the page's connection, which uses request-session/1, a request names the session of its hello.
+  const session = bridge.calls.find(call => call.kind === "hello")!.message["session"];
   const raw = async (message: Record<string, unknown>) => JSON.parse(await bridge.request(JSON.stringify({
-    route: "notes", member: "save", operation: "request-1", contract, ...message }))) as Record<string, any>;
+    route: "notes", member: "save", operation: "request-1", contract, session, ...message }))) as Record<string, any>;
   assert.deepEqual((await raw({ kind: "stream", cursor: 0 }))["page"], { kind: "expired", cursor: 0, completed: true, items: [] });
   // The id stays reserved: repeating the start answers expired, and other input is still an identity conflict.
   assert.deepEqual(await raw({ kind: "start" }), { ok: true, revision: notes.revision, admission: "expired" });
@@ -625,5 +628,214 @@ test("reorderRequests with manual scheduling admits requests due together newest
   assert.deepEqual(order, ["xyz", "xy", "x"]);
   assert.equal(notes.state.title, "xyz");
   assert.equal(client.snapshot.title, "xyz");
+  client.dispose();
+});
+
+/* ------------------------------------------------------------------ region collections (region-collections/1) */
+
+type Page = { readonly kind: string; readonly id: string };
+type Tabs = { readonly documents: RegionCollection<Page>; readonly pinned: RegionCollection<Page> };
+const page = (id: string): Page => ({ kind: "page", id });
+const tabsMembers = {
+  documents: (wire: unknown) => regionCollection(wire, reference => reference as Page),
+  pinned: (wire: unknown) => regionCollection(wire, reference => reference as Page),
+};
+const committed = { kind: "Committed", rejection: null, arrival: "None" };
+
+// What a generated mockTabs() passes to the shared runtime: documents the page may close, pinned it may not.
+function mockTabs(bridge: MockBridge, documents?: MockRegionHandler<Tabs>) {
+  return mockTypedView(bridge, {
+    kind: "tabs", route: "tabs", contract: "Tests.TabsViewModel:ABC", fields: {}, defaults: {},
+    regions: { documents: { close: true }, pinned: { close: false } },
+  }, {
+    state: {
+      documents: { regions: ["1", "2", "3", "4"].map(key => ({ key, content: page(`p${key}`) })), selected: 0 },
+      pinned: { regions: [{ key: "9", content: null }], selected: 0 },
+    },
+    ...(documents ? { regions: { documents } } : {}),
+  }) as MockTypedView<Tabs, { selectDocuments(): unknown; closeDocuments(): unknown }>;
+}
+const connectTabs = () => connectView<Tabs>({ contract: "Tests.TabsViewModel:ABC", route: "tabs", members: tabsMembers });
+const keysOf = (collection: RegionCollection<Page>) => collection.regions.map(region => region.key);
+
+test("region collections: a select commits by default and publishes the new selection", async () => {
+  const bridge = fresh();
+  const tabs = mockTabs(bridge);
+  const client = await connectTabs();
+  const pushed = frames(bridge);
+  assert.deepEqual(await client.region("documents", "select", "3"), committed);
+  assert.equal(client.snapshot.documents.selected, 2);
+  assert.equal(tabs.state.documents.selected, 2);
+  assert.deepEqual(pushed.frames.map(frame => frame["changes"]), [[{ field: "documents", kind: "set", value: tabs.state.documents }]]);
+  assert.deepEqual(bridge.calls.at(-1)?.message, { kind: "region", route: "tabs", member: "documents", action: "select", key: "3" });
+  pushed.stop();
+  client.dispose();
+});
+
+test("region collections: a close removes the region and selects the next, the previous after the last, or none", async () => {
+  const bridge = fresh();
+  const tabs = mockTabs(bridge);
+  const client = await connectTabs();
+  // The selected first region: the next one, now at its index, is selected.
+  assert.deepEqual(await client.region("documents", "close", "1"), committed);
+  assert.deepEqual(keysOf(client.snapshot.documents), ["2", "3", "4"]);
+  assert.equal(client.snapshot.documents.selected, 0);
+  // A region before the selected one: the selection follows its region.
+  await client.region("documents", "select", "3");
+  await client.region("documents", "close", "2");
+  assert.deepEqual(keysOf(client.snapshot.documents), ["3", "4"]);
+  assert.equal(client.snapshot.documents.selected, 0);
+  // The selected last region: the previous one is selected.
+  await client.region("documents", "select", "4");
+  await client.region("documents", "close", "4");
+  assert.deepEqual(keysOf(client.snapshot.documents), ["3"]);
+  assert.equal(client.snapshot.documents.selected, 0);
+  // The only region: none is selected.
+  await client.region("documents", "close", "3");
+  assert.deepEqual(client.snapshot.documents, { regions: [], selected: null });
+  assert.deepEqual(tabs.state.documents, { regions: [], selected: null });
+  client.dispose();
+});
+
+test("region collections: a handler's outcome other than Committed changes only its state", async () => {
+  const bridge = fresh();
+  const requests: unknown[] = [];
+  const vetoed = { kind: "Rejected", rejection: "Guard", arrival: "None" } as const;
+  let veto = true;
+  const tabs = mockTabs(bridge, (state, request) => {
+    requests.push({ selected: state.documents.selected, action: request.action, key: request.key, index: request.index });
+    if (!veto) return undefined;
+    return { outcome: vetoed, state: { pinned: { regions: [], selected: null } } };
+  });
+  const client = await connectTabs();
+  const pushed = frames(bridge);
+  assert.deepEqual(await client.region("documents", "select", "2"), vetoed);
+  assert.equal(client.snapshot.documents.selected, 0);
+  assert.deepEqual(client.snapshot.pinned, { regions: [], selected: null });
+  assert.deepEqual(pushed.frames.map(frame => frame["changes"].map((change: { field: string }) => change.field)), [["pinned"]]);
+  assert.deepEqual(await client.region("documents", "close", "1"), vetoed);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "2", "3", "4"]);
+  veto = false;
+  assert.deepEqual(await client.region("documents", "close", "2"), committed);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "3", "4"]);
+  assert.deepEqual(requests, [
+    { selected: 0, action: "select", key: "2", index: 1 },
+    { selected: 0, action: "close", key: "1", index: 0 },
+    { selected: 0, action: "close", key: "2", index: 1 },
+  ]);
+  pushed.stop();
+  client.dispose();
+});
+
+test("region collections: a key of no region is unresolved-key, a close the page may not make is unavailable", async () => {
+  const bridge = fresh();
+  let asked = 0;
+  const tabs = mockTabs(bridge, () => { asked++; });
+  const client = await connectTabs();
+  await client.region("documents", "close", "2");
+  for (const action of ["select", "close"] as const)
+    await assert.rejects(client.region("documents", action, "2"), (error: unknown) =>
+      error instanceof BridgeError && error.kind === "rejected" && error.reason === "unresolved-key");
+  await assert.rejects(client.region("pinned", "close", "9"), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "unavailable");
+  assert.deepEqual(await client.region("pinned", "select", "9"), committed);
+  assert.equal(asked, 1);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "3", "4"]);
+  client.dispose();
+});
+
+test("region collections: a handler that throws fails the request, and failNext targets select and close", async () => {
+  const bridge = fresh();
+  const tabs = mockTabs(bridge, () => { throw new Error("The guard failed."); });
+  const client = await connectTabs();
+  await assert.rejects(client.region("documents", "select", "2"), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "failed" && error.message === "The guard failed.");
+  assert.equal(tabs.state.documents.selected, 0);
+  tabs.failNext("closeDocuments", { kind: "rejected", reason: "capacity", message: "Busy." });
+  await assert.rejects(client.region("documents", "close", "2"), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "capacity");
+  client.dispose();
+});
+
+// A region handler whose closes stay pending until the test allows them; selects commit at once.
+function heldCloses() {
+  const asked: MockRegionRequest[] = [];
+  const allows: (() => void)[] = [];
+  const handler: MockRegionHandler<Tabs> = (_state, request) => {
+    asked.push(request);
+    if (request.action === "close") return new Promise<void>(resolve => { allows.push(resolve); });
+    return undefined;
+  };
+  return { asked, allows, handler };
+}
+const regionCalls = (bridge: MockBridge) => bridge.calls.filter(call => call.kind === "region").length;
+
+test("region collections: a second close of a region whose close is pending joins it and asks nothing", async () => {
+  const bridge = fresh();
+  const held = heldCloses();
+  const tabs = mockTabs(bridge, held.handler);
+  const client = await connectTabs();
+  const pushed = frames(bridge);
+  const first = client.region("documents", "close", "2");
+  const second = client.region("documents", "close", "2");
+  await until(() => regionCalls(bridge) === 2 && held.asked.length === 1, "The closes were not admitted.");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(held.allows.length, 1);
+  held.allows[0]!();
+  assert.deepEqual(await first, committed);
+  assert.deepEqual(await second, committed);
+  assert.equal(held.asked.length, 1);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "3", "4"]);
+  assert.equal(pushed.frames.length, 1);
+  pushed.stop();
+  client.dispose();
+});
+
+test("region collections: a close from a new connection joins the close the lost one left pending", async () => {
+  const bridge = fresh();
+  const held = heldCloses();
+  const tabs = mockTabs(bridge, held.handler);
+  const client = await connectTabs();
+  const lost = client.region("documents", "close", "2");
+  await until(() => held.asked.length === 1, "The close was not asked.");
+  bridge.disconnect();
+  await assert.rejects(lost, (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
+  bridge.reconnect();
+  await until(() => bridge.calls.filter(call => call.kind === "open").length === 2, "The View did not open again.");
+  const joined = client.region("documents", "close", "2");
+  await until(() => regionCalls(bridge) === 2, "The second close was not sent.");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  held.allows[0]!();
+  assert.deepEqual(await joined, committed);
+  assert.equal(held.asked.length, 1);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "3", "4"]);
+  client.dispose();
+});
+
+test("region collections: a select supersedes a pending close, whose decision is then ignored", async () => {
+  const bridge = fresh();
+  const held = heldCloses();
+  const tabs = mockTabs(bridge, held.handler);
+  const client = await connectTabs();
+  const close = client.region("documents", "close", "2");
+  const joined = client.region("documents", "close", "2");
+  await until(() => regionCalls(bridge) === 2 && held.asked.length === 1, "The closes were not admitted.");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const superseded = { kind: "Superseded", rejection: null, arrival: "None" };
+  assert.deepEqual(await client.region("documents", "select", "3"), committed);
+  assert.deepEqual(await close, superseded);
+  assert.deepEqual(await joined, superseded);
+  assert.equal(held.asked[0]!.signal.aborted, true);
+  held.allows[0]!();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "2", "3", "4"]);
+  assert.equal(tabs.state.documents.selected, 2);
+  // Closing the selected region selects the next; a select of it then commits at once.
+  assert.deepEqual(await Promise.all([client.region("documents", "close", "3"), (async () => {
+    await until(() => held.allows.length === 2, "The close was not asked.");
+    held.allows[1]!();
+  })()]).then(([outcome]) => outcome), committed);
+  assert.equal(tabs.state.documents.selected, 2);
+  assert.deepEqual(await client.region("documents", "select", "4"), committed);
   client.dispose();
 });

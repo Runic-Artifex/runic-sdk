@@ -105,6 +105,61 @@ reports the connection state `closed` ([Connection state](#connection-state)),
 so a page, such as a CS-WebUI browser tab that outlives the application, can
 say "The application closed this window." instead of showing a lost connection.
 
+### View requests
+
+A ViewModel can ask its View for a presentation action that needs no answer,
+such as focusing a field, scrolling a row into view or showing a toast: a
+`ViewRequest<T>` property in .NET, raised with `Raise(input)`. The generated
+client has `client.requests.<name>` for each one. Register the page's handler
+with `handle((input, { signal }) => …)`, which returns the function that
+unregisters it:
+
+```ts
+const stop = editor.requests.focus.handle(({ member }) => {
+  document.querySelector<HTMLElement>(`[data-member="${member}"]`)?.focus();
+});
+// …
+stop();
+```
+
+A client has one handler per request; `handle` again replaces it. The handler
+runs once the page painted the state the request was raised with: the route
+reached the request's revision, the state was delivered to subscribers and one
+animation frame passed, so the elements of that state are rendered (as for
+[presented states](#presented-states-and-window-close)). Its return value is
+ignored, and a throw or rejection is reported with `reportError`. `signal`
+aborts when the handler is replaced or unregistered, the client is disposed or
+the connection is lost, so an asynchronous handler, such as an animated scroll,
+can stop. A request is never replayed: one raised while no handler is
+registered, while the page is disconnected, or before a reload is not delivered
+later; .NET decides with the request's delivery rule whether it waits for the
+next View that registers it (`ViewRequestDelivery.NextMounted`). The client
+registers its handlers with a .NET host of 0.16 or later (the `hello` feature
+`view-requests/1`); with an earlier host `handle` still works and receives
+nothing. In tests, a generated mock's `requests.<name>.raise(input)` raises a
+request ([Testing](#testing)).
+
+### Region collections
+
+A .NET `[RunicRegionCollection]` property, such as document tabs that each keep
+their own back stack, is a `RegionCollection<R>` in the state: `regions`, each
+`{ key, content }`, and `selected`, the index of the selected region or `null`
+without regions. `key` identifies a region for as long as it exists, so key a
+tab's outlet by it; `content` is the region's current page, or `null`. With a
+.NET host of 0.16 or later (the `hello` feature `region-collections/1`), the
+generated `select<Name>(key)` and `close<Name>(key)` resolve with a
+`RegionOutcome`, the .NET `NavigationOutcome`: `{ kind, rejection, arrival }`.
+A departure guard that keeps the tab resolves the call with `kind: "Rejected"`
+and `rejection: "Guard"`; a key of a closed region rejects with reason
+`unresolved-key`. `selected` changes only when a switch commits, so a tab bar
+that highlights it shows the kept tab after a veto.
+
+`regionEntries(collection)` lists the regions with their `index` and whether
+each is `selected`, and `selectedRegion(collection)` returns the selected one.
+The framework adapters' `RegionOutlets` renders one outlet per region. See
+[Region collections](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+for the .NET side.
+
 ### Cancellation and `using`
 
 `connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's
@@ -165,7 +220,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
 | `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
-| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
+| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
 
@@ -179,7 +234,7 @@ code. A framework binding depends on the exact same release. Use the .NET and
 npm packages of one release together: a .NET host of another release is
 reported as a diagnostic with code `version`, and a client does not connect to a
 host of another Views protocol version (see
-[Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, operation and keyed
+[Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, view request, operation and keyed
 collection runtimes to `connectView` only when its ViewModel has them, and
 imports the decoders as a namespace, so a bundler leaves out the protocol code
 and decoders a View does not use. `bun run size` in this package prints the
@@ -269,6 +324,75 @@ Angular), which follows the container's scroll position and size. The
 [DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata) shows a complete page. The frame
 format, fallbacks and recovery rules are specified in
 [State changes](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/state-changes.md).
+
+## Query collections
+
+A .NET `RunicQueryCollection<TRow, TKey>` property is a list whose rows stay in .NET, such as a database table
+(`query-collections/1`). Its member in `snapshot` is a `QueryCollectionState`, `{ query, total, version }`, and the
+generated client has one `QueryCollection<TRow>` per collection in `client.queries`. Each one loads the rows of its own
+range, so two pages that scroll the same list don't move each other's rows.
+
+```ts
+const catalog = await connectCatalog();
+const rows = catalog.queries.rows;           // QueryCollection<CatalogRow>
+rows.setRange(500, 40);                      // placeholders now, rows when they arrive
+rows.subscribe(() => render(rows.current));  // { query, total, version, start, count, rows, loading, error }
+await rows.setQuery({ sort: [{ field: "label", descending: true }], filters: [{ field: "label", op: "contains", value: "9" }] });
+const index = await rows.indexOf("4711");    // the key's position in the current query, or undefined
+```
+
+- `current.rows` has one `QueryRow` per position of the range: `status` `loaded` with `key` and `row`, or a placeholder
+  (`loading`, `error`). A row of an older version stays visible, `stale: true`, until its new version arrives.
+  `loading` and `error` summarize the range; `retry()` loads it again after a failure.
+- The collection sends at most one `query-rows` at a time, for the positions of the latest range it has not loaded at
+  the current version (at most 1,000 rows), so fast scrolling sends few requests. It keeps the rows near its range
+  (at least 2,000) and drops the others. A range it scrolled past while its request was in flight is not cancelled (the
+  protocol has no request for that); it costs at most one range. A request .NET answers `busy`, because another
+  presentation on the connection has as many in flight as .NET admits, is sent again after a short delay.
+- Rows loaded under a query that has since changed are dropped, and rows loaded at a version the state has not reached
+  yet stay placeholders until it does, so a page never shows a row of another query.
+- `setQuery(query)` changes ViewModel state that every presentation shares, and resolves once the state includes it.
+  One query is in flight at a time: a query set meanwhile replaces the one waiting, and the calls it replaced settle with
+  it, so a search box can call it on every keystroke. A query .NET cannot run, or an unknown filter `op`, rejects with a `BridgeError` of kind `rejected` and reason `invalid-input`. A filter is
+  `equals` (`value`), `contains` (a string `value`), `range` (`min?`, `max?`, inclusive) or `custom` (a filter .NET
+  defines by name, with an optional `value`). Values are wire values: an `Int64` as a decimal string.
+- When the version increases, after a query change or a change of rows in .NET, the collection loads its range again;
+  a new query discards every row it had.
+
+### `createQueryViewportController(collection, options)`
+
+Lays a query collection out in a scroll container with **variable row heights**: rows are placed by their measured
+height, and `estimateSize` (a number, or a function of the index) for rows not measured yet. Sizes live in a Fenwick
+tree, so a list of 500,000 rows finds the row at a scroll offset in O(log n). The controller calls the collection's
+`setRange` for the rows the container shows plus `overscan` (5), and its `current` is a `QueryViewport`: `items` (each
+row of the range with its `top` and `size`), `totalSize` for the spacer, and `total`, `query`, `loading` and `error`.
+
+- `attach(element)` follows the container's scroll position (once per animation frame) and size.
+- `observe(rowElement, index)` measures a rendered row with a `ResizeObserver`; a row above the visible ones that changes
+  height moves `scrollTop` by the difference, so what the user looks at stays in place.
+- `scrollToKey(key, align?)` asks .NET for the key's position (`query-index`, with `locate(key)`) and scrolls to it; a
+  position found under a query that changed meanwhile is searched again. It resolves `false` when no row of the current
+  query has the key. Until the total is known, the list stays long enough to reach the position. `scrollToIndex(index, align?)` scrolls to a position.
+- A new query forgets the measured heights. `createRowSizes(count, estimate)` is the size tree alone, for any list.
+
+The framework packages wrap it as `useQueryCollection` (`injectQueryCollection` in Angular; `queryViewportChanges` in
+`@runic-artifex/views-effect`):
+
+```tsx
+const list = useQueryCollection(catalog.queries.rows, { estimateSize: 32 });
+<div ref={list.ref} style={{ height: 480, overflow: "auto" }}>
+  <div style={{ height: list.totalSize, position: "relative" }}>
+    {list.items.map(item => (
+      <div key={item.key ?? `p${item.index}`} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
+        {item.row ? item.row.label : "…"}
+      </div>
+    ))}
+  </div>
+</div>
+```
+
+A one-way view request from .NET (`view-requests/1`) can trigger `scrollToKey` once that feature ships, for example to
+bring a search result into view: the page handles the request by calling `list.scrollToKey(key)`.
 
 ## Framework bindings
 
@@ -862,6 +986,48 @@ wire representation: for example `Int64` values are strings.
 The wire protocol is specified in the
 [Application Views specification](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application).
 
+## Blobs and uploads
+
+A .NET `RunicBlob` reaches the page as a `RunicBlob`, `{url, type, size, name}`:
+binary content that the window's host serves at `url` (Views feature
+`blobs/1`). Use the URL as it is; the bytes never cross the Bridge.
+
+```tsx
+{state.avatar && <img src={state.avatar.url} alt="" />}
+<a href={report.url} download={report.name ?? undefined}>Download</a>
+```
+
+The URL works on this window only and stops working when the ViewModel replaces
+the blob, when the View is released or when the window closes.
+
+A file goes the other way as an upload. `upload(file, { signal, onProgress })`
+streams it over HTTP to the window's host and resolves with a `BlobRef`, which
+a command whose .NET parameter is a `RunicUpload` takes. A generated client
+whose contract takes one has the same method as `client.upload`:
+
+```ts
+const ref = await client.upload(input.files![0]!, {
+  signal: controller.signal,
+  onProgress: ({ loaded, total }) => (progress.value = loaded / total),
+});
+await client.attach(ref);
+```
+
+It rejects with a `BridgeError`: `unavailable` when the host takes no uploads,
+`rejected` with reason `too-large` or `capacity` at the window's limits, and
+`failed` when the request fails; and with `signal.reason` when it aborts. A
+reference is valid on the connection that uploaded it until a command claims
+it, for at most 10 minutes. Uploads use `XMLHttpRequest`, which reports upload
+progress, or `fetch` where it is missing. On CS-WebUI the host's endpoint is
+another origin than the page, so a page `Content-Security-Policy` must allow
+`http://localhost:*` for `img-src`, `media-src` and `connect-src`.
+
+In tests, the mock Bridge grants uploads and keeps them: `bridge.uploads`,
+`bridge.uploadContent(ref)` and `bridge.failNextUpload({ status: 413 })`;
+`createMockBridge({ uploads: false })` takes none. `mockBlob(content, { type,
+name })` from `@runic-artifex/views/mock` makes a `RunicBlob` for a mock's
+state or result whose URL loads in a test.
+
 ## Testing
 
 The generator writes a typed mock next to each client: `editor.mock.ts`
@@ -898,6 +1064,19 @@ test("saving clears the dirty flag", async () => {
   const outcome = await saved;
   assert.equal(outcome.ok && outcome.value.savedMessage, "Saved Groceries");
 });
+```
+
+A View with a query collection takes its rows in `queries`, which the mock filters, sorts and serves by range, with
+optional latency (virtual time with `manual` scheduling). `queries.{name}` of the mock shows what the page loaded:
+
+```ts
+const catalog = mockCatalog(bridge, {
+  state: { title: "catalog" },
+  queries: { rows: { rows: rows(100_000), latency: 30, custom: { even: row => row.id % 2 === 0 } } },
+});
+// … scroll the page …
+assert.ok(catalog.queries.rows.loads.every(load => load.count <= 60));
+catalog.queries.rows.setRows(changed); // as Refresh() in .NET: a new version, which the page loads again
 ```
 
 A definition takes:
@@ -939,6 +1118,16 @@ A definition takes:
   answer `expired` and repeating its start answers `expired`. `forget()` makes
   the window forget the request id, as after a restart: it answers `unknown`,
   and a start with the id begins a new operation.
+- `regions`: for a region collection (since 0.16), a handler by wire name that
+  stands in for the departure guards. It receives the decoded state and
+  `{ action, key, index }` and returns `{ outcome, state }`, both optional.
+  Without a handler, or with a `Committed` outcome, the mock applies the select
+  or close as .NET does; another outcome, such as
+  `{ kind: "Rejected", rejection: "Guard", arrival: "None" }`, changes only
+  `state`. A key that no region has rejects with `unresolved-key`, and a close
+  of a collection with `PageCanClose = false` with `unavailable`. In `state`, a
+  region collection is `{ regions: [{ key, content }], selected }` with each
+  `content` another mock's `reference` or `null`.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
 .NET publication), `renew()` and `waitPresented(timeout?)` (below), `calls`, `failNext(method, { kind, message, detail, reason })` or
@@ -946,8 +1135,14 @@ The returned mock has `state`, `update(changes)` (pushes a full state like a
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
 and `move` (each pushes a frame; `batch(edit)` combines edits into one),
-and `interactions.<name>.request(input)`, which resolves with the answer of the
-open presentation's handler, or `unhandled` when none is registered.
+`interactions.<name>.request(input)`, which resolves with the answer of the
+open presentation's handler, or `unhandled` when none is registered, and
+`requests.<name>.raise(input)`, which raises a [view request](#view-requests)
+as the ViewModel's `Raise(input)` does and returns how many of the View's open
+presentations it reached (0 when none handles it; it is not kept), with
+`requests.<name>.handled`. Raised inside a command handler or `batch`, the
+request follows their state changes. The mock runs no delivery rule: every
+presentation of the route that registered the request receives it.
 
 `createMockBridge({ scheduling: "manual" })` queues every reply and pushed
 frame until the test calls `flush()`, `flushUntil(promise)` or `advance(ms)`,

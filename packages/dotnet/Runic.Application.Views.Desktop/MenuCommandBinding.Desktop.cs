@@ -33,7 +33,8 @@ namespace Runic.Application.Views.Desktop
     }
 
     // A DesktopWindow as the window of an in-page menu bar.
-    internal sealed class DesktopMenuBarPageWindow(DesktopWindow window, DesktopMenuBarPresentation presentation) : IMenuBarPageWindow
+    internal sealed class DesktopMenuBarPageWindow(DesktopWindow window, DesktopMenuBarPresentation presentation,
+        MenuCommandBinding? commands = null) : IMenuBarPageWindow
     {
         public bool IsOpen => window.IsOpen;
 
@@ -55,11 +56,22 @@ namespace Runic.Application.Views.Desktop
             remove => window.MenuBarPlacementChanged -= value;
         }
 
-        public Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
-            window.CanExecuteMenuItemsAsync(items, cancellationToken);
+        public Task<(bool Enabled, bool? Checked)[]> GetStatesAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
+            window.MenuItemStatesAsync(items, cancellationToken);
 
-        public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken) =>
-            window.TryExecuteMenuItemAsync(item, cancellationToken);
+        // The Window's root ViewModel's command runs with the invoking page's identity; an item it cannot run goes to the
+        // application's commands only, which have no page. The Window's own target is never asked on that path: an item
+        // that became runnable meanwhile would otherwise run there without the page's identity, in the window scope.
+        public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, BridgeConnection invoker, CancellationToken cancellationToken)
+        {
+            if (commands is not null && item.IsEnabled && commands.CanExecute(item))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                commands.Execute(item, invoker);
+                return ValueTask.FromResult(true);
+            }
+            return window.TryExecuteApplicationMenuItemAsync(item, cancellationToken);
+        }
 
         public void SuspendHostShortcuts(bool suspended) => window.SuspendHostMenuShortcuts(suspended);
     }

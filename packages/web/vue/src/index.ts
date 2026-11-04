@@ -8,6 +8,7 @@ import {
   watch,
   type Component,
   type ComputedRef,
+  type HTMLAttributes,
   type MaybeRefOrGetter,
   type Ref,
   type SetupContext,
@@ -42,6 +43,9 @@ import {
   type OperationState,
   type PageReference,
   type TextReference,
+  regionEntries,
+  type RegionCollection,
+  type RegionEntry,
   type ViewClient,
   type ViewConnector,
   type ViewControllerOptions,
@@ -194,6 +198,58 @@ export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewO
   }
   return h(component, { key: referenceKey(content), page: content });
 }, { name: "ViewOutlet", props: ["content", "registry"] });
+
+/** How {@link RegionOutlets} renders the regions of a collection. */
+export type RegionOutletsMode = "keep-mounted" | "selected";
+
+/**
+ * Attributes that {@link RegionOutlets} merges onto a region's wrapper, such as `id`, `role` and `aria-labelledby`.
+ * `hidden` and `data-region-key` stay controlled by the outlet, and a `style` is merged with its `display: none`.
+ */
+export type RegionPanelAttributes = Omit<HTMLAttributes, "hidden"> & { readonly [attribute: `data-${string}`]: string | undefined };
+
+export interface RegionOutletsProps<R extends PageReference> {
+  /** The presented region collection, such as `state.documents`. */
+  collection: RegionCollection<R> | null | undefined;
+  registry: ViewRegistry<R>;
+  /**
+   * `"keep-mounted"` (the default) renders every region and hides all but the selected one, so each region keeps
+   * its component and DOM. `"selected"` renders only the selected region.
+   */
+  mode?: RegionOutletsMode;
+  /**
+   * Returns attributes for a region's wrapper, for example `{ id, role: "tabpanel", "aria-labelledby" }`, so a tab
+   * can point `aria-controls` at the panel.
+   */
+  panelProps?: (entry: RegionEntry<R>) => RegionPanelAttributes;
+}
+
+/**
+ * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` keyed by
+ * the region's key. A region that is not selected is rendered with `hidden` and an inline `display: none`, which
+ * author CSS without `!important` cannot override. A new content reference in a region remounts only that region's
+ * component. The default slot renders while the collection has no region, and the
+ * `missing` slot is passed to each outlet:
+ *
+ * ```vue
+ * <RegionOutlets :collection="state?.documents" :registry="pages"><p>No open documents</p></RegionOutlets>
+ * ```
+ */
+export const RegionOutlets = defineComponent(<R extends PageReference>(props: RegionOutletsProps<R>, { slots }: SetupContext) => (): VNodeChild => {
+  const mode = props.mode ?? "keep-mounted";
+  const shown = regionEntries(props.collection).filter(region => mode === "keep-mounted" || region.selected);
+  if (shown.length === 0) return slots.default?.();
+  const missing = slots["missing"];
+  return shown.map(region => {
+    const panel = props.panelProps?.(region) ?? {};
+    const hidden = !region.selected;
+    return h(
+      "div",
+      { ...panel, key: region.key, "data-region-key": region.key, hidden, style: hidden ? [panel.style, { display: "none" }] : panel.style },
+      h(ViewOutlet<R>, { content: region.content, registry: props.registry }, missing ? { missing } : {}),
+    );
+  });
+}, { name: "RegionOutlets", props: ["collection", "registry", "mode", "panelProps"] });
 
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**
@@ -554,7 +610,18 @@ export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmi
 export {
   configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
+export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+// blobs/1: uploads from the page and the blob values of state.
+export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";
+export {
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "@runic-artifex/views";
 export {
   FieldError,
   type BridgeField,

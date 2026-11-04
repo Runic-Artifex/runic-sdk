@@ -37,7 +37,8 @@ internal sealed class MenuCommandChecks
         {
             WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = Bar,
         });
-        var newCommand = new TestCommand();
+        RunicInteractionInvocation? newScope = null;
+        var newCommand = new TestCommand(() => newScope = RunicInteractionInvocation.Current);
         var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
         {
             SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
@@ -48,6 +49,7 @@ internal sealed class MenuCommandChecks
         Require(application.CanExecute(Item("file.new")) && !application.CanExecute(Item("file.save")), "The application's commands were not bound by id.");
         application.Execute(Item("file.new"));
         await newCommand.Executed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(newScope is null, "An application command, which has no window, ran in an interaction scope.");
 
         var window = await host.OpenWindowAsync<MenuWindow>();
         try
@@ -62,6 +64,10 @@ internal sealed class MenuCommandChecks
             viewModel.Save.Enabled = true;
             target.Execute(Item("file.save"));
             await viewModel.Save.Executed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+            // A Window's menu command runs in the window scope, so its interactions and view requests reach the
+            // Window's one page presentation (A2).
+            Require(viewModel.SaveScope is { ClientKey: null, ConnectionKey: null, Route: "__runicWindow" },
+                "The Window's menu command did not run in the window's interaction scope.");
 
             target.Execute(Item("tools.explode"));
             await WaitAsync(() => logs.Messages.Any(static message => message.Contains("The menu command tools.explode failed with System.InvalidOperationException", StringComparison.Ordinal)),
@@ -112,6 +118,132 @@ internal sealed class MenuCommandChecks
         Require(!zoom.Executed.Contains("4"), "An item whose command cannot run with its parameter ran.");
         zoom.Allow = static parameter => parameter is "4";
         await WaitAsync(() => target.CanExecute(items[2]) && !target.CanExecute(items[0]), "CanExecuteChanged did not refresh each parameter.");
+    }
+
+    // B3: check and radio items take their check marks from the root ViewModel (IRunicMenuCheckedSource), read again when
+    // it raises PropertyChanged; null keeps the declaration, and the binding answers through the window's command path.
+    [Test, NotInParallel(Order = 45)]
+    public async Task CheckMarksFollowTheViewModel()
+    {
+        IReadOnlyList<DesktopMenu> bar =
+        [
+            new("View",
+            [
+                new DesktopMenuItem("Word wrap", "view.wrap") { IsChecked = false },
+                new DesktopMenuItem("Grid", "view.grid") { IsChecked = true },
+                new DesktopMenuItem("Small", "view.zoom") { RadioGroup = "zoom", IsChecked = true, CommandParameter = "80" },
+                new DesktopMenuItem("Large", "view.zoom") { RadioGroup = "zoom", IsChecked = false, CommandParameter = "150" },
+                new DesktopMenuItem("Plain", "view.plain"),
+            ]),
+        ];
+        var services = new ServiceCollection();
+        services.AddScoped<CheckedMenuViewModel>();
+        services.AddScoped<Func<IBridgeTransport, CheckedMenuViewModel, IDisposable>>(_ => static (_, _) => new NoopAttachment());
+        await using var provider = services.BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = bar,
+        });
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+        });
+        var window = await host.OpenWindowAsync<CheckedMenuWindow>();
+        try
+        {
+            var viewModel = window.ViewModel;
+            var target = ((DesktopBridgeWindow<CheckedMenuViewModel>)window.Host).Window.MenuCommands
+                ?? throw new InvalidOperationException("A ViewModel with only IRunicMenuCheckedSource was not bound.");
+            var items = bar[0].Items.Cast<DesktopMenuItem>().ToArray();
+            Require(target.IsChecked(items[0]) == true && target.IsChecked(items[1]) is null,
+                "The ViewModel's answer did not replace the declaration, or its null became an answer.");
+            Require(target.IsChecked(items[2]) == false && target.IsChecked(items[3]) == true, "The radio items were not asked with their parameters.");
+            Require(target.IsChecked(items[4]) is null, "An item without a check mark got one.");
+
+            viewModel.WordWrap = false;
+            viewModel.Zoom = 80;
+            await WaitAsync(() => target.IsChecked(items[0]) == false && target.IsChecked(items[2]) == true && target.IsChecked(items[3]) == false,
+                "PropertyChanged did not refresh the check marks.");
+
+            viewModel.WordWrap = true;
+            viewModel.Zoom = 150;
+            await WaitAsync(() => target.IsChecked(items[0]) == true && target.IsChecked(items[2]) == false, "The check marks did not follow again.");
+            viewModel.Throws = true;
+            viewModel.WordWrap = true;
+            await WaitAsync(() => target.IsChecked(items[0]) is null && target.IsChecked(items[2]) is null && target.IsChecked(items[3]) is null,
+                "An answer that throws was not counted as no answer.");
+        }
+        finally
+        {
+            await window.DisposeAsync();
+        }
+    }
+
+    // B3 review: re-reads are coalesced to one per model turn, RunicMenu.Refresh reaches state the root ViewModel does
+    // not announce, and a refresh that races a new menu bar is read again for the new bar.
+    [Test, NotInParallel(Order = 46)]
+    public async Task CheckMarkRefreshesAreCoalescedAndReachNestedState()
+    {
+        IReadOnlyList<DesktopMenu> bar =
+        [
+            new("View", [new DesktopMenuItem("Word wrap", "view.wrap") { IsChecked = false }, new DesktopMenuItem("Ruler", "view.ruler") { IsChecked = false }]),
+        ];
+        var services = new ServiceCollection();
+        services.AddScoped<CheckedMenuViewModel>();
+        services.AddScoped<Func<IBridgeTransport, CheckedMenuViewModel, IDisposable>>(_ => static (_, _) => new NoopAttachment());
+        await using var provider = services.BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = bar,
+        });
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+        });
+        var window = await host.OpenWindowAsync<CheckedMenuWindow>();
+        try
+        {
+            var viewModel = window.ViewModel;
+            var target = ((DesktopBridgeWindow<CheckedMenuViewModel>)window.Host).Window.MenuCommands!;
+            var wrap = (DesktopMenuItem)bar[0].Items[0];
+            var ruler = (DesktopMenuItem)bar[0].Items[1];
+            var context = Runic.Navigation.RunicModelContextRegistry.Shared.GetRequired(viewModel);
+
+            // Fifty changes in one turn: one read after it.
+            var before = viewModel.WrapReads;
+            await context.InvokeAsync(() =>
+            {
+                for (var index = 0; index < 50; index++) viewModel.WordWrap = index % 2 == 0;
+            });
+            await WaitAsync(() => target.IsChecked(wrap) == false, "The burst's last state was not read.");
+            await Task.Delay(100);
+            Require(viewModel.WrapReads - before == 1, $"A turn of fifty changes was read {viewModel.WrapReads - before} times.");
+
+            // A child's state the root does not announce: RunicMenu.Refresh reads it.
+            viewModel.Child.Ruler = true;
+            await Task.Delay(100);
+            Require(target.IsChecked(ruler) == false, "The child's change was read without a refresh.");
+            RunicMenu.Refresh(viewModel);
+            await WaitAsync(() => target.IsChecked(ruler) == true, "RunicMenu.Refresh did not read the child's state.");
+            viewModel.Child.Ruler = false;
+            RunicMenu.RefreshAll();
+            await WaitAsync(() => target.IsChecked(ruler) == false, "RunicMenu.RefreshAll did not read the child's state.");
+            RunicMenu.Refresh(new object());
+
+            // Refreshes racing new bars: the last state wins.
+            for (var round = 0; round < 20; round++)
+            {
+                desktop.SetMenuBar(round % 2 == 0 ? [.. bar, new DesktopMenu("More", [new DesktopMenuItem("Other", "view.other") { IsChecked = false }])] : bar);
+                viewModel.WordWrap = round % 2 == 0;
+            }
+            await WaitAsync(() => target.IsChecked(wrap) == false, "A refresh during a rebind was lost.");
+        }
+        finally
+        {
+            await window.DisposeAsync();
+        }
     }
 
     // vdesk-01: application commands are application-wide and released. A second host on the same Desktop host cannot
@@ -181,9 +313,12 @@ sealed class TestCommand(Action? execute = null) : ICommand
         remove => _canExecuteChanged -= value;
     }
     public bool CanExecute(object? parameter) => _enabled;
+    // Raised on each Execute.
+    public event Action? Ran;
     public void Execute(object? parameter)
     {
         execute?.Invoke();
+        Ran?.Invoke();
         Executed.TrySetResult();
     }
 }
@@ -204,7 +339,11 @@ sealed class ParameterCommand(Func<object?, bool> allow) : ICommand
 
 sealed class MenuViewModel : INotifyPropertyChanged, IRunicMenuCommandSource
 {
-    public TestCommand Save { get; } = new();
+    public MenuViewModel() => Save = new(() => SaveScope = RunicInteractionInvocation.Current);
+
+    public TestCommand Save { get; }
+    // The interaction scope Save ran in.
+    public RunicInteractionInvocation? SaveScope { get; private set; }
     public TestCommand Explode { get; } = new(static () => throw new InvalidOperationException("boom"));
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 
@@ -217,3 +356,45 @@ sealed class MenuViewModel : INotifyPropertyChanged, IRunicMenuCommandSource
 }
 
 sealed class MenuWindow : RunicWindow<MenuViewModel>;
+
+sealed class CheckedMenuViewModel : INotifyPropertyChanged, IRunicMenuCheckedSource
+{
+    private bool _wordWrap = true;
+    private int _zoom = 150;
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool Throws { get; set; }
+
+    public bool WordWrap
+    {
+        get => _wordWrap;
+        set { _wordWrap = value; PropertyChanged?.Invoke(this, new(nameof(WordWrap))); }
+    }
+
+    public int Zoom
+    {
+        get => _zoom;
+        set { _zoom = value; PropertyChanged?.Invoke(this, new(nameof(Zoom))); }
+    }
+
+    private int _wrapReads;
+    public int WrapReads => Volatile.Read(ref _wrapReads);
+    public CheckedChild Child { get; } = new();
+
+    public bool? IsMenuItemChecked(string commandId, string? commandParameter) => Throws
+        ? throw new InvalidOperationException("boom")
+        : commandId switch
+        {
+            "view.wrap" => Interlocked.Increment(ref _wrapReads) > 0 && WordWrap,
+            "view.ruler" => Child.Ruler,
+            "view.zoom" => commandParameter == Zoom.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _ => null,
+        };
+}
+
+sealed class CheckedChild
+{
+    public bool Ruler { get; set; }
+}
+
+sealed class CheckedMenuWindow : RunicWindow<CheckedMenuViewModel>;

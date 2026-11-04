@@ -56,9 +56,21 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     /// <inheritdoc cref="RunicWindow{TViewModel}.Services"/>
     IServiceProvider Services { get; }
 
-    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter, CancellationToken cancellationToken);
+    /// <inheritdoc cref="RunicWindow{TViewModel}.Presentation"/>
+    IRunicWindowPresentation Presentation { get; }
+
+    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, RunicWindowOpenRequest request, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
+
+    // Whether the Window's close has started: the application closed or released it, or a close request decided to close.
+    internal bool IsClosing { get; }
+
+    // Runs action once the close starts, at once when it has started.
+    internal void WhenClosing(Action action);
+
+    // Closes the Window with timeout once it has opened, at once when it is open.
+    internal void CloseWhenOpen(TimeSpan timeout);
 }
 
 /// <summary>
@@ -93,6 +105,25 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 
     /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
     protected RunicWindow() { }
+
+    private readonly RunicWindowPresentation _presentation = new();
+
+    /// <summary>
+    /// The Window as it appears on the desktop: bring it to the front, minimize, hide or show it, and read whether it
+    /// is active, from code outside its scope, such as a status icon's handler. Its ViewModel takes the same object as
+    /// <see cref="IRunicWindowPresentation"/>.
+    /// </summary>
+    /// <remarks>
+    /// Readable before the Window opens and after it closes; its requests then report
+    /// <see cref="Runic.Platform.PlatformUnavailableReason.OwnerUnavailable"/> or
+    /// <see cref="Runic.Platform.PlatformUnavailableReason.OwnerClosed"/>.
+    /// </remarks>
+    public IRunicWindowPresentation Presentation => _presentation;
+
+    // The host's presentation of the open window (RunicWindowOpening.UsePresentation).
+    internal void AttachPresentation(IRunicWindowPresentation presentation) =>
+        _presentation.Attach(presentation, () => Volatile.Read(ref _content)?.ModelContext,
+            () => Volatile.Read(ref _content)?.Logger ?? TraceFallbackLogger.Instance);
 
     /// <summary>The window's scoped root ViewModel.</summary>
     /// <exception cref="InvalidOperationException">The window has not opened.</exception>
@@ -164,7 +195,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
     {
         var host = Host;
-        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return hostRequest(cancellationToken);
+        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return RequestFromHostAsync(hostRequest, cancellationToken);
         Task<bool> pending;
         lock (_closeGate)
         {
@@ -185,7 +216,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// property of its ViewModel), in declaration order, skipping empty ones. A clear asks the departure guard of every
     /// entry and of the child regions they own, as any other navigation would. The window closes when every clear
     /// commits; a guard that rejects or fails, a cancelled or superseded clear keeps it open with its entries, and the
-    /// regions after it are not asked. A guard can confirm through a dialog region of the same window, or through a
+    /// regions after it are not asked. The tabs of a region collection (<see cref="RunicRegionCollectionAttribute"/>) are
+    /// removed one by one with <see cref="NavigationSelection.RemoveAsync"/>, so the tabs that agreed are closed even when
+    /// a later tab keeps the window open; to ask every tab in one decision, own the tabs by a page entry, whose clear
+    /// retires them all in one transition. A guard can confirm through a dialog region of the same window, or through a
     /// ReactiveUI interaction that a web View of this window answers: the close is the window's own departure, so the
     /// one presentation in the window that has mounted a handler for the interaction is asked. Override it to add
     /// checks of your own, and call the base method to keep the navigation guards.
@@ -202,12 +236,23 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// <returns><see langword="true"/> to let the window close.</returns>
     protected virtual async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
     {
-        foreach (var region in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
+        foreach (var (region, collection) in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
         {
-            if (region.CurrentEntry is null && !region.CanGoBack) continue;
-            // Stays in the model turn, like a command body. Supersede: a close is never refused because the region is
-            // busy, also when it rejects requests while busy.
-            var result = await region.ClearAsync(CloseClearOptions, cancellationToken).ConfigureAwait(true);
+            NavigationResult<object> result;
+            if (collection is not null)
+            {
+                // A tab of a region collection is removed, not cleared, so a tab whose pages agreed disappears even
+                // when a later tab keeps the window open (region-collections/1). A tab that is already gone is skipped.
+                if (!collection.Regions.Contains(region)) continue;
+                result = await collection.RemoveAsync(region, CloseClearOptions, cancellationToken).ConfigureAwait(true);
+            }
+            else
+            {
+                if (region.CurrentEntry is null && !region.CanGoBack) continue;
+                // Stays in the model turn, like a command body. Supersede: a close is never refused because the region
+                // is busy, also when it rejects requests while busy.
+                result = await region.ClearAsync(CloseClearOptions, cancellationToken).ConfigureAwait(true);
+            }
             // A closed navigator has nothing left to guard.
             if (result is NavigationResult<object>.Committed or NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed })
                 continue;
@@ -239,12 +284,75 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             CloseWithoutAsking();
             await host.DisposeAsync().ConfigureAwait(false);
         }
+        _presentation.Close();
         GC.SuppressFinalize(this);
     }
 
     // The application's own close abandons a pending RequestCloseAsync decision.
+    private async ValueTask<bool> RequestFromHostAsync(Func<CancellationToken, ValueTask<bool>> hostRequest, CancellationToken cancellationToken)
+    {
+        var closed = await hostRequest(cancellationToken).ConfigureAwait(false);
+        if (closed) MarkClosing();
+        return closed;
+    }
+
+    private int _closing;
+    private Action? _onClosing;
+    private readonly object _closingGate = new();
+    private int _closeWhenOpen;
+    private TimeSpan _closeWhenOpenTimeout;
+
+    bool IRunicWindow.IsClosing => Volatile.Read(ref _closing) != 0;
+
+    void IRunicWindow.WhenClosing(Action action)
+    {
+        lock (_closingGate)
+        {
+            if (_closing == 0)
+            {
+                _onClosing += action;
+                return;
+            }
+        }
+        action();
+    }
+
+    // The close started: the Window leaves IRunicWindowService.Windows at once. Hosts call it when their window closes.
+    internal void MarkClosing()
+    {
+        Action? handlers;
+        lock (_closingGate)
+        {
+            if (_closing != 0) return;
+            _closing = 1;
+            (handlers, _onClosing) = (_onClosing, null);
+        }
+        handlers?.Invoke();
+    }
+
+    void IRunicWindow.CloseWhenOpen(TimeSpan timeout)
+    {
+        _closeWhenOpenTimeout = timeout;
+        Volatile.Write(ref _closeWhenOpen, 1);
+        if (Volatile.Read(ref _host) is not null) CloseOnceOpen();
+    }
+
+    // Before the Window opened, IRunicWindowResult.CompleteAsync asked to close it.
+    private void CloseOnceOpen()
+    {
+        if (Interlocked.Exchange(ref _closeWhenOpen, 0) == 0) return;
+        _ = CloseQuietlyAsync(_closeWhenOpenTimeout);
+    }
+
+    private async Task CloseQuietlyAsync(TimeSpan timeout)
+    {
+        try { _ = await CloseAsync(timeout).ConfigureAwait(false); }
+        catch (InvalidOperationException) { /* Released meanwhile (ObjectDisposedException). */ }
+    }
+
     private void CloseWithoutAsking()
     {
+        MarkClosing();
         try { _closeWithoutAsking.Cancel(); }
         catch (AggregateException error)
         {
@@ -273,6 +381,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             }
         }
         if (_closeWithoutAsking.IsCancellationRequested) return true;
+        MarkClosing();
         _ = await host.CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
         return true;
     }
@@ -288,13 +397,16 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         catch (Exception) { await decision.CancelAsync().ConfigureAwait(false); }
     }
 
-    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter,
+    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, RunicWindowOpenRequest request,
         CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _opened, 1) != 0)
             throw new InvalidOperationException($"{GetType().Name} has already been opened; open a new instance for another window.");
-        var opened = await RunicWindowOpening.OpenAsync(host, this, options, parameter, cancellationToken).ConfigureAwait(false);
+        var opened = await RunicWindowOpening.OpenAsync(host, this, options, request, cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _host, opened);
+        // IRunicWindowService.Windows lists it until it closes.
+        (host.Services.GetService(typeof(RunicWindowService)) as RunicWindowService)?.Track(this, options, request.Key);
+        CloseOnceOpen();
     }
 
     RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>

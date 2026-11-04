@@ -176,7 +176,8 @@ internal sealed class FieldPathsTests
         await host.Root.WritePathAsync(vm => vm.Lines, ["2", "price"], "5.00");
         var edit = model.Edits.Single();
         Require(edit.Path.SequenceEqual(["price"]) && ReferenceEquals(edit.Previous, before)
-            && edit.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey, $"{string.Join(".", edit.Path)} {edit.Previous} {edit.ConnectionKey}");
+            // The dispatcher's key of the connection, "{transport key}#{n}" on a transport that reuses its keys.
+            && edit.ConnectionKey?.StartsWith(InMemoryBridgeTransport.DefaultConnectionKey + "#", StringComparison.Ordinal) == true, $"{string.Join(".", edit.Path)} {edit.Previous} {edit.ConnectionKey}");
     }
 
     // Review 3: RunicRowConflicts.Row: any change of the row after the write's baseline is a conflict.

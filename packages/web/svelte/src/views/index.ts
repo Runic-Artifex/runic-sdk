@@ -1,4 +1,6 @@
 export { default as ViewOutlet } from "./ViewOutlet.svelte";
+export { default as RegionOutlets } from "./RegionOutlets.svelte";
+export type { RegionPanelAttributes } from "./region-panel.js";
 export type { ViewRegistry } from "./view-registry.js";
 export { useSuspenseView, useView, type SuspenseViewHandle, type UseViewOptions, type ViewHandle } from "./use-view.svelte.js";
 export { preloadView, type PreloadViewOptions } from "@runic-artifex/views";
@@ -10,11 +12,22 @@ export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } f
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { useLatestOperation, type LatestOperationHandle } from "./use-latest-operation.svelte.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./use-collection-viewport.svelte.js";
+export { useQueryCollection, type QueryCollectionHandle } from "./use-query-collection.svelte.js";
 export { useBridgeConnection, type BridgeConnectionHandle } from "./use-bridge-connection.svelte.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export { useText, useWindowLocale, type TextHandle, type WindowLocaleHandle } from "./use-text.svelte.js";
 export {
   configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
+// blobs/1: uploads from the page and the blob values of state.
+export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";
+export {
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
 } from "@runic-artifex/views";
 export {
   FieldError,

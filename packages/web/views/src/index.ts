@@ -27,7 +27,18 @@ export {
   type TextTranslations,
 } from "./translated-text.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
+export {
+  blobsFeature,
+  upload,
+  type BlobRef,
+  type HostUploadRequest,
+  type HostUploads,
+  type RunicBlob,
+  type UploadOptions,
+  type UploadProgress,
+} from "./blobs.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
+export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
 export {
   createCommandController,
   createViewController,
@@ -71,6 +82,7 @@ export type {
   BridgeStreamOperation,
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
+export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {
   commitAllFields,
   createFieldController,
@@ -113,6 +125,39 @@ export {
   type CollectionViewportController,
   type CollectionViewportOptions,
 } from "./viewport.js";
+export {
+  createQueryCollection,
+  maximumQueryRange,
+  normalizeQuery,
+  type QueryCollection,
+  type QueryCollectionQuery,
+  type QueryCollectionSnapshot,
+  type QueryCollectionState,
+  type QueryRow,
+  type RunicFilter,
+  type RunicQuery,
+  type RunicSortKey,
+} from "./query.js";
+export {
+  createQueryViewportController,
+  createRowSizes,
+  type QueryViewport,
+  type QueryViewportController,
+  type QueryViewportItem,
+  type QueryViewportOptions,
+  type RowSizeEstimate,
+  type RowSizes,
+} from "./query-viewport.js";
+
+export {
+  regionCollectionsFeature,
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "./regions.js";
 
 /**
  * A generated content reference: a View presented in a content slot, such as a ViewModel slot of .NET

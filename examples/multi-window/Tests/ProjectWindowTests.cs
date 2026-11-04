@@ -60,6 +60,19 @@ public sealed class ProjectWindowTests : IAsyncDisposable
 
         await Assert.That(_first.Root.Snapshot().Read(vm => vm.Theme)).IsEqualTo("dark");
         await Assert.That(new SettingsStore(_settingsPath).Load()).IsEqualTo(new AppSettings(Theme: "dark"));
+        await Assert.That(new AppSettings(Theme: "dark").ColorScheme).IsEqualTo(DesktopColorScheme.Dark);
+        await Assert.That(new AppSettings().ColorScheme).IsEqualTo(DesktopColorScheme.NoPreference);
+    }
+
+    [Test]
+    public async Task Saving_the_theme_tells_the_application()
+    {
+        var store = _services.GetRequiredService<SettingsStore>();
+        AppSettings? saved = null;
+        store.Saved += (_, settings) => saved = settings;
+        (await _first.Root.ExecuteAsync(vm => vm.ChooseThemeCommand, "\"light\"")).ThrowIfFailed();
+
+        await Assert.That(saved?.ColorScheme).IsEqualTo(DesktopColorScheme.Light);
     }
 
     [Test]
@@ -133,7 +146,7 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     }
 
     // Desktop preferences that report one color scheme and never change.
-    private sealed class FixedDesktopSettings(DesktopColorScheme scheme) : IDesktopSettings
+    internal sealed class FixedDesktopSettings(DesktopColorScheme scheme) : IDesktopSettings
     {
         private PlatformResult<DesktopAppearance> Current => new PlatformResult<DesktopAppearance>.Success(new DesktopAppearance(scheme));
 

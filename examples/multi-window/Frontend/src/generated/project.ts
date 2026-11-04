@@ -17,11 +17,16 @@ export interface ProjectState {
   readonly statusErrors: readonly string[];
   readonly draft: string;
   readonly draftErrors: readonly string[];
+  readonly account: string;
+  readonly accountErrors: readonly string[];
   readonly isRenameExecuting: boolean;
   readonly canNewWindow: boolean;
   readonly isNewWindowExecuting: boolean;
   readonly isChooseThemeExecuting: boolean;
   readonly isChooseLanguageExecuting: boolean;
+  readonly isOpenDocumentExecuting: boolean;
+  readonly canChooseAccount: boolean;
+  readonly isChooseAccountExecuting: boolean;
 }
 
 export interface ProjectCheckedFields {
@@ -32,6 +37,8 @@ export interface ProjectRenameOperation extends BridgeOperation<void> {}
 export interface ProjectNewWindowOperation extends BridgeOperation<void> {}
 export interface ProjectChooseThemeOperation extends BridgeOperation<void> {}
 export interface ProjectChooseLanguageOperation extends BridgeOperation<void> {}
+export interface ProjectOpenDocumentOperation extends BridgeOperation<void> {}
+export interface ProjectChooseAccountOperation extends BridgeOperation<void> {}
 
 /** A connected Project ViewModel. Dispose it when its presentation ends. */
 export interface ProjectClient extends ViewClient<ProjectState> {
@@ -48,6 +55,9 @@ export interface ProjectClient extends ViewClient<ProjectState> {
   canChooseTheme(input: string): Promise<boolean>;
   chooseLanguage(input: string): Promise<ProjectState>;
   canChooseLanguage(input: string): Promise<boolean>;
+  openDocument(input: string): Promise<ProjectState>;
+  canOpenDocument(input: string): Promise<boolean>;
+  chooseAccount(): Promise<ProjectState>;
   /**
    * Starts `Rename` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
    * the default is a random id. A start with a request id that .NET already admitted returns that operation.
@@ -76,6 +86,20 @@ export interface ProjectClient extends ViewClient<ProjectState> {
   startChooseLanguage(input: string, options?: BridgeOperationStartOptions): Promise<ProjectChooseLanguageOperation>;
   /** Returns the `ChooseLanguage` operation started with `requestId`, for example after the page reloaded. */
   recoverChooseLanguage(requestId: string): Promise<ProjectChooseLanguageOperation>;
+  /**
+   * Starts `OpenDocument` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startOpenDocument(input: string, options?: BridgeOperationStartOptions): Promise<ProjectOpenDocumentOperation>;
+  /** Returns the `OpenDocument` operation started with `requestId`, for example after the page reloaded. */
+  recoverOpenDocument(requestId: string): Promise<ProjectOpenDocumentOperation>;
+  /**
+   * Starts `ChooseAccount` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startChooseAccount(options?: BridgeOperationStartOptions): Promise<ProjectChooseAccountOperation>;
+  /** Returns the `ChooseAccount` operation started with `requestId`, for example after the page reloaded. */
+  recoverChooseAccount(requestId: string): Promise<ProjectChooseAccountOperation>;
 }
 
 export interface ProjectPageReference {
@@ -99,18 +123,25 @@ const members: BridgeMemberDecoders<ProjectState> = {
   statusErrors: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.string(item)),
   draft: (wire: unknown) => bridgeWire.string(wire),
   draftErrors: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.string(item)),
+  account: (wire: unknown) => bridgeWire.string(wire),
+  accountErrors: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.string(item)),
   isRenameExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   canNewWindow: (wire: unknown) => bridgeWire.boolean(wire),
   isNewWindowExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   isChooseThemeExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   isChooseLanguageExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  isOpenDocumentExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  canChooseAccount: (wire: unknown) => bridgeWire.boolean(wire),
+  isChooseAccountExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "MultiWindow.ProjectViewModel:822F53A8188C5559D1BD9DC68176BDC4E956DFCAC0DEBA25C36E60E9B0E7806E";
+const bridgeContract = "MultiWindow.ProjectViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A";
 const checkedFieldNames = ["draft"];
 const renameOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const newWindowOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const chooseThemeOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const chooseLanguageOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const openDocumentOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const chooseAccountOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**
  * Connects a Project client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -119,7 +150,7 @@ const chooseLanguageOperation: BridgeOperationCodec<void> = { decode: value => u
  */
 export function connectProject(options?: BridgeConnectOptions): Promise<ProjectClient & globalThis.Disposable> { return connectProjectAt("project", options); }
 async function connectProjectAt(route: string, options?: BridgeConnectOptions): Promise<ProjectClient & globalThis.Disposable> {
-  const view = await connectView<ProjectState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["title", "theme", "desktopScheme", "language", "draft"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<ProjectState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["title", "theme", "desktopScheme", "language", "draft", "account"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<ProjectClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -139,6 +170,9 @@ async function connectProjectAt(route: string, options?: BridgeConnectOptions): 
     async canChooseTheme(input) { return view.can("chooseTheme", input); },
     async chooseLanguage(input) { return view.command("chooseLanguage", input); },
     async canChooseLanguage(input) { return view.can("chooseLanguage", input); },
+    async openDocument(input) { return view.command("openDocument", input); },
+    async canOpenDocument(input) { return view.can("openDocument", input); },
+    async chooseAccount() { return view.command("chooseAccount"); },
     startRename(input: string, options?: BridgeOperationStartOptions) { return view.start("rename", options?.requestId ?? globalThis.crypto.randomUUID(), input, renameOperation); },
     recoverRename(requestId: string) { return view.recover("rename", requestId, renameOperation); },
     startNewWindow(options?: BridgeOperationStartOptions) { return view.start("newWindow", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, newWindowOperation); },
@@ -147,6 +181,10 @@ async function connectProjectAt(route: string, options?: BridgeConnectOptions): 
     recoverChooseTheme(requestId: string) { return view.recover("chooseTheme", requestId, chooseThemeOperation); },
     startChooseLanguage(input: string, options?: BridgeOperationStartOptions) { return view.start("chooseLanguage", options?.requestId ?? globalThis.crypto.randomUUID(), input, chooseLanguageOperation); },
     recoverChooseLanguage(requestId: string) { return view.recover("chooseLanguage", requestId, chooseLanguageOperation); },
+    startOpenDocument(input: string, options?: BridgeOperationStartOptions) { return view.start("openDocument", options?.requestId ?? globalThis.crypto.randomUUID(), input, openDocumentOperation); },
+    recoverOpenDocument(requestId: string) { return view.recover("openDocument", requestId, openDocumentOperation); },
+    startChooseAccount(options?: BridgeOperationStartOptions) { return view.start("chooseAccount", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, chooseAccountOperation); },
+    recoverChooseAccount(requestId: string) { return view.recover("chooseAccount", requestId, chooseAccountOperation); },
   });
 }
 

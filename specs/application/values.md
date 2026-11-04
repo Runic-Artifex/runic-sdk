@@ -95,6 +95,19 @@ Examples: `P1DT2H3M4.5S`, `PT0.0000001S`, `-PT1H`, `P1D`, and the extremes `-P10
 | `text-reference` | object | a text reference of Runic Translations ([below](#text-reference)) |
 | custom | any | a value type with its own codec; its contract specifies its JSON |
 
+### Blobs and uploads
+
+Two value types of the feature [`blobs/1`](README.md#blobs-and-uploads) name binary content that crosses outside the
+message channel:
+
+| Type | JSON | Rules |
+| --- | --- | --- |
+| `blob` | `{"url": string, "type": string, "size": integer or null, "name": string or null}` | written by the producer only. `url` is a capability URL of the window's host, or `""` when the host serves no blobs; `type` a media type; `size` the length in bytes (0 … 2^53−1) or `null` when unknown; `name` the file name of a download or `null`. A reader ignores other members. |
+| `upload` | `{"id": string, "name": string, "type": string, "size": integer}` | `id` names an upload of the request's connection (16 to 64 characters of `A–Z`, `a–z`, `0–9`, `-` and `_`); a producer reads only `id` and rejects one that names no unclaimed upload of the connection. The producer writes the upload's record as it stored it. |
+
+Both are contract-bound: their normal form is the same JSON, but whether a `blob` URL serves or an `upload` id decodes
+depends on the window, so the value vectors do not cover them; the scenarios of the `blobs` set do.
+
 For objects and unions:
 
 - A writer writes every field, except an optional `json` field that holds no value, which it leaves out.

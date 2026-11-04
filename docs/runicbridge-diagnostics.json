@@ -172,6 +172,11 @@
       "title": "A [RunicPresentationScoped] declaration reaches no Bridge command"
     },
     {
+      "id": "RUNICBRIDGE035",
+      "severity": "error",
+      "title": "A ViewRequest or ViewQuestion member is not a get-only property"
+    },
+    {
       "id": "RUNICBRIDGE050",
       "severity": "error",
       "title": "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"
@@ -190,6 +195,26 @@
       "id": "RUNICBRIDGE053",
       "severity": "warning",
       "title": "An object inside an editable row cannot be copied, so it has no fields below it"
+    },
+    {
+      "id": "RUNICBRIDGE060",
+      "severity": "error",
+      "title": "A RunicQueryCollection member has an unsupported shape"
+    },
+    {
+      "id": "RUNICBRIDGE065",
+      "severity": "error",
+      "title": "A RunicBlob is read from the page: a command input, an interaction result or a checked field"
+    },
+    {
+      "id": "RUNICBRIDGE070",
+      "severity": "error",
+      "title": "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"
+    },
+    {
+      "id": "RUNICBRIDGE071",
+      "severity": "error",
+      "title": "A region collection's select or close client method collides with another client member"
     }
   ]
 }

@@ -1,7 +1,7 @@
 // The runtime API of generated clients. Application code imports
 // `@runic-artifex/views` instead; this entry may change with the generator.
 //
-// Interactions, operations and keyed collections are separate exports that a
+// Interactions, view requests, operations and keyed collections are separate exports that a
 // generated client passes to `connectView` only when it has them, so a View
 // without them does not bundle their protocol code. The wire decoders are
 // the separate `@runic-artifex/views/generated/wire` entry, which generated
@@ -29,4 +29,15 @@ export {
   type InteractionScope,
   type InteractionSession,
 } from "./interactions.js";
+export {
+  defineRequests,
+  type BridgeViewRequestHandler,
+  type BridgeViewRequests,
+  type ViewRequestDefinition,
+  type ViewRequestScope,
+  type ViewRequestSession,
+} from "./requests.js";
 export { bridgeOperations, type BridgeOperations, type OperationScope } from "./operations.js";
+export { regionCollection } from "./regions.js";
+export { decodeQueryCollectionState, defineQueryCollection, type QueryCollectionDefinition } from "./query.js";
+export { upload } from "./blobs.js";

@@ -26,6 +26,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal const string ReleasedCapabilityReply =
         "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
     private const string WebSocketPath = "/_webui_ws_connect";
+    // blobs/1: the window's blobs (GET and HEAD of /_runic/blobs/{token}) and uploads (POST /_runic/upload), which a
+    // Bridge transport serves (SetBlobHandler).
+    internal const string BlobsPath = "/_runic/blobs";
+    internal const string UploadPath = "/_runic/upload";
     private const string ContentSecurityPolicyHeader = "Content-Security-Policy";
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
@@ -104,6 +108,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _requestHandler;
     // DesktopSurfaceOptions.Resources: asked for what the content does not serve, before 404 (#313).
     private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _resourceHandler;
+    // blobs/1: serves an admitted blob request (with its token) or upload (with null).
+    private Func<PresentationExchange, string?, Task>? _blobHandler;
     private bool _allowIndexFallback;
     private bool _isPublic;
     private bool _profileConfigured;
@@ -112,6 +118,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Runic.Platform.DesktopLayoutDirection _layoutDirection;
     private string? _language;
     private MacOSWindowOptions _macOS = new();
+    // The next embedded window's owner (DesktopWindowOptions.Owner, resolved to its native handle) and modality.
+    private nint _ownerHandle;
+    private DesktopWindowModality _modality;
     private bool _hidden;
     private bool _resizable = true;
     private bool _frameless;
@@ -189,7 +198,23 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
     public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
-    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost?.Capabilities ?? DesktopWindowCapabilities.None;
+    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost is { } host
+        ? SharedProfile(host) is null ? host.Capabilities : host.Capabilities & ~DesktopWindowCapabilities.PerWindowColorScheme
+        : DesktopWindowCapabilities.None;
+
+    // The ProfilePath the current window opened with, when the application configured one: windows that share it share
+    // WebView2's preferred color scheme. A generated profile belongs to one window.
+    private string? _configuredProfilePath;
+
+    private string? SharedProfile(IWebUiEmbeddedHost host) =>
+        host is WindowsWebView2Host or DesktopWindowHostAdapter ? _configuredProfilePath : null;
+
+    // What the current window's color scheme belongs to: null for the window alone, else a key that the windows sharing
+    // it have in common (DesktopHost tracks the scheme of each).
+    internal string? EmbeddedColorSchemeScope => _embeddedHost is not { } host
+        || (WindowCapabilities & DesktopWindowCapabilities.PerWindowColorScheme) != 0
+        ? null
+        : SharedProfile(host) is { } profile ? "profile:" + profile.ToUpperInvariant() : "process";
 
     internal bool SupportsNativeDispatch => _embeddedHost?.SupportsNativeDispatch == true;
     internal bool CheckNativeAccess() => _embeddedHost?.CheckNativeAccess() == true;
@@ -646,6 +671,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.ActivityChanged += EmbeddedHostActivityChanged;
                 host.MenuBarPlacementChanged += EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
@@ -659,12 +685,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     RecordMenuBarPlacement(host);
                     PushMenuBar(host);
                     PushSpellCheckingLanguages(host);
+                    PushColorScheme(host);
                 }
                 catch
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.ActivityChanged -= EmbeddedHostActivityChanged;
                     host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                     host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
@@ -723,6 +751,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.ActivityChanged += EmbeddedHostActivityChanged;
                 host.MenuBarPlacementChanged += EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
@@ -737,12 +766,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     RecordMenuBarPlacement(host);
                     PushMenuBar(host);
                     PushSpellCheckingLanguages(host);
+                    PushColorScheme(host);
                 }
                 catch
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.ActivityChanged -= EmbeddedHostActivityChanged;
                     host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                     host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
@@ -910,6 +941,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal void SetResourceHandler(
         Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
         Volatile.Write(ref _resourceHandler, handler);
+
+    // blobs/1: the handler of the window's blob and upload requests, or null to answer them 404.
+    internal void SetBlobHandler(Func<PresentationExchange, string?, Task>? handler) =>
+        Volatile.Write(ref _blobHandler, handler);
+
+    // Removes handler when it is still the window's blob handler.
+    internal void ClearBlobHandler(Func<PresentationExchange, string?, Task> handler) =>
+        Interlocked.CompareExchange(ref _blobHandler, null, handler);
 
     /// <summary>Sets the browser profile name and storage path used for this window.</summary>
     public void SetProfile(string name, string path)
@@ -1413,6 +1452,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _layoutDirection = Runic.Platform.DesktopLayoutDirection.Default;
         _language = null;
         _macOS = new();
+        _ownerHandle = 0;
+        _openedOwnerHandle = 0;
+        _modality = DesktopWindowModality.None;
     }
 
     // The monitor, native direction and web language of the next embedded window (DesktopWindowOptions).
@@ -1480,11 +1522,55 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The macOS title bar of the next embedded window (DesktopWindowOptions.MacOS).
     internal void SetMacOS(MacOSWindowOptions macOS) => _macOS = macOS;
 
+    // The owner handle the current embedded window received, or zero.
+    private nint _openedOwnerHandle;
+
+    internal nint OpenedOwnerHandle => _openedOwnerHandle;
+
+    // The owner and modality of the next embedded window (DesktopWindowOptions.Owner and Modality).
+    internal void SetOwner(nint ownerHandle, DesktopWindowModality modality)
+    {
+        _ownerHandle = ownerHandle;
+        _modality = ownerHandle == 0 ? DesktopWindowModality.None : modality;
+    }
+
     // Where the next embedded window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).
     internal void SetMenuBarPresentation(DesktopMenuBarPresentation presentation) => _menuBarPresentation = presentation;
 
     // The light or dark appearance of the next embedded window (DesktopWindowOptions.ColorScheme).
-    internal void SetColorScheme(Runic.Platform.DesktopColorScheme colorScheme) => _colorScheme = colorScheme;
+    internal void SetColorScheme(Runic.Platform.DesktopColorScheme colorScheme, bool fromApplication = false)
+    {
+        _colorScheme = colorScheme;
+        _colorSchemeFromApplication = fromApplication;
+    }
+
+    // Whether the next window's scheme is the application's (DesktopHost.SetColorSchemeAsync), which a host whose scheme
+    // belongs to the process, as GTK's does, applies once it is open.
+    private bool _colorSchemeFromApplication;
+
+    private void PushColorScheme(IWebUiEmbeddedHost host)
+    {
+        if (!_colorSchemeFromApplication || (host.Capabilities & DesktopWindowCapabilities.ColorScheme) == 0) return;
+        _ = PushColorSchemeAsync(host, _colorScheme);
+    }
+
+    private async Task PushColorSchemeAsync(IWebUiEmbeddedHost host, Runic.Platform.DesktopColorScheme colorScheme)
+    {
+        try
+        {
+            await host.SetColorSchemeAsync(colorScheme).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            if (!host.IsOpen || !ReferenceEquals(Volatile.Read(ref _embeddedHost), host)) return;
+            ReportEmbeddedDiagnostic(new DesktopDiagnostic(DesktopErrorCategory.OperationFailed, "color-scheme-failed",
+                $"The window could not apply the application's color scheme: {DesktopLog.ErrorType(error)}.", Retryable: true)
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopHost.ColorScheme",
+            });
+        }
+    }
 
     // The saved placement the next embedded window restores; ApplyWindowOptions already set its size and position.
     internal void SetPlacement(DesktopWindowPlacement placement) => _placement = placement;
@@ -1628,16 +1714,17 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return MenuCommandChain.TryExecute(item, window, application, Logger);
     }
 
-    // Whether each item can run now, as the command path asks: on the window's UI thread when it has one.
-    internal async Task<bool[]> CanExecuteMenuItemsAsync(IReadOnlyList<Runic.Platform.DesktopMenuItem> items, IDesktopMenuCommandTarget? window,
-        CancellationToken cancellationToken)
+    // Whether each item can run now, as the command path asks, and its check mark: on the window's UI thread when it has one.
+    internal async Task<(bool Enabled, bool? Checked)[]> MenuItemStatesAsync(IReadOnlyList<Runic.Platform.DesktopMenuItem> items,
+        IDesktopMenuCommandTarget? window, CancellationToken cancellationToken)
     {
         var application = MenuHost?.MenuCommands;
-        var results = new bool[items.Count];
+        var results = new (bool Enabled, bool? Checked)[items.Count];
         void Ask()
         {
             for (var index = 0; index < items.Count; index++)
-                results[index] = MenuCommandChain.CanExecute(items[index], window, application, Logger);
+                results[index] = (MenuCommandChain.CanExecute(items[index], window, application, Logger),
+                    MenuCommandChain.IsChecked(items[index], window, application, Logger));
         }
         if (Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsNativeDispatch: true } host && !host.CheckNativeAccess())
         {
@@ -1661,6 +1748,27 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     private DesktopWindowState? _embeddedWindowState;
+
+    // The current embedded window's activity, and each change, from the current host only.
+    internal DesktopWindowActivity? EmbeddedWindowActivity => Volatile.Read(ref _embeddedHost)?.Activity;
+
+    internal event Action<object, DesktopWindowActivity>? EmbeddedWindowActivityChanged;
+
+    private void EmbeddedHostActivityChanged(object? sender, EventArgs eventArgs)
+    {
+        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host) && host.Activity is { } activity)
+        {
+            EmbeddedWindowActivityChanged?.Invoke(host, activity);
+        }
+    }
+
+    // DesktopWindow.SetColorSchemeAsync and DesktopHost.SetColorSchemeAsync for the open embedded window; the next
+    // window opens with the scheme too.
+    internal ValueTask SetEmbeddedColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken)
+    {
+        _colorScheme = colorScheme;
+        return GetEmbeddedHost().SetColorSchemeAsync(colorScheme, cancellationToken);
+    }
 
     private void EmbeddedHostStateChanged(object? sender, EventArgs eventArgs)
     {
@@ -1954,7 +2062,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
     {
+        // Only a host that can own windows receives the owner; the others open the window on its own.
+        var ownerHandle = _embeddedHost is { } ownedHost && ownedHost.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership)
+            ? _ownerHandle
+            : 0;
         string? profilePath = null;
+        _configuredProfilePath = _profileConfigured ? _profilePath : null;
         if (_profileConfigured)
         {
             profilePath = _profilePath;
@@ -2006,6 +2119,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             LayoutDirection = _layoutDirection,
             Language = _language,
             MacOS = _macOS,
+            OwnerHandle = _openedOwnerHandle = ownerHandle,
+            Modality = ownerHandle == 0 ? DesktopWindowModality.None : _modality,
             SpellChecking = _spellChecking,
             SpellCheckingLanguages = _openedSpellCheckingLanguages = MenuHost?.SpellCheckingLanguages ?? [],
         };
@@ -2079,6 +2194,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 closed.Closed -= EmbeddedHostClosed;
                 closed.StateChanged -= EmbeddedHostStateChanged;
+                closed.ActivityChanged -= EmbeddedHostActivityChanged;
                 closed.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                 closed.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
@@ -2106,6 +2222,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 host.Closed -= EmbeddedHostClosed;
                 host.StateChanged -= EmbeddedHostStateChanged;
+                host.ActivityChanged -= EmbeddedHostActivityChanged;
                 host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
@@ -2283,6 +2400,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             embeddedHost.Closed -= EmbeddedHostClosed;
             embeddedHost.StateChanged -= EmbeddedHostStateChanged;
+            embeddedHost.ActivityChanged -= EmbeddedHostActivityChanged;
             embeddedHost.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
             embeddedHost.FilesDropped -= EmbeddedHostFilesDropped;
             try
@@ -2762,6 +2880,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task DispatchRequestAsync(PresentationExchange context)
     {
         var path = context.Path;
+        if (PresentationExchange.StartsWithSegments(path, BlobsPath, out var blobToken))
+            return ServeBlobRequestAsync(context, blobToken.TrimStart('/'));
+        if (IsPath(path, UploadPath))
+            return ServeBlobRequestAsync(context, null);
         if (IsPath(path, BridgePath) && (context.IsGet || context.IsHead))
         {
             HandshakeLog.Record($"{BridgePath} requested");
@@ -2897,6 +3019,47 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
 
         await SendNotFoundAsync(context).ConfigureAwait(false);
+    }
+
+    // blobs/1 (specs/application/README.md, "Blobs and uploads"). A blob URL is a capability that works only for this
+    // window's page: with client cookies, the request must carry the cookie of a client this window served (and, for a
+    // launched browser, the client bound to its launch code), and fetch metadata must not name another site. An upload
+    // must also come from an allowed origin with a POST; the Bridge transport then checks its connection's token.
+    private async Task ServeBlobRequestAsync(PresentationExchange context, string? token)
+    {
+        var handler = Volatile.Read(ref _blobHandler);
+        var upload = token is null;
+        if (handler is null || !upload && token!.Contains('/'))
+        {
+            context.SetResponseHeader("Cache-Control", NoCache);
+            context.StatusCode = PresentationStatus.NotFound;
+            return;
+        }
+        if (upload ? !string.Equals(context.Method, "POST", StringComparison.OrdinalIgnoreCase) : !(context.IsGet || context.IsHead))
+        {
+            context.StatusCode = PresentationStatus.MethodNotAllowed;
+            return;
+        }
+        // A blob may be embedded by the window's own pages (same-origin) and fetched by them; an upload is a POST that
+        // a browser always sends with Origin, which must be the surface's or an additional origin of its policy.
+        var crossSite = context.GetRequestHeader("Sec-Fetch-Site").Equals("cross-site", StringComparison.OrdinalIgnoreCase);
+        var origin = context.GetRequestHeader("Origin");
+        var deniedOrigin = upload
+            ? _securityPolicy is not null && (origin.Length == 0 || !_securityPolicy.AllowsOrigin(Url!, origin))
+            : crossSite;
+        var deniedClient = UseClientCookies && !IsFromPage(context);
+        if (deniedOrigin || deniedClient)
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                deniedOrigin ? DesktopErrorCategory.OriginDenied : DesktopErrorCategory.AuthenticationDenied,
+                upload ? "upload-not-admitted" : "blob-not-admitted",
+                upload ? "An upload came from another origin or client than this window's page."
+                    : "A blob was requested by another site or client than this window's page.",
+                Retryable: false));
+            context.StatusCode = PresentationStatus.Forbidden;
+            return;
+        }
+        await handler(context, token).ConfigureAwait(false);
     }
 
     // Any page can embed a loopback script, and a classic script needs no CORS

@@ -60,4 +60,19 @@ public sealed class WindowContentSessionOptions
     /// session reads the value once, when it is created.
     /// </summary>
     public int? MaximumInputBytes { get; init; }
+
+    /// <summary>
+    /// The largest file, in bytes, that the page may upload to this window (feature <c>blobs/1</c>, <see cref="RunicUpload"/>).
+    /// A larger upload is refused while it streams, with HTTP 413. <see langword="null"/>, the default, is 256 MiB. A value
+    /// must be at least 1 KiB (1 024); the session throws <see cref="ArgumentOutOfRangeException"/> for another one.
+    /// Uploads never cross as Bridge input, so <see cref="MaximumInputBytes"/> does not limit them.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
+    /// The most bytes that uploads which no command claimed yet may take in this window at once (feature <c>blobs/1</c>).
+    /// An upload beyond it is refused with HTTP 507. <see langword="null"/>, the default, is 1 GiB. A value must be at
+    /// least 1 KiB (1 024); the session throws <see cref="ArgumentOutOfRangeException"/> for another one.
+    /// </summary>
+    public long? MaximumWindowUploadBytes { get; init; }
 }

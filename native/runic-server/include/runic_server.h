@@ -1,5 +1,5 @@
 /*
- * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 2.
+ * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 3.
  *
  * Threading: every function may be called from any thread. Callbacks run on the server's threads, never while a
  * caller waits inside a runic_server_* function, and none starts after runic_server_stop returned. A callback must
@@ -16,6 +16,10 @@
  * Coalesced sends (ABI 2): runic_server_ws_queue only queues. RUNIC_SERVER_FLUSH hands the caller the connection's
  * write; it calls runic_server_ws_flush soon (from any thread, typically after the current work item), which writes
  * every message queued until then in one vectored write. Until then other sends are queued behind it.
+ *
+ * Request bodies (ABI 3): runic_server_read reads the next chunk of a request's body; on_received reports it with the
+ * token: RUNIC_SERVER_BODY_READ_DATA with the chunk, valid during the callback, RUNIC_SERVER_BODY_READ_END or
+ * RUNIC_SERVER_BODY_READ_FAILED. One read of a request is in progress at a time; reads work until the request completes.
  */
 #ifndef RUNIC_SERVER_H
 #define RUNIC_SERVER_H
@@ -27,7 +31,10 @@
 extern "C" {
 #endif
 
-#define RUNIC_SERVER_ABI_VERSION 2u
+#define RUNIC_SERVER_ABI_VERSION 3u
+#define RUNIC_SERVER_BODY_READ_DATA 1u
+#define RUNIC_SERVER_BODY_READ_END 2u
+#define RUNIC_SERVER_BODY_READ_FAILED 3u
 
 #define RUNIC_SERVER_OK 0
 #define RUNIC_SERVER_PENDING 1
@@ -90,6 +97,7 @@ typedef struct RunicServerOptions {
     /* code is the peer's close code, or -1 when the transport ended without a close frame */
     void (*on_closed)(void *context, uint64_t connection, int32_t code, const uint8_t *reason, size_t length);
     void (*on_completed)(void *context, uint64_t token, int32_t accepted);
+    void (*on_received)(void *context, uint64_t token, uint32_t kind, const uint8_t *data, size_t length);
 } RunicServerOptions;
 
 uint32_t runic_server_abi_version(void);
@@ -101,6 +109,7 @@ void runic_server_stop(RunicServer *server);
 int32_t runic_server_respond(const RunicServer *server, uint64_t id, uint16_t status, const RunicHeader *headers,
                              size_t header_count, uint32_t body, RunicStr file_path);
 int32_t runic_server_write(const RunicServer *server, uint64_t id, const uint8_t *data, size_t length, uint64_t token);
+int32_t runic_server_read(const RunicServer *server, uint64_t id, uint64_t token);
 int32_t runic_server_end(const RunicServer *server, uint64_t id);
 void runic_server_abort(const RunicServer *server, uint64_t id);
 

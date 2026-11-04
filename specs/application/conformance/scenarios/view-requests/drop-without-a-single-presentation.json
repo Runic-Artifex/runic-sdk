@@ -1,0 +1,343 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "view-requests.drop-without-a-single-presentation.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "view-requests",
+  "roles": [
+    "producer"
+  ],
+  "description": "A focus request (drop) raised outside a scope is dropped when no presentation handles it and when two do; it is not kept for a later registration.",
+  "view": "notes",
+  "requires": [
+    "view-requests/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "c2": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "hello-c2": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "session2": {
+      "kind": "wire",
+      "value": "s-2"
+    },
+    "open-1": {
+      "kind": "request"
+    },
+    "open-2": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "presentation2": {
+      "kind": "wire",
+      "value": "p-2"
+    },
+    "register-1": {
+      "kind": "request"
+    },
+    "register-2": {
+      "kind": "request"
+    },
+    "focusContract": {
+      "kind": "provided"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "connect": "c2"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session2"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "id": "hello-c2",
+      "connection": "c2"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c2",
+      "connection": "c2"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-1"
+    },
+    {
+      "mutate": [
+        {
+          "op": "raise",
+          "request": "focus",
+          "input": {
+            "member": "none"
+          }
+        }
+      ],
+      "note": "No presentation handles focus: dropped."
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation2"
+        }
+      },
+      "id": "open-2",
+      "connection": "c2"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-2",
+      "connection": "c2"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          }
+        ]
+      },
+      "id": "register-1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "ok"
+      },
+      "replyTo": "register-1"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation2"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          }
+        ]
+      },
+      "id": "register-2",
+      "connection": "c2"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "ok"
+      },
+      "replyTo": "register-2",
+      "connection": "c2"
+    },
+    {
+      "mutate": [
+        {
+          "op": "raise",
+          "request": "focus",
+          "input": {
+            "member": "both"
+          }
+        }
+      ],
+      "note": "Two presentations handle focus: dropped."
+    }
+  ]
+}

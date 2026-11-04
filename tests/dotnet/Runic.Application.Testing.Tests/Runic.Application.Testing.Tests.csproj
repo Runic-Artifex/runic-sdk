@@ -28,6 +28,10 @@
     <Using Include="Runic.Application.Views.Generated.Bridges" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The build-time opt-in of AddRunicServeOnlyTestPlatform, as an application's test build adds it. -->
+    <AssemblyAttribute Include="Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="TUnit.Core" />
     <PackageReference Include="TUnit.Engine" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
