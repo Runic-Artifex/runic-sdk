@@ -76,6 +76,40 @@ public sealed class LocaleCultureTests
         Require(CultureInfo.CurrentCulture.Equals(CultureInfo.InvariantCulture), "The culture was not restored.");
     }
 
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task TheCloseGuardRunsInTheWindowsCultureWhenItOptsInAsync(bool flow)
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Runic.Navigation.RunicNavigationServiceCollectionExtensions.AddRunicNavigation(services);
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<CultureGuardViewModel>(services);
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<Func<IBridgeTransport, WindowContentSession, CultureGuardViewModel, IDisposable>>(
+            services, _ => (transport, content, model) => new CultureGuardBridge(transport, model, content: content));
+        await using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        using var invariant = new ProcessCulture(CultureInfo.InvariantCulture);
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<CultureGuardWindow>(
+            new RunicWindowOptions { FlowCultureFromLocale = flow });
+        ((TestWindow<CultureGuardViewModel>)window.Host).Host.Content.Locale = "de-AT";
+        Require(!await window.RequestCloseAsync(), "The guard did not keep the window open.");
+        var expected = flow ? "de-AT" : "";
+        Require(window.GuardCulture == expected && window.GuardCultureAfterAwait == expected,
+            $"The close guard ran in '{window.GuardCulture}' and '{window.GuardCultureAfterAwait}', not '{expected}'.");
+        Require(CultureInfo.CurrentCulture.Equals(CultureInfo.InvariantCulture), "The caller's culture was not restored.");
+    }
+
+    [Test]
+    public void TheCultureCacheIsBounded()
+    {
+        // Tags a remote client might send, assigned without negotiation: each resolves, but the cache stops growing.
+        for (var index = 0; index < LocaleCultureScope.MaximumCachedLocales + 100; index++)
+            Require(LocaleCultureScope.Resolve($"de-x-t{index}")?.Name == "de", "A private-use tag did not resolve to its language.");
+        Require(LocaleCultureScope.CachedLocales <= LocaleCultureScope.MaximumCachedLocales,
+            $"The culture cache holds {LocaleCultureScope.CachedLocales} tags.");
+        // A tag .NET does not predefine resolves to its predefined parent, not to a culture made up for it.
+        Require(LocaleCultureScope.Resolve("de-ZZ")?.Name == "de", $"de-ZZ resolved to {LocaleCultureScope.Resolve("de-ZZ")?.Name}.");
+    }
+
     private static string? ErrorMessage<T>(RunicWindowTestHost<T> host) where T : class
     {
         using var snapshot = host.RawSnapshot();

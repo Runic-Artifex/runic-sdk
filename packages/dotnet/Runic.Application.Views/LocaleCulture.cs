@@ -30,21 +30,36 @@ internal readonly struct LocaleCultureScope : IDisposable
     }
 
     // The culture of a locale: the tag's, else the nearest parent's (de-CH-u-co-phonebk, de-CH, de). Null when none has
-    // one, as with invariant globalization: the invocation then keeps the process's cultures.
-    internal static CultureInfo? Resolve(string locale) => Cultures.GetOrAdd(locale, static tag =>
+    // one, as with invariant globalization: the invocation then keeps the process's cultures. Only cultures .NET predefines
+    // are used, so CultureInfo's own cache holds a bounded set; and this cache keeps at most MaximumCachedLocales tags, so
+    // tags that come from remote clients and are assigned without negotiation cannot grow memory without limit.
+    internal static CultureInfo? Resolve(string locale)
+    {
+        if (Cultures.TryGetValue(locale, out var cached)) return cached;
+        var resolved = Lookup(locale);
+        if (Cultures.Count < MaximumCachedLocales) Cultures.TryAdd(locale, resolved);
+        return resolved;
+    }
+
+    internal const int MaximumCachedLocales = 256;
+
+    // The number of cached tags, for tests.
+    internal static int CachedLocales => Cultures.Count;
+
+    private static CultureInfo? Lookup(string tag)
     {
         var subtags = tag.Split('-');
         for (var length = subtags.Length; length >= 1; length--)
         {
             try
             {
-                var culture = CultureInfo.GetCultureInfo(string.Join('-', subtags, 0, length));
+                var culture = CultureInfo.GetCultureInfo(string.Join('-', subtags, 0, length), predefinedOnly: true);
                 if (!culture.Equals(CultureInfo.InvariantCulture)) return culture;
             }
             catch (CultureNotFoundException) { }
         }
         return null;
-    });
+    }
 
     public void Dispose()
     {

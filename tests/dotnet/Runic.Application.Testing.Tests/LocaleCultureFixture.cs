@@ -88,3 +88,34 @@ public sealed class CultureReactiveViewModel : ReactiveValidationObject
 }
 
 public sealed partial class CultureReactiveWindow : RunicWindow<CultureReactiveViewModel>;
+
+// FlowCultureFromLocale: a native close asks the guard in the window's culture, as a page's navigation does.
+public sealed class CultureGuardViewModel : INotifyPropertyChanged
+{
+    public string Draft { get; set; } = "";
+
+    public event PropertyChangedEventHandler? PropertyChanged
+    {
+        add { }
+        remove { }
+    }
+}
+
+public sealed partial class CultureGuardWindow : RunicWindow<CultureGuardViewModel>
+{
+    public CultureGuardWindow() => GuardClose = true;
+
+    [RunicIgnore]
+    public string? GuardCulture { get; private set; }
+
+    [RunicIgnore]
+    public string? GuardCultureAfterAwait { get; private set; }
+
+    protected override async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+    {
+        GuardCulture = CultureInfo.CurrentCulture.Name;
+        await Task.Yield();
+        GuardCultureAfterAwait = CultureInfo.CurrentUICulture.Name;
+        return false;
+    }
+}
