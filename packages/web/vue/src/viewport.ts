@@ -5,9 +5,8 @@ import {
   type CollectionViewportOptions,
 } from "@runic-artifex/views";
 import { releaseWithScope } from "./scope.js";
+import { isDevelopment } from "./development.js";
 
-// Vue's bundler builds require bundlers to define process.env.NODE_ENV too.
-declare const process: { readonly env: { readonly NODE_ENV?: string } };
 
 export interface CollectionViewportHandle {
   /** The rows to request and the sizes to render. */
@@ -44,7 +43,7 @@ export function useCollectionViewport(options: MaybeRefOrGetter<CollectionViewpo
     attach(element) {
       if (typeof HTMLElement === "undefined") return controller.attach(null);
       const container = element instanceof HTMLElement ? element : null;
-      if (process.env.NODE_ENV !== "production" && element !== null && container === null && !warned) {
+      if (isDevelopment() && element !== null && container === null && !warned) {
         warned = true;
         console.warn("useCollectionViewport's attach received a component instance or a non-HTML element, so the viewport " +
           "is detached: bind `:ref=\"attach\"` to a native scroll container such as a <div>.");

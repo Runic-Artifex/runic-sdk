@@ -123,7 +123,20 @@ export function textChanges(): Stream.Stream<void> {
  * ```
  */
 export function textLocales(): Stream.Stream<string | undefined> {
-  return Stream.concat(Stream.make(undefined), textChanges()).pipe(Stream.map(() => textLocale()), Stream.changes);
+  return textNowAndChanges().pipe(Stream.map(() => textLocale()), Stream.changes);
+}
+
+// One signal now, then one for each change. It subscribes before the first signal, so a switch while the consumer
+// handles that signal is not lost; a slow consumer skips to the latest change, and each reads the language when pulled.
+function textNowAndChanges(): Stream.Stream<void> {
+  return Stream.callback<void>(queue => Effect.acquireRelease(
+    Effect.sync(() => {
+      const unsubscribe = subscribeText(() => { Queue.offerUnsafe(queue, undefined); });
+      Queue.offerUnsafe(queue, undefined);
+      return unsubscribe;
+    }),
+    unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
 }
 
 /**
@@ -135,7 +148,7 @@ export function textLocales(): Stream.Stream<string | undefined> {
  * ```
  */
 export function texts(value: TextReference | string | null | undefined, fallback?: string): Stream.Stream<string> {
-  return Stream.concat(Stream.make(undefined), textChanges()).pipe(Stream.map(() => resolveText(value, fallback)));
+  return textNowAndChanges().pipe(Stream.map(() => resolveText(value, fallback)));
 }
 
 /**

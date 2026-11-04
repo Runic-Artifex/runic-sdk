@@ -54,10 +54,9 @@ import {
   type ViewSource,
 } from "@runic-artifex/views";
 import { missingViewMessage, reportMissingView, viewSourceIdentity } from "@runic-artifex/views/bindings";
+import { isDevelopment } from "./development.js";
 import { releaseWithScope } from "./scope.js";
 
-// Vue's bundler builds require bundlers to define process.env.NODE_ENV too.
-declare const process: { readonly env: { readonly NODE_ENV?: string } };
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -200,7 +199,7 @@ export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewO
   const component = props.registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined;
   if (!component) {
     if (slots["missing"]) return slots["missing"]({ content });
-    if (process.env.NODE_ENV !== "production") return h("p", { role: "alert" }, missingViewMessage(content.kind));
+    if (isDevelopment()) return h("p", { role: "alert" }, missingViewMessage(content.kind));
     reportMissingView(content.kind);
     return null;
   }
