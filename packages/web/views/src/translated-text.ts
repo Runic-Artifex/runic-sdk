@@ -4,7 +4,7 @@
 // it and resolves every reference again, without a call per string.
 //
 // The state is page-wide and shared by every copy of this package on the page, like the connection state.
-import { isFieldError, type FieldError } from "./field-error.js";
+import { isFieldError, type FieldError, type FieldErrorArguments } from "./field-error.js";
 import { reportBridgeError } from "./transport.js";
 import type { TextReference } from "./wire.js";
 
@@ -50,6 +50,8 @@ interface TranslatedTextChannel {
   translations?: TextTranslations | undefined;
   stopTranslations?: (() => void) | undefined;
   fieldErrorText?: FieldErrorText | undefined;
+  // The locales each field error's throwing hook has been reported for; replaced with each configured hook.
+  fieldErrorFailures?: WeakMap<object, Set<string | undefined>> | undefined;
   readonly listeners: Set<() => void>;
   readonly localeListeners: Set<(locale: string | null) => void>;
   // Changes with every change of the text: listeners compare it to skip work.
@@ -158,6 +160,7 @@ export function configureFieldErrorText(text: FieldErrorText): () => void {
   if (typeof text !== "function") throw new TypeError("configureFieldErrorText needs a function (error, locale) => text.");
   const state = channel();
   state.fieldErrorText = text;
+  state.fieldErrorFailures = new WeakMap();
   changed();
   return () => {
     if (state.fieldErrorText !== text) return;
@@ -166,17 +169,36 @@ export function configureFieldErrorText(text: FieldErrorText): () => void {
   };
 }
 
+const emptyArguments: FieldErrorArguments = Object.freeze({});
+
+// The error the hook reads: one of an older copy of this package has no `arguments`, which reads as none. The view
+// inherits everything else, so the brand and `instanceof` still hold, and the original error is not changed.
+function hookView(error: FieldError): FieldError {
+  return error.arguments === undefined ? Object.create(error, { arguments: { value: emptyArguments } }) : error;
+}
+
 /**
  * The text to show for a field error: the text `configureFieldErrorText` gives it in {@link textLocale}, or its
- * English `message`. A `FieldError` of another copy of this package is read the same way.
+ * English `message`. A `FieldError` of another copy of this package is read the same way, and a `reason` that is
+ * `undefined` for it falls back to the message. A throwing hook is reported once per error and locale.
  */
 export function fieldErrorText(error: FieldError): string {
-  const text = channel().fieldErrorText;
+  const state = channel();
+  const text = state.fieldErrorText;
   if (text !== undefined) {
+    const locale = textLocale();
     try {
-      const shown = text(error, textLocale());
+      const shown = text(hookView(error), locale);
       if (typeof shown === "string") return shown;
-    } catch (failure) { reportBridgeError(failure); }
+    } catch (failure) {
+      const failures = state.fieldErrorFailures ??= new WeakMap();
+      let locales = failures.get(error);
+      if (locales === undefined) failures.set(error, locales = new Set());
+      if (!locales.has(locale)) {
+        locales.add(locale);
+        reportBridgeError(failure);
+      }
+    }
   }
   return error.message;
 }

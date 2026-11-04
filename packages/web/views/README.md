@@ -713,9 +713,12 @@ so an application can show its own text (`FieldErrorReason`, open):
 | `offset-out-of-range` | `2026-11-04T10:00+15:00 has an offset beyond ±14:00.` | `text` |
 | `no-text-form` | `This field has no text form.` | none |
 
-`text` is the trimmed text the user typed, and `patterns` the forms a text may take, the locale's first. A field's own
-`parse` that throws, and the `rejected`, `conflict` and `committed-with-error` receipts, have no `reason`: `kind` says
-what happened, and `message` is the parse error's or the producer's text.
+`text` is the trimmed text the user typed, and `patterns` the forms a text may take, the locale's first. A `number`
+field with `integer` (an `int` member) reports `required` with `expected: whole-number`, so a translated text can say
+"a whole number"; its English `message` stays `Enter a number.`. A field's own `parse` that throws, and the `rejected`,
+`conflict` and `committed-with-error` receipts, have no `reason`: `kind` says what happened, and `message` is the parse
+error's or the producer's text. A `FieldError` of an older copy of this package has no `arguments` and may have no
+`reason` either; the hook then receives empty `arguments`, and its `undefined` `reason` falls back to the message.
 
 Give the page your text once with `configureFieldErrorText`. It receives the error and the locale text references are
 shown in (`textLocale()`, the window's locale when the application sets one) and returns the text, or `undefined` for
@@ -729,6 +732,8 @@ import { configureFieldErrorText } from "@runic-artifex/views";
 import { m } from "virtual:runic-translations/app/messages";
 
 configureFieldErrorText((error, locale) => {
+  // `error.arguments` is always an object; `error.reason` can be undefined (an error of an older copy, or a kind
+  // without a reason), and the recipe then returns undefined for the English message.
   const { text = "", scale = 0, expected = "number", patterns = [] } = error.arguments;
   const options = locale === undefined ? {} : { locale };
   switch (error.reason) {
@@ -743,7 +748,8 @@ configureFieldErrorText((error, locale) => {
 ```
 
 A later call replaces an earlier one, and the returned function removes it. The hook is page-wide, like
-`configureTranslatedText`; a hook that throws is reported and the message is shown. `fieldErrorText(error)` returns
+`configureTranslatedText`; a hook that throws is reported once per error and locale (again after a new hook is
+configured), and the message is shown. `fieldErrorText(error)` returns
 the text without a framework.
 
 #### Fields below a member and row cells

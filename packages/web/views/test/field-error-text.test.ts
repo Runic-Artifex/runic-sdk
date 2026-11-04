@@ -29,6 +29,7 @@ test("each invalid text has a reason and arguments, and keeps its English messag
   const cases: [string, Partial<BridgeField<typeof client, State, unknown>>, { locale?: string | null; scale?: number },
     FieldErrorReason, FieldErrorArguments, string][] = [
     ["", { kind: "number" }, {}, "required", { expected: "number" }, "Enter a number."],
+    ["", { kind: "number", integer: true }, {}, "required", { expected: "whole-number" }, "Enter a number."],
     ["", { kind: "decimal" }, {}, "required", { expected: "number" }, "Enter a number."],
     ["", { kind: "bigint" }, {}, "required", { expected: "whole-number" }, "Enter a whole number."],
     ["", { kind: "date" }, {}, "required", { expected: "date" }, "Enter a date."],
@@ -131,9 +132,80 @@ test("a later configureFieldErrorText replaces an earlier one, and a throwing ho
     assert.equal(reported.length, 1, "the failure is reported");
     first();
     assert.equal(resolveText(error), "1e is not a number.", "the replaced hook's stop leaves the later one");
-    assert.equal(reported.length, 2);
+    assert.equal(reported.length, 1, "the same error and locale is not reported again");
   } finally { if (saved) host.reportError = saved; else delete host.reportError; }
   second();
   assert.equal(resolveText(error), "1e is not a number.");
   assert.throws(() => configureFieldErrorText(undefined as never), TypeError);
+});
+
+// The README recipe: reads `error.arguments` and switches on `error.reason`.
+function recipe(error: FieldError, locale: string | undefined): string | undefined {
+  const { text = "", scale = 0 } = error.arguments;
+  if (error.reason === "not-a-number") return `${text} ist keine Zahl (${locale ?? "-"}, ${scale}).`;
+  return undefined;
+}
+
+test("an error of an older copy, without arguments or reason, takes the recipe's default text without a report", () => {
+  // A 0.16 copy's error: the brand, `kind` and message, and no `arguments` or `reason`; frozen, as a copy may send it.
+  const old = new Error("1e is not a number.") as Error & { kind: string };
+  old.kind = "invalid-text";
+  Object.defineProperty(old, Symbol.for("runic.views.FieldError"), { value: true });
+  Object.freeze(old);
+  const legacy = old as unknown as FieldError;
+  assert.equal(legacy instanceof FieldError, true, "the brand still identifies it");
+  const seen: FieldErrorArguments[] = [];
+  const reported: unknown[] = [];
+  const host = globalThis as { reportError?: (error: unknown) => void };
+  const saved = host.reportError;
+  host.reportError = failure => { reported.push(failure); };
+  cleanup.push(() => { if (saved) host.reportError = saved; else delete host.reportError; });
+  cleanup.push(configureFieldErrorText((shown, locale) => { seen.push(shown.arguments); return recipe(shown, locale); }));
+  assert.equal(resolveText(legacy), "1e is not a number.", "undefined from the recipe shows the message");
+  assert.equal(fieldErrorText(legacy), "1e is not a number.");
+  assert.equal(reported.length, 0, "an older error is not a failure");
+  assert.equal(legacy.arguments, undefined, "the original error is not changed");
+  assert.ok(seen.length >= 2 && seen.every(args => Object.isFrozen(args) && Object.keys(args).length === 0),
+    "the hook receives empty frozen arguments");
+  // A current error with the same recipe still gets its text.
+  const current = errorOf("1e", { kind: "number" })!;
+  assert.equal(resolveText(current), "1e ist keine Zahl (-, 0).");
+  assert.equal(reported.length, 0);
+});
+
+test("a throwing hook is reported once per error and locale, again after a new hook is configured", () => {
+  const reported: unknown[] = [];
+  const host = globalThis as { reportError?: (error: unknown) => void };
+  const saved = host.reportError;
+  host.reportError = failure => { reported.push(failure); };
+  cleanup.push(() => { if (saved) host.reportError = saved; else delete host.reportError; });
+  cleanup.push(configureFieldErrorText(() => { throw new Error("broken"); }));
+  const error = errorOf("1e", { kind: "number" })!;
+  const other = errorOf("2e", { kind: "number" })!;
+
+  // Several evaluations of one error in one locale: one report, and the English message each time.
+  for (let i = 0; i < 4; i++) assert.equal(resolveText(error), "1e is not a number.");
+  assert.equal(reported.length, 1, "reported once");
+
+  // Another error in the same locale is another failure.
+  assert.equal(resolveText(other), "2e is not a number.");
+  assert.equal(reported.length, 2, "reported once per error");
+  assert.equal(resolveText(other), "2e is not a number.");
+  assert.equal(reported.length, 2);
+
+  // Another locale: reported again for the same error.
+  const stopTranslations = configureTranslatedText({ resolve: () => undefined, getLocale: () => "de" });
+  cleanup.push(stopTranslations);
+  assert.equal(resolveText(error), "1e is not a number.");
+  assert.equal(reported.length, 3, "reported for the other locale");
+  assert.equal(resolveText(error), "1e is not a number.");
+  assert.equal(reported.length, 3);
+  stopTranslations();
+
+  // A new hook: its failures are reported again, for the same errors and locales.
+  cleanup.push(configureFieldErrorText(() => { throw new Error("broken again"); }));
+  assert.equal(resolveText(error), "1e is not a number.");
+  assert.equal(reported.length, 4, "a new hook is reported again");
+  assert.equal(resolveText(error), "1e is not a number.");
+  assert.equal(reported.length, 4);
 });

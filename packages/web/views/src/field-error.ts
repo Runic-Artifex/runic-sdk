@@ -136,7 +136,11 @@ export function fieldErrorMessage(reason: FieldErrorReason, args: FieldErrorArgu
   }
 }
 
-/** @internal An `invalid-text` error of Runic's parsers, with its English message. */
-export function invalidText(reason: FieldErrorReason, args?: FieldErrorArguments): FieldError {
-  return new FieldError("invalid-text", fieldErrorMessage(reason, args), undefined, { reason, ...args === undefined ? {} : { arguments: args } });
+/**
+ * @internal An `invalid-text` error of Runic's parsers, with its English message: `message` when given, otherwise the
+ * one {@link fieldErrorMessage} writes for the reason.
+ */
+export function invalidText(reason: FieldErrorReason, args?: FieldErrorArguments, message?: string): FieldError {
+  return new FieldError("invalid-text", message ?? fieldErrorMessage(reason, args), undefined,
+    { reason, ...args === undefined ? {} : { arguments: args } });
 }
