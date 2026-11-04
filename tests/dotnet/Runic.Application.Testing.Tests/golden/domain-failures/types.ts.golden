@@ -25,6 +25,8 @@ export type AsyncDriverNote =
   | ({ readonly $case: "text" } & AsyncDriverTextNote);
 
 export type AsyncDriverPriority = "Low" | "High";
+/** The values of {@link AsyncDriverPriority} that .NET writes, in declaration order. */
+export const AsyncDriverPriorityValues = ["Low", "High"] as const satisfies readonly AsyncDriverPriority[];
 
 export interface AsyncDriverTextNote {
   readonly text: string;
@@ -70,6 +72,8 @@ export interface CodegenPoint {
 }
 
 export type CodegenShapeMode = "None" | "Default" | "Active";
+/** The values of {@link CodegenShapeMode} that .NET writes, in declaration order. */
+export const CodegenShapeModeValues = ["None", "Active"] as const satisfies readonly CodegenShapeMode[];
 
 export interface CodegenSlotOfNullableOfString {
   readonly value: string | null;
@@ -129,6 +133,8 @@ export interface DocumentedItem {
  * - `Grid`: Items in a grid.
  */
 export type DocumentedLayout = "List" | "Grid";
+/** The values of {@link DocumentedLayout} that .NET writes, in declaration order. */
+export const DocumentedLayoutValues = ["List", "Grid"] as const satisfies readonly DocumentedLayout[];
 
 export interface DtoListEntry {
   readonly name: string;
@@ -136,6 +142,16 @@ export interface DtoListEntry {
 }
 
 export type EmptyKind = never;
+
+export type FormsPriority = "Low" | "Normal" | "High" | "Urgent";
+/** The values of {@link FormsPriority} that .NET writes, in declaration order. */
+export const FormsPriorityValues = ["Low", "Normal", "High"] as const satisfies readonly FormsPriority[];
+
+export interface FormsRow {
+  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */
+  readonly id: bigint;
+  readonly label: string;
+}
 
 /** This public shape is intentionally inspected by BridgeCodegen. It proves an interaction is not merely usable through the hand-authored adapter API. */
 export interface GeneratedInteractionRequest {
@@ -177,6 +193,8 @@ export interface NavDiscardPrompt {
  * - `Cancelled`: An arrival hook was cancelled, because its entry stopped being current or retired, or the navigator closed, or it was never started for that reason.
  */
 export type NavigationArrivalState = "None" | "Completed" | "Failed" | "Cancelled";
+/** The values of {@link NavigationArrivalState} that .NET writes, in declaration order. */
+export const NavigationArrivalStateValues = ["None", "Completed", "Failed", "Cancelled"] as const satisfies readonly NavigationArrivalState[];
 
 /** A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command. */
 export interface NavigationOutcome {
@@ -197,6 +215,8 @@ export interface NavigationOutcome {
  * - `Failed`: The transition failed. Only the full navigation result carries the exception.
  */
 export type NavigationOutcomeKind = "Committed" | "Rejected" | "Superseded" | "Failed";
+/** The values of {@link NavigationOutcomeKind} that .NET writes, in declaration order. */
+export const NavigationOutcomeKindValues = ["Committed", "Rejected", "Superseded", "Failed"] as const satisfies readonly NavigationOutcomeKind[];
 
 /**
  * Why a navigation request was rejected.
@@ -211,8 +231,12 @@ export type NavigationOutcomeKind = "Committed" | "Rejected" | "Superseded" | "F
  * - `Busy`: The region admits requests with `RejectWhileBusy` and was busy: an earlier request had not completed.
  */
 export type NavigationRejection = "Guard" | "Cancelled" | "Closed" | "Reentrant" | "NoHistory" | "NotCurrent" | "EntryNotFound" | "Busy";
+/** The values of {@link NavigationRejection} that .NET writes, in declaration order. */
+export const NavigationRejectionValues = ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"] as const satisfies readonly NavigationRejection[];
 
 export type NotePublishBlock = "Locked" | "Archived";
+/** The values of {@link NotePublishBlock} that .NET writes, in declaration order. */
+export const NotePublishBlockValues = ["Locked", "Archived"] as const satisfies readonly NotePublishBlock[];
 
 export interface NoteQuotaExceeded {
   readonly limit: number;
@@ -239,6 +263,8 @@ export interface OptionalRequest {
 }
 
 export type OptionalScope = "All" | "Home" | "System";
+/** The values of {@link OptionalScope} that .NET writes, in declaration order. */
+export const OptionalScopeValues = ["All", "Home", "System"] as const satisfies readonly OptionalScope[];
 
 export interface OptionalSettings {
   readonly name: string;
@@ -269,6 +295,8 @@ export interface ReservedNamesbridgeWire {
 }
 
 export type ScalarMode = "Plain" | "fancy";
+/** The values of {@link ScalarMode} that .NET writes, in declaration order. */
+export const ScalarModeValues = ["Plain", "fancy"] as const satisfies readonly ScalarMode[];
 
 export interface TestsNamingState {
   readonly count: number;

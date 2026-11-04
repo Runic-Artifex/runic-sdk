@@ -5,6 +5,7 @@ import type { MockBridge, MockTypedView, MockSetterHandler, MockCommandHandler, 
 import type { FailureToolkitClient, FailureToolkitState } from "./failureToolkit.js";
 import type { NotePublishBlock, NoteQuotaExceeded, NoteSaveFailure } from "./types.js";
 export type { NotePublishBlock, NoteQuotaExceeded, NoteSaveFailure } from "./types.js";
+export { NotePublishBlockValues } from "./types.js";
 
 /** The state of a mock FailureToolkit: the client state, with content as `{ kind, id }` and command state optional. */
 export type FailureToolkitMockState = Omit<FailureToolkitState, "canSave" | "canPublish" | "isPublishExecuting" | "canDiscard" | "isDiscardExecuting"> & Partial<Pick<FailureToolkitState, "canSave" | "canPublish" | "isPublishExecuting" | "canDiscard" | "isDiscardExecuting">>;

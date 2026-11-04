@@ -43,7 +43,7 @@ export {
   type ViewSource,
 } from "./controller.js";
 export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
-export type { BridgeField, BridgeFieldKind } from "./field.js";
+export type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
 export {
   createLatestOperationController,
   createOperationController,

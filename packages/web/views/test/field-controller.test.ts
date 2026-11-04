@@ -539,6 +539,13 @@ test("parse and format options replace the kind's text form (C1)", () => {
   assert.equal(controller.current.text, "lots");
 });
 
+test("a descriptor's constraints are the controller's (C8)", () => {
+  const constraints = { required: true, maxLength: 40 } as const;
+  const controller = createFieldController({ ...title, constraints });
+  assert.equal(controller.field.constraints, constraints);
+  assert.equal(createFieldController(title).field.constraints, undefined);
+});
+
 test("a DateTimeOffset edit keeps the value's offset: unchanged text, and a local time in a DST overlap (C1 review)", () => {
   const zone = process.env["TZ"];
   process.env["TZ"] = "Europe/Berlin";

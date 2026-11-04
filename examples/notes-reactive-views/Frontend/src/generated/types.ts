@@ -11,6 +11,8 @@ export interface DiscardNoteRequest {
  * - `Preview`: The rendered note.
  */
 export type DocumentPane = "Editor" | "Preview";
+/** The values of {@link DocumentPane} that .NET writes, in declaration order. */
+export const DocumentPaneValues = ["Editor", "Preview"] as const satisfies readonly DocumentPane[];
 
 /**
  * How the arrival hooks of a committed transition ended (`Arrival`).
@@ -21,6 +23,8 @@ export type DocumentPane = "Editor" | "Preview";
  * - `Cancelled`: An arrival hook was cancelled, because its entry stopped being current or retired, or the navigator closed, or it was never started for that reason.
  */
 export type NavigationArrivalState = "None" | "Completed" | "Failed" | "Cancelled";
+/** The values of {@link NavigationArrivalState} that .NET writes, in declaration order. */
+export const NavigationArrivalStateValues = ["None", "Completed", "Failed", "Cancelled"] as const satisfies readonly NavigationArrivalState[];
 
 /** A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command. */
 export interface NavigationOutcome {
@@ -41,6 +45,8 @@ export interface NavigationOutcome {
  * - `Failed`: The transition failed. Only the full navigation result carries the exception.
  */
 export type NavigationOutcomeKind = "Committed" | "Rejected" | "Superseded" | "Failed";
+/** The values of {@link NavigationOutcomeKind} that .NET writes, in declaration order. */
+export const NavigationOutcomeKindValues = ["Committed", "Rejected", "Superseded", "Failed"] as const satisfies readonly NavigationOutcomeKind[];
 
 /**
  * Why a navigation request was rejected.
@@ -55,6 +61,8 @@ export type NavigationOutcomeKind = "Committed" | "Rejected" | "Superseded" | "F
  * - `Busy`: The region admits requests with `RejectWhileBusy` and was busy: an earlier request had not completed.
  */
 export type NavigationRejection = "Guard" | "Cancelled" | "Closed" | "Reentrant" | "NoHistory" | "NotCurrent" | "EntryNotFound" | "Busy";
+/** The values of {@link NavigationRejection} that .NET writes, in declaration order. */
+export const NavigationRejectionValues = ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"] as const satisfies readonly NavigationRejection[];
 
 /** Why a note could not be saved. */
 export type SaveFailure =

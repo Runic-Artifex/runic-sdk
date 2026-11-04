@@ -6,6 +6,7 @@ import { pageEditor, type EditorPageReference } from "./editor.js";
 import { pagePreview, type PreviewPageReference } from "./preview.js";
 import type { DocumentPane } from "./types.js";
 export type { DocumentPane } from "./types.js";
+export { DocumentPaneValues } from "./types.js";
 
 export interface DocumentState {
   readonly currentPane: EditorPageReference | PreviewPageReference | null;

@@ -1,7 +1,7 @@
 /// <reference lib="esnext.disposable" preserve="true" />
 import { clock, randomId } from "./clock.js";
 import type { FieldBaseline, FieldWriteReceipt } from "./connection.js";
-import type { BridgeField, BridgeFieldKind } from "./field.js";
+import type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
 import { FieldError } from "./field-error.js";
 import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
@@ -121,6 +121,8 @@ export interface FieldController<TState, TClient, TValue> {
     readonly choices: readonly TValue[] | undefined;
     /** A `datetime` member that requires an offset (`DateTimeOffset`). */
     readonly offset: boolean;
+    /** The member's DataAnnotations, for an element's `required`, `maxlength`, `min`, `max` and `pattern`. */
+    readonly constraints: BridgeFieldConstraints | undefined;
   };
   /** The text the field shows for `value` when no draft exists: the `format` option, or the kind's form. */
   format(value: TValue): string;
@@ -235,7 +237,8 @@ export function createFieldController<TState, TClient, TValue>(
     catch (failure) { throw failure instanceof FieldError ? failure : invalid(failure instanceof Error ? failure.message : String(failure)); }
   };
   const format: (value: TValue) => string = options.format ?? kindFormatter<TValue>(traits);
-  const field = Object.freeze({ kind, nullable, integer: traits.integer, choices: definition.choices, offset: traits.offset });
+  const field = Object.freeze({ kind, nullable, integer: traits.integer, choices: definition.choices, offset: traits.offset,
+    constraints: definition.constraints });
   const listeners = new Set<() => void>();
   let source: FieldSource<TState, TClient> | undefined;
   let draft: { readonly value: TValue } | undefined;

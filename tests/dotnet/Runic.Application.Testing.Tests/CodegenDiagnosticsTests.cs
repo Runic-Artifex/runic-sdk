@@ -264,7 +264,7 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(exitCode == 0 && warnings.Length == 2
                     && At("ObservableCollection<Task> Tasks", "CollectionsViewModel.Tasks: an observable collection of Task rows that is not a [RunicCollection]")
                     && At("ObservableCollection<Task> Tasks", "[RunicCollection(nameof(Task.Id))]")
-                    && At("ObservableCollection<Note> Notes", "[RunicCollection(nameof(Note.Key))] with a string, Guid or Int32 key property")
+                    && At("ObservableCollection<Note> Notes", "[RunicCollection(nameof(Note.Key))] with a string, Guid, Int32 or Int64 key property")
                     && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE032")}", StringComparison.Ordinal)),
                 $"Observable rows without a key were not reported as located RUNICBRIDGE032 warnings.\n{output}");
         }

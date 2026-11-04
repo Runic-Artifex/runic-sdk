@@ -26,6 +26,7 @@ export {
 export {
   FieldError,
   type BridgeField,
+  type BridgeFieldConstraints,
   type BridgeFieldKind,
   type FieldBaseline,
   type FieldDefinition,
