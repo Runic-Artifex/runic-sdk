@@ -13,6 +13,8 @@ internal sealed partial class WindowsWebView2Host
     private const uint WmPaint = 0x000F;
     private const uint WmEraseBackground = 0x0014;
     private const uint WmTimer = 0x0113;
+    private const uint WmSysColorChange = 0x0015;
+    private const uint WmSettingChange = 0x001A;
     // Destroys a window that is still opening and that its caller gave up (cancelled or disposed).
     private const uint WmAppAbandon = 0x8002;
     private const nuint GraceTimer = 1;
@@ -57,7 +59,7 @@ internal sealed partial class WindowsWebView2Host
             return;
         }
         var options = _options!;
-        _palette = WindowsLoadingSurface.PaletteFor(options.ColorScheme, SystemUsesDarkTheme(), options.HighContrast, Native.GetSysColor);
+        _palette = LoadingPalette(options);
         _loadingAnimated = ClientAreaAnimations();
         _loadingStarted = Stopwatch.GetTimestamp();
         _loading = true;
@@ -67,6 +69,12 @@ internal sealed partial class WindowsWebView2Host
         if (_loadingAnimated) Native.SetTimer(_window, AnimationTimer, AnimationFrameMilliseconds, 0);
         LoadingSurfaceChanged?.Invoke(_window, true);
     }
+
+    // A window without its own HighContrast option follows the system's contrast theme, also when it changes while the
+    // surface shows.
+    private static WindowsLoadingSurface.Palette LoadingPalette(WebUiEmbeddedHostOptions options) =>
+        WindowsLoadingSurface.PaletteFor(options.ColorScheme, SystemUsesDarkTheme(),
+            options.HighContrastFollowsSystem ? WebUiSystemTheme.IsHighContrast : options.HighContrast, Native.GetSysColor);
 
     // Once the WebView exists it covers the client area, and the window paints nothing of its own again.
     private void EndLoadingSurface()
@@ -183,6 +191,12 @@ internal sealed partial class WindowsWebView2Host
             case WmSize when _loading:
                 Native.InvalidateRect(_window, null, false);
                 return true;
+            case WmSysColorChange or WmSettingChange when _loading:
+                // A contrast theme turned on or off, or its colours changed: repaint with the new palette. The message
+                // continues to DefWindowProc.
+                _palette = LoadingPalette(_options!);
+                Native.InvalidateRect(_window, null, false);
+                return false;
             case WmClose when _shown && !IsOpen:
                 // Nothing to confirm before the page has loaded, and the application cannot close a window it has not
                 // received yet: the window closes, and the caller's open returns it closed.

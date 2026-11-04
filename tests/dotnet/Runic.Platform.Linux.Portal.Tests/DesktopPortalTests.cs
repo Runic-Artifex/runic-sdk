@@ -51,7 +51,7 @@ internal sealed class DesktopPortalTests
         var clock = new TimerCountingClock();
         await using var settings = new PortalDesktopSettings(destination: connection.UniqueName!) { TimeProvider = clock };
         var result = await settings.ReadAsync();
-        Check(result is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark, Value.HighContrast: true, Value.ReducedMotion: null, Value.AccentColor.Red: 0.25 }, "native preference variants and unknown optional values");
+        Check(result is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark, Value.Contrast: DesktopContrast.More, Value.HighContrast: true, Value.SystemColors: null, Value.ReducedMotion: null, Value.AccentColor.Red: 0.25 }, "native preference variants and unknown optional values");
         using (var watching = TestTimeouts.Cancellation(TimeSpan.FromSeconds(15)))
         {
             await using var watch = settings.WatchAsync(watching.Token).GetAsyncEnumerator(watching.Token);

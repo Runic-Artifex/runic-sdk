@@ -37,7 +37,7 @@ internal sealed class RealPortalAppearanceTests
         await ChangeAsync(watch, settings, "org.gnome.desktop.interface", "accent-color", "orange",
             appearance => Near(appearance.AccentColor, 0.929, 0.357, 0.0), "orange accent");
         await ChangeAsync(watch, settings, "org.gnome.desktop.a11y.interface", "high-contrast", "true",
-            appearance => appearance.HighContrast == true, "high contrast");
+            appearance => appearance.Contrast == DesktopContrast.More, "high contrast");
         await ChangeAsync(watch, settings, "org.gnome.desktop.a11y.interface", "reduced-motion", "reduce",
             appearance => appearance.ReducedMotion == true, "reduced motion");
         var final = await ReadUntilAsync(settings, _ => true, "the final read");

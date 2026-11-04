@@ -181,6 +181,9 @@ internal sealed record WebUiEmbeddedHostOptions
 
     public bool HighContrast { get; init; }
 
+    // HighContrast came from the system setting, not the window's option, so the window follows a change of it.
+    internal bool HighContrastFollowsSystem { get; init; }
+
     public string? IconFile { get; init; }
 
     public string? ProfilePath { get; init; }

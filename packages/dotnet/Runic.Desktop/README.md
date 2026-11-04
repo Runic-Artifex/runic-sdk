@@ -515,9 +515,16 @@ Read on another thread, the value is for identity only, such as comparing
 windows: AppKit and GTK objects may be used only on their UI thread. Pass any
 call on the handle to `InvokeNativeAsync`, which runs it there with the handle.
 
-`DesktopPlatform.IsHighContrast` reads the current high-contrast setting once,
-which decides a window's initial theme when `DesktopWindowOptions.HighContrast`
-is not set. To follow changes, observe `IDesktopSettings` from Runic.Platform.
+`DesktopPlatform.IsHighContrast` reads the current high-contrast setting once:
+a Windows contrast theme, macOS "Increase contrast", or a GTK high-contrast
+theme. A window without `DesktopWindowOptions.HighContrast` follows the setting
+while it is open: the page's `webui.isHighContrast()` reads it at each call, and
+the Windows loading surface repaints in the contrast theme's colours when one is
+turned on or off. The web views follow the desktop themselves (see
+[contrast, forced colours and reduced motion](#contrast-forced-colors-and-reduced-motion)).
+To follow the three-state contrast preference (`DesktopAppearance.Contrast`:
+none, more contrast, forced colours) and the forced palette in .NET, observe
+`IDesktopSettings` from Runic.Platform.
 
 ### Light and dark windows
 
@@ -600,6 +607,17 @@ windows of a configured `ProfilePath` as sharing it.
 
 Runic Windows reach the same switch host-neutrally through
 `IRunicWindowPresentation.SetColorSchemeAsync` (Runic.Application.Views).
+
+### Contrast, forced colors and reduced motion
+
+Unlike the color scheme, a window's contrast and motion are the desktop's:
+Runic sets none of them, and each web view follows the desktop's settings
+itself, while the window is open. A page reads them with CSS media queries
+(`prefers-contrast`, `forced-colors`, `prefers-reduced-motion`); a Runic Views
+page also gets the values its engine does not expose from the host
+(`appearance/1`, see the Views README). In .NET, `IDesktopSettings` reports
+the same preferences as `DesktopAppearance.Contrast`, `SystemColors` and
+`ReducedMotion`.
 
 ### Owned and window-modal windows
 

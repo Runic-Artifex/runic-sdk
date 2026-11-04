@@ -21,8 +21,11 @@ internal sealed class MacDesktopSettings : DesktopSettingsSource
             var rgb = Arg(Send(Class("NSColor"), Sel("controlAccentColor")), Sel("colorUsingColorSpace:"), Send(Class("NSColorSpace"), Sel("sRGBColorSpace")));
             result = new(match == "NSAppearanceNameDarkAqua" ? DesktopColorScheme.Dark : match == "NSAppearanceNameAqua" ? DesktopColorScheme.Light : DesktopColorScheme.NoPreference,
                 rgb == 0 ? null : new(Double(rgb, Sel("redComponent")), Double(rgb, Sel("greenComponent")), Double(rgb, Sel("blueComponent"))),
-                Bool(workspace, Sel("accessibilityDisplayShouldIncreaseContrast")) != 0,
-                Bool(workspace, Sel("accessibilityDisplayShouldReduceMotion")) != 0);
+                ReducedMotion: Bool(workspace, Sel("accessibilityDisplayShouldReduceMotion")) != 0)
+            {
+                // Increase contrast keeps the application's colours; macOS has no forced-colours mode, and no palette.
+                Contrast = Bool(workspace, Sel("accessibilityDisplayShouldIncreaseContrast")) != 0 ? DesktopContrast.More : DesktopContrast.NoPreference,
+            };
         }).ConfigureAwait(false);
         return new PlatformResult<DesktopAppearance>.Success(result!);
     }

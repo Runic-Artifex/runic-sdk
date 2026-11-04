@@ -33,7 +33,8 @@ internal sealed class MacAppearanceNativeTests
                 $"Accent {actual} is not {accent}.");
         }
         if (Parameter("expect-contrast") is { } contrast)
-            Require(appearance.HighContrast == bool.Parse(contrast), $"HighContrast {appearance.HighContrast} is not {contrast}.");
+            Require(appearance.Contrast == (bool.Parse(contrast) ? DesktopContrast.More : DesktopContrast.NoPreference) && appearance.SystemColors is null,
+                $"Contrast {appearance.Contrast} is not {(bool.Parse(contrast) ? "More" : "NoPreference")}, or a palette is reported.");
         if (Parameter("expect-motion") is { } motion)
             Require(appearance.ReducedMotion == bool.Parse(motion), $"ReducedMotion {appearance.ReducedMotion} is not {motion}.");
         Console.WriteLine($"PASS macOS appearance read: {appearance}");

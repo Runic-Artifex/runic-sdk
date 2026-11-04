@@ -136,6 +136,30 @@ internal sealed class PlatformHelpersTests
             Throws<ArgumentOutOfRangeException>(() => _ = appearance with { TextScale = invalid });
     }
 
+    [Test, DisplayName("APPEARANCE: Contrast has three states and HighContrast is derived from it")]
+    public void Contrast()
+    {
+        var unknown = new DesktopAppearance();
+        Check(unknown.Contrast is null && unknown.HighContrast is null && unknown.SystemColors is null, "Unknown by default.");
+        Check(new DesktopAppearance(HighContrast: true).Contrast == DesktopContrast.More, "HighContrast true in the constructor is More.");
+        Check(new DesktopAppearance(HighContrast: false).Contrast == DesktopContrast.NoPreference, "HighContrast false is NoPreference.");
+        var forced = unknown with { Contrast = DesktopContrast.ForcedColors };
+        Check(forced.HighContrast == true && (unknown with { Contrast = DesktopContrast.More }).HighContrast == true
+            && (unknown with { Contrast = DesktopContrast.NoPreference }).HighContrast == false, "HighContrast follows Contrast.");
+        Check((forced with { HighContrast = true }).Contrast == DesktopContrast.ForcedColors, "HighContrast true keeps ForcedColors.");
+        Check((forced with { HighContrast = false }).Contrast == DesktopContrast.NoPreference && (forced with { HighContrast = null }).Contrast is null,
+            "HighContrast false or null replaces it.");
+        Check(new DesktopAppearance(HighContrast: true) == unknown with { Contrast = DesktopContrast.More },
+            "Equal whichever member set it, since one value backs both.");
+        var (_, _, contrast, _) = forced;
+        Check(contrast == true, "Deconstruct reports the derived HighContrast.");
+        var black = new DesktopAccentColor(0, 0, 0);
+        var white = new DesktopAccentColor(1, 1, 1);
+        var palette = new DesktopSystemColors(black, white, new(1, 1, 0), new(0, 1, 0), new(0, 1, 1), black, black, white);
+        var withPalette = forced with { SystemColors = palette };
+        Check(withPalette != forced && withPalette == forced with { SystemColors = palette with { } }, "The palette is part of equality.");
+    }
+
     [Test, DisplayName("NOTIFICATIONS: an activation is untrusted unless its provider marks it")]
     public void ActivationTrust()
     {

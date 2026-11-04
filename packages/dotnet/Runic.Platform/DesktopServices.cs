@@ -14,12 +14,99 @@ public enum DesktopColorScheme
     Dark
 }
 /// <summary>An sRGB colour with components in [0,1].</summary>
+/// <remarks>The accent colour, and each colour of <see cref="DesktopSystemColors"/>.</remarks>
 public sealed record DesktopAccentColor(double Red, double Green, double Blue);
+/// <summary>The desktop's contrast preference, as CSS <c>prefers-contrast</c> and <c>forced-colors</c> describe it.</summary>
+/// <remarks>
+/// This set is open: a minor release may add values, such as one for less contrast, so handle an unknown value as
+/// <see cref="NoPreference"/>.
+/// </remarks>
+public enum DesktopContrast
+{
+    /// <summary>The desktop asks for no particular contrast.</summary>
+    NoPreference,
+    /// <summary>
+    /// The desktop asks for more contrast, but applications keep their own colours: macOS "Increase contrast", GNOME's
+    /// "High Contrast". A page sees <c>prefers-contrast: more</c> where its engine follows the setting.
+    /// </summary>
+    More,
+    /// <summary>
+    /// The desktop replaces application colours with a small palette of its own (<see cref="DesktopAppearance.SystemColors"/>):
+    /// a Windows contrast theme. A page sees <c>forced-colors: active</c> where its engine follows the setting, and its
+    /// colours are forced to the palette.
+    /// </summary>
+    ForcedColors,
+}
+/// <summary>
+/// The palette of a desktop that forces its colours (<see cref="DesktopContrast.ForcedColors"/>), by the CSS system
+/// colour each entry corresponds to.
+/// </summary>
+/// <remarks>
+/// On Windows these are the eight colours of the contrast theme (Settings, Accessibility, Contrast themes, Edit), read
+/// with <c>GetSysColor</c>. macOS and GNOME do not force colours and report no palette.
+/// </remarks>
+/// <param name="Canvas">The background of windows and pages (CSS <c>Canvas</c>; Windows "Background", <c>COLOR_WINDOW</c>).</param>
+/// <param name="CanvasText">Text on <paramref name="Canvas"/> (<c>CanvasText</c>; "Text", <c>COLOR_WINDOWTEXT</c>).</param>
+/// <param name="LinkText">Links (<c>LinkText</c>; "Hyperlink", <c>COLOR_HOTLIGHT</c>).</param>
+/// <param name="GrayText">Disabled text (<c>GrayText</c>; "Inactive text", <c>COLOR_GRAYTEXT</c>).</param>
+/// <param name="Highlight">The background of selected text (<c>Highlight</c>; "Selected text" background, <c>COLOR_HIGHLIGHT</c>).</param>
+/// <param name="HighlightText">Selected text (<c>HighlightText</c>; "Selected text", <c>COLOR_HIGHLIGHTTEXT</c>).</param>
+/// <param name="ButtonFace">The background of buttons (<c>ButtonFace</c>; "Button text" background, <c>COLOR_BTNFACE</c>).</param>
+/// <param name="ButtonText">Text on buttons (<c>ButtonText</c>; "Button text", <c>COLOR_BTNTEXT</c>).</param>
+public sealed record DesktopSystemColors(DesktopAccentColor Canvas, DesktopAccentColor CanvasText, DesktopAccentColor LinkText,
+    DesktopAccentColor GrayText, DesktopAccentColor Highlight, DesktopAccentColor HighlightText, DesktopAccentColor ButtonFace,
+    DesktopAccentColor ButtonText);
 /// <summary>Unknown optional preferences remain null rather than becoming false.</summary>
 public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopColorScheme.NoPreference,
     DesktopAccentColor? AccentColor = null, bool? HighContrast = null, bool? ReducedMotion = null)
 {
     private readonly double? _textScale;
+    // One field for both Contrast and HighContrast, so they always agree and equality compares one value.
+    private readonly DesktopContrast? _contrast = FromHighContrast(HighContrast, null);
+
+    /// <summary>
+    /// The desktop's contrast preference; null when the desktop has no such setting or it could not be read.
+    /// </summary>
+    /// <remarks>
+    /// Windows reports <see cref="DesktopContrast.ForcedColors"/> while a contrast theme is on, macOS
+    /// <see cref="DesktopContrast.More"/> with "Increase contrast", and Linux <see cref="DesktopContrast.More"/> when the
+    /// Settings portal's <c>org.freedesktop.appearance</c> <c>contrast</c> is 1 (GNOME's "High Contrast"). Setting it sets
+    /// <see cref="HighContrast"/> too.
+    /// </remarks>
+    public DesktopContrast? Contrast
+    {
+        get => _contrast;
+        init => _contrast = value;
+    }
+
+    /// <summary>
+    /// Whether the desktop asks for more contrast in any form: <see langword="true"/> for
+    /// <see cref="DesktopContrast.More"/> and <see cref="DesktopContrast.ForcedColors"/>, <see langword="false"/> for
+    /// <see cref="DesktopContrast.NoPreference"/>, and null while <see cref="Contrast"/> is null.
+    /// </summary>
+    /// <remarks>
+    /// Derived from <see cref="Contrast"/>, which tells the two apart. Setting it to <see langword="true"/> sets
+    /// <see cref="Contrast"/> to <see cref="DesktopContrast.More"/> unless it already asks for more contrast, and
+    /// <see langword="false"/> sets <see cref="DesktopContrast.NoPreference"/>.
+    /// </remarks>
+    public bool? HighContrast
+    {
+        get => _contrast is { } contrast ? contrast != DesktopContrast.NoPreference : null;
+        init => _contrast = FromHighContrast(value, _contrast);
+    }
+
+    private static DesktopContrast? FromHighContrast(bool? value, DesktopContrast? current) => value switch
+    {
+        null => null,
+        false => DesktopContrast.NoPreference,
+        true => current is { } contrast && contrast != DesktopContrast.NoPreference ? contrast : DesktopContrast.More,
+    };
+
+    /// <summary>
+    /// The palette the desktop forces while <see cref="Contrast"/> is <see cref="DesktopContrast.ForcedColors"/>; null
+    /// otherwise, and where the desktop has none to report (macOS, Linux).
+    /// </summary>
+    public DesktopSystemColors? SystemColors { get; init; }
 
     /// <summary>
     /// The desktop's text size preference as a factor of the default text size: 1 for the default, 1.5 for text half as

@@ -2094,6 +2094,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             Hidden = _hidden,
             Kiosk = _kiosk,
             HighContrast = _highContrast ?? WebUiSystemTheme.IsHighContrast,
+            HighContrastFollowsSystem = _highContrast is null,
             IconFile = _iconFile,
             ProfilePath = profilePath,
             BrowserArguments = _browserArguments,
