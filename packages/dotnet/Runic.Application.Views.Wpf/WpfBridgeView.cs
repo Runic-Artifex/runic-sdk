@@ -303,8 +303,11 @@ public static class WpfBridgeViewExtensions
                 if (connection.Kind == DesktopConnectionEventKind.Disconnected)
                     session.ReleaseConnection(connection.SessionId.ToString(CultureInfo.InvariantCulture));
             });
-            // appearance/1: the page's appearance follows the desktop's settings while the view is open.
-            connections = new Pair(connections, AppearanceFeed(services, loggerFactory).Add(content));
+            // appearance/1: the page's appearance follows the desktop's settings while the view is open, when only this
+            // computer can reach its page (a DesktopHost on loopback, DesktopWindowLocality).
+            if (Runic.Application.Views.Desktop.DesktopWindowLocality.IsLocal(desktop, surface, serveOnly: false))
+                connections = new Pair(connections, AppearanceFeed(services)
+                    .Add(content, loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")));
             var attachment = attachWithContent is not null ? attachWithContent(transport, content, viewModel) : attach!(transport, viewModel);
             return new(surface, transport, content, connections, attachment, viewModel, WpfViewsLog.For(loggerFactory));
         }
@@ -324,18 +327,22 @@ public static class WpfBridgeViewExtensions
         }
     }
 
-    // One watch of the desktop's settings for every open view of the process, from the first view's services.
-    private static Runic.Application.Views.Desktop.DesktopAppearanceFeed? s_appearanceFeed;
+    // One feed per IDesktopSettings that views' services register, which it uses without owning it, so the views of one
+    // container share a watch and a disposed container's settings stay with that container's views; views whose
+    // services register none share one feed of the platform's own settings, which it creates while a view is open and
+    // disposes after the last closed. No feed holds a container: each view lends it its logger while it is open.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Runic.Platform.IDesktopSettings,
+        Runic.Application.Views.Desktop.DesktopAppearanceFeed> s_appearanceFeeds = new();
+    private static readonly Lazy<Runic.Application.Views.Desktop.DesktopAppearanceFeed> s_platformAppearanceFeed =
+        new(static () => new Runic.Application.Views.Desktop.DesktopAppearanceFeed(settings: null));
 
-    private static Runic.Application.Views.Desktop.DesktopAppearanceFeed AppearanceFeed(IServiceProvider services,
-        Runic.Application.Views.Desktop.LentLoggerFactory? loggerFactory)
+    private static Runic.Application.Views.Desktop.DesktopAppearanceFeed AppearanceFeed(IServiceProvider services)
     {
-        if (Volatile.Read(ref s_appearanceFeed) is { } feed) return feed;
-        var created = new Runic.Application.Views.Desktop.DesktopAppearanceFeed(
-            () => services.GetService<Runic.Platform.IDesktopSettings>() ?? Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSettings(),
-            loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")
-                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        return Interlocked.CompareExchange(ref s_appearanceFeed, created, null) ?? created;
+        Runic.Platform.IDesktopSettings? settings;
+        try { settings = services.GetService<Runic.Platform.IDesktopSettings>(); }
+        catch (ObjectDisposedException) { settings = null; }
+        return settings is null ? s_platformAppearanceFeed.Value
+            : s_appearanceFeeds.GetValue(settings, static settings => new Runic.Application.Views.Desktop.DesktopAppearanceFeed(settings));
     }
 
     private sealed class Pair(IDisposable first, IDisposable second) : IDisposable

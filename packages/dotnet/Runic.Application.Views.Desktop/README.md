@@ -416,7 +416,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
   appearance to each Window's pages (`appearance/1`,
   [Appearance](../Runic.Application.Views/README.md#appearance)), so the page's
   `useAppearance` sees the desktop's text scale, accent colour, contrast and
-  forced-colours palette. A serve-only Window pushes nothing.
+  forced-colours palette. A serve-only Window, and every Window of a host with
+  `DesktopHostOptions.NetworkExposure = AllInterfaces`, gets none: their pages
+  may run on another machine.
 - `AddRunicPlatformServices()` also registers `IDesktopNotifications`, one
   singleton for the application, which `DesktopPlatformServices.CreateNotifications(applicationId)`
   creates when it is first resolved and the service provider disposes. A

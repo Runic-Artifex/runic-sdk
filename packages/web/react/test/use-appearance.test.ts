@@ -26,7 +26,8 @@ async function mount(element: ReactNode): Promise<HTMLElement> {
 
 function Look() {
   const look = useAppearance();
-  return createElement("p", null, `${look.textScale ?? "-"} ${look.contrast ?? "-"} ${look.accentColor ?? "-"}`);
+  // The host's contrast: the store's own starts from the engine's media query (happy-dom's).
+  return createElement("p", null, `${look.textScale ?? "-"} ${look.host?.contrast ?? "-"} ${look.accentColor ?? "-"}`);
 }
 
 test("renders the host's appearance and renders again on each push", async () => {

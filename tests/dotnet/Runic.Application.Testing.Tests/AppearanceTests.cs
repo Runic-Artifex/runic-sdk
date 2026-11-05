@@ -48,6 +48,27 @@ public sealed class AppearanceTests
     }
 
     [Test]
+    public async Task AnUnknownAppearanceIsPushedAfterTheHelloSoAReconnectedPageKeepsNoStaleOne()
+    {
+        using var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),
+            (transport, content, vm) => new TranslatedTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedText" });
+        // A window without an appearance tells each page so after its hello.
+        await host.NavigateBackAsync();
+        await WaitAsync(() => host.AppearancePushes.Count == 1, "the push after the hello");
+        Require(host.AppearancePushes[0] is null, $"The window without an appearance pushed {host.AppearancePushes[0]}.");
+        // A page that reconnects while the appearance changed gets the current one after its new hello.
+        host.Content.Appearance = Forced;
+        host.Content.Appearance = null;
+        host.Transport.HelloWith("reconnected", ["appearance/1"]);
+        await WaitAsync(() => host.Transport.Messages.Any(message => message.Kind == "appearance" && message.ConnectionKey == "reconnected"),
+            "the push after the reconnected page's hello");
+        var push = host.Transport.Messages.Single(message => message.Kind == "appearance" && message.ConnectionKey == "reconnected").Json;
+        Require(push == """{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}""",
+            $"The reconnected page was pushed {push}.");
+    }
+
+    [Test]
     public void TheMembersAreWrittenAsThePushSpecifies()
     {
         using var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),

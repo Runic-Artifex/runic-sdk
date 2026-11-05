@@ -32,5 +32,6 @@ test("is a signal that follows the host's appearance until the injector is destr
 test("every member is null on the server", () => {
   TestBed.configureTestingModule({ providers: [{ provide: PLATFORM_ID, useValue: "server" }] });
   const look = TestBed.runInInjectionContext(() => injectAppearance());
-  expect(Object.values(look()).every(value => value === null)).toBe(true);
+  const { engine, ...members } = look();
+  expect([...Object.values(members), ...Object.values(engine)].every(value => value === null)).toBe(true);
 });

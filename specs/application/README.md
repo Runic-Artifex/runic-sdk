@@ -1292,24 +1292,27 @@ desktop:
 `null`, and a member that is absent, mean that the host does not know the preference. A window-level push without a
 `route`.
 
-- **When.** The producer pushes `appearance` to a connection after its `hello` succeeded, when the window has an
-  appearance, and to every connection that uses the feature each time it changes. Every push carries every member,
-  so the last push a connection receives is the window's appearance. When the window's appearance becomes unknown
-  again, the push has every member `null`. A producer may send the first push before the `hello` reply reaches the
-  page.
-- **The host owns it.** The values are what the host read from the desktop; the page cannot change them. A host that
-  reads nothing, such as one that serves pages to browsers on other machines, does not list the feature or pushes
-  nothing.
+- **When.** The producer pushes `appearance` to a connection after its `hello` succeeded, with every member `null`
+  while the window has no appearance, and to every connection that uses the feature each time it changes. Every push
+  carries every member, so the last push a connection receives is the window's appearance, also for a page that
+  reconnects after a change it missed. When the window's appearance becomes unknown again, the push has every member
+  `null`. A producer may send the first push before the `hello` reply reaches the page.
+- **The host owns it.** The values are what the host read from the desktop; the page cannot change them. A read that
+  fails keeps the last appearance read. The desktop's accessibility settings and palette describe the user at that
+  computer, so a host pushes them only to pages that nothing but that computer can reach: a host that serves pages to
+  browsers on other machines, listens on other network interfaces or makes a window public pushes every member `null`
+  (or does not list the feature).
 - **Client.** A client that uses the feature keeps the last push. It applies it whatever the features it has read so
   far, since the push may come before the `hello` reply, and keeps it across a reconnect until the next push. A
   member of the wrong type, out of its range or with a value the client does not know, such as a later contrast
   value, is read as `null`; the rest of the push still applies. A client without the feature ignores the push kind.
-- **The page's appearance.** A client that reports the page's appearance combines both sources. Where the page's
-  engine evaluates the media query, the engine's value is the one the page's CSS sees, and the client reports it for
-  `colorScheme`; for `contrast` and `reducedMotion` it reports the stronger of the engine's and the host's value
-  (`"forced-colors"` over `"more"` over `"no-preference"`, `true` over `false`), since an engine can know a media
-  feature without following the desktop setting. Without the engine's value it reports the host's. `textScale`,
-  `accentColor` and `systemColors` come from the host alone.
+- **The page's appearance.** A client that reports the page's appearance reports both sources, the engine's media
+  queries (what the page's CSS sees) and the host's push, and combines them. Where the page's engine evaluates the
+  media query, the client reports the engine's value for `colorScheme`. For `contrast` and `reducedMotion` the latest
+  change wins: the engine's value, until a push changes the member from the host's previous value, whose new value
+  then applies until the engine's media query changes; an engine may read the desktop's setting only when the page
+  loads. Without the engine's value it reports the host's. `textScale`, `accentColor` and `systemColors` come from the
+  host alone.
 
 ## Page errors
 

@@ -14,7 +14,7 @@ import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./v
 import { textSpliceFeature } from "./text.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
 import { reportWindowLocale } from "./translated-text.js";
-import { appearanceFeature, readHostAppearance, reportHostAppearance } from "./appearance.js";
+import { appearanceFeature, receiveAppearancePush } from "./appearance-push.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { reportWindowClosed } from "./connection-state.js";
@@ -411,9 +411,10 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   const stopLocale = add(windowHandlers, "locale", push => {
     reportWindowLocale((push as Extract<Push, { kind: "locale" }>).locale);
   });
-  // appearance/1: likewise the window's appearance, which the page keeps across a reconnect until the next push.
+  // appearance/1: likewise the window's appearance, which the page keeps across a reconnect until the next push. Only
+  // the raw push: the store reads it when the page reads the appearance.
   const stopAppearance = add(windowHandlers, "appearance", push => {
-    reportHostAppearance(readHostAppearance(push as unknown as Readonly<Record<string, unknown>>));
+    receiveAppearancePush(push as unknown as Readonly<Record<string, unknown>>);
   });
   // A closed window of an earlier Bridge does not close this one.
   reportWindowClosed(false);

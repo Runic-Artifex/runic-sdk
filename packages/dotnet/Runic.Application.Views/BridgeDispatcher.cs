@@ -969,7 +969,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         if (usesTranslationText)
             lock (_localeGate)
                 if (_locale is not null) BridgeTargetedPushes.For(_transport).Send(connection.Key, LocalePush(_locale));
-        // appearance/1: likewise the window's appearance.
+        // appearance/1: the window's appearance, also while it is unknown.
         if (usesAppearance) PushAppearanceAfterHello(connection);
         // blobs/1: the connection's upload grant, when the host takes uploads.
         var grant = usesBlobs ? Blobs.Grant(connection.Key) : null;

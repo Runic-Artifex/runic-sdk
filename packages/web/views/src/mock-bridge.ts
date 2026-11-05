@@ -8,7 +8,8 @@ import { translationTextFeature, validationPendingFeature } from "./validation.j
 import { clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
-import { appearanceFeature, type HostAppearance } from "./appearance.js";
+import { appearanceFeature } from "./appearance-push.js";
+import type { HostAppearance } from "./appearance.js";
 import { evaluateMockQuery, type MockQueryCollection, type MockQueryLoad, type MockQuerySource } from "./mock-query.js";
 import { normalizeQuery, type QueryCollectionQuery } from "./query.js";
 import { blobsFeature, type BlobRef } from "./blob-wire.js";
@@ -505,8 +506,8 @@ export interface MockBridge extends RunicBridgeClient {
   /**
    * Sets the window's appearance as a desktop host does from the desktop's settings (appearance/1,
    * `WindowContentSession.Appearance` in .NET): pushes `appearance` with every member to the connection when it uses the
-   * feature, and again after the `hello` of each later connection. A member left out is `null`; `null` makes every
-   * member `null`. Setting an equal appearance pushes nothing.
+   * feature, and again after the `hello` of each later connection, which gets every member `null` before the first
+   * call. A member left out is `null`; `null` makes every member `null`. Setting an equal appearance pushes nothing.
    */
   setAppearance(appearance: Partial<HostAppearance> | null): void;
   /** The window's appearance that {@link MockBridge.setAppearance} set, every member present, or `null`. */
@@ -1677,8 +1678,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
       // translation-text/1: a page that connects to a window with a locale is told it.
       if (windowLocale !== null && connection.features.has(translationTextFeature)) pushMessage({ kind: "locale", locale: windowLocale });
-      // appearance/1: likewise the window's appearance.
-      if (windowAppearance !== null && connection.features.has(appearanceFeature)) pushMessage(appearancePush(windowAppearance));
+      // appearance/1: likewise the window's appearance, every member null while it has none.
+      if (connection.features.has(appearanceFeature)) pushMessage(appearancePush(windowAppearance));
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
       // blobs/1: the connection's upload grant.

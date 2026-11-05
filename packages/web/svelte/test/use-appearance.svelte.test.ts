@@ -20,7 +20,7 @@ test("useAppearance follows the host's appearance while its owner lives", async 
   bridge.setAppearance({ textScale: 1.5, contrast: "more" });
   await bridge.flush();
   flushSync();
-  expect([look.current.textScale, look.current.contrast]).toEqual([1.5, "more"]);
+  expect([look.current.textScale, look.current.host?.contrast]).toEqual([1.5, "more"]);
   expect(seen.at(-1)).toBe(1.5);
   destroy();
   bridge.setAppearance({ textScale: 2 });

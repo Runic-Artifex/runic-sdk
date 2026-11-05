@@ -37,12 +37,12 @@ internal sealed partial class BridgeDispatcher
         return true;
     }
 
-    // After a successful hello that listed the feature: the window's appearance, when it has one. Under the gate, so a
-    // change that raced the hello is queued after this push.
+    // After a successful hello that listed the feature: the window's appearance, every member null while it is unknown,
+    // so a page that reconnects never keeps an appearance it missed a change of. Under the gate, so a change that raced
+    // the hello is queued after this push.
     private void PushAppearanceAfterHello(BridgeConnection connection)
     {
-        lock (_appearanceGate)
-            if (_appearance is not null) BridgeTargetedPushes.For(_transport).Send(connection.Key, AppearancePush(_appearance));
+        lock (_appearanceGate) BridgeTargetedPushes.For(_transport).Send(connection.Key, AppearancePush(_appearance));
     }
 
     // Whether the hello lists appearance/1. TryReadFeatures already checked the array's shape.

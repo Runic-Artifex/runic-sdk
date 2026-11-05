@@ -637,8 +637,9 @@ A Runic Views page also gets the desktop's values from the host
 [Views README](../Runic.Application.Views/README.md#appearance)): the text
 scale, the accent colour and the forced-colours palette, which no engine
 exposes to script, and the contrast and motion preferences, so its appearance
-store follows them where the engine does not, as in WebKitGTK 6.0. The page's
-CSS still sees only the engine's media queries.
+store follows a change where the engine does not, as in WebKitGTK 6.0, and
+reports the engine's and the host's values separately. The page's CSS still
+sees only the engine's media queries.
 
 ### Owned and window-modal windows
 

@@ -1527,22 +1527,41 @@ listener with it each time it changes, until the returned function is called:
 | Member | From |
 | --- | --- |
 | `colorScheme` | The engine's `prefers-color-scheme`, which follows a window's own scheme; without it, the host's |
-| `contrast` | `"no-preference"`, `"more"` or `"forced-colors"`: the stronger of the engine's `forced-colors`/`prefers-contrast` and the host's |
-| `reducedMotion` | `true` when the engine's `prefers-reduced-motion` or the host asks for less motion |
+| `contrast` | `"no-preference"`, `"more"` or `"forced-colors"`: the latest change of the engine's `forced-colors`/`prefers-contrast` and the host's (below) |
+| `reducedMotion` | `true` for less motion: the latest change of the engine's `prefers-reduced-motion` and the host's |
 | `textScale` | The host: the desktop's text size as a factor (1.5 for half as large again) |
 | `accentColor` | The host: the desktop's accent colour, `#rrggbb` |
 | `systemColors` | The host: while forced colours are on (a Windows contrast theme), the palette, named after the CSS system colours (`canvas`, `canvasText`, `linkText`, `grayText`, `highlight`, `highlightText`, `buttonFace`, `buttonText`) |
+| `engine` | The engine's media queries alone, `{ colorScheme, contrast, reducedMotion }`: what the page's CSS sees |
 | `host` | What the host pushed, or `null` |
 
 A member is `null` when neither source knows it, and every member is `null`
 under server rendering (`unknownAppearance`). The host's values come from the
 `appearance/1` feature: `RunicDesktopHost` reads the desktop's settings
-(`IDesktopSettings`) and pushes them to every window's pages, also when they
-change. The engine's media queries are what the page's CSS sees, so keep using
-them in CSS; the store adds what no engine exposes to script (text scale, accent,
-forced palette) and the contrast and motion of engines that do not follow the
-desktop while a window is open, such as WebKitGTK 6.0 (see
-[what each engine reports](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#contrast-forced-colors-and-reduced-motion)).
+(`IDesktopSettings`) and pushes them to the pages of every window that only
+this computer can reach, also when they change. A serve-only window, a host on
+every network interface (`DesktopHostOptions.NetworkExposure`) and CS-WebUI
+push no values, so `host` stays `null` or has every member `null`.
+
+`contrast` and `reducedMotion` start from the engine's value, which is what the
+page's CSS sees. When the host pushes a change of one of them, the host's value
+applies until the engine's media query changes, so the store follows the
+desktop also where the engine does not while the page is open. Read `engine` to
+style what the CSS sees, for example to skip your own high-contrast styles while
+`engine.contrast` is `"forced-colors"`, and `host` for what the desktop asks for:
+
+| Engine | The engine's values while the page is open | `contrast` and `reducedMotion` |
+| --- | --- | --- |
+| Windows, WebView2 | Read when the window opens; an open page may not follow "Animation effects" | Follow the host's changes |
+| macOS, WKWebView | Follow "Increase contrast" and "Reduce motion" | The engine's, also after the host's push of the same change |
+| Linux, WebKitGTK 4.1 (GTK 3) | Follow GTK's settings | The engine's, also after the host's push of the same change |
+| Linux, WebKitGTK 6.0 (GTK 4) | Read when the process's first web view starts | Follow the host's changes |
+| Installed browsers, serve-only | The browser's own | The engine's; the host pushes no values |
+
+See [what each engine reports](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#contrast-forced-colors-and-reduced-motion)
+for the media queries themselves. The page runtime keeps only the host's raw
+push; a page bundles the store only when it imports `appearance`,
+`onAppearance` or a framework hook.
 
 ```ts
 import { onAppearance } from "@runic-artifex/views";
