@@ -253,12 +253,13 @@ describe("useView options", () => {
 
   test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14), upload (0.16), useTextLocale, syncDocumentLocale and useAppearance (0.17)", () => {
     expect(Object.keys(root_).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureTranslatedText",
-      "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath",
-      "openNavigationPath", "regionEntries", "resolveText", "retrySuspenseView", "selectedRegion", "syncDocumentLocale",
-      "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm",
-      "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
-      "useTextField", "useTextLocale", "useView", "useViewState", "useWindowLocale", "windowLocale",
+      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
+      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "regionEntries", "resolveText", "retrySuspenseView",
+      "selectedRegion", "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection",
+      "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation",
+      "useQueryCollection", "useSuspenseView", "useText", "useTextField", "useTextLocale", "useView", "useViewState",
+      "useWindowLocale", "windowLocale",
     ]);
     // The region helpers a tab bar uses are re-exported (0.16).
     expect(regionEntries).toBe(viewsRegionEntries);

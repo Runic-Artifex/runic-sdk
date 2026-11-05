@@ -17,6 +17,7 @@ import { reportWindowLocale } from "./translated-text.js";
 import { appearanceFeature, receiveAppearancePush } from "./appearance-push.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
+import { clientLanguages, clientLanguagesFeature } from "./client-languages.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitAllFields, commitDrafts } from "./field-controller.js";
@@ -73,7 +74,7 @@ function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void>
 export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature, navigationPathFeature, appearanceFeature,
+  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature,
 ];
 
 /** A push handler, registered per push kind and route. */
@@ -279,6 +280,8 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       const reply = await send({
         kind: "hello", protocol: bridgeProtocol, session,
         client: { name: clientName, version: viewsVersion }, features: clientFeatures,
+        // client-languages/1: sent before the reply tells whether the producer uses it; a producer without it ignores it.
+        languages: clientLanguages(),
       }, undefined);
       if (reply["protocol"] !== bridgeProtocol && (reply["protocol"] !== undefined || reply.ok)) {
         refused = reply["protocol"] === undefined ? "does not state a Views protocol" : `uses Views protocol ${String(reply["protocol"])}`;

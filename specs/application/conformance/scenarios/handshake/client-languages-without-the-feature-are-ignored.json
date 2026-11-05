@@ -1,0 +1,21 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.client-languages-without-the-feature-are-ignored.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "description": "A hello that does not list client-languages/1 succeeds whatever its languages member, and its connection reports no languages.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"],"languages":"de"},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"expect":{"languages":{"connection":"c1","value":[]}}}
+  ]
+}

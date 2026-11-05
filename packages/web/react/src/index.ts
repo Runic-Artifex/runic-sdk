@@ -44,6 +44,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type FieldError,
   type TextReference,
   regionEntries,
   type RegionCollection,
@@ -730,7 +731,8 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
  * Renders a text reference that a ViewModel produced, such as a status line or a validation message's `text`, in the
  * window's language (`resolveText`), and renders again when the language changes. A string renders as it is;
  * `null` and `undefined` render `fallback`. Configure the page's Translations runtime once with
- * `configureTranslatedText`; without one, a reference shows its fallback text.
+ * `configureTranslatedText`; without one, a reference shows its fallback text. A field's `FieldError` renders the
+ * application's text for it (`configureFieldErrorText`), or its English message: `useText(name.error)`.
  *
  * ```tsx
  * const status = useText(view.state?.status);
@@ -739,7 +741,7 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
  * function ErrorLine({ error }) { return <li>{useText(error.text, error.message)}</li>; }
  * ```
  */
-export function useText(value: TextReference | string | null | undefined, fallback?: string): string {
+export function useText(value: TextReference | FieldError | string | null | undefined, fallback?: string): string {
   const version = useSyncExternalStore(subscribeText, textVersion, textVersion);
   // version is the language the text resolves in.
   return useMemo(() => resolveText(value, fallback), [value, fallback, version]);
@@ -817,8 +819,9 @@ export {
   type NavigationReply,
 } from "@runic-artifex/views";
 export {
-  configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
-  type TextTranslations,
+  configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,
+  windowLocale, type DocumentLocaleOptions, type FieldErrorArguments, type FieldErrorReason, type FieldErrorText,
+  type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 export {
   appearance, onAppearance, type Appearance, type AppearanceColorScheme, type AppearanceContrast, type AppearanceSystemColors,

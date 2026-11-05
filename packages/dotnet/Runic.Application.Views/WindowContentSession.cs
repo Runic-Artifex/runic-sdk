@@ -91,6 +91,7 @@ public sealed class WindowContentSession : IDisposable
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
+        Validation = options.Validation;
         MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
         var maximumUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumUploadBytes, nameof(options.MaximumUploadBytes));
         var maximumWindowUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumWindowUploadBytes, nameof(options.MaximumWindowUploadBytes));
@@ -180,8 +181,10 @@ public sealed class WindowContentSession : IDisposable
     /// from any thread.
     /// </summary>
     /// <remarks>
-    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>.
-    /// Setting <see langword="null"/> after a locale leaves the pages in the language they show.
+    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>; a
+    /// value set here directly is that Window's own locale, and <see langword="null"/> makes it follow the application's
+    /// <see cref="IRunicApplicationLocale"/> again, which this property then shows. Otherwise, setting
+    /// <see langword="null"/> after a locale leaves the pages in the language they show.
     /// </remarks>
     /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
     public string? Locale
@@ -369,6 +372,9 @@ public sealed class WindowContentSession : IDisposable
 
     /// <summary>Whether this window's Bridge error replies carry exception detail, read once when it opens.</summary>
     internal bool IncludesFailureDetail { get; }
+
+    // The window's validation options (WindowContentSessionOptions.Validation), for its Bridges' state writes.
+    internal RunicValidationOptions? Validation { get; }
 
     /// <summary>The largest Bridge input in UTF-8 bytes (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>).</summary>
     internal int MaximumInputBytes { get; }

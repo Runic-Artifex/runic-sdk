@@ -120,6 +120,7 @@ internal sealed class ProducerScenarioRunner
             if (expect["presented"] is JsonObject presented) await ExpectPresentedAsync(presented, window).ConfigureAwait(false);
             if (expect["closed"] is JsonObject closed) await ExpectClosedAsync(closed).ConfigureAwait(false);
             if (expect["flushed"] is JsonObject flushed) await ExpectFlushedAsync(flushed).ConfigureAwait(false);
+            if (expect["languages"] is JsonObject languages) ExpectLanguages(languages);
         }
         else if (!step.ContainsKey("call")) throw new ScenarioFailure("The step has no action a producer runner knows.");
     }
@@ -160,6 +161,18 @@ internal sealed class ProducerScenarioRunner
     }
 
     // expect.flushed: the flush of a flushFields step completed, and whether every page answered it.
+    // client-languages/1: the languages the window lists for the connection, as RunicConnection.Languages reports them.
+    private void ExpectLanguages(JsonObject languages)
+    {
+        var connection = Open(languages["connection"]!.GetValue<string>());
+        using var lease = BridgeDispatcher.For(_transport).ObserveConnections(static _ => { }, static _ => { }, out var open);
+        var found = open.FirstOrDefault(candidate => candidate.TransportKey == connection.Key)
+            ?? throw new ScenarioFailure($"The connection {connection.Name} has not completed its hello.");
+        var expected = languages["value"]!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
+        if (!found.Languages.SequenceEqual(expected, StringComparer.Ordinal))
+            throw new ScenarioFailure($"The connection's languages are [{string.Join(", ", found.Languages)}], not [{string.Join(", ", expected)}].");
+    }
+
     private async Task ExpectFlushedAsync(JsonObject flushed)
     {
         var id = flushed["id"]!.GetValue<string>();

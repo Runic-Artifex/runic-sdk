@@ -117,11 +117,11 @@ describe("useMenuBar", () => {
 
   test("is a root export (0.11)", () => {
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureTranslatedText",
-      "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath",
-      "openNavigationPath", "preloadView", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale",
-      "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm",
-      "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
+      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
+      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "preloadView", "regionEntries", "resolveText", "selectedRegion",
+      "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand",
+      "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
       "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).

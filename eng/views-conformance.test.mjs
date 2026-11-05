@@ -370,7 +370,10 @@ const isWriteSplice = value => isObject(value) && !("baseEdit" in value) && !("b
 
 const requestRules = {
   hello: m => isSafe(m.protocol) && isIdentifier(m.session) && isObject(m.client) && isName(m.client.name, 128) && isName(m.client.version, 64)
-    && isFeatures(m.features),
+    && isFeatures(m.features)
+    // client-languages/1: at most 16 strings, read only when the hello lists the feature.
+    && (!(Array.isArray(m.features) && m.features.includes("client-languages/1")) || m.languages === undefined
+      || Array.isArray(m.languages) && m.languages.length <= 16 && m.languages.every(language => typeof language === "string")),
   open: m => isRoute(m.route) && isIdentifier(m.presentation) && (m.handlers === undefined || isHandlers(m.handlers)),
   snapshot: m => isRoute(m.route),
   close: m => isRoute(m.route) && isIdentifier(m.presentation),

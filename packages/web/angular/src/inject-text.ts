@@ -3,7 +3,7 @@ import {
   type OnDestroy, type PipeTransform, type Signal,
 } from "@angular/core";
 import {
-  onWindowLocale, resolveText, subscribeText, textLocale, textVersion, windowLocale, type TextReference,
+  onWindowLocale, resolveText, subscribeText, textLocale, textVersion, windowLocale, type FieldError, type TextReference,
 } from "@runic-artifex/views";
 
 export interface InjectTextOptions {
@@ -17,6 +17,7 @@ export interface InjectTextOptions {
  * `source` and `fallback` are read in a computed signal, so they may read other signals:
  * `injectText(() => view.state()?.status)`. A string shows as it is; `null` and `undefined` show `fallback`. Configure
  * the page's Translations runtime once with `configureTranslatedText`; without one, a reference shows its fallback text.
+ * A field's `FieldError` shows the application's text for it (`configureFieldErrorText`), or its English message.
  * Under server rendering it does not observe a language switch. In templates, the `runicText` pipe does the same.
  *
  * ```ts
@@ -25,7 +26,7 @@ export interface InjectTextOptions {
  * ```
  */
 export function injectText(
-  source: () => TextReference | string | null | undefined,
+  source: () => TextReference | FieldError | string | null | undefined,
   fallback?: () => string | undefined,
   { injector: provided }: InjectTextOptions = {},
 ): Signal<string> {
@@ -80,7 +81,8 @@ export function textLocaleSignal(): Signal<string | undefined> {
 /**
  * Shows a text reference in the window's language in a template, and marks the view for check when the language
  * changes: `{{ error.text | runicText: error.message }}`, `{{ state.status | runicText }}`. A string shows as it is;
- * `null` and `undefined` show the fallback argument. The pipe is impure so that it sees a language switch; it formats
+ * `null` and `undefined` show the fallback argument; a field's error, `{{ name.error() | runicText }}`, the application's
+ * text for it (`configureFieldErrorText`). The pipe is impure so that it sees a language switch; it formats
  * again only when the value, the fallback or the language changed, and returns its last text otherwise.
  */
 @Pipe({ name: "runicText", standalone: true, pure: false })
@@ -90,7 +92,7 @@ export class RunicTextPipe implements PipeTransform, OnDestroy {
 
   private last: { value: unknown; fallback: string | undefined; version: number; text: string } | undefined;
 
-  transform(value: TextReference | string | null | undefined, fallback?: string): string {
+  transform(value: TextReference | FieldError | string | null | undefined, fallback?: string): string {
     const version = textVersion();
     const last = this.last;
     if (last && last.value === value && last.fallback === fallback && last.version === version) return last.text;

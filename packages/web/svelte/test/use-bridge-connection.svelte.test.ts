@@ -110,11 +110,11 @@ describe("useBridgeConnection", () => {
 
   test("is a root export (0.11) and the root keeps every earlier export", () => {
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureTranslatedText",
-      "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath",
-      "openNavigationPath", "preloadView", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale",
-      "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm",
-      "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
+      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
+      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "preloadView", "regionEntries", "resolveText", "selectedRegion",
+      "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand",
+      "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
       "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);
   });

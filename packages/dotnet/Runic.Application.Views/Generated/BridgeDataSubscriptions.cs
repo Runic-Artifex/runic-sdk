@@ -56,6 +56,28 @@ public sealed class BridgeDataSubscriptionMember
     // only values, so this generated delegate stays separate.
     internal Func<object, IEnumerable<BridgeValidationChild>>? EnumerateValidationChildren { get; }
     internal bool IsPathTransparent { get; }
+
+    /// <summary>
+    /// Returns the member's property when it has validation attributes, so the Bridge can give their messages a text
+    /// reference (<see cref="RunicValidationOptions.TextFor"/>). Generated code reads it from the declaring type with a
+    /// constant name and <see cref="System.Reflection.BindingFlags.DeclaredOnly"/>, which keeps the property's metadata
+    /// in a trimmed application and finds a property that hides an inherited one (<c>new</c>).
+    /// </summary>
+    public Func<System.Reflection.PropertyInfo?>? ValidationProperty { get; init; }
+
+    private BridgeValidationProperty? _validationProperty;
+
+    // The property of ValidationProperty, read once per member.
+    internal BridgeValidationProperty? ValidationMetadata
+    {
+        get
+        {
+            if (ValidationProperty is null) return null;
+            if (Volatile.Read(ref _validationProperty) is { } read) return read;
+            var created = BridgeValidationProperty.Read(ValidationProperty);
+            return Interlocked.CompareExchange(ref _validationProperty, created, null) ?? created;
+        }
+    }
 }
 
 // Own this alongside the bridge instance. The retained graph gives each

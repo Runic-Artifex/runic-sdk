@@ -747,7 +747,34 @@ Window's page connections and tells a command which one invoked it:
 - `Current` lists the connections that completed their `hello`, in the order
   they connected, until the transport reports them closed. Each is a
   `RunicConnection(ConnectionKey, ClientKey)` with opaque keys: compare and
-  store them, but do not parse them or show them to users.
+  store them, but do not parse them or show them to users. Two connections
+  are equal when their keys are.
+- `RunicConnection.Languages` (since 0.17, the `hello` feature
+  `client-languages/1`) lists the languages the page's browser prefers, its
+  `navigator.languages`, most preferred first; empty for a page that reports
+  none. A Window still shows one language to all of its connections
+  ([translated text](#translated-text)): use the languages to choose it, for
+  example when the first browser connects to a CS-WebUI window, not to
+  translate per connection. The page reports them, so treat them as a
+  preference, never as an identity. The tags are in BCP 47 case (`de-CH`,
+  `zh-Hant-TW`), each once, and the list is read-only.
+
+  ```csharp
+  connections.Connected += (_, e) =>
+  {
+      if (connections.Current.Count == 1 && Negotiate(e.Connection.Languages, ["en", "de"]) is { } language)
+          windowLocale.Locale = language;
+  };
+  ```
+
+  Always negotiate them against the locales the application ships, as above,
+  and set the result: never assign a browser's tag to
+  `IRunicWindowLocale.Locale` directly, or one remote browser picks an
+  arbitrary language for everyone who shares the window. **Privacy:** the list
+  is personal data that can help fingerprint a browser, and may say more than
+  its `Accept-Language` header. Use it to choose the window's language only, and
+  do not log or store it. A page can stop sending it with
+  `configureClientLanguages({ send: false })` from `@runic-artifex/views`.
 - `Connected` and `Disconnected` are plain .NET events, raised in a turn of
   the Window's model context, as a command body runs, so a handler may change
   state the page sees. `Current` changes in the same turn. The turn runs in no
@@ -3043,8 +3070,72 @@ fallback. `{name}Errors` keeps the messages.
   TranslationReferenceJsonContext.Default.TranslationReference)`.
 - DataAnnotations and CommunityToolkit `ObservableValidator`: return a
   `RunicValidationResult(message, text, memberNames)` from a
-  `[CustomValidation]` method or a `ValidationAttribute`. The built-in
-  attributes have no reference; their messages stay as they are.
+  `[CustomValidation]` method or a `ValidationAttribute`.
+- The built-in attributes (`[Required]`, `[MaxLength]`, `[StringLength]`,
+  `[Range]`, `[RegularExpression]`, …): register `RunicValidationOptions` with
+  a `TextFor(attribute, member)` that returns a reference for an attribute, or
+  `null` to keep its message. The hosts give it to every window (or set
+  `WindowContentSessionOptions.Validation`):
+
+  ```csharp
+  services.AddSingleton(new RunicValidationOptions
+  {
+      TextFor = (attribute, member) => attribute switch
+      {
+          RequiredAttribute => Text(NotesText.Required(member.DisplayName)),
+          MaxLengthAttribute maximum => Text(NotesText.TooLong(member.DisplayName, maximum.Length)),
+          RangeAttribute range => Text(NotesText.OutOfRange(member.DisplayName, $"{range.Minimum}", $"{range.Maximum}")),
+          _ => null,
+      },
+  });
+
+  static RunicTextReference Text(TranslationReference reference) =>
+      RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
+  ```
+
+  The Bridge calls it for an error of a bridged ViewModel, DTO or union case
+  member without a reference of its own, a `ValidationResult` or a string of
+  `GetErrors(member)`, as `ObservableValidator` and `Validator` report them.
+  `member` carries the model type, the property and display names and the
+  message, which stays the fallback.
+
+  How the attribute is found: `Validator` does not record which attribute
+  reported an error, so for a member that has errors the Bridge evaluates the
+  member's attributes again against its current value, with a
+  `ValidationContext` of the member's owner, the way `Validator` does:
+  `[Required]` first, and nothing else when it fails, then the others in
+  their declared order. When the member's errors and its failing attributes
+  line up one to one, the first error is the first failing attribute's, and
+  so on. Whether an attribute fails does not depend on the culture, so an
+  error formatted in another culture, such as one the ViewModel kept from
+  before a window language switch or one formatted in a turn of
+  `FlowCultureFromLocale`, takes the same text in every publication. The
+  error's message, formatted in the current culture with the member's display
+  name (`[Display(Name)]`, `[DisplayName]` or the property name), decides
+  only when it is another attribute's message (an error the ViewModel has not
+  revalidated since the value changed), and when the counts differ, as with
+  an error the ViewModel adds itself or an `IValidatableObject` result: then
+  the error takes a failing attribute whose message it is, else the only
+  attribute whose message it is, else no text (so in this case an error
+  formatted in another culture has none). A message the ViewModel writes itself while
+  the member's attributes pass stays as it is; one that replaces the message
+  of a failing attribute takes that attribute's text.
+
+  The attributes run again while the Bridge writes the state, on fresh
+  instances: keep them free of side effects. A `[Range]` with string limits,
+  such as `[Range(typeof(decimal), "0.5", "9.5")]`, has them parsed in the
+  invariant culture (`ParseLimitsInInvariantCulture`). .NET parses them on
+  first use in the current culture unless that property is set, and the
+  ViewModel's validator keeps the result for the process: `"0.5"` does not
+  parse in `de-DE`. Set `ParseLimitsInInvariantCulture = true` on such an
+  attribute so that your validator agrees in every culture.
+
+  An exception `TextFor` throws is logged (event 1176) and the message is
+  shown. An attribute that cannot be read or evaluated, such as one whose
+  `IsValid` needs a service, leaves its member's errors without a text and is
+  logged once (event 1177). The page can also check the attributes itself:
+  generated field descriptors carry them as `constraints` (C8; see the
+  [field descriptors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields)).
 - ReactiveUI.Validation: pass a rule a state whose `IValidationText` also
   implements `IRunicTextReferenceSource`, or add a component that implements
   it:
@@ -3076,11 +3167,11 @@ command: a page that sets its Translations runtime's locale itself is set back
 to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
 locale of its Translations runtime and formats the references again. The page's
 own `m.*()` messages render again when the locale resolver reads the
-framework's reactive text locale (below). `null`, the default, leaves each page in its own
-language. A Window that the application creates itself sets
-`WindowContentSession.Locale`. The service raises `PropertyChanged`, so C# text,
-such as a tray menu, can follow with the generated C# catalog's
-`ITranslationManager`.
+framework's reactive text locale (below). `null`, the default, follows the
+application's language (described below); while that is `null` too, each page
+keeps its own language. A Window that the application creates itself sets
+`WindowContentSession.Locale`. The service raises `PropertyChanged` whenever the
+window's locale changes.
 
 ```csharp
 public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings settings) : ObservableObject
@@ -3095,6 +3186,74 @@ public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings setti
     }
 }
 ```
+
+**The application's language.** Most applications show one language in every
+window. Set it once on `IRunicApplicationLocale`, which `AddRunicWindowService()`
+registers: every open Window that sets no locale of its own switches, and every
+Window opened later starts in it. A Window that sets `IRunicWindowLocale.Locale`
+keeps its own until it sets `null` again. A switch first awaits the followers
+registered with `Follow`, such as the C# catalog's Translations context, then
+moves the Windows, then raises `LocaleChanged`, so code that rebuilds the menu
+bar, a status icon or notifications reads text that is already translated. The
+Views packages do not reference Runic Translations: `Follow` takes any
+`(locale, cancellationToken) => ValueTask`, which a `TranslationContext` or an
+`ITranslationManager`'s `SetLocaleAsync` is.
+
+```csharp
+// After the services are built, before the first Window opens. A handler runs on the
+// SynchronizationContext it subscribed on: in WPF's startup, the UI thread. A Runic
+// Desktop body has none, so it runs on the switch's thread; SetMenuBar is thread-safe.
+var locale = services.GetRequiredService<IRunicApplicationLocale>();
+locale.Follow(translations.SetLocaleAsync);        // TranslationContext (0.9) or ITranslationManager
+locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
+// The user's choice, else the best match for the operating system's languages.
+await locale.SetLocaleAsync(settings.Language ?? Negotiate(DesktopLanguages.Preferred, ["en", "de"]));
+
+// A language switch, from any ViewModel or menu command:
+[RelayCommand]
+private async Task SwitchLanguageAsync(string language)
+{
+    await _locale.SetLocaleAsync(language);
+    _settings.Language = language;
+}
+```
+
+Each Window follows in a turn of its model context, as other changes reach its
+ViewModel, so its `IRunicWindowLocale` raises `PropertyChanged` there. Each
+`LocaleChanged` handler runs on the `SynchronizationContext` that was current when
+it subscribed, such as the UI thread or a ViewModel's model context; a handler
+subscribed without one, as in a console start, runs on the thread that completes
+the switch, and marshals UI work itself (`DesktopHost.SetMenuBar` may be called
+from any thread). Overlapping switches raise their events in order, each change
+once: a switch that a later one followed before its event was raised reports
+nothing, and the next event's `OldLocale` is the locale the last event reported.
+A Window whose update fails, for example because a `PropertyChanged` handler
+throws, does not stop the other Windows or the event: `SetLocaleAsync` then
+throws an `AggregateException` with each failure, the locale has changed, and a
+second call with the same locale updates the Windows that failed again. A
+follower, or a Window's `PropertyChanged` handler, must not call `SetLocaleAsync`
+during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
+handler may, and that switch's event follows the current handlers.
+
+`IRunicWindowLocale.Locale` returns the application's locale while the Window
+has none of its own. To save a Window's language and set it back later, save
+`OwnLocale` (since 0.17), which is `null` while the Window follows the
+application, so setting it back does not pin the Window to the language it
+showed. `WindowContentSession.Locale = null` on a Window that
+`OpenWindowAsync` opened follows the application again, as
+`IRunicWindowLocale.Locale = null` does.
+
+`DesktopLanguages.Preferred` (Runic.Platform) lists the user's languages as the
+operating system does, most preferred first: Windows' display languages,
+macOS' preferred languages, and on Linux `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`
+and `LANG` as gettext reads them. Negotiate it against the locales your catalog
+ships, with the generated catalog's `ResolveLocale` from Runic Translations 0.9,
+or by comparing each tag and then its language. `null` calls no follower and
+leaves the pages of following Windows in the language they show.
+
+**One language per window.** A window has one locale, which all of its pages
+show, also when several browsers share a CS-WebUI window. A page cannot choose a
+language of its own, only ask the application, for example with a command.
 
 **C# formatting in the window's culture.** By default a ViewModel formats in
 the process's culture: `ToString("N")`, `string.Format` and DataAnnotations
@@ -3201,14 +3360,24 @@ whose arguments no longer match, or of a later Translations transport version
 than the page's runtime reads, shows its fallback text. Without a configured
 runtime, every reference shows its fallback text. The text is plain: render it
 as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
-`windowLocale()`) reads the window's locale.
+`windowLocale()`) reads the window's locale. A window
+locale that the page's runtime does not have, such as `de-CH` for a catalog with
+`de` under the `Exact` policy, sets the runtime to its closest parent (`de`)
+before the page reports an error. A parent in another script is skipped: the
+page never falls from `zh-Hant-TW` or `zh-TW` (Traditional) to `zh`
+(Simplified), or from `sr-Latn` to `sr` (Cyrillic), and reports the error
+instead. Use `ParentsThenDefault` in applications so every locale resolves, and
+ship a catalog for each script you support.
 
 **Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
 or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `IRunicWindowLocale` of the services' scope to the window, so
-`host.Content.Locale` shows what the ViewModel set. In page tests, the mock
-bridge's `setWindowLocale("de")` pushes a locale as the application does, so a
-test can check that a template's `m.*()` text renders again.
+`host.Content.Locale` shows what the ViewModel set.
+`await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
+locale, the registered one or, for a host built with a constructor, one of the
+host's own, which the window follows. In page tests, the mock bridge's
+`setWindowLocale("de")` pushes a locale as the application does, so a test can
+check that a template's `m.*()` text renders again.
 
 ## Appearance
 
@@ -4084,6 +4253,8 @@ trace id; correlate them with the host's spans by time and route.
 | 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
 | 1170 | `WindowLocaleChanged` | Debug | The application set the window's locale (`IRunicWindowLocale`, `WindowContentSession.Locale`), which pages with `translation-text/1` follow. | `Locale` |
 | 1171 | `ValidationTextTooLarge` | Warning | A validation message's text reference is larger than 16 KiB, so its error carries only the message. | `Key`, `Bytes`, `Limit` |
+| 1176 | `ValidationTextForFailed` | Warning | `RunicValidationOptions.TextFor` threw for a validation attribute's message, so the error carries only the message. | `Attribute`, `Model`, `Member` |
+| 1177 | `ValidationAttributesFailed` | Warning | A member's validation attributes could not be read or evaluated for `RunicValidationOptions.TextFor`, such as an attribute whose `IsValid` throws, so its errors carry only their messages. Logged once per member. | `Model`, `Member` |
 | 1180 | `WindowOwnerIgnored` | Warning | A Window opens without its `RunicWindowOptions.Owner`: the host cannot own Windows (CS-WebUI, serve-only mode, a browser), or the owner has closed or belongs to another host. | `Window`, `Owner`, `Reason` |
 | 1181 | `WindowsChangedHandlerFailed` | Error | An `IRunicWindowService.WindowsChanged` handler threw; later handlers still run. | `ErrorType` |
 | 1210 | `BridgeRegionRequestFailed` | Error | `SelectAsync` or `RemoveAsync` of a region collection threw for a page's `select{Name}` or `close{Name}`; the call fails. | `Model`, `Member`, `Route`, `ErrorType` |

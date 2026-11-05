@@ -16,7 +16,9 @@ export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, t
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export {
+  configureFieldErrorText,
   configureTranslatedText,
+  fieldErrorText,
   onWindowLocale,
   resolveText,
   subscribeText,
@@ -26,6 +28,7 @@ export {
   textVersion,
   windowLocale,
   type DocumentLocaleOptions,
+  type FieldErrorText,
   type TextReference,
   type TextTranslations,
 } from "./translated-text.js";
@@ -54,6 +57,7 @@ export {
 } from "./blobs.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
 export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
+export { configureClientLanguages, type ClientLanguagesOptions } from "./client-languages.js";
 export {
   createCommandController,
   createViewController,
@@ -105,7 +109,11 @@ export {
   type FieldCommit,
   type FieldController,
   type FieldDefinition,
+  type FieldErrorArguments,
+  type FieldErrorDetail,
+  type FieldErrorExpected,
   type FieldErrorKind,
+  type FieldErrorReason,
   type FieldOptions,
   type FieldSource,
   type FieldState,

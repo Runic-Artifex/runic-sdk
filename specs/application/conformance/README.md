@@ -141,6 +141,10 @@ Messages are compared **by JSON value**, never by bytes or member order, with th
   `session`. The scenarios of `request-sessions` list it; the others leave it out, so they hold for clients with and
   without the feature. A producer runner sends what the step lists, so only a scenario whose `hello` lists the
   feature sends `session`.
+- **Languages.** A client that implements [`client-languages/1`](../README.md#client-languages) sends its browser's
+  `languages` in every `hello`. A client runner requires that a `hello`'s `languages`, when present, is an array of at
+  most 16 strings, and then compares the `hello` without it unless the step's message lists `languages`. Only the
+  `client-languages-*` scenarios list it.
 - Failure detail is off in every scenario.
 
 ### Calls
@@ -187,6 +191,8 @@ Expectations of the producer:
   `false` once it completed, which the runner waits for as for a `receive` step, or `"pending"` while it has not.
 - `closed`: the close of the `closeWindow` step `id` completed, and `acknowledged` is whether every page acknowledged
   it ([window close](../README.md#window-close)). The runner waits for the close as for a `receive` step.
+- `languages`: `{connection, value}`, the languages the producer reports for the connection after its `hello`, in
+  order and in BCP 47 case ([client languages](../README.md#client-languages)): `RunicConnection.Languages` in .NET.
 
 ### Requirements
 
@@ -207,6 +213,7 @@ Expectations of the producer:
 | `translation-text/1` | The implementation implements the feature [`translation-text/1`](../README.md#translated-text). |
 | `navigation-path/1` | The implementation implements the feature [`navigation-path/1`](../README.md#navigation-paths). |
 | `appearance/1` | The implementation implements the feature [`appearance/1`](../README.md#appearance). |
+| `client-languages/1` | The implementation implements the feature [`client-languages/1`](../README.md#client-languages). Its client `hello` sends `languages` as `{"$any":"array",…}`, since a client sends its browser's. |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -233,7 +240,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 
 | Set | Content |
 | --- | --- |
-| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); the window's appearance pushed after `hello`, also while unknown, and on each change, and not without `appearance/1` (`appearance-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
+| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); the window's appearance pushed after `hello`, also while unknown, and on each change, and not without `appearance/1` (`appearance-*`); the client's languages in `hello` reported on the connection, invalid ones, and ones without `client-languages/1` (`client-languages-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
 | [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)); an asynchronous check that starts and ends (`validation-pending-*`) |
 | [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |

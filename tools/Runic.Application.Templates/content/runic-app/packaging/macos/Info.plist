@@ -4,7 +4,10 @@
      document to the running application as an Apple event. RunicMacApplicationCategory adds LSApplicationCategoryType, which the Mac App Store
      requires. RunicMacCameraUsageDescription and RunicMacMicrophoneUsageDescription add NSCameraUsageDescription and
      NSMicrophoneUsageDescription (UsageDescriptions). File types with a system type, such as .txt or .png, are declared
-     with the Alternate rank (RunicMacFileTypeHandlerRank), the application's own types exported with the Owner rank. -->
+     with the Alternate rank (RunicMacFileTypeHandlerRank), the application's own types exported with the Owner rank.
+     RunicApplicationLocales adds CFBundleDevelopmentRegion and CFBundleLocalizations (Localizations), so AppKit shows its
+     own text, such as the About panel and the open and save panels, in those languages, and LSHasLocalizedDisplayName when
+     a RunicApplicationLocale item has a Name. -->
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>{{ApplicationId}}</string>
@@ -16,7 +19,7 @@
   <key>CFBundleVersion</key><string>{{BundleVersion}}</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
-  <key>NSHighResolutionCapable</key><true/>{{ApplicationCategory}}{{UrlSchemes}}{{DocumentTypes}}{{UsageDescriptions}}
+  <key>NSHighResolutionCapable</key><true/>{{ApplicationCategory}}{{UrlSchemes}}{{DocumentTypes}}{{UsageDescriptions}}{{Localizations}}
   <!-- Universal links for RunicApplicationWebLinkHosts need the com.apple.developer.associated-domains entitlement
        (applinks:<host>), which a provisioning profile grants, and an apple-app-site-association file on each host;
        see the README. -->

@@ -188,7 +188,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `LayoutDirection` or `Language` that `WindowOptions` sets wins, and a
   `ProfilePath` keeps the platform's language, since WebView2 needs one language
   per profile. macOS takes both from the application bundle. The page sets its
-  own `<html lang dir>` (`syncDocumentLocale` in `@runic-artifex/views`).
+  own `<html lang dir>` (`syncDocumentLocale` in `@runic-artifex/views`); the
+  pages the window serves itself, such as Resource Not Available, take `lang`
+  and `dir` from the window locale and their text from `DesktopPlatformTexts`.
 - `RunicDesktopHost.Placement` restores each Window's size, position and
   maximized state from the last time it closed, and
   `DesktopPlatformServices.GetWindowState(window)` reads them to save. The callback is

@@ -20,8 +20,9 @@ export {
 } from "./use-text.svelte.js";
 export { useAppearance, type AppearanceHandle } from "./use-appearance.svelte.js";
 export {
-  configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
-  type TextTranslations,
+  configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,
+  windowLocale, type DocumentLocaleOptions, type FieldErrorArguments, type FieldErrorReason, type FieldErrorText,
+  type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 export {
   appearance, onAppearance, type Appearance, type AppearanceColorScheme, type AppearanceContrast, type AppearanceSystemColors,

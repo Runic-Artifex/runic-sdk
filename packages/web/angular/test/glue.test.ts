@@ -640,8 +640,8 @@ describe("injectBridgeConnection", () => {
   test("requires an injection context or an injector, and is a root export (0.11)", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
-      "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureTranslatedText",
-      "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
+      "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText", "configureTranslatedText",
+      "fieldErrorText", "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectText",
       "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
       "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath", "openNavigationPath",
