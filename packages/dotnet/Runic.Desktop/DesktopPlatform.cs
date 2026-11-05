@@ -22,7 +22,8 @@ public static class DesktopPlatform
     /// A synchronous probe of the current setting, which decides a window's initial theme when
     /// <see cref="DesktopWindowOptions.HighContrast"/> is not set. To follow changes while the application runs,
     /// observe <c>IDesktopSettings</c> from Runic.Platform (<c>ReadAsync</c> and <c>WatchAsync</c>, whose
-    /// <c>DesktopAppearance.HighContrast</c> reports the same setting).
+    /// <c>DesktopAppearance.HighContrast</c> reports the same setting, and <c>DesktopAppearance.Contrast</c> tells more
+    /// contrast and forced colours apart). A window without the option follows a change while it is open.
     /// </remarks>
     public static bool IsHighContrast => WebUiSystemTheme.IsHighContrast;
 

@@ -46,6 +46,30 @@ internal sealed class PortableTests
     }
 
     [Test]
+    public void SystemColorsFromColorRefs()
+    {
+#pragma warning disable CA1416 // Portable checks of the COLORREF mapping; the reader is a fake.
+        var read = new List<global::Windows.Win32.Graphics.Gdi.SYS_COLOR_INDEX>();
+        var palette = WindowsDesktopSettings.SystemColors(index =>
+        {
+            read.Add(index);
+            // 0x00BBGGRR: Canvas black, CanvasText white, LinkText yellow, every other entry pure red.
+            return index switch
+            {
+                global::Windows.Win32.Graphics.Gdi.SYS_COLOR_INDEX.COLOR_WINDOW => 0x000000,
+                global::Windows.Win32.Graphics.Gdi.SYS_COLOR_INDEX.COLOR_WINDOWTEXT => 0xFFFFFF,
+                global::Windows.Win32.Graphics.Gdi.SYS_COLOR_INDEX.COLOR_HOTLIGHT => 0x00FFFF,
+                _ => 0x0000FF,
+            };
+        });
+#pragma warning restore CA1416
+        Check(read.Count == 8 && read.Distinct().Count() == 8);
+        Check(palette.Canvas == new DesktopAccentColor(0, 0, 0) && palette.CanvasText == new DesktopAccentColor(1, 1, 1));
+        Check(palette.LinkText == new DesktopAccentColor(1, 1, 0) && palette.ButtonText == new DesktopAccentColor(1, 0, 0));
+        Console.WriteLine("PASS system colours from COLORREF values");
+    }
+
+    [Test]
     public void ToastXml()
     {
 #pragma warning disable CA1416 // Portable checks of pure classification and XML helpers; nothing here calls native code.

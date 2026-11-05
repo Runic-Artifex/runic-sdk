@@ -233,3 +233,4 @@ WTSUnRegisterSessionNotification
 WTSQuerySessionInformation
 WTSFreeMemory
 GetSystemPowerStatus
+GetSysColor

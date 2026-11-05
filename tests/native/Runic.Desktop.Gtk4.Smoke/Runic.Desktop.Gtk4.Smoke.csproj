@@ -5,9 +5,12 @@
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
+    <!-- AppearanceSmoke.cs leaves out its Windows and macOS checks. -->
+    <DefineConstants>$(DefineConstants);RUNIC_GTK4_SMOKE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/AppearanceSmoke.cs" Link="AppearanceSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/KeyboardSmoke.cs" Link="KeyboardSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/XTestPointer.cs" Link="XTestPointer.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/LinuxDragOutSmoke.cs" Link="LinuxDragOutSmoke.cs" />

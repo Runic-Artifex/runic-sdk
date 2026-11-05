@@ -25,6 +25,11 @@ internal static class WindowsLoadingSurface
     // The Windows 11 window backgrounds and default accent fills: white like WebView2's own default background in
     // light mode, the dark title bar's color in dark mode, so that nothing flashes white in dark mode. High contrast
     // takes the system's colors (COLOR_WINDOW, COLOR_GRAYTEXT, COLOR_HIGHLIGHT).
+    // A window without its own HighContrast option takes the system's contrast theme, which the host reads again on
+    // WM_SYSCOLORCHANGE and WM_SETTINGCHANGE while the surface shows.
+    internal static Palette PaletteFor(WebUiEmbeddedHostOptions options, bool systemDark, bool systemHighContrast, Func<int, uint> systemColor) =>
+        PaletteFor(options.ColorScheme, systemDark, options.HighContrastFollowsSystem ? systemHighContrast : options.HighContrast, systemColor);
+
     internal static Palette PaletteFor(Runic.Platform.DesktopColorScheme colorScheme, bool systemDark, bool highContrast,
         Func<int, uint> systemColor)
     {

@@ -136,6 +136,117 @@ internal sealed class PlatformHelpersTests
             Throws<ArgumentOutOfRangeException>(() => _ = appearance with { TextScale = invalid });
     }
 
+    [Test, DisplayName("APPEARANCE: Contrast has three states and HighContrast is derived from it")]
+    public void Contrast()
+    {
+        var unknown = new DesktopAppearance();
+        Check(unknown.Contrast is null && unknown.HighContrast is null && unknown.SystemColors is null, "Unknown by default.");
+        Check(new DesktopAppearance(HighContrast: true).Contrast == DesktopContrast.More, "HighContrast true in the constructor is More.");
+        Check(new DesktopAppearance(HighContrast: false).Contrast == DesktopContrast.NoPreference, "HighContrast false is NoPreference.");
+        var forced = unknown with { Contrast = DesktopContrast.ForcedColors };
+        Check(forced.HighContrast == true && (unknown with { Contrast = DesktopContrast.More }).HighContrast == true
+            && (unknown with { Contrast = DesktopContrast.NoPreference }).HighContrast == false, "HighContrast follows Contrast.");
+        Check((forced with { HighContrast = true }).Contrast == DesktopContrast.ForcedColors, "HighContrast true keeps ForcedColors.");
+        // DesktopContrast is open: a later value, such as less contrast, is not high contrast.
+        Check((unknown with { Contrast = (DesktopContrast)3 }).HighContrast == false
+            && (unknown with { Contrast = (DesktopContrast)3, HighContrast = true }).Contrast == DesktopContrast.More, "A later value is not high contrast.");
+        Check((forced with { HighContrast = false }).Contrast == DesktopContrast.NoPreference && (forced with { HighContrast = null }).Contrast is null,
+            "HighContrast false or null replaces it.");
+        Check(new DesktopAppearance(HighContrast: true) == unknown with { Contrast = DesktopContrast.More },
+            "Equal whichever member set it, since one value backs both.");
+        var (_, _, contrast, _) = forced;
+        Check(contrast == true, "Deconstruct reports the derived HighContrast.");
+        var black = new DesktopAccentColor(0, 0, 0);
+        var white = new DesktopAccentColor(1, 1, 1);
+        var palette = new DesktopSystemColors(black, white, new(1, 1, 0), new(0, 1, 0), new(0, 1, 1), black, black, white);
+        var withPalette = forced with { SystemColors = palette };
+        Check(withPalette != forced && withPalette == forced with { SystemColors = palette with { } }, "The palette is part of equality.");
+        // The palette belongs to forced colours: it reads null otherwise, and leaving forced colours drops it.
+        Check((withPalette with { Contrast = DesktopContrast.NoPreference }).SystemColors is null
+            && (withPalette with { HighContrast = false }).SystemColors is null && (withPalette with { Contrast = DesktopContrast.More }).SystemColors is null,
+            "A contrast without forced colours drops the palette.");
+        Check((withPalette with { Contrast = DesktopContrast.NoPreference } with { Contrast = DesktopContrast.ForcedColors }).SystemColors is null,
+            "A dropped palette does not come back.");
+        Check((withPalette with { HighContrast = true }).SystemColors == palette, "HighContrast true keeps ForcedColors and its palette.");
+        var ignored = new DesktopAppearance(HighContrast: false) { SystemColors = palette };
+        Check(ignored.SystemColors is null && ignored == new DesktopAppearance(HighContrast: false) && ignored.GetHashCode() == new DesktopAppearance(HighContrast: false).GetHashCode(),
+            "A palette without forced colours is ignored, also by equality.");
+        Check(new DesktopAppearance { SystemColors = palette, Contrast = DesktopContrast.ForcedColors }.SystemColors == palette,
+            "The palette may be set before Contrast in an initializer.");
+    }
+
+    [Test, DisplayName("APPEARANCE: a watch reads again on each native change, and polls only when the notifications fail")]
+    public async Task SettingsChangesAsync()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        await using var source = new FakeSettings { TimeProvider = time };
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using (var watch = source.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token))
+        {
+            Check(await watch.MoveNextAsync() && Scheme(watch.Current) == DesktopColorScheme.Light, "The watch starts with the current value.");
+            Check(source.Started == 1 && source.Running, "The first watch starts the notifications.");
+            source.Scheme = DesktopColorScheme.Dark;
+            var next = watch.MoveNextAsync().AsTask();
+            // Without a notification, time passing reads nothing: the watch does not poll.
+            time.Advance(TimeSpan.FromSeconds(10));
+            await Task.Delay(50, cancel.Token);
+            Check(!next.IsCompleted && source.Reads == 1, $"No notification, no read ({source.Reads} reads).");
+            source.Notify();
+            Check(await next && Scheme(watch.Current) == DesktopColorScheme.Dark, "A notification reads the change.");
+            // A notification without a change reads again and reports nothing.
+            next = watch.MoveNextAsync().AsTask();
+            source.Notify();
+            await WaitForAsync(() => source.Reads == 3, cancel.Token);
+            Check(!next.IsCompleted, "An unchanged read reports nothing.");
+            // Notifications that stop on their own leave the watch polling once a second.
+            source.Fail();
+            await WaitForAsync(() => source.Reads == 4 && !source.Running, cancel.Token);
+            source.Scheme = DesktopColorScheme.Light;
+            // The delay may start after an advance; advance until the watch reads.
+            while (!next.IsCompleted) { time.Advance(TimeSpan.FromSeconds(1)); await Task.Delay(10, cancel.Token); }
+            Check(await next && Scheme(watch.Current) == DesktopColorScheme.Light && source.Started == 1, "After a failure the watch polls without restarting them.");
+        }
+        Check(!source.Running, "No notifications run without a watch.");
+        // The next watch starts them again, and ending it stops them.
+        await using (var again = source.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token))
+        {
+            Check(await again.MoveNextAsync() && source.Started == 2 && source.Running, "A later watch starts them again.");
+        }
+        Check(!source.Running && source.Stopped == 2, "Ending the last watch stops them.");
+
+        static DesktopColorScheme? Scheme(PlatformResult<DesktopAppearance> result) =>
+            result is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: var scheme } ? scheme : null;
+        static async Task WaitForAsync(Func<bool> condition, CancellationToken cancellationToken)
+        {
+            while (!condition()) await Task.Delay(10, cancellationToken);
+        }
+    }
+
+    private sealed class FakeSettings : DesktopSettingsSource
+    {
+        private Action? _changed, _failed;
+        internal volatile DesktopColorScheme Scheme = DesktopColorScheme.Light;
+        internal int Reads, Started, Stopped;
+        internal bool Running => Volatile.Read(ref _changed) is not null;
+        internal void Notify() => _changed!();
+        internal void Fail() => _failed!();
+        protected override ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Reads);
+            return ValueTask.FromResult<PlatformResult<DesktopAppearance>>(new PlatformResult<DesktopAppearance>.Success(new(Scheme)));
+        }
+        protected override IDisposable? StartChanges(Action changed, Action failed)
+        {
+            Started++;
+            (_changed, _failed) = (changed, failed);
+            return new Stop(this);
+        }
+        private sealed class Stop(FakeSettings owner) : IDisposable
+        {
+            public void Dispose() { owner.Stopped++; Volatile.Write(ref owner._changed, null); }
+        }
+    }
+
     [Test, DisplayName("NOTIFICATIONS: an activation is untrusted unless its provider marks it")]
     public void ActivationTrust()
     {

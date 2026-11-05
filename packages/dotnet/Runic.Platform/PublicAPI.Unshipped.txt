@@ -1,4 +1,38 @@
 #nullable enable
+Runic.Platform.DesktopAppearance.Contrast.get -> Runic.Platform.DesktopContrast?
+Runic.Platform.DesktopAppearance.Contrast.init -> void
+Runic.Platform.DesktopAppearance.SystemColors.get -> Runic.Platform.DesktopSystemColors?
+Runic.Platform.DesktopAppearance.SystemColors.init -> void
+Runic.Platform.DesktopContrast
+Runic.Platform.DesktopContrast.ForcedColors = 2 -> Runic.Platform.DesktopContrast
+Runic.Platform.DesktopContrast.More = 1 -> Runic.Platform.DesktopContrast
+Runic.Platform.DesktopContrast.NoPreference = 0 -> Runic.Platform.DesktopContrast
+Runic.Platform.DesktopSystemColors
+Runic.Platform.DesktopSystemColors.<Clone>$() -> Runic.Platform.DesktopSystemColors!
+Runic.Platform.DesktopSystemColors.ButtonFace.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.ButtonFace.init -> void
+Runic.Platform.DesktopSystemColors.ButtonText.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.ButtonText.init -> void
+Runic.Platform.DesktopSystemColors.Canvas.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.Canvas.init -> void
+Runic.Platform.DesktopSystemColors.CanvasText.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.CanvasText.init -> void
+Runic.Platform.DesktopSystemColors.Deconstruct(out Runic.Platform.DesktopAccentColor! Canvas, out Runic.Platform.DesktopAccentColor! CanvasText, out Runic.Platform.DesktopAccentColor! LinkText, out Runic.Platform.DesktopAccentColor! GrayText, out Runic.Platform.DesktopAccentColor! Highlight, out Runic.Platform.DesktopAccentColor! HighlightText, out Runic.Platform.DesktopAccentColor! ButtonFace, out Runic.Platform.DesktopAccentColor! ButtonText) -> void
+Runic.Platform.DesktopSystemColors.DesktopSystemColors(Runic.Platform.DesktopAccentColor! Canvas, Runic.Platform.DesktopAccentColor! CanvasText, Runic.Platform.DesktopAccentColor! LinkText, Runic.Platform.DesktopAccentColor! GrayText, Runic.Platform.DesktopAccentColor! Highlight, Runic.Platform.DesktopAccentColor! HighlightText, Runic.Platform.DesktopAccentColor! ButtonFace, Runic.Platform.DesktopAccentColor! ButtonText) -> void
+Runic.Platform.DesktopSystemColors.Equals(Runic.Platform.DesktopSystemColors? other) -> bool
+Runic.Platform.DesktopSystemColors.GrayText.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.GrayText.init -> void
+Runic.Platform.DesktopSystemColors.Highlight.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.Highlight.init -> void
+Runic.Platform.DesktopSystemColors.HighlightText.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.HighlightText.init -> void
+Runic.Platform.DesktopSystemColors.LinkText.get -> Runic.Platform.DesktopAccentColor!
+Runic.Platform.DesktopSystemColors.LinkText.init -> void
+override Runic.Platform.DesktopSystemColors.Equals(object? obj) -> bool
+override Runic.Platform.DesktopSystemColors.GetHashCode() -> int
+override Runic.Platform.DesktopSystemColors.ToString() -> string!
+static Runic.Platform.DesktopSystemColors.operator !=(Runic.Platform.DesktopSystemColors? left, Runic.Platform.DesktopSystemColors? right) -> bool
+static Runic.Platform.DesktopSystemColors.operator ==(Runic.Platform.DesktopSystemColors? left, Runic.Platform.DesktopSystemColors? right) -> bool
 Runic.Platform.DesktopLanguages
 static Runic.Platform.DesktopLanguages.Preferred.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Runic.Platform.DesktopPlatformTexts

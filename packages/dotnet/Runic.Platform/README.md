@@ -595,6 +595,41 @@ desktop that has no such setting, such as Plasma. Multiply font sizes by it, for
 example a page's root font size; it is independent of the display scale. A watch
 reports a change of it like any other preference.
 
+`DesktopAppearance.Contrast` is the desktop's contrast preference in three states,
+as CSS `prefers-contrast` and `forced-colors` describe it. `DesktopContrast` is
+open: a later minor release may add a state, such as less contrast, so treat an
+unknown value as `NoPreference`.
+
+| Desktop | `NoPreference` | `More` | `ForcedColors` | `SystemColors` |
+| --- | --- | --- | --- | --- |
+| Windows | no contrast theme | not reported: Windows has no such setting | a contrast theme is on (`SPI_GETHIGHCONTRAST`) | the theme's eight colours (`GetSysColor`) while it is on |
+| macOS | "Increase contrast" off | "Increase contrast" on | not reported: macOS does not force colours | `null` |
+| Linux | portal `contrast` 0 | portal `contrast` 1 (GNOME "High Contrast") | not reported: GNOME does not force colours | `null` |
+
+`DesktopAppearance.SystemColors` is the forced palette by the CSS system colour
+each entry stands for (`Canvas`, `CanvasText`, `LinkText`, `GrayText`,
+`Highlight`, `HighlightText`, `ButtonFace`, `ButtonText`), and `null` unless
+`Contrast` is `ForcedColors`, also after `appearance with { Contrast = ... }`, which
+drops it. Draw native content that should match a Windows
+contrast theme with it; a WebView2 page gets the same colours from the CSS system
+colours. `DesktopAppearance.HighContrast` stays: it is `true` for `More` and
+`ForcedColors`, `false` for `NoPreference` (and a state a later release adds)
+and `null` while the contrast is unknown. Setting `HighContrast = true` sets `Contrast` to `More`, unless it
+already asks for more contrast. A watch reports a change of either like any
+other preference.
+
+`IDesktopSettings.WatchAsync` waits for the desktop's change notifications and
+reads again after each one, so a watch costs nothing while nothing changes:
+`WM_SETTINGCHANGE`, `WM_SYSCOLORCHANGE`, `WM_THEMECHANGED` and
+`WM_DWMCOLORIZATIONCOLORCHANGED` on a hidden window, and a registry notification
+for "Text size", on Windows; the workspace's accessibility display options,
+system colour, theme and colour preference notifications and NSApp's
+`effectiveAppearance` on macOS; the Settings portal's `SettingChanged` on Linux.
+Only where they cannot start does it read once a second instead. On macOS,
+`ColorScheme` is the desktop's scheme also while the application chose one for
+every window (`DesktopHost.SetColorSchemeAsync`); it is read from the global
+`AppleInterfaceStyle` preference then.
+
 A notification's `Activated` event is untrusted input. `DesktopNotificationActivation.IsTrusted`
 is `true` when the provider matched the activation to a notification the
 application showed, so its identifiers and `ActivationUri` are the ones the
