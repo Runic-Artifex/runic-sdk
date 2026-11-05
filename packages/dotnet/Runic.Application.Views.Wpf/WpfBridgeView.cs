@@ -296,6 +296,7 @@ public static class WpfBridgeViewExtensions
                 ModelContext = modelContext ?? services.GetService<IRunicModelContext>(),
                 ViewLocator = services.GetService<IRunicViewLocator>(),
                 LoggerFactory = loggerFactory,
+                Validation = services.GetService<RunicValidationOptions>(),
             });
             var session = content;
             connections = surface.SubscribeConnectionEvents(connection =>

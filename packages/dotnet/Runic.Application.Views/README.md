@@ -3070,8 +3070,72 @@ fallback. `{name}Errors` keeps the messages.
   TranslationReferenceJsonContext.Default.TranslationReference)`.
 - DataAnnotations and CommunityToolkit `ObservableValidator`: return a
   `RunicValidationResult(message, text, memberNames)` from a
-  `[CustomValidation]` method or a `ValidationAttribute`. The built-in
-  attributes have no reference; their messages stay as they are.
+  `[CustomValidation]` method or a `ValidationAttribute`.
+- The built-in attributes (`[Required]`, `[MaxLength]`, `[StringLength]`,
+  `[Range]`, `[RegularExpression]`, …): register `RunicValidationOptions` with
+  a `TextFor(attribute, member)` that returns a reference for an attribute, or
+  `null` to keep its message. The hosts give it to every window (or set
+  `WindowContentSessionOptions.Validation`):
+
+  ```csharp
+  services.AddSingleton(new RunicValidationOptions
+  {
+      TextFor = (attribute, member) => attribute switch
+      {
+          RequiredAttribute => Text(NotesText.Required(member.DisplayName)),
+          MaxLengthAttribute maximum => Text(NotesText.TooLong(member.DisplayName, maximum.Length)),
+          RangeAttribute range => Text(NotesText.OutOfRange(member.DisplayName, $"{range.Minimum}", $"{range.Maximum}")),
+          _ => null,
+      },
+  });
+
+  static RunicTextReference Text(TranslationReference reference) =>
+      RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
+  ```
+
+  The Bridge calls it for an error of a bridged ViewModel, DTO or union case
+  member without a reference of its own, a `ValidationResult` or a string of
+  `GetErrors(member)`, as `ObservableValidator` and `Validator` report them.
+  `member` carries the model type, the property and display names and the
+  message, which stays the fallback.
+
+  How the attribute is found: `Validator` does not record which attribute
+  reported an error, so for a member that has errors the Bridge evaluates the
+  member's attributes again against its current value, with a
+  `ValidationContext` of the member's owner, the way `Validator` does:
+  `[Required]` first, and nothing else when it fails, then the others in
+  their declared order. When the member's errors and its failing attributes
+  line up one to one, the first error is the first failing attribute's, and
+  so on. Whether an attribute fails does not depend on the culture, so an
+  error formatted in another culture, such as one the ViewModel kept from
+  before a window language switch or one formatted in a turn of
+  `FlowCultureFromLocale`, takes the same text in every publication. The
+  error's message, formatted in the current culture with the member's display
+  name (`[Display(Name)]`, `[DisplayName]` or the property name), decides
+  only when it is another attribute's message (an error the ViewModel has not
+  revalidated since the value changed), and when the counts differ, as with
+  an error the ViewModel adds itself or an `IValidatableObject` result: then
+  the error takes a failing attribute whose message it is, else the only
+  attribute whose message it is, else no text (so in this case an error
+  formatted in another culture has none). A message the ViewModel writes itself while
+  the member's attributes pass stays as it is; one that replaces the message
+  of a failing attribute takes that attribute's text.
+
+  The attributes run again while the Bridge writes the state, on fresh
+  instances: keep them free of side effects. A `[Range]` with string limits,
+  such as `[Range(typeof(decimal), "0.5", "9.5")]`, has them parsed in the
+  invariant culture (`ParseLimitsInInvariantCulture`). .NET parses them on
+  first use in the current culture unless that property is set, and the
+  ViewModel's validator keeps the result for the process: `"0.5"` does not
+  parse in `de-DE`. Set `ParseLimitsInInvariantCulture = true` on such an
+  attribute so that your validator agrees in every culture.
+
+  An exception `TextFor` throws is logged (event 1176) and the message is
+  shown. An attribute that cannot be read or evaluated, such as one whose
+  `IsValid` needs a service, leaves its member's errors without a text and is
+  logged once (event 1177). The page can also check the attributes itself:
+  generated field descriptors carry them as `constraints` (C8; see the
+  [field descriptors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields)).
 - ReactiveUI.Validation: pass a rule a state whose `IValidationText` also
   implements `IRunicTextReferenceSource`, or add a component that implements
   it:
@@ -4144,6 +4208,8 @@ trace id; correlate them with the host's spans by time and route.
 | 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
 | 1170 | `WindowLocaleChanged` | Debug | The application set the window's locale (`IRunicWindowLocale`, `WindowContentSession.Locale`), which pages with `translation-text/1` follow. | `Locale` |
 | 1171 | `ValidationTextTooLarge` | Warning | A validation message's text reference is larger than 16 KiB, so its error carries only the message. | `Key`, `Bytes`, `Limit` |
+| 1176 | `ValidationTextForFailed` | Warning | `RunicValidationOptions.TextFor` threw for a validation attribute's message, so the error carries only the message. | `Attribute`, `Model`, `Member` |
+| 1177 | `ValidationAttributesFailed` | Warning | A member's validation attributes could not be read or evaluated for `RunicValidationOptions.TextFor`, such as an attribute whose `IsValid` throws, so its errors carry only their messages. Logged once per member. | `Model`, `Member` |
 | 1180 | `WindowOwnerIgnored` | Warning | A Window opens without its `RunicWindowOptions.Owner`: the host cannot own Windows (CS-WebUI, serve-only mode, a browser), or the owner has closed or belongs to another host. | `Window`, `Owner`, `Reason` |
 | 1181 | `WindowsChangedHandlerFailed` | Error | An `IRunicWindowService.WindowsChanged` handler threw; later handlers still run. | `ErrorType` |
 | 1210 | `BridgeRegionRequestFailed` | Error | `SelectAsync` or `RemoveAsync` of a region collection threw for a page's `select{Name}` or `close{Name}`; the call fails. | `Model`, `Member`, `Route`, `ErrorType` |
