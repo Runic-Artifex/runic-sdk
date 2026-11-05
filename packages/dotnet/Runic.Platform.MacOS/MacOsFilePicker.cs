@@ -118,7 +118,7 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                 Send(panel, Sel("retain"));
                 if (save)
                 {
-                    nint name = String(suggestedName ?? "Untitled");
+                    nint name = String(suggestedName ?? DesktopPlatformTexts.Current.UntitledFileName);
                     try { SendArg(panel, Sel("setNameFieldStringValue:"), name); }
                     finally { Send(name, Sel("release")); }
                 }

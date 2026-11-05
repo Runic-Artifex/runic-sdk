@@ -436,6 +436,23 @@ sign-in command that maps the caller's `ConnectionKey` to a user the
 application checked, kept in a `RunicConnectionState<T>` so it goes when the
 page disconnects.
 
+**One language per window.** A shared window shows one language to every
+browser: the window's locale, which the application sets
+(`IRunicWindowLocale`). Each connection reports
+its browser's preferred languages (`RunicConnection.Languages`, since 0.17),
+so the application can choose the window's language from them, for example
+when the first browser connects. Negotiate them against the locales the
+application ships and set the result; never assign a browser's tag directly,
+or one remote browser picks an arbitrary language for everyone. A page that
+offers a language switch asks the application with a command, which switches
+the window for everyone.
+
+The languages are personal data that can help fingerprint a browser, and they
+reach this server from every remote browser that connects. Use them to choose
+the window's language only, and do not log or store them. A page can stop
+sending them with `configureClientLanguages({ send: false })` from
+`@runic-artifex/views`, called in `main.ts` before it connects.
+
 ## Security
 
 This host adds no admission of its own. Runic Desktop checks the `Origin` of

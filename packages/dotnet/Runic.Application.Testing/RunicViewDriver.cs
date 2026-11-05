@@ -69,8 +69,17 @@ public sealed partial class RunicViewDriver<TModel> where TModel : class
     /// can repeat, it is <see cref="ConnectionKey"/> with a <c>#n</c> suffix. Compare a command's
     /// <see cref="IRunicConnections.Caller"/> with it.
     /// </remarks>
-    public RunicConnection? Connection =>
-        BridgeDispatcher.For(_transport).ConnectionKeyOf(_connectionKey) is { } key ? new RunicConnection(key, ClientKey) : null;
+    public RunicConnection? Connection
+    {
+        get
+        {
+            var dispatcher = BridgeDispatcher.For(_transport);
+            return dispatcher.ConnectionKeyOf(_connectionKey) is { } key
+                // client-languages/1: the languages the connection's hello reported (InMemoryBridgeTransport.SetLanguages).
+                ? new RunicConnection(key, ClientKey) { Languages = dispatcher.FindConnection(key)?.Languages ?? [] }
+                : null;
+        }
+    }
 
     /// <summary>
     /// Returns a driver of this route whose requests, and the drivers and operations it returns, use another page

@@ -278,7 +278,7 @@ internal sealed class SecretServiceClient
             .ConfigureAwait(false), "o")[0].GetObjectPath().Value;
         if (collection != "/") return collection;
         var created = Expect(await CallAsync(ServicePath, ServiceInterface, "CreateCollection",
-            [DBusValue.VariantDictionary([KeyValuePair.Create(CollectionInterface + ".Label", DBusValue.From("Default keyring"))]), DBusValue.From("default")],
+            [DBusValue.VariantDictionary([KeyValuePair.Create(CollectionInterface + ".Label", DBusValue.From(DesktopPlatformTexts.Current.SecretCollectionLabel))]), DBusValue.From("default")],
             cancellationToken).ConfigureAwait(false), "oo");
         collection = created[0].GetObjectPath().Value;
         string prompt = created[1].GetObjectPath().Value;

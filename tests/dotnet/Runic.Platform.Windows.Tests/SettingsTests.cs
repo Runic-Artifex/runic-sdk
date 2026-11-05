@@ -16,6 +16,10 @@ internal sealed class SettingsTests
         Console.WriteLine($"Appearance: {appearance}");
         if (appearance.AccentColor is null || appearance.HighContrast is null || appearance.ReducedMotion is null || appearance.TextScale is null)
             throw new InvalidOperationException("A native preference was unexpectedly unknown.");
+        // A contrast theme reports ForcedColors with its palette (GetSysColor); without one there is no palette.
+        if (appearance.Contrast is not (DesktopContrast.ForcedColors or DesktopContrast.NoPreference)
+            || (appearance.Contrast == DesktopContrast.ForcedColors) != (appearance.SystemColors is not null))
+            throw new InvalidOperationException($"Contrast {appearance.Contrast} does not match the palette {appearance.SystemColors}.");
         object? textScale = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Accessibility", "TextScaleFactor", null);
         if (appearance.TextScale != (textScale is int percent ? percent / 100d : 1))
             throw new InvalidOperationException($"Text scale {appearance.TextScale} does not match TextScaleFactor={textScale}.");

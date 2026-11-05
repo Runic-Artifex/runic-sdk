@@ -156,6 +156,7 @@ The first request on each connection is `hello`:
 | `session` | An identifier the client chooses for this connection. A client MUST send a new session for each connection. |
 | `client`, `implementation` | `{name, version}`: the name of the client or producer implementation (1 to 128 characters) and its version (1 to 64 characters, SemVer without build metadata recommended). They are informational. |
 | `features` | Optional: the [features](#features) the sender implements, in the request and in a successful reply. Absent means none. |
+| `languages` | Optional, in the request, with [`client-languages/1`](#client-languages): the page's preferred languages. |
 
 Producer rules:
 
@@ -244,6 +245,8 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `field-paths/1` | A checked write names a path below its member, such as a member of an object or a cell of a keyed collection's row: [field paths](#field-paths) | 0.16 |
 | `translation-text/1` | The window's locale, and the [`text`](#text) of validation errors: [translated text](#translated-text) | 0.16 |
 | `navigation-path/1` | The window's Back, and its route path kept in the page's URL: [navigation paths](#navigation-paths) | 0.16 |
+| `appearance/1` | The desktop's appearance preferences that a page's engine may not expose, such as the text scale, the accent colour and the forced-colours palette: [appearance](#appearance) | 0.17 |
+| `client-languages/1` | The page reports its browser's preferred languages in `hello`: [client languages](#client-languages) | 0.17 |
 
 ### Request sessions
 
@@ -1267,6 +1270,91 @@ The **window's locale** is the language the application chose for the window, or
   whose arguments no longer match, shows its `fallbackText`; the page chooses what to show without one. The text is
   plain: a page shows it as text, never as markup.
 
+## Appearance
+
+A page can read most of the desktop's appearance preferences from its engine, with CSS media queries such as
+`prefers-color-scheme`, `prefers-contrast`, `forced-colors` and `prefers-reduced-motion`. Not every engine exposes every
+one of them, and none exposes the desktop's text size, accent colour or forced-colours palette to script. With the
+feature `appearance/1`, the producer pushes the **window's appearance**, the preferences its host reads from the
+desktop:
+
+```json
+{"kind":"appearance","colorScheme":"dark","contrast":"forced-colors","reducedMotion":false,"textScale":1.25,"accentColor":"#0078d4","systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}
+```
+
+| Member | Value |
+| --- | --- |
+| `colorScheme` | `"light"`, `"dark"`, or `null`: the desktop's colour scheme. A window that shows a scheme of its own reports it in `prefers-color-scheme`, not here. |
+| `contrast` | `"no-preference"`, `"more"`, `"forced-colors"`, or `null`: the desktop asks for no particular contrast, for more contrast with the application's own colours, or replaces the application's colours with `systemColors`. |
+| `reducedMotion` | `true` when the desktop asks for less motion, `false`, or `null`. |
+| `textScale` | A number greater than 0, the desktop's text size as a factor of the default (1 for the default, 1.5 for half as large again), or `null`. |
+| `accentColor` | The desktop's accent colour as `#rrggbb` in lowercase, or `null`. |
+| `systemColors` | While `contrast` is `"forced-colors"`, the palette the desktop forces, as an object of `#rrggbb` colours named after the CSS system colours: `canvas`, `canvasText`, `linkText`, `grayText`, `highlight`, `highlightText`, `buttonFace`, `buttonText`; otherwise `null`. |
+
+`null`, and a member that is absent, mean that the host does not know the preference. A window-level push without a
+`route`.
+
+- **When.** The producer pushes `appearance` to a connection after its `hello` succeeded, with every member `null`
+  while the window has no appearance, and to every connection that uses the feature each time it changes. Every push
+  carries every member, so the last push a connection receives is the window's appearance, also for a page that
+  reconnects after a change it missed. When the window's appearance becomes unknown again, the push has every member
+  `null`. A producer may send the first push before the `hello` reply reaches the page.
+- **The host owns it.** The values are what the host read from the desktop; the page cannot change them. A read that
+  fails keeps the last appearance read. The desktop's accessibility settings and palette describe the user at that
+  computer, so a host pushes them only to pages that nothing but that computer can reach: a host that serves pages to
+  browsers on other machines, listens on other network interfaces or makes a window public pushes every member `null`
+  (or does not list the feature).
+- **Client.** A client that uses the feature keeps the last push. It applies it whatever the features it has read so
+  far, since the push may come before the `hello` reply, and keeps it across a reconnect until the next push. A
+  member of the wrong type, out of its range or with a value the client does not know, such as a later contrast
+  value, is read as `null`; the rest of the push still applies. A client without the feature ignores the push kind.
+- **The page's appearance.** A client that reports the page's appearance reports both sources, the engine's media
+  queries (what the page's CSS sees) and the host's push, and combines them. Where the page's engine evaluates the
+  media query, the client reports the engine's value for `colorScheme`. For `contrast` and `reducedMotion` the latest
+  change wins: the engine's value, until a push changes the member from the host's previous value, whose new value
+  then applies until the engine's media query changes; an engine may read the desktop's setting only when the page
+  loads. Without the engine's value it reports the host's. `textScale`, `accentColor` and `systemColors` come from the
+  host alone.
+
+## Client languages
+
+With the feature `client-languages/1`, the page tells the producer which languages its browser prefers, so the
+application can choose the window's locale for a page it has not seen before, such as a browser that connects to a
+CS-WebUI window:
+
+```json
+{"kind":"hello", …, "features":["client-languages/1","translation-text/1"],"languages":["de-CH","de","en"]}
+```
+
+| Member | Value |
+| --- | --- |
+| `languages` | A member of the `hello` request: an array of at most 16 strings, most preferred first. |
+
+- **Client.** A client that implements the feature lists it and sends `languages` in every `hello`: the browser's
+  `navigator.languages`, or `[navigator.language]` where the list is missing, without strings that are not language
+  tags (1 to 64 ASCII letters, digits and `-`, starting with a letter, without an empty subtag), each once
+  (compared without case), at most the first 16. A page that knows no language, or whose application turned the
+  report off, sends `[]`; a client SHOULD let the page turn it off. Like `session` in
+  [`request-session/1`](#request-sessions), the member is sent before the reply tells whether the feature is in use;
+  a producer without the feature ignores it.
+- **Producer.** On a `hello` that lists the feature, a `languages` that is present but is not an array of at most 16
+  strings is `rejected` with `invalid-request`, as an invalid `features` is. The producer keeps the language tags of
+  the array, in their order, in the case BCP 47 recommends (the language lower case, a script title case, a region
+  upper case, and other subtags, including those after a singleton, lower case: `DE-ch` is `de-CH`), each once, and
+  ignores its other strings, such as one longer than 64 characters; absent means none. It reports them as the
+  connection's languages to the application, read-only, for the connection's lifetime. Without the feature in the
+  `hello`, the member is ignored.
+- **One language per window.** The languages are a preference the page reports, not a request. The window keeps one
+  locale for all of its connections ([translated text](#translated-text)), which only the application sets: it may
+  choose it from the languages of a connection, for example the first one of a window, but no connection is shown
+  another language than the window's. The producer pushes nothing for this feature.
+- **Negotiation.** An application negotiates the languages against the locales it ships and sets the result; it
+  never sets a client's tag as the window's locale directly, which would let one remote page choose an arbitrary
+  locale for everyone who shares the window.
+- **Privacy.** The list is personal data and can help fingerprint a browser; it can say more than the
+  `Accept-Language` header the producer may already see. An application uses it to choose the window's language
+  only, and does not log, store or forward it. A producer does not log it either.
+
 ## Page errors
 
 With the feature `client-errors/1`, a page reports the errors it cannot show to the application, such as an uncaught
@@ -1701,6 +1789,7 @@ Pushes:
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
 | `flush` (`field-flush/1`) | `id` | each connection that uses `field-flush/1`, before a departure is decided ([field flush](#field-flush)) |
 | `locale` (`translation-text/1`) | `locale` | each connection that uses `translation-text/1`, after its `hello` and on each change |
+| `appearance` (`appearance/1`) | `colorScheme`, `contrast`, `reducedMotion`, `textScale`, `accentColor`, `systemColors` | each connection that uses `appearance/1`, after its `hello` and on each change |
 
 ## Blobs and uploads
 
@@ -1787,4 +1876,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`. |

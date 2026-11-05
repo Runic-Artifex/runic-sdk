@@ -34,6 +34,7 @@ export {
   texts,
   upload,
   viewportChanges,
+  appearances,
   type CommandValue,
   type OperationOptions,
   type RetryOperationOptions,

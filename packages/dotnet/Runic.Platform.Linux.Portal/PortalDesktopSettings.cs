@@ -128,7 +128,8 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
             if (key == "color-scheme" && value.Signature.Value == "u")
                 result = result with { ColorScheme = value.GetUInt32() switch { 1 => DesktopColorScheme.Dark, 2 => DesktopColorScheme.Light, _ => DesktopColorScheme.NoPreference } };
             if (key == "contrast" && value.Signature.Value == "u")
-                result = result with { HighContrast = value.GetUInt32() switch { 0 => false, 1 => true, _ => null } };
+                // 1 is "higher contrast" (GNOME's High Contrast). GNOME keeps application colours, so it has no palette.
+                result = result with { Contrast = value.GetUInt32() switch { 0 => DesktopContrast.NoPreference, 1 => DesktopContrast.More, _ => null } };
             if (key == "reduced-motion" && value.Signature.Value == "u")
                 result = result with { ReducedMotion = value.GetUInt32() switch { 0 => false, 1 => true, _ => null } };
             // An unknown or malformed optional preference is skipped.

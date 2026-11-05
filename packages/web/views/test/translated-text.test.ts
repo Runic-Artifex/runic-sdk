@@ -130,6 +130,70 @@ test("the window's locale sets the runtime's locale, also one pushed before the 
   assert.deepEqual(locales, ["de", "en", null]);
 });
 
+test("a window locale the runtime refuses falls back through its parents before it is reported (L3-20)", async () => {
+  // A runtime under the Exact policy, as the generated runtime is: setLocale throws for a locale it lacks.
+  const runtime = translations();
+  const tried: string[] = [];
+  const strict: TextTranslations = {
+    ...runtime,
+    setLocale(next) {
+      tried.push(next);
+      if (next !== "de" && next !== "en") throw new RangeError(`Unsupported locale: ${next}`);
+      runtime.setLocale!(next);
+    },
+  };
+  cleanup.push(configureTranslatedText(strict));
+  const reported: unknown[] = [];
+  const previous = globalThis.reportError;
+  globalThis.reportError = error => { reported.push(error); };
+  cleanup.push(() => { globalThis.reportError = previous; });
+  await reportWindowLocale("de-CH-u-co-phonebk");
+  assert.deepEqual(tried, ["de-CH-u-co-phonebk", "de-CH", "de"]);
+  assert.equal(runtime.getLocale(), "de");
+  assert.equal(resolveText(saved), "Gespeichert.", "references follow the window's language");
+  assert.equal(reported.length, 0, "a parent the runtime has is not an error");
+  tried.length = 0;
+  await reportWindowLocale("fr-CA");
+  assert.deepEqual(tried, ["fr-CA", "fr"]);
+  assert.equal(runtime.getLocale(), "de", "a locale without a parent the runtime has keeps the page's language");
+  assert.equal(reported.length, 1, "the first error is reported once");
+  assert.match(String(reported[0]), /fr-CA/);
+});
+
+test("the parent fallback never switches the script (L3-20)", async () => {
+  const runtime = translations();
+  const tried: string[] = [];
+  const available = new Set(["de", "en", "zh", "sr", "zh-Hant", "sr-Latn"]);
+  const strict: TextTranslations = {
+    ...runtime,
+    setLocale(next) {
+      tried.push(next);
+      if (!available.has(next)) throw new RangeError(`Unsupported locale: ${next}`);
+      if (next === "de" || next === "en") runtime.setLocale!(next);
+    },
+  };
+  cleanup.push(configureTranslatedText(strict));
+  const reported: unknown[] = [];
+  const previous = globalThis.reportError;
+  globalThis.reportError = error => { reported.push(error); };
+  cleanup.push(() => { globalThis.reportError = previous; });
+  const follow = async (locale: string) => { tried.length = 0; await reportWindowLocale(locale); return [...tried]; };
+  assert.deepEqual(await follow("zh-Hant-TW"), ["zh-Hant-TW", "zh-Hant"]);
+  assert.deepEqual(await follow("sr-Latn-RS"), ["sr-Latn-RS", "sr-Latn"]);
+  available.delete("zh-Hant");
+  available.delete("sr-Latn");
+  assert.deepEqual(await follow("zh-Hant-TW"), ["zh-Hant-TW", "zh-Hant"], "Traditional never falls back to zh (Simplified)");
+  assert.deepEqual(await follow("zh-TW"), ["zh-TW"], "zh-TW implies Traditional");
+  assert.deepEqual(await follow("sr-Latn"), ["sr-Latn"], "Latin never falls back to sr (Cyrillic)");
+  assert.deepEqual(await follow("sr-ME"), ["sr-ME"], "sr-ME implies Latin");
+  assert.equal(reported.length, 4, "each refused locale without a same-script parent is reported");
+  assert.deepEqual(await follow("zh-Hans-CN"), ["zh-Hans-CN", "zh-Hans", "zh"]);
+  assert.deepEqual(await follow("sr-Cyrl-RS"), ["sr-Cyrl-RS", "sr-Cyrl", "sr"]);
+  assert.deepEqual(await follow("zh-CN"), ["zh-CN", "zh"]);
+  assert.deepEqual(await follow("de-AT"), ["de-AT", "de"]);
+  assert.equal(reported.length, 4);
+});
+
 test("a runtime without setLocale resolves in the window's locale", async () => {
   const runtime = translations();
   cleanup.push(configureTranslatedText({ resolve: runtime.resolve, getLocale: runtime.getLocale }));

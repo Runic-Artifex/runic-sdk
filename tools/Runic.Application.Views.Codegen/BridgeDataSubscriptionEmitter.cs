@@ -17,13 +17,14 @@ internal static class BridgeDataSubscriptionEmitter
         foreach (var (property, graph) in properties)
         {
             var getter = $"static owner => (({modelType})owner).{property.Name}";
-            AppendMember(source, WireName(property), property.Name, getter, graph.Root, 12);
+            AppendMember(source, WireName(property), property.Name, getter, graph.Root, 12, ValidationProperty(property));
             source.AppendLine(",");
         }
         source.AppendLine("        ]");
     }
 
-    private static void AppendMember(StringBuilder source, string name, string propertyName, string getter, BridgeTypeNode node, int indent)
+    private static void AppendMember(StringBuilder source, string name, string propertyName, string getter, BridgeTypeNode node, int indent,
+        string? validationProperty = null)
     {
         var pad = new string(' ', indent);
         source.Append($"{pad}new global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember({Quote(name)}, {getter}");
@@ -34,7 +35,8 @@ internal static class BridgeDataSubscriptionEmitter
             source.AppendLine();
             for (var index = 0; index < children.Count; index++)
             {
-                AppendMember(source, children[index].Name, children[index].PropertyName, children[index].Getter, children[index].Node, indent + 4);
+                AppendMember(source, children[index].Name, children[index].PropertyName, children[index].Getter, children[index].Node, indent + 4,
+                    children[index].ValidationProperty);
                 source.AppendLine(index == children.Count - 1 ? string.Empty : ",");
             }
             source.Append($"{pad}]");
@@ -52,7 +54,17 @@ internal static class BridgeDataSubscriptionEmitter
         }
         if (name == "$items") source.Append(", isPathTransparent: true");
         source.Append($", propertyName: {Quote(propertyName)})");
+        if (validationProperty is not null) source.Append($" {{ ValidationProperty = {validationProperty} }}");
     }
+
+    // translation-text/1 (RunicValidationOptions.TextFor): a member with validation attributes names its property, read
+    // with a constant name so that a trimmed application keeps its metadata and attributes. DeclaredOnly on the
+    // declaring type finds the property itself where it hides an inherited one with new, for which a lookup on the
+    // owner throws AmbiguousMatchException. C# makes a base type at least as accessible as the type deriving from it.
+    private static string? ValidationProperty(PropertyInfo property) =>
+        property.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.ValidationAttribute), true).Length == 0 ? null
+            : $"static () => typeof({BridgeTypeGraph.CSharpType(property.DeclaringType!)}).GetProperty({Quote(property.Name)}, " +
+              "global::System.Reflection.BindingFlags.Public | global::System.Reflection.BindingFlags.Instance | global::System.Reflection.BindingFlags.DeclaredOnly)";
 
     private static List<Child> Children(BridgeTypeNode node)
     {
@@ -64,10 +76,12 @@ internal static class BridgeDataSubscriptionEmitter
             return node.Members.Where(member => typeof(INotifyPropertyChanged).IsAssignableFrom(node.NonNullableType) ||
                 typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType) || ReportsPending(node) || MayNotify(member.Type, []))
                 .Select(member => new Child(member.WireName, member.Property.Name,
-                $"static owner => (({BridgeTypeGraph.CSharpType(node.NonNullableType)})owner).{member.Property.Name}", member.Type)).ToList();
+                $"static owner => (({BridgeTypeGraph.CSharpType(node.NonNullableType)})owner).{member.Property.Name}", member.Type,
+                ValidationProperty(member.Property))).ToList();
         if (node.Kind is BridgeWireKind.Union)
             return node.Cases.SelectMany(@case => @case.Type.Members.Select(member => new Child(member.WireName, member.Property.Name,
-                $"static owner => owner is {BridgeTypeGraph.CSharpType(@case.Type.Type)} current ? current.{member.Property.Name} : null", member.Type))).ToList();
+                $"static owner => owner is {BridgeTypeGraph.CSharpType(@case.Type.Type)} current ? current.{member.Property.Name} : null", member.Type,
+                ValidationProperty(member.Property)))).ToList();
         return [];
     }
 
@@ -103,5 +117,5 @@ internal static class BridgeDataSubscriptionEmitter
         property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ??
         char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
 
-    private sealed record Child(string Name, string PropertyName, string Getter, BridgeTypeNode Node);
+    private sealed record Child(string Name, string PropertyName, string Getter, BridgeTypeNode Node, string? ValidationProperty = null);
 }

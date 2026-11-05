@@ -183,7 +183,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     {
         ArgumentNullException.ThrowIfNull(request);
         bool save = request.Save, multiple = request.AllowMultiple && !save;
-        var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", request.SuggestedName ?? "Untitled", cancellationToken,
+        var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", request.SuggestedName ?? DesktopPlatformTexts.Current.UntitledFileName, cancellationToken,
             diagnosticSink, PortalChooserOptions.From(request.Filters, request.InitialDirectory, multiple, request.Title)).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();

@@ -278,7 +278,7 @@ internal sealed class ScopedWindowParameter<TParameter>(RunicWindowParameter slo
 public static class RunicWindowServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers <see cref="IRunicWindowService"/> as a singleton, and <see cref="IRunicWindowContext"/>,
+    /// Registers <see cref="IRunicWindowService"/> and <see cref="IRunicApplicationLocale"/> as singletons, and <see cref="IRunicWindowContext"/>,
     /// <see cref="IRunicWindowLocale"/>, <see cref="IRunicConnections"/>, <see cref="IRunicWindowPresentation"/>,
     /// <see cref="IRunicWindowParameter{TParameter}"/> and <see cref="IRunicWindowResult{TResult}"/> per scope. Existing
     /// registrations are kept.
@@ -295,7 +295,8 @@ public static class RunicWindowServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(static provider => new RunicWindowService(provider));
         services.TryAddSingleton<IRunicWindowService>(static provider => provider.GetRequiredService<RunicWindowService>());
-        services.TryAddScoped(static _ => new RunicWindowContext());
+        services.TryAddSingleton<IRunicApplicationLocale>(static _ => new RunicApplicationLocale());
+        services.TryAddScoped(static provider => new RunicWindowContext(provider.GetService<IRunicApplicationLocale>()));
         services.TryAddScoped<IRunicWindowContext>(static provider => provider.GetRequiredService<RunicWindowContext>());
         services.TryAddScoped(static _ => new RunicConnections());
         services.TryAddScoped<IRunicConnections>(static provider => provider.GetRequiredService<RunicConnections>());

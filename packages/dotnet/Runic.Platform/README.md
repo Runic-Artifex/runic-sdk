@@ -167,6 +167,56 @@ if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected 
 On macOS a save panel with filters may add the first allowed extension, or with
 `ShowFilterChoice` the chosen filter's, to a name the user types without one.
 
+The buttons of every dialog are the platform's own, in the user's language: the
+GTK 3 native chooser uses GTK's translated Open, Save and Cancel. A dialog
+without a `Title` shows the platform's title where it has one; the
+xdg-desktop-portal FileChooser and the GTK 3 chooser need one and take it from
+`DesktopPlatformTexts` (below).
+
+## Runic's own text
+
+Runic shows a few texts of its own where the platform has none: the Linux dialog
+titles above, the name a save dialog suggests when a request names none, the
+title of the macOS panel that chooses an application, the label of the Secret
+Service collection Runic creates when the user has no default keyring yet, the
+modifier names in the shortcut labels it writes itself (the Windows menus and
+the in-page menu bar), and the error pages of Runic Desktop's browser windows.
+They are English by default. `DesktopPlatformTexts.Current` replaces them for
+the whole process; set it again after a language switch, from the application's
+own translations, such as its Runic Translations catalog:
+
+```csharp
+DesktopPlatformTexts.Current = new DesktopPlatformTexts
+{
+    OpenFileTitle = text.OpenFile,             // "Datei öffnen"
+    SaveFileTitle = text.SaveFile,             // "Datei speichern"
+    UntitledFileName = text.Untitled,          // "Unbenannt"
+    ChooseApplicationTitle = text.ChooseApp,
+    SecretCollectionLabel = text.Keyring,
+    ControlKeyName = text.ControlKey,          // "Strg"
+    ShiftKeyName = text.ShiftKey,              // "Umschalt"
+    AltKeyName = text.AltKey,                  // "Alt"
+    ResourceUnavailableTitle = text.NotFound,
+    // … the rest stay English.
+};
+```
+
+Dialogs, menus and pages that open later use the new texts. A text has 1 to 1024
+characters, no NUL and is not only white space; setting an invalid one throws
+`ArgumentException` and keeps the current texts.
+
+The modifier names of a shortcut label come from one source, so a label does not
+mix two languages. Once the application sets one of `ControlKeyName`,
+`ShiftKeyName` and `AltKeyName`, labels use its names, with English for the ones
+it leaves out. Without them, Runic Desktop's Windows windows take the names of
+the keyboard layout the user types with (`GetKeyNameText` on the window's
+thread, `Strg+Umschalt+S` on a German layout), and their menu bars, including
+the in-page bar, are laid out again when the user switches layout. The CS-WebUI
+in-page bar, which has no Runic window to read the layout on, and Linux show
+English names. Set all three names to match the application's language whatever
+the layout; key names such as `Del` and `Page Up` stay English. GTK and AppKit
+draw their own menus' shortcut labels.
+
 ## Document apps
 
 An editor keeps working on the file the user chose: it reads it, saves back to it
@@ -544,6 +594,41 @@ system-wide text size that applications can read, so it is `null` there, as on a
 desktop that has no such setting, such as Plasma. Multiply font sizes by it, for
 example a page's root font size; it is independent of the display scale. A watch
 reports a change of it like any other preference.
+
+`DesktopAppearance.Contrast` is the desktop's contrast preference in three states,
+as CSS `prefers-contrast` and `forced-colors` describe it. `DesktopContrast` is
+open: a later minor release may add a state, such as less contrast, so treat an
+unknown value as `NoPreference`.
+
+| Desktop | `NoPreference` | `More` | `ForcedColors` | `SystemColors` |
+| --- | --- | --- | --- | --- |
+| Windows | no contrast theme | not reported: Windows has no such setting | a contrast theme is on (`SPI_GETHIGHCONTRAST`) | the theme's eight colours (`GetSysColor`) while it is on |
+| macOS | "Increase contrast" off | "Increase contrast" on | not reported: macOS does not force colours | `null` |
+| Linux | portal `contrast` 0 | portal `contrast` 1 (GNOME "High Contrast") | not reported: GNOME does not force colours | `null` |
+
+`DesktopAppearance.SystemColors` is the forced palette by the CSS system colour
+each entry stands for (`Canvas`, `CanvasText`, `LinkText`, `GrayText`,
+`Highlight`, `HighlightText`, `ButtonFace`, `ButtonText`), and `null` unless
+`Contrast` is `ForcedColors`, also after `appearance with { Contrast = ... }`, which
+drops it. Draw native content that should match a Windows
+contrast theme with it; a WebView2 page gets the same colours from the CSS system
+colours. `DesktopAppearance.HighContrast` stays: it is `true` for `More` and
+`ForcedColors`, `false` for `NoPreference` (and a state a later release adds)
+and `null` while the contrast is unknown. Setting `HighContrast = true` sets `Contrast` to `More`, unless it
+already asks for more contrast. A watch reports a change of either like any
+other preference.
+
+`IDesktopSettings.WatchAsync` waits for the desktop's change notifications and
+reads again after each one, so a watch costs nothing while nothing changes:
+`WM_SETTINGCHANGE`, `WM_SYSCOLORCHANGE`, `WM_THEMECHANGED` and
+`WM_DWMCOLORIZATIONCOLORCHANGED` on a hidden window, and a registry notification
+for "Text size", on Windows; the workspace's accessibility display options,
+system colour, theme and colour preference notifications and NSApp's
+`effectiveAppearance` on macOS; the Settings portal's `SettingChanged` on Linux.
+Only where they cannot start does it read once a second instead. On macOS,
+`ColorScheme` is the desktop's scheme also while the application chose one for
+every window (`DesktopHost.SetColorSchemeAsync`); it is read from the global
+`AppleInterfaceStyle` preference then.
 
 A notification's `Activated` event is untrusted input. `DesktopNotificationActivation.IsTrusted`
 is `true` when the provider matched the activation to a notification the
@@ -1235,6 +1320,30 @@ await volumes.MountAsync(stick.Id, new DesktopVolumeMountOptions { ReadOnly = tr
 Hosts without a provider register `DesktopVolumes.Unavailable(reason)`. The
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md)
 has the per-platform behaviour and its verification.
+
+## Preferred languages
+
+`DesktopLanguages.Preferred` lists the languages the user prefers, as BCP 47
+tags such as `de-CH` or `zh-Hans-CN`, most preferred first and each once. It
+needs no host or window, so a command-line tool can use it too, and reads the
+operating system again on each call. Negotiate it against the locales the
+application ships to choose its locale, unless the user picked one:
+
+```csharp
+var language = settings.Language ?? AppTextCatalog.ResolveLocale(DesktopLanguages.Preferred);
+await services.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync(language);
+```
+
+| Platform | Source |
+| --- | --- |
+| Windows | The user's display languages (`GetUserPreferredUILanguages`) |
+| macOS | The user's preferred languages (`CFLocaleCopyPreferredLanguages`, as `NSLocale.preferredLanguages`) |
+| Linux | `LANGUAGE`, then `LC_ALL`, `LC_MESSAGES` and `LANG`, as gettext reads them: POSIX locales such as `de_CH.UTF-8` or `sr_RS@latin` become `de-CH` and `sr-Latn-RS`, `C` and `POSIX` are skipped, and `LANGUAGE` counts only when the messages locale is not `C` |
+
+When the system lists none, the list holds `CultureInfo.CurrentUICulture`'s
+name, and is empty for the invariant culture. `IRunicApplicationLocale` is in
+Runic.Application.Views, and `ResolveLocale` in a catalog generated by Runic
+Translations 0.9.
 
 ## Network status
 

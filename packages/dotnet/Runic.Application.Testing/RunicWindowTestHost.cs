@@ -85,6 +85,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     }
 
     private readonly RunicConnections _connections = new();
+    private readonly Lock _gate = new();
 
     /// <summary>
     /// The window's page connections, as the window scope's <see cref="IRunicConnections"/> reports them: each test
@@ -112,6 +113,41 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// constructor. The caller keeps ownership of them.
     /// </summary>
     public IServiceProvider? Services { get; internal init; }
+
+    /// <summary>
+    /// The application's locale, which the window follows while it sets no locale of its own
+    /// (<see cref="IRunicWindowLocale"/>): the <see cref="IRunicApplicationLocale"/> registered in <see cref="Services"/>,
+    /// or, for a host without one, a locale of this host alone. Switch it as the application does, and read the pushes
+    /// from <see cref="Transport"/>:
+    /// <code>
+    /// await host.ApplicationLocale.SetLocaleAsync("de");
+    /// </code>
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The host was disposed.</exception>
+    public IRunicApplicationLocale ApplicationLocale
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
+            if (Volatile.Read(ref _applicationLocale) is { } known) return known;
+            if (Services?.GetService(typeof(IRunicApplicationLocale)) is IRunicApplicationLocale registered)
+                return Interlocked.CompareExchange(ref _applicationLocale, registered, null) ?? registered;
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (_applicationLocale is { } created) return created;
+                var own = new RunicApplicationLocale();
+                // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's.
+                _ownLocale = new RunicWindowContext(own);
+                _ownLocale.AttachContent(Content);
+                Volatile.Write(ref _applicationLocale, own);
+                return own;
+            }
+        }
+    }
+
+    private IRunicApplicationLocale? _applicationLocale;
+    private RunicWindowContext? _ownLocale;
 
     /// <summary>
     /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> of a Window that
@@ -282,6 +318,19 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             }),
     ];
 
+    /// <summary>
+    /// Gets the <c>appearance</c> pushes the default connection received (<c>appearance/1</c>), in order: the window's
+    /// appearance after the connection's hello and after each change of <see cref="WindowContentSession.Appearance"/>,
+    /// which a test sets on <see cref="Content"/> as <c>RunicDesktopHost</c> does from the desktop's settings. A push
+    /// whose members are all <see langword="null"/>, an unknown appearance, is <see langword="null"/>.
+    /// </summary>
+    public IReadOnlyList<Runic.Platform.DesktopAppearance?> AppearancePushes =>
+    [
+        .. Transport.Messages
+            .Where(static message => message.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey && message.Kind == "appearance")
+            .Select(static message => RunicAppearancePush.Read(message.Json)),
+    ];
+
     private async Task<RunicNavigationReply> NavigationAsync(Action<System.Text.Json.Utf8JsonWriter> members, CancellationToken cancellationToken)
     {
         await Transport.EnsureHelloAsync(InMemoryBridgeTransport.DefaultConnectionKey, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -311,6 +360,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         if (_disposed) return;
         _disposed = true;
         _connections.Dispose();
+        lock (_gate) _ownLocale?.Dispose();
         try { _attachment.Dispose(); }
         finally
         {
@@ -336,6 +386,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             TimeProvider = options?.TimeProvider ?? new FakeTimeProvider(),
             CreateId = options?.CreateId ?? (() => Interlocked.Increment(ref next).ToString(CultureInfo.InvariantCulture)),
             IncludeFailureDetail = options?.IncludeFailureDetail,
+            Validation = options?.Validation,
             FlowCultureFromLocale = options?.FlowCultureFromLocale ?? false,
             MaximumInputBytes = options?.MaximumInputBytes,
             MaximumUploadBytes = options?.MaximumUploadBytes,

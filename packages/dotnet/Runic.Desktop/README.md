@@ -515,9 +515,16 @@ Read on another thread, the value is for identity only, such as comparing
 windows: AppKit and GTK objects may be used only on their UI thread. Pass any
 call on the handle to `InvokeNativeAsync`, which runs it there with the handle.
 
-`DesktopPlatform.IsHighContrast` reads the current high-contrast setting once,
-which decides a window's initial theme when `DesktopWindowOptions.HighContrast`
-is not set. To follow changes, observe `IDesktopSettings` from Runic.Platform.
+`DesktopPlatform.IsHighContrast` reads the current high-contrast setting once:
+a Windows contrast theme, macOS "Increase contrast", or a GTK high-contrast
+theme. A window without `DesktopWindowOptions.HighContrast` follows the setting
+while it is open: the page's `webui.isHighContrast()` reads it at each call, and
+the Windows loading surface repaints in the contrast theme's colours when one is
+turned on or off. The web views follow the desktop themselves (see
+[contrast, forced colours and reduced motion](#contrast-forced-colors-and-reduced-motion)).
+To follow the three-state contrast preference (`DesktopAppearance.Contrast`:
+none, more contrast, forced colours) and the forced palette in .NET, observe
+`IDesktopSettings` from Runic.Platform.
 
 ### Light and dark windows
 
@@ -600,6 +607,39 @@ windows of a configured `ProfilePath` as sharing it.
 
 Runic Windows reach the same switch host-neutrally through
 `IRunicWindowPresentation.SetColorSchemeAsync` (Runic.Application.Views).
+
+### Contrast, forced colors and reduced motion
+
+Unlike the color scheme, a window's contrast and motion are the desktop's:
+Runic sets none of them, and each web view reads the desktop's settings
+itself. A page reads them with CSS media queries (`prefers-contrast`,
+`forced-colors`, `prefers-reduced-motion`). In .NET, `IDesktopSettings`
+reports the same preferences as `DesktopAppearance.Contrast`, `SystemColors`
+and `ReducedMotion`. What each engine reports (checked by the native smokes,
+`Runic.Desktop.WebViewSmoke --appearance` and `Runic.Desktop.Gtk4.Smoke --appearance`):
+
+| Engine | `prefers-contrast` | `forced-colors` | `prefers-reduced-motion` | While the window is open |
+| --- | --- | --- | --- | --- |
+| Windows, WebView2 | Chromium's value for the contrast theme while one is on, otherwise `no-preference` | `active` while a contrast theme is on, with the theme's colours | `reduce` when "Animation effects" (client area animations) is off | A window reads them when it opens. An open page may not follow a change: in CI it did not follow "Animation effects" |
+| macOS, WKWebView | `more` with "Increase contrast" | Always `none`: macOS does not force colours | `reduce` with "Reduce motion" | Not checked live: the smoke cannot switch these settings while it runs; CI checks the page with "Increase contrast" off and on, set before the process starts |
+| Linux, WebKitGTK 4.1 (GTK 3) | `more` with GTK's `HighContrast` or `HighContrastInverse` theme, which GNOME's settings daemon selects for "High Contrast" | Always `none` | `reduce` when GTK's `gtk-enable-animations` is off | Follows |
+| Linux, WebKitGTK 6.0 (GTK 4) | `more` with GTK 4.20's `gtk-interface-contrast`; an older GTK 4 has no such setting | Always `none` | `reduce` with GTK 4.20's `gtk-interface-reduced-motion` | Reads them when the process's first web view starts, and does not follow a later change (WebKitGTK 2.54) |
+| Installed browsers | The browser's own | The browser's own | The browser's own | The browser's |
+
+`IDesktopSettings.WatchAsync` reports a change whether or not the page follows it. The
+Windows smoke checks that a watch reports the switched animations and contrast theme
+from the desktop's change notifications alone, with the contrast theme's palette, and
+the macOS smoke that `IDesktopSettings` agrees with NSWorkspace, with "Increase
+contrast" off and on.
+
+A Runic Views page also gets the desktop's values from the host
+(`appearance/1`, see the
+[Views README](../Runic.Application.Views/README.md#appearance)): the text
+scale, the accent colour and the forced-colours palette, which no engine
+exposes to script, and the contrast and motion preferences, so its appearance
+store follows a change where the engine does not, as in WebKitGTK 6.0, and
+reports the engine's and the host's values separately. The page's CSS still
+sees only the engine's media queries.
 
 ### Owned and window-modal windows
 
@@ -1051,7 +1091,8 @@ GTK 3 and GTK 4 windows or the Linux desktop's global menu (below). The macOS
 window shows the declared menus in the application menu bar. The Windows (WebView2) window shows them in the
 window: the menus in Windows order (File first, Help last, an `Application`
 menu as a plain menu with its title), each `AccessKey` underlined, shortcuts
-after the title (`Ctrl+Shift+S`), check and radio items with their marks, and
+after the title (`Ctrl+Shift+S`, with the modifier names of the keyboard layout,
+such as `Strg+Umschalt+S`, which follow a layout switch, or of `DesktopPlatformTexts`), check and radio items with their marks, and
 disabled items grayed. A menu asks its items' commands whenever it opens. With
 `Native` its placement is `Window`; a frameless or kiosk window has no frame for
 a bar, does not report `DesktopWindowCapabilities.MenuBar` and reports `None`,
@@ -1574,6 +1615,11 @@ await window.SetLayoutDirectionAsync(culture.TextInfo.IsRightToLeft
 
 Runic Views windows (Runic.Application.Views.Desktop) do this from the window's
 locale.
+
+The pages a window serves itself, such as Resource Not Available for a missing
+file and the Access Denied pages of browser windows, take their text from
+`DesktopPlatformTexts.Current` ([Runic's own text](../Runic.Platform/README.md#runics-own-text))
+and, in a Runic Views window, `lang` and `dir` from the window locale.
 
 `Validate` reports each option a presentation ignores. The
 [right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)

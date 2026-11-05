@@ -426,6 +426,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = loggerFactory,
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
+                Validation = scope.ServiceProvider.GetService<RunicValidationOptions>(),
                 FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? _flowCultureFromLocale ?? false,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
@@ -438,6 +439,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             IDisposable connections = menuRoutes;
+            // appearance/1: the window's appearance follows the desktop's settings while it is open, when only this
+            // computer can reach its pages (DesktopWindowLocality): a serve-only window or a host on every interface may
+            // be shown on another machine, which must not learn this desktop's accessibility settings.
+            if (DesktopWindowLocality.IsLocal(Desktop, surface, ServeOnly))
+                connections = new Bindings(connections, AppearanceFeed.Add(content, loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")));
             // The window releases its live development content when it closes, with its connection events.
             connectionBinding = development is null ? connections : new Bindings(connections, development);
             development = null;
@@ -445,6 +451,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var attachment = opening.AttachBridge(transport, content);
             try { owner.Attach(attachment); }
             catch { attachment.Dispose(); throw; }
+            // The pages the surface serves itself, such as Resource Not Available, are in the window's language.
+            var pageSurface = surface;
+            var pageContent = content;
+            pageSurface.PageLanguage = pageContent.Locale;
+            pageContent.LocaleChanged += (_, _) => pageSurface.PageLanguage = pageContent.Locale;
             if (ServeOnly)
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
@@ -515,6 +526,19 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private readonly DevelopmentAssets _developmentAssets = new();
 
+    // appearance/1: the application's IDesktopSettings when it registered one (AddRunicPlatformServices), or the
+    // platform's own, which the feed creates while a window is open and disposes after the last closed.
+    private DesktopAppearanceFeed? _appearanceFeed;
+    private DesktopAppearanceFeed AppearanceFeed
+    {
+        get
+        {
+            if (Volatile.Read(ref _appearanceFeed) is { } feed) return feed;
+            var created = new DesktopAppearanceFeed(Services.GetService<Runic.Platform.IDesktopSettings>());
+            return Interlocked.CompareExchange(ref _appearanceFeed, created, null) ?? created;
+        }
+    }
+
     // The process environment; tests replace it.
     internal Func<string, string?> ReadEnvironment { get; init; } = Environment.GetEnvironmentVariable;
 
@@ -539,7 +563,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // language for the windows of a shared profile, so a configured ProfilePath keeps the platform's language.
         if (locale is null || windowOptions.Browser != BrowserKind.Embedded || OperatingSystem.IsMacOS()) return windowOptions;
         if (windowOptions.LayoutDirection == DesktopLayoutDirection.Default)
-            windowOptions = windowOptions with { LayoutDirection = WindowLocaleDirection.Of(locale) };
+            windowOptions = windowOptions with { LayoutDirection = Runic.Desktop.Internal.WindowLocaleDirection.Of(locale) };
         if (windowOptions.Language is null && windowOptions.ProfilePath is null)
             windowOptions = windowOptions with { Language = locale };
         return windowOptions;
@@ -565,7 +589,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 {
                     if (!presentation.IsOpen) return;
                     var direction = content.Locale is { } locale
-                        ? WindowLocaleDirection.Of(locale)
+                        ? Runic.Desktop.Internal.WindowLocaleDirection.Of(locale)
                         : DesktopLayoutDirection.Default;
                     if (direction != presentation.LayoutDirection)
                         await presentation.SetLayoutDirectionAsync(direction).ConfigureAwait(false);

@@ -91,6 +91,7 @@ public sealed class WindowContentSession : IDisposable
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
+        Validation = options.Validation;
         MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
         var maximumUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumUploadBytes, nameof(options.MaximumUploadBytes));
         var maximumWindowUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumWindowUploadBytes, nameof(options.MaximumWindowUploadBytes));
@@ -180,8 +181,10 @@ public sealed class WindowContentSession : IDisposable
     /// from any thread.
     /// </summary>
     /// <remarks>
-    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>.
-    /// Setting <see langword="null"/> after a locale leaves the pages in the language they show.
+    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>; a
+    /// value set here directly is that Window's own locale, and <see langword="null"/> makes it follow the application's
+    /// <see cref="IRunicApplicationLocale"/> again, which this property then shows. Otherwise, setting
+    /// <see langword="null"/> after a locale leaves the pages in the language they show.
     /// </remarks>
     /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
     public string? Locale
@@ -195,6 +198,23 @@ public sealed class WindowContentSession : IDisposable
 
     /// <summary>Raised on the setting thread after <see cref="Locale"/> changed.</summary>
     public event EventHandler? LocaleChanged;
+
+    /// <summary>
+    /// The window's appearance: the desktop preferences its host read, such as the colour scheme, the contrast
+    /// preference and its forced-colours palette, reduced motion, the text scale and the accent colour; or
+    /// <see langword="null"/> while the host reads none. Setting it pushes it to the window's pages (feature
+    /// <c>appearance/1</c>), whose appearance store reports what their engine's media queries do not; a page that
+    /// connects later receives it after its <c>hello</c>. It can be set from any thread.
+    /// </summary>
+    /// <remarks>
+    /// <c>RunicDesktopHost</c> sets it on every window it opens from <c>IDesktopSettings</c>, and keeps it current while
+    /// the window is open. A test sets it directly. Setting an equal value pushes nothing.
+    /// </remarks>
+    public Runic.Platform.DesktopAppearance? Appearance
+    {
+        get => BridgeDispatcher.For(_transport).Appearance;
+        set => BridgeDispatcher.For(_transport).SetAppearance(value);
+    }
 
     /// <summary>Gets whether the window's root ViewModel receives dropped files (<see cref="IRunicFileDropTarget"/>).</summary>
     public bool AcceptsFileDrops => _rootModel is IRunicFileDropTarget;
@@ -352,6 +372,9 @@ public sealed class WindowContentSession : IDisposable
 
     /// <summary>Whether this window's Bridge error replies carry exception detail, read once when it opens.</summary>
     internal bool IncludesFailureDetail { get; }
+
+    // The window's validation options (WindowContentSessionOptions.Validation), for its Bridges' state writes.
+    internal RunicValidationOptions? Validation { get; }
 
     /// <summary>The largest Bridge input in UTF-8 bytes (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>).</summary>
     internal int MaximumInputBytes { get; }

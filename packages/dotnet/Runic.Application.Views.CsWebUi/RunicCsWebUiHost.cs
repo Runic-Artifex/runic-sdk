@@ -264,6 +264,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
                 IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
+                Validation = scope.ServiceProvider.GetService<RunicValidationOptions>(),
                 FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? _flowCultureFromLocale ?? false,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,

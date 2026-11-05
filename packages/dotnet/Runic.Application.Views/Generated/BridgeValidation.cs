@@ -371,14 +371,15 @@ public static class BridgeValidation
                     if (visible) _path.Add(member.Name);
                     try
                     {
+                        // Read first: TextFor's attributes are evaluated against the member's value.
+                        var value = member.Read(owner);
                         if (owner is INotifyDataErrorInfo propertyErrors)
                         {
                             if (readsHasErrors) _hasErrors |= propertyErrors.HasErrors;
                             AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, node, skipPresentedMembers: false,
-                                memberTexts, member.PropertyName);
+                                memberTexts, member.PropertyName, member, value);
                         }
 
-                        var value = member.Read(owner);
                         VisitMember(value, member);
                     }
                     finally
@@ -431,11 +432,33 @@ public static class BridgeValidation
 
         private void AddErrors(IEnumerable? values, IReadOnlyList<object> defaultPath, Node node,
             bool skipPresentedMembers, Dictionary<(string Member, string Message), RunicTextReference>? memberTexts = null,
-            string? memberName = null)
+            string? memberName = null, BridgeDataSubscriptionMember? member = null, object? memberValue = null)
         {
             if (values is null) return;
+            // translation-text/1: RunicValidationOptions.TextFor for the errors of a member with validation attributes,
+            // which are paired with its attributes together (BridgeValidationAttributes).
+            RunicTextReference?[]? attributeTexts = null;
+            if (member?.ValidationProperty is not null && BridgeSnapshotPublication.Validation?.TextFor is { } textFor)
+            {
+                // At most one more than the errors that can still be written, so a member that has more stays truncated.
+                var entries = new List<object?>();
+                var complete = true;
+                foreach (var entry in values)
+                {
+                    if (entries.Count > MaximumErrors - _errors) { complete = false; break; }
+                    entries.Add(entry);
+                }
+                values = entries;
+                var messages = new string?[entries.Count];
+                for (var index = 0; index < entries.Count; index++)
+                    messages[index] = AttributeMessage(entries[index], memberTexts, memberName);
+                attributeTexts = BridgeValidationAttributes.Texts(member, node.Owner, memberValue, messages, complete, textFor,
+                    BridgeSnapshotPublication.Logger);
+            }
+            var position = -1;
             foreach (var value in values)
             {
+                position++;
                 if (_errors >= MaximumErrors) { _truncated = true; return; }
                 switch (value)
                 {
@@ -445,18 +468,31 @@ public static class BridgeValidation
                     case ValidationResult result:
                         var memberNames = result.MemberNames;
                         if (skipPresentedMembers && !TryUnpresented(ref memberNames, node.Members)) break;
-                        AddMessage(MessageText(result.ErrorMessage), null, null, TextOf(result), memberNames, defaultPath, node);
+                        AddMessage(MessageText(result.ErrorMessage), null, null,
+                            TextOf(result) ?? attributeTexts?[position], memberNames, defaultPath, node);
                         break;
                     default:
                         var plain = MessageText(value);
                         var text = TextOf(value);
                         if (text is null && memberName is not null && memberTexts is not null)
                             text = memberTexts.GetValueOrDefault((memberName, plain));
+                        text ??= attributeTexts?[position];
                         AddMessage(plain, null, null, text, null, defaultPath, node);
                         break;
                 }
             }
         }
+
+        // The message of a member's error that may take its attribute's text: a ValidationResult or string without a
+        // text of its own. Null for any other entry, which still counts when errors are paired with attributes.
+        private static string? AttributeMessage(object? entry,
+            Dictionary<(string Member, string Message), RunicTextReference>? memberTexts, string? memberName) => entry switch
+        {
+            RunicValidationMessage => null,
+            ValidationResult result => TextOf(result) is null ? result.ErrorMessage : null,
+            string plain when memberName is null || memberTexts is null || !memberTexts.ContainsKey((memberName, MessageText(plain))) => plain,
+            _ => null,
+        };
 
         // Keeps the member names that GetErrors(member) does not ask for. False when the result
         // names members and every one of them is presented, so the member read reports it.

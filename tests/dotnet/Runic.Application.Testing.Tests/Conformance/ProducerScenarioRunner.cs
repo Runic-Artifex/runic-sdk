@@ -110,6 +110,8 @@ internal sealed class ProducerScenarioRunner
         }
         // translation-text/1: the window's locale, as WindowContentSession.Locale sets it.
         else if (step.ContainsKey("setLocale")) BridgeDispatcher.For(_transport).SetLocale(step["setLocale"]?.GetValue<string>());
+        // appearance/1: the window's appearance, as WindowContentSession.Appearance sets it.
+        else if (step.ContainsKey("setAppearance")) BridgeDispatcher.For(_transport).SetAppearance(ReadAppearance(step["setAppearance"] as JsonObject));
         else if (step["expect"] is JsonObject expect)
         {
             // The model, waits and closes are the producer's; state, call, operation, diagnostics, notifications and
@@ -118,6 +120,7 @@ internal sealed class ProducerScenarioRunner
             if (expect["presented"] is JsonObject presented) await ExpectPresentedAsync(presented, window).ConfigureAwait(false);
             if (expect["closed"] is JsonObject closed) await ExpectClosedAsync(closed).ConfigureAwait(false);
             if (expect["flushed"] is JsonObject flushed) await ExpectFlushedAsync(flushed).ConfigureAwait(false);
+            if (expect["languages"] is JsonObject languages) ExpectLanguages(languages);
         }
         else if (!step.ContainsKey("call")) throw new ScenarioFailure("The step has no action a producer runner knows.");
     }
@@ -158,6 +161,18 @@ internal sealed class ProducerScenarioRunner
     }
 
     // expect.flushed: the flush of a flushFields step completed, and whether every page answered it.
+    // client-languages/1: the languages the window lists for the connection, as RunicConnection.Languages reports them.
+    private void ExpectLanguages(JsonObject languages)
+    {
+        var connection = Open(languages["connection"]!.GetValue<string>());
+        using var lease = BridgeDispatcher.For(_transport).ObserveConnections(static _ => { }, static _ => { }, out var open);
+        var found = open.FirstOrDefault(candidate => candidate.TransportKey == connection.Key)
+            ?? throw new ScenarioFailure($"The connection {connection.Name} has not completed its hello.");
+        var expected = languages["value"]!.AsArray().Select(item => item!.GetValue<string>()).ToArray();
+        if (!found.Languages.SequenceEqual(expected, StringComparer.Ordinal))
+            throw new ScenarioFailure($"The connection's languages are [{string.Join(", ", found.Languages)}], not [{string.Join(", ", expected)}].");
+    }
+
     private async Task ExpectFlushedAsync(JsonObject flushed)
     {
         var id = flushed["id"]!.GetValue<string>();
@@ -238,6 +253,37 @@ internal sealed class ProducerScenarioRunner
             else if (!IsSkipped(steps[next])) break;
         }
         return group;
+    }
+
+    // The members of an appearance push as the DesktopAppearance a host would set.
+    private static Runic.Platform.DesktopAppearance? ReadAppearance(JsonObject? members)
+    {
+        if (members is null) return null;
+        static Runic.Platform.DesktopAccentColor? Color(JsonNode? node) => node?.GetValue<string>() is { } text
+            ? new(Convert.ToInt32(text[1..3], 16) / 255d, Convert.ToInt32(text[3..5], 16) / 255d, Convert.ToInt32(text[5..7], 16) / 255d)
+            : null;
+        var colors = members["systemColors"] as JsonObject;
+        return new Runic.Platform.DesktopAppearance(
+            members["colorScheme"]?.GetValue<string>() switch
+            {
+                "light" => Runic.Platform.DesktopColorScheme.Light,
+                "dark" => Runic.Platform.DesktopColorScheme.Dark,
+                _ => Runic.Platform.DesktopColorScheme.NoPreference,
+            },
+            Color(members["accentColor"]), ReducedMotion: members["reducedMotion"]?.GetValue<bool>())
+        {
+            Contrast = members["contrast"]?.GetValue<string>() switch
+            {
+                "no-preference" => Runic.Platform.DesktopContrast.NoPreference,
+                "more" => Runic.Platform.DesktopContrast.More,
+                "forced-colors" => Runic.Platform.DesktopContrast.ForcedColors,
+                _ => null,
+            },
+            TextScale = members["textScale"]?.GetValue<double>(),
+            SystemColors = colors is null ? null : new(Color(colors["canvas"])!, Color(colors["canvasText"])!, Color(colors["linkText"])!,
+                Color(colors["grayText"])!, Color(colors["highlight"])!, Color(colors["highlightText"])!, Color(colors["buttonFace"])!,
+                Color(colors["buttonText"])!),
+        };
     }
 
     // Requires that the producer's next messages are the group's, in any order.

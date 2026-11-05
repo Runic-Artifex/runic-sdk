@@ -410,17 +410,28 @@ internal static class BridgeSnapshotPublication
     // The logger of the bridge whose state is being written, for the writers it calls, such as BridgeValidation.
     private static readonly AsyncLocal<Microsoft.Extensions.Logging.ILogger?> CurrentLogger = new();
 
+    // The validation options of the window whose Bridge writes its state (WindowContentSessionOptions.Validation).
+    private static readonly AsyncLocal<RunicValidationOptions?> CurrentValidation = new();
+
     internal static Microsoft.Extensions.Logging.ILogger Logger => CurrentLogger.Value ?? TraceFallbackLogger.Instance;
+
+    internal static RunicValidationOptions? Validation => CurrentValidation.Value;
 
     public static IDisposable Enter(Func<bool> isInactive) => Enter(isInactive, null);
 
-    public static IDisposable Enter(Func<bool> isInactive, Microsoft.Extensions.Logging.ILogger? logger)
+    public static IDisposable Enter(Func<bool> isInactive, Microsoft.Extensions.Logging.ILogger? logger) =>
+        Enter(isInactive, logger, null);
+
+    public static IDisposable Enter(Func<bool> isInactive, Microsoft.Extensions.Logging.ILogger? logger,
+        RunicValidationOptions? validation)
     {
         var previous = IsInactive.Value;
         var previousLogger = CurrentLogger.Value;
+        var previousValidation = CurrentValidation.Value;
         IsInactive.Value = isInactive;
         CurrentLogger.Value = logger;
-        return new Scope(previous, previousLogger);
+        CurrentValidation.Value = validation;
+        return new Scope(previous, previousLogger, previousValidation);
     }
 
     public static void ThrowIfInactive()
@@ -428,7 +439,8 @@ internal static class BridgeSnapshotPublication
         if (IsInactive.Value?.Invoke() == true) throw new BridgeSnapshotDetachedException();
     }
 
-    private sealed class Scope(Func<bool>? previous, Microsoft.Extensions.Logging.ILogger? previousLogger) : IDisposable
+    private sealed class Scope(Func<bool>? previous, Microsoft.Extensions.Logging.ILogger? previousLogger,
+        RunicValidationOptions? previousValidation) : IDisposable
     {
         private Func<bool>? _previous = previous;
         private int _disposed;
@@ -438,6 +450,7 @@ internal static class BridgeSnapshotPublication
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             IsInactive.Value = Interlocked.Exchange(ref _previous, null);
             CurrentLogger.Value = previousLogger;
+            CurrentValidation.Value = previousValidation;
         }
     }
 }

@@ -75,6 +75,25 @@ internal sealed class FileDialogOptionsTests
         Check(PortalChooserOptions.DialogTitle("OpenFile", null) == "Open file" && PortalChooserOptions.DialogTitle("SaveFile", null) == "Save file"
             && PortalChooserOptions.DialogTitle("SelectDirectory", PortalChooserOptions.From([], null, true)) == "Open directories",
             "Runic's default titles");
+        // S4: the default titles and the suggested name are the application's texts (DesktopPlatformTexts).
+        try
+        {
+            DesktopPlatformTexts.Current = new DesktopPlatformTexts
+            {
+                OpenFileTitle = "Datei öffnen", OpenFilesTitle = "Dateien öffnen", OpenDirectoryTitle = "Ordner öffnen",
+                OpenDirectoriesTitle = "Ordner öffnen (mehrere)", SaveFileTitle = "Datei speichern", UntitledFileName = "Unbenannt",
+            };
+            Check(PortalChooserOptions.DialogTitle("OpenFile", null) == "Datei öffnen"
+                && PortalChooserOptions.DialogTitle("OpenFile", PortalChooserOptions.From([], null, true)) == "Dateien öffnen"
+                && PortalChooserOptions.DialogTitle("SelectDirectory", null) == "Ordner öffnen"
+                && PortalChooserOptions.DialogTitle("SaveFile", null) == "Datei speichern", "the application's default titles");
+            Check(PortalChooserOptions.DialogTitle("SaveFile", PortalChooserOptions.From([], null, false, "Export")) == "Export",
+                "a request's title over the application's texts");
+            transport = new FakeTransport(new(1, []));
+            await new PortalFilePicker(new Owner(), transport).SelectAsync(new NativeFileDialogRequest(true, null), default);
+            Check(transport.Argument == "Unbenannt", $"the untitled name: {transport.Argument}");
+        }
+        finally { DesktopPlatformTexts.Current = null!; }
     }
 
     [Test, DisplayName("portal filters carry MIME types; current_filter names the chosen filter")]

@@ -587,6 +587,20 @@ const status = useText(() => view.state.value?.status);
 // <p>{{ status }}</p>
 ```
 
+## `useAppearance()`
+
+The page's appearance as a ref that renders, computes and watches again when it
+changes, while the calling component or effect scope lives: the colour scheme,
+contrast and reduced motion of the page's engine, combined with the desktop's
+text scale, accent colour, forced-colours palette, contrast and motion that a
+Runic host pushes ([Appearance](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#appearance)). Every member is `null` under
+server rendering.
+
+```ts
+const look = useAppearance();
+const fontSize = computed(() => `${look.value.textScale ?? 1}rem`);
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed
