@@ -15,7 +15,8 @@ using Runic.Platform;
 // - Context menus: chosen, dismissed with Escape, replaced by a later menu, cancelled, at a page point and at the
 //   pointer after a real right-click.
 // - A Page window has no bar widget and still answers the shortcut.
-// - --rtl: LayoutDirection RightToLeft mirrors the bar and the context menu.
+// - --rtl: LayoutDirection RightToLeft mirrors the bar and the context menu, and SetLayoutDirectionAsync lays the open
+//   window's bar out left to right and back (S3).
 [SupportedOSPlatform("linux")]
 internal static partial class MenuSmoke
 {
@@ -199,6 +200,26 @@ internal static partial class MenuSmoke
                 }
                 Require(direction.Direction == 2 && direction.FirstIsRight, $"a right-to-left bar with File at the right: {direction}");
                 Console.WriteLine($"PASS {name} the bar is right to left.");
+
+                // S3: the open window changes direction, and its bar is built again in it.
+                Require(window.Capabilities.HasFlag(DesktopWindowCapabilities.LayoutDirection), "the LayoutDirection capability");
+                foreach (var (layout, expected, firstIsRight) in new[]
+                         {
+                             (DesktopLayoutDirection.LeftToRight, 1, false),
+                             (DesktopLayoutDirection.RightToLeft, 2, true),
+                         })
+                {
+                    await window.SetLayoutDirectionAsync(layout);
+                    direction = await window.ReadNativeAsync(handle => inspector.BarDirection(handle));
+                    for (var waited = 0; !(direction.Direction == expected && direction.FirstIsRight == firstIsRight) && waited < 5000; waited += 100)
+                    {
+                        await Task.Delay(100);
+                        direction = await window.ReadNativeAsync(handle => inspector.BarDirection(handle));
+                    }
+                    Require(direction.Direction == expected && direction.FirstIsRight == firstIsRight,
+                        $"a {layout} bar after SetLayoutDirectionAsync: {direction}");
+                }
+                Console.WriteLine($"PASS {name} SetLayoutDirectionAsync lays the open window's bar out left to right and back.");
             }
 
             // Shortcuts after the page: real keys through XTEST into the focused page.

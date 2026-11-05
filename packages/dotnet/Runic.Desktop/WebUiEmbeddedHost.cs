@@ -93,6 +93,10 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot change its color scheme."));
 
+    /// <summary>Changes the direction of the open window's native parts; requires <see cref="DesktopWindowCapabilities.LayoutDirection"/>.</summary>
+    ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot change its layout direction."));
+
     /// <summary>Gets whether the platform window is open.</summary>
     bool IsOpen { get; }
 

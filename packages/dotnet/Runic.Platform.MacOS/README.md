@@ -93,8 +93,12 @@ obj/<configuration>/<framework>/runic-macos/<AssemblyName>.app
 `Info.plist` has the bundle identifier (`RunicMacBundleIdentifier`, by default
 `ApplicationId`), `ApplicationTitle`, the numeric `Version`, the
 `RunicApplicationUrlSchemes`, the `RunicApplicationFileTypes` by extension
-with the `Alternate` rank, and `RunicMacCameraUsageDescription` and
-`RunicMacMicrophoneUsageDescription`. The bundle is signed ad hoc, without the
+with the `Alternate` rank, `RunicMacCameraUsageDescription` and
+`RunicMacMicrophoneUsageDescription`, and `CFBundleLocalizations` with an empty
+`Contents/Resources/<tag>.lproj` for each language of `RunicApplicationLocales`
+and the `RunicApplicationLocale` items
+([Languages](../../../docs/packaging.md#languages)), in the canonical case
+(`pt_br` is `pt-BR`); the folder of a language removed from the list is deleted. The bundle is signed ad hoc, without the
 hardened runtime and entitlements, so the debugger, hot reload and the JIT work
 as before. The links keep the output in one place: `AppContext.BaseDirectory`
 is still the build output, and a rebuild or a frontend that `dotnet runic dev`

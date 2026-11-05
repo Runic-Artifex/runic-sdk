@@ -62,6 +62,7 @@ internal static class MacOSPackager
         string info = PackageManifests.Render(identity, "macos/Info.plist", fields);
         CheckInfo(info, identity);
         await File.WriteAllTextAsync(Path.Combine(app, "Contents", "Info.plist"), info, cancellationToken).ConfigureAwait(false);
+        await WriteLocalizationsAsync(identity, resources, cancellationToken).ConfigureAwait(false);
         string[] devices = DeviceEntitlements(identity);
         fields["Entitlements"] = Entitlements(sandbox, profileIdentity, devices);
         string entitlementsText = PackageManifests.Render(identity, "macos/entitlements.plist", fields);
@@ -214,6 +215,25 @@ internal static class MacOSPackager
         }
         if (sandbox && entries["com.apple.security.app-sandbox"].Name != "true")
             throw new DevDevelopmentException(PackageCodes.ValidationFailed, "The manifest macos/entitlements.plist turns com.apple.security.app-sandbox off.");
+    }
+
+    /// <summary>
+    /// RunicApplicationLocales: a <c>Contents/Resources/&lt;tag&gt;.lproj</c> for each locale, which macOS reads as a
+    /// localization of the bundle, with an <c>InfoPlist.strings</c> that names the application in that language when the
+    /// project gives a name (the <c>Name</c> metadata of a <c>RunicApplicationLocale</c> item).
+    /// </summary>
+    internal static async Task WriteLocalizationsAsync(PackageIdentity identity, string resources, CancellationToken cancellationToken)
+    {
+        foreach (PackageLocale locale in identity.Locales)
+        {
+            string folder = Path.Combine(resources, locale.Tag + ".lproj");
+            Directory.CreateDirectory(folder);
+            if (PackageManifests.MacOSInfoStrings(locale) is { } strings)
+            {
+                await File.WriteAllTextAsync(Path.Combine(folder, "InfoPlist.strings"), strings, new System.Text.UTF8Encoding(false),
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>

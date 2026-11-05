@@ -103,6 +103,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private readonly object _localeGate = new();
     private string? _locale;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
+    // WindowContentSessionOptions.FlowCultureFromLocale: requests run in the culture of the window's locale.
+    private bool _flowCultureFromLocale;
     private ILogger _logger = TraceFallbackLogger.Instance;
     // client-errors/1: the category of the errors pages report.
     private ILogger _pageLogger = TraceFallbackLogger.Instance;
@@ -154,9 +156,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal bool UsesMailbox => _targeted is null;
 
     // Applies the window's options. The window session calls this once it was created.
-    internal void Configure(int maximumInputBytes, ILogger logger, TimeProvider timeProvider, ILogger? pageLogger = null)
+    internal void Configure(int maximumInputBytes, ILogger logger, TimeProvider timeProvider, ILogger? pageLogger = null,
+        bool flowCultureFromLocale = false)
     {
         _maximumInputBytes = maximumInputBytes;
+        _flowCultureFromLocale = flowCultureFromLocale;
         _logger = logger;
         _pageLogger = pageLogger ?? logger;
         _timeProvider = timeProvider;
@@ -564,7 +568,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 // navigation-path/1: the window's Back and the page's route path; a request kind only with the feature.
                 if (envelope.Kind == "navigation")
                     return connection.UsesNavigationPath
-                        ? BridgeNavigation.HandleAsync(this, envelope, cancellationToken)
+                        ? NavigateInCulture(envelope, cancellationToken)
                         : Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use navigation-path/1."));
                 if (envelope.Kind == "client-error") return Reply(ClientError(connection, envelope));
                 // view-requests/1: a presentation registers its view request handlers only on a connection that uses it.
@@ -594,7 +598,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                         && operations?.Invoke(new BridgeRouteRequest(envelope, connection, this)) is { } known
                         ? known : BridgeMessages.Released);
                 }
-                var routed = handler.HandleAsync(new BridgeRouteRequest(envelope, connection, this), cancellationToken);
+                ValueTask<ReadOnlyMemory<byte>> routed;
+                // The setter, command, validation and publication of the request run in the window's culture.
+                using (EnterCulture())
+                    routed = handler.HandleAsync(new BridgeRouteRequest(envelope, connection, this), cancellationToken);
                 if (routed.IsCompletedSuccessfully) return new(routed.Result);
                 disposeEnvelope = false;
                 return AwaitRoute(routed, envelope);
@@ -609,6 +616,14 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             ViewsLog.RequestFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
             return Reply(BridgeMessages.Failure("failed", null, "The request failed."));
         }
+    }
+
+    // FlowCultureFromLocale: the culture of the window's locale, for an invocation that starts now.
+    internal LocaleCultureScope EnterCulture() => _flowCultureFromLocale ? LocaleCultureScope.Enter(Locale) : default;
+
+    private ValueTask<ReadOnlyMemory<byte>> NavigateInCulture(BridgeRequestEnvelope envelope, CancellationToken cancellationToken)
+    {
+        using (EnterCulture()) return BridgeNavigation.HandleAsync(this, envelope, cancellationToken);
     }
 
     // closing-reply (presented/1): acknowledges the window's closing push; without one pending it answers ok as well.
