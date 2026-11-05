@@ -98,6 +98,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Resources = options.Resources;
         Placement = options.Placement;
         _includeFailureDetail = options.IncludeFailureDetail;
+        _flowCultureFromLocale = options.FlowCultureFromLocale;
         _contentSecurityPolicy = options.ContentSecurityPolicy;
         _assets = options.Assets;
         // The range of WindowContentSessionOptions.MaximumInputBytes, checked before a Window opens.
@@ -122,6 +123,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     public bool ServeOnly => _serveOnly || ServeOnlyRequested;
 
     private readonly bool? _includeFailureDetail;
+    private readonly bool? _flowCultureFromLocale;
     private readonly int? _maximumInputBytes;
     private readonly long? _maximumUploadBytes;
     private readonly string? _contentSecurityPolicy;
@@ -424,6 +426,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = loggerFactory,
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
+                FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? _flowCultureFromLocale ?? false,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
                 MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,

@@ -1,8 +1,15 @@
 // @vitest-environment happy-dom
 // translation-text/1: useText follows a language switch reactively.
-import { flushSync } from "svelte";
+import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, test } from "vitest";
-import { configureTranslatedText, useText, useWindowLocale, type TextHandle } from "../src/views/index.js";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
+import { configureTranslatedText, useText, useTextLocale, useWindowLocale, type TextHandle } from "../src/views/index.js";
+import TranslatedTitle from "./fixtures/TranslatedTitle.svelte";
+// The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
+import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
+import { configureLocaleResolver, createLocaleSource } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";
+import { resolveTextReference } from "../../views/test/fixtures/translations/generated/notes.esm-v5/transport.js";
 // A Translations runtime of two locales, as a generated transport.js and locale source would be.
 function fakeTranslations() {
   const catalog: Record<string, Record<string, string>> = {
@@ -50,5 +57,35 @@ describe("useText", () => {
     expect(seen.at(-1)).toBe("Invalid value.");
     destroy();
     stop();
+  });
+});
+
+describe("useTextLocale", () => {
+  test("a template that renders m.*() renders again when the application switches the window's locale (S2)", async () => {
+    const locale = createLocaleSource({ initialLocale: "en" });
+    const textLocale = useTextLocale();
+    const stopResolver = configureLocaleResolver(() => textLocale.current ?? locale.getLocale());
+    const stop = configureTranslatedText({
+      ...locale,
+      resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+    });
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("shell", { state: {} });
+    await connectView({ contract: "Tests.Shell:fp-1", route: "shell", members: {} });
+    const target = document.body.appendChild(document.createElement("div"));
+    const component = mount(TranslatedTitle, { target });
+    flushSync();
+    expect(target.textContent).toBe("Saved Atlas.");
+    bridge.setWindowLocale("de");
+    await bridge.flush();
+    flushSync();
+    expect(target.textContent).toBe("Atlas gespeichert.");
+    bridge.setWindowLocale("en");
+    await bridge.flush();
+    flushSync();
+    expect(target.textContent).toBe("Saved Atlas.");
+    unmount(component);
+    stop();
+    stopResolver();
   });
 });
