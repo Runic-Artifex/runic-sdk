@@ -1536,9 +1536,9 @@ runtime once; the window's locale, which the application sets with
 `IRunicWindowLocale`, is then passed to its `setLocale`:
 
 ```ts
-import { configureTranslatedText, resolveText, subscribeText } from "@runic-artifex/views";
+import { configureTranslatedText, resolveText, subscribeText, syncDocumentLocale } from "@runic-artifex/views";
 import { m } from "virtual:runic-translations/app/messages";
-import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
 import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 const locale = createLocaleSource({ initialLocale: navigator.language });
@@ -1546,7 +1546,9 @@ configureLocaleResolver(locale.getLocale);
 configureTranslatedText({
   ...locale,
   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+  direction: localeDirection,
 });
+syncDocumentLocale();
 
 status.textContent = resolveText(editor.snapshot.status);
 subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); });
@@ -1565,9 +1567,16 @@ stays the invariant or ISO form. Bind such a field to a text input, or give it
 page calls the application's command; a locale the page sets itself is set back
 by the next `locale` push. Under server rendering, configure the runtime in the
 browser only, or resolve with the request's locale.
-`windowLocale()` and `onWindowLocale` read the window's locale. The framework
+`windowLocale()` and `onWindowLocale` read the window's locale; `textLocale()`
+is the locale text is shown in, and `textDirection()` its writing direction
+(the runtime's `direction`, else the locale's script). `syncDocumentLocale()`
+sets `lang` and `dir` of `<html>` to them, now and after each switch, and leaves
+the document's own `lang` while there is no locale yet. The framework
 packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
-`runicText` pipe (Angular) and `texts` (Effect). The mock bridge's
+`runicText` pipe (Angular) and `texts` (Effect). A template that calls the
+page's own `m.*()` renders again on a switch when the locale resolver reads
+the framework's text locale: `useTextLocale` (React, Vue, Svelte),
+`textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). The mock bridge's
 `setWindowLocale(locale)` pushes a locale in page tests. See
 [Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 

@@ -7,6 +7,7 @@ import {
   type MenuBarHandle, type RegionCollection, type RegionPanelAttributes, type ViewRegistry,
 } from "../dist/index.js";
 import * as root from "../dist/index.js";
+import { isDevelopment } from "../dist/development.js";
 import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
 import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {
@@ -84,6 +85,35 @@ describe("ViewOutlet", () => {
     await nextTick();
     expect(host.querySelector("[role=alert]")?.textContent).toBe("No web component is registered for welcome.");
     app.unmount();
+  });
+
+  test("hides the alert without a NODE_ENV define instead of throwing that process is not defined", async () => {
+    // Vue's esm-browser build through an import map: no bundler replaces process.env.NODE_ENV and there is no process.
+    const host = document.createElement("div");
+    // A kind of its own: the page reports each missing kind once.
+    const content = { kind: "without-define", connect: async () => fakeClient(1) } as unknown as Page;
+    const app = createApp({
+      setup: () => () => h(ViewOutlet<Page>, { content, registry: { counter: Counter } as unknown as ViewRegistry<Page> }, { default: () => "empty" }),
+    });
+    // Production reports the missing kind instead of showing the alert.
+    const reported: unknown[] = [];
+    vi.stubGlobal("reportError", (error: unknown) => { reported.push(error); });
+    const processDescriptor = Object.getOwnPropertyDescriptor(globalThis, "process")!;
+    Reflect.deleteProperty(globalThis, "process");
+    try {
+      try {
+        expect(isDevelopment()).toBe(false);
+        app.mount(host);
+      } finally { Object.defineProperty(globalThis, "process", processDescriptor); }
+      expect(isDevelopment()).toBe(true);
+      expect(host.querySelector("[role=alert]")).toBeNull();
+      expect(host.textContent).toBe("");
+      await Promise.resolve();
+      expect(reported.map(error => (error as Error).message)).toEqual(["No web component is registered for without-define."]);
+    } finally {
+      vi.unstubAllGlobals();
+      app.unmount();
+    }
   });
 
   test("renders the missing slot for a kind without a component instead of the English alert", async () => {
@@ -613,11 +643,12 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureFieldErrorText", "configureTranslatedText",
-      "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath",
-      "openNavigationPath", "regionEntries", "resolveText", "selectedRegion", "upload", "useBridgeConnection",
-      "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation",
-      "useQueryCollection", "useSuspenseView", "useText", "useTextField", "useView", "useWindowLocale", "windowLocale",
+      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureFieldErrorText",
+      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "regionEntries", "resolveText", "selectedRegion",
+      "syncDocumentLocale", "textDirection", "upload", "useBridgeConnection", "useCollectionViewport", "useCommand",
+      "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection",
+      "useSuspenseView", "useText", "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);
     // The region helpers a tab bar uses are re-exported (0.16).
     expect(root.regionEntries).toBe(viewsRegionEntries);

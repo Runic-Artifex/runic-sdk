@@ -645,7 +645,8 @@ describe("injectBridgeConnection", () => {
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectText",
       "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
       "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath", "openNavigationPath",
-      "regionEntries", "resolveText", "selectedRegion", "upload", "windowLocale",
+      "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection", "textLocaleSignal", "upload",
+      "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);
