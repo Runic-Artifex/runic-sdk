@@ -459,7 +459,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 Console.Out.Flush();
                 return owner;
             }
-            var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options));
+            var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options, content.Locale));
             if (Placement is { } choosePlacement && choosePlacement(opening.Window) is { } placement)
                 windowOptions = windowOptions with { Placement = placement };
             windowOptions = OwnedWindowOptions(opening, windowOptions);
@@ -473,6 +473,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            FollowLocaleDirection(content, presentation, (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             // A native close (the user, the window manager) starts the Window's close: it leaves IRunicWindowService.Windows.
             var closingWindow = opening.Window;
             presentation.Closed += (_, _) => closingWindow.MarkClosing();
@@ -525,11 +527,62 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         }
     }
 
-    private DesktopWindowOptions WindowOptionsFor(RunicWindowOptions options) => WindowOptions with
+    private DesktopWindowOptions WindowOptionsFor(RunicWindowOptions options, string? locale = null)
     {
-        Width = options.Width ?? WindowOptions.Width,
-        Height = options.Height ?? WindowOptions.Height,
-    };
+        var windowOptions = WindowOptions with
+        {
+            Width = options.Width ?? WindowOptions.Width,
+            Height = options.Height ?? WindowOptions.Height,
+        };
+        // The window's locale (IRunicWindowLocale) gives an embedded window its native direction and the web view's
+        // language, unless WindowOptions sets them. macOS takes both from the application bundle. WebView2 requires one
+        // language for the windows of a shared profile, so a configured ProfilePath keeps the platform's language.
+        if (locale is null || windowOptions.Browser != BrowserKind.Embedded || OperatingSystem.IsMacOS()) return windowOptions;
+        if (windowOptions.LayoutDirection == DesktopLayoutDirection.Default)
+            windowOptions = windowOptions with { LayoutDirection = WindowLocaleDirection.Of(locale) };
+        if (windowOptions.Language is null && windowOptions.ProfilePath is null)
+            windowOptions = windowOptions with { Language = locale };
+        return windowOptions;
+    }
+
+    // A later change of the window's locale changes the native direction of the open window too, unless WindowOptions
+    // fixed it; a null locale returns it to the platform's. The web view's language stays: WebView2 and WebKitGTK take it
+    // when the web view is created.
+    private void FollowLocaleDirection(WindowContentSession content, DesktopWindow presentation, ILogger logger)
+    {
+        if (WindowOptions.LayoutDirection != DesktopLayoutDirection.Default || OperatingSystem.IsMacOS() ||
+            !presentation.Capabilities.HasFlag(DesktopWindowCapabilities.LayoutDirection)) return;
+        // One change at a time, each with the direction of the locale it finds, not of the one that raised it: changes
+        // from several threads apply in order, and the window ends with the direction of the last locale.
+        var gate = new SemaphoreSlim(1, 1);
+        void OnLocaleChanged(object? sender, EventArgs args) => _ = ApplyAsync();
+        async Task ApplyAsync()
+        {
+            try
+            {
+                await gate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    if (!presentation.IsOpen) return;
+                    var direction = content.Locale is { } locale
+                        ? WindowLocaleDirection.Of(locale)
+                        : DesktopLayoutDirection.Default;
+                    if (direction != presentation.LayoutDirection)
+                        await presentation.SetLayoutDirectionAsync(direction).ConfigureAwait(false);
+                }
+                finally { gate.Release(); }
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                DesktopLog.LayoutDirectionFailed(logger, error, error.GetType().Name);
+            }
+        }
+        content.LocaleChanged += OnLocaleChanged;
+        presentation.Closed += (_, _) => content.LocaleChanged -= OnLocaleChanged;
+        // A change while the window opened, after its options took the locale, applies now.
+        _ = ApplyAsync();
+    }
 
     // A guarded Window confirms user closes through ConfirmCloseAsync: first its own guard, then the one of
     // WindowOptions, if any. A presentation that cannot keep its window open, an explicitly selected browser or an
