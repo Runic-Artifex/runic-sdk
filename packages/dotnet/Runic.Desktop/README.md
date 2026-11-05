@@ -611,13 +611,20 @@ Runic Windows reach the same switch host-neutrally through
 ### Contrast, forced colors and reduced motion
 
 Unlike the color scheme, a window's contrast and motion are the desktop's:
-Runic sets none of them, and each web view follows the desktop's settings
-itself, while the window is open. A page reads them with CSS media queries
-(`prefers-contrast`, `forced-colors`, `prefers-reduced-motion`); a Runic Views
-page also gets the values its engine does not expose from the host
-(`appearance/1`, see the Views README). In .NET, `IDesktopSettings` reports
-the same preferences as `DesktopAppearance.Contrast`, `SystemColors` and
-`ReducedMotion`.
+Runic sets none of them, and each web view reads the desktop's settings
+itself. A page reads them with CSS media queries (`prefers-contrast`,
+`forced-colors`, `prefers-reduced-motion`). In .NET, `IDesktopSettings`
+reports the same preferences as `DesktopAppearance.Contrast`, `SystemColors`
+and `ReducedMotion`. What each engine reports (checked by the native smokes,
+`Runic.Desktop.WebViewSmoke --appearance` and `Runic.Desktop.Gtk4.Smoke --appearance`):
+
+| Engine | `prefers-contrast` | `forced-colors` | `prefers-reduced-motion` | While the window is open |
+| --- | --- | --- | --- | --- |
+| Windows, WebView2 | Chromium's value for the contrast theme while one is on, otherwise `no-preference` | `active` while a contrast theme is on, with the theme's colours | `reduce` when "Animation effects" (client area animations) is off | Follows |
+| macOS, WKWebView | `more` with "Increase contrast" | Always `none`: macOS does not force colours | `reduce` with "Reduce motion" | Follows |
+| Linux, WebKitGTK 4.1 (GTK 3) | `more` with GTK's `HighContrast` or `HighContrastInverse` theme, which GNOME's settings daemon selects for "High Contrast" | Always `none` | `reduce` when GTK's `gtk-enable-animations` is off | Follows |
+| Linux, WebKitGTK 6.0 (GTK 4) | `more` with GTK 4.20's `gtk-interface-contrast`; an older GTK 4 has no such setting | Always `none` | `reduce` with GTK 4.20's `gtk-interface-reduced-motion` | Reads them when the process's first web view starts, and does not follow a later change (WebKitGTK 2.54) |
+| Installed browsers | The browser's own | The browser's own | The browser's own | The browser's |
 
 ### Owned and window-modal windows
 

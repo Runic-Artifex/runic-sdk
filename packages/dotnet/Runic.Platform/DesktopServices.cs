@@ -91,7 +91,7 @@ public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopC
     /// </remarks>
     public bool? HighContrast
     {
-        get => _contrast is { } contrast ? contrast != DesktopContrast.NoPreference : null;
+        get => _contrast is { } contrast ? contrast is DesktopContrast.More or DesktopContrast.ForcedColors : null;
         init => _contrast = FromHighContrast(value, _contrast);
     }
 
@@ -99,7 +99,7 @@ public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopC
     {
         null => null,
         false => DesktopContrast.NoPreference,
-        true => current is { } contrast && contrast != DesktopContrast.NoPreference ? contrast : DesktopContrast.More,
+        true => current is DesktopContrast.More or DesktopContrast.ForcedColors ? current : DesktopContrast.More,
     };
 
     /// <summary>

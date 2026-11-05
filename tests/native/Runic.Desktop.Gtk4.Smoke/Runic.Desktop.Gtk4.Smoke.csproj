@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/AppearanceSmoke.cs" Link="AppearanceSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/KeyboardSmoke.cs" Link="KeyboardSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/XTestPointer.cs" Link="XTestPointer.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/LinuxDragOutSmoke.cs" Link="LinuxDragOutSmoke.cs" />

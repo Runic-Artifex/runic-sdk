@@ -562,8 +562,8 @@ each entry stands for (`Canvas`, `CanvasText`, `LinkText`, `GrayText`,
 `Contrast` is `ForcedColors`. Draw native content that should match a Windows
 contrast theme with it; a WebView2 page gets the same colours from the CSS system
 colours. `DesktopAppearance.HighContrast` stays: it is `true` for `More` and
-`ForcedColors`, `false` for `NoPreference` and `null` while the contrast is
-unknown. Setting `HighContrast = true` sets `Contrast` to `More`, unless it
+`ForcedColors`, `false` for `NoPreference` (and a state a later release adds)
+and `null` while the contrast is unknown. Setting `HighContrast = true` sets `Contrast` to `More`, unless it
 already asks for more contrast. A watch reports a change of either like any
 other preference.
 

@@ -89,6 +89,11 @@ try
         // Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = ColorSchemeSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--appearance", StringComparer.Ordinal))
+    {
+        // S10. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
+        Environment.ExitCode = AppearanceSmoke.Run(CreateHostOptions(), args.Contains("--toggle-desktop", StringComparer.Ordinal));
+    }
     else if (args.Contains("--window-chrome", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
     {
         // Must run before the first await, as --zoom.

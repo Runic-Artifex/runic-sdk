@@ -147,6 +147,9 @@ internal sealed class PlatformHelpersTests
         Check(forced.HighContrast == true && (unknown with { Contrast = DesktopContrast.More }).HighContrast == true
             && (unknown with { Contrast = DesktopContrast.NoPreference }).HighContrast == false, "HighContrast follows Contrast.");
         Check((forced with { HighContrast = true }).Contrast == DesktopContrast.ForcedColors, "HighContrast true keeps ForcedColors.");
+        // DesktopContrast is open: a later value, such as less contrast, is not high contrast.
+        Check((unknown with { Contrast = (DesktopContrast)3 }).HighContrast == false
+            && (unknown with { Contrast = (DesktopContrast)3, HighContrast = true }).Contrast == DesktopContrast.More, "A later value is not high contrast.");
         Check((forced with { HighContrast = false }).Contrast == DesktopContrast.NoPreference && (forced with { HighContrast = null }).Contrast is null,
             "HighContrast false or null replaces it.");
         Check(new DesktopAppearance(HighContrast: true) == unknown with { Contrast = DesktopContrast.More },

@@ -68,6 +68,9 @@ if (args.Contains("--owner", StringComparer.Ordinal)) return OwnerGtk4Smoke.Run(
 
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
+// --appearance (S10): prefers-contrast and prefers-reduced-motion in WebKitGTK 6 follow GTK 4's settings.
+if (args.Contains("--appearance", StringComparer.Ordinal)) return AppearanceSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true }, toggleDesktop: false);
+
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
     return MonitorSmoke.Run(monitors + 1 < args.Length ? args[monitors + 1] : "gtk4");
 
