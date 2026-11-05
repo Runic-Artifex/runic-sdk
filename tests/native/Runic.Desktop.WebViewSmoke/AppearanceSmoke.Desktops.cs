@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using Runic.Desktop;
 using Runic.Platform;
 
@@ -59,12 +58,13 @@ internal static partial class AppearanceSmoke
         using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         await using var watch = settings.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token);
         if (!await watch.MoveNextAsync()) throw new InvalidOperationException("The settings watch ended.");
+        Console.WriteLine($"APPEARANCE IDesktopSettings.WatchAsync listens for change notifications: {settings.ListensForChanges}.");
         // Each switch is checked in the watch, in the open page, which reports whether it follows while it is open, and
         // in a window opened after it, which has a WebView2 browser process of its own and must read the new setting.
         try
         {
             Win.SetClientAreaAnimation(!animations);
-            CheckSettings(await WatchForAsync(watch, value => value.ReducedMotion == animations, $"animations {!animations}"), !animations, highContrast,
+            CheckSettings(await WatchForAsync(watch, cancel, settings, value => value.ReducedMotion == animations, $"animations {!animations}"), !animations, highContrast,
                 $"animations {!animations}");
             var reduced = animations ? "reduce" : "no-preference";
             await ReportLiveAsync(surface, page => page.ReducedMotion == reduced, $"animations {!animations}");
@@ -73,11 +73,11 @@ internal static partial class AppearanceSmoke
                 throw new InvalidOperationException($"With client area animations {!animations}, a new window reports {page}.");
             Console.WriteLine($"PASS appearance: WebView2, a new window with animations {!animations}: {page}");
             Win.SetClientAreaAnimation(animations);
-            await WatchForAsync(watch, value => value.ReducedMotion == !animations, $"animations {animations} again");
+            await WatchForAsync(watch, cancel, settings, value => value.ReducedMotion == !animations, $"animations {animations} again");
 
             Win.SetHighContrast(!highContrast);
             var contrast = highContrast ? DesktopContrast.NoPreference : DesktopContrast.ForcedColors;
-            CheckSettings(await WatchForAsync(watch, value => value.Contrast == contrast && (value.SystemColors is not null) == !highContrast,
+            CheckSettings(await WatchForAsync(watch, cancel, settings, value => value.Contrast == contrast && (value.SystemColors is not null) == !highContrast,
                 $"a contrast theme {!highContrast}"), animations, !highContrast, $"a contrast theme {!highContrast}");
             var forced = highContrast ? "none" : "active";
             await ReportLiveAsync(surface, page => page.ForcedColors == forced, $"a contrast theme {!highContrast}");
@@ -97,15 +97,23 @@ internal static partial class AppearanceSmoke
             : throw new InvalidOperationException("IDesktopSettings could not read the appearance.");
 
     // Reads the watch until it reports what `expected` accepts; a watch that only polls never does, its clock is frozen.
+    // On a timeout the watch is cancelled and its pending read awaited, so it is not disposed while it runs.
     private static async Task<DesktopAppearance> WatchForAsync(IAsyncEnumerator<PlatformResult<DesktopAppearance>> watch,
-        Func<DesktopAppearance, bool> expected, string what)
+        CancellationTokenSource cancel, Runic.Platform.Windows.WindowsDesktopSettings settings, Func<DesktopAppearance, bool> expected, string what)
     {
         var started = System.Diagnostics.Stopwatch.StartNew();
         DesktopAppearance? last = null;
         while (started.Elapsed < TimeSpan.FromSeconds(10))
         {
             var next = watch.MoveNextAsync().AsTask();
-            if (await Task.WhenAny(next, Task.Delay(TimeSpan.FromSeconds(10) - started.Elapsed)) != next) break;
+            if (await Task.WhenAny(next, Task.Delay(TimeSpan.FromSeconds(10) - started.Elapsed)) != next)
+            {
+                var listening = settings.ListensForChanges;
+                await cancel.CancelAsync();
+                try { await next; } catch (OperationCanceledException) { }
+                throw new InvalidOperationException(
+                    $"With {what}, IDesktopSettings.WatchAsync did not report it within 10 s from change notifications (listening: {listening}): last {last}.");
+            }
             if (!await next) throw new InvalidOperationException("The settings watch ended.");
             if (watch.Current is PlatformResult<DesktopAppearance>.Success { Value: var value })
             {
@@ -209,23 +217,21 @@ internal static partial class AppearanceSmoke
         {
             var value = new HighContrast { Size = (uint)sizeof(HighContrast) };
             SystemParametersInfo(SpiGetHighContrast, value.Size, (nint)(&value), 0);
-            File.WriteAllText(SavedPath, JsonSerializer.Serialize(new Dictionary<string, string?>
-            {
-                ["animations"] = ClientAreaAnimation() ? "true" : "false",
-                ["highContrastFlags"] = value.Flags.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["scheme"] = value.DefaultScheme == 0 ? null : Marshal.PtrToStringUni(value.DefaultScheme),
-            }));
+            // Three lines: animations, the HIGHCONTRAST flags, and the theme name (empty for none).
+            File.WriteAllLines(SavedPath, [ClientAreaAnimation() ? "true" : "false",
+                value.Flags.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                value.DefaultScheme == 0 ? "" : Marshal.PtrToStringUni(value.DefaultScheme) ?? ""]);
         }
 
         // Restores the saved animations, contrast theme on or off and the theme's name, then forgets them.
         internal static bool Restore()
         {
             if (!File.Exists(SavedPath)) return false;
-            var saved = JsonSerializer.Deserialize<Dictionary<string, string?>>(File.ReadAllText(SavedPath))!;
-            var animations = saved["animations"] == "true";
+            var saved = File.ReadAllLines(SavedPath);
+            var animations = saved[0] == "true";
             if (ClientAreaAnimation() != animations) SetClientAreaAnimation(animations);
-            var flags = uint.Parse(saved["highContrastFlags"]!, System.Globalization.CultureInfo.InvariantCulture);
-            if (HighContrastOn() != ((flags & HcfHighContrastOn) != 0)) SetHighContrast(flags, saved["scheme"]);
+            var flags = uint.Parse(saved[1], System.Globalization.CultureInfo.InvariantCulture);
+            if (HighContrastOn() != ((flags & HcfHighContrastOn) != 0)) SetHighContrast(flags, saved.Length > 2 && saved[2].Length > 0 ? saved[2] : null);
             File.Delete(SavedPath);
             return true;
         }
@@ -248,6 +254,7 @@ internal static partial class AppearanceSmoke
         {
             if (SystemParametersInfo(SpiSetClientAreaAnimation, 0, on ? 1 : 0, SendChange) == 0)
                 throw new InvalidOperationException($"SPI_SETCLIENTAREAANIMATION failed with {Marshal.GetLastPInvokeError()}.");
+            Broadcast(SpiSetClientAreaAnimation);
         }
 
         internal static bool HighContrastOn()
@@ -274,11 +281,20 @@ internal static partial class AppearanceSmoke
                 var value = new HighContrast { Size = (uint)sizeof(HighContrast), Flags = flags, DefaultScheme = name };
                 if (SystemParametersInfo(SpiSetHighContrast, value.Size, (nint)(&value), SendChange) == 0)
                     throw new InvalidOperationException($"SPI_SETHIGHCONTRAST failed with {Marshal.GetLastPInvokeError()}.");
+                Broadcast(SpiSetHighContrast);
             }
             finally { if (name != 0) Marshal.FreeHGlobal(name); }
         }
 
         [LibraryImport("user32.dll")] private static partial uint GetSysColor(int index);
+
+        // Without SPIF_UPDATEINIFILE, SPIF_SENDCHANGE may broadcast nothing; Settings saves the change and broadcasts
+        // WM_SETTINGCHANGE with the action, which this repeats without changing the user's profile.
+        private static void Broadcast(uint action) =>
+            _ = SendMessageTimeout(0xFFFF, 0x001A, action, 0, 0x0002, 5000, out _);
+
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW")]
+        private static partial nint SendMessageTimeout(nint window, uint message, nuint wParam, nint lParam, uint flags, uint timeout, out nuint result);
 
         [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
         private static partial int SystemParametersInfo(uint action, uint parameter, nint value, uint flags);
