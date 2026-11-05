@@ -62,6 +62,8 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
             return _changed?.Task;
         }
     }
+    /// <summary>Whether the running watches wait for native change notifications rather than polling; for the smokes.</summary>
+    internal bool ListensForChanges { get { lock (_changesGate) return _changes is not null; } }
     /// <summary>
     /// Starts native change notifications that call <c>changed</c> after each change of a setting the source reads, on
     /// any thread, and <c>failed</c> if they stop on their own; null, or an exception, when they are not available.
