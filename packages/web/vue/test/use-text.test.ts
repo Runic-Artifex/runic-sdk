@@ -1,9 +1,15 @@
 // @vitest-environment happy-dom
 // translation-text/1: useText follows a language switch as a computed ref.
-import { effectScope, nextTick, shallowRef } from "vue";
+import { createApp, defineComponent, effectScope, h, nextTick, shallowRef } from "vue";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { ComputedRef } from "vue";
-import { configureTranslatedText, useText, useWindowLocale } from "../dist/index.js";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
+import { configureTranslatedText, useText, useTextLocale, useWindowLocale, ViewOutlet } from "../dist/index.js";
+// The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
+import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
+import { configureLocaleResolver, createLocaleSource } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";
+import { resolveTextReference } from "../../views/test/fixtures/translations/generated/notes.esm-v5/transport.js";
 // A Translations runtime of two locales, as a generated transport.js and locale source would be.
 function fakeTranslations() {
   const catalog: Record<string, Record<string, string>> = {
@@ -42,5 +48,46 @@ describe("useText", () => {
     expect(handles.text.value).toBe("Invalid value.");
     scope.stop();
     stop();
+  });
+});
+
+describe("useTextLocale", () => {
+  test("a template that renders m.*() renders again when the application switches the window's locale (S2)", async () => {
+    const locale = createLocaleSource({ initialLocale: "en" });
+    const textLocale = useTextLocale();
+    expect(useTextLocale(), "one ref for the page").toBe(textLocale);
+    const stopResolver = configureLocaleResolver(() => textLocale.value ?? locale.getLocale());
+    const stop = configureTranslatedText({
+      ...locale,
+      resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+    });
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("shell", { state: {} });
+    await connectView({ contract: "Tests.Shell:fp-1", route: "shell", members: {} });
+    const container = document.body.appendChild(document.createElement("div"));
+    const app = createApp(defineComponent(() => () => h("h1", m.saved({ title: "Atlas" }))));
+    app.mount(container);
+    expect(container.textContent).toBe("Saved Atlas.");
+    bridge.setWindowLocale("de");
+    await bridge.flush();
+    await nextTick();
+    expect(container.textContent).toBe("Atlas gespeichert.");
+    bridge.setWindowLocale("en");
+    await bridge.flush();
+    await nextTick();
+    expect(container.textContent).toBe("Saved Atlas.");
+    app.unmount();
+    stop();
+    stopResolver();
+  });
+});
+
+describe("ViewOutlet", () => {
+  test("a kind without a component shows the development alert outside production builds", () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    const app = createApp(() => h(ViewOutlet as never, { content: { kind: "missing" }, registry: {} }));
+    app.mount(container);
+    expect(container.querySelector("[role=alert]")!.textContent).toBe("No web component is registered for missing.");
+    app.unmount();
   });
 });
