@@ -25,6 +25,9 @@ import {
   createViewController,
   onBridgeConnection,
   onWindowLocale,
+  appearance,
+  onAppearance,
+  type Appearance,
   resolveText,
   subscribeText,
   textLocale,
@@ -611,6 +614,25 @@ export function useWindowLocale(): Readonly<Ref<string | null>> {
   return locale;
 }
 
+/**
+ * The page's appearance (`appearance` from `@runic-artifex/views`) as a ref that renders, computes and watches again
+ * when it changes: the colour scheme, contrast and reduced motion of the page's engine combined with the desktop's values
+ * that a Runic host pushes (`appearance/1`), which also carry the text scale, the accent colour and the forced-colours
+ * palette. Follows them while the calling component or effect scope lives; every member is `null` under server
+ * rendering.
+ *
+ * ```ts
+ * const look = useAppearance();
+ * const animate = computed(() => look.value.reducedMotion !== true);
+ * ```
+ */
+export function useAppearance(): Readonly<Ref<Appearance>> {
+  const current = shallowRef<Appearance>(appearance());
+  releaseWithScope("useAppearance", onAppearance(next => { current.value = next; }));
+  current.value = appearance();
+  return current;
+}
+
 let pageTextLocale: Readonly<Ref<string | undefined>> | undefined;
 
 /**
@@ -644,6 +666,10 @@ export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmi
 export {
   configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
   type TextTranslations,
+} from "@runic-artifex/views";
+export {
+  appearance, onAppearance, type Appearance, type AppearanceColorScheme, type AppearanceContrast, type AppearanceSystemColors,
+  type HostAppearance,
 } from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";

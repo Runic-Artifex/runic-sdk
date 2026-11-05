@@ -116,6 +116,13 @@ the hash router.
 Large lists work in SvelteKit pages through `@runic-artifex/svelte`'s `useQueryCollection`, which loads the rows a
 container shows from a .NET query collection and renders nothing on the server.
 
+## Appearance
+
+`useAppearance` from `@runic-artifex/svelte` follows the page's appearance, the
+desktop's text scale, accent colour and contrast included
+([Appearance](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#appearance)). On the server and in prerendered HTML every
+member is `null`; the page takes the desktop's values in the browser.
+
 ## Fields
 
 Pages bind inputs with `useField` from `@runic-artifex/svelte` and the generated

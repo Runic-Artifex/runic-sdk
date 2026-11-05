@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.AppearancePushes.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopAppearance?>!

@@ -435,6 +435,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             IDisposable connections = menuRoutes;
+            // appearance/1: the window's appearance follows the desktop's settings while it is open. A serve-only window
+            // may be shown on another machine, whose desktop the host cannot read.
+            if (!ServeOnly) connections = new Bindings(connections, AppearanceFeed.Add(content));
             // The window releases its live development content when it closes, with its connection events.
             connectionBinding = development is null ? connections : new Bindings(connections, development);
             development = null;
@@ -509,6 +512,22 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     }
 
     private readonly DevelopmentAssets _developmentAssets = new();
+
+    // appearance/1: the application's IDesktopSettings when it registered one (AddRunicPlatformServices), or the
+    // platform's own.
+    private DesktopAppearanceFeed? _appearanceFeed;
+    private DesktopAppearanceFeed AppearanceFeed
+    {
+        get
+        {
+            if (Volatile.Read(ref _appearanceFeed) is { } feed) return feed;
+            var created = new DesktopAppearanceFeed(
+                () => Services.GetService<Runic.Platform.IDesktopSettings>() ?? DesktopPlatformServices.CreateSettings(),
+                Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop")
+                    ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+            return Interlocked.CompareExchange(ref _appearanceFeed, created, null) ?? created;
+        }
+    }
 
     // The process environment; tests replace it.
     internal Func<string, string?> ReadEnvironment { get; init; } = Environment.GetEnvironmentVariable;

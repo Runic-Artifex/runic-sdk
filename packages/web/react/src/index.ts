@@ -21,6 +21,10 @@ import {
   createViewController,
   onBridgeConnection,
   onWindowLocale,
+  appearance,
+  onAppearance,
+  unknownAppearance,
+  type Appearance,
   resolveText,
   subscribeText,
   textLocale,
@@ -753,6 +757,23 @@ const subscribeWindowLocale = (onChange: () => void) => onWindowLocale(() => onC
 const serverWindowLocale = (): string | null => null;
 
 /**
+ * Renders the page's appearance (`appearance` from `@runic-artifex/views`): the colour scheme, contrast and reduced
+ * motion of the page's engine combined with the desktop's values that a Runic host pushes (`appearance/1`), which also
+ * carry the text scale, the accent colour and the forced-colours palette. Renders again when any of them changes. The
+ * server snapshot has every member `null`.
+ *
+ * ```tsx
+ * const { textScale, reducedMotion } = useAppearance();
+ * ```
+ */
+export function useAppearance(): Appearance {
+  return useSyncExternalStore(subscribeAppearance, appearance, serverAppearance);
+}
+
+const subscribeAppearance = (onChange: () => void) => onAppearance(() => onChange());
+const serverAppearance = (): Appearance => unknownAppearance;
+
+/**
  * Renders the locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's
  * locale), and renders again when it changes. Call it in a component that renders the page's own messages, so that
  * `m.*()` runs again after a language switch; the component's children render with it, except memoized ones.
@@ -798,6 +819,10 @@ export {
 export {
   configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
   type TextTranslations,
+} from "@runic-artifex/views";
+export {
+  appearance, onAppearance, type Appearance, type AppearanceColorScheme, type AppearanceContrast, type AppearanceSystemColors,
+  type HostAppearance,
 } from "@runic-artifex/views";
 export {
   FieldError,

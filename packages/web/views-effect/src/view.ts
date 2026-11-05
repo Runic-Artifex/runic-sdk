@@ -1,4 +1,5 @@
 import {
+  appearance, onAppearance, type Appearance,
   isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, textLocale, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
@@ -110,6 +111,29 @@ export function textChanges(): Stream.Stream<void> {
   return Stream.callback<void>(queue => Effect.acquireRelease(
     Effect.sync(() => subscribeText(() => { Queue.offerUnsafe(queue, undefined); })),
     unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
+ * The page's appearance (`appearance` from `@runic-artifex/views`): the appearance now, then each new one. It combines
+ * the colour scheme, contrast and reduced motion of the page's engine with the desktop's values that a Runic host
+ * pushes (`appearance/1`), which also carry the text scale, the accent colour and the forced-colours palette. A slow
+ * consumer skips to the latest. It never ends on its own; interrupting it stops watching.
+ *
+ * ```ts
+ * yield* Effect.forkScoped(Stream.runForEach(appearances(), look => Effect.sync(() => {
+ *   document.documentElement.style.fontSize = `${look.textScale ?? 1}rem`;
+ * })));
+ * ```
+ */
+export function appearances(): Stream.Stream<Appearance> {
+  return Stream.callback<Appearance>(queue => Effect.acquireRelease(
+    Effect.sync(() => {
+      const stop = onAppearance(next => { Queue.offerUnsafe(queue, next); });
+      Queue.offerUnsafe(queue, appearance());
+      return stop;
+    }),
+    stop => Effect.sync(stop),
   ), { bufferSize: 1, strategy: "sliding" });
 }
 

@@ -244,6 +244,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `field-paths/1` | A checked write names a path below its member, such as a member of an object or a cell of a keyed collection's row: [field paths](#field-paths) | 0.16 |
 | `translation-text/1` | The window's locale, and the [`text`](#text) of validation errors: [translated text](#translated-text) | 0.16 |
 | `navigation-path/1` | The window's Back, and its route path kept in the page's URL: [navigation paths](#navigation-paths) | 0.16 |
+| `appearance/1` | The desktop's appearance preferences that a page's engine may not expose, such as the text scale, the accent colour and the forced-colours palette: [appearance](#appearance) | 0.17 |
 
 ### Request sessions
 
@@ -1267,6 +1268,49 @@ The **window's locale** is the language the application chose for the window, or
   whose arguments no longer match, shows its `fallbackText`; the page chooses what to show without one. The text is
   plain: a page shows it as text, never as markup.
 
+## Appearance
+
+A page can read most of the desktop's appearance preferences from its engine, with CSS media queries such as
+`prefers-color-scheme`, `prefers-contrast`, `forced-colors` and `prefers-reduced-motion`. Not every engine exposes every
+one of them, and none exposes the desktop's text size, accent colour or forced-colours palette to script. With the
+feature `appearance/1`, the producer pushes the **window's appearance**, the preferences its host reads from the
+desktop:
+
+```json
+{"kind":"appearance","colorScheme":"dark","contrast":"forced-colors","reducedMotion":false,"textScale":1.25,"accentColor":"#0078d4","systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}
+```
+
+| Member | Value |
+| --- | --- |
+| `colorScheme` | `"light"`, `"dark"`, or `null`: the desktop's colour scheme. A window that shows a scheme of its own reports it in `prefers-color-scheme`, not here. |
+| `contrast` | `"no-preference"`, `"more"`, `"forced-colors"`, or `null`: the desktop asks for no particular contrast, for more contrast with the application's own colours, or replaces the application's colours with `systemColors`. |
+| `reducedMotion` | `true` when the desktop asks for less motion, `false`, or `null`. |
+| `textScale` | A number greater than 0, the desktop's text size as a factor of the default (1 for the default, 1.5 for half as large again), or `null`. |
+| `accentColor` | The desktop's accent colour as `#rrggbb` in lowercase, or `null`. |
+| `systemColors` | While `contrast` is `"forced-colors"`, the palette the desktop forces, as an object of `#rrggbb` colours named after the CSS system colours: `canvas`, `canvasText`, `linkText`, `grayText`, `highlight`, `highlightText`, `buttonFace`, `buttonText`; otherwise `null`. |
+
+`null`, and a member that is absent, mean that the host does not know the preference. A window-level push without a
+`route`.
+
+- **When.** The producer pushes `appearance` to a connection after its `hello` succeeded, when the window has an
+  appearance, and to every connection that uses the feature each time it changes. Every push carries every member,
+  so the last push a connection receives is the window's appearance. When the window's appearance becomes unknown
+  again, the push has every member `null`. A producer may send the first push before the `hello` reply reaches the
+  page.
+- **The host owns it.** The values are what the host read from the desktop; the page cannot change them. A host that
+  reads nothing, such as one that serves pages to browsers on other machines, does not list the feature or pushes
+  nothing.
+- **Client.** A client that uses the feature keeps the last push. It applies it whatever the features it has read so
+  far, since the push may come before the `hello` reply, and keeps it across a reconnect until the next push. A
+  member of the wrong type, out of its range or with a value the client does not know, such as a later contrast
+  value, is read as `null`; the rest of the push still applies. A client without the feature ignores the push kind.
+- **The page's appearance.** A client that reports the page's appearance combines both sources. Where the page's
+  engine evaluates the media query, the engine's value is the one the page's CSS sees, and the client reports it for
+  `colorScheme`; for `contrast` and `reducedMotion` it reports the stronger of the engine's and the host's value
+  (`"forced-colors"` over `"more"` over `"no-preference"`, `true` over `false`), since an engine can know a media
+  feature without following the desktop setting. Without the engine's value it reports the host's. `textScale`,
+  `accentColor` and `systemColors` come from the host alone.
+
 ## Page errors
 
 With the feature `client-errors/1`, a page reports the errors it cannot show to the application, such as an uncaught
@@ -1701,6 +1745,7 @@ Pushes:
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
 | `flush` (`field-flush/1`) | `id` | each connection that uses `field-flush/1`, before a departure is decided ([field flush](#field-flush)) |
 | `locale` (`translation-text/1`) | `locale` | each connection that uses `translation-text/1`, after its `hello` and on each change |
+| `appearance` (`appearance/1`) | `colorScheme`, `contrast`, `reducedMotion`, `textScale`, `accentColor`, `systemColors` | each connection that uses `appearance/1`, after its `hello` and on each change |
 
 ## Blobs and uploads
 
@@ -1787,4 +1832,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the feature `appearance/1`. |

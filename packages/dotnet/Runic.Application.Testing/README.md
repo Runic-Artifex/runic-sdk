@@ -400,6 +400,16 @@ await Assert.That(refused.Path).IsEqualTo("editors/a");     // the URL the page 
 await Assert.That(host.NavigationPathPushes[^1]).IsEqualTo(new RunicNavigationPathPush("editors/a", "push"));
 ```
 
+**Appearance (since 0.17).** The test connection lists `appearance/1`. Set
+`host.Content.Appearance` as `RunicDesktopHost` does from the desktop's
+settings; `host.AppearancePushes` lists the appearances the page was told about,
+read back as `DesktopAppearance` (`null` for an unknown one):
+
+```csharp
+host.Content.Appearance = new DesktopAppearance(DesktopColorScheme.Dark) { Contrast = DesktopContrast.ForcedColors };
+await Assert.That(host.AppearancePushes[^1]?.Contrast).IsEqualTo(DesktopContrast.ForcedColors);
+```
+
 A unit test of one page that takes its `NavigationEntryContext`, such as a
 dialog that completes its request, needs no window. `RunicTestNavigationEntry`
 (since 0.11) pushes the page on a test navigator with its own

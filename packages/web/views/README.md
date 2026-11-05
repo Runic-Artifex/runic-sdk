@@ -1519,6 +1519,46 @@ the framework's text locale: `useTextLocale` (React, Vue, Svelte),
 `setWindowLocale(locale)` pushes a locale in page tests. See
 [Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 
+## Appearance
+
+`appearance()` is the page's appearance, and `onAppearance(listener)` calls the
+listener with it each time it changes, until the returned function is called:
+
+| Member | From |
+| --- | --- |
+| `colorScheme` | The engine's `prefers-color-scheme`, which follows a window's own scheme; without it, the host's |
+| `contrast` | `"no-preference"`, `"more"` or `"forced-colors"`: the stronger of the engine's `forced-colors`/`prefers-contrast` and the host's |
+| `reducedMotion` | `true` when the engine's `prefers-reduced-motion` or the host asks for less motion |
+| `textScale` | The host: the desktop's text size as a factor (1.5 for half as large again) |
+| `accentColor` | The host: the desktop's accent colour, `#rrggbb` |
+| `systemColors` | The host: while forced colours are on (a Windows contrast theme), the palette, named after the CSS system colours (`canvas`, `canvasText`, `linkText`, `grayText`, `highlight`, `highlightText`, `buttonFace`, `buttonText`) |
+| `host` | What the host pushed, or `null` |
+
+A member is `null` when neither source knows it, and every member is `null`
+under server rendering (`unknownAppearance`). The host's values come from the
+`appearance/1` feature: `RunicDesktopHost` reads the desktop's settings
+(`IDesktopSettings`) and pushes them to every window's pages, also when they
+change. The engine's media queries are what the page's CSS sees, so keep using
+them in CSS; the store adds what no engine exposes to script (text scale, accent,
+forced palette) and the contrast and motion of engines that do not follow the
+desktop while a window is open, such as WebKitGTK 6.0 (see
+[what each engine reports](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#contrast-forced-colors-and-reduced-motion)).
+
+```ts
+import { onAppearance } from "@runic-artifex/views";
+
+onAppearance(look => {
+  document.documentElement.style.fontSize = `${look.textScale ?? 1}rem`;
+  if (look.accentColor) document.documentElement.style.setProperty("--accent", look.accentColor);
+});
+```
+
+The framework packages wrap it as `useAppearance` (React, Vue, Svelte),
+`injectAppearance` (Angular) and the `appearances()` stream (Effect). The mock
+bridge's `setAppearance({ textScale: 1.5, contrast: "more" })` pushes an
+appearance in page tests, as `WindowContentSession.Appearance` does in .NET
+tests.
+
 ## Connection state
 
 `onBridgeConnection(listener, options?)` reports the page's connection to its

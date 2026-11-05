@@ -303,6 +303,8 @@ public static class WpfBridgeViewExtensions
                 if (connection.Kind == DesktopConnectionEventKind.Disconnected)
                     session.ReleaseConnection(connection.SessionId.ToString(CultureInfo.InvariantCulture));
             });
+            // appearance/1: the page's appearance follows the desktop's settings while the view is open.
+            connections = new Pair(connections, AppearanceFeed(services, loggerFactory).Add(content));
             var attachment = attachWithContent is not null ? attachWithContent(transport, content, viewModel) : attach!(transport, viewModel);
             return new(surface, transport, content, connections, attachment, viewModel, WpfViewsLog.For(loggerFactory));
         }
@@ -319,6 +321,29 @@ public static class WpfBridgeViewExtensions
                 }
             }
             throw;
+        }
+    }
+
+    // One watch of the desktop's settings for every open view of the process, from the first view's services.
+    private static Runic.Application.Views.Desktop.DesktopAppearanceFeed? s_appearanceFeed;
+
+    private static Runic.Application.Views.Desktop.DesktopAppearanceFeed AppearanceFeed(IServiceProvider services,
+        Runic.Application.Views.Desktop.LentLoggerFactory? loggerFactory)
+    {
+        if (Volatile.Read(ref s_appearanceFeed) is { } feed) return feed;
+        var created = new Runic.Application.Views.Desktop.DesktopAppearanceFeed(
+            () => services.GetService<Runic.Platform.IDesktopSettings>() ?? Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSettings(),
+            loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        return Interlocked.CompareExchange(ref s_appearanceFeed, created, null) ?? created;
+    }
+
+    private sealed class Pair(IDisposable first, IDisposable second) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { first.Dispose(); }
+            finally { second.Dispose(); }
         }
     }
 }

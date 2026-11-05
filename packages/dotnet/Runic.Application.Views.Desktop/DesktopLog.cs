@@ -45,4 +45,8 @@ internal static partial class DesktopLog
         PortalDiagnostic(logger, diagnostic.Severity == PortalDiagnosticSeverity.Information ? LogLevel.Debug : LogLevel.Warning,
             diagnostic.Code, diagnostic.Message, diagnostic.Remediation ?? string.Empty);
 #endif
+
+    [LoggerMessage(EventId = 2008, EventName = "DesktopAppearanceWatchFailed", Level = LogLevel.Warning,
+        Message = "The desktop's appearance settings could not be watched ({ErrorType}); pages keep the last appearance read.")]
+    internal static partial void AppearanceWatchFailed(ILogger logger, Exception? exception, string errorType);
 }

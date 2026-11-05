@@ -18,9 +18,14 @@ export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnection
 export {
   useText, useTextLocale, useWindowLocale, type TextHandle, type TextLocaleHandle, type WindowLocaleHandle,
 } from "./use-text.svelte.js";
+export { useAppearance, type AppearanceHandle } from "./use-appearance.svelte.js";
 export {
   configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
   type TextTranslations,
+} from "@runic-artifex/views";
+export {
+  appearance, onAppearance, type Appearance, type AppearanceColorScheme, type AppearanceContrast, type AppearanceSystemColors,
+  type HostAppearance,
 } from "@runic-artifex/views";
 // blobs/1: uploads from the page and the blob values of state.
 export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";

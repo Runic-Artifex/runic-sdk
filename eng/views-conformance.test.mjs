@@ -472,6 +472,8 @@ const pushRules = {
   closing: () => true,
   // navigation-path/1: the window's route path, a push without a route.
   "navigation-path": m => (m.path === null || typeof m.path === "string") && ["push", "back", "replace"].includes(m.operation),
+  // appearance/1: a window-level push; a member of the wrong type or value is read as null, so every push applies.
+  appearance: () => true,
   // field-flush/1: a window-level push like closing.
   flush: m => typeof m.id === "string" && m.id.length > 0,
   // view-requests/1.

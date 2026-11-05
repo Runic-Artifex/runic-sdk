@@ -643,10 +643,10 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureTranslatedText",
-      "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath",
+      "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureTranslatedText",
+      "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath",
       "openNavigationPath", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection",
-      "upload", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
+      "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
       "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText", "useTextField", "useTextLocale",
       "useView", "useWindowLocale", "windowLocale",
     ]);

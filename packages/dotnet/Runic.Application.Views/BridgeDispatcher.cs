@@ -21,7 +21,7 @@ namespace Runic.Application.Views;
 //   tells the window's observers (OnConnectionClosed).
 //
 // Every bridge of a window shares the dispatcher of the window's transport (For).
-internal sealed class BridgeDispatcher : IBridgeRequestHandler
+internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
 {
     internal const int ProtocolVersion = 4;
     internal const string ImplementationName = "Runic.Application.Views";
@@ -913,6 +913,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 out var usesFieldFlush, out var usesFieldPaths, out var usesTranslationText, out var usesNavigationPath))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
+        var usesAppearance = ListsAppearance(root);
         var session = sessionElement.GetString()!;
         bool closing;
         lock (_gate)
@@ -938,6 +939,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesFieldPaths = usesFieldPaths;
             connection.UsesTranslationText = usesTranslationText;
             connection.UsesNavigationPath = usesNavigationPath;
+            connection.UsesAppearance = usesAppearance;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -952,6 +954,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (usesTranslationText)
             lock (_localeGate)
                 if (_locale is not null) BridgeTargetedPushes.For(_transport).Send(connection.Key, LocalePush(_locale));
+        // appearance/1: likewise the window's appearance.
+        if (usesAppearance) PushAppearanceAfterHello(connection);
         // blobs/1: the connection's upload grant, when the host takes uploads.
         var grant = usesBlobs ? Blobs.Grant(connection.Key) : null;
         // navigation-path/1: the reply tells the page the window's route path, when the window has a path region.
@@ -1136,6 +1140,8 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     // Whether the connection uses field-paths/1.
     internal bool UsesFieldPaths { get; set; }
     internal bool UsesTranslationText { get; set; }
+    // Whether the connection uses appearance/1.
+    internal bool UsesAppearance { get; set; }
     // Whether the connection uses view-requests/1.
     internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.

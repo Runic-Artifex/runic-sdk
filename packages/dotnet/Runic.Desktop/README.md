@@ -626,6 +626,14 @@ and `ReducedMotion`. What each engine reports (checked by the native smokes,
 | Linux, WebKitGTK 6.0 (GTK 4) | `more` with GTK 4.20's `gtk-interface-contrast`; an older GTK 4 has no such setting | Always `none` | `reduce` with GTK 4.20's `gtk-interface-reduced-motion` | Reads them when the process's first web view starts, and does not follow a later change (WebKitGTK 2.54) |
 | Installed browsers | The browser's own | The browser's own | The browser's own | The browser's |
 
+A Runic Views page also gets the desktop's values from the host
+(`appearance/1`, see the
+[Views README](../Runic.Application.Views/README.md#appearance)): the text
+scale, the accent colour and the forced-colours palette, which no engine
+exposes to script, and the contrast and motion preferences, so its appearance
+store follows them where the engine does not, as in WebKitGTK 6.0. The page's
+CSS still sees only the engine's media queries.
+
 ### Owned and window-modal windows
 
 `DesktopWindowOptions.Owner` makes a window belong to another, and

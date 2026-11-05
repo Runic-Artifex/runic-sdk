@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.WindowContentSession.Appearance.get -> Runic.Platform.DesktopAppearance?
+Runic.Application.Views.WindowContentSession.Appearance.set -> void

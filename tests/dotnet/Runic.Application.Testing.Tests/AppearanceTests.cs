@@ -1,0 +1,76 @@
+using Runic.Application.Testing;
+using Runic.Application.Views;
+using Runic.Platform;
+using TUnit.Core;
+
+namespace Runic.Application.Testing.Tests;
+
+// appearance/1 (specs/application/README.md, "Appearance"): WindowContentSession.Appearance is pushed to the window's
+// pages after their hello and on each change, and RunicWindowTestHost.AppearancePushes reads the pushes back.
+public sealed class AppearanceTests
+{
+    private static readonly DesktopAccentColor Black = new(0, 0, 0);
+    private static readonly DesktopAccentColor White = new(1, 1, 1);
+
+    private static readonly DesktopAppearance Forced = new(DesktopColorScheme.Dark, new(0, 0, 1), ReducedMotion: false)
+    {
+        Contrast = DesktopContrast.ForcedColors,
+        SystemColors = new(Black, White, new(1, 1, 0), new(0, 1, 0), new(0, 1, 1), Black, Black, White),
+        TextScale = 1.25,
+    };
+
+    [Test]
+    public async Task TheWindowsAppearanceIsPushedAfterTheHelloAndOnEachChange()
+    {
+        using var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),
+            (transport, content, vm) => new TranslatedTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedText" });
+        host.Content.Appearance = Forced;
+        Require(host.Content.Appearance == Forced, "The session did not keep its appearance.");
+        host.Transport.HelloWith("old", []);
+        // The test host's own connection lists appearance/1 in the hello it sends before its first request.
+        await host.NavigateBackAsync();
+        await WaitAsync(() => host.AppearancePushes.Count == 1, "the push after the hello");
+        Require(host.AppearancePushes[0] == Forced, $"The push read back as {host.AppearancePushes[0]}.");
+
+        var more = new DesktopAppearance(DesktopColorScheme.Light, ReducedMotion: true) { Contrast = DesktopContrast.More };
+        host.Content.Appearance = more;
+        host.Content.Appearance = more with { };
+        await WaitAsync(() => host.AppearancePushes.Count == 2, "the push of the change");
+        Require(host.AppearancePushes[1] == more && host.AppearancePushes[1]!.SystemColors is null,
+            $"The change read back as {host.AppearancePushes[1]}; a palette is pushed only with forced colours.");
+
+        host.Content.Appearance = null;
+        await WaitAsync(() => host.AppearancePushes.Count == 3, "the push of an unknown appearance");
+        Require(host.AppearancePushes[2] is null, "An unknown appearance is not every member null.");
+        Require(!host.Transport.Messages.Any(message => message.Kind == "appearance" && message.ConnectionKey == "old"),
+            "A connection without the feature received an appearance push.");
+    }
+
+    [Test]
+    public void TheMembersAreWrittenAsThePushSpecifies()
+    {
+        using var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),
+            (transport, content, vm) => new TranslatedTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedText" });
+        // A ForcedColors palette with a component out of range is clamped; a palette without forced colours is not pushed.
+        host.Content.Appearance = new DesktopAppearance(AccentColor: new(1.5, -1, 0.5)) { SystemColors = Forced.SystemColors, TextScale = 1 };
+        host.Transport.HelloWith(InMemoryBridgeTransport.DefaultConnectionKey, ["appearance/1"]);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!host.Transport.Messages.Any(message => message.Kind == "appearance") && DateTime.UtcNow < deadline) Thread.Sleep(10);
+        var push = host.Transport.Messages.First(message => message.Kind == "appearance").Json;
+        Require(push == """{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":1,"accentColor":"#ff0080","systemColors":null}""",
+            $"The push is {push}.");
+    }
+
+    private static async Task WaitAsync(Func<bool> condition, string what)
+    {
+        for (var attempt = 0; attempt < 500 && !condition(); attempt++) await Task.Delay(10);
+        Require(condition(), $"Timed out waiting for {what}.");
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+}
