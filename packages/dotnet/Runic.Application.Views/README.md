@@ -3138,8 +3138,9 @@ example from the application's settings, before the window opens, and again
 from a language switch command. A language switch on the page must call that
 command: a page that sets its Translations runtime's locale itself is set back
 to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
-locale of its Translations runtime, so the page's own messages switch too, and
-formats the references again. `null`, the default, leaves each page in its own
+locale of its Translations runtime and formats the references again. The page's
+own `m.*()` messages render again when the locale resolver reads the
+framework's reactive text locale (below). `null`, the default, leaves each page in its own
 language. A Window that the application creates itself sets
 `WindowContentSession.Locale`. The service raises `PropertyChanged`, so C# text,
 such as a tray menu, can follow with the generated C# catalog's
@@ -3159,23 +3160,76 @@ public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings setti
 }
 ```
 
+**C# formatting in the window's culture.** By default a ViewModel formats in
+the process's culture: `ToString("N")`, `string.Format` and DataAnnotations
+messages in a `de` window still use the operating system's culture. Opt in
+with `FlowCultureFromLocale`, and the window's bridged invocations run with
+`CultureInfo.CurrentCulture` and `CurrentUICulture` of its locale: the setters,
+checked writes, commands (also after their `await`s), validation and state reads
+of the page's requests, the navigation they start, the window's menu
+commands, and the close guard (`CanCloseAsync` and the navigation regions'
+departure guards) when the user closes the window. A locale without a predefined
+.NET culture uses its nearest parent's (`de-CH`, then `de`), and the process's
+cultures without one, as under invariant globalization. Timers and other work
+started outside an invocation keep their culture.
+
+Work started inside an invocation keeps the window's culture for its whole life:
+a `System.Threading.Timer`, a `PeriodicTimer` or `Task.Run` loop, an
+`Observable.Interval` subscription, or a singleton service that a command
+resolves first and that starts such work, captures the culture of that
+invocation and keeps formatting in it, also for other windows and after the
+window's locale changed. Start such work at application start, outside any
+invocation, or suppress the flow while you start it:
+
+```csharp
+using (ExecutionContext.SuppressFlow())
+    _sync = new Timer(_ => PublishNotifications(), null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+```
+
+```csharp
+await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFromLocale = true });
+// or for every Window: new RunicDesktopHostOptions { FlowCultureFromLocale = true },
+// RunicCsWebUiHostOptions, RunicWindowTestHostOptions; a custom host sets
+// WindowContentSessionOptions.FlowCultureFromLocale.
+```
+
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
 Runic Translations and its Vite plugin:
 
 ```ts
-import { configureTranslatedText } from "@runic-artifex/views";
+import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
+import { useTextLocale } from "@runic-artifex/svelte";   // or @runic-artifex/vue
 import { m } from "virtual:runic-translations/app/messages";
-import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
 import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 const locale = createLocaleSource({ initialLocale: navigator.language });
-configureLocaleResolver(locale.getLocale);
+const textLocale = useTextLocale();
+configureLocaleResolver(() => textLocale.current ?? locale.getLocale());   // Vue: textLocale.value
 configureTranslatedText({
   ...locale,
   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+  direction: localeDirection,
 });
+syncDocumentLocale();   // <html lang dir> follow the text locale
 ```
+
+The locale source is plain state, so a template that calls `m.*()` renders
+again on a switch only when it reads a reactive text locale:
+
+| Framework | Re-render the page's own messages |
+| --- | --- |
+| Svelte | `configureLocaleResolver(() => useTextLocale().current ?? locale.getLocale())`: one handle for the page, read wherever `m.*()` runs |
+| Vue | `configureLocaleResolver(() => useTextLocale().value ?? locale.getLocale())`: one ref for the page |
+| Angular | `configureLocaleResolver(() => textLocaleSignal()() ?? locale.getLocale())`: one signal for the page, also for `OnPush` templates |
+| React | `configureLocaleResolver(locale.getLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
+| Effect | `textLocales()`, a stream of the locale; render the messages again on each |
+
+`syncDocumentLocale()` sets `lang` and `dir` on `<html>` (direction from the
+runtime's `direction`, such as `localeDirection`, else the locale's script) and
+leaves the document's own `lang` until there is a locale. The starter templates
+call it.
 
 Then show references with the framework's helper. Field errors
 (`useField(...).errors`, `injectField`, `createFieldController`) already show
@@ -3211,13 +3265,14 @@ whose arguments no longer match, or of a later Translations transport version
 than the page's runtime reads, shows its fallback text. Without a configured
 runtime, every reference shows its fallback text. The text is plain: render it
 as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
-`windowLocale()`) reads the window's locale, for example for `lang`.
+`windowLocale()`) reads the window's locale.
 
 **Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
 or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `IRunicWindowLocale` of the services' scope to the window, so
 `host.Content.Locale` shows what the ViewModel set. In page tests, the mock
-bridge's `setWindowLocale("de")` pushes a locale as the application does.
+bridge's `setWindowLocale("de")` pushes a locale as the application does, so a
+test can check that a template's `m.*()` text renders again.
 
 ## Shared DTO exclusions
 
@@ -4063,6 +4118,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2005 | `DesktopDevelopmentAssetsServed` | Information | `dotnet runic dev` without a development server: a Development host serves the frontend output directory live (`RUNIC_APPLICATION_DEVELOPMENT_ASSETS`) and reloads its windows when it changes. Once per directory and start page. | `Directory` |
 | 2006 | `DesktopDevelopmentAssetsUnavailable` | Warning | That directory, or the `www/` folder behind it, cannot be served, for example because it lacks the start page or contains a symbolic link; the window serves the other folder. | `Directory`, `ErrorType`, `Instead` |
 | 2007 | `DesktopDevelopmentReloadFailed` | Debug | A window did not reload after the directory changed, for example because it closed meanwhile. | |
+| 2008 | `DesktopLayoutDirectionFailed` | Warning | An embedded window did not change its native direction after its window locale (`IRunicWindowLocale`) changed. | `ErrorType` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `2b35db13f` (CsWebUi 2.5.0-beta.4.8). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |

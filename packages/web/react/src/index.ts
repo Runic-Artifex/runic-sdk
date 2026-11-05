@@ -23,6 +23,7 @@ import {
   onWindowLocale,
   resolveText,
   subscribeText,
+  textLocale,
   textVersion,
   windowLocale,
   type BridgeConnectionOptions,
@@ -39,6 +40,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type FieldError,
   type TextReference,
   regionEntries,
   type RegionCollection,
@@ -48,7 +50,7 @@ import {
   type ViewControllerState,
   type ViewSource,
 } from "@runic-artifex/views";
-import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
+import { isViewClient, missingViewMessage, reportMissingView, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
@@ -248,8 +250,9 @@ export interface ViewOutletProps<R extends PageReference> {
   /** Rendered while there is no content. Defaults to nothing. */
   readonly fallback?: ReactNode;
   /**
-   * Renders a reference whose kind has no registered component, for example localized text.
-   * Defaults to an English `<p role="alert">`.
+   * Renders a reference whose kind has no registered component, for example localized text. Without it, a
+   * development build renders an English `<p role="alert">` and a production build renders nothing and reports the
+   * kind through the page's error reporting.
    */
   readonly missing?: (content: R) => ReactNode;
 }
@@ -266,14 +269,17 @@ function referenceKey(reference: object): number {
 /**
  * Renders the registered component for a generated View reference and passes
  * the reference as its `page` prop. A different reference remounts the
- * component. A kind without a component renders `missing`, or an English alert without it.
+ * component. A kind without a component renders `missing`; without it, an English alert in development, and
+ * nothing in production, where the kind is reported (`installErrorReporting`, `onBridgeDiagnostic`).
  */
 export function ViewOutlet<R extends PageReference>({ content, registry, fallback = null, missing }: ViewOutletProps<R>): ReactNode {
   if (!content) return fallback;
   const component = registry[content.kind as R["kind"]] as ComponentType<{ readonly page: R }> | undefined;
   if (!component) {
     if (missing) return missing(content);
-    return createElement("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+    if (process.env.NODE_ENV !== "production") return createElement("p", { role: "alert" }, missingViewMessage(content.kind));
+    reportMissingView(content.kind);
+    return null;
   }
   return createElement(component, { key: referenceKey(content), page: content });
 }
@@ -721,7 +727,8 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
  * Renders a text reference that a ViewModel produced, such as a status line or a validation message's `text`, in the
  * window's language (`resolveText`), and renders again when the language changes. A string renders as it is;
  * `null` and `undefined` render `fallback`. Configure the page's Translations runtime once with
- * `configureTranslatedText`; without one, a reference shows its fallback text.
+ * `configureTranslatedText`; without one, a reference shows its fallback text. A field's `FieldError` renders the
+ * application's text for it (`configureFieldErrorText`), or its English message: `useText(name.error)`.
  *
  * ```tsx
  * const status = useText(view.state?.status);
@@ -730,7 +737,7 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
  * function ErrorLine({ error }) { return <li>{useText(error.text, error.message)}</li>; }
  * ```
  */
-export function useText(value: TextReference | string | null | undefined, fallback?: string): string {
+export function useText(value: TextReference | FieldError | string | null | undefined, fallback?: string): string {
   const version = useSyncExternalStore(subscribeText, textVersion, textVersion);
   // version is the language the text resolves in.
   return useMemo(() => resolveText(value, fallback), [value, fallback, version]);
@@ -746,6 +753,23 @@ export function useWindowLocale(): string | null {
 
 const subscribeWindowLocale = (onChange: () => void) => onWindowLocale(() => onChange());
 const serverWindowLocale = (): string | null => null;
+
+/**
+ * Renders the locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's
+ * locale), and renders again when it changes. Call it in a component that renders the page's own messages, so that
+ * `m.*()` runs again after a language switch; the component's children render with it, except memoized ones.
+ * `undefined` while the page has no Translations runtime and the application sets no window locale.
+ *
+ * ```tsx
+ * function Toolbar() {
+ *   useTextLocale();
+ *   return <button>{m.save()}</button>;
+ * }
+ * ```
+ */
+export function useTextLocale(): string | undefined {
+  return useSyncExternalStore(subscribeText, textLocale, textLocale);
+}
 
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
@@ -774,7 +798,9 @@ export {
   type NavigationReply,
 } from "@runic-artifex/views";
 export {
-  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+  configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,
+  windowLocale, type DocumentLocaleOptions, type FieldErrorArguments, type FieldErrorReason, type FieldErrorText,
+  type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 export {
   FieldError,

@@ -715,6 +715,65 @@ Receipts of checked writes, also when `write` of a text field calls one:
 | `conflict` | The draft stays; `conflict` and `error.current` are the producer's field, `error` is a `FieldError` `conflict`. Nothing is written until `retry()` writes the draft over the producer's value or `reset()` takes it. A conflict whose incoming value is the value sent is a success. |
 | `committed-with-error` | The value was committed and the draft is dropped; `error` is a `FieldError` `committed-with-error`. |
 
+#### Translating field errors
+
+`FieldError.message` is English. An `invalid-text` error of the kinds' parsers also has a `reason` and `arguments`,
+so an application can show its own text (`FieldErrorReason`, open):
+
+| `reason` | English `message` | `arguments` |
+| --- | --- | --- |
+| `required` | `Enter a number.` (`a whole number`, `a date`, `a time`, `a date and time`) | `expected`: `number`, `whole-number`, `date`, `time` or `date-time` |
+| `not-a-number` | `1e is not a number.` | `text` |
+| `not-a-whole-number` | `1.5 is not a whole number.` | `text` |
+| `too-many-fraction-digits` | `1.255 has more than 2 digits after the decimal separator.` | `text`, `scale` |
+| `out-of-range` | `79228162514264337593543950336 is too large.` (a `decimal` of 2⁹⁶ or more) | `text` |
+| `not-a-boolean` | `yes is not true or false.` | `text` |
+| `not-a-choice` | `Large is not one of Small, Medium.` | `text`, `choices` |
+| `not-a-date` | `soon is not a date (DD.MM.YYYY or YYYY-MM-DD).`, `2026-02-31 is not a date.` | `text`, `patterns` (form errors only) |
+| `not-a-time` | `soon is not a time (hh:mm or hh:mm:ss).`, `25:00 is not a time.` | `text`, `patterns` (form errors only) |
+| `not-a-date-time` | `soon is not a date and time (YYYY-MM-DDThh:mm).` | `text`, `patterns` |
+| `offset-out-of-range` | `2026-11-04T10:00+15:00 has an offset beyond ±14:00.` | `text` |
+| `no-text-form` | `This field has no text form.` | none |
+
+`text` is the trimmed text the user typed, and `patterns` the forms a text may take, the locale's first. A `number`
+field with `integer` (an `int` member) reports `required` with `expected: whole-number`, so a translated text can say
+"a whole number"; its English `message` stays `Enter a number.`. A field's own `parse` that throws, and the `rejected`,
+`conflict` and `committed-with-error` receipts, have no `reason`: `kind` says what happened, and `message` is the parse
+error's or the producer's text. A `FieldError` of an older copy of this package has no `arguments` and may have no
+`reason` either; the hook then receives empty `arguments`, and its `undefined` `reason` falls back to the message.
+
+Give the page your text once with `configureFieldErrorText`. It receives the error and the locale text references are
+shown in (`textLocale()`, the window's locale when the application sets one) and returns the text, or `undefined` for
+the English message. `resolveText(error)`, the framework packages' `useText` (`useText(name.error)` in React,
+`useText(() => name.error)` in Vue and Svelte), `injectText` and `{{ name.error() | runicText }}` (Angular), `texts`
+(Effect) and `describeBridgeError` then show it, and show it again when the language changes. With the generated ESM
+of Runic Translations, with one message per reason in your catalog:
+
+```ts
+import { configureFieldErrorText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+
+configureFieldErrorText((error, locale) => {
+  // `error.arguments` is always an object; `error.reason` can be undefined (an error of an older copy, or a kind
+  // without a reason), and the recipe then returns undefined for the English message.
+  const { text = "", scale = 0, expected = "number", patterns = [] } = error.arguments;
+  const options = locale === undefined ? {} : { locale };
+  switch (error.reason) {
+    case "required": return m.field_required({ expected }, options);           // .match {$expected :string}
+    case "not-a-number": return m.field_not_a_number({ text }, options);
+    case "too-many-fraction-digits": return m.field_too_many_fraction_digits({ text, scale }, options);
+    case "not-a-date": return m.field_not_a_date({ text, patterns }, options);              // a list argument
+    case undefined: return error.kind === "conflict" ? m.field_conflict({}, options) : undefined;
+    default: return undefined;                                                 // the English message
+  }
+});
+```
+
+A later call replaces an earlier one, and the returned function removes it. The hook is page-wide, like
+`configureTranslatedText`; a hook that throws is reported once per error and locale (again after a new hook is
+configured), and the message is shown. `fieldErrorText(error)` returns
+the text without a framework.
+
 #### Fields below a member and row cells
 
 With a 0.16 host (`field-paths/1`), `{View}Fields` also describes the members of an object member and the cells of
@@ -1499,9 +1558,9 @@ runtime once; the window's locale, which the application sets with
 `IRunicWindowLocale`, is then passed to its `setLocale`:
 
 ```ts
-import { configureTranslatedText, resolveText, subscribeText } from "@runic-artifex/views";
+import { configureTranslatedText, resolveText, subscribeText, syncDocumentLocale } from "@runic-artifex/views";
 import { m } from "virtual:runic-translations/app/messages";
-import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
 import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 const locale = createLocaleSource({ initialLocale: navigator.language });
@@ -1509,7 +1568,9 @@ configureLocaleResolver(locale.getLocale);
 configureTranslatedText({
   ...locale,
   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+  direction: localeDirection,
 });
+syncDocumentLocale();
 
 status.textContent = resolveText(editor.snapshot.status);
 subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); });
@@ -1517,7 +1578,9 @@ subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); 
 
 `resolveText(value, fallback)` formats a reference in the window's language, or
 shows its `fallbackText`, then `fallback`, then its key; a string shows as it
-is. For a validation error: `resolveText(error.text, error.message)`. Field
+is. For a validation error: `resolveText(error.text, error.message)`; for a
+field's `FieldError`, `resolveText(error)` with the text of
+`configureFieldErrorText` ([Translating field errors](#translating-field-errors)). Field
 errors already show translated messages and update on a language switch,
 and number, date and time fields without their own `locale` read and show their
 text in the window's locale, except while the user edits a draft; the wire value
@@ -1526,9 +1589,16 @@ stays the invariant or ISO form. Bind such a field to a text input, or give it
 page calls the application's command; a locale the page sets itself is set back
 by the next `locale` push. Under server rendering, configure the runtime in the
 browser only, or resolve with the request's locale.
-`windowLocale()` and `onWindowLocale` read the window's locale. The framework
+`windowLocale()` and `onWindowLocale` read the window's locale; `textLocale()`
+is the locale text is shown in, and `textDirection()` its writing direction
+(the runtime's `direction`, else the locale's script). `syncDocumentLocale()`
+sets `lang` and `dir` of `<html>` to them, now and after each switch, and leaves
+the document's own `lang` while there is no locale yet. The framework
 packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
-`runicText` pipe (Angular) and `texts` (Effect). The mock bridge's
+`runicText` pipe (Angular) and `texts` (Effect). A template that calls the
+page's own `m.*()` renders again on a switch when the locale resolver reads
+the framework's text locale: `useTextLocale` (React, Vue, Svelte),
+`textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). The mock bridge's
 `setWindowLocale(locale)` pushes a locale in page tests. See
 [Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 

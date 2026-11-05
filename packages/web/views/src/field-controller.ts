@@ -8,7 +8,9 @@ import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
 import { subscribeText, windowLocale } from "./translated-text.js";
 
-export { FieldError, type FieldErrorKind } from "./field-error.js";
+export {
+  FieldError, type FieldErrorArguments, type FieldErrorDetail, type FieldErrorExpected, type FieldErrorKind, type FieldErrorReason,
+} from "./field-error.js";
 
 /** What a field shows. */
 export interface FieldState<TValue> {

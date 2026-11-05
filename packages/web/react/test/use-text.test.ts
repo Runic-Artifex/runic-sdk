@@ -4,7 +4,16 @@ import * as React from "react";
 import { createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
-import { configureTranslatedText, useText, useWindowLocale, type TextReference } from "../dist/index.js";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
+import {
+  configureFieldErrorText, configureTranslatedText, FieldError, useText, useTextLocale, useWindowLocale, ViewOutlet,
+  type TextReference,
+} from "../dist/index.js";
+// The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
+import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
+import { configureLocaleResolver, createLocaleSource, localeDirection } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";
+import { resolveTextReference } from "../../views/test/fixtures/translations/generated/notes.esm-v5/transport.js";
 // A Translations runtime of two locales, as a generated transport.js and locale source would be.
 function fakeTranslations() {
   const catalog: Record<string, Record<string, string>> = {
@@ -40,7 +49,7 @@ async function mount(element: ReactNode): Promise<HTMLElement> {
   return container;
 }
 
-function Status({ value, fallback }: { readonly value: TextReference | string | null | undefined; readonly fallback?: string }) {
+function Status({ value, fallback }: { readonly value: TextReference | FieldError | string | null | undefined; readonly fallback?: string }) {
   const text = useText(value, fallback);
   const locale = useWindowLocale();
   return createElement("p", { lang: locale ?? undefined }, text);
@@ -63,5 +72,61 @@ describe("useText", () => {
     expect(container.textContent).toBe("plainInvalid value.");
     expect(container.querySelector("p")!.getAttribute("lang")).toBeNull();
     void saved;
+  });
+
+  test("renders a field error with the application's text, in the text locale", async () => {
+    const error = new FieldError("invalid-text", "1e is not a number.", undefined,
+      { reason: "not-a-number", arguments: { text: "1e" } });
+    const container = await mount(createElement(Status, { value: error }));
+    expect(container.textContent).toBe("1e is not a number.");
+    const runtime = fakeTranslations();
+    await act(async () => {
+      cleanup.push(configureTranslatedText(runtime));
+      cleanup.push(configureFieldErrorText((shown, locale) => shown.reason === "not-a-number" && locale === "de"
+        ? `${shown.arguments.text} ist keine Zahl.` : undefined));
+    });
+    expect(container.textContent).toBe("1e is not a number.");
+    await act(async () => { runtime.setLocale("de"); });
+    expect(container.textContent).toBe("1e ist keine Zahl.");
+  });
+});
+
+describe("useTextLocale", () => {
+  test("a component that renders m.*() renders again when the application switches the window's locale (S2)", async () => {
+    const locale = createLocaleSource({ initialLocale: "en" });
+    cleanup.push(configureLocaleResolver(locale.getLocale));
+    cleanup.push(configureTranslatedText({
+      ...locale,
+      resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+      direction: localeDirection,
+    }));
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("shell", { state: {} });
+    await connectView({ contract: "Tests.Shell:fp-1", route: "shell", members: {} });
+    let renders = 0;
+    function Title() {
+      const current = useTextLocale();
+      renders++;
+      return createElement("h1", { lang: current }, m.saved({ title: "Atlas" }));
+    }
+    const container = await mount(createElement(Title));
+    expect(container.textContent).toBe("Saved Atlas.");
+    await act(async () => { bridge.setWindowLocale("de"); await bridge.flush(); });
+    expect(container.textContent).toBe("Atlas gespeichert.");
+    expect(container.querySelector("h1")!.getAttribute("lang")).toBe("de");
+    const before = renders;
+    await act(async () => { bridge.setWindowLocale("de-AT"); await bridge.flush(); });
+    expect(renders, "de-AT resolves to de: no change, no render").toBe(before);
+    await act(async () => { bridge.setWindowLocale(null); bridge.setWindowLocale("en"); await bridge.flush(); });
+    expect(container.textContent).toBe("Saved Atlas.");
+  });
+});
+
+describe("ViewOutlet", () => {
+  test("a kind without a component shows the development alert outside production builds", async () => {
+    const container = await mount(createElement(ViewOutlet, {
+      content: { kind: "missing" } as never, registry: {} as never,
+    }));
+    expect(container.querySelector("[role=alert]")!.textContent).toBe("No web component is registered for missing.");
   });
 });

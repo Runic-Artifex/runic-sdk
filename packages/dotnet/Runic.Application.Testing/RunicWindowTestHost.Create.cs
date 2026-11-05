@@ -153,6 +153,7 @@ public static class RunicWindowTestHost
             CreateId = options.CreateId,
             IncludeFailureDetail = options.IncludeFailureDetail,
             Validation = options.Validation ?? services.GetService<RunicValidationOptions>(),
+            FlowCultureFromLocale = options.FlowCultureFromLocale,
             MaximumInputBytes = options.MaximumInputBytes,
             MaximumUploadBytes = options.MaximumUploadBytes,
             PublicationTimeout = options.PublicationTimeout,

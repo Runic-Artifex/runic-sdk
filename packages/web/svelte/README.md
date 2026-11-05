@@ -183,7 +183,9 @@ handle also has `value` and `text`, which `bind:value={title.value}` reads and s
 or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `conflict`, `committed-with-error` or
 `invalid-text`). `FieldError`, `FieldOptions`, `FieldState` and `BridgeField` are exported from this package. See the
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
-and text forms.
+and text forms. An `invalid-text` error has a `reason` and `arguments`: render `useText(() => name.error).current` after
+`configureFieldErrorText` to show your own text for it in the window's language
+([Translating field errors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#translating-field-errors)).
 
 #### Row cells and nested members
 
@@ -267,8 +269,12 @@ the reference as its `page` prop:
 
 The outlet is generic over the reference union, so the registry must have a
 component for every kind with a matching `page` prop. A different reference
-remounts the component, a kind without a component renders an English
-`<p role="alert">`, and the optional `fallback` snippet renders while `content` is empty.
+remounts the component, and the optional `fallback` snippet renders while
+`content` is empty. A kind without a component renders an English
+`<p role="alert">` in a development build (`process.env.NODE_ENV`, which Vite
+sets, is not `production`); a production build renders nothing and reports the
+kind once through the page's error reporting (`installErrorReporting`,
+`onBridgeDiagnostic`).
 
 The optional `missing` snippet replaces that alert, for example with localized
 text. It receives the reference whose kind has no component, and its markup
@@ -559,7 +565,22 @@ validation error's `text`, in the window's language, and renders again when the
 language changes. A string shows as it is; `null` and `undefined` show
 `fallback`. Connect the page's Translations runtime once with
 `configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
-`useWindowLocale()` reads the window's locale. With SvelteKit server
+`useWindowLocale()` reads the window's locale.
+
+`useTextLocale().current` is the locale that text is shown in, as a reactive
+property. It is one handle for the page and needs no component, so the locale
+resolver can read it; templates that call `m.*()` then render again on a
+language switch. `syncDocumentLocale()` keeps `<html lang dir>` on that locale:
+
+```ts
+// main.ts
+const textLocale = useTextLocale();
+configureLocaleResolver(() => textLocale.current ?? locale.getLocale());
+configureTranslatedText({ ...locale, resolve, direction: localeDirection });
+syncDocumentLocale();
+```
+
+With SvelteKit server
 rendering, call `configureTranslatedText` in the browser only (for example in
 `onMount`), or render on the server with `resolveTextReference` and the
 request's locale.

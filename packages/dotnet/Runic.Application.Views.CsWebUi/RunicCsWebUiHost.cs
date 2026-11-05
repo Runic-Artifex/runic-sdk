@@ -68,6 +68,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         ConfigureWindow = options.ConfigureWindow;
         ShowWindow = options.ShowWindow;
         _includeFailureDetail = options.IncludeFailureDetail;
+        _flowCultureFromLocale = options.FlowCultureFromLocale;
         // The range of WindowContentSessionOptions.MaximumInputBytes, checked before a Window opens.
         if (options.MaximumInputBytes is < 1_024 or > 67_108_864)
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
@@ -101,6 +102,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     public void SetMenuBar(IReadOnlyList<DesktopMenu> menus) => _menuBar.Set(menus);
 
     private readonly bool? _includeFailureDetail;
+    private readonly bool? _flowCultureFromLocale;
     private readonly Runic.Assets.IAssetSource? _assets;
     private readonly int? _maximumInputBytes;
     private readonly long? _maximumUploadBytes;
@@ -257,6 +259,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
                 IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
                 Validation = scope.ServiceProvider.GetService<RunicValidationOptions>(),
+                FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? _flowCultureFromLocale ?? false,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
                 MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,

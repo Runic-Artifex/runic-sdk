@@ -237,6 +237,8 @@ internal sealed partial class MenuCommandBinding : IDisposable
     // never one the request claims.
     private void ExecuteInWindow(Entry entry, BridgeConnection? invoker)
     {
+        // FlowCultureFromLocale: the command runs in the culture of the window's locale, as a page's command does.
+        using var culture = _window?.Dispatcher.EnterCulture() ?? default;
         using var scope = _window is null ? null
             : invoker is not null
                 ? RunicInteractionInvocation.Enter(_window, MenuBarPageRoutes.Route, invoker.ClientKey, invoker.Key, entry.CommandId)

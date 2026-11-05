@@ -197,7 +197,9 @@ is written. A string set on `value` of a field that is not text is taken as its 
 or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `conflict`, `committed-with-error` or
 `invalid-text`). `FieldError`, `FieldOptions`, `FieldState` and `BridgeField` are exported from this package. See the
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
-and text forms.
+and text forms. An `invalid-text` error has a `reason` and `arguments`: render `useText(() => title.error)` after
+`configureFieldErrorText` to show your own text for it in the window's language
+([Translating field errors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#translating-field-errors)).
 
 #### Row cells and nested members
 
@@ -264,8 +266,11 @@ text at once and hides the race.
 
 Renders the component registered for a generated reference's `kind` and
 passes the reference as its `page` prop. A different reference remounts the
-component, a kind without a component renders an English `<p role="alert">`
-(or the `missing` slot), and the default slot renders while `content` is empty:
+component, a kind without a component renders the `missing` slot, and the
+default slot renders while `content` is empty. Without the slot, a development
+build (`process.env.NODE_ENV` is not `production`) renders an English
+`<p role="alert">`; a production build renders nothing and reports the kind once
+through the page's error reporting (`installErrorReporting`, `onBridgeDiagnostic`):
 
 ```vue
 <script setup lang="ts">
@@ -563,6 +568,19 @@ language changes. A string shows as it is; `null` and `undefined` show
 `fallback`. Connect the page's Translations runtime once with
 `configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
 `useWindowLocale()` reads the window's locale.
+
+`useTextLocale()` is the locale that text is shown in, as a ref. It is one ref
+for the page and needs no effect scope, so the locale resolver can read it;
+templates that call `m.*()` then render again on a language switch.
+`syncDocumentLocale()` keeps `<html lang dir>` on that locale:
+
+```ts
+// main.ts
+const textLocale = useTextLocale();
+configureLocaleResolver(() => textLocale.value ?? locale.getLocale());
+configureTranslatedText({ ...locale, resolve, direction: localeDirection });
+syncDocumentLocale();
+```
 
 ```ts
 const status = useText(() => view.state.value?.status);

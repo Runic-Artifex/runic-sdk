@@ -337,6 +337,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             CreateId = options?.CreateId ?? (() => Interlocked.Increment(ref next).ToString(CultureInfo.InvariantCulture)),
             IncludeFailureDetail = options?.IncludeFailureDetail,
             Validation = options?.Validation,
+            FlowCultureFromLocale = options?.FlowCultureFromLocale ?? false,
             MaximumInputBytes = options?.MaximumInputBytes,
             MaximumUploadBytes = options?.MaximumUploadBytes,
         };

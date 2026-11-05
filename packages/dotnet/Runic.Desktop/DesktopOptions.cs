@@ -218,7 +218,8 @@ public sealed record DesktopHostOptions
     /// <remarks>
     /// Runic ships no translations: take the titles from the application's own, for example from its Runic Translations
     /// catalog for the user's language, as for <see cref="MenuBar"/>. They apply when the first window opens and to
-    /// the menus Runic adds to an empty main menu; an application that builds its own main menu keeps its titles. Windows
+    /// the menus Runic adds to an empty main menu; an application that builds its own main menu keeps its titles.
+    /// <see cref="DesktopHost.SetStandardMenuTitles"/> changes them while the application runs. Windows
     /// and Linux show no standard menus. Building the host throws <see cref="ArgumentException"/> for an invalid title,
     /// and <see cref="DesktopHost.Validate"/> reports it as <c>menu-title-invalid</c>; see
     /// <see cref="DesktopStandardMenuTitles"/>.
@@ -623,6 +624,12 @@ public enum DesktopWindowCapabilities
     /// and <see cref="DesktopWindowOptions.Modality"/>), and can own windows itself.
     /// </summary>
     Ownership = 1 << 19,
+
+    /// <summary>
+    /// The window changes the direction of its native parts while it is open (<see cref="DesktopWindow.SetLayoutDirectionAsync"/>):
+    /// on Windows its frame, caption buttons, system menu and menu bar, on Linux the GTK window and Runic's widgets in it.
+    /// </summary>
+    LayoutDirection = 1 << 20,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

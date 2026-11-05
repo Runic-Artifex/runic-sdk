@@ -58,6 +58,29 @@ public sealed class WindowContentSessionOptions
     public RunicValidationOptions? Validation { get; init; }
 
     /// <summary>
+    /// Whether the window's bridged invocations run with <see cref="System.Globalization.CultureInfo.CurrentCulture"/>
+    /// and <see cref="System.Globalization.CultureInfo.CurrentUICulture"/> of the window's <see cref="WindowContentSession.Locale"/>:
+    /// the setters, checked writes, commands, validation and state reads of the page's requests, the navigation they
+    /// start, the window's menu commands, and the close guard when the user closes the window. <see langword="false"/>,
+    /// the default, keeps the process's cultures.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The cultures flow with the invocation's asynchronous work, through its <see langword="await"/>s, and are restored
+    /// after it. A locale without a predefined .NET culture uses its nearest parent's (<c>de-CH</c> then <c>de</c>), and
+    /// the process's cultures without one, as with invariant globalization. Code started outside an invocation, such as
+    /// a timer created at start, keeps the cultures it has. The session reads the value once, when it is created.
+    /// </para>
+    /// <para>
+    /// Work started inside an invocation captures its culture for its whole life: a timer, a background loop, or a
+    /// service created lazily on its first resolution in a command keeps formatting in that window's culture, also for
+    /// other windows and after the locale changed. Start it outside the invocation, or within
+    /// <c>using (ExecutionContext.SuppressFlow())</c>.
+    /// </para>
+    /// </remarks>
+    public bool FlowCultureFromLocale { get; init; }
+
+    /// <summary>
     /// The largest Bridge input, in UTF-8 bytes, that this window decodes: a setter value, a command argument,
     /// a checked write, an operation start, and an interaction request or reply. A larger one is answered as
     /// invalid input (<c>rejected</c> with reason <c>invalid-input</c>, or the interaction routes'

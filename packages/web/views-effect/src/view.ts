@@ -1,5 +1,5 @@
 import {
-  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
+  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, textLocale, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type FieldError, type TextReference,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
   upload as uploadBlob, type BlobRef, type UploadOptions,
@@ -114,15 +114,42 @@ export function textChanges(): Stream.Stream<void> {
 }
 
 /**
+ * The locale that text is shown in (`textLocale` from `@runic-artifex/views`: the page's Translations locale, which
+ * follows the window's locale): the locale now, then each new one. `undefined` while the page has no Translations
+ * runtime and the application sets no window locale. Render the page's own messages (`m.*()`) again on each.
+ *
+ * ```ts
+ * yield* Effect.forkScoped(Stream.runForEach(textLocales(), () => Effect.sync(() => { title.textContent = m.title(); })));
+ * ```
+ */
+export function textLocales(): Stream.Stream<string | undefined> {
+  return textNowAndChanges().pipe(Stream.map(() => textLocale()), Stream.changes);
+}
+
+// One signal now, then one for each change. It subscribes before the first signal, so a switch while the consumer
+// handles that signal is not lost; a slow consumer skips to the latest change, and each reads the language when pulled.
+function textNowAndChanges(): Stream.Stream<void> {
+  return Stream.callback<void>(queue => Effect.acquireRelease(
+    Effect.sync(() => {
+      const unsubscribe = subscribeText(() => { Queue.offerUnsafe(queue, undefined); });
+      Queue.offerUnsafe(queue, undefined);
+      return unsubscribe;
+    }),
+    unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
  * A text reference that a ViewModel produced, in the window's language (`resolveText`): its text now, then its text
- * after each language switch. A string is its own text; `null` and `undefined` are `fallback`.
+ * after each language switch. A string is its own text; `null` and `undefined` are `fallback`. A field's `FieldError`
+ * is the application's text for it (`configureFieldErrorText`), or its English message.
  *
  * ```ts
  * yield* Effect.forkScoped(Stream.runForEach(texts(state.status), text => Effect.sync(() => { status.textContent = text; })));
  * ```
  */
-export function texts(value: TextReference | string | null | undefined, fallback?: string): Stream.Stream<string> {
-  return Stream.concat(Stream.make(undefined), textChanges()).pipe(Stream.map(() => resolveText(value, fallback)));
+export function texts(value: TextReference | FieldError | string | null | undefined, fallback?: string): Stream.Stream<string> {
+  return textNowAndChanges().pipe(Stream.map(() => resolveText(value, fallback)));
 }
 
 /**

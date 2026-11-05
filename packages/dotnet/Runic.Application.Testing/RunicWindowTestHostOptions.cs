@@ -54,6 +54,14 @@ public sealed class RunicWindowTestHostOptions
     public RunicValidationOptions? Validation { get; init; }
 
     /// <summary>
+    /// Whether the window's requests run in the culture of its locale
+    /// (<see cref="WindowContentSessionOptions.FlowCultureFromLocale"/>), for Windows whose
+    /// <see cref="RunicWindowOptions.FlowCultureFromLocale"/> is <see langword="null"/>. <see langword="null"/>, the
+    /// default, keeps the process's cultures.
+    /// </summary>
+    public bool? FlowCultureFromLocale { get; init; }
+
+    /// <summary>
     /// The largest Bridge input of the window, in UTF-8 bytes
     /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>). <see langword="null"/>, the default, is 1 MiB.
     /// </summary>
