@@ -1,6 +1,8 @@
 <script lang="ts" generics="R extends PageReference">
   import type { Component, Snippet } from "svelte";
   import type { PageReference } from "@runic-artifex/views";
+  import { missingViewMessage, reportMissingView } from "@runic-artifex/views/bindings";
+  import { isDevelopment } from "./development.js";
   import type { ViewRegistry } from "./view-registry.js";
 
   let { content, registry, fallback, missing }: {
@@ -9,20 +11,25 @@
     /** Rendered while there is no content. */
     fallback?: Snippet;
     /**
-     * Renders a reference whose kind has no registered component, for example localized text.
-     * Defaults to an English `<p role="alert">`.
+     * Renders a reference whose kind has no registered component, for example localized text. Without it, a
+     * development build renders an English `<p role="alert">`, and a production build renders nothing and reports
+     * the kind through the page's error reporting.
      */
     missing?: Snippet<[R]>;
   } = $props();
   let Resolved = $derived(content ? registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined : undefined);
+  const development = isDevelopment();
+  $effect.pre(() => {
+    if (content && !Resolved && !missing && !development) reportMissingView(content.kind);
+  });
 </script>
 
 {#if content && Resolved}
   {#key content}<Resolved page={content} />{/key}
 {:else if content && missing}
   {@render missing(content)}
-{:else if content}
-  <p role="alert">No web component is registered for {content.kind}.</p>
-{:else}
+{:else if content && development}
+  <p role="alert">{missingViewMessage(content.kind)}</p>
+{:else if !content}
   {@render fallback?.()}
 {/if}

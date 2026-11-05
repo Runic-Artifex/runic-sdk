@@ -375,8 +375,11 @@ it outside its own signal tracking. A component's `page` input receives that
 reference; `injectView(this.page)` owns its connection and cleanup. Declare
 `page` as a required signal input, `input.required<DocumentReference>()`: a
 decorator `@Input() page` or an optional `input<DocumentReference>()` does not
-satisfy `ViewRegistry`. Missing kinds render an English `<p role="alert">`. The
-generated TypeScript client can also be used directly without Angular.
+satisfy `ViewRegistry`. Missing kinds render an English `<p role="alert">` in a
+development build (`isDevMode()`); a production build renders nothing and
+reports the kind once through the page's error reporting
+(`installErrorReporting`, `onBridgeDiagnostic`). The generated TypeScript client
+can also be used directly without Angular.
 
 The `missing` input replaces that alert with a template, for example with
 localized text. Its context (`ViewOutletMissingContext`) passes the reference
@@ -646,7 +649,20 @@ export class AppMenuBar {
 the window's language, and the `runicText` pipe does the same in templates; both
 follow a language switch. Connect the page's Translations runtime once with
 `configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
-`injectWindowLocale()` reads the window's locale. The pipe formats again only
+`injectWindowLocale()` reads the window's locale. `textLocaleSignal()` is the
+locale that text is shown in, as one signal for the page that needs no injection
+context; when the locale resolver reads it, templates that call `m.*()`, also
+`OnPush` ones, render again on a language switch:
+
+```ts
+// main.ts
+const textLocale = textLocaleSignal();
+configureLocaleResolver(() => textLocale() ?? locale.getLocale());
+configureTranslatedText({ ...locale, resolve, direction: localeDirection });
+syncDocumentLocale();   // <html lang dir>
+```
+
+The pipe formats again only
 when its value, fallback or the language changed. Under server rendering, call
 `configureTranslatedText` behind `isPlatformBrowser`, or render on the server
 with `resolveTextReference` and the request's locale.

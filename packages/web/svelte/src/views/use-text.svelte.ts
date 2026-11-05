@@ -1,8 +1,14 @@
-import { onWindowLocale, resolveText, subscribeText, windowLocale, type TextReference } from "@runic-artifex/views";
+import { createSubscriber } from "svelte/reactivity";
+import { onWindowLocale, resolveText, subscribeText, textLocale, windowLocale, type TextReference } from "@runic-artifex/views";
 
 export interface TextHandle {
   /** The text in the window's language. A reactive property. */
   readonly current: string;
+}
+
+export interface TextLocaleHandle {
+  /** The locale that text is shown in, or `undefined` before there is one. A reactive property. */
+  readonly current: string | undefined;
 }
 
 export interface WindowLocaleHandle {
@@ -37,4 +43,28 @@ export function useWindowLocale(): WindowLocaleHandle {
   let current = $state<string | null>(windowLocale());
   $effect.pre(() => onWindowLocale(next => { current = next; }));
   return { get current() { return current; } };
+}
+
+const subscribeTextLocale = createSubscriber(update => subscribeText(update));
+const textLocaleHandle: TextLocaleHandle = {
+  get current() {
+    subscribeTextLocale();
+    return textLocale();
+  },
+};
+
+/**
+ * Follows the locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's
+ * locale). Reading `current` in a template, `$derived` or `$effect` runs it again when the locale changes. It is one
+ * handle for the page and needs no component, so the page's locale resolver can read it: a template that calls
+ * `m.*()` then renders again on a language switch. `undefined` while the page has no Translations runtime and the
+ * application sets no window locale.
+ *
+ * ```ts
+ * const textLocale = useTextLocale();
+ * configureLocaleResolver(() => textLocale.current ?? locale.getLocale());
+ * ```
+ */
+export function useTextLocale(): TextLocaleHandle {
+  return textLocaleHandle;
 }

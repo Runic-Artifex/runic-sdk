@@ -20,9 +20,12 @@ export {
   onWindowLocale,
   resolveText,
   subscribeText,
+  syncDocumentLocale,
+  textDirection,
   textLocale,
   textVersion,
   windowLocale,
+  type DocumentLocaleOptions,
   type TextReference,
   type TextTranslations,
 } from "./translated-text.js";

@@ -313,8 +313,11 @@ const { state } = useSuspenseView(page, { releaseTimeout: 30_000 });
 component registered for `reference.kind` with the reference as its `page`
 prop. Declare the registry with `satisfies ViewRegistry<State["main"]>` so each
 kind has a component whose `page` prop matches. A different reference
-remounts the component; a kind without a component renders an English
-`<p role="alert">`, and `fallback` renders while `content` is empty.
+remounts the component, and `fallback` renders while `content` is empty. A kind
+without a component renders an English `<p role="alert">` in a development build
+(`process.env.NODE_ENV` is not `production`); a production build renders nothing
+and reports the kind once through the page's error reporting
+(`installErrorReporting`, `onBridgeDiagnostic`).
 
 `missing` replaces that alert, for example with localized text. It receives the
 reference whose kind has no component, and its markup (including any `role`) is yours:
@@ -589,6 +592,19 @@ language changes. A string shows as it is; `null` and `undefined` show
 `fallback`. Connect the page's Translations runtime once with
 `configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
 `useWindowLocale()` reads the window's locale.
+
+`useTextLocale()` renders the locale that text is shown in, and renders again
+when it changes. Call it in a component that renders the page's own messages,
+so `m.*()` runs again after a language switch; the component's children render
+with it, except memoized ones. `syncDocumentLocale()`, once in `main.tsx`, keeps
+`<html lang dir>` on that locale.
+
+```tsx
+function Toolbar() {
+  useTextLocale();
+  return <button>{m.save()}</button>;
+}
+```
 
 ```tsx
 const status = useText(view.state?.status);
