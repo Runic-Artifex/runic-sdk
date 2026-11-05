@@ -62,23 +62,42 @@ internal sealed partial class UnownedDialogTests
     }
 
     // Two presentations' unowned dialogs at once, as two CS-WebUI windows ask for them: each runs on a thread of its own,
-    // so the first closes while the second is still shown, and neither waits for the other.
+    // so the first closes while the second is still shown, and neither waits for the other. Each picker is the one
+    // CreateUnownedFileDialogs makes, traced: a failure reports each dialog's close attempts.
     [Test, Explicit, Category("NativeMessageBoxes")]
     public async Task UnownedFileDialogsDoNotNestAsync()
     {
-        var dialogs = WindowsPlatformProvider.CreateUnownedFileDialogs();
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var trace = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        WindowsFilePicker Picker(string name) => new(WindowsApplicationThread.Shared, unowned: true)
+        {
+            Trace = line => trace.Enqueue($"{started.ElapsedMilliseconds} ms {name}: {line}"),
+        };
+        INativeDirectoryPicker firstPicker = Picker("first"), secondPicker = Picker("second");
         using var first = new CancellationTokenSource();
         using var second = new CancellationTokenSource();
-        var one = dialogs.OpenDirectoryAsync(new OpenDirectoryOptions(OwnerPolicy.PreferOwner) { Title = "Runic first unowned dialog" }, first.Token).AsTask();
-        var two = dialogs.OpenDirectoryAsync(new OpenDirectoryOptions(OwnerPolicy.PreferOwner) { Title = "Runic second unowned dialog" }, second.Token).AsTask();
+        var one = firstPicker.SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Runic first unowned dialog" }, first.Token).AsTask();
+        var two = secondPicker.SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Runic second unowned dialog" }, second.Token).AsTask();
         nint firstWindow = await FindAsync("Runic first unowned dialog"), secondWindow = await FindAsync("Runic second unowned dialog");
-        Check(firstWindow != 0 && secondWindow != 0, "both dialogs are shown");
-        Check(GetWindowThreadProcessId(firstWindow, 0) != GetWindowThreadProcessId(secondWindow, 0), "each dialog runs on a thread of its own");
-        first.Cancel();
-        Check(await Record(() => one.WaitScaledAsync(Wait)) is OperationCanceledException, "the first dialog closes while the second is shown");
-        Check(!two.IsCompleted && IsWindow(secondWindow) && !IsWindow(firstWindow), "closing the first dialog leaves the second shown");
-        second.Cancel();
-        Check(await Record(() => two.WaitScaledAsync(Wait)) is OperationCanceledException && !IsWindow(secondWindow), "the second dialog closes");
+        trace.Enqueue($"{started.ElapsedMilliseconds} ms: both dialogs found");
+        string Trace() => string.Join(Environment.NewLine + "  ", trace);
+        try
+        {
+            Check(firstWindow != 0 && secondWindow != 0, "both dialogs are shown");
+            Check(GetWindowThreadProcessId(firstWindow, 0) != GetWindowThreadProcessId(secondWindow, 0), "each dialog runs on a thread of its own");
+            first.Cancel();
+            var ended = await Record(() => one.WaitScaledAsync(Wait));
+            Check(ended is OperationCanceledException or null, $"the first dialog closes while the second is shown ({ended?.GetType().Name})");
+            Check(!two.IsCompleted && IsWindow(secondWindow) && !IsWindow(firstWindow), "closing the first dialog leaves the second shown");
+            second.Cancel();
+            ended = await Record(() => two.WaitScaledAsync(Wait));
+            Check(ended is OperationCanceledException or null && !IsWindow(secondWindow), $"the second dialog closes ({ended?.GetType().Name})");
+        }
+        catch (InvalidOperationException error)
+        {
+            throw new InvalidOperationException($"{error.Message}{Environment.NewLine}  {Trace()}", error);
+        }
+        Console.WriteLine($"Two unowned file dialogs:{Environment.NewLine}  {Trace()}");
         Console.WriteLine("PASS two unowned file dialogs at once close independently");
     }
 

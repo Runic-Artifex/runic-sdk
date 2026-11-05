@@ -30,6 +30,22 @@ internal static partial class MacDesktopNative
     internal static nint Array(nint value) => Arg(Class("NSArray"), Sel("arrayWithObject:"), value);
     internal static nint Url(string path) => Arg(Class("NSURL"), Sel("fileURLWithPath:"), String(path));
     internal static void Release(nint value) { if (value != 0) Send(value, Sel("release")); }
+    // Main thread. A modal loop (runModal) notices cancel:, stopModal and abortModal only once it handles its next event,
+    // and without a user or an AppKit event loop none may come: post an application-defined event, which the loop takes
+    // and discards, so it ends at once.
+    internal static void WakeModalLoop()
+    {
+        using var pool = new Pool();
+        nint wake = OtherEvent(Class("NSEvent"), Sel("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:"),
+            EventTypeApplicationDefined, default, 0, 0, 0, 0, 0, 0, 0);
+        if (wake != 0) PostEvent(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("postEvent:atStart:"), wake, 1);
+    }
+    private const ulong EventTypeApplicationDefined = 15;
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct Point(double X, double Y);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void PostEvent(nint target, nint selector, nint appEvent, byte atStart);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
+    private static partial nint OtherEvent(nint target, nint selector, ulong type, Point location, ulong modifierFlags, double timestamp,
+        nint windowNumber, nint context, short subtype, nint data1, nint data2);
     internal readonly struct Pool : IDisposable
     {
         private readonly nint _pool;

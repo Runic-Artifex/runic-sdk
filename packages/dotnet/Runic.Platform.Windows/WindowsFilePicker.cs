@@ -67,29 +67,37 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         Task cancellation = Task.CompletedTask;
         var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => cancellation = CloseAsync());
-        // A dialog that is still initializing, whose shell pumps messages before the modal loop starts, ignores Close: ask
-        // again until Show returns, for at most five seconds.
+        // A dialog that is still initializing, whose shell pumps messages before the modal loop starts, ignores Close, and
+        // two dialogs shown at once can take many seconds to get there: ask again until Show returns, every 100 ms for
+        // the first five seconds and every second after that. A cancelled dialog must not stay open.
         async Task CloseAsync()
         {
-            for (int attempt = 0; attempt < 50 && !shown.Task.IsCompleted; attempt++)
+            for (int attempt = 0; !shown.Task.IsCompleted; attempt++)
             {
-                Trace?.Invoke($"close {attempt}");
+                // The trace keeps the first attempts and every tenth after them.
+                Action<string>? trace = attempt < 50 || attempt % 10 == 0 ? Trace : null;
+                trace?.Invoke($"close {attempt}");
                 try
                 {
                     await thread.InvokeAsync(_ =>
                     {
-                        Trace?.Invoke($"close {attempt} runs, dialog {(dialog != 0 ? "open" : "gone")}");
+                        trace?.Invoke($"close {attempt} runs, dialog {(dialog != 0 ? "open" : "gone")}");
                         if (dialog == 0) return;
                         Close(dialog);
                         // Close can succeed without ending Show, as an unowned dialog in a NativeAOT process did: from the
                         // second attempt on, also close the dialog's window, as its close button does.
-                        if (attempt > 0) Trace?.Invoke($"close {attempt} posts WM_CLOSE: {PostClose(dialog)}");
+                        if (attempt > 0)
+                        {
+                            bool posted = PostClose(dialog);
+                            trace?.Invoke($"close {attempt} posts WM_CLOSE: {posted}");
+                        }
                     }, CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (OwnerClosedException) { return; }
                 catch (ObjectDisposedException) { return; }
-                catch (Exception error) { Trace?.Invoke($"close {attempt} failed: {error.GetType().Name} 0x{error.HResult:X8}"); }
-                await Task.WhenAny(shown.Task, Task.Delay(100, CancellationToken.None)).ConfigureAwait(false);
+                catch (NativeBackendUnavailableException) { return; }
+                catch (Exception error) { trace?.Invoke($"close {attempt} failed: {error.GetType().Name} 0x{error.HResult:X8}"); }
+                await Task.WhenAny(shown.Task, Task.Delay(attempt < 50 ? 100 : 1000, CancellationToken.None)).ConfigureAwait(false);
             }
         }
         try

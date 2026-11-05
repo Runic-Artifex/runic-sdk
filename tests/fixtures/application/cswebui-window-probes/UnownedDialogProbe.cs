@@ -15,6 +15,7 @@ namespace CsWebUiWindowProbes;
 internal static class UnownedDialogProbe
 {
     private static readonly TimeSpan Shown = TimeSpan.FromSeconds(2), Closed = TimeSpan.FromSeconds(30);
+    private static readonly System.Diagnostics.Stopwatch Started = System.Diagnostics.Stopwatch.StartNew();
 
     internal static int Run()
     {
@@ -49,10 +50,12 @@ internal static class UnownedDialogProbe
                 var two = Open(dialogs, "second", second.Token);
                 await Task.Delay(Shown);
                 Require(!one.IsCompleted && !two.IsCompleted, $"A dialog ended before it was cancelled: {Describe(one)}, {Describe(two)}.");
+                Step("cancelling the first dialog");
                 first.Cancel();
                 await EndedAsync(one, "the first dialog, while the second was shown");
                 Require(!two.IsCompleted, $"Closing the first dialog ended the second: {Describe(two)}.");
                 await Task.Delay(Shown);
+                Step("cancelling the second dialog");
                 second.Cancel();
                 await EndedAsync(two, "the second dialog");
             }
@@ -64,9 +67,11 @@ internal static class UnownedDialogProbe
                 await Task.Delay(Shown);
                 var two = Open(dialogs, "fourth", second.Token);
                 await Task.Delay(TimeSpan.FromSeconds(1));
+                Step("cancelling the fourth dialog");
                 second.Cancel();
                 await EndedAsync(two, "a dialog requested while another was shown");
                 Require(!one.IsCompleted, $"Cancelling the later dialog ended the earlier one: {Describe(one)}.");
+                Step("cancelling the third dialog");
                 first.Cancel();
                 await EndedAsync(one, "the earlier dialog");
             }
@@ -77,8 +82,14 @@ internal static class UnownedDialogProbe
         return 0;
     }
 
-    private static Task<PickerResult<IDirectoryLease>> Open(IPickerBackend dialogs, string name, CancellationToken cancellationToken) =>
-        dialogs.OpenDirectoryAsync(new OpenDirectoryOptions(OwnerPolicy.PreferOwner) { Title = $"Runic CS-WebUI probe: {name} dialog" }, cancellationToken).AsTask();
+    // Progress on standard error, so that a probe the watchdog ends shows where it stopped.
+    private static void Step(string step) => Console.Error.WriteLine($"{Started.ElapsedMilliseconds} ms: {step}");
+
+    private static Task<PickerResult<IDirectoryLease>> Open(IPickerBackend dialogs, string name, CancellationToken cancellationToken)
+    {
+        Step($"opening the {name} dialog");
+        return dialogs.OpenDirectoryAsync(new OpenDirectoryOptions(OwnerPolicy.PreferOwner) { Title = $"Runic CS-WebUI probe: {name} dialog" }, cancellationToken).AsTask();
+    }
 
     // A cancelled dialog throws OperationCanceledException; one closed otherwise reports Dismissed.
     private static async Task EndedAsync(Task<PickerResult<IDirectoryLease>> pick, string name)
@@ -86,10 +97,17 @@ internal static class UnownedDialogProbe
         try
         {
             var result = await pick.WaitAsync(Closed);
+            Step($"{name} ended: {result}");
             Require(result is PickerResult<IDirectoryLease>.Dismissed, $"Cancelling {name} reported {result}.");
         }
-        catch (OperationCanceledException) { }
-        catch (TimeoutException) { throw new InvalidOperationException($"Cancelling {name} did not close it within {Closed.TotalSeconds} s."); }
+        catch (OperationCanceledException) { Step($"{name} ended: cancelled"); }
+        catch (TimeoutException)
+        {
+            // Reported here too: a panel that did not close keeps the main thread in its modal loop, so Run cannot return.
+            var message = $"Cancelling {name} did not close it within {Closed.TotalSeconds} s.";
+            Step(message);
+            throw new InvalidOperationException(message);
+        }
     }
 
     private static string Describe(Task task) => task.Status.ToString();

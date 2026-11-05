@@ -110,7 +110,9 @@ internal sealed class MacMessageBoxes(INativeWindowOwner owner, bool unowned = f
         Task aborting = Task.CompletedTask;
         using var registration = cancellationToken.Register(() => aborting = MacOsMainQueue.PerformAsync(() =>
         {
-            if (running && !answered) Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("abortModal"));
+            if (!running || answered) return;
+            Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("abortModal"));
+            WakeModalLoop();
         }).AsTask());
         try
         {

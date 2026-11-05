@@ -228,7 +228,10 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     await MacOsMainQueue.PerformAsync(() =>
                     {
                         using var pool = new AutoreleasePool();
-                        if (!result.Task.IsCompleted && panel != 0) SendArg(panel, Sel("cancel:"), 0);
+                        if (result.Task.IsCompleted || panel == 0) return;
+                        SendArg(panel, Sel("cancel:"), 0);
+                        // A modal panel's loop ends only once it handles another event (MacDesktopNative.WakeModalLoop).
+                        MacDesktopNative.WakeModalLoop();
                     }).ConfigureAwait(false);
                 }
                 catch (Exception error) { result.TrySetException(error); }
