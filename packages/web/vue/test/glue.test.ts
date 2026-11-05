@@ -643,12 +643,12 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureTranslatedText",
-      "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath",
-      "openNavigationPath", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection",
-      "upload", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
-      "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText", "useTextField", "useTextLocale",
-      "useView", "useWindowLocale", "windowLocale",
+      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureFieldErrorText",
+      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "regionEntries", "resolveText", "selectedRegion",
+      "syncDocumentLocale", "textDirection", "upload", "useBridgeConnection", "useCollectionViewport", "useCommand",
+      "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection",
+      "useSuspenseView", "useText", "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);
     // The region helpers a tab bar uses are re-exported (0.16).
     expect(root.regionEntries).toBe(viewsRegionEntries);

@@ -183,7 +183,9 @@ handle also has `value` and `text`, which `bind:value={title.value}` reads and s
 or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `conflict`, `committed-with-error` or
 `invalid-text`). `FieldError`, `FieldOptions`, `FieldState` and `BridgeField` are exported from this package. See the
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
-and text forms.
+and text forms. An `invalid-text` error has a `reason` and `arguments`: render `useText(() => name.error).current` after
+`configureFieldErrorText` to show your own text for it in the window's language
+([Translating field errors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#translating-field-errors)).
 
 #### Row cells and nested members
 

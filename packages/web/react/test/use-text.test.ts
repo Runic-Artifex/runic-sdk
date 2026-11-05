@@ -6,7 +6,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { connectView } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
-import { configureTranslatedText, useText, useTextLocale, useWindowLocale, ViewOutlet, type TextReference } from "../dist/index.js";
+import {
+  configureFieldErrorText, configureTranslatedText, FieldError, useText, useTextLocale, useWindowLocale, ViewOutlet,
+  type TextReference,
+} from "../dist/index.js";
 // The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
 import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
 import { configureLocaleResolver, createLocaleSource, localeDirection } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";
@@ -46,7 +49,7 @@ async function mount(element: ReactNode): Promise<HTMLElement> {
   return container;
 }
 
-function Status({ value, fallback }: { readonly value: TextReference | string | null | undefined; readonly fallback?: string }) {
+function Status({ value, fallback }: { readonly value: TextReference | FieldError | string | null | undefined; readonly fallback?: string }) {
   const text = useText(value, fallback);
   const locale = useWindowLocale();
   return createElement("p", { lang: locale ?? undefined }, text);
@@ -69,6 +72,22 @@ describe("useText", () => {
     expect(container.textContent).toBe("plainInvalid value.");
     expect(container.querySelector("p")!.getAttribute("lang")).toBeNull();
     void saved;
+  });
+
+  test("renders a field error with the application's text, in the text locale", async () => {
+    const error = new FieldError("invalid-text", "1e is not a number.", undefined,
+      { reason: "not-a-number", arguments: { text: "1e" } });
+    const container = await mount(createElement(Status, { value: error }));
+    expect(container.textContent).toBe("1e is not a number.");
+    const runtime = fakeTranslations();
+    await act(async () => {
+      cleanup.push(configureTranslatedText(runtime));
+      cleanup.push(configureFieldErrorText((shown, locale) => shown.reason === "not-a-number" && locale === "de"
+        ? `${shown.arguments.text} ist keine Zahl.` : undefined));
+    });
+    expect(container.textContent).toBe("1e is not a number.");
+    await act(async () => { runtime.setLocale("de"); });
+    expect(container.textContent).toBe("1e ist keine Zahl.");
   });
 });
 

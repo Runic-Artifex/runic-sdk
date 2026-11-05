@@ -1,8 +1,6 @@
 import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind } from "./errors.js";
-
-// The brand of `FieldError` (field-controller.ts), read here so that describing an error does not bundle the field
-// controller.
-const fieldErrorBrand = Symbol.for("runic.views.FieldError");
+import { isFieldError } from "./field-error.js";
+import { fieldErrorText } from "./translated-text.js";
 
 /**
  * True when `error` is a {@link BridgeError}, of `kind` or one of the kinds when given. Narrows `error.kind`, so
@@ -36,7 +34,8 @@ function message(error: Error): string | undefined {
  *
  * - a {@link BridgeError}: by kind and reason. A `rejected` or `failed` error shows the producer's message, such as
  *   a setter's validation text, when it has one; the others name the condition (`disconnected`, `released`, …).
- * - a `FieldError` (a checked write's receipt, or text that does not parse): its message.
+ * - a `FieldError` (a checked write's receipt, or text that does not parse): the application's text for it
+ *   (`configureFieldErrorText`), or its message.
  * - a `BridgeOperationUncertainError`: that the operation's outcome is unknown.
  * - another `Error`: its message; anything else: its text. `undefined` and `null` give `""`.
  *
@@ -54,8 +53,10 @@ export function describeBridgeError(error: unknown): string {
     if (error.kind === "rejected" || error.kind === "failed") return message(error) ?? kindText[error.kind];
     return kindText[error.kind] ?? message(error) ?? "The request failed.";
   }
-  if (typeof error === "object" && (error as Record<symbol, unknown>)[fieldErrorBrand] === true)
-    return message(error as Error) ?? "The value was not saved.";
+  if (isFieldError(error)) {
+    const text = fieldErrorText(error).trim();
+    return text.length === 0 ? "The value was not saved." : text;
+  }
   if (error instanceof Error) return message(error) ?? error.name;
   return String(error);
 }
