@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
@@ -127,6 +127,61 @@ test("dotnet run starts the application from an ad-hoc signed development bundle
   runCommand(app, ["RunicMacBundleIdentifier=org.example.NotesApp"]);
   assert.ok(readFileSync(join(app.bundle, "Contents", "Info.plist"), "utf8").includes("<string>org.example.NotesApp</string>"));
   assert.equal(signatures(app).length, 5);
+});
+
+test("the development bundle declares RunicApplicationLocales with CFBundleLocalizations and an lproj per locale", { skip: windows && "symbolic links need privileges on Windows" }, () => {
+  const app = fixture("locales", `
+    <RunicApplicationLocales>en;de</RunicApplicationLocales>
+  </PropertyGroup>
+  <ItemGroup>
+    <RunicApplicationLocale Include="pt-BR" Name="Notas" />
+    <RunicApplicationLocale Include="de" Name="Notizen" />
+  </ItemGroup>
+  <PropertyGroup>`);
+  runCommand(app);
+  const info = readFileSync(join(app.bundle, "Contents", "Info.plist"), "utf8");
+  assert.ok(info.includes("<key>CFBundleDevelopmentRegion</key><string>en</string>"), info);
+  assert.ok(info.includes("<key>CFBundleLocalizations</key><array><string>en</string><string>de</string><string>pt-BR</string></array>"), info);
+  for (const locale of ["en", "de", "pt-BR"])
+    assert.ok(lstatSync(join(app.bundle, "Contents", "Resources", `${locale}.lproj`)).isDirectory(), locale);
+  assert.equal(signatures(app).length, 1);
+  // An unchanged build is not signed again.
+  runCommand(app);
+  assert.equal(signatures(app).length, 1);
+  // Without the property and items, the bundle declares no localizations.
+  const plain = fixture("no-locales");
+  runCommand(plain);
+  assert.ok(!readFileSync(join(plain.bundle, "Contents", "Info.plist"), "utf8").includes("CFBundleLocalizations"));
+});
+
+test("the development bundle canonicalizes the locales and removes the lproj of a locale no longer listed", { skip: windows && "symbolic links need privileges on Windows" }, () => {
+  const app = fixture("locale-removal", `
+    <RunicApplicationLocales>en;de;pt_br;ZH-hant</RunicApplicationLocales>`);
+  const resources = join(app.bundle, "Contents", "Resources");
+  const folders = () => readdirSync(resources).sort().join(",");
+  const info = () => readFileSync(join(app.bundle, "Contents", "Info.plist"), "utf8");
+  runCommand(app);
+  // The same tags as dotnet runic package writes: pt_br is pt-BR, ZH-hant is zh-Hant.
+  assert.equal(folders(), "de.lproj,en.lproj,pt-BR.lproj,zh-Hant.lproj");
+  assert.ok(info().includes("<array><string>en</string><string>de</string><string>pt-BR</string><string>zh-Hant</string></array>"), info());
+  assert.equal(signatures(app).length, 1);
+  // A language removed from the list loses its folder, and the bundle is signed again.
+  runCommand(app, ["RunicApplicationLocales=en"]);
+  assert.equal(folders(), "en.lproj");
+  assert.equal(signatures(app).length, 2);
+  // A folder of another spelling of a listed tag is replaced by the canonical one (also on a case-insensitive volume).
+  rmSync(join(resources, "en.lproj"), { recursive: true });
+  mkdirSync(join(resources, "EN.lproj"));
+  runCommand(app, ["RunicApplicationLocales=en"]);
+  assert.equal(folders(), "en.lproj");
+  assert.equal(signatures(app).length, 3);
+  // Without any locale, no folder and no CFBundleLocalizations remain.
+  runCommand(app, ["RunicApplicationLocales="]);
+  assert.equal(folders(), "");
+  assert.ok(!info().includes("CFBundleLocalizations"), info());
+  assert.equal(signatures(app).length, 4);
+  runCommand(app, ["RunicApplicationLocales="]);
+  assert.equal(signatures(app).length, 4);
 });
 
 test("dotnet run starts the build output without the development bundle when it does not apply", { skip: windows && "symbolic links need privileges on Windows" }, () => {

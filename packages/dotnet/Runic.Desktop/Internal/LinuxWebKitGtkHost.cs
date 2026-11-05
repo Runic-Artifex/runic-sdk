@@ -52,6 +52,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (Api.CanReportState ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity : DesktopWindowCapabilities.None) |
         DesktopWindowCapabilities.ColorScheme |
+        (Api.CanSetDirection ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |
         (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None) |
         (Api.CanUseFullScreen ? DesktopWindowCapabilities.FullScreen : DesktopWindowCapabilities.None) |
         (Api.CanPlaceOnMonitor && !Api.IsWaylandDisplay() ? DesktopWindowCapabilities.MonitorPlacement : DesktopWindowCapabilities.None);
@@ -115,6 +116,21 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             // Native callbacks cannot unwind through GTK.
         }
     }
+
+    // DesktopWindow.SetLayoutDirectionAsync: the window, the view and Runic's widgets, as the window's creation sets them
+    // (GTK widgets do not take their parent's direction); the bar is built again in the new direction.
+    public ValueTask SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default)
+        => InvokeWindowAsync(() =>
+        {
+            if (_window == 0) return;
+            if (_options is { } options) _options = options with { LayoutDirection = layoutDirection };
+            // GTK_TEXT_DIR_NONE returns a widget to the default direction.
+            var direction = LayoutDirection;
+            Api.GtkWidgetSetDirection(_window, direction);
+            if (_menuBox != 0) Api.GtkWidgetSetDirection(_menuBox, direction);
+            Api.GtkWidgetSetDirection(_webView, direction);
+            if (_appliedMenuBar is { } menus) ApplyMenuBar(menus);
+        }, cancellationToken);
 
     // GTK's application-wide prefer-dark setting (GtkColorScheme): every window of the process follows it.
     public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
@@ -1377,6 +1393,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal bool IsAvailable { get; }
 
         // GTK 3.22 and later, which WebKitGTK 4.1 requires, export every function the window state needs.
+        internal bool CanSetDirection => IsAvailable && GtkWidgetSetDirectionPointer != 0;
         internal bool CanReportState => IsAvailable && GtkWindowGetPositionPointer != 0 && GtkWindowGetSizePointer != 0 &&
             GtkWidgetGetWindowPointer != 0 && GdkWindowGetStatePointer != 0 && GdkDisplayGetNMonitorsPointer != 0 &&
             GdkDisplayGetMonitorPointer != 0 && GdkMonitorGetWorkareaPointer != 0;

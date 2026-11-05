@@ -419,7 +419,7 @@ internal static class Gtk4Runtime
 
 [SupportedOSPlatform("linux")]
 internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost,
-    IDesktopPlacementWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost
+    IDesktopPlacementWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
@@ -427,7 +427,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
-        DesktopWindowCapabilities.Ownership;
+        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.LayoutDirection;
     private DesktopWindowState? _state;
     private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
@@ -486,6 +486,25 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             GetWindow();
             Runic.Desktop.Internal.GtkColorScheme.Apply(GtkSettingsGetDefault(), colorScheme, GtkSettingsResetProperty.Value);
+        }, cancellationToken));
+
+    // DesktopWindow.SetLayoutDirectionAsync: the window, its content and the view, as the window's creation sets them
+    // (GTK takes a widget's direction from the default, not from its parent); the bar is built again in the new direction.
+    public ValueTask SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default) =>
+        new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
+        {
+            var window = GetWindow();
+            if (_options is { } options) _options = options with { LayoutDirection = layoutDirection };
+            var direction = layoutDirection switch
+            {
+                Runic.Platform.DesktopLayoutDirection.RightToLeft => Gtk.TextDirection.Rtl,
+                Runic.Platform.DesktopLayoutDirection.LeftToRight => Gtk.TextDirection.Ltr,
+                _ => Gtk.TextDirection.None,
+            };
+            window.SetDirection(direction);
+            _menuBox?.SetDirection(direction);
+            _webView?.SetDirection(direction);
+            if (_appliedMenuBar is { } menus) ApplyMenuBar(menus);
         }, cancellationToken));
 
     // GTK thread only: after the window gained or lost the focus (notify::is-active), was shown or hidden

@@ -431,6 +431,9 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     internal async ValueTask<bool> AskCanCloseAsync(CancellationToken cancellationToken)
     {
         var content = Volatile.Read(ref _content);
+        // FlowCultureFromLocale: the guard runs in the culture of the window's locale, as it does when a page's navigation
+        // asks it, so its interaction's text formats the same way however the user leaves.
+        using var culture = content?.Dispatcher.EnterCulture() ?? default;
         // The window starts this departure: a guard's interaction may ask the page's mounted web View handler.
         using var scope = content is null ? null : RunicInteractionInvocation.EnterWindowClose(content, cancellationToken);
         try
@@ -442,8 +445,11 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             if (content is not null) await content.FlushFieldsAsync(cancellationToken).ConfigureAwait(false);
             if (content?.ModelContext is { IsExecuting: false } context)
             {
-                var decision = await context.InvokeAsync(() => CanCloseAsync(cancellationToken).AsTask(), cancellationToken)
-                    .ConfigureAwait(false);
+                var decision = await context.InvokeAsync(() =>
+                {
+                    // Also for a model context that does not flow the caller's execution context into its turns.
+                    using (content.Dispatcher.EnterCulture()) return CanCloseAsync(cancellationToken).AsTask();
+                }, cancellationToken).ConfigureAwait(false);
                 return await decision.ConfigureAwait(false);
             }
             return await CanCloseAsync(cancellationToken).ConfigureAwait(false);

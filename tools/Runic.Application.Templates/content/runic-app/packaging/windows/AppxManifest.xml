@@ -17,8 +17,8 @@
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
-  <Resources>
-    <Resource Language="en-us" />
+  <!-- The languages of RunicApplicationLocales, the first being the default; en-us without it. -->
+  <Resources>{{Resources}}
   </Resources>
   <Applications>
     <Application Id="App" Executable="{{Executable}}.exe" EntryPoint="Windows.FullTrustApplication">

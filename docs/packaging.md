@@ -86,6 +86,67 @@ Before you publish a Linux package, edit `linux/app.metainfo.xml`: set the
 project's license, a longer description and screenshots. Software centers and
 Flathub show them.
 
+`{{ApplicationName}}` and `{{Description}}` are escaped for the manifest they
+are in: as XML in the XML manifests (`Notes &amp; Co`), and as desktop entry
+strings in `linux/app.desktop` (`Notes & Co`). Before 0.17 the desktop entry got
+the XML-escaped text too.
+
+### Languages
+
+Without more, the packages declare English only, so macOS shows its own text in
+the application (the About panel, the open and save panels, the menu items it
+adds) in English on a German Mac. List the languages the application is
+translated into, the first being its development language:
+
+```xml
+<PropertyGroup>
+  <RunicApplicationLocales>en;de;pt-BR</RunicApplicationLocales>
+</PropertyGroup>
+<ItemGroup>
+  <!-- Optional: the application's name and description in a language. -->
+  <RunicApplicationLocale Include="de" Name="Notizen" Description="Notizen für alle" />
+</ItemGroup>
+```
+
+A tag is a BCP 47 language with an optional script, region and variants
+(`de`, `pt-BR`, `zh-Hant`, `es-419`, `ca-ES-valencia`); `_` works as `-`, and
+the case is made canonical (`pt_br` → `pt-BR`). An item may add a language the
+property lacks. The packages then declare them:
+
+| Package | What the languages add | Manifest field |
+| --- | --- | --- |
+| macOS | `CFBundleDevelopmentRegion` (the first language) and `CFBundleLocalizations`, and `Contents/Resources/<tag>.lproj` per language, with an `InfoPlist.strings` that names the application when the item has a `Name`. The development bundle of `dotnet run` has `CFBundleLocalizations` and the folders too. | `{{Localizations}}` in `macos/Info.plist` |
+| MSIX | a `<Resource Language="…" />` row per language, the first being the default; `en-us` alone without the property. A translated display name needs a resource index (PRI), which the command does not make. | `{{Resources}}` in `windows/AppxManifest.xml`, inside `<Resources>` |
+| Linux | `Name[xx]=` and `Comment[xx]=` in the desktop entry, `<name xml:lang>` and `<summary xml:lang>` in the metainfo, from the items' `Name` and `Description`, with the locale as `lang_COUNTRY@modifier` (see below). | `{{LocalizedEntries}}` in `linux/app.desktop`; `{{LocalizedNames}}` and `{{LocalizedSummaries}}` in `linux/app.metainfo.xml` |
+
+macOS and MSIX use the tag itself. If any item has a `Name`, the bundle also
+sets `LSHasLocalizedDisplayName`, so Finder and the Dock show the translated
+name. Desktop entries and AppStream use glibc's locale names, so the Linux
+packages map the tag:
+
+| Tag | Linux locale | Rule |
+| --- | --- | --- |
+| `de`, `pt-BR` | `de`, `pt_BR` | A letter region is the country. |
+| `es-419` | `es` | A numeric region is left out; glibc has no locale for it. |
+| `sr-Latn`, `sr-Latn-RS`, `uz-Cyrl`, `ks-Deva` | `sr@latin`, `sr_RS@latin`, `uz@cyrillic`, `ks@devanagari` | Latn, Cyrl and Deva are the modifiers `@latin`, `@cyrillic` and `@devanagari`. |
+| `zh-Hans`, `zh-Hant`, `zh-Hant-HK` | `zh_CN`, `zh_TW`, `zh_HK` | Chinese scripts name a region; a given region wins. |
+| `pa-Arab` | `pa` | Another script is left out. |
+| `ca-valencia`, `ca-ES-valencia` | `ca@valencia` | Without a script modifier, the first variant is the modifier of the language, as in gettext (`ca@valencia`). |
+
+When two tags have the same Linux locale, the desktop entry and the metainfo
+still name it once. Its name is the `Name` of the first of those tags that has
+one, where the tags whose mapping keeps the whole tag (`zh-TW`, `es`) come
+before the others (`zh-Hant`, `es-419`), each in the order of
+`RunicApplicationLocales` and then the items. The description is chosen the same
+way. So `zh-TW` wins over `zh-Hant` and `es` over `es-419`, and `zh-Hant` still
+names `zh_TW` when `zh-TW` has no name.
+
+A project created before 0.17 has manifests in `packaging/` without these
+fields. Once it sets the languages, the command fails with `RAPPPKG1006`,
+names the override file and the field, and says where to add it, rather than shipping a package that declares English
+only. Runic Translations will fill `RunicApplicationLocales` from `runic.json`;
+until then, set it by hand to the catalog's locales.
+
 ## Windows
 
 Install the Windows SDK, which provides `makeappx` and `signtool`. The command

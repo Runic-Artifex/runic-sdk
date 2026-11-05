@@ -208,6 +208,7 @@ public sealed class DesktopSurface : IAsyncDisposable
             if (actualBrowser == BrowserKind.Embedded && _engine.HasCloseConfirmation) window.OwnConfirmation = configured.ConfirmCloseAsync;
             window.InitializeColorScheme(configured.ColorScheme,
                 fromApplication: configured.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
+            window.InitializeLayoutDirection(configured.LayoutDirection);
             _window = window;
             // Once published, so the window reports itself open. An embedded window that received its owner: it closes, hides and shows with a DesktopWindow owner.
             if (actualBrowser == BrowserKind.Embedded && configured.Owner is { } owner && _engine.OpenedOwnerHandle != 0 &&
@@ -1185,6 +1186,54 @@ public sealed class DesktopWindow : IAsyncDisposable
         if (!shared) ShowsColorScheme(effective);
         return _colorSchemeScope;
     }
+
+    private DesktopLayoutDirection _layoutDirection;
+
+    /// <summary>
+    /// Gets the direction of the window's native parts: <see cref="DesktopWindowOptions.LayoutDirection"/>, or the one of
+    /// its last <see cref="SetLayoutDirectionAsync"/>. <see cref="DesktopLayoutDirection.Default"/> keeps the platform's.
+    /// </summary>
+    public DesktopLayoutDirection LayoutDirection => _layoutDirection;
+
+    /// <summary>
+    /// Changes the direction of the window's native parts while it is open, for example after a switch to or from a
+    /// right-to-left language.
+    /// </summary>
+    /// <param name="layoutDirection">
+    /// <see cref="DesktopLayoutDirection.RightToLeft"/> or <see cref="DesktopLayoutDirection.LeftToRight"/>, or
+    /// <see cref="DesktopLayoutDirection.Default"/> to return to the platform's.
+    /// </param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window shows the direction.</returns>
+    /// <remarks>
+    /// <para>
+    /// Requires <see cref="DesktopWindowCapabilities.LayoutDirection"/>. It applies what
+    /// <see cref="DesktopWindowOptions.LayoutDirection"/> applies when the window opens: on Windows the frame, caption
+    /// buttons, system menu and native menu bar are mirrored; on Linux the GTK window and Runic's widgets in it, such as
+    /// the menu bar, change direction. The page keeps its own layout, which it sets with <c>&lt;html dir&gt;</c>
+    /// (<c>syncDocumentLocale</c> in <c>@runic-artifex/views</c>). macOS reports no capability: AppKit lays windows out
+    /// for the application bundle's localization.
+    /// </para>
+    /// <para><see cref="LayoutDirection"/> changes only once the window applied the direction.</para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="layoutDirection"/> is not a defined value.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(layoutDirection)) throw new ArgumentOutOfRangeException(nameof(layoutDirection));
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.LayoutDirection, async () =>
+        {
+            if (_layoutDirection == layoutDirection) return;
+            await _engine.SetEmbeddedLayoutDirectionAsync(layoutDirection, cancellationToken).ConfigureAwait(false);
+            _layoutDirection = layoutDirection;
+        }, cancellationToken);
+    }
+
+    // DesktopWindowOptions.LayoutDirection of the window, when it opened.
+    internal void InitializeLayoutDirection(DesktopLayoutDirection layoutDirection) =>
+        _layoutDirection = Browser == BrowserKind.Embedded ? layoutDirection : DesktopLayoutDirection.Default;
 
     private IDesktopMenuCommandTarget? _menuCommands;
 

@@ -2,7 +2,7 @@
 Type=Application
 Name={{ApplicationName}}
 Comment={{Description}}
-Exec={{Executable}} %U
+{{LocalizedEntries}}Exec={{Executable}} %U
 Icon={{ApplicationId}}
 Terminal=false
 Categories=Utility;

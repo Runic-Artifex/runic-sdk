@@ -173,6 +173,14 @@ public sealed record RunicWindowOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// Whether the window's bridged invocations, such as its commands, setters and validation, run with
+    /// <c>CultureInfo.CurrentCulture</c> and <c>CurrentUICulture</c> of the window's locale
+    /// (<see cref="WindowContentSessionOptions.FlowCultureFromLocale"/>). <see langword="null"/>, the default, takes the
+    /// host's option, which keeps the process's cultures unless set. Hosts read it when the window opens.
+    /// </summary>
+    public bool? FlowCultureFromLocale { get; init; }
+
+    /// <summary>
     /// The largest Bridge input of the window, in UTF-8 bytes
     /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>), between 1 KiB and 64 MiB.
     /// <see langword="null"/>, the default, uses the host's default, or else 1 MiB. Hosts read it when the window opens.

@@ -373,6 +373,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             TimeProvider = options?.TimeProvider ?? new FakeTimeProvider(),
             CreateId = options?.CreateId ?? (() => Interlocked.Increment(ref next).ToString(CultureInfo.InvariantCulture)),
             IncludeFailureDetail = options?.IncludeFailureDetail,
+            FlowCultureFromLocale = options?.FlowCultureFromLocale ?? false,
             MaximumInputBytes = options?.MaximumInputBytes,
             MaximumUploadBytes = options?.MaximumUploadBytes,
         };

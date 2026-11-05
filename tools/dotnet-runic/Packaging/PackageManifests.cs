@@ -52,8 +52,66 @@ internal static partial class PackageManifests
                 $"The manifest {name} uses {{{{{match.Groups[1].Value}}}}}, which dotnet runic package does not fill for this target."));
 
     /// <summary>Reads and fills a manifest.</summary>
-    internal static string Render(PackageIdentity identity, string name, IReadOnlyDictionary<string, string> fields) =>
-        Fill(Read(identity, name), fields, name);
+    internal static string Render(PackageIdentity identity, string name, IReadOnlyDictionary<string, string> fields)
+    {
+        string template = Read(identity, name);
+        CheckLocaleFields(identity, name, template);
+        if (name == "linux/app.desktop")
+        {
+            // A desktop entry is not XML: its name and comment are escaped as desktop entry strings (Notes & Co, not
+            // Notes &amp; Co), in an override copied from an earlier template too.
+            fields = new Dictionary<string, string>(fields, StringComparer.Ordinal)
+            {
+                ["ApplicationName"] = DesktopValue(identity.Name),
+                ["Description"] = DesktopValue(identity.Description),
+            };
+        }
+        return Fill(template, fields, name);
+    }
+
+    // RunicApplicationLocales: the fields that carry the locales. A manifest of an earlier template that lacks one fails
+    // instead of shipping a package that silently declares English only or drops the translated names.
+    private static void CheckLocaleFields(PackageIdentity identity, string name, string template)
+    {
+        string file = FindOverride(identity, name) ?? name;
+        // {{Resources}} writes every Resource row, so a row the override keeps beside it declares a language twice.
+        if (name == "windows/AppxManifest.xml" && template.Contains("{{Resources}}", StringComparison.Ordinal)
+            && template.Contains("<Resource ", StringComparison.Ordinal))
+        {
+            throw new DevDevelopmentException(PackageCodes.ValidationFailed,
+                $"The manifest {file} has a <Resource> row beside {{{{Resources}}}}, which writes every row. "
+                + "Remove the row, e.g. <Resource Language=\"en-us\" />.");
+        }
+        if (identity.Locales.Count == 0) return;
+        bool named = identity.Locales.Any(locale => locale.Name is not null);
+        bool described = identity.Locales.Any(locale => locale.Description is not null);
+        (string Field, bool Needed, string Where)[] required = name switch
+        {
+            "macos/Info.plist" => [("Localizations", true, "inside the top-level <dict>, e.g. right after {{UsageDescriptions}}")],
+            "windows/AppxManifest.xml" => [("Resources", true,
+                "inside <Resources> (<Resources>{{Resources}}</Resources>) and remove the old <Resource Language=\"en-us\" /> row, "
+                + "which {{Resources}} replaces")],
+            "linux/app.desktop" => [("LocalizedEntries", named || described,
+                "at the start of a line in the [Desktop Entry] group, e.g. right before Exec= ({{LocalizedEntries}}Exec=...)")],
+            "linux/app.metainfo.xml" => [("LocalizedNames", named, "inside <component>, right after its </name>"),
+                ("LocalizedSummaries", described, "inside <component>, right after its </summary>")],
+            _ => [],
+        };
+        foreach ((string field, bool needed, string where) in required)
+        {
+            if (needed && !template.Contains("{{" + field + "}}", StringComparison.Ordinal))
+            {
+                throw new DevDevelopmentException(PackageCodes.ValidationFailed,
+                    $"The manifest {file} has no {{{{{field}}}}}, which RunicApplicationLocales fills. Add {{{{{field}}}}} {where}.");
+            }
+        }
+    }
+
+    // A desktop entry's string value: one line, with backslash, newline, tab and carriage return escaped (Desktop Entry
+    // Specification, "Possible value types").
+    private static string DesktopValue(string text) => text
+        .Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal)
+        .Replace("\t", "\\t", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal);
 
     internal static string EscapeXml(string text) => text
         .Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal)
@@ -78,6 +136,9 @@ internal static partial class PackageManifests
                 fields["Architecture"] = runtime.EndsWith("arm64", StringComparison.Ordinal) ? "arm64" : "x64";
                 fields["PackageVersion"] = PackageIdentity.NumericVersion(identity.Version, 4);
                 fields["Extensions"] = WindowsExtensions(identity, name);
+                // The languages the package declares; English alone without RunicApplicationLocales, as before.
+                fields["Resources"] = identity.Locales.Count == 0 ? "\n    <Resource Language=\"en-us\" />"
+                    : string.Concat(identity.Locales.Select(locale => $"\n    <Resource Language=\"{locale.Tag}\" />"));
                 break;
             case PackageTarget.MacOS:
                 fields["BundleVersion"] = PackageIdentity.NumericVersion(identity.Version, 3);
@@ -88,6 +149,7 @@ internal static partial class PackageManifests
                     ? $"\n  <key>LSApplicationCategoryType</key><string>{category}</string>" : "";
                 // The sandbox and provisioning profile entitlements; MacOSPackager fills them for its options.
                 fields["Entitlements"] = "";
+                fields["Localizations"] = MacOSLocalizations(identity);
                 break;
             default:
                 AddLinuxFields(fields, identity, target, name, now ?? ReleaseTime());
@@ -149,6 +211,28 @@ internal static partial class PackageManifests
       </Extensions>
 """);
         return text.ToString();
+    }
+
+    // CFBundleLocalizations lists the languages AppKit may show its own text in (the About panel, open and save panels,
+    // the menu items macOS adds); the first is the development region. MacOSPackager adds a <tag>.lproj per locale.
+    // LSHasLocalizedDisplayName tells Finder and the Dock to read the name from the InfoPlist.strings of a locale that
+    // has a Name.
+    private static string MacOSLocalizations(PackageIdentity identity) => identity.Locales.Count == 0 ? "" : $"""
+
+  <key>CFBundleDevelopmentRegion</key><string>{identity.Locales[0].Tag}</string>
+  <key>CFBundleLocalizations</key><array>{string.Concat(identity.Locales.Select(locale => $"<string>{locale.Tag}</string>"))}</array>
+""" + (identity.Locales.Any(locale => locale.Name is not null) ? "\n  <key>LSHasLocalizedDisplayName</key><true/>" : "");
+
+    /// <summary>
+    /// A locale's <c>InfoPlist.strings</c>, which gives the bundle its name in that language, or null without a name.
+    /// </summary>
+    internal static string? MacOSInfoStrings(PackageLocale locale)
+    {
+        if (locale.Name is null) return null;
+        string name = locale.Name.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal);
+        return $"\"CFBundleName\" = \"{name}\";\n\"CFBundleDisplayName\" = \"{name}\";\n";
     }
 
     private static string MacOSUrlSchemes(PackageIdentity identity) => identity.UrlSchemes.Count == 0 ? "" : $"""
@@ -233,6 +317,28 @@ internal static partial class PackageManifests
         fields["MimeTypes"] = mimeTypes.Length == 0 ? "" : $"MimeType={string.Concat(mimeTypes.Select(type => type + ";"))}\n";
         fields["DBusActivatable"] = identity.DBusActivatable && target != PackageTarget.AppImage ? "DBusActivatable=true\n" : "";
         fields["MimeInfo"] = MimeInfo(identity, name);
+        // The name and description in each locale that has them: Name[xx]= and Comment[xx]= in the desktop entry,
+        // <name xml:lang> and <summary xml:lang> in the metainfo, one per Linux locale (PackageIdentity.LinuxLocales).
+        var entries = new StringBuilder();
+        var names = new StringBuilder();
+        var summaries = new StringBuilder();
+        foreach (PackageLocale locale in PackageIdentity.LinuxLocales(identity.Locales))
+        {
+            string tag = locale.Tag;
+            if (locale.Name is { } localName)
+            {
+                entries.Append(CultureInfo.InvariantCulture, $"Name[{tag}]={DesktopValue(localName)}\n");
+                names.Append(CultureInfo.InvariantCulture, $"\n  <name xml:lang=\"{tag}\">{EscapeXml(localName)}</name>");
+            }
+            if (locale.Description is { } description)
+            {
+                entries.Append(CultureInfo.InvariantCulture, $"Comment[{tag}]={DesktopValue(description)}\n");
+                summaries.Append(CultureInfo.InvariantCulture, $"\n  <summary xml:lang=\"{tag}\">{EscapeXml(description)}</summary>");
+            }
+        }
+        fields["LocalizedEntries"] = entries.ToString();
+        fields["LocalizedNames"] = names.ToString();
+        fields["LocalizedSummaries"] = summaries.ToString();
         // The Flatpak installs that only some applications need: the file types' MIME definitions, the D-Bus service file
         // and the scalable icon.
         var extra = new StringBuilder();

@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.get -> bool?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.init -> void
