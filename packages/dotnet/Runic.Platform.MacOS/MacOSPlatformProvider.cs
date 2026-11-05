@@ -205,9 +205,9 @@ public static class MacOSPlatformProvider
     /// AppKit panels run on the main thread; call from any thread. Runic queues each panel to the main dispatch queue,
     /// so the main thread must serve it: Runic Desktop's event loop does, and so does <c>RunicCsWebUiHost.Run</c>. While
     /// AppKit's event loop runs (<c>[NSApp run]</c>, such as under Runic Desktop or a CS-WebUI WKWebView window) the
-    /// panel is shown without blocking it (<c>beginWithCompletionHandler:</c>); otherwise, such as in a CS-WebUI process
-    /// whose windows are browser windows, the panel runs its own modal loop (<c>runModal</c>) until it closes, and a panel
-    /// requested meanwhile waits for it. A process whose activation policy allows no UI, such as one outside an
+    /// panel is shown without blocking it (<c>beginWithCompletionHandler:</c>), and two panels may be shown at once;
+    /// otherwise, such as in a CS-WebUI process whose windows are browser windows, the panel runs its own modal loop
+    /// (<c>runModal</c>) until it closes, and a panel or unowned alert requested meanwhile waits until it has closed. A process whose activation policy allows no UI, such as one outside an
     /// application bundle, becomes an accessory application (no Dock icon) for the panel. The application activates for
     /// the panel, which on macOS 14 and later succeeds when the active application yields; the panel is ordered in front
     /// of other applications' windows either way.

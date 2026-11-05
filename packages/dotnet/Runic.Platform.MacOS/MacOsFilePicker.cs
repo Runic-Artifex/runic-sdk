@@ -89,6 +89,34 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
 
     private async ValueTask<IReadOnlyList<NativeFileSelection>?> SelectCoreAsync(NativeFileDialogRequest request, bool directory, CancellationToken cancellationToken)
     {
+        // A panel without a window (MacApplicationOwner) is a panel of its own while an AppKit event loop runs, so two of
+        // them may be shown at once and each closes on its own. Without one it runs modally, one at a time (MacModalGate):
+        // a later request waits until the earlier one has completed, and gives up at once when cancelled meanwhile.
+        bool modal = owner is MacApplicationOwner && (ForceModal || !HasEventLoop());
+        while (true)
+        {
+            if (modal)
+            {
+                try { await MacModalGate.EnterAsync(cancellationToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return null; }
+            }
+            try
+            {
+                var selections = await ShowAsync(request, directory, modal, cancellationToken).ConfigureAwait(false);
+                if (!ReferenceEquals(selections, RunModally)) return selections;
+            }
+            finally { if (modal) MacModalGate.Exit(); }
+            // The event loop that the request saw had ended by the time the panel was due.
+            modal = true;
+        }
+    }
+
+    // ShowAsync's answer for a panel that must run modally after all: it was not created, and the request enters the gate.
+    private static readonly IReadOnlyList<NativeFileSelection> RunModally = new List<NativeFileSelection>();
+
+    private async ValueTask<IReadOnlyList<NativeFileSelection>?> ShowAsync(NativeFileDialogRequest request, bool directory, bool modal,
+        CancellationToken cancellationToken)
+    {
         bool save = request.Save, multiple = request.AllowMultiple && !save;
         bool showsChoice = request.ShowFilterChoice && !directory && !request.Filters.IsDefaultOrEmpty;
         FilterChoice? choice = null;
@@ -99,11 +127,13 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
         Task cancellation = Task.CompletedTask;
         // Queued, Started on the main thread, or Abandoned by a cancellation that came first.
         int state = Queued;
+        // Set on the main thread before a modal panel's loop starts.
+        bool runningModal = false;
         try
         {
             // Registered before the panel is queued: a modal panel (runModal) returns from OnOwnerAsync only when it closes.
-            // A request still queued, such as behind another panel's modal loop, gives up at once; one that started
-            // closes its panel (CancelAsync).
+            // A request still queued on the main queue, such as behind an alert's modal loop, gives up at once; one that
+            // started closes its panel (CancelAsync).
             registration = cancellationToken.Register(() =>
             {
                 if (Interlocked.CompareExchange(ref state, Abandoned, Queued) == Queued) result.TrySetResult(null);
@@ -113,6 +143,12 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
             {
                 if (Interlocked.CompareExchange(ref state, Started, Queued) != Queued) return;
                 cancellationToken.ThrowIfCancellationRequested();
+                // Without a window and without the gate, a panel needs an AppKit event loop to deliver its events.
+                if (window == 0 && !modal && !HasEventLoop())
+                {
+                    result.TrySetResult(RunModally);
+                    return;
+                }
                 panel = Send(GetClass(save ? "NSSavePanel" : "NSOpenPanel"), Sel(save ? "savePanel" : "openPanel"));
                 if (panel == 0) throw new IOException("AppKit could not create a file panel.");
                 Send(panel, Sel("retain"));
@@ -190,12 +226,13 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     // Without a window (MacApplicationOwner): a panel of its own, in front of the application's windows.
                     nint application = Send(GetClass("NSApplication"), Sel("sharedApplication"));
                     Activate(application);
-                    if (ForceModal || !HasEventLoop(application))
+                    if (modal)
                     {
                         // No AppKit event loop delivers the panel's events, as in a CS-WebUI process with browser windows
-                        // whose host only serves the main run loop: the panel runs its own modal loop. That loop runs no
-                        // main-queue block while it lasts, so its work, ordering it in front and cancellation, comes from
-                        // the main run loop (MacOsMainQueue.PerformAsync).
+                        // whose host only serves the main run loop: the panel runs its own modal loop, holding MacModalGate.
+                        // That loop runs no main-queue block while it lasts, so its work, ordering it in front and
+                        // cancellation, comes from the main run loop (MacOsMainQueue.PerformAsync).
+                        runningModal = true;
                         Shown.TrySetResult();
                         // The block keeps the panel alive, as it may run after the panel closed and was released.
                         nint shownPanel = Send(panel, Sel("retain"));
@@ -229,9 +266,10 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     {
                         using var pool = new AutoreleasePool();
                         if (result.Task.IsCompleted || panel == 0) return;
+                        // A panel of its own, or a sheet, closes and answers on the main queue; a modal panel's loop ends only
+                        // once it handles another event (MacDesktopNative.WakeModalLoop).
                         SendArg(panel, Sel("cancel:"), 0);
-                        // A modal panel's loop ends only once it handles another event (MacDesktopNative.WakeModalLoop).
-                        MacDesktopNative.WakeModalLoop();
+                        if (runningModal) MacDesktopNative.WakeModalLoop();
                     }).ConfigureAwait(false);
                 }
                 catch (Exception error) { result.TrySetException(error); }
@@ -277,9 +315,15 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
     }
 
     // Whether an AppKit event loop delivers a panel's events: Runic Desktop's, whose delegate is NSApp's, or [NSApp run],
-    // such as WebUI's for its WKWebView windows.
-    private static bool HasEventLoop(nint application) =>
-        MacOpenEvents.LifecycleOwner() != 0 || SendBool(application, Sel("isRunning")) != 0;
+    // such as WebUI's for its WKWebView windows. Reads NSApp without creating it, so any thread may ask.
+    private static unsafe bool HasEventLoop()
+    {
+        if (MacOpenEvents.LifecycleOwner() != 0) return true;
+        if (!NativeLibrary.TryLoad("/System/Library/Frameworks/AppKit.framework/AppKit", out nint appKit)
+            || !NativeLibrary.TryGetExport(appKit, "NSApp", out nint variable)) return false;
+        nint application = *(nint*)variable;
+        return application != 0 && SendBool(application, Sel("isRunning")) != 0;
+    }
 
     private static string ReadExactPath(nint bytes)
     {

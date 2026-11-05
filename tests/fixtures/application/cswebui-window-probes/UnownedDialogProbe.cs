@@ -9,12 +9,15 @@ using Runic.Platform.Windows;
 namespace CsWebUiWindowProbes;
 
 // The platforms' unowned file dialogs inside RunicCsWebUiHost.Run, on Windows and macOS (--probe-unowned-dialogs): two
-// windows' dialogs shown at once each close on their own, whichever closes first. On macOS no AppKit event loop runs, so
-// each panel runs modally (runModal) on the main thread the host serves, and a second request waits for the first.
-// Cancellation closes them; nobody answers a dialog. Not part of the package smoke, which builds Program.cs alone.
+// windows' dialogs each close on their own, and closing the first leaves the second. Windows shows both at once, each on
+// an STA thread of its own. On macOS no AppKit event loop runs with browser windows, so each panel runs modally (runModal)
+// on the main thread the host serves, one at a time: the second request waits until the first panel has closed, cleanup
+// included, and then shows; a waiting request gives up at once when cancelled. Under an AppKit event loop macOS shows
+// both at once, which the native AppKit tests check. Cancellation closes them; nobody answers a dialog. Not part of the
+// package smoke, which builds Program.cs alone.
 internal static class UnownedDialogProbe
 {
-    private static readonly TimeSpan Shown = TimeSpan.FromSeconds(2), Closed = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan Shown = TimeSpan.FromSeconds(2), Closed = TimeSpan.FromSeconds(30), Waiting = TimeSpan.FromSeconds(5);
     private static readonly System.Diagnostics.Stopwatch Started = System.Diagnostics.Stopwatch.StartNew();
 
     internal static int Run()
@@ -41,7 +44,8 @@ internal static class UnownedDialogProbe
         using var provider = services.BuildServiceProvider();
         var result = RunicCsWebUiHost.Run(provider, async _ =>
         {
-            // The first dialog closes while the second is still shown: they do not nest.
+            // The first dialog closes while the second is shown, or on macOS waits for it: they do not nest, and the first
+            // completes without waiting for the second.
             using (var first = new CancellationTokenSource())
             using (var second = new CancellationTokenSource())
             {
@@ -52,9 +56,11 @@ internal static class UnownedDialogProbe
                 Require(!one.IsCompleted && !two.IsCompleted, $"A dialog ended before it was cancelled: {Describe(one)}, {Describe(two)}.");
                 Step("cancelling the first dialog");
                 first.Cancel();
-                await EndedAsync(one, "the first dialog, while the second was shown");
+                await EndedAsync(one, "the first dialog, while the second was requested");
                 Require(!two.IsCompleted, $"Closing the first dialog ended the second: {Describe(two)}.");
+                // On macOS the second panel shows now, and its modal loop runs until it is cancelled.
                 await Task.Delay(Shown);
+                Require(!two.IsCompleted, $"The second dialog ended before it was cancelled: {Describe(two)}.");
                 Step("cancelling the second dialog");
                 second.Cancel();
                 await EndedAsync(two, "the second dialog");
@@ -69,7 +75,8 @@ internal static class UnownedDialogProbe
                 await Task.Delay(TimeSpan.FromSeconds(1));
                 Step("cancelling the fourth dialog");
                 second.Cancel();
-                await EndedAsync(two, "a dialog requested while another was shown");
+                // On macOS it waits for the third panel and gives up at once; on Windows it is shown and closes.
+                await EndedAsync(two, "a dialog requested while another was shown", OperatingSystem.IsMacOS() ? Waiting : Closed);
                 Require(!one.IsCompleted, $"Cancelling the later dialog ended the earlier one: {Describe(one)}.");
                 Step("cancelling the third dialog");
                 first.Cancel();
@@ -92,11 +99,12 @@ internal static class UnownedDialogProbe
     }
 
     // A cancelled dialog throws OperationCanceledException; one closed otherwise reports Dismissed.
-    private static async Task EndedAsync(Task<PickerResult<IDirectoryLease>> pick, string name)
+    private static async Task EndedAsync(Task<PickerResult<IDirectoryLease>> pick, string name, TimeSpan? within = null)
     {
+        var limit = within ?? Closed;
         try
         {
-            var result = await pick.WaitAsync(Closed);
+            var result = await pick.WaitAsync(limit);
             Step($"{name} ended: {result}");
             Require(result is PickerResult<IDirectoryLease>.Dismissed, $"Cancelling {name} reported {result}.");
         }
@@ -104,7 +112,7 @@ internal static class UnownedDialogProbe
         catch (TimeoutException)
         {
             // Reported here too: a panel that did not close keeps the main thread in its modal loop, so Run cannot return.
-            var message = $"Cancelling {name} did not close it within {Closed.TotalSeconds} s.";
+            var message = $"Cancelling {name} did not close it within {limit.TotalSeconds} s.";
             Step(message);
             throw new InvalidOperationException(message);
         }
