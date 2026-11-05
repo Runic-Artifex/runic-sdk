@@ -155,7 +155,8 @@ public sealed class TranslatedTextTests
             Require(first.RootElement.GetProperty("locale").GetString() == "de", $"The hello was not followed by the locale: {first.RootElement}");
 
         var changes = new List<string?>();
-        locale.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+        // OwnLocale (since 0.17) changes alongside; this test counts the Window's locale.
+        locale.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(IRunicWindowLocale.Locale)) changes.Add(args.PropertyName); };
         host.ViewModel.SwitchLanguage("en");
         using (var second = await host.Transport.TakePushAsync("new", "locale", TimeSpan.FromSeconds(5)))
             Require(second.RootElement.GetRawText() == """{"kind":"locale","locale":"en"}""", $"The change was not pushed: {second.RootElement}");

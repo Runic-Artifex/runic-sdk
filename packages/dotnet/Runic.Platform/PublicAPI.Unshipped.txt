@@ -1,4 +1,6 @@
 #nullable enable
+Runic.Platform.DesktopLanguages
+static Runic.Platform.DesktopLanguages.Preferred.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Runic.Platform.DesktopPlatformTexts
 Runic.Platform.DesktopPlatformTexts.AccessDeniedTitle.get -> string!
 Runic.Platform.DesktopPlatformTexts.AccessDeniedTitle.init -> void

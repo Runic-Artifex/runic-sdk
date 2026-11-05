@@ -1,4 +1,14 @@
 #nullable enable
+Runic.Application.Views.IRunicApplicationLocale
+Runic.Application.Views.IRunicApplicationLocale.Follow(System.Func<string!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>! follower) -> System.IDisposable!
+Runic.Application.Views.IRunicApplicationLocale.Locale.get -> string?
+Runic.Application.Views.IRunicApplicationLocale.LocaleChanged -> System.EventHandler<Runic.Application.Views.RunicApplicationLocaleChangedEventArgs!>?
+Runic.Application.Views.IRunicApplicationLocale.SetLocaleAsync(string? locale, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.Locale.get -> string?
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.OldLocale.get -> string?
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.RunicApplicationLocaleChangedEventArgs(string? oldLocale, string? locale) -> void
+Runic.Application.Views.IRunicWindowLocale.OwnLocale.get -> string?
 Runic.Application.Views.RunicConnection.Languages.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Runic.Application.Views.RunicConnection.Languages.init -> void
 Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.get -> bool?

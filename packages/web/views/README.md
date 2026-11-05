@@ -1533,7 +1533,8 @@ Text that a ViewModel produces as a Runic Translations text reference, such as a
 status line (a `TextReference` member) or a validation error's `text`, shows in
 the window's language (`translation-text/1`). Connect the page's Translations
 runtime once; the window's locale, which the application sets with
-`IRunicWindowLocale`, is then passed to its `setLocale`:
+`IRunicApplicationLocale` for every window or `IRunicWindowLocale` for one, is
+then passed to its `setLocale`:
 
 ```ts
 import { configureTranslatedText, resolveText, subscribeText, syncDocumentLocale } from "@runic-artifex/views";
@@ -1565,7 +1566,11 @@ text in the window's locale, except while the user edits a draft; the wire value
 stays the invariant or ISO form. Bind such a field to a text input, or give it
 `locale: null` for `<input type="number">` or `type="date"`. A language switch on the
 page calls the application's command; a locale the page sets itself is set back
-by the next `locale` push. Under server rendering, configure the runtime in the
+by the next `locale` push. A window locale the runtime refuses, such as `de-CH`
+for a catalog with only `de` under the `Exact` policy, sets its closest parent
+(`de`) before an error is reported; a parent in another script is skipped, so
+`zh-Hant-TW` never falls back to `zh` (Simplified) nor `sr-Latn` to `sr`
+(Cyrillic). Under server rendering, configure the runtime in the
 browser only, or resolve with the request's locale.
 `windowLocale()` and `onWindowLocale` read the window's locale; `textLocale()`
 is the locale text is shown in, and `textDirection()` its writing direction

@@ -3103,11 +3103,11 @@ command: a page that sets its Translations runtime's locale itself is set back
 to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
 locale of its Translations runtime and formats the references again. The page's
 own `m.*()` messages render again when the locale resolver reads the
-framework's reactive text locale (below). `null`, the default, leaves each page in its own
-language. A Window that the application creates itself sets
-`WindowContentSession.Locale`. The service raises `PropertyChanged`, so C# text,
-such as a tray menu, can follow with the generated C# catalog's
-`ITranslationManager`.
+framework's reactive text locale (below). `null`, the default, follows the
+application's language (described below); while that is `null` too, each page
+keeps its own language. A Window that the application creates itself sets
+`WindowContentSession.Locale`. The service raises `PropertyChanged` whenever the
+window's locale changes.
 
 ```csharp
 public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings settings) : ObservableObject
@@ -3122,6 +3122,74 @@ public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings setti
     }
 }
 ```
+
+**The application's language.** Most applications show one language in every
+window. Set it once on `IRunicApplicationLocale`, which `AddRunicWindowService()`
+registers: every open Window that sets no locale of its own switches, and every
+Window opened later starts in it. A Window that sets `IRunicWindowLocale.Locale`
+keeps its own until it sets `null` again. A switch first awaits the followers
+registered with `Follow`, such as the C# catalog's Translations context, then
+moves the Windows, then raises `LocaleChanged`, so code that rebuilds the menu
+bar, a status icon or notifications reads text that is already translated. The
+Views packages do not reference Runic Translations: `Follow` takes any
+`(locale, cancellationToken) => ValueTask`, which a `TranslationContext` or an
+`ITranslationManager`'s `SetLocaleAsync` is.
+
+```csharp
+// After the services are built, before the first Window opens. A handler runs on the
+// SynchronizationContext it subscribed on: in WPF's startup, the UI thread. A Runic
+// Desktop body has none, so it runs on the switch's thread; SetMenuBar is thread-safe.
+var locale = services.GetRequiredService<IRunicApplicationLocale>();
+locale.Follow(translations.SetLocaleAsync);        // TranslationContext (0.9) or ITranslationManager
+locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
+// The user's choice, else the best match for the operating system's languages.
+await locale.SetLocaleAsync(settings.Language ?? Negotiate(DesktopLanguages.Preferred, ["en", "de"]));
+
+// A language switch, from any ViewModel or menu command:
+[RelayCommand]
+private async Task SwitchLanguageAsync(string language)
+{
+    await _locale.SetLocaleAsync(language);
+    _settings.Language = language;
+}
+```
+
+Each Window follows in a turn of its model context, as other changes reach its
+ViewModel, so its `IRunicWindowLocale` raises `PropertyChanged` there. Each
+`LocaleChanged` handler runs on the `SynchronizationContext` that was current when
+it subscribed, such as the UI thread or a ViewModel's model context; a handler
+subscribed without one, as in a console start, runs on the thread that completes
+the switch, and marshals UI work itself (`DesktopHost.SetMenuBar` may be called
+from any thread). Overlapping switches raise their events in order, each change
+once: a switch that a later one followed before its event was raised reports
+nothing, and the next event's `OldLocale` is the locale the last event reported.
+A Window whose update fails, for example because a `PropertyChanged` handler
+throws, does not stop the other Windows or the event: `SetLocaleAsync` then
+throws an `AggregateException` with each failure, the locale has changed, and a
+second call with the same locale updates the Windows that failed again. A
+follower, or a Window's `PropertyChanged` handler, must not call `SetLocaleAsync`
+during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
+handler may, and that switch's event follows the current handlers.
+
+`IRunicWindowLocale.Locale` returns the application's locale while the Window
+has none of its own. To save a Window's language and set it back later, save
+`OwnLocale` (since 0.17), which is `null` while the Window follows the
+application, so setting it back does not pin the Window to the language it
+showed. `WindowContentSession.Locale = null` on a Window that
+`OpenWindowAsync` opened follows the application again, as
+`IRunicWindowLocale.Locale = null` does.
+
+`DesktopLanguages.Preferred` (Runic.Platform) lists the user's languages as the
+operating system does, most preferred first: Windows' display languages,
+macOS' preferred languages, and on Linux `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`
+and `LANG` as gettext reads them. Negotiate it against the locales your catalog
+ships, with the generated catalog's `ResolveLocale` from Runic Translations 0.9,
+or by comparing each tag and then its language. `null` calls no follower and
+leaves the pages of following Windows in the language they show.
+
+**One language per window.** A window has one locale, which all of its pages
+show, also when several browsers share a CS-WebUI window. A page cannot choose a
+language of its own, only ask the application, for example with a command.
 
 **C# formatting in the window's culture.** By default a ViewModel formats in
 the process's culture: `ToString("N")`, `string.Format` and DataAnnotations
@@ -3228,14 +3296,24 @@ whose arguments no longer match, or of a later Translations transport version
 than the page's runtime reads, shows its fallback text. Without a configured
 runtime, every reference shows its fallback text. The text is plain: render it
 as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
-`windowLocale()`) reads the window's locale.
+`windowLocale()`) reads the window's locale. A window
+locale that the page's runtime does not have, such as `de-CH` for a catalog with
+`de` under the `Exact` policy, sets the runtime to its closest parent (`de`)
+before the page reports an error. A parent in another script is skipped: the
+page never falls from `zh-Hant-TW` or `zh-TW` (Traditional) to `zh`
+(Simplified), or from `sr-Latn` to `sr` (Cyrillic), and reports the error
+instead. Use `ParentsThenDefault` in applications so every locale resolves, and
+ship a catalog for each script you support.
 
 **Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
 or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `IRunicWindowLocale` of the services' scope to the window, so
-`host.Content.Locale` shows what the ViewModel set. In page tests, the mock
-bridge's `setWindowLocale("de")` pushes a locale as the application does, so a
-test can check that a template's `m.*()` text renders again.
+`host.Content.Locale` shows what the ViewModel set.
+`await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
+locale, the registered one or, for a host built with a constructor, one of the
+host's own, which the window follows. In page tests, the mock bridge's
+`setWindowLocale("de")` pushes a locale as the application does, so a test can
+check that a template's `m.*()` text renders again.
 
 ## Shared DTO exclusions
 
