@@ -24,6 +24,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private const uint WmGetObject = 0x003D;
     private const uint WmSize = 0x0005;
     private const uint WmActivate = 0x0006;
+    private const uint WmInputLanguageChange = 0x0051;
     private const uint WmDpiChanged = 0x02E0;
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcCreate = 0x0081;
@@ -178,7 +179,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             extendedStyle = layoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? extendedStyle | mirrored : extendedStyle & ~mirrored;
             Native.SetWindowLongPtr(_window, GwlExStyle, extendedStyle);
             if (_options is { } options) _options = options with { LayoutDirection = layoutDirection };
-            if (_appliedMenuBar is { } menus) ApplyMenuBar(menus);
+            PlanMenuBarAgain();
             // The frame redraws mirrored only after a frame change; the WebView2 child fills the client area.
             Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
         }, cancellationToken);
@@ -737,6 +738,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             // closed or was hidden.
             _modalOwner = options.OwnerHandle != 0 && options.Modality == DesktopWindowModality.Window ? options.OwnerHandle : 0;
             _provider = WindowsAnnouncementProvider.Create(_window);
+            // The shortcut labels' modifier names, from this thread's keyboard layout, before the first menu bar.
+            ShortcutModifierNames.ReadKeyboardLayout();
+            ShortcutModifierNames.Changed += OnModifierNamesChanged;
             // DesktopWindowOptions.ColorScheme: a dark or light title bar. Without it a Win32 title bar stays light.
             if (WindowsWebView2Host.ImmersiveDarkMode(options.ColorScheme) is { } darkMode)
             {
@@ -900,6 +904,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             return;
         }
         _window = 0;
+        ShortcutModifierNames.Changed -= OnModifierNamesChanged;
         _nativeShutdown.Cancel();
         FailNativeWork();
         // The message loop ends with the window; a pending initialization only settles (SettleInitialization).
@@ -978,7 +983,13 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 {
                     host._activated = (wParam & 0xFFFF) != 0;
                     host.UpdateActivity();
+                    // The thread's keyboard layout may have changed while another application was active.
+                    if (host._activated) ShortcutModifierNames.ReadKeyboardLayout();
                 }
+                return Native.DefWindowProc(window, message, wParam, lParam);
+            case WmInputLanguageChange:
+                // The user switched the keyboard layout (Win+Space): the shortcut labels take its modifier names.
+                if (host is not null) ShortcutModifierNames.ReadKeyboardLayout();
                 return Native.DefWindowProc(window, message, wParam, lParam);
             case WmWindowPosChanged:
                 host?.UpdateState();

@@ -51,6 +51,13 @@ public sealed class WindowContentSessionOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// How this window's Bridges write validation, such as <see cref="RunicValidationOptions.TextFor"/> for the messages
+    /// of validation attributes; <see langword="null"/>, the default, writes the messages as they are. The Desktop,
+    /// WPF, CS-WebUI and test hosts set it to the <see cref="RunicValidationOptions"/> of the window's services.
+    /// </summary>
+    public RunicValidationOptions? Validation { get; init; }
+
+    /// <summary>
     /// Whether the window's bridged invocations run with <see cref="System.Globalization.CultureInfo.CurrentCulture"/>
     /// and <see cref="System.Globalization.CultureInfo.CurrentUICulture"/> of the window's <see cref="WindowContentSession.Locale"/>:
     /// the setters, checked writes, commands, validation and state reads of the page's requests, the navigation they

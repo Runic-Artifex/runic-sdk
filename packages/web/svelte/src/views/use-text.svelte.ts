@@ -1,5 +1,5 @@
 import { createSubscriber } from "svelte/reactivity";
-import { onWindowLocale, resolveText, subscribeText, textLocale, windowLocale, type TextReference } from "@runic-artifex/views";
+import { onWindowLocale, resolveText, subscribeText, textLocale, windowLocale, type FieldError, type TextReference } from "@runic-artifex/views";
 
 export interface TextHandle {
   /** The text in the window's language. A reactive property. */
@@ -21,14 +21,15 @@ export interface WindowLocaleHandle {
  * window's language (`resolveText`), while its owner lives. `source` and `fallback` are read reactively, so pass
  * functions: `useText(() => view.state?.status)`. A string shows as it is; `null` and `undefined` show `fallback`.
  * Configure the page's Translations runtime once with `configureTranslatedText`; without one, a reference shows its
- * fallback text. Call during component initialization (or in `$effect.root`).
+ * fallback text. A field's `FieldError` shows the application's text for it (`configureFieldErrorText`), or its English
+ * message: `useText(() => name.error)`. Call during component initialization (or in `$effect.root`).
  *
  * ```svelte
  * const status = useText(() => view.state?.status);
  * <p>{status.current}</p>
  * ```
  */
-export function useText(source: () => TextReference | string | null | undefined, fallback?: () => string | undefined): TextHandle {
+export function useText(source: () => TextReference | FieldError | string | null | undefined, fallback?: () => string | undefined): TextHandle {
   let version = $state(0);
   $effect.pre(() => subscribeText(() => { version++; }));
   const current = $derived.by(() => {

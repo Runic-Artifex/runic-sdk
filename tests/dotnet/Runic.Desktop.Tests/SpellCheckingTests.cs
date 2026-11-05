@@ -1,4 +1,5 @@
 using Runic.Desktop.Internal;
+using Runic.Platform;
 using TUnit.Core;
 
 namespace Runic.Desktop.Tests;
@@ -40,7 +41,7 @@ public sealed class SpellCheckingTests
         Assert.Equal(["en_GB"], SpellingLanguages.Resolve(["en"], ["en_GB.UTF-8"], Hunspell).Dictionaries);
         Assert.Equal(["en_AU"], SpellingLanguages.Resolve(["en"], ["de_CH.UTF-8", "en-AU"], Hunspell).Dictionaries);
         // LANGUAGE lists several; the first with the language decides.
-        Assert.Equal(["de_CH"], SpellingLanguages.Resolve(["de"], SpellingLanguages.LinuxUserLanguages(Environment(
+        Assert.Equal(["de_CH"], SpellingLanguages.Resolve(["de"], DesktopLanguages.FromEnvironment(Environment(
             ("LANGUAGE", "fr_FR:de_CH:de"), ("LANG", "de_DE.UTF-8"))), Hunspell).Dictionaries);
         // Another language's locale: the language's most common region when the culture data knows it, else any region.
         var english = SpellingLanguages.Resolve(["en"], ["de_CH.UTF-8"], Hunspell).Dictionaries;
@@ -62,12 +63,23 @@ public sealed class SpellCheckingTests
     [Test]
     public void TheUsersLanguagesComeFromTheLocaleVariablesWithoutCOrPosix()
     {
-        var languages = SpellingLanguages.LinuxUserLanguages(Environment(
-            ("LANGUAGE", "de_CH:en"), ("LC_ALL", ""), ("LC_MESSAGES", "C"), ("LANG", "fr_FR.UTF-8@euro")));
-        Assert.Equal(["de_CH", "en", "C", "fr_FR.UTF-8@euro"], languages);
-        Assert.Equal(["de-CH", "en", "fr-FR"], SpellingLanguages.UserTags(languages));
+        // DesktopLanguages.Preferred on Linux: LANGUAGE, then the messages locale, as BCP 47 tags.
+        Assert.Equal(["de-CH", "en", "fr-FR"], DesktopLanguages.FromEnvironment(Environment(
+            ("LANGUAGE", "de_CH:en"), ("LC_ALL", ""), ("LC_MESSAGES", "fr_FR.UTF-8@euro"), ("LANG", "it_IT.UTF-8"))));
+        // gettext ignores LANGUAGE when the messages locale is C.
+        Assert.Empty(DesktopLanguages.FromEnvironment(Environment(("LANGUAGE", "de_CH:en"), ("LC_MESSAGES", "C"), ("LANG", "fr_FR"))));
+        Assert.Equal(["sr-Latn-RS", "de"], DesktopLanguages.FromEnvironment(Environment(("LANGUAGE", "sr_RS@latin:de:sr_RS@latin"), ("LANG", "de.UTF-8"))));
+        Assert.Equal("zh-Hans-CN", DesktopLanguages.FromPosix("zh-Hans-CN"));
+        Assert.Equal("es-419", DesktopLanguages.FromPosix("es-419"));
+        Assert.Equal("en-US", DesktopLanguages.FromPosix("en-US-u-ca-gregorian"));
+        Assert.Null(DesktopLanguages.FromPosix("POSIX"));
+        Assert.Null(DesktopLanguages.FromPosix("C.UTF-8"));
+        Assert.Equal(["de-CH", "en", "fr-FR"], SpellingLanguages.UserTags(["de-CH", "en", "fr-FR"]));
         Assert.Equal(["de_CH", "en_GB"], SpellingLanguages.Resolve(SpellingLanguages.UserTags(["POSIX", "de_CH.UTF-8", "en_GB"]),
             [], Hunspell).Dictionaries);
+        // The process's list: never null, each tag once.
+        var preferred = DesktopLanguages.Preferred;
+        Assert.Equal(preferred.Count, preferred.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
     [Test]

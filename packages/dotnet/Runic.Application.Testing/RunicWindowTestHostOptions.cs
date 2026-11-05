@@ -47,6 +47,13 @@ public sealed class RunicWindowTestHostOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// How the window's Bridges write validation (<see cref="WindowContentSessionOptions.Validation"/>), such as
+    /// <see cref="RunicValidationOptions.TextFor"/>. <c>RunicWindowTestHost.Create(services)</c> takes the services'
+    /// <see cref="RunicValidationOptions"/> when this is <see langword="null"/>.
+    /// </summary>
+    public RunicValidationOptions? Validation { get; init; }
+
+    /// <summary>
     /// Whether the window's requests run in the culture of its locale
     /// (<see cref="WindowContentSessionOptions.FlowCultureFromLocale"/>), for Windows whose
     /// <see cref="RunicWindowOptions.FlowCultureFromLocale"/> is <see langword="null"/>. <see langword="null"/>, the

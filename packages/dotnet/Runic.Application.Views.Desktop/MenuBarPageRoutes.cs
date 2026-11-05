@@ -102,6 +102,8 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
             throw;
         }
         source.MenuBarChanged += OnChanged;
+        // The shortcut labels take the modifier names of a new keyboard layout (ShortcutModifierNames).
+        ShortcutModifierNames.Changed += OnChanged;
         Invalidate();
     }
 
@@ -109,6 +111,12 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
     internal long Revision
     {
         get { lock (_gate) return _snapshot.Revision; }
+    }
+
+    // The current state's menus, for tests.
+    internal string MenusJson
+    {
+        get { lock (_gate) return _snapshot.MenusJson; }
     }
 
     // The window whose commands the page runs, and its root ViewModel's commands, once the presentation opened.
@@ -157,6 +165,7 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
             _suspended = false;
         }
         _source.MenuBarChanged -= OnChanged;
+        ShortcutModifierNames.Changed -= OnChanged;
         if (window is not null) window.PlacementChanged -= OnChanged;
         if (binding is not null) binding.Changed -= OnChanged;
         if (application is not null) application.Changed -= OnChanged;

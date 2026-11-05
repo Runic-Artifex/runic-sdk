@@ -81,7 +81,10 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 context = RefThreadDefaultContext();
-                dialog = New(request.Title ?? (directory ? "Open directory" : save ? "Save file" : "Open file"), parent, directory ? 2 : save ? 1 : 0, save ? "Save" : "Open", "Cancel");
+                // The buttons are GTK's own, translated ones (null labels); the title is the request's or the application's.
+                var texts = DesktopPlatformTexts.Current;
+                dialog = New(request.Title ?? (directory ? multiple ? texts.OpenDirectoriesTitle : texts.OpenDirectoryTitle
+                    : save ? texts.SaveFileTitle : multiple ? texts.OpenFilesTitle : texts.OpenFileTitle), parent, directory ? 2 : save ? 1 : 0, null, null);
                 if (dialog == 0) throw new IOException("GTK could not create a file chooser.");
                 handle = GCHandle.Alloc(state);
                 responseSignal = Connect(dialog, "response", ResponsePointer, GCHandle.ToIntPtr(handle), 0, 0);
@@ -93,7 +96,7 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
                 // A folder that does not exist leaves GTK's own choice; the request is a hint.
                 if (request.InitialDirectory is { } folder) _ = SetCurrentFolder(dialog, folder);
                 if (!directory) state.NativeFilters = AddFilters(dialog, request.Filters);
-                if (save) { SetOverwrite(dialog, 1); SetName(dialog, suggestedName ?? "Untitled"); }
+                if (save) { SetOverwrite(dialog, 1); SetName(dialog, suggestedName ?? texts.UntitledFileName); }
                 Show(dialog);
                 Shown.TrySetResult();
             }, cancellationToken).ConfigureAwait(false);
@@ -335,7 +338,7 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
     private static partial nint Call(nint connection, string bus, string path, string face, string method, nint parameters, nint replyType, int flags, int timeout, nint cancellable, out nint error);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_error_free")] private static partial void FreeError(nint error);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_variant_unref")] private static partial void VariantUnref(nint value);
-    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_native_new", StringMarshalling = StringMarshalling.Utf8)] private static partial nint New(string title, nint parent, int action, string accept, string cancel);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_native_new", StringMarshalling = StringMarshalling.Utf8)] private static partial nint New(string title, nint parent, int action, string? accept, string? cancel);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_native_dialog_set_modal")] private static partial void SetModal(nint dialog, int modal);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_set_local_only")] private static partial void SetLocalOnly(nint dialog, int value);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_file_chooser_set_do_overwrite_confirmation")] private static partial void SetOverwrite(nint dialog, int value);

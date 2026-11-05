@@ -1,7 +1,7 @@
 // Text forms of field values (C1): how a field controller parses what the user typed and formats a value for a text
 // input, by kind and, for numbers, dates and times, by locale.
 import type { BridgeFieldKind } from "./field.js";
-import { FieldError } from "./field-error.js";
+import { invalidText, type FieldErrorExpected } from "./field-error.js";
 
 /** The traits of a field that select its text form. */
 export interface FieldTextTraits<TValue> {
@@ -23,7 +23,6 @@ export interface FieldTextTraits<TValue> {
 /** Parses a text for a field; `previous` is the value the field shows, which a `datetime` keeps the form of. */
 export type FieldTextParser<TValue> = (text: string, previous: TValue) => TValue;
 
-function invalid(message: string): FieldError { return new FieldError("invalid-text", message); }
 
 interface NumberSymbols {
   readonly decimal: string;
@@ -93,10 +92,10 @@ function delocalize(text: string, symbols: NumberSymbols): string {
   if (group.length !== 0 && integer.includes(group)) {
     const sign = integer.startsWith("-") || integer.startsWith("+") ? integer[0]! : "";
     const groups = integer.slice(sign.length).split(group);
-    if (!/^\d{1,3}$/.test(groups[0]!) || groups.slice(1).some(item => !/^\d{3}$/.test(item))) throw invalid(`${text.trim()} is not a number.`);
+    if (!/^\d{1,3}$/.test(groups[0]!) || groups.slice(1).some(item => !/^\d{3}$/.test(item))) throw invalidText("not-a-number", { text: text.trim() });
     integer = sign + groups.join("");
   }
-  if (group.length !== 0 && fraction.slice(1).includes(group)) throw invalid(`${text.trim()} is not a number.`);
+  if (group.length !== 0 && fraction.slice(1).includes(group)) throw invalidText("not-a-number", { text: text.trim() });
   return integer + fraction;
 }
 
@@ -128,12 +127,12 @@ const twoPow96 = 2n ** 96n;
 /** Reads an invariant decimal text into the `decimal` wire form; trailing zeros are kept, as they are on the wire. */
 function decimalOf(text: string, shown: string, scale: number | undefined): string {
   const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(text);
-  if (match === null || (match[2]!.length === 0 && (match[3] ?? "").length === 0)) throw invalid(`${shown} is not a number.`);
+  if (match === null || (match[2]!.length === 0 && (match[3] ?? "").length === 0)) throw invalidText("not-a-number", { text: shown });
   const integer = match[2]!.replace(/^0+(?=\d)/, "") || "0";
   const fraction = match[3] ?? "";
-  if (fraction.length > 28) throw invalid(`${shown} has more than 28 digits after the decimal separator.`);
-  if (scale !== undefined && fraction.length > scale) throw invalid(`${shown} has more than ${scale} digits after the decimal separator.`);
-  if (BigInt(integer + fraction) >= twoPow96) throw invalid(`${shown} is too large.`);
+  if (fraction.length > 28) throw invalidText("too-many-fraction-digits", { text: shown, scale: 28 });
+  if (scale !== undefined && fraction.length > scale) throw invalidText("too-many-fraction-digits", { text: shown, scale });
+  if (BigInt(integer + fraction) >= twoPow96) throw invalidText("out-of-range", { text: shown });
   const negative = match[1] === "-" && /[1-9]/.test(integer + fraction);
   return (negative ? "-" : "") + integer + (match[3] === undefined || fraction.length === 0 ? "" : "." + fraction);
 }
@@ -144,20 +143,20 @@ const dateTimePattern = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d{1,
 
 function checkDate(text: string, shown: string): { year: number; month: number; day: number } {
   const match = datePattern.exec(text);
-  if (match === null) throw invalid(`${shown} is not a date (YYYY-MM-DD).`);
+  if (match === null) throw invalidText("not-a-date", { text: shown, patterns: ["YYYY-MM-DD"] });
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
   const days = new Date(Date.UTC(2000, month, 0)).getUTCDate();
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  if (year < 1 || month < 1 || month > 12 || day < 1 || day > (month === 2 ? (leap ? 29 : 28) : days)) throw invalid(`${shown} is not a date.`);
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > (month === 2 ? (leap ? 29 : 28) : days)) throw invalidText("not-a-date", { text: shown });
   return { year, month, day };
 }
 
 /** The `local-time` normal form of `hh:mm[:ss[.f]]`. */
 function normalTime(text: string, shown: string): { text: string; hours: number; minutes: number; seconds: number; fraction: string } {
   const match = timePattern.exec(text);
-  if (match === null) throw invalid(`${shown} is not a time (hh:mm or hh:mm:ss).`);
+  if (match === null) throw invalidText("not-a-time", { text: shown, patterns: ["hh:mm", "hh:mm:ss"] });
   const [hours, minutes, seconds] = [Number(match[1]), Number(match[2]), Number(match[3] ?? "0")];
-  if (hours > 23 || minutes > 59 || seconds > 59) throw invalid(`${shown} is not a time.`);
+  if (hours > 23 || minutes > 59 || seconds > 59) throw invalidText("not-a-time", { text: shown });
   const fraction = (match[4] ?? "").replace(/0+$/, "");
   return { text: `${match[1]}:${match[2]}:${match[3] ?? "00"}${fraction.length === 0 ? "" : "." + fraction}`, hours, minutes, seconds, fraction };
 }
@@ -456,12 +455,12 @@ function isoText(traits: FieldTextTraits<unknown>, shown: string, kind: "date" |
 }
 
 /** The pattern of a kind's text for messages: the locale's form and the ISO form, or the ISO form alone. */
-function patternHint(traits: FieldTextTraits<unknown>, kind: "date" | "time" | "datetime"): string {
-  const iso = kind === "date" ? "YYYY-MM-DD" : kind === "time" ? "hh:mm or hh:mm:ss" : "YYYY-MM-DDThh:mm";
+function patternHint(traits: FieldTextTraits<unknown>, kind: "date" | "time" | "datetime"): readonly string[] {
+  const iso = kind === "date" ? ["YYYY-MM-DD"] : kind === "time" ? ["hh:mm", "hh:mm:ss"] : ["YYYY-MM-DDThh:mm"];
   const form = dateTextForm(traits.locale);
   if (form === undefined) return iso;
   const pattern = patternOf(form, kind === "date" ? form.date : kind === "time" ? form.time : form.dateTime);
-  return pattern === iso ? iso : `${pattern} or ${iso}`;
+  return pattern === iso[0] && iso.length === 1 ? iso : [pattern, ...iso];
 }
 
 /** Writes an ISO date, time or local date and time in a locale's form, or returns it when it is not one. */
@@ -496,73 +495,77 @@ function hasOffset(value: unknown): value is string {
 export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextParser<TValue> {
   const { kind, nullable, integer, choices, scale } = traits;
   const empty = (text: string) => text.trim().length === 0;
-  const required = (message: string): TValue => { if (nullable) return null as TValue; throw invalid(message); };
+  // An integer `number` field reports `whole-number` but keeps its English "Enter a number.".
+  const required = (expected: FieldErrorExpected, message?: string): TValue => {
+    if (nullable) return null as TValue;
+    throw invalidText("required", { expected }, message);
+  };
   switch (kind) {
     case "number": return text => {
-      if (empty(text)) return required("Enter a number.");
+      if (empty(text)) return integer ? required("whole-number", "Enter a number.") : required("number");
       const shown = text.trim();
       const plain = delocalize(text, numberSymbols(traits.locale));
       // `Number` reads hexadecimal and binary forms and `Infinity`; a field reads decimal numbers only.
-      if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(plain)) throw invalid(`${shown} is not a number.`);
+      if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(plain)) throw invalidText("not-a-number", { text: shown });
       const value = Number(plain);
-      if (!Number.isFinite(value)) throw invalid(`${shown} is not a number.`);
-      if (integer && !Number.isSafeInteger(value)) throw invalid(`${shown} is not a whole number.`);
+      if (!Number.isFinite(value)) throw invalidText("not-a-number", { text: shown });
+      if (integer && !Number.isSafeInteger(value)) throw invalidText("not-a-whole-number", { text: shown });
       if (scale !== undefined && fractionDigits(plain) > scale)
-        throw invalid(`${shown} has more than ${scale} digits after the decimal separator.`);
+        throw invalidText("too-many-fraction-digits", { text: shown, scale });
       return value as TValue;
     };
     case "decimal": return text => {
-      if (empty(text)) return required("Enter a number.");
+      if (empty(text)) return required("number");
       const shown = text.trim();
       return decimalOf(delocalize(text, numberSymbols(traits.locale)), shown, scale) as TValue;
     };
     case "bigint": return text => {
-      if (empty(text)) return required("Enter a whole number.");
+      if (empty(text)) return required("whole-number");
       const shown = text.trim();
       const plain = delocalize(text, numberSymbols(traits.locale));
-      if (!/^[+-]?\d+$/.test(plain)) throw invalid(`${shown} is not a whole number.`);
+      if (!/^[+-]?\d+$/.test(plain)) throw invalidText("not-a-whole-number", { text: shown });
       return BigInt(plain) as TValue;
     };
     case "boolean": return text => {
       if (text === "true" || text === "false") return (text === "true") as TValue;
       if (nullable && empty(text)) return null as TValue;
-      throw invalid(`${text} is not true or false.`);
+      throw invalidText("not-a-boolean", { text });
     };
     case "choice": return text => {
       if (nullable && text.length === 0) return null as TValue;
       if (choices === undefined || choices.includes(text as TValue)) return text as TValue;
-      throw invalid(`${text} is not one of ${choices.join(", ")}.`);
+      throw invalidText("not-a-choice", { text, choices: choices.map(String) });
     };
     case "date": return text => {
-      if (empty(text)) return required("Enter a date.");
+      if (empty(text)) return required("date");
       const shown = text.trim();
       const iso = isoText(traits, shown, "date");
-      if (iso === undefined || !datePattern.test(iso)) throw invalid(`${shown} is not a date (${patternHint(traits, "date")}).`);
+      if (iso === undefined || !datePattern.test(iso)) throw invalidText("not-a-date", { text: shown, patterns: patternHint(traits, "date") });
       checkDate(iso, shown);
       return iso as TValue;
     };
     case "time": return text => {
-      if (empty(text)) return required("Enter a time.");
+      if (empty(text)) return required("time");
       const shown = text.trim();
       const iso = isoText(traits, shown, "time");
-      if (iso === undefined || !timePattern.test(iso)) throw invalid(`${shown} is not a time (${patternHint(traits, "time")}).`);
+      if (iso === undefined || !timePattern.test(iso)) throw invalidText("not-a-time", { text: shown, patterns: patternHint(traits, "time") });
       return normalTime(iso, shown).text as TValue;
     };
     case "datetime": {
       const shownText = kindFormatter(traits);
       return (text, previous) => {
-      if (empty(text)) return required("Enter a date and time.");
+      if (empty(text)) return required("date-time");
       const shown = text.trim();
       // The text the field shows for its value means that value, with its offset and fraction.
       if (typeof previous === "string" && previous.length !== 0 && shownText(previous) === shown) return previous;
       const match = dateTimePattern.exec(isoText(traits, shown, "datetime") ?? "");
-      if (match === null) throw invalid(`${shown} is not a date and time (${patternHint(traits, "datetime")}).`);
+      if (match === null) throw invalidText("not-a-date-time", { text: shown, patterns: patternHint(traits, "datetime") });
       const { year, month, day } = checkDate(match[1]!, shown);
       const time = normalTime(match[2]!, shown);
       let zone = match[3];
       if (zone !== undefined) {
         const minutes = zone === "Z" ? 0 : Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4, 6));
-        if (minutes > 14 * 60 || Number(zone.slice(4, 6) || "0") > 59) throw invalid(`${shown} has an offset beyond ±14:00.`);
+        if (minutes > 14 * 60 || Number(zone.slice(4, 6) || "0") > 59) throw invalidText("offset-out-of-range", { text: shown });
         // `offset-date-time` writes a zero offset as `Z`; `date-time` keeps the offset as read.
         if (traits.offset && minutes === 0) zone = "Z";
       } else if (traits.offset || hasOffset(previous)) {
@@ -592,7 +595,7 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
       return `${match[1]}T${time.text}${zone ?? ""}` as TValue;
       };
     }
-    case "value": return () => { throw invalid("This field has no text form."); };
+    case "value": return () => { throw invalidText("no-text-form"); };
     default: return text => text as TValue;
   }
 }
