@@ -30,6 +30,7 @@ export {
   setQuery,
   states,
   textChanges,
+  textLocales,
   texts,
   upload,
   viewportChanges,

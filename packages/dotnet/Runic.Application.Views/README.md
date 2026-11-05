@@ -3074,11 +3074,13 @@ example from the application's settings, before the window opens, and again
 from a language switch command. A language switch on the page must call that
 command: a page that sets its Translations runtime's locale itself is set back
 to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
-locale of its Translations runtime, so the page's own messages switch too, and
-formats the references again. `null`, the default, follows the application's
-locale (below); while that is `null` too, each page keeps its own language. A
-Window that the application creates itself sets `WindowContentSession.Locale`.
-The service raises `PropertyChanged` whenever the window's locale changes.
+locale of its Translations runtime and formats the references again. The page's
+own `m.*()` messages render again when the locale resolver reads the
+framework's reactive text locale (below). `null`, the default, follows the
+application's language (described below); while that is `null` too, each page
+keeps its own language. A Window that the application creates itself sets
+`WindowContentSession.Locale`. The service raises `PropertyChanged` whenever the
+window's locale changes.
 
 ```csharp
 public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings settings) : ObservableObject
@@ -3167,18 +3169,38 @@ language of its own, only ask the application, for example with a command.
 Runic Translations and its Vite plugin:
 
 ```ts
-import { configureTranslatedText } from "@runic-artifex/views";
+import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
+import { useTextLocale } from "@runic-artifex/svelte";   // or @runic-artifex/vue
 import { m } from "virtual:runic-translations/app/messages";
-import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
 import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 const locale = createLocaleSource({ initialLocale: navigator.language });
-configureLocaleResolver(locale.getLocale);
+const textLocale = useTextLocale();
+configureLocaleResolver(() => textLocale.current ?? locale.getLocale());   // Vue: textLocale.value
 configureTranslatedText({
   ...locale,
   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+  direction: localeDirection,
 });
+syncDocumentLocale();   // <html lang dir> follow the text locale
 ```
+
+The locale source is plain state, so a template that calls `m.*()` renders
+again on a switch only when it reads a reactive text locale:
+
+| Framework | Re-render the page's own messages |
+| --- | --- |
+| Svelte | `configureLocaleResolver(() => useTextLocale().current ?? locale.getLocale())`: one handle for the page, read wherever `m.*()` runs |
+| Vue | `configureLocaleResolver(() => useTextLocale().value ?? locale.getLocale())`: one ref for the page |
+| Angular | `configureLocaleResolver(() => textLocaleSignal()() ?? locale.getLocale())`: one signal for the page, also for `OnPush` templates |
+| React | `configureLocaleResolver(locale.getLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
+| Effect | `textLocales()`, a stream of the locale; render the messages again on each |
+
+`syncDocumentLocale()` sets `lang` and `dir` on `<html>` (direction from the
+runtime's `direction`, such as `localeDirection`, else the locale's script) and
+leaves the document's own `lang` until there is a locale. The starter templates
+call it.
 
 Then show references with the framework's helper. Field errors
 (`useField(...).errors`, `injectField`, `createFieldController`) already show
@@ -3214,7 +3236,7 @@ whose arguments no longer match, or of a later Translations transport version
 than the page's runtime reads, shows its fallback text. Without a configured
 runtime, every reference shows its fallback text. The text is plain: render it
 as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
-`windowLocale()`) reads the window's locale, for example for `lang`. A window
+`windowLocale()`) reads the window's locale. A window
 locale that the page's runtime does not have, such as `de-CH` for a catalog with
 `de` under the `Exact` policy, sets the runtime to its closest parent (`de`)
 before the page reports an error. A parent in another script is skipped: the
@@ -3229,8 +3251,9 @@ or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `host.Content.Locale` shows what the ViewModel set.
 `await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
 locale, the registered one or, for a host built with a constructor, one of the
-host's own, which the window follows. In page tests, the mock
-bridge's `setWindowLocale("de")` pushes a locale as the application does.
+host's own, which the window follows. In page tests, the mock bridge's
+`setWindowLocale("de")` pushes a locale as the application does, so a test can
+check that a template's `m.*()` text renders again.
 
 ## Shared DTO exclusions
 

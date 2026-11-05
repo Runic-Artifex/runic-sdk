@@ -23,9 +23,10 @@ export {
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
 export { injectQueryCollection, type InjectQueryCollectionOptions, type QueryCollectionHandle } from "./inject-query-collection.js";
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
-export { injectText, injectWindowLocale, RunicTextPipe, type InjectTextOptions } from "./inject-text.js";
+export { injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal, type InjectTextOptions } from "./inject-text.js";
 export {
-  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+  configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
+  type TextTranslations,
 } from "@runic-artifex/views";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 // blobs/1: uploads from the page and the blob values of state.

@@ -15,7 +15,7 @@ export type { TextReference } from "./wire.js";
  *
  * ```ts
  * import { m } from "virtual:runic-translations/app/messages";
- * import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+ * import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
  * import { resolveTextReference } from "virtual:runic-translations/app/transport";
  *
  * const locale = createLocaleSource({ initialLocale: navigator.language });
@@ -23,8 +23,12 @@ export type { TextReference } from "./wire.js";
  * configureTranslatedText({
  *   ...locale,
  *   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+ *   direction: localeDirection,
  * });
  * ```
+ *
+ * A template that calls `m.*()` renders again on a language switch when the locale resolver reads the framework's
+ * reactive text locale (`useTextLocale` in React, Vue and Svelte, `textLocaleSignal` in Angular).
  */
 export interface TextTranslations {
   /**
@@ -41,6 +45,11 @@ export interface TextTranslations {
   setLocale?(locale: string): void;
   /** Observes the page's locale, such as a locale source's `subscribe`, so a switch on the page updates the text. */
   subscribe?(listener: (locale: string) => void): () => void;
+  /**
+   * The writing direction of a locale, such as the generated runtime's `localeDirection`. {@link textDirection} and
+   * {@link syncDocumentLocale} use it; without it, the direction comes from the locale's script as `Intl.Locale` gives it.
+   */
+  direction?(locale: string): "ltr" | "rtl";
 }
 
 interface TranslatedTextChannel {
@@ -254,4 +263,68 @@ export function reportWindowLocale(locale: string | null): void {
     try { listener(locale); } catch (error) { reportBridgeError(error); }
   }
   changed();
+}
+
+// Scripts written right to left (CLDR), for a runtime without `direction` and a browser without `Intl.Locale` text info.
+const rightToLeftScripts = new Set(["Adlm", "Arab", "Hebr", "Mand", "Mend", "Nkoo", "Rohg", "Samr", "Syrc", "Thaa", "Yezi"]);
+
+function scriptDirection(locale: string): "ltr" | "rtl" {
+  try {
+    const tag = new Intl.Locale(locale) as Intl.Locale & {
+      getTextInfo?: () => { direction?: string }; textInfo?: { direction?: string };
+    };
+    const info = typeof tag.getTextInfo === "function" ? tag.getTextInfo() : tag.textInfo;
+    if (info?.direction === "rtl" || info?.direction === "ltr") return info.direction;
+    const script = tag.maximize().script;
+    return script !== undefined && rightToLeftScripts.has(script) ? "rtl" : "ltr";
+  } catch {
+    return "ltr";
+  }
+}
+
+/**
+ * The writing direction of the text locale ({@link textLocale}): the Translations runtime's `direction`, or the
+ * direction of the locale's script. `undefined` while there is no text locale.
+ */
+export function textDirection(): "ltr" | "rtl" | undefined {
+  const locale = textLocale();
+  if (locale === undefined || locale === "") return undefined;
+  const direction = channel().translations?.direction;
+  if (typeof direction === "function") {
+    try {
+      const value = direction(locale);
+      if (value === "ltr" || value === "rtl") return value;
+    } catch (error) { reportBridgeError(error); }
+  }
+  return scriptDirection(locale);
+}
+
+/** Where {@link syncDocumentLocale} sets the language. */
+export interface DocumentLocaleOptions {
+  /** The element whose `lang` and `dir` follow the text locale. Defaults to `document.documentElement`. */
+  readonly element?: Element;
+  /** Whether `dir` follows too ({@link textDirection}). Defaults to `true`. */
+  readonly direction?: boolean;
+}
+
+/**
+ * Sets `lang` and `dir` of the page's root element to the language that text references are shown in
+ * ({@link textLocale}, {@link textDirection}), now and after every language switch, until the returned function is
+ * called. While the page has no text locale, the element keeps the attributes it has, such as `<html lang="en">`.
+ * Call it once in the browser, for example in `main.ts` after `configureTranslatedText`; without a document it does
+ * nothing.
+ */
+export function syncDocumentLocale(options: DocumentLocaleOptions = {}): () => void {
+  const element = options.element ?? (typeof document === "undefined" ? undefined : document.documentElement);
+  if (!element) return () => {};
+  const withDirection = options.direction !== false;
+  const apply = () => {
+    const locale = textLocale();
+    if (locale === undefined || locale === "") return;
+    if (element.getAttribute("lang") !== locale) element.setAttribute("lang", locale);
+    const direction = withDirection ? textDirection() : undefined;
+    if (direction !== undefined && element.getAttribute("dir") !== direction) element.setAttribute("dir", direction);
+  };
+  apply();
+  return subscribeText(apply);
 }
