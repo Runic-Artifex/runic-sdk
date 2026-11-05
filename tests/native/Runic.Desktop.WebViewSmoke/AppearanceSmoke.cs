@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Runic.Desktop;
+using Runic.Platform;
 
 // S10: the desktop's contrast and motion preferences reach the page's CSS media queries (prefers-contrast,
 // forced-colors, prefers-reduced-motion) in each embedded engine, and follow a change while the window is open. Runic
@@ -11,11 +12,15 @@ using Runic.Desktop;
 //   settings daemon would: prefers-reduced-motion and prefers-contrast follow them. WebKitGTK 6.0 (GTK 4, linked into
 //   Runic.Desktop.Gtk4.Smoke) reads GTK 4.20's gtk-interface-contrast and gtk-interface-reduced-motion only when its
 //   first view starts, so they are set before the window opens.
-// - WebView2: the page's values agree with the desktop's. With --toggle-desktop (CI only: it changes the session's
-//   settings and restores them), Windows' client area animations and a contrast theme are switched with
-//   SystemParametersInfo: a window opened afterwards reports them; whether the open page follows is reported.
-// - WKWebView: macOS settings cannot be switched without the user's consent, so the page's values must agree with
-//   NSWorkspace's accessibilityDisplayShouldIncreaseContrast and accessibilityDisplayShouldReduceMotion.
+// - WebView2: the page's values and IDesktopSettings' agree with the desktop's. With --toggle-desktop (CI only: it
+//   changes the session's settings and restores them, also after a killed run with --restore-desktop), Windows' client
+//   area animations and a contrast theme are switched with SystemParametersInfo: a watch started before the switch
+//   reports it from change notifications alone (its polling clock is frozen), the contrast theme's palette is
+//   GetSysColor's, and a window opened afterwards reports them; whether the open page follows is reported.
+// - WKWebView: macOS settings cannot be switched without the user's consent, so the page's values and IDesktopSettings'
+//   must agree with NSWorkspace's accessibilityDisplayShouldIncreaseContrast and accessibilityDisplayShouldReduceMotion.
+//   CI runs it twice, the second time with Increase contrast written before the process starts (--expect-contrast), so
+//   DesktopContrast.More and prefers-contrast: more are checked too.
 internal static partial class AppearanceSmoke
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(30);
@@ -35,10 +40,11 @@ internal static partial class AppearanceSmoke
         public override string ToString() => $"prefers-contrast: {Contrast}, forced-colors: {ForcedColors}, prefers-reduced-motion: {ReducedMotion}";
     }
 
-    internal static int Run(DesktopHostOptions hostOptions, bool toggleDesktop) =>
-        DesktopEventLoop.Run(hostOptions, host => RunAsync(host, toggleDesktop));
+    // expectIncreaseContrast: CI wrote Increase contrast before this process started, so the macOS checks must see it.
+    internal static int Run(DesktopHostOptions hostOptions, bool toggleDesktop, bool expectIncreaseContrast = false) =>
+        DesktopEventLoop.Run(hostOptions, host => RunAsync(host, toggleDesktop, expectIncreaseContrast));
 
-    private static async Task<int> RunAsync(DesktopHost host, bool toggleDesktop)
+    private static async Task<int> RunAsync(DesktopHost host, bool toggleDesktop, bool expectIncreaseContrast)
     {
         // WebKitGTK 6.0 reads GTK 4's settings when its first view starts, and does not follow a later change (2.54).
         var gtk4Startup = OperatingSystem.IsLinux() && Gtk.Gtk4 && Gtk.HasProperty("gtk-interface-contrast") && Gtk.HasProperty("gtk-interface-reduced-motion");
@@ -56,8 +62,10 @@ internal static partial class AppearanceSmoke
             Console.WriteLine($"APPEARANCE {engine} as opened: {await ReadAsync(surface)}");
             if (OperatingSystem.IsLinux() && Gtk.Gtk4) await RunGtk4Async(surface, gtk4Startup);
             else if (OperatingSystem.IsLinux()) await RunGtkAsync(surface, window);
-            else if (OperatingSystem.IsMacOS()) await RunMacAsync(surface, window);
-            else if (OperatingSystem.IsWindows()) await RunWindowsAsync(host, surface, toggleDesktop);
+#if !RUNIC_GTK4_SMOKE // Runic.Desktop.Gtk4.Smoke builds without the Windows and macOS checks (AppearanceSmoke.Desktops.cs).
+            else if (OperatingSystem.IsMacOS()) await RunMacAsync(surface, window, expectIncreaseContrast);
+            else if (OperatingSystem.IsWindowsVersionAtLeast(8)) await RunWindowsAsync(host, surface, toggleDesktop);
+#endif
         }
         finally { if (window.IsOpen) await window.CloseAsync(); }
         Console.WriteLine("APPEARANCE DONE");
@@ -134,86 +142,6 @@ internal static partial class AppearanceSmoke
         if (page.Contrast != "more" || page.ReducedMotion != "reduce" || page.ForcedColors == "active")
             throw new InvalidOperationException($"With GTK 4's more contrast and reduced motion at start, the page reports {page}.");
         Console.WriteLine($"PASS appearance: WebKitGTK 6.0, more contrast and reduced motion at start: {page}");
-    }
-
-    private static async Task RunMacAsync(DesktopSurface surface, DesktopWindow window)
-    {
-        bool increaseContrast = false, reduceMotion = false;
-        await window.InvokeNativeAsync(_ =>
-        {
-            var workspace = Mac.Send(Mac.Class("NSWorkspace"), Mac.Sel("sharedWorkspace"));
-            increaseContrast = Mac.SendBool(workspace, Mac.Sel("accessibilityDisplayShouldIncreaseContrast"));
-            reduceMotion = Mac.SendBool(workspace, Mac.Sel("accessibilityDisplayShouldReduceMotion"));
-        });
-        var page = await ReadAsync(surface);
-        var expectedContrast = increaseContrast ? "more" : "no-preference";
-        var expectedMotion = reduceMotion ? "reduce" : "no-preference";
-        if (page.Contrast != expectedContrast || page.ReducedMotion != expectedMotion || page.ForcedColors == "active")
-            throw new InvalidOperationException(
-                $"With Increase contrast {increaseContrast} and Reduce motion {reduceMotion} the page reports {page}.");
-        Console.WriteLine($"PASS appearance: WKWebView agrees with Increase contrast {increaseContrast} and Reduce motion {reduceMotion}: {page}");
-    }
-
-    private static async Task RunWindowsAsync(DesktopHost host, DesktopSurface surface, bool toggleDesktop)
-    {
-        var animations = Win.ClientAreaAnimation();
-        var highContrast = Win.HighContrastOn();
-        var page = await ReadAsync(surface);
-        if (page.ReducedMotion != (animations ? "no-preference" : "reduce") || page.ForcedColors != (highContrast ? "active" : "none"))
-            throw new InvalidOperationException($"With client area animations {animations} and a contrast theme {highContrast} the page reports {page}.");
-        Console.WriteLine($"PASS appearance: WebView2 agrees with animations {animations} and a contrast theme {highContrast}: {page}");
-        if (!toggleDesktop) return;
-        // Each switch is checked in the open page, which reports whether it follows while it is open, and in a window
-        // opened after it, which has a WebView2 browser process of its own and must read the new setting.
-        try
-        {
-            Win.SetClientAreaAnimation(!animations);
-            var reduced = animations ? "reduce" : "no-preference";
-            await ReportLiveAsync(surface, page => page.ReducedMotion == reduced, $"animations {!animations}");
-            page = await ReadInNewWindowAsync(host);
-            if (page.ReducedMotion != reduced)
-                throw new InvalidOperationException($"With client area animations {!animations}, a new window reports {page}.");
-            Console.WriteLine($"PASS appearance: WebView2, a new window with animations {!animations}: {page}");
-            Win.SetClientAreaAnimation(animations);
-
-            Win.SetHighContrast(!highContrast);
-            var forced = highContrast ? "none" : "active";
-            await ReportLiveAsync(surface, page => page.ForcedColors == forced, $"a contrast theme {!highContrast}");
-            page = await ReadInNewWindowAsync(host);
-            if (page.ForcedColors != forced)
-                throw new InvalidOperationException($"With a contrast theme {!highContrast}, a new window reports {page}.");
-            Console.WriteLine($"PASS appearance: WebView2, a new window with a contrast theme {!highContrast}: {page}");
-        }
-        finally
-        {
-            Win.SetClientAreaAnimation(animations);
-            Win.SetHighContrast(highContrast);
-        }
-    }
-
-    // Whether the open page follows a change within five seconds; reported, not required.
-    private static async Task ReportLiveAsync(DesktopSurface surface, Func<PageAppearance, bool> expected, string what)
-    {
-        PageAppearance? last = null;
-        for (var attempt = 0; attempt < 50; attempt++)
-        {
-            last = await ReadAsync(surface);
-            if (expected(last)) break;
-            await Task.Delay(100);
-        }
-        Console.WriteLine($"APPEARANCE WebView2, {what}: the open page {(expected(last!) ? "follows" : "does not follow")}: {last}");
-    }
-
-    private static async Task<PageAppearance> ReadInNewWindowAsync(DesktopHost host)
-    {
-        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
-        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 480, Height = 360 });
-        try
-        {
-            await surface.ExecuteJavaScriptAsync("return document.readyState;", StepTimeout);
-            return await ReadAsync(surface);
-        }
-        finally { if (window.IsOpen) await window.CloseAsync(); }
     }
 
     private static unsafe partial class Gtk
@@ -300,57 +228,6 @@ internal static partial class AppearanceSmoke
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_value_set_string", StringMarshalling = StringMarshalling.Utf8)] private static partial void SetValueString(nint value, string text);
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_get_property", StringMarshalling = StringMarshalling.Utf8)] private static partial void GetProperty(nint instance, string name, nint value);
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_set_property", StringMarshalling = StringMarshalling.Utf8)] private static partial void SetProperty(nint instance, string name, nint value);
-    }
-
-    private static partial class Mac
-    {
-        private const string ObjC = "/usr/lib/libobjc.A.dylib";
-        [LibraryImport(ObjC, EntryPoint = "objc_getClass", StringMarshalling = StringMarshalling.Utf8)] internal static partial nint Class(string name);
-        [LibraryImport(ObjC, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)] internal static partial nint Sel(string name);
-        [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial nint Send(nint target, nint selector);
-        [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte SendByte(nint target, nint selector);
-        internal static bool SendBool(nint target, nint selector) => SendByte(target, selector) != 0;
-    }
-
-    private static unsafe partial class Win
-    {
-        private const uint SpiGetHighContrast = 0x0042, SpiSetHighContrast = 0x0043;
-        private const uint SpiGetClientAreaAnimation = 0x1042, SpiSetClientAreaAnimation = 0x1043;
-        // SPIF_SENDCHANGE without SPIF_UPDATEINIFILE: the change lasts for the session and is broadcast.
-        private const uint SendChange = 0x2;
-        private const uint HcfHighContrastOn = 0x1;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct HighContrast { public uint Size; public uint Flags; public nint DefaultScheme; }
-
-        internal static bool ClientAreaAnimation()
-        {
-            int on = 1;
-            return SystemParametersInfo(SpiGetClientAreaAnimation, 0, (nint)(&on), 0) == 0 || on != 0;
-        }
-
-        internal static void SetClientAreaAnimation(bool on)
-        {
-            if (SystemParametersInfo(SpiSetClientAreaAnimation, 0, on ? 1 : 0, SendChange) == 0)
-                throw new InvalidOperationException($"SPI_SETCLIENTAREAANIMATION failed with {Marshal.GetLastPInvokeError()}.");
-        }
-
-        internal static bool HighContrastOn()
-        {
-            var value = new HighContrast { Size = (uint)sizeof(HighContrast) };
-            return SystemParametersInfo(SpiGetHighContrast, value.Size, (nint)(&value), 0) != 0 && (value.Flags & HcfHighContrastOn) != 0;
-        }
-
-        internal static void SetHighContrast(bool on)
-        {
-            if (HighContrastOn() == on) return;
-            var value = new HighContrast { Size = (uint)sizeof(HighContrast), Flags = on ? HcfHighContrastOn : 0 };
-            if (SystemParametersInfo(SpiSetHighContrast, value.Size, (nint)(&value), SendChange) == 0)
-                throw new InvalidOperationException($"SPI_SETHIGHCONTRAST failed with {Marshal.GetLastPInvokeError()}.");
-        }
-
-        [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
-        private static partial int SystemParametersInfo(uint action, uint parameter, nint value, uint flags);
     }
 
     private const string Page = """

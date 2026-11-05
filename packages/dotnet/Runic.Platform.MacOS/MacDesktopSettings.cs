@@ -3,8 +3,11 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 
 namespace Runic.Platform.MacOS;
 
+// A watch reads again when MacSettingsChanges reports a change.
 internal sealed class MacDesktopSettings : DesktopSettingsSource
 {
+    protected override IDisposable? StartChanges(Action changed, Action failed) => MacSettingsChanges.Start(changed);
+
     protected override async ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken)
     {
         DesktopAppearance? result = null;
@@ -16,7 +19,13 @@ internal sealed class MacDesktopSettings : DesktopSettingsSource
             var list = Send(Class("NSMutableArray"), Sel("array"));
             Arg(list, Sel("addObject:"), String("NSAppearanceNameAqua"));
             Arg(list, Sel("addObject:"), String("NSAppearanceNameDarkAqua"));
-            var match = Text(Arg(Send(app, Sel("effectiveAppearance")), Sel("bestMatchFromAppearancesWithNames:"), list));
+            // The desktop's scheme. An application that chose one for every window (DesktopHost.SetColorSchemeAsync) sets
+            // NSApp.appearance, which its effectiveAppearance then reports; the global AppleInterfaceStyle preference is
+            // the desktop's then ("Dark", or absent for light).
+            var match = Send(app, Sel("appearance")) == 0
+                ? Text(Arg(Send(app, Sel("effectiveAppearance")), Sel("bestMatchFromAppearancesWithNames:"), list))
+                : Text(Arg(Send(Class("NSUserDefaults"), Sel("standardUserDefaults")), Sel("stringForKey:"), String("AppleInterfaceStyle"))) == "Dark"
+                    ? "NSAppearanceNameDarkAqua" : "NSAppearanceNameAqua";
             var workspace = Send(Class("NSWorkspace"), Sel("sharedWorkspace"));
             var rgb = Arg(Send(Class("NSColor"), Sel("controlAccentColor")), Sel("colorUsingColorSpace:"), Send(Class("NSColorSpace"), Sel("sRGBColorSpace")));
             result = new(match == "NSAppearanceNameDarkAqua" ? DesktopColorScheme.Dark : match == "NSAppearanceNameAqua" ? DesktopColorScheme.Light : DesktopColorScheme.NoPreference,

@@ -73,8 +73,7 @@ internal sealed partial class WindowsWebView2Host
     // A window without its own HighContrast option follows the system's contrast theme, also when it changes while the
     // surface shows.
     private static WindowsLoadingSurface.Palette LoadingPalette(WebUiEmbeddedHostOptions options) =>
-        WindowsLoadingSurface.PaletteFor(options.ColorScheme, SystemUsesDarkTheme(),
-            options.HighContrastFollowsSystem ? WebUiSystemTheme.IsHighContrast : options.HighContrast, Native.GetSysColor);
+        WindowsLoadingSurface.PaletteFor(options, SystemUsesDarkTheme(), WebUiSystemTheme.IsHighContrast, Native.GetSysColor);
 
     // Once the WebView exists it covers the client area, and the window paints nothing of its own again.
     private void EndLoadingSurface()

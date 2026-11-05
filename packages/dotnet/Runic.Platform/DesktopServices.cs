@@ -76,7 +76,12 @@ public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopC
     public DesktopContrast? Contrast
     {
         get => _contrast;
-        init => _contrast = value;
+        init
+        {
+            // A palette belongs to forced colours: a contrast that no longer forces them drops it.
+            _contrast = value;
+            if (value != DesktopContrast.ForcedColors) _systemColors = null;
+        }
     }
 
     /// <summary>
@@ -92,7 +97,11 @@ public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopC
     public bool? HighContrast
     {
         get => _contrast is { } contrast ? contrast is DesktopContrast.More or DesktopContrast.ForcedColors : null;
-        init => _contrast = FromHighContrast(value, _contrast);
+        init
+        {
+            _contrast = FromHighContrast(value, _contrast);
+            if (_contrast != DesktopContrast.ForcedColors) _systemColors = null;
+        }
     }
 
     private static DesktopContrast? FromHighContrast(bool? value, DesktopContrast? current) => value switch
@@ -106,7 +115,26 @@ public sealed record DesktopAppearance(DesktopColorScheme ColorScheme = DesktopC
     /// The palette the desktop forces while <see cref="Contrast"/> is <see cref="DesktopContrast.ForcedColors"/>; null
     /// otherwise, and where the desktop has none to report (macOS, Linux).
     /// </summary>
-    public DesktopSystemColors? SystemColors { get; init; }
+    /// <remarks>
+    /// It is null whenever <see cref="Contrast"/> is not <see cref="DesktopContrast.ForcedColors"/>, also when it was set:
+    /// <c>appearance with { Contrast = DesktopContrast.NoPreference }</c> drops the palette, and a palette set without
+    /// forced colours is ignored, also by equality.
+    /// </remarks>
+    public DesktopSystemColors? SystemColors
+    {
+        get => _contrast == DesktopContrast.ForcedColors ? _systemColors : null;
+        init => _systemColors = value;
+    }
+    private readonly DesktopSystemColors? _systemColors;
+
+    /// <inheritdoc />
+    public bool Equals(DesktopAppearance? other) => ReferenceEquals(this, other) || other is not null
+        && ColorScheme == other.ColorScheme && EqualityComparer<DesktopAccentColor?>.Default.Equals(AccentColor, other.AccentColor)
+        && _contrast == other._contrast && ReducedMotion == other.ReducedMotion
+        && EqualityComparer<DesktopSystemColors?>.Default.Equals(SystemColors, other.SystemColors) && _textScale == other._textScale;
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(ColorScheme, AccentColor, _contrast, ReducedMotion, SystemColors, _textScale);
 
     /// <summary>
     /// The desktop's text size preference as a factor of the default text size: 1 for the default, 1.5 for text half as

@@ -5,6 +5,8 @@
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
+    <!-- AppearanceSmoke.cs leaves out its Windows and macOS checks. -->
+    <DefineConstants>$(DefineConstants);RUNIC_GTK4_SMOKE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />

@@ -621,10 +621,16 @@ and `ReducedMotion`. What each engine reports (checked by the native smokes,
 | Engine | `prefers-contrast` | `forced-colors` | `prefers-reduced-motion` | While the window is open |
 | --- | --- | --- | --- | --- |
 | Windows, WebView2 | Chromium's value for the contrast theme while one is on, otherwise `no-preference` | `active` while a contrast theme is on, with the theme's colours | `reduce` when "Animation effects" (client area animations) is off | A window reads them when it opens. An open page may not follow a change: in CI it did not follow "Animation effects" |
-| macOS, WKWebView | `more` with "Increase contrast" | Always `none`: macOS does not force colours | `reduce` with "Reduce motion" | Not checked: the smoke cannot switch these settings without the user's consent |
+| macOS, WKWebView | `more` with "Increase contrast" | Always `none`: macOS does not force colours | `reduce` with "Reduce motion" | Not checked live: the smoke cannot switch these settings while it runs; CI checks the page with "Increase contrast" off and on, set before the process starts |
 | Linux, WebKitGTK 4.1 (GTK 3) | `more` with GTK's `HighContrast` or `HighContrastInverse` theme, which GNOME's settings daemon selects for "High Contrast" | Always `none` | `reduce` when GTK's `gtk-enable-animations` is off | Follows |
 | Linux, WebKitGTK 6.0 (GTK 4) | `more` with GTK 4.20's `gtk-interface-contrast`; an older GTK 4 has no such setting | Always `none` | `reduce` with GTK 4.20's `gtk-interface-reduced-motion` | Reads them when the process's first web view starts, and does not follow a later change (WebKitGTK 2.54) |
 | Installed browsers | The browser's own | The browser's own | The browser's own | The browser's |
+
+`IDesktopSettings.WatchAsync` reports a change whether or not the page follows it. The
+Windows smoke checks that a watch reports the switched animations and contrast theme
+from the desktop's change notifications alone, with the contrast theme's palette, and
+the macOS smoke that `IDesktopSettings` agrees with NSWorkspace, with "Increase
+contrast" off and on.
 
 ### Owned and window-modal windows
 

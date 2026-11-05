@@ -11,10 +11,12 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // SystemParametersInfoW uses generated bindings. UISettings is a WinRT projection read
-// through fixed ABI slots (see docs/interop-inventory.md).
+// through fixed ABI slots (see docs/interop-inventory.md). A watch reads again when WindowsSettingsChanges reports a
+// change, and polls only when its window cannot start.
 [SupportedOSPlatform("windows8.0")]
 internal sealed class WindowsDesktopSettings : DesktopSettingsSource
 {
+    protected override IDisposable? StartChanges(Action changed, Action failed) => WindowsSettingsChanges.Start(changed, failed);
     protected override async ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken)
     {
         try { return await Task.Run(ReadNative, cancellationToken).ConfigureAwait(false); }
@@ -49,7 +51,7 @@ internal sealed class WindowsDesktopSettings : DesktopSettingsSource
         finally { Release(settings); Release(instance); UninitializeRuntime(); }
     }
     // Settings > Accessibility > Text size, which UISettings.TextScaleFactor also reports: 100 to 225 percent, and no
-    // value until the user changes it. Polled with the rest of the appearance (DesktopSettingsSource).
+    // value until the user changes it. A watch learns of a change from the registry (WindowsSettingsChanges).
     internal static double? TextScale() => TextScale(static () =>
     {
         using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Accessibility");

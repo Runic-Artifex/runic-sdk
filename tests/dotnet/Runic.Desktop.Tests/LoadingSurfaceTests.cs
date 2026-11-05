@@ -36,6 +36,23 @@ public sealed class LoadingSurfaceTests
     }
 
     [Test]
+    public void AWindowWithoutItsOwnHighContrastFollowsTheSystemsContrastTheme()
+    {
+        static uint System(int index) => (uint)(0x010000 * index);
+        var contrast = new WindowsLoadingSurface.Palette(System(5), System(17), System(13));
+        var light = WindowsLoadingSurface.PaletteFor(DesktopColorScheme.Light, systemDark: false, highContrast: false, System);
+        // The palette the surface repaints with after WM_SYSCOLORCHANGE or WM_SETTINGCHANGE: a contrast theme turned on,
+        // then off again.
+        var following = new WebUiEmbeddedHostOptions { ColorScheme = DesktopColorScheme.Light, HighContrastFollowsSystem = true };
+        Assert.Equal(contrast, WindowsLoadingSurface.PaletteFor(following, systemDark: false, systemHighContrast: true, System));
+        Assert.Equal(light, WindowsLoadingSurface.PaletteFor(following, systemDark: false, systemHighContrast: false, System));
+        // A window's own HighContrast option stays, whatever the system does.
+        var own = new WebUiEmbeddedHostOptions { ColorScheme = DesktopColorScheme.Light, HighContrast = false };
+        Assert.Equal(light, WindowsLoadingSurface.PaletteFor(own, systemDark: false, systemHighContrast: true, System));
+        Assert.Equal(contrast, WindowsLoadingSurface.PaletteFor(own with { HighContrast = true }, systemDark: false, systemHighContrast: false, System));
+    }
+
+    [Test]
     public void TheBarIsCenteredAndScalesWithTheDpi()
     {
         var bar = WindowsLoadingSurface.Layout(800, 600, 96, phase: null);
