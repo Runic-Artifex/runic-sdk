@@ -182,6 +182,25 @@ public sealed class DesktopHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// Replaces the titles of the standard macOS menus and their items (<see cref="DesktopHostOptions.StandardMenuTitles"/>)
+    /// while the application runs, for example in a new language after a locale change.
+    /// </summary>
+    /// <param name="titles">The new titles; <see langword="null"/> returns to the English ones.</param>
+    /// <exception cref="ArgumentException">A title is invalid; see <see cref="DesktopStandardMenuTitles"/>.</exception>
+    /// <remarks>
+    /// The menus Runic added change on the main thread as soon as it can, which <see cref="DesktopEventLoop"/> runs; a
+    /// window that opens later uses the new titles too. An application that builds its own main menu keeps its titles,
+    /// and only the View menu's zoom items, which Runic adds to it, change. Windows and Linux show no standard menus:
+    /// there the call only checks the titles.
+    /// </remarks>
+    public void SetStandardMenuTitles(DesktopStandardMenuTitles? titles)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        titles?.Validate();
+        Internal.MacOsWkWebViewHost.RequestStandardMenuTitles(titles ?? Internal.MacOsMainMenu.English);
+    }
+
+    /// <summary>
     /// Gets or sets the target of the menu commands that no key window runs, such as New or Settings…, also while no
     /// window is open; <see langword="null"/>, the default, for none.
     /// </summary>

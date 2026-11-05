@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.get -> bool?
+Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.init -> void

@@ -22,6 +22,8 @@ internal sealed partial class LinuxWebKitGtkHost
     // GTK thread only: the box holding the bar and the view (0 when the window shows no bar in it), the bar, the
     // widgets of its items, the shortcuts of the declared bar, the open context menu and the last trigger event.
     private nint _menuBox;
+    // The menus the bar shows, which a change of direction builds again (SetLayoutDirectionAsync).
+    private IReadOnlyList<DesktopMenu>? _appliedMenuBar;
     private nint _menuBar;
     private Gtk3MenuWidgets? _barWidgets;
     private GtkMenuShortcuts _shortcuts = GtkMenuShortcuts.Empty;
@@ -64,6 +66,7 @@ internal sealed partial class LinuxWebKitGtkHost
 
     private void ApplyMenuBar(IReadOnlyList<DesktopMenu> menus)
     {
+        _appliedMenuBar = menus;
         var plan = DesktopMenuPlanner.PlanBar(menus, MenuPlatform.Linux);
         _shortcuts = GtkMenuShortcuts.Create(plan);
         _plan = plan;

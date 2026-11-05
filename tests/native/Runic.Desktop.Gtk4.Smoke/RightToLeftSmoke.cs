@@ -13,7 +13,8 @@ using Runic.Desktop.Gtk4;
 // - GTK's own direction, which mirrors the window's header bar and GTK dialogs, is right to left for the Arabic
 //   locale. GTK 4 derives it from the language's script, so it needs no translation: on the Ubuntu runner, whose
 //   GTK 4 has no translation of "default:LTR", it is right to left as on NixOS;
-// - the application can set GTK's direction itself from its own thread, as the guide shows.
+// - the application can set GTK's direction itself from its own thread, as the guide shows;
+// - DesktopWindow.SetLayoutDirectionAsync changes the open window's direction, and Default returns it to GTK's (S3).
 [SupportedOSPlatform("linux")]
 internal static class RightToLeftSmoke
 {
@@ -80,7 +81,20 @@ internal static class RightToLeftSmoke
             if (widgets != "Ltr")
                 throw new InvalidOperationException($"Setting GTK's default direction to Ltr left it {widgets}.");
             await SetDirectionAsync(Gtk.TextDirection.Rtl);
-            Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left; GTK's direction is Rtl for {messages} (default:LTR → {translated}); the application can override it.");
+
+            // S3: one window's direction while it is open, as a switch of its window locale does.
+            if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.LayoutDirection))
+                throw new InvalidOperationException("The GTK 4 window does not report DesktopWindowCapabilities.LayoutDirection.");
+            string own = "";
+            await window.SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection.LeftToRight);
+            await window.InvokeNativeAsync(handle => own = WidgetDirection(handle));
+            if (own != "Ltr" || window.LayoutDirection != Runic.Platform.DesktopLayoutDirection.LeftToRight)
+                throw new InvalidOperationException($"SetLayoutDirectionAsync(LeftToRight) left the window {own}.");
+            await window.SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection.Default);
+            await window.InvokeNativeAsync(handle => own = WidgetDirection(handle));
+            if (own != "Rtl")
+                throw new InvalidOperationException($"SetLayoutDirectionAsync(Default) left the window {own}, not GTK's Rtl.");
+            Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left; GTK's direction is Rtl for {messages} (default:LTR → {translated}); the application can override it; SetLayoutDirectionAsync changes the open window.");
             return 0;
         });
     }
@@ -97,6 +111,17 @@ internal static class RightToLeftSmoke
         });
         return set.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
     }
+
+    // GTK's resolved direction of the window: its own, else the default.
+    private static string WidgetDirection(nint window) => GetDirection(window) switch
+    {
+        1 => "Ltr",
+        2 => "Rtl",
+        var other => other.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    [DllImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_direction")]
+    private static extern int GetDirection(nint widget);
 
     // The process's message locale as GTK set it with setlocale(LC_ALL, "").
     private const int LcMessages = 5;

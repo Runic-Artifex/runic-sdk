@@ -1,1 +1,5 @@
 #nullable enable
+Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.get -> bool?
+Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.init -> void
+Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.get -> bool
+Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.init -> void

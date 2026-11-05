@@ -84,9 +84,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
     private void OnPointerMotion(Gtk.EventControllerMotion controller, Gtk.EventControllerMotion.MotionSignalArgs args) =>
         _pointer = (args.X, args.Y);
 
+    // The menus the bar shows, which a change of direction builds again (SetLayoutDirectionAsync).
+    private IReadOnlyList<DesktopMenu>? _appliedMenuBar;
+
     private void ApplyMenuBar(IReadOnlyList<DesktopMenu> menus)
     {
         if (!IsOpen) return;
+        _appliedMenuBar = menus;
         var plan = DesktopMenuPlanner.PlanBar(menus, MenuPlatform.Linux);
         _shortcuts = GtkMenuShortcuts.Create(plan);
         _plan = plan;

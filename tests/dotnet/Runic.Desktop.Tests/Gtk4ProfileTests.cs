@@ -301,9 +301,11 @@ public sealed class Gtk4ProfileTests
         // WebView2 and WKWebView switch each window alone; WebView2 loses that for a configured ProfilePath (WebUiWindow).
         const DesktopWindowCapabilities presentation = DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
             DesktopWindowCapabilities.PerWindowColorScheme;
+        // The run-time layout direction (S3): WebView2 without conditions, GTK 3 once GTK has loaded; WKWebView has none.
+        const DesktopWindowCapabilities direction = DesktopWindowCapabilities.LayoutDirection;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership,
+                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction,
                 advertised);
         else if (OperatingSystem.IsMacOS())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement
@@ -314,7 +316,7 @@ public sealed class Gtk4ProfileTests
         // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
             known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership);
+            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction);
     }
 
     [Test]
