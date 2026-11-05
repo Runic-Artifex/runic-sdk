@@ -3096,6 +3096,39 @@ public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings setti
 }
 ```
 
+**C# formatting in the window's culture.** By default a ViewModel formats in
+the process's culture: `ToString("N")`, `string.Format` and DataAnnotations
+messages in a `de` window still use the operating system's culture. Opt in
+with `FlowCultureFromLocale`, and the window's bridged invocations run with
+`CultureInfo.CurrentCulture` and `CurrentUICulture` of its locale: the setters,
+checked writes, commands (also after their `await`s), validation and state reads
+of the page's requests, the navigation they start, the window's menu
+commands, and the close guard (`CanCloseAsync` and the navigation regions'
+departure guards) when the user closes the window. A locale without a predefined
+.NET culture uses its nearest parent's (`de-CH`, then `de`), and the process's
+cultures without one, as under invariant globalization. Timers and other work
+started outside an invocation keep their culture.
+
+Work started inside an invocation keeps the window's culture for its whole life:
+a `System.Threading.Timer`, a `PeriodicTimer` or `Task.Run` loop, an
+`Observable.Interval` subscription, or a singleton service that a command
+resolves first and that starts such work, captures the culture of that
+invocation and keeps formatting in it, also for other windows and after the
+window's locale changed. Start such work at application start, outside any
+invocation, or suppress the flow while you start it:
+
+```csharp
+using (ExecutionContext.SuppressFlow())
+    _sync = new Timer(_ => PublishNotifications(), null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+```
+
+```csharp
+await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFromLocale = true });
+// or for every Window: new RunicDesktopHostOptions { FlowCultureFromLocale = true },
+// RunicCsWebUiHostOptions, RunicWindowTestHostOptions; a custom host sets
+// WindowContentSessionOptions.FlowCultureFromLocale.
+```
+
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
 Runic Translations and its Vite plugin:
