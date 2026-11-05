@@ -747,7 +747,34 @@ Window's page connections and tells a command which one invoked it:
 - `Current` lists the connections that completed their `hello`, in the order
   they connected, until the transport reports them closed. Each is a
   `RunicConnection(ConnectionKey, ClientKey)` with opaque keys: compare and
-  store them, but do not parse them or show them to users.
+  store them, but do not parse them or show them to users. Two connections
+  are equal when their keys are.
+- `RunicConnection.Languages` (since 0.17, the `hello` feature
+  `client-languages/1`) lists the languages the page's browser prefers, its
+  `navigator.languages`, most preferred first; empty for a page that reports
+  none. A Window still shows one language to all of its connections
+  ([translated text](#translated-text)): use the languages to choose it, for
+  example when the first browser connects to a CS-WebUI window, not to
+  translate per connection. The page reports them, so treat them as a
+  preference, never as an identity. The tags are in BCP 47 case (`de-CH`,
+  `zh-Hant-TW`), each once, and the list is read-only.
+
+  ```csharp
+  connections.Connected += (_, e) =>
+  {
+      if (connections.Current.Count == 1 && Negotiate(e.Connection.Languages, ["en", "de"]) is { } language)
+          windowLocale.Locale = language;
+  };
+  ```
+
+  Always negotiate them against the locales the application ships, as above,
+  and set the result: never assign a browser's tag to
+  `IRunicWindowLocale.Locale` directly, or one remote browser picks an
+  arbitrary language for everyone who shares the window. **Privacy:** the list
+  is personal data that can help fingerprint a browser, and may say more than
+  its `Accept-Language` header. Use it to choose the window's language only, and
+  do not log or store it. A page can stop sending it with
+  `configureClientLanguages({ send: false })` from `@runic-artifex/views`.
 - `Connected` and `Disconnected` are plain .NET events, raised in a turn of
   the Window's model context, as a command body runs, so a handler may change
   state the page sees. `Current` changes in the same turn. The turn runs in no

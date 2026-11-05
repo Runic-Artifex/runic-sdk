@@ -1577,7 +1577,16 @@ packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
 page's own `m.*()` renders again on a switch when the locale resolver reads
 the framework's text locale: `useTextLocale` (React, Vue, Svelte),
 `textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). The mock bridge's
-`setWindowLocale(locale)` pushes a locale in page tests. See
+`setWindowLocale(locale)` pushes a locale in page tests. Every `hello` also
+reports the browser's `navigator.languages` (`client-languages/1`, a .NET host
+of 0.17 or later), so the application can choose the window's language from
+`RunicConnection.Languages`; the mock bridge's `clientLanguages` shows what the
+page reported, in BCP 47 case as a producer keeps it. The list is personal data
+that can help fingerprint the browser, and a remote CS-WebUI server receives it
+too: to keep it on the page, call `configureClientLanguages({ send: false })` in
+`main.ts` before the page connects, and every `hello` sends `languages: []`. An
+application negotiates the tags against the locales it ships; it never assigns
+one directly. See
 [Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 
 ## Connection state

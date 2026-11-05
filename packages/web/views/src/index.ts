@@ -45,6 +45,7 @@ export {
 } from "./blobs.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
 export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
+export { configureClientLanguages, type ClientLanguagesOptions } from "./client-languages.js";
 export {
   createCommandController,
   createViewController,
