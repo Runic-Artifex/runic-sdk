@@ -219,8 +219,11 @@ public static class WindowsPlatformProvider
     /// <see cref="IFileDialogs"/> show these dialogs for <see cref="OwnerPolicy.PreferOwner"/>, or call it directly.
     /// </para>
     /// <para>
-    /// Every dialog runs on the application's own single-threaded apartment thread, which Runic starts on first use and
-    /// which serves the process's other native UI without a window; call from any thread. Titles, filters, the initial directory, the suggested name and the selected filter behave as for an
+    /// Each dialog runs on a single-threaded apartment thread of its own, which Runic starts for it and ends when it
+    /// closes; call from any thread. Dialogs that several windows show at once are independent: each answers and closes
+    /// on its own. Windows' foreground rules apply to a dialog without an owner: when another application, such as the
+    /// browser that showed the request, is in the foreground, the dialog may open behind it with its taskbar button
+    /// flashing. Titles, filters, the initial directory, the suggested name and the selected filter behave as for an
     /// owned dialog; the buttons are Windows' own, in the user's language. Cancellation closes a shown dialog and
     /// throws <see cref="OperationCanceledException"/>; a dismissed dialog reports
     /// <see cref="PickerResult{T}.Dismissed"/>. Open, multiple, directory, document and save selection are all
@@ -233,6 +236,7 @@ public static class WindowsPlatformProvider
     /// </para>
     /// </remarks>
     /// <exception cref="PlatformNotSupportedException">Not Windows 8 or later.</exception>
+    [SupportedOSPlatform("windows8.0")]
     public static IPickerBackend CreateUnownedFileDialogs()
     {
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();

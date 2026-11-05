@@ -11,8 +11,9 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support. An unowned picker shows its dialogs
-// without a parent window, on the application's UI thread (WindowsApplicationThread).
+// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support. An unowned picker shows each dialog
+// without a parent window, on an STA thread of its own (WindowsApplicationThread.StartDialog): dialogs that two
+// presentations show at once each run their own modal loop, so neither waits for the other to close.
 internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool unowned = false) : INativeFilePicker, INativeDirectoryPicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
@@ -56,6 +57,9 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         if (!OperatingSystem.IsWindows()) throw new NativeBackendUnavailableException();
         bool save = request.Save, multiple = request.AllowMultiple && !save;
         var generation = owner.Generation;
+        // The thread the dialog runs on, and its close requests with it.
+        WindowsApplicationThread? own = unowned && OperatingSystem.IsWindowsVersionAtLeast(8) ? WindowsApplicationThread.StartDialog() : null;
+        INativeWindowOwner thread = own ?? owner;
         nint dialog = 0;
         IReadOnlyList<NativeFileSelection>? selection = null;
         // Close runs through the same STA queue serviced by Show's modal loop.
@@ -72,7 +76,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                 Trace?.Invoke($"close {attempt}");
                 try
                 {
-                    await owner.InvokeAsync(_ =>
+                    await thread.InvokeAsync(_ =>
                     {
                         Trace?.Invoke($"close {attempt} runs, dialog {(dialog != 0 ? "open" : "gone")}");
                         if (dialog == 0) return;
@@ -90,7 +94,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         }
         try
         {
-            await owner.InvokeAsync(handle =>
+            await thread.InvokeAsync(handle =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (handle == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
@@ -126,6 +130,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
             shown.TrySetResult();
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
+            if (OperatingSystem.IsWindowsVersionAtLeast(8)) own?.Stop();
         }
         // The facade releases late selection if cancellation won the delivery race.
         return selection;

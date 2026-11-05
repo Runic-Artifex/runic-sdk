@@ -171,8 +171,10 @@ internal sealed partial class MacAppKitNativeTests
 
     // File panels without a window (MacOSPlatformProvider.CreateUnownedFileDialogs), as a CS-WebUI application shows them:
     // under an AppKit event loop a panel of its own (beginWithCompletionHandler:), and without one a modal panel (runModal),
-    // forced here inside the Desktop event loop. Cancellation reaches both through the main queue (cancel:). Choosing in a
-    // shown panel, and a CS-WebUI process with browser windows, stay manual checks.
+    // forced here inside the Desktop event loop. The modal loop runs inside a main-queue block, which runs no other one:
+    // cancellation reaches the panel through the main run loop (cancel:), and a request queued behind it gives up at once.
+    // The CS-WebUI probe (--probe-unowned-dialogs) checks the same inside RunicCsWebUiHost.Run; choosing in a shown panel
+    // stays a manual check.
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]
     private static async Task UnownedPanelsAsync()
     {
@@ -192,6 +194,21 @@ internal sealed partial class MacAppKitNativeTests
             Require(selection is null, $"A cancelled {(modal ? "modal" : "")} unowned panel selected {selection}.");
         }
         Pass("unowned file panels show without a window, also modally, and cancellation closes them");
+
+        // A second window's request waits behind a modal panel; cancelling it does not wait for the panel.
+        var shown = new MacOsFilePicker(MacApplicationOwner.Shared) { ForceModal = true };
+        using var first = new CancellationTokenSource();
+        using var second = new CancellationTokenSource();
+        var modalPick = ((INativeDirectoryPicker)shown).SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Runic modal panel" }, first.Token).AsTask();
+        await shown.Shown.Task.WaitScaledAsync(Step);
+        var queued = ((INativeDirectoryPicker)new MacOsFilePicker(MacApplicationOwner.Shared)).SelectDirectoryAsync(
+            new NativeFileDialogRequest(false, null) { Title = "Runic queued panel" }, second.Token).AsTask();
+        await Task.Delay(250);
+        second.Cancel();
+        Require(await queued.WaitScaledAsync(Step) is null && !modalPick.IsCompleted, "A queued panel's cancellation waited for the modal panel, or ended it.");
+        first.Cancel();
+        Require(await modalPick.WaitScaledAsync(Step) is null, "The modal panel selected something.");
+        Pass("a panel queued behind a modal panel gives up at once when cancelled");
     }
 
     // The event loop's [NSApp run] launches the application while the tests already run; the status item's requests give

@@ -1,13 +1,18 @@
 extern alias cswebui;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Platform;
 using Runic.Platform.Runtime;
 using TUnit.Core;
 using CsWebUiServices = cswebui::Runic.Application.Views.CsWebUi.CsWebUiPlatformServiceCollectionExtensions;
+using WindowLocality = cswebui::Runic.Application.Views.CsWebUi.CsWebUiWindowLocality;
 
 // CS-WebUI windows have no native owner. With a platform's unowned file dialogs (CreateUnownedFileDialogs of the Windows
 // and macOS providers, or the portal's CreateUnparentedFileDialogs), each window's IFileDialogs shows them for
-// OwnerPolicy.PreferOwner, as Runic Desktop does for a window without native dispatch (#712); the window's scope ends them.
+// OwnerPolicy.PreferOwner, as Runic Desktop does for a window without native dispatch (#712), while no other computer can
+// reach the window (CsWebUiWindowLocality, which RunicCsWebUiHost attaches when it shows the window); the window's scope
+// ends them.
 internal sealed class CsWebUiFileDialogChecks
 {
     [Test]
@@ -21,6 +26,18 @@ internal sealed class CsWebUiFileDialogChecks
         var platform = scope.ServiceProvider.GetRequiredService<IWindowPlatformServices>();
         var dialogs = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
         Require(ReferenceEquals(dialogs, platform.FileDialogs), "IFileDialogs is not the window services' dialogs.");
+
+        // Until the host attaches the shown window, and while another computer can reach it, there is no dialog.
+        Require(await dialogs.OpenDirectoryAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && platform.GetSnapshot().Statuses[PlatformCapabilityIds.FilesOpen] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && backend.Calls == 0,
+            "A window the host had not shown asked for an unowned dialog.");
+        var local = false;
+        scope.ServiceProvider.GetRequiredService<WindowLocality>().Attach(() => local);
+        Require(await dialogs.OpenDirectoryAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && backend.Calls == 0,
+            "A window that another computer can reach asked for an unowned dialog.");
+        local = true;
         await using (var other = provider.CreateAsyncScope())
             Require(!ReferenceEquals(other.ServiceProvider.GetRequiredService<IFileDialogs>(), dialogs), "Two windows share their dialogs.");
 
@@ -56,6 +73,14 @@ internal sealed class CsWebUiFileDialogChecks
         Require(picked is PickerResult<IDirectoryLease>.Selected(var lease) && lease.LocalPath == backend.Lease.LocalPath && !ReferenceEquals(lease, backend.Lease),
             $"The selection did not reach the caller as the window's lease: {picked}.");
 
+        // Each request checks the window again: one that became public gets no dialog.
+        local = false;
+        Require(await dialogs.OpenDirectoryAsync(options) is PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && backend.Calls == 1
+            && platform.GetSnapshot().Statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "A window that became public asked for an unowned dialog.");
+        local = true;
+
         // A dialog that is shown when the window closes closes with it.
         backend.Reset();
         var pending = dialogs.OpenDirectoryAsync(options).AsTask();
@@ -71,7 +96,7 @@ internal sealed class CsWebUiFileDialogChecks
     }
 
     [Test]
-    public async Task WithoutUnownedDialogsOrServedTheOwnerIsUnavailable()
+    public async Task WithoutUnownedDialogsOrALocalWindowTheOwnerIsUnavailable()
     {
         var services = new ServiceCollection();
         CsWebUiServices.AddRunicPlatformServices(services);
@@ -81,21 +106,16 @@ internal sealed class CsWebUiFileDialogChecks
         Require(await dialogs.OpenDirectoryAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             "A CS-WebUI window without unowned dialogs did not report the owner unavailable.");
 
-        // A Window served under serve-only mode may be shown on another computer: no dialogs on this one.
-        var previous = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY");
-        Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
-        try
-        {
-            var backend = new BlockingBackend();
-            var served = new ServiceCollection();
-            CsWebUiServices.AddRunicPlatformServices(served, backend);
-            await using var servedProvider = served.BuildServiceProvider();
-            await using var servedScope = servedProvider.CreateAsyncScope();
-            Require(await servedScope.ServiceProvider.GetRequiredService<IFileDialogs>().OpenDirectoryAsync(new(OwnerPolicy.PreferOwner))
-                    is PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable) && backend.Calls == 0,
-                "A serve-only window showed an unowned dialog.");
-        }
-        finally { Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", previous); }
+        // A window whose locality fails, as one of a disposed WebUI window does, is not local.
+        var backend = new BlockingBackend();
+        var served = new ServiceCollection();
+        CsWebUiServices.AddRunicPlatformServices(served, backend);
+        await using var servedProvider = served.BuildServiceProvider();
+        await using var servedScope = servedProvider.CreateAsyncScope();
+        servedScope.ServiceProvider.GetRequiredService<WindowLocality>().Attach(static () => throw new ObjectDisposedException("window"));
+        Require(await servedScope.ServiceProvider.GetRequiredService<IFileDialogs>().OpenDirectoryAsync(new(OwnerPolicy.PreferOwner))
+                is PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable) && backend.Calls == 0,
+            "A disposed window showed an unowned dialog.");
 
         // An application's own window services are kept.
         var own = WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
@@ -106,6 +126,38 @@ internal sealed class CsWebUiFileDialogChecks
         await using var keptScope = keptProvider.CreateAsyncScope();
         Require(ReferenceEquals(keptScope.ServiceProvider.GetRequiredService<IWindowPlatformServices>(), own),
             "The registration replaced the application's window services.");
+    }
+
+    // A window is local while its server listens on loopback only, outside serve-only mode and without the application's
+    // ShowWindow. The CS-WebUI probe (--probe-window-locality) checks a WebUI server with and without SetPublic(true).
+    [Test]
+    public void LocalityFollowsTheWindowServer()
+    {
+        var loopback = new TcpListener(IPAddress.Loopback, 0);
+        var everywhere = new TcpListener(IPAddress.Any, 0);
+        loopback.Start();
+        everywhere.Start();
+        try
+        {
+            int local = ((IPEndPoint)loopback.LocalEndpoint).Port, shared = ((IPEndPoint)everywhere.LocalEndpoint).Port;
+            Require(WindowLocality.ListensOnLoopbackOnly(local), "A loopback listener was not local.");
+            Require(!WindowLocality.ListensOnLoopbackOnly(shared), "A listener on every interface was local.");
+            Require(!WindowLocality.ListensOnLoopbackOnly(0) && !WindowLocality.ListensOnLoopbackOnly(70_000), "An invalid port was local.");
+            Require(WindowLocality.For(serveOnly: false, customShow: false, () => local), "A shown loopback window was not local.");
+            Require(!WindowLocality.For(serveOnly: true, customShow: false, () => local), "A serve-only window was local.");
+            Require(!WindowLocality.For(serveOnly: false, customShow: true, () => local), "A window ShowWindow showed was local.");
+            Require(!WindowLocality.For(serveOnly: false, customShow: false, () => shared), "A public window was local.");
+        }
+        finally
+        {
+            loopback.Stop();
+            everywhere.Stop();
+        }
+        var unused = new TcpListener(IPAddress.Loopback, 0);
+        unused.Start();
+        int closed = ((IPEndPoint)unused.LocalEndpoint).Port;
+        unused.Stop();
+        Require(!WindowLocality.ListensOnLoopbackOnly(closed), "A port nothing listens on was local.");
     }
 
     [Test]

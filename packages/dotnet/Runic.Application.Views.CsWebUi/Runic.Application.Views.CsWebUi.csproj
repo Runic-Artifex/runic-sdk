@@ -11,6 +11,8 @@
     <PackageValidationBaselineVersion>$(RunicCsWebUiPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
     <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The macOS main run loop's wake source (CsWebUiMacMainQueue): a CoreFoundation callback and source context. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- The CS-WebUI probes check CsWebUiWindowPresentation through its seams, without a browser window. -->

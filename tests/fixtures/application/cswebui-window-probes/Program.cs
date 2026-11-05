@@ -38,8 +38,16 @@ switch (args.SingleOrDefault())
         return ProbeBlobs();
     case "--probe-presentation":
         return await ProbePresentationAsync();
+    case "--probe-window-locality":
+        await ProbeWindowLocalityAsync();
+        break;
+#if RUNIC_UNOWNED_DIALOG_PROBE
+    // UnownedDialogProbe.cs, which references the Windows and macOS providers; the package smoke builds Program.cs alone.
+    case "--probe-unowned-dialogs":
+        return UnownedDialogProbe.Run();
+#endif
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs | --probe-presentation | --probe-window-locality | --probe-unowned-dialogs");
         return 2;
 }
 WebUiApplication.Clean();
@@ -107,6 +115,59 @@ static async Task ProbePlatformServicesAsync()
         throw new InvalidOperationException("CS-WebUI inhibition did not report the provider unconfigured.");
     await unconfigured.DisposeAsync();
     Console.WriteLine("CSWEBUI_PLATFORM_SERVICES_OK");
+}
+
+// Unowned file dialogs (AddRunicPlatformServices(unownedFileDialogs)) open only for a window no other computer can reach.
+// A WebUI server listens on loopback only unless SetPublic(true) makes it listen on every interface; serve-only mode and
+// the application's ShowWindow, which may only start the server for another device, make a window not local either. No
+// browser starts: each window only starts its server.
+static async Task ProbeWindowLocalityAsync()
+{
+    using (var local = new WebUiWindow())
+    using (var shared = new WebUiWindow())
+    {
+        shared.SetPublic(true);
+        _ = local.StartServer("<!doctype html><title>Runic local</title>");
+        _ = shared.StartServer("<!doctype html><title>Runic public</title>");
+        int localPort = await ListeningPortAsync(local), sharedPort = await ListeningPortAsync(shared);
+        if (!CsWebUiWindowLocality.For(serveOnly: false, customShow: false, () => localPort))
+            throw new InvalidOperationException($"A window whose server listens on loopback (port {localPort}) is not local.");
+        if (CsWebUiWindowLocality.For(serveOnly: false, customShow: false, () => sharedPort))
+            throw new InvalidOperationException($"A public window (SetPublic, port {sharedPort}) is local.");
+        if (CsWebUiWindowLocality.For(serveOnly: true, customShow: false, () => localPort)
+            || CsWebUiWindowLocality.For(serveOnly: false, customShow: true, () => localPort))
+            throw new InvalidOperationException("A serve-only window, or one the application's ShowWindow showed, is local.");
+    }
+
+    // Through the host: a Window that ShowWindow shows by starting its server gets no dialogs, and none is asked for.
+    Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
+    var dialogs = new CountingDialogs();
+    var services = new ServiceCollection();
+    services.AddScoped<DialogProbeViewModel>();
+    services.AddRunicViews();
+    services.AddRunicPlatformServices(dialogs);
+    await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+    var host = new RunicCsWebUiHost(provider, new RunicCsWebUiHostOptions { ShowWindow = static (window, page) => window.StartServer(page) });
+    await using (var window = await host.OpenWindowAsync<DialogProbeWindow>())
+    {
+        var picked = await window.ViewModel!.Dialogs.OpenDirectoryAsync(new(Runic.Platform.OwnerPolicy.PreferOwner));
+        if (picked is not Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease>.Unavailable(Runic.Platform.PlatformUnavailableReason.OwnerUnavailable)
+            || dialogs.Calls != 0)
+            throw new InvalidOperationException($"A window that ShowWindow showed asked for an unowned dialog: {picked}, {dialogs.Calls} calls.");
+    }
+    Console.WriteLine("CSWEBUI_WINDOW_LOCALITY_OK");
+}
+
+// The port a window's server listens on, once it does.
+static async Task<int> ListeningPortAsync(WebUiWindow window)
+{
+    for (var deadline = DateTime.UtcNow.AddSeconds(15); DateTime.UtcNow < deadline; await Task.Delay(100))
+    {
+        int port = (int)window.Port;
+        if (port > 0 && System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(listener => listener.Port == port))
+            return port;
+    }
+    throw new InvalidOperationException("A window's server did not start listening within 15 s.");
 }
 
 // An idle Window opened through the application entry point closes without remaining operations, its
@@ -576,6 +637,36 @@ namespace CsWebUiWindowProbes
     }
 
     public sealed partial class ProbeWindow : RunicWindow<ProbeViewModel>;
+
+    // The Window's own file dialogs (IFileDialogs from its scope).
+    public sealed partial class DialogProbeViewModel(Runic.Platform.IFileDialogs dialogs) : ObservableObject
+    {
+        [ObservableProperty] private string? folder;
+        internal Runic.Platform.IFileDialogs Dialogs => dialogs;
+    }
+
+    public sealed partial class DialogProbeWindow : RunicWindow<DialogProbeViewModel>;
+
+    // Unowned dialogs that count requests and answer none.
+    internal sealed class CountingDialogs : Runic.Platform.Runtime.IPickerBackend
+    {
+        internal int Calls;
+        public bool IsAvailable => true;
+        public bool SupportsDirectorySelection => true;
+
+        public ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease>> OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref Calls);
+            return ValueTask.FromResult<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease>>(new Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease>.Dismissed());
+        }
+
+        public ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLease>> OpenFileAsync(Runic.Platform.OpenFileOptions options,
+            CancellationToken cancellationToken = default) => throw new InvalidOperationException("Only directories are picked.");
+
+        public ValueTask<Runic.Platform.PickerResult<Runic.Platform.ISaveFileLease>> SaveFileAsync(Runic.Platform.SaveFileOptions options,
+            CancellationToken cancellationToken = default) => throw new InvalidOperationException("Only directories are picked.");
+    }
 
     // blobs/1: a 1x1 PNG avatar and a command that reads an upload.
     public sealed partial class BlobProbeViewModel : ObservableObject

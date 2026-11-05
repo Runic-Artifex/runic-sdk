@@ -116,9 +116,13 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// runs; a host created with its constructor leaves the main thread to the application.
     /// </para>
     /// <para>
-    /// A Window served under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> may be shown by a browser on another computer, so
-    /// its services report <see cref="PlatformUnavailableReason.OwnerUnavailable"/> without these dialogs, as on Runic
-    /// Desktop. An existing <see cref="IWindowPlatformServices"/> registration is kept, and ignores these dialogs.
+    /// A dialog opens only for a Window whose page no other computer can reach, because the user at this computer
+    /// answers it. Each request checks the Window: <see cref="RunicCsWebUiHost"/> must have shown it itself (no
+    /// <see cref="RunicCsWebUiHostOptions.ShowWindow"/>, which may only start the server for another device, and not
+    /// under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>), and its server must listen on loopback only, which
+    /// <c>WebUiWindow.SetPublic(true)</c> ends. Otherwise the dialogs report
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, as every other window service does. An existing
+    /// <see cref="IWindowPlatformServices"/> registration is kept, and ignores these dialogs.
     /// </para>
     /// </remarks>
     /// <example><code>
@@ -137,33 +141,63 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(unownedFileDialogs);
-        // A Window served under serve-only mode may be shown by a browser on another computer: no dialogs on this one.
-        services.TryAddScoped<IWindowPlatformServices>(_ => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1"
-            ? WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
-            : new UnownedWindowPlatformServices(unownedFileDialogs));
+        // The host shows the window and attaches it (CsWebUiWindowLocality); the dialogs then ask it before each request.
+        services.TryAddSingleton<CsWebUiUnownedDialogs>();
+        services.TryAddScoped<CsWebUiWindowLocality>();
+        services.TryAddScoped<IWindowPlatformServices>(provider =>
+            new UnownedWindowPlatformServices(unownedFileDialogs, provider.GetRequiredService<CsWebUiWindowLocality>()));
         return services.AddRunicPlatformServices();
     }
 
-    private const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
-
-    // A CS-WebUI window's services with unowned file dialogs: the dialogs for OwnerPolicy.PreferOwner, every other service
-    // unavailable for the missing owner. Disposing the window's scope closes a shown dialog and releases its leases.
-    internal sealed class UnownedWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
+    // A CS-WebUI window's services with unowned file dialogs: the dialogs for OwnerPolicy.PreferOwner while the window is
+    // local, every other service unavailable for the missing owner. Disposing the window's scope closes a shown dialog and
+    // releases its leases.
+    internal sealed class UnownedWindowPlatformServices : IWindowPlatformServices, IFileDialogs, IAsyncDisposable
     {
         private static readonly IWindowPlatformServices NoOwner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         private readonly PresentationLifetime _lifetime = new(static () => false);
         private readonly PresentationFiles _files;
+        private readonly CsWebUiWindowLocality _locality;
 
-        public UnownedWindowPlatformServices(IPickerBackend unowned) => _files = new PresentationFiles(_lifetime, backend: null, unowned);
+        public UnownedWindowPlatformServices(IPickerBackend unowned, CsWebUiWindowLocality locality)
+        {
+            _files = new PresentationFiles(_lifetime, backend: null, unowned);
+            _locality = locality;
+        }
 
-        public IFileDialogs FileDialogs => _files;
+        public IFileDialogs FileDialogs => this;
         public ITextClipboard Clipboard => NoOwner.Clipboard;
         public IDesktopFileLauncher FileLauncher => NoOwner.FileLauncher;
         public IDesktopMonitors Monitors => NoOwner.Monitors;
         public IDesktopMessageBoxes MessageBoxes => NoOwner.MessageBoxes;
 
-        public CapabilitySnapshot GetSnapshot() =>
-            new(_lifetime.Generation, NoOwner.GetSnapshot().Statuses.SetItems(_files.GetSnapshot().Statuses));
+        // The window's dialogs: unowned ones while it is local, and those of a closed window, which report it closed.
+        private IFileDialogs Dialogs => _lifetime.IsClosing || _locality.IsLocal ? _files : NoOwner.FileDialogs;
+
+        public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation, ReferenceEquals(Dialogs, _files)
+            ? NoOwner.GetSnapshot().Statuses.SetItems(_files.GetSnapshot().Statuses)
+            : NoOwner.GetSnapshot().Statuses);
+
+        public ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.OpenDirectoryAsync(options, cancellationToken);
+
+        public ValueTask<PickerResult<IDirectoryLeaseList>> OpenDirectoriesAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.OpenDirectoriesAsync(options, cancellationToken);
+
+        public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.OpenFileAsync(options, cancellationToken);
+
+        public ValueTask<PickerResult<IReadFileLeaseList>> OpenFilesAsync(OpenFileOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.OpenFilesAsync(options, cancellationToken);
+
+        public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.SaveFileAsync(options, cancellationToken);
+
+        public ValueTask<PickerResult<IDocumentFileLease>> OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.OpenDocumentAsync(options, cancellationToken);
+
+        public ValueTask<PickerResult<IDocumentFileLease>> SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken = default) =>
+            Dialogs.SaveDocumentAsync(options, cancellationToken);
 
         public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default) =>
             NoOwner.SetBadgeAsync(badge, cancellationToken);

@@ -49,6 +49,7 @@ internal static unsafe partial class MacDesktopBlock
     private static readonly nint ResponseDescriptor = DescriptorFor("v@?q");
     private static readonly nint TwoDescriptor = DescriptorFor("v@?@@");
     private static readonly nint BoolDescriptor = DescriptorFor("v@?B@");
+    private static readonly nint VoidDescriptor = DescriptorFor("v@?");
     private static nint DescriptorFor(string signature)
     {
         var d = (Descriptor*)NativeMemory.AllocZeroed((nuint)sizeof(Descriptor));
@@ -56,6 +57,8 @@ internal static unsafe partial class MacDesktopBlock
         d->Dispose = (nint)(delegate* unmanaged[Cdecl]<Block*, void>)&Destroy;
         d->Signature = Marshal.StringToCoTaskMemUTF8(signature); return (nint)d;
     }
+    // A block without arguments, such as CFRunLoopPerformBlock's.
+    internal static nint Create(Action callback) => Create((_, _) => callback(), VoidDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, void>)&None);
     internal static nint Create(Action<nint> callback) => Create((a, _) => callback(a), OneDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, nint, void>)&One);
     internal static nint Create(Action<nint, nint> callback) => Create(callback, TwoDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, nint, nint, void>)&Two);
     internal static nint Response(Action<nint> callback) => Create((a, _) => callback(a), ResponseDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, nint, void>)&One);
@@ -73,6 +76,7 @@ internal static unsafe partial class MacDesktopBlock
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Copy(Block* to, Block* from) => to->Context = GCHandle.ToIntPtr(GCHandle.Alloc(GCHandle.FromIntPtr(from->Context).Target));
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Destroy(Block* block) => GCHandle.FromIntPtr(block->Context).Free();
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void None(Block* b) => Run(b, 0, 0);
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void One(Block* b, nint a) => Run(b, a, 0);
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Two(Block* b, nint a, nint c) => Run(b, a, c);
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Boolean(Block* b, byte a, nint c) => Run(b, a, c);

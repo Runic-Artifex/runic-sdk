@@ -170,13 +170,23 @@ the buttons are the platform's own. Cancellation closes a shown dialog. A
 and the capabilities report `platform.dialogs.unowned` available and
 `platform.dialogs.owned` unavailable. A window shows one dialog at a time
 (`ResourceBusy` otherwise); closing it closes its dialog and releases its leases.
-A Window served under `RUNIC_APPLICATION_SERVE_ONLY=1` gets no dialogs, because its
-browser may run on another computer. Windows shows the dialog on an STA thread of
-the application's own. macOS shows AppKit panels on the main thread: `Run` serves
-the main dispatch queue while idle and while browser windows are shown, and a
-panel then runs modally until it closes; with `UseWebView`, WebUI's own AppKit
-loop shows it without blocking. A host created with its constructor leaves the
-main thread to the application, which must serve the main queue for the panels.
+A dialog opens only for a window that no other computer can reach, because the
+user at this computer answers it; each request checks again. A window gets no
+dialogs (`OwnerUnavailable`) under `RUNIC_APPLICATION_SERVE_ONLY=1`, when
+`RunicCsWebUiHostOptions.ShowWindow` shows it (it may only start the server for
+another device), or when its server listens beyond loopback, as
+`WebUiWindow.SetPublic(true)` makes it. Windows shows each dialog on an STA thread
+of its own, so two windows' dialogs close independently. macOS shows AppKit panels
+on the main thread: `Run` blocks in the main run loop while idle and while browser
+windows are shown, with WebUI's wait on a thread of its own, and a panel then runs
+modally until it closes; a second window's panel waits for it. With `UseWebView`,
+WebUI's own AppKit loop shows panels without blocking. Without registered dialogs
+the main thread blocks as WebUI's wait does. A host created with its constructor
+leaves the main thread to the application, which must serve the main queue for the
+panels. An owner-less dialog may open behind the browser: Windows' foreground rules
+let only the foreground application bring a window forward, and macOS 14 and later
+activate the application only when the browser yields; macOS still orders the
+panel in front of other applications' windows.
 
 A root ViewModel that implements `IRunicFileDropTarget` is
 never called here: a browser window reports no dropped paths, so the page only

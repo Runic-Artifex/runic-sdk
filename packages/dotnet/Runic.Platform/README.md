@@ -594,12 +594,13 @@ unowned dialogs, as its browser may run on another computer.
 
 CS-WebUI selects no native provider, so its windows show unowned dialogs only when
 the application passes a provider's to `AddRunicPlatformServices`:
-`WindowsPlatformProvider.CreateUnownedFileDialogs()` (the Common Item Dialog on the
-application's own STA thread), `MacOSPlatformProvider.CreateUnownedFileDialogs()`
+`WindowsPlatformProvider.CreateUnownedFileDialogs()` (the Common Item Dialog, each on
+an STA thread of its own), `MacOSPlatformProvider.CreateUnownedFileDialogs()`
 (AppKit panels on the main thread, which `RunicCsWebUiHost.Run` serves) or
 `new PortalApplication().CreateUnparentedFileDialogs()` (the xdg-desktop-portal
 FileChooser without a parent). The same `PreferOwner` rules, capabilities and
-window lifetime apply; see
+window lifetime apply, and only a window that no other computer can reach (not
+serve-only, not shown by `ShowWindow`, its server on loopback only) gets them; see
 [Runic.Application.Views.CsWebUi](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md).
 An application without any window can call one of these factories directly; it
 then disposes the leases itself.

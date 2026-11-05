@@ -17,6 +17,8 @@ const packageProjects = [
   ["Runic.Platform", "Runic.Platform"],
   // and on Runic.Assets for embedded frontends (RunicCsWebUiHostOptions.Assets).
   ["Runic.Assets", "Runic.Assets"],
+  // and on Runic.Platform.Runtime for unowned file dialogs (AddRunicPlatformServices(unownedFileDialogs)).
+  ["Runic.Platform.Runtime", "Runic.Platform.Runtime"],
   ["Runic.Application.Views.CsWebUi", "Runic.Application.Views.CsWebUi"]
 ];
 let testVersion;

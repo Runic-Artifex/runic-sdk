@@ -5,8 +5,8 @@ using TUnit.Core;
 
 namespace Runic.Platform.Windows.Tests;
 
-// Native UI without a window (#712): the application's own STA thread (WindowsApplicationThread) and an unowned file
-// dialog on it, which cancellation closes from inside the dialog's modal loop. Part of the NativeMessageBoxes run, which
+// Native UI without a window (#712): the application's own STA thread (WindowsApplicationThread), and unowned file dialogs,
+// each on an STA thread of its own, which cancellation closes from inside the dialog's modal loop. Part of the NativeMessageBoxes run, which
 // CI starts with JIT and NativeAOT.
 [SupportedOSPlatform("windows8.0")]
 internal sealed partial class UnownedDialogTests
@@ -61,6 +61,35 @@ internal sealed partial class UnownedDialogTests
         Console.WriteLine("PASS an unowned file dialog shows and closes");
     }
 
+    // Two presentations' unowned dialogs at once, as two CS-WebUI windows ask for them: each runs on a thread of its own,
+    // so the first closes while the second is still shown, and neither waits for the other.
+    [Test, Explicit, Category("NativeMessageBoxes")]
+    public async Task UnownedFileDialogsDoNotNestAsync()
+    {
+        var dialogs = WindowsPlatformProvider.CreateUnownedFileDialogs();
+        using var first = new CancellationTokenSource();
+        using var second = new CancellationTokenSource();
+        var one = dialogs.OpenDirectoryAsync(new OpenDirectoryOptions(OwnerPolicy.PreferOwner) { Title = "Runic first unowned dialog" }, first.Token).AsTask();
+        var two = dialogs.OpenDirectoryAsync(new OpenDirectoryOptions(OwnerPolicy.PreferOwner) { Title = "Runic second unowned dialog" }, second.Token).AsTask();
+        nint firstWindow = await FindAsync("Runic first unowned dialog"), secondWindow = await FindAsync("Runic second unowned dialog");
+        Check(firstWindow != 0 && secondWindow != 0, "both dialogs are shown");
+        Check(GetWindowThreadProcessId(firstWindow, 0) != GetWindowThreadProcessId(secondWindow, 0), "each dialog runs on a thread of its own");
+        first.Cancel();
+        Check(await Record(() => one.WaitScaledAsync(Wait)) is OperationCanceledException, "the first dialog closes while the second is shown");
+        Check(!two.IsCompleted && IsWindow(secondWindow) && !IsWindow(firstWindow), "closing the first dialog leaves the second shown");
+        second.Cancel();
+        Check(await Record(() => two.WaitScaledAsync(Wait)) is OperationCanceledException && !IsWindow(secondWindow), "the second dialog closes");
+        Console.WriteLine("PASS two unowned file dialogs at once close independently");
+    }
+
+    private static async Task<nint> FindAsync(string title)
+    {
+        nint window = 0;
+        for (var deadline = DateTime.UtcNow + TestTimeouts.Scale(Wait); window == 0 && DateTime.UtcNow < deadline; await Task.Delay(100))
+            window = FindWindowW(null, title);
+        return window;
+    }
+
     // #724: the application's task dialogs need no window: they run on the application thread without an owner, answer
     // with their buttons and close on cancellation.
     [Test, Explicit, Category("NativeMessageBoxes")]
@@ -99,6 +128,7 @@ internal sealed partial class UnownedDialogTests
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial nint FindWindowW(string? className, string windowName);
     [LibraryImport("user32.dll")] private static partial nint GetWindow(nint window, uint command);
     [LibraryImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static partial bool IsWindow(nint window);
+    [LibraryImport("user32.dll")] private static partial uint GetWindowThreadProcessId(nint window, nint processId);
 
     private static async Task<Exception?> Record(Func<Task> action)
     {
