@@ -621,10 +621,16 @@ and `ReducedMotion`. What each engine reports (checked by the native smokes,
 | Engine | `prefers-contrast` | `forced-colors` | `prefers-reduced-motion` | While the window is open |
 | --- | --- | --- | --- | --- |
 | Windows, WebView2 | Chromium's value for the contrast theme while one is on, otherwise `no-preference` | `active` while a contrast theme is on, with the theme's colours | `reduce` when "Animation effects" (client area animations) is off | A window reads them when it opens. An open page may not follow a change: in CI it did not follow "Animation effects" |
-| macOS, WKWebView | `more` with "Increase contrast" | Always `none`: macOS does not force colours | `reduce` with "Reduce motion" | Not checked: the smoke cannot switch these settings without the user's consent |
+| macOS, WKWebView | `more` with "Increase contrast" | Always `none`: macOS does not force colours | `reduce` with "Reduce motion" | Not checked live: the smoke cannot switch these settings while it runs; CI checks the page with "Increase contrast" off and on, set before the process starts |
 | Linux, WebKitGTK 4.1 (GTK 3) | `more` with GTK's `HighContrast` or `HighContrastInverse` theme, which GNOME's settings daemon selects for "High Contrast" | Always `none` | `reduce` when GTK's `gtk-enable-animations` is off | Follows |
 | Linux, WebKitGTK 6.0 (GTK 4) | `more` with GTK 4.20's `gtk-interface-contrast`; an older GTK 4 has no such setting | Always `none` | `reduce` with GTK 4.20's `gtk-interface-reduced-motion` | Reads them when the process's first web view starts, and does not follow a later change (WebKitGTK 2.54) |
 | Installed browsers | The browser's own | The browser's own | The browser's own | The browser's |
+
+`IDesktopSettings.WatchAsync` reports a change whether or not the page follows it. The
+Windows smoke checks that a watch reports the switched animations and contrast theme
+from the desktop's change notifications alone, with the contrast theme's palette, and
+the macOS smoke that `IDesktopSettings` agrees with NSWorkspace, with "Increase
+contrast" off and on.
 
 A Runic Views page also gets the desktop's values from the host
 (`appearance/1`, see the
@@ -999,7 +1005,8 @@ manager (`AppText`, `ITranslationManager`). `DesktopHost.SetMenuBar` replaces
 the application's menus at run time, so the bar follows a language change
 without a restart. The standard macOS menus take their titles from
 `DesktopHostOptions.StandardMenuTitles` (see [Keyboard and zoom in embedded
-windows](#keyboard-and-zoom-in-embedded-windows)) when the first window opens. A menu's `Role` places it: `Application` adds its items after About,
+windows](#keyboard-and-zoom-in-embedded-windows)) when the first window opens, and
+from `DesktopHost.SetStandardMenuTitles` after a language change. A menu's `Role` places it: `Application` adds its items after About,
 `File` fills the File menu before Close and gives it its title, `Help` goes
 last, and others go between View and Window. Titles are literal text of at
 most 128 characters, and command ids have 1 to 64 ASCII letters, digits, dots,
@@ -1589,6 +1596,24 @@ var window = await surface.OpenWindowAsync(new DesktopWindowOptions
 });
 ```
 
+`DesktopWindow.SetLayoutDirectionAsync` changes the direction of an open window,
+for example after a switch to or from a right-to-left language: it applies what
+`LayoutDirection` applies at open, and GTK and Win32 menu bars are built again in
+the new direction. `Default` returns to the platform's direction, and
+`DesktopWindow.LayoutDirection` reports the current one. It requires
+`DesktopWindowCapabilities.LayoutDirection`, which WebView2, WebKitGTK 4.1 and
+the GTK 4 host report; WKWebView and installed browsers do not. The web view's
+`Language` stays as the window opened with it: WebView2 and WebKitGTK read it
+when they create the web view.
+
+```csharp
+await window.SetLayoutDirectionAsync(culture.TextInfo.IsRightToLeft
+    ? DesktopLayoutDirection.RightToLeft : DesktopLayoutDirection.LeftToRight);
+```
+
+Runic Views windows (Runic.Application.Views.Desktop) do this from the window's
+locale.
+
 `Validate` reports each option a presentation ignores. The
 [right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)
 lists every native piece per platform.
@@ -1760,6 +1785,9 @@ completes AppKit's empty default menu instead of adding a second one:
 The titles are English unless `DesktopHostOptions.StandardMenuTitles` supplies
 them. Runic ships no translations: take them from the application's own, such
 as its Runic Translations catalog, for the user's language when the host starts.
+`DesktopHost.SetStandardMenuTitles(titles)` replaces them while the application
+runs, for example after a language switch, together with `SetMenuBar`; `null`
+returns to English.
 `{0}` in About, Hide and Quit is the application's name, and a translation can
 move or drop it. Every title has 1 to 256 characters; an invalid one fails
 building the host, and `Validate` reports it as `menu-title-invalid`:
@@ -1778,8 +1806,15 @@ var host = await DesktopHost.StartAsync(new DesktopHostOptions
 });
 ```
 
+```csharp
+host.SetStandardMenuTitles(new DesktopStandardMenuTitles { Edit = text.MenuEdit, Quit = text.MenuQuit });
+host.SetMenuBar(BuildMenus(text));
+```
+
 Menus keep being found by their identifiers and actions, not their titles, so a
-declared File menu still takes the place of the standard one. CI checks Command and A, C and V between two text
+declared File menu still takes the place of the standard one, and a later
+`SetStandardMenuTitles` retitles the menus Runic added. An application's own
+main menu keeps its titles; only the zoom items Runic adds to it change. CI checks Command and A, C and V between two text
 fields, and Command and Q through a close guard, on the macOS runner. On macOS, Tab reaches
 buttons and links only with Keyboard Navigation turned on in the system settings,
 as in Safari.
@@ -1883,6 +1918,7 @@ The optional interfaces each add one feature:
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
 | `IDesktopActivityWindowHost` | `DesktopWindow.Activity` and `ActivityChanged` ([Window activity](#window-activity)) | `DesktopWindowCapabilities.Activity` |
 | `IDesktopColorSchemeWindowHost` | `DesktopWindow` and `DesktopHost.SetColorSchemeAsync` in an open window ([Light and dark windows](#light-and-dark-windows)) | `DesktopWindowCapabilities.ColorScheme`, and `PerWindowColorScheme` when the scheme is the window's alone |
+| `IDesktopLayoutDirectionWindowHost` | `DesktopWindow.SetLayoutDirectionAsync` in an open window; apply `DesktopWindowHostOptions.LayoutDirection` when opening ([Right-to-left languages](#right-to-left-languages)) | `DesktopWindowCapabilities.LayoutDirection` |
 | Any host | The owner's native handle in `DesktopWindowHostOptions.OwnerHandle` and `Modality` ([Owned and window-modal windows](#owned-and-window-modal-windows)) | `DesktopWindowCapabilities.Ownership` |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |

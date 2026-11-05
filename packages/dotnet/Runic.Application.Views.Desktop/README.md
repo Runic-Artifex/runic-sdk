@@ -173,6 +173,22 @@ The same Window and `async host => ...` body run on CS-WebUI with
   host, or a ViewModel's window that has not opened yet), `OwnerClosed` once it
   closed, and `BackendUnavailable` for a window host without announcements,
   such as GTK 4 before 4.14.
+- The window's locale (`IRunicWindowLocale`, set before the window opens) gives
+  an embedded window on Windows and Linux its native direction
+  (`DesktopWindowOptions.LayoutDirection`, right to left for `ar`, `he`, `fa`
+  and other right-to-left scripts) and the web view's language
+  (`DesktopWindowOptions.Language`: built-in text such as the context menu and
+  form validation, `navigator.language`). A later locale change, including one
+  while the window opens, mirrors the open window or returns it to left to right
+  (`DesktopWindow.SetLayoutDirectionAsync`), and a `null` locale returns it to the
+  platform's direction. Changes apply in order, so the window ends with the
+  direction of the last one. The script of a tag counts only right after its
+  language: `ar-u-nu-latn` (Arabic with Latin digits) stays right to left. The
+  web view's language stays until the window opens again. A
+  `LayoutDirection` or `Language` that `WindowOptions` sets wins, and a
+  `ProfilePath` keeps the platform's language, since WebView2 needs one language
+  per profile. macOS takes both from the application bundle. The page sets its
+  own `<html lang dir>` (`syncDocumentLocale` in `@runic-artifex/views`).
 - `RunicDesktopHost.Placement` restores each Window's size, position and
   maximized state from the last time it closed, and
   `DesktopPlatformServices.GetWindowState(window)` reads them to save. The callback is

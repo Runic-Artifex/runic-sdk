@@ -1465,6 +1465,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _language = language;
     }
 
+    // DesktopWindow.SetLayoutDirectionAsync for the open embedded window.
+    internal async ValueTask SetEmbeddedLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken)
+    {
+        await GetEmbeddedHost().SetLayoutDirectionAsync(layoutDirection, cancellationToken).ConfigureAwait(false);
+        _layoutDirection = layoutDirection;
+    }
+
     // Whether the next embedded window's documents start with spellcheck="false" (DesktopWindowOptions.SpellChecking).
     internal void SetSpellChecking(bool spellChecking) => _spellChecking = spellChecking;
 

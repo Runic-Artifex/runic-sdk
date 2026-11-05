@@ -3096,6 +3096,39 @@ public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings setti
 }
 ```
 
+**C# formatting in the window's culture.** By default a ViewModel formats in
+the process's culture: `ToString("N")`, `string.Format` and DataAnnotations
+messages in a `de` window still use the operating system's culture. Opt in
+with `FlowCultureFromLocale`, and the window's bridged invocations run with
+`CultureInfo.CurrentCulture` and `CurrentUICulture` of its locale: the setters,
+checked writes, commands (also after their `await`s), validation and state reads
+of the page's requests, the navigation they start, the window's menu
+commands, and the close guard (`CanCloseAsync` and the navigation regions'
+departure guards) when the user closes the window. A locale without a predefined
+.NET culture uses its nearest parent's (`de-CH`, then `de`), and the process's
+cultures without one, as under invariant globalization. Timers and other work
+started outside an invocation keep their culture.
+
+Work started inside an invocation keeps the window's culture for its whole life:
+a `System.Threading.Timer`, a `PeriodicTimer` or `Task.Run` loop, an
+`Observable.Interval` subscription, or a singleton service that a command
+resolves first and that starts such work, captures the culture of that
+invocation and keeps formatting in it, also for other windows and after the
+window's locale changed. Start such work at application start, outside any
+invocation, or suppress the flow while you start it:
+
+```csharp
+using (ExecutionContext.SuppressFlow())
+    _sync = new Timer(_ => PublishNotifications(), null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+```
+
+```csharp
+await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFromLocale = true });
+// or for every Window: new RunicDesktopHostOptions { FlowCultureFromLocale = true },
+// RunicCsWebUiHostOptions, RunicWindowTestHostOptions; a custom host sets
+// WindowContentSessionOptions.FlowCultureFromLocale.
+```
+
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
 Runic Translations and its Vite plugin:
@@ -3194,7 +3227,7 @@ host read from `IDesktopSettings`, to the window's pages, after each page's
   is open; the views of Runic.Application.Views.Wpf (`RunicViewHost`,
   `CreateWpfViewAsync`) share one such watch per process. A serve-only Window
   and CS-WebUI, whose pages may run on another machine, push nothing. Watch
-  failures are logged as event 2008.
+  failures are logged as event 2009.
 - The page's appearance store (`appearance()`, `useAppearance`,
   `injectAppearance`, `appearances()`) combines the push with the engine's media
   queries ([Appearance](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#appearance)).
@@ -4054,7 +4087,8 @@ trace id; correlate them with the host's spans by time and route.
 | 2005 | `DesktopDevelopmentAssetsServed` | Information | `dotnet runic dev` without a development server: a Development host serves the frontend output directory live (`RUNIC_APPLICATION_DEVELOPMENT_ASSETS`) and reloads its windows when it changes. Once per directory and start page. | `Directory` |
 | 2006 | `DesktopDevelopmentAssetsUnavailable` | Warning | That directory, or the `www/` folder behind it, cannot be served, for example because it lacks the start page or contains a symbolic link; the window serves the other folder. | `Directory`, `ErrorType`, `Instead` |
 | 2007 | `DesktopDevelopmentReloadFailed` | Debug | A window did not reload after the directory changed, for example because it closed meanwhile. | |
-| 2008 | `DesktopAppearanceWatchFailed` | Warning | Watching the desktop's appearance settings (`IDesktopSettings`) for the Windows' pages (`appearance/1`) failed; the pages keep the last appearance read. | `ErrorType` |
+| 2008 | `DesktopLayoutDirectionFailed` | Warning | An embedded window did not change its native direction after its window locale (`IRunicWindowLocale`) changed. | `ErrorType` |
+| 2009 | `DesktopAppearanceWatchFailed` | Warning | Watching the desktop's appearance settings (`IDesktopSettings`) for the Windows' pages (`appearance/1`) failed; the pages keep the last appearance read. | `ErrorType` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `2b35db13f` (CsWebUi 2.5.0-beta.4.8). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |

@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.get -> bool?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.init -> void

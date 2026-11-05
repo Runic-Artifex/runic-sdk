@@ -10,10 +10,17 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
     private readonly CancellationTokenSource _closed = new();
     private readonly object _gate = new();
     private readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private int _readers;
+    private int _readers, _watches;
     private bool _disposed;
     private TaskCompletionSource? _disposal;
-    /// <summary>The clock of the once-per-second polling; tests set a fake one.</summary>
+    // The native change notifications StartChanges started for the running watches; null while none run, or when
+    // they could not start (the watches then poll).
+    private readonly Lock _changesGate = new();
+    private IDisposable? _changes;
+    private TaskCompletionSource? _changed;
+    private object? _changesGeneration;
+    private bool _changesFailed;
+    /// <summary>The clock of the once-per-second polling fallback; tests set a fake one.</summary>
     internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
     /// <inheritdoc />
     public async ValueTask<PlatformResult<DesktopAppearance>> ReadAsync(CancellationToken cancellationToken = default)
@@ -35,8 +42,62 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
     /// <summary>Reads one native snapshot and drains any submitted native callback before returning.</summary>
     protected abstract ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken);
     /// <summary>Returns a task that completes after the next native change, or null to poll once per second.</summary>
-    /// <remarks>Called before each watched read, so a change during that read completes the returned task.</remarks>
-    protected virtual Task? NextChange() => null;
+    /// <remarks>
+    /// Called before each watched read, so a change during that read completes the returned task. The default starts
+    /// <see cref="StartChanges"/> for the first watch and stops it when the last watch ends; if it cannot start, the
+    /// watches poll until they all end.
+    /// </remarks>
+    protected virtual Task? NextChange()
+    {
+        lock (_changesGate)
+        {
+            if (_changed is null && !_changesFailed)
+            {
+                var generation = new object();
+                (_changed, _changesGeneration) = (new(TaskCreationOptions.RunContinuationsAsynchronously), generation);
+                try { _changes = StartChanges(() => Changed(generation, stopped: false), () => Changed(generation, stopped: true)); }
+                catch (Exception error) when (error is not OutOfMemoryException) { _changes = null; }
+                if (_changes is null) (_changed, _changesGeneration, _changesFailed) = (null, null, true);
+            }
+            return _changed?.Task;
+        }
+    }
+    /// <summary>
+    /// Starts native change notifications that call <c>changed</c> after each change of a setting the source reads, on
+    /// any thread, and <c>failed</c> if they stop on their own; null, or an exception, when they are not available.
+    /// Disposing stops them without waiting.
+    /// </summary>
+    protected virtual IDisposable? StartChanges(Action changed, Action failed) => null;
+    // Wakes the watches and arms the next change, unless the notifications stopped since. Notifications that failed
+    // leave the watches polling until they all end.
+    private void Changed(object generation, bool stopped)
+    {
+        TaskCompletionSource? woken;
+        IDisposable? changes = null;
+        lock (_changesGate)
+        {
+            if (!ReferenceEquals(_changesGeneration, generation)) return;
+            woken = _changed;
+            if (stopped) (changes, _changes, _changed, _changesGeneration, _changesFailed) = (_changes, null, null, null, true);
+            else _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try { changes?.Dispose(); }
+        finally { woken?.TrySetResult(); }
+    }
+    // The last watch ended, or the source closed: stops the notifications, and wakes a watch that started meanwhile,
+    // whose next NextChange starts them again.
+    private void StopChanges()
+    {
+        IDisposable? changes;
+        TaskCompletionSource? woken;
+        lock (_changesGate)
+        {
+            (changes, woken) = (_changes, _changed);
+            (_changes, _changed, _changesGeneration, _changesFailed) = (null, null, null, false);
+        }
+        try { changes?.Dispose(); }
+        finally { woken?.TrySetResult(); }
+    }
     /// <summary>Releases native observation after disposal has drained every read.</summary>
     protected virtual ValueTask CloseCoreAsync() => ValueTask.CompletedTask;
     /// <inheritdoc />
@@ -47,22 +108,32 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closed.Token);
+            _watches++;
         }
-        using (linked)
+        try
         {
-            PlatformResult<DesktopAppearance>? previous = null;
-            while (true)
+            using (linked)
             {
-                linked.Token.ThrowIfCancellationRequested();
-                var changed = NextChange();
-                PlatformResult<DesktopAppearance> current;
-                try { current = await ReadAsync(linked.Token).ConfigureAwait(false); }
-                catch (ObjectDisposedException) when (linked.IsCancellationRequested)
-                { throw new OperationCanceledException(linked.Token); }
-                if (current != previous) { previous = current; yield return current; }
-                if (changed is null) await Task.Delay(TimeSpan.FromSeconds(1), TimeProvider, linked.Token).ConfigureAwait(false);
-                else await changed.WaitAsync(linked.Token).ConfigureAwait(false);
+                PlatformResult<DesktopAppearance>? previous = null;
+                while (true)
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    var changed = NextChange();
+                    PlatformResult<DesktopAppearance> current;
+                    try { current = await ReadAsync(linked.Token).ConfigureAwait(false); }
+                    catch (ObjectDisposedException) when (linked.IsCancellationRequested)
+                    { throw new OperationCanceledException(linked.Token); }
+                    if (current != previous) { previous = current; yield return current; }
+                    if (changed is null) await Task.Delay(TimeSpan.FromSeconds(1), TimeProvider, linked.Token).ConfigureAwait(false);
+                    else await changed.WaitAsync(linked.Token).ConfigureAwait(false);
+                }
             }
+        }
+        finally
+        {
+            bool last;
+            lock (_gate) last = --_watches == 0;
+            if (last) StopChanges();
         }
     }
     /// <inheritdoc />
@@ -85,6 +156,7 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
         Exception? failure = null;
         try { await _closed.CancelAsync().ConfigureAwait(false); } catch (Exception error) { failure = error; }
         await _drained.Task.ConfigureAwait(false);
+        try { StopChanges(); } catch (Exception error) { failure ??= error; }
         try { await CloseCoreAsync().ConfigureAwait(false); } catch (Exception error) { failure ??= error; }
         _closed.Dispose();
         if (failure is null) completion.TrySetResult();

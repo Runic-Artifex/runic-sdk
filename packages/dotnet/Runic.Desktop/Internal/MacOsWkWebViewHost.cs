@@ -901,6 +901,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoid(mainMenu, "release");
         }
         var titles = Volatile.Read(ref HostSettings.Titles);
+        s_completedMainMenu = complete;
         if (complete)
         {
             var name = Api.Text(Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName"));

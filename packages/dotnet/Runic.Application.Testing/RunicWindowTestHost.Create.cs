@@ -152,6 +152,7 @@ public static class RunicWindowTestHost
             TimeProvider = options.TimeProvider,
             CreateId = options.CreateId,
             IncludeFailureDetail = options.IncludeFailureDetail,
+            FlowCultureFromLocale = options.FlowCultureFromLocale,
             MaximumInputBytes = options.MaximumInputBytes,
             MaximumUploadBytes = options.MaximumUploadBytes,
             PublicationTimeout = options.PublicationTimeout,

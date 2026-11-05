@@ -130,7 +130,7 @@ public sealed class WindowContentSession : IDisposable
             // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
-            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger);
+            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger, options.FlowCultureFromLocale);
             dispatcher.Blobs.Configure(maximumUploadBytes, maximumWindowUploadBytes);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
             // A departure of this window's models flushes its pages first (field-flush/1).

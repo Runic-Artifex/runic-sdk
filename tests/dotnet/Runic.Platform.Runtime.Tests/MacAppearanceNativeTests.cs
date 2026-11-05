@@ -5,7 +5,7 @@ using TUnit.Core;
 
 // W315-011 on the macOS runner: the settings provider reads the preferences that eng/ci/macos-appearance.sh wrote
 // before starting this process (accent colour, Increase contrast and Reduce motion reach a new process), and with
-// live-dark=true it follows dark mode switched through System Events while it runs. Program.cs runs the category
+// live-dark=true it follows dark mode switched through System Events while it runs, from change notifications alone. Program.cs runs the category
 // inside the Desktop event loop, so AppKit updates the effective appearance. The script restores every preference.
 // RUNIC_TEST_APPEARANCE keeps the case away from a developer's own settings.
 internal sealed class MacAppearanceNativeTests
@@ -18,7 +18,9 @@ internal sealed class MacAppearanceNativeTests
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The appearance checks need macOS.");
         if (Environment.GetEnvironmentVariable("RUNIC_TEST_APPEARANCE") != "1")
             throw new InvalidOperationException("Run through eng/ci/macos-appearance.sh, which sets RUNIC_TEST_APPEARANCE=1 and restores the preferences.");
-        await using var settings = MacOSPlatformProvider.CreateSettings();
+        // A clock that never advances: the watch's polling fallback never reads, so a live change reaches it only through
+        // MacSettingsChanges' notifications.
+        await using var settings = new MacDesktopSettings { TimeProvider = new Microsoft.Extensions.Time.Testing.FakeTimeProvider() };
         var read = await settings.ReadAsync(cancellationToken);
         Require(read is PlatformResult<DesktopAppearance>.Success, $"The appearance read failed: {read}.");
         var appearance = ((PlatformResult<DesktopAppearance>.Success)read).Value;
@@ -42,7 +44,7 @@ internal sealed class MacAppearanceNativeTests
     }
 
     // Dark mode switched as System Settings does, through System Events, must reach a running watch.
-    private static async Task LiveDarkModeAsync(IDesktopSettings settings, CancellationToken cancellationToken)
+    private static async Task LiveDarkModeAsync(MacDesktopSettings settings, CancellationToken cancellationToken)
     {
         using var watching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         watching.CancelAfter(TestTimeouts.Scale(TimeSpan.FromSeconds(60)));

@@ -37,6 +37,10 @@ internal static partial class DesktopLog
         Message = "A window did not reload after its development assets changed.")]
     internal static partial void DevelopmentReloadFailed(ILogger logger, Exception? exception);
 
+    [LoggerMessage(EventId = 2008, EventName = "DesktopLayoutDirectionFailed", Level = LogLevel.Warning,
+        Message = "The window did not change its layout direction for its new locale ({ErrorType}).")]
+    internal static partial void LayoutDirectionFailed(ILogger logger, Exception? exception, string errorType);
+
 #if RUNIC_PORTABLE_PLATFORMS
     // A problem, such as a rejected identity or an unreachable portal, is a warning; accepted requests and
     // registrations are details. An unknown severity from a later package version is a warning too.
@@ -46,7 +50,7 @@ internal static partial class DesktopLog
             diagnostic.Code, diagnostic.Message, diagnostic.Remediation ?? string.Empty);
 #endif
 
-    [LoggerMessage(EventId = 2008, EventName = "DesktopAppearanceWatchFailed", Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 2009, EventName = "DesktopAppearanceWatchFailed", Level = LogLevel.Warning,
         Message = "The desktop's appearance settings could not be watched ({ErrorType}); pages keep the last appearance read.")]
     internal static partial void AppearanceWatchFailed(ILogger logger, Exception? exception, string errorType);
 }
