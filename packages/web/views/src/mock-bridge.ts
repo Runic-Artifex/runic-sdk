@@ -9,6 +9,8 @@ import { canonicalLanguageCase, clientLanguagesFeature, isClientLanguageTag } fr
 import { clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
+import { appearanceFeature } from "./appearance-push.js";
+import type { HostAppearance } from "./appearance.js";
 import { evaluateMockQuery, type MockQueryCollection, type MockQueryLoad, type MockQuerySource } from "./mock-query.js";
 import { normalizeQuery, type QueryCollectionQuery } from "./query.js";
 import { blobsFeature, type BlobRef } from "./blob-wire.js";
@@ -503,6 +505,15 @@ export interface MockBridge extends RunicBridgeClient {
   /** The window's locale that {@link MockBridge.setWindowLocale} set, or `null`. */
   readonly windowLocale: string | null;
   /**
+   * Sets the window's appearance as a desktop host does from the desktop's settings (appearance/1,
+   * `WindowContentSession.Appearance` in .NET): pushes `appearance` with every member to the connection when it uses the
+   * feature, and again after the `hello` of each later connection, which gets every member `null` before the first
+   * call. A member left out is `null`; `null` makes every member `null`. Setting an equal appearance pushes nothing.
+   */
+  setAppearance(appearance: Partial<HostAppearance> | null): void;
+  /** The window's appearance that {@link MockBridge.setAppearance} set, every member present, or `null`. */
+  readonly appearance: HostAppearance | null;
+  /**
    * client-languages/1: the languages the page's last `hello` reported (its browser's `navigator.languages`), as a .NET
    * producer reports them on `RunicConnection.Languages`: in BCP 47 case, each once. `[]` before a `hello` that uses
    * the feature.
@@ -556,7 +567,7 @@ const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVe
 const mockFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature, navigationPathFeature, clientLanguagesFeature,
+  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature,
 ];
 const defaultUploadBytes = 256 * 1_048_576;
 
@@ -1068,6 +1079,17 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   // translation-text/1: the window's locale (setWindowLocale).
   let windowLocale: string | null = null;
+  // appearance/1: the window's appearance (setAppearance).
+  let windowAppearance: HostAppearance | null = null;
+  const appearancePush = (value: HostAppearance | null) => ({
+    kind: "appearance",
+    colorScheme: value?.colorScheme ?? null,
+    contrast: value?.contrast ?? null,
+    reducedMotion: value?.reducedMotion ?? null,
+    textScale: value?.textScale ?? null,
+    accentColor: value?.accentColor ?? null,
+    systemColors: value?.systemColors ?? null,
+  });
   // client-languages/1: the languages of the last hello that used the feature.
   let reportedLanguages: readonly string[] = [];
 
@@ -1680,6 +1702,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       }
       // translation-text/1: a page that connects to a window with a locale is told it.
       if (windowLocale !== null && connection.features.has(translationTextFeature)) pushMessage({ kind: "locale", locale: windowLocale });
+      // appearance/1: likewise the window's appearance, every member null while it has none.
+      if (connection.features.has(appearanceFeature)) pushMessage(appearancePush(windowAppearance));
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
       // blobs/1: the connection's upload grant.
@@ -2130,6 +2154,20 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         pushMessage({ kind: "locale", locale });
     },
     get windowLocale() { return windowLocale; },
+    setAppearance(value) {
+      const next: HostAppearance | null = value === null ? null : Object.freeze({
+        colorScheme: value.colorScheme ?? null,
+        contrast: value.contrast ?? null,
+        reducedMotion: value.reducedMotion ?? null,
+        textScale: value.textScale ?? null,
+        accentColor: value.accentColor ?? null,
+        systemColors: value.systemColors ?? null,
+      });
+      if (JSON.stringify(next) === JSON.stringify(windowAppearance)) return;
+      windowAppearance = next;
+      if (connected && connection.session !== undefined && connection.features.has(appearanceFeature)) pushMessage(appearancePush(next));
+    },
+    get appearance() { return windowAppearance; },
     get clientLanguages() { return reportedLanguages; },
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {

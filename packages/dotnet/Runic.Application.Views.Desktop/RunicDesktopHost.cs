@@ -439,6 +439,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             IDisposable connections = menuRoutes;
+            // appearance/1: the window's appearance follows the desktop's settings while it is open, when only this
+            // computer can reach its pages (DesktopWindowLocality): a serve-only window or a host on every interface may
+            // be shown on another machine, which must not learn this desktop's accessibility settings.
+            if (DesktopWindowLocality.IsLocal(Desktop, surface, ServeOnly))
+                connections = new Bindings(connections, AppearanceFeed.Add(content, loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")));
             // The window releases its live development content when it closes, with its connection events.
             connectionBinding = development is null ? connections : new Bindings(connections, development);
             development = null;
@@ -520,6 +525,19 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     }
 
     private readonly DevelopmentAssets _developmentAssets = new();
+
+    // appearance/1: the application's IDesktopSettings when it registered one (AddRunicPlatformServices), or the
+    // platform's own, which the feed creates while a window is open and disposes after the last closed.
+    private DesktopAppearanceFeed? _appearanceFeed;
+    private DesktopAppearanceFeed AppearanceFeed
+    {
+        get
+        {
+            if (Volatile.Read(ref _appearanceFeed) is { } feed) return feed;
+            var created = new DesktopAppearanceFeed(Services.GetService<Runic.Platform.IDesktopSettings>());
+            return Interlocked.CompareExchange(ref _appearanceFeed, created, null) ?? created;
+        }
+    }
 
     // The process environment; tests replace it.
     internal Func<string, string?> ReadEnvironment { get; init; } = Environment.GetEnvironmentVariable;

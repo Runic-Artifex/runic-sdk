@@ -632,6 +632,15 @@ from the desktop's change notifications alone, with the contrast theme's palette
 the macOS smoke that `IDesktopSettings` agrees with NSWorkspace, with "Increase
 contrast" off and on.
 
+A Runic Views page also gets the desktop's values from the host
+(`appearance/1`, see the
+[Views README](../Runic.Application.Views/README.md#appearance)): the text
+scale, the accent colour and the forced-colours palette, which no engine
+exposes to script, and the contrast and motion preferences, so its appearance
+store follows a change where the engine does not, as in WebKitGTK 6.0, and
+reports the engine's and the host's values separately. The page's CSS still
+sees only the engine's media queries.
+
 ### Owned and window-modal windows
 
 `DesktopWindowOptions.Owner` makes a window belong to another, and

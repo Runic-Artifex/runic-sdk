@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, windowLocale, type BridgeConnectionState } from "../dist/index.js";
+import { appearance, BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, windowLocale, type BridgeConnectionState } from "../dist/index.js";
 import {
   bridgeOperations, connectView, decodeQueryCollectionState, defineCollection, defineCollections, defineInteractions, defineQueryCollection, defineRequests,
   defineText, regionCollection, type ViewConnection,
@@ -331,7 +331,8 @@ async function run(scenario: Scenario): Promise<void> {
       }
       if ("disconnect" in step) { host.disconnect(); await idle(); continue; }
       // The producer's mutations (including presented/1's `renew` and `waitPresented`), its transport and its close.
-      if ("mutate" in step || "delivery" in step || "closeWindow" in step || "flushFields" in step || "setLocale" in step) continue;
+      if ("mutate" in step || "delivery" in step || "closeWindow" in step || "flushFields" in step || "setLocale" in step
+        || "setAppearance" in step) continue;
       if ("advance" in step) { await advance(step["advance"]); continue; }
       if ("call" in step) {
         const call = step["call"];
@@ -520,6 +521,9 @@ async function run(scenario: Scenario): Promise<void> {
         if (expect["connection"] !== undefined) assert.equal(connectionState, expect["connection"], `${scenario.id} ${at}: connection`);
         // translation-text/1: the window's locale the client reports.
         if ("locale" in expect) assert.equal(windowLocale(), expect["locale"], `${scenario.id} ${at}: locale`);
+        // appearance/1: the window's appearance the client keeps from the host.
+        if ("appearance" in expect)
+          assert.deepEqual(JSON.parse(JSON.stringify(appearance().host)), expect["appearance"], `${scenario.id} ${at}: appearance`);
         if (expect["requests"]) {
           // A handler runs once the page painted the request's revision: wait for it as for a receive step.
           const { route, request, inputs } = expect["requests"];

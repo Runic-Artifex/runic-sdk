@@ -32,6 +32,18 @@ export {
   type TextReference,
   type TextTranslations,
 } from "./translated-text.js";
+export { appearanceFeature } from "./appearance-push.js";
+export {
+  appearance,
+  onAppearance,
+  unknownAppearance,
+  type Appearance,
+  type AppearanceColorScheme,
+  type AppearanceContrast,
+  type AppearanceSystemColors,
+  type EngineAppearance,
+  type HostAppearance,
+} from "./appearance.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export {
   blobsFeature,

@@ -110,6 +110,8 @@ internal sealed class ProducerScenarioRunner
         }
         // translation-text/1: the window's locale, as WindowContentSession.Locale sets it.
         else if (step.ContainsKey("setLocale")) BridgeDispatcher.For(_transport).SetLocale(step["setLocale"]?.GetValue<string>());
+        // appearance/1: the window's appearance, as WindowContentSession.Appearance sets it.
+        else if (step.ContainsKey("setAppearance")) BridgeDispatcher.For(_transport).SetAppearance(ReadAppearance(step["setAppearance"] as JsonObject));
         else if (step["expect"] is JsonObject expect)
         {
             // The model, waits and closes are the producer's; state, call, operation, diagnostics, notifications and
@@ -251,6 +253,37 @@ internal sealed class ProducerScenarioRunner
             else if (!IsSkipped(steps[next])) break;
         }
         return group;
+    }
+
+    // The members of an appearance push as the DesktopAppearance a host would set.
+    private static Runic.Platform.DesktopAppearance? ReadAppearance(JsonObject? members)
+    {
+        if (members is null) return null;
+        static Runic.Platform.DesktopAccentColor? Color(JsonNode? node) => node?.GetValue<string>() is { } text
+            ? new(Convert.ToInt32(text[1..3], 16) / 255d, Convert.ToInt32(text[3..5], 16) / 255d, Convert.ToInt32(text[5..7], 16) / 255d)
+            : null;
+        var colors = members["systemColors"] as JsonObject;
+        return new Runic.Platform.DesktopAppearance(
+            members["colorScheme"]?.GetValue<string>() switch
+            {
+                "light" => Runic.Platform.DesktopColorScheme.Light,
+                "dark" => Runic.Platform.DesktopColorScheme.Dark,
+                _ => Runic.Platform.DesktopColorScheme.NoPreference,
+            },
+            Color(members["accentColor"]), ReducedMotion: members["reducedMotion"]?.GetValue<bool>())
+        {
+            Contrast = members["contrast"]?.GetValue<string>() switch
+            {
+                "no-preference" => Runic.Platform.DesktopContrast.NoPreference,
+                "more" => Runic.Platform.DesktopContrast.More,
+                "forced-colors" => Runic.Platform.DesktopContrast.ForcedColors,
+                _ => null,
+            },
+            TextScale = members["textScale"]?.GetValue<double>(),
+            SystemColors = colors is null ? null : new(Color(colors["canvas"])!, Color(colors["canvasText"])!, Color(colors["linkText"])!,
+                Color(colors["grayText"])!, Color(colors["highlight"])!, Color(colors["highlightText"])!, Color(colors["buttonFace"])!,
+                Color(colors["buttonText"])!),
+        };
     }
 
     // Requires that the producer's next messages are the group's, in any order.

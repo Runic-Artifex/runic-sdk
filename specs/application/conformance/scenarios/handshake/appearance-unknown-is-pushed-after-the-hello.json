@@ -1,0 +1,38 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.appearance-unknown-is-pushed-after-the-hello.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer","client"],
+  "description": "With appearance/1, a window without an appearance pushes every member null after the hello, so a page that reconnects after the appearance became unknown does not keep the appearance it had: the client replaces the push it kept across the reconnect.",
+  "view": "form",
+  "requires": ["appearance/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "c2": {"kind":"connection"},
+    "hello-c2": {"kind":"request"},
+    "session2": {"kind":"wire","value":"s-2"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"replyTo":"hello-c1","unordered":true},
+    {"receive":{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null},"unordered":true,"note":"The window has no appearance yet; a transport may deliver the push before the reply."},
+    {"expect":{"appearance":{"colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}}},
+    {"setAppearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null}},
+    {"receive":{"kind":"appearance","colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null}},
+    {"expect":{"appearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null}}},
+    {"disconnect":"c1"},
+    {"setAppearance":null,"note":"The appearance becomes unknown while no page is connected."},
+    {"expect":{"appearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null}},"note":"The client keeps the last push across the reconnect."},
+    {"connect":"c2"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session2"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"id":"hello-c2","connection":"c2"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"replyTo":"hello-c2","unordered":true,"connection":"c2"},
+    {"receive":{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null},"unordered":true,"connection":"c2"},
+    {"expect":{"appearance":{"colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}}}
+  ]
+}
+

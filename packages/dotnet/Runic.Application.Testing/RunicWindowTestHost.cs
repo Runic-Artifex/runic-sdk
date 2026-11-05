@@ -318,6 +318,19 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             }),
     ];
 
+    /// <summary>
+    /// Gets the <c>appearance</c> pushes the default connection received (<c>appearance/1</c>), in order: the window's
+    /// appearance after the connection's hello and after each change of <see cref="WindowContentSession.Appearance"/>,
+    /// which a test sets on <see cref="Content"/> as <c>RunicDesktopHost</c> does from the desktop's settings. A push
+    /// whose members are all <see langword="null"/>, an unknown appearance, is <see langword="null"/>.
+    /// </summary>
+    public IReadOnlyList<Runic.Platform.DesktopAppearance?> AppearancePushes =>
+    [
+        .. Transport.Messages
+            .Where(static message => message.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey && message.Kind == "appearance")
+            .Select(static message => RunicAppearancePush.Read(message.Json)),
+    ];
+
     private async Task<RunicNavigationReply> NavigationAsync(Action<System.Text.Json.Utf8JsonWriter> members, CancellationToken cancellationToken)
     {
         await Transport.EnsureHelloAsync(InMemoryBridgeTransport.DefaultConnectionKey, cancellationToken: cancellationToken).ConfigureAwait(false);

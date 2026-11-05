@@ -365,6 +365,27 @@
       "expect": {"result":"invalid"}
     },
     {
+      "id": "messages.pushes.appearance",
+      "description": "appearance/1: the window's appearance, with the forced-colours palette. The push has no route.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"appearance","colorScheme":"dark","contrast":"forced-colors","reducedMotion":false,"textScale":1.25,"accentColor":"#0078d4","systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.appearance-unknown",
+      "description": "Every member null: the window's appearance is unknown again.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.appearance-with-unknown-values",
+      "description": "A member of the wrong type, out of range or with an unknown value, such as a later contrast value, is read as null; the push still applies.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"appearance","colorScheme":"sepia","contrast":"less","reducedMotion":"yes","textScale":0,"accentColor":"blue","systemColors":{"canvas":"#000000"}}},
+      "expect": {"result":"valid"}
+    },
+    {
       "id": "messages.pushes.view-request",
       "description": "view-requests/1: a one-way request, handled once the page painted the route at the revision.",
       "operation": "read-push",

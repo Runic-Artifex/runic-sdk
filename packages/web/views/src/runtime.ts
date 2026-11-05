@@ -14,6 +14,7 @@ import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./v
 import { textSpliceFeature } from "./text.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
 import { reportWindowLocale } from "./translated-text.js";
+import { appearanceFeature, receiveAppearancePush } from "./appearance-push.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { clientLanguages, clientLanguagesFeature } from "./client-languages.js";
@@ -73,7 +74,7 @@ function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void>
 export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature, navigationPathFeature, clientLanguagesFeature,
+  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature,
 ];
 
 /** A push handler, registered per push kind and route. */
@@ -395,6 +396,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       stopFlush();
       stopFallback();
       stopLocale();
+      stopAppearance();
       connected = false;
       reportWindowClosed(false);
       for (const listener of [...connectionListeners]) {
@@ -411,6 +413,11 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   // hello, before its reply may have arrived, so it is applied whatever the features read so far.
   const stopLocale = add(windowHandlers, "locale", push => {
     reportWindowLocale((push as Extract<Push, { kind: "locale" }>).locale);
+  });
+  // appearance/1: likewise the window's appearance, which the page keeps across a reconnect until the next push. Only
+  // the raw push: the store reads it when the page reads the appearance.
+  const stopAppearance = add(windowHandlers, "appearance", push => {
+    receiveAppearancePush(push as unknown as Readonly<Record<string, unknown>>);
   });
   // A closed window of an earlier Bridge does not close this one.
   reportWindowClosed(false);

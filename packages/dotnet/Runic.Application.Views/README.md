@@ -3379,6 +3379,51 @@ host's own, which the window follows. In page tests, the mock bridge's
 `setWindowLocale("de")` pushes a locale as the application does, so a test can
 check that a template's `m.*()` text renders again.
 
+## Appearance
+
+A page reads most of the desktop's appearance from its engine's CSS media
+queries (`prefers-color-scheme`, `prefers-contrast`, `forced-colors`,
+`prefers-reduced-motion`), but no engine exposes the desktop's text size,
+accent colour or forced-colours palette to script, and not every engine follows
+a change while the window is open. With the feature `appearance/1` (since
+0.17), the host pushes the **window's appearance**, the `DesktopAppearance` its
+host read from `IDesktopSettings`, to the window's pages, after each page's
+`hello` (every member `null` while the window has none, so a page that
+reconnects keeps no stale value) and on each change:
+
+- `RunicDesktopHost` sets `WindowContentSession.Appearance` on every Window it
+  shows from the application's `IDesktopSettings` (`AddRunicPlatformServices`),
+  or the platform's own, which it creates while a Window is open and disposes
+  after the last one closed, and keeps it current with one watch while any
+  Window is open; the views of Runic.Application.Views.Wpf (`RunicViewHost`,
+  `CreateWpfViewAsync`) share one such watch per registered `IDesktopSettings`,
+  or one of the platform's own, and hold no view's services. A read that fails
+  keeps the last appearance. A watch that throws is logged as event 2009, and
+  the next Window that opens watches again.
+- The desktop's accessibility settings and palette describe the user at this
+  computer, so only Windows that nothing else can reach get them: not a
+  serve-only Window, not a host with `DesktopHostOptions.NetworkExposure =
+  AllInterfaces`, and not a window whose port listens beyond loopback. CS-WebUI
+  windows, which `SetPublic(true)` can make public, get none. Their pages
+  receive every member `null`.
+- The page's appearance store (`appearance()`, `useAppearance`,
+  `injectAppearance`, `appearances()`) reports the push and the engine's media
+  queries, and combines them
+  ([Appearance](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#appearance)).
+- A test sets `host.Content.Appearance` and reads `host.AppearancePushes`
+  (Runic.Application.Testing); a page test calls the mock bridge's
+  `setAppearance`.
+
+```csharp
+host.Content.Appearance = new DesktopAppearance(DesktopColorScheme.Dark) { Contrast = DesktopContrast.More, TextScale = 1.5 };
+await Assert.That(host.AppearancePushes[^1]?.TextScale).IsEqualTo(1.5);
+```
+
+The push carries `colorScheme`, `contrast` (`no-preference`, `more`,
+`forced-colors`), `reducedMotion`, `textScale`, `accentColor` and, with forced
+colours, `systemColors` ([specification](../../../specs/application/README.md#appearance)).
+The page cannot change it.
+
 ## Shared DTO exclusions
 
 Public readable DTO properties are part of the Bridge contract, including
@@ -4224,6 +4269,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2006 | `DesktopDevelopmentAssetsUnavailable` | Warning | That directory, or the `www/` folder behind it, cannot be served, for example because it lacks the start page or contains a symbolic link; the window serves the other folder. | `Directory`, `ErrorType`, `Instead` |
 | 2007 | `DesktopDevelopmentReloadFailed` | Debug | A window did not reload after the directory changed, for example because it closed meanwhile. | |
 | 2008 | `DesktopLayoutDirectionFailed` | Warning | An embedded window did not change its native direction after its window locale (`IRunicWindowLocale`) changed. | `ErrorType` |
+| 2009 | `DesktopAppearanceWatchFailed` | Warning | Watching the desktop's appearance settings (`IDesktopSettings`) for the Windows' pages (`appearance/1`) failed; the pages keep the last appearance read, and the next Window that opens watches again. | `ErrorType` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `2b35db13f` (CsWebUi 2.5.0-beta.4.8). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |

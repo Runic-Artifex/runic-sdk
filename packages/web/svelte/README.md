@@ -590,6 +590,23 @@ const status = useText(() => view.state?.status);
 <p>{status.current}</p>
 ```
 
+## `useAppearance()`
+
+Follows the page's appearance while its owner lives, as the reactive property
+`current`: the colour scheme, contrast and reduced motion of the page's engine,
+combined with the desktop's text scale, accent colour, forced-colours palette,
+contrast and motion that a Runic host pushes ([Appearance](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#appearance)).
+Every member is `null` under server rendering, so a SvelteKit page renders the
+same on the server and in the browser until the browser's first effect.
+
+```svelte
+<script lang="ts">
+  import { useAppearance } from "@runic-artifex/svelte";
+  const look = useAppearance();
+</script>
+<main style:font-size="{look.current.textScale ?? 1}rem">…</main>
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation helper is typed

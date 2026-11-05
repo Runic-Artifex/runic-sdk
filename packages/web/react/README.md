@@ -616,6 +616,21 @@ function ErrorLine({ error }: { error: BridgeValidationMessage }) {
 }
 ```
 
+## `useAppearance()`
+
+Renders the page's appearance and renders again when it changes: the colour
+scheme, contrast and reduced motion of the page's engine, combined with the
+desktop's text scale, accent colour, forced-colours palette, contrast and motion
+that a Runic host pushes ([Appearance](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#appearance)). The server snapshot
+has every member `null`.
+
+```tsx
+function Shell({ children }: { readonly children: ReactNode }) {
+  const { textScale, reducedMotion } = useAppearance();
+  return <main style={{ fontSize: `${textScale ?? 1}rem` }} data-motion={reducedMotion ? "reduce" : "full"}>{children}</main>;
+}
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

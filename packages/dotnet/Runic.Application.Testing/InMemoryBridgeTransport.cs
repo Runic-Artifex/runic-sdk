@@ -324,6 +324,9 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 // The host's Back and route path requests (NavigateBackAsync, OpenNavigationPathAsync). A window without a
                 // path region pushes nothing for it.
                 writer.WriteStringValue("navigation-path/1");
+                // The window's appearance (WindowContentSession.Appearance, RunicWindowTestHost.AppearancePushes). A window
+                // without one pushes nothing.
+                writer.WriteStringValue("appearance/1");
                 // client-languages/1: the languages SetLanguages gave the connection, none by default.
                 writer.WriteStringValue("client-languages/1");
                 writer.WriteEndArray();

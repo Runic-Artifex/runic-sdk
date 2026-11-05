@@ -393,8 +393,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#document-apps)
   describes conflicts, bookmarks and what each platform supports.
 - `AddRunicPlatformServices()` also registers `IDesktopSettings`, the
-  desktop's appearance preferences (color scheme, accent color, high contrast,
-  reduced motion). They belong to the application, not to a window, so there
+  desktop's appearance preferences (color scheme, accent color, contrast and
+  forced colours, reduced motion, text scale). They belong to the application, not to a window, so there
   is one singleton, which `DesktopPlatformServices.CreateSettings()` creates when it
   is first resolved and the service provider disposes. Windows reads its
   settings, macOS reads AppKit, and Linux reads xdg-desktop-portal with either
@@ -413,6 +413,14 @@ The same Window and `async host => ...` body run on CS-WebUI with
   stores the app's own theme in a settings file and follows this preference
   when the theme is "system". Register your own `IDesktopSettings` before
   calling `AddRunicPlatformServices()`, for example in tests, to replace it.
+  `RunicDesktopHost` watches the same `IDesktopSettings` (or, without the
+  registration, the platform's own) while any Window is open, and pushes the
+  appearance to each Window's pages (`appearance/1`,
+  [Appearance](../Runic.Application.Views/README.md#appearance)), so the page's
+  `useAppearance` sees the desktop's text scale, accent colour, contrast and
+  forced-colours palette. A serve-only Window, and every Window of a host with
+  `DesktopHostOptions.NetworkExposure = AllInterfaces`, gets none: their pages
+  may run on another machine.
 - `AddRunicPlatformServices()` also registers `IDesktopNotifications`, one
   singleton for the application, which `DesktopPlatformServices.CreateNotifications(applicationId)`
   creates when it is first resolved and the service provider disposes. A

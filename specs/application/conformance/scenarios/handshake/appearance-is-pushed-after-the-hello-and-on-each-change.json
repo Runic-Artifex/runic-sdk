@@ -1,0 +1,30 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.appearance-is-pushed-after-the-hello-and-on-each-change.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer","client"],
+  "description": "With appearance/1, a window with an appearance pushes it to a connection after its hello, and again with every member on each change, the forced-colours palette included; a window whose appearance becomes unknown pushes every member null. The client keeps the host's appearance.",
+  "view": "form",
+  "requires": ["appearance/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"setAppearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null}},
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","appearance/1"]}},"replyTo":"hello-c1","unordered":true},
+    {"receive":{"kind":"appearance","colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null},"unordered":true,"note":"The push follows the hello; a transport may deliver it before the reply."},
+    {"expect":{"appearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.25,"accentColor":"#3584e4","systemColors":null}}},
+    {"setAppearance":{"colorScheme":"dark","contrast":"forced-colors","reducedMotion":false,"textScale":1,"accentColor":"#0078d4","systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}},
+    {"receive":{"kind":"appearance","colorScheme":"dark","contrast":"forced-colors","reducedMotion":false,"textScale":1,"accentColor":"#0078d4","systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}},
+    {"expect":{"appearance":{"colorScheme":"dark","contrast":"forced-colors","reducedMotion":false,"textScale":1,"accentColor":"#0078d4","systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3ff23f","highlight":"#1aebff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}}},
+    {"setAppearance":null},
+    {"receive":{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}},
+    {"expect":{"appearance":{"colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}}}
+  ]
+}
