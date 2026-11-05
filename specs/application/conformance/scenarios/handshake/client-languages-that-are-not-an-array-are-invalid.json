@@ -1,0 +1,27 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.client-languages-that-are-not-an-array-are-invalid.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "description": "With client-languages/1, a hello whose languages are not an array of at most 16 strings is rejected with invalid-request.",
+  "view": "notes",
+  "requires": ["client-languages/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "c2": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "hello-c2": {"kind":"request"},
+    "session-1": {"kind":"wire","value":"s-1"},
+    "session-2": {"kind":"wire","value":"s-2"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session-1"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1","client-languages/1"],"languages":"de"},"id":"hello-c1"},
+    {"receive":{"ok":false,"protocol":4,"implementation":{"name":{"$any":"string"},"version":{"$any":"string"}},"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string","default":"…"}}},"replyTo":"hello-c1"},
+    {"connect":"c2"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session-2"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1","client-languages/1"],"languages":["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q"]},"id":"hello-c2"},
+    {"receive":{"ok":false,"protocol":4,"implementation":{"name":{"$any":"string"},"version":{"$any":"string"}},"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string","default":"…"}}},"replyTo":"hello-c2"}
+  ]
+}

@@ -235,13 +235,19 @@ internal sealed record PortalChooserOptions(ImmutableArray<FileDialogFilter> Fil
         return named.FirstOrDefault(filter => Patterns(filter).SequenceEqual(patterns)) ?? (named.Length == 1 ? named[0] : null);
     }
 
-    // The title argument of OpenFile and SaveFile: the application's, or Runic's default for the kind of dialog.
-    internal static string DialogTitle(string method, PortalChooserOptions? chooser) => chooser?.Title ?? method switch
+    // The title argument of OpenFile and SaveFile: the request's, or the application's text for the kind of dialog
+    // (DesktopPlatformTexts). The portal has no title of its own.
+    internal static string DialogTitle(string method, PortalChooserOptions? chooser)
     {
-        "SelectDirectory" => chooser?.Multiple == true ? "Open directories" : "Open directory",
-        "SaveFile" => "Save file",
-        _ => chooser?.Multiple == true ? "Open files" : "Open file",
-    };
+        if (chooser?.Title is { } title) return title;
+        var texts = DesktopPlatformTexts.Current;
+        return method switch
+        {
+            "SelectDirectory" => chooser?.Multiple == true ? texts.OpenDirectoriesTitle : texts.OpenDirectoryTitle,
+            "SaveFile" => texts.SaveFileTitle,
+            _ => chooser?.Multiple == true ? texts.OpenFilesTitle : texts.OpenFileTitle,
+        };
+    }
 
     internal void AddTo(PortalOptions options)
     {

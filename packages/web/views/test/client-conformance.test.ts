@@ -451,7 +451,20 @@ async function run(scenario: Scenario): Promise<void> {
         // hello in every request, also before the hello's reply. Checked here, and compared as a member only where the
         // scenario lists it.
         const sentMessage = sent.message as Record<string, Json>;
-        if (sentMessage["kind"] === "hello") connection.session = sentMessage["session"] as string;
+        if (sentMessage["kind"] === "hello") {
+          connection.session = sentMessage["session"] as string;
+          // client-languages/1 (conformance README, "Comparing messages"): the browser's languages, compared as a
+          // member only where the scenario lists it.
+          if (Object.hasOwn(sentMessage, "languages")) {
+            const languages = sentMessage["languages"];
+            assert.ok(Array.isArray(languages) && languages.length <= 16 && languages.every(language => typeof language === "string"),
+              `${scenario.id} ${at}: the hello's languages are not an array of at most 16 strings`);
+            if (!Object.hasOwn(step["send"] as Record<string, Json>, "languages")) {
+              const { languages: _, ...rest } = sentMessage;
+              sent.message = rest as Json;
+            }
+          }
+        }
         else if (Object.hasOwn(sentMessage, "session")) {
           assert.equal(sentMessage["session"], connection.session, `${scenario.id} ${at}: the request names another session than its hello`);
           if (!Object.hasOwn(step["send"] as Record<string, Json>, "session")) {

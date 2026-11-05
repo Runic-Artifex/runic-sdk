@@ -9,6 +9,8 @@ Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.Locale.get -> str
 Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.OldLocale.get -> string?
 Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.RunicApplicationLocaleChangedEventArgs(string? oldLocale, string? locale) -> void
 Runic.Application.Views.IRunicWindowLocale.OwnLocale.get -> string?
+Runic.Application.Views.RunicConnection.Languages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Views.RunicConnection.Languages.init -> void
 Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.get -> bool?
 Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.init -> void
 Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.get -> bool

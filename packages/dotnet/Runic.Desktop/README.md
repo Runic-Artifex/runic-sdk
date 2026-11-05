@@ -1051,7 +1051,8 @@ GTK 3 and GTK 4 windows or the Linux desktop's global menu (below). The macOS
 window shows the declared menus in the application menu bar. The Windows (WebView2) window shows them in the
 window: the menus in Windows order (File first, Help last, an `Application`
 menu as a plain menu with its title), each `AccessKey` underlined, shortcuts
-after the title (`Ctrl+Shift+S`), check and radio items with their marks, and
+after the title (`Ctrl+Shift+S`, with the modifier names of the keyboard layout,
+such as `Strg+Umschalt+S`, which follow a layout switch, or of `DesktopPlatformTexts`), check and radio items with their marks, and
 disabled items grayed. A menu asks its items' commands whenever it opens. With
 `Native` its placement is `Window`; a frameless or kiosk window has no frame for
 a bar, does not report `DesktopWindowCapabilities.MenuBar` and reports `None`,
@@ -1574,6 +1575,11 @@ await window.SetLayoutDirectionAsync(culture.TextInfo.IsRightToLeft
 
 Runic Views windows (Runic.Application.Views.Desktop) do this from the window's
 locale.
+
+The pages a window serves itself, such as Resource Not Available for a missing
+file and the Access Denied pages of browser windows, take their text from
+`DesktopPlatformTexts.Current` ([Runic's own text](../Runic.Platform/README.md#runics-own-text))
+and, in a Runic Views window, `lang` and `dir` from the window locale.
 
 `Validate` reports each option a presentation ignores. The
 [right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)
