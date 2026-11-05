@@ -1,8 +1,10 @@
 import {
-  Component, computed, Directive, effect, ElementRef, inject, input, Renderer2, signal, untracked, viewChild, ViewContainerRef, type InputSignal,
+  Component, computed, Directive, effect, ElementRef, inject, input, isDevMode, Renderer2, signal, untracked, viewChild, ViewContainerRef,
+  type InputSignal,
   type TemplateRef, type Type,
 } from "@angular/core";
 import { regionEntries, type PageReference, type RegionCollection, type RegionEntry } from "@runic-artifex/views";
+import { missingViewMessage, reportMissingView } from "@runic-artifex/views/bindings";
 
 /**
  * A build-known map checks each generated reference against its component input. A nullable
@@ -24,7 +26,9 @@ export interface ViewOutletMissingContext<R extends PageReference = PageReferenc
 /**
  * Headless host for a selected logical .NET View. A changed reference remounts its component, and
  * the projected content renders while there is no reference. A kind without a component renders
- * the `missing` template, for example localized text, or an English alert without it:
+ * the `missing` template, for example localized text. Without it, a development build (`isDevMode()`) renders an
+ * English alert, and a production build renders nothing and reports the kind (`installErrorReporting`,
+ * `onBridgeDiagnostic`):
  *
  * ```html
  * <runic-view-outlet [content]="state()?.main" [registry]="pages" [missing]="missingView" />
@@ -41,7 +45,7 @@ export interface ViewOutletMissingContext<R extends PageReference = PageReferenc
 export class ViewOutlet<R extends PageReference = PageReference> {
   readonly content = input<R | null | undefined>();
   readonly registry = input.required<ViewRegistry<R>>();
-  /** Renders a reference whose kind has no registered component instead of the English alert. */
+  /** Renders a reference whose kind has no registered component instead of the development alert. */
   readonly missing = input<TemplateRef<ViewOutletMissingContext<R>> | undefined>();
   readonly error = signal<string | undefined>(undefined);
   private readonly mount = viewChild.required("mount", { read: ViewContainerRef });
@@ -69,7 +73,8 @@ export class ViewOutlet<R extends PageReference = PageReference> {
             container.createEmbeddedView(selection.missing, { $implicit: selection.reference, content: selection.reference });
             return;
           }
-          this.error.set(`No web component is registered for ${selection.reference.kind}.`);
+          if (isDevMode()) this.error.set(missingViewMessage(selection.reference.kind));
+          else reportMissingView(selection.reference.kind);
           return;
         }
         const component = container.createComponent(selection.component);
