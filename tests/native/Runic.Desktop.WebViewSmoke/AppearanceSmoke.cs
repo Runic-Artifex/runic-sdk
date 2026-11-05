@@ -11,9 +11,9 @@ using Runic.Desktop;
 //   settings daemon would: prefers-reduced-motion and prefers-contrast follow them. WebKitGTK 6.0 (GTK 4, linked into
 //   Runic.Desktop.Gtk4.Smoke) reads GTK 4.20's gtk-interface-contrast and gtk-interface-reduced-motion only when its
 //   first view starts, so they are set before the window opens.
-// - WebView2: with --toggle-desktop (CI only: it changes the session's settings and restores them), Windows' client
-//   area animations and a contrast theme are switched with SystemParametersInfo: prefers-reduced-motion and
-//   forced-colors follow them. Without it, the page's values must agree with the desktop's.
+// - WebView2: the page's values agree with the desktop's. With --toggle-desktop (CI only: it changes the session's
+//   settings and restores them), Windows' client area animations and a contrast theme are switched with
+//   SystemParametersInfo: a window opened afterwards reports them; whether the open page follows is reported.
 // - WKWebView: macOS settings cannot be switched without the user's consent, so the page's values must agree with
 //   NSWorkspace's accessibilityDisplayShouldIncreaseContrast and accessibilityDisplayShouldReduceMotion.
 internal static partial class AppearanceSmoke
@@ -57,7 +57,7 @@ internal static partial class AppearanceSmoke
             if (OperatingSystem.IsLinux() && Gtk.Gtk4) await RunGtk4Async(surface, gtk4Startup);
             else if (OperatingSystem.IsLinux()) await RunGtkAsync(surface, window);
             else if (OperatingSystem.IsMacOS()) await RunMacAsync(surface, window);
-            else if (OperatingSystem.IsWindows()) await RunWindowsAsync(surface, toggleDesktop);
+            else if (OperatingSystem.IsWindows()) await RunWindowsAsync(host, surface, toggleDesktop);
         }
         finally { if (window.IsOpen) await window.CloseAsync(); }
         Console.WriteLine("APPEARANCE DONE");
@@ -154,42 +154,66 @@ internal static partial class AppearanceSmoke
         Console.WriteLine($"PASS appearance: WKWebView agrees with Increase contrast {increaseContrast} and Reduce motion {reduceMotion}: {page}");
     }
 
-    private static async Task RunWindowsAsync(DesktopSurface surface, bool toggleDesktop)
+    private static async Task RunWindowsAsync(DesktopHost host, DesktopSurface surface, bool toggleDesktop)
     {
         var animations = Win.ClientAreaAnimation();
         var highContrast = Win.HighContrastOn();
-        if (!toggleDesktop)
-        {
-            var page = await ReadAsync(surface);
-            if (page.ReducedMotion != (animations ? "no-preference" : "reduce") || page.ForcedColors != (highContrast ? "active" : "none"))
-                throw new InvalidOperationException($"With client area animations {animations} and a contrast theme {highContrast} the page reports {page}.");
-            Console.WriteLine($"PASS appearance: WebView2 agrees with animations {animations} and a contrast theme {highContrast}: {page}");
-            return;
-        }
+        var page = await ReadAsync(surface);
+        if (page.ReducedMotion != (animations ? "no-preference" : "reduce") || page.ForcedColors != (highContrast ? "active" : "none"))
+            throw new InvalidOperationException($"With client area animations {animations} and a contrast theme {highContrast} the page reports {page}.");
+        Console.WriteLine($"PASS appearance: WebView2 agrees with animations {animations} and a contrast theme {highContrast}: {page}");
+        if (!toggleDesktop) return;
+        // Each switch is checked in the open page, which reports whether it follows while it is open, and in a window
+        // opened after it, which has a WebView2 browser process of its own and must read the new setting.
         try
         {
             Win.SetClientAreaAnimation(!animations);
-            var page = await ExpectAsync(surface, page => page.ReducedMotion == (animations ? "reduce" : "no-preference"),
-                $"With client area animations {!animations}, prefers-reduced-motion did not follow");
-            Console.WriteLine($"PASS appearance: WebView2, animations {!animations}: {page}");
+            var reduced = animations ? "reduce" : "no-preference";
+            await ReportLiveAsync(surface, page => page.ReducedMotion == reduced, $"animations {!animations}");
+            page = await ReadInNewWindowAsync(host);
+            if (page.ReducedMotion != reduced)
+                throw new InvalidOperationException($"With client area animations {!animations}, a new window reports {page}.");
+            Console.WriteLine($"PASS appearance: WebView2, a new window with animations {!animations}: {page}");
             Win.SetClientAreaAnimation(animations);
-            await ExpectAsync(surface, page => page.ReducedMotion == (animations ? "no-preference" : "reduce"),
-                $"With client area animations {animations} again, prefers-reduced-motion did not follow");
 
             Win.SetHighContrast(!highContrast);
-            page = await ExpectAsync(surface, page => page.ForcedColors == (highContrast ? "none" : "active"),
-                $"With a contrast theme {!highContrast}, forced-colors did not follow");
-            Console.WriteLine($"PASS appearance: WebView2, contrast theme {!highContrast}: {page}");
-            Win.SetHighContrast(highContrast);
-            page = await ExpectAsync(surface, page => page.ForcedColors == (highContrast ? "active" : "none"),
-                $"With a contrast theme {highContrast} again, forced-colors did not follow");
-            Console.WriteLine($"PASS appearance: WebView2, contrast theme {highContrast}: {page}");
+            var forced = highContrast ? "none" : "active";
+            await ReportLiveAsync(surface, page => page.ForcedColors == forced, $"a contrast theme {!highContrast}");
+            page = await ReadInNewWindowAsync(host);
+            if (page.ForcedColors != forced)
+                throw new InvalidOperationException($"With a contrast theme {!highContrast}, a new window reports {page}.");
+            Console.WriteLine($"PASS appearance: WebView2, a new window with a contrast theme {!highContrast}: {page}");
         }
         finally
         {
             Win.SetClientAreaAnimation(animations);
             Win.SetHighContrast(highContrast);
         }
+    }
+
+    // Whether the open page follows a change within five seconds; reported, not required.
+    private static async Task ReportLiveAsync(DesktopSurface surface, Func<PageAppearance, bool> expected, string what)
+    {
+        PageAppearance? last = null;
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            last = await ReadAsync(surface);
+            if (expected(last)) break;
+            await Task.Delay(100);
+        }
+        Console.WriteLine($"APPEARANCE WebView2, {what}: the open page {(expected(last!) ? "follows" : "does not follow")}: {last}");
+    }
+
+    private static async Task<PageAppearance> ReadInNewWindowAsync(DesktopHost host)
+    {
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 480, Height = 360 });
+        try
+        {
+            await surface.ExecuteJavaScriptAsync("return document.readyState;", StepTimeout);
+            return await ReadAsync(surface);
+        }
+        finally { if (window.IsOpen) await window.CloseAsync(); }
     }
 
     private static unsafe partial class Gtk
