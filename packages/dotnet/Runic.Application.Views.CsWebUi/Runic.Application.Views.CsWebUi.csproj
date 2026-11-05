@@ -29,6 +29,7 @@
     <Compile Include="../Runic.Application.Views.Desktop/MenuBarPageRoutes.cs" Link="Shared/MenuBarPageRoutes.cs" />
     <Compile Include="../Runic.Application.Views.Desktop/MenuCommandBinding.cs" Link="Shared/MenuCommandBinding.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />
+    <Compile Include="../Runic.Desktop/Internal/ShortcutModifierNames.cs" Link="Shared/ShortcutModifierNames.cs" />
     <Compile Include="../Runic.Platform/DesktopMenuRules.cs" Link="Shared/DesktopMenuRules.cs" />
     <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
     <Compile Include="../Runic.Application.Views.Desktop/FrontendArchive.Build.cs" Link="Shared/FrontendArchive.Build.cs" />

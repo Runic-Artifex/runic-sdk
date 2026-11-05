@@ -196,15 +196,29 @@ internal static class DesktopMenuPlanner
             VirtualKey(shortcut.Key), win32, GdkKeyval(shortcut.Key), gdk, dbus.ToImmutable());
     }
 
-    // ⇧⌘S on macOS, Ctrl+Shift+S on Windows, and GTK's order, Shift+Ctrl+S, on Linux.
+    // ⇧⌘S on macOS, Ctrl+Shift+S on Windows, and GTK's order, Shift+Ctrl+S, on Linux. The modifier names are the
+    // application's or the Windows keyboard layout's, never a mix (ShortcutModifierNames), such as Strg+Umschalt+S.
     internal static string DisplayText(DesktopShortcut shortcut, MenuPlatform platform)
     {
-        if (platform != MenuPlatform.Linux) return shortcut.ToDisplayString(platform == MenuPlatform.MacOS);
+        if (platform == MenuPlatform.MacOS) return shortcut.ToDisplayString(macOS: true);
         if (shortcut.Key.Length == 0) return "";
+        var (control, shiftName, altName) = ShortcutModifierNames.For(platform);
+        var ctrl = (shortcut.Modifiers & (DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Control)) != 0;
+        var shift = (shortcut.Modifiers & DesktopShortcutModifiers.Shift) != 0;
+        var alt = (shortcut.Modifiers & DesktopShortcutModifiers.Alt) != 0;
         var text = new StringBuilder();
-        if ((shortcut.Modifiers & DesktopShortcutModifiers.Shift) != 0) text.Append("Shift+");
-        if ((shortcut.Modifiers & (DesktopShortcutModifiers.Primary | DesktopShortcutModifiers.Control)) != 0) text.Append("Ctrl+");
-        if ((shortcut.Modifiers & DesktopShortcutModifiers.Alt) != 0) text.Append("Alt+");
+        if (platform == MenuPlatform.Linux)
+        {
+            if (shift) text.Append(shiftName).Append('+');
+            if (ctrl) text.Append(control).Append('+');
+            if (alt) text.Append(altName).Append('+');
+        }
+        else
+        {
+            if (ctrl) text.Append(control).Append('+');
+            if (alt) text.Append(altName).Append('+');
+            if (shift) text.Append(shiftName).Append('+');
+        }
         // The key as Windows shows it; GTK shows the same names for these keys.
         var other = new DesktopShortcut(shortcut.Key, DesktopShortcutModifiers.None).ToDisplayString(macOS: false);
         return text.Append(other).ToString();

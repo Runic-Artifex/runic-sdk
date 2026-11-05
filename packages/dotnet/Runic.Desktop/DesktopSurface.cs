@@ -228,6 +228,14 @@ public sealed class DesktopSurface : IAsyncDisposable
     }
 
     /// <summary>Runs JavaScript in every authenticated presentation session.</summary>
+    // The language of the pages the surface serves itself (WebUiWindow.PageLanguage): the window locale, which
+    // Runic.Application.Views.Desktop sets.
+    internal string? PageLanguage
+    {
+        get => _engine.PageLanguage;
+        set => _engine.PageLanguage = value;
+    }
+
     internal Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
         _engine.RunJavaScriptAsync(script, cancellationToken);
 

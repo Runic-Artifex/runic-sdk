@@ -34,7 +34,7 @@ internal sealed class MacDesktopFileLauncher(INativeWindowOwner owner) : IDeskto
                     return;
                 }
                 panel = Send(Class("NSOpenPanel"), Sel("openPanel")); Send(panel, Sel("retain"));
-                Arg(panel, Sel("setTitle:"), String("Choose an application"));
+                Arg(panel, Sel("setTitle:"), String(DesktopPlatformTexts.Current.ChooseApplicationTitle));
                 Arg(panel, Sel("setDirectoryURL:"), Url("/Applications"));
                 Arg(panel, Sel("setAllowedFileTypes:"), Array(String("app")));
                 Arg(panel, Sel("setAllowsMultipleSelection:"), 0);
