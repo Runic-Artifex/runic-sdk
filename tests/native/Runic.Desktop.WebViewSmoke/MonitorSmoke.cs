@@ -505,11 +505,52 @@ internal static partial class MonitorSmoke
             ? SendRect(target, Sel(selector))
             : SendRectStret(target, Sel(selector));
 
-        // The standard menus Runic completed carry the application's titles.
+        // The standard menus Runic completed carry the application's titles, and DesktopHost.SetStandardMenuTitles
+        // retitles them while the application runs (S3).
         internal static async Task CheckTitlesAsync(DesktopHost host)
         {
             await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
             await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            var found = await ReadMenusAsync(window);
+            foreach (var line in found) Console.WriteLine($"Menu titles: {line}");
+            string[] expected = ["Bearbeiten: Widerrufen, Wiederholen, , Ausschneiden, Kopieren, Einsetzen, Alles auswählen",
+                "Ablage: Schließen", "Fenster: Im Dock ablegen, Zoomen, , Alle nach vorne bringen"];
+            // AppKit appends its own items, such as AutoFill and Dictation to Edit and the windows to Window.
+            foreach (var menu in expected)
+                Require(found.Any(line => line.StartsWith(menu, StringComparison.Ordinal)), $"the menu \"{menu}\"");
+            Require(found.Any(static line => line.StartsWith("Darstellung: Originalgröße, Vergrößern", StringComparison.Ordinal)), "the Darstellung menu");
+            Require(found.Any(static line => line.Contains("ausblenden, Andere ausblenden, Alle einblenden", StringComparison.Ordinal)
+                && line.Contains(" beenden", StringComparison.Ordinal) && line.Contains("Über ", StringComparison.Ordinal)),
+                "the application menu with the name in place of {0}");
+            Console.WriteLine("PASS macOS menu titles: the standard menus took DesktopHostOptions.StandardMenuTitles.");
+
+            host.SetStandardMenuTitles(null);
+            string[] english = ["Edit: Undo, Redo, , Cut, Copy, Paste, Select All", "File: Close", "Window: Minimize, Zoom, , Bring All to Front",
+                "View: Actual Size, Zoom In"];
+            for (var waited = 0; ; waited += 100)
+            {
+                found = await ReadMenusAsync(window);
+                if (english.All(menu => found.Any(line => line.StartsWith(menu, StringComparison.Ordinal)))
+                    && found.Any(static line => line.Contains("Hide Others, Show All", StringComparison.Ordinal) && line.Contains("Quit ", StringComparison.Ordinal)))
+                    break;
+                if (waited > 5000)
+                {
+                    foreach (var line in found) Console.WriteLine($"Menu titles after SetStandardMenuTitles: {line}");
+                    throw new InvalidOperationException("Menu titles: SetStandardMenuTitles(null) did not return the standard menus to English.");
+                }
+                await Task.Delay(100);
+            }
+            host.SetStandardMenuTitles(GermanTitles);
+            for (var waited = 0; !(await ReadMenusAsync(window)).Any(static line => line.StartsWith("Bearbeiten: Widerrufen", StringComparison.Ordinal)); waited += 100)
+            {
+                if (waited > 5000) throw new InvalidOperationException("Menu titles: SetStandardMenuTitles did not apply the German titles again.");
+                await Task.Delay(100);
+            }
+            Console.WriteLine("PASS macOS menu titles: DesktopHost.SetStandardMenuTitles retitled the open standard menus.");
+        }
+
+        private static async Task<List<string>> ReadMenusAsync(DesktopWindow window)
+        {
             string? failure = null;
             List<string> found = [];
             await window.InvokeNativeAsync(_ =>
@@ -526,17 +567,7 @@ internal static partial class MonitorSmoke
                 catch (Exception error) { failure = error.ToString(); }
             });
             if (failure is not null) throw new InvalidOperationException("Menu titles: " + failure);
-            foreach (var line in found) Console.WriteLine($"Menu titles: {line}");
-            string[] expected = ["Bearbeiten: Widerrufen, Wiederholen, , Ausschneiden, Kopieren, Einsetzen, Alles auswählen",
-                "Ablage: Schließen", "Fenster: Im Dock ablegen, Zoomen, , Alle nach vorne bringen"];
-            // AppKit appends its own items, such as AutoFill and Dictation to Edit and the windows to Window.
-            foreach (var menu in expected)
-                Require(found.Any(line => line.StartsWith(menu, StringComparison.Ordinal)), $"the menu \"{menu}\"");
-            Require(found.Any(static line => line.StartsWith("Darstellung: Originalgröße, Vergrößern", StringComparison.Ordinal)), "the Darstellung menu");
-            Require(found.Any(static line => line.Contains("ausblenden, Andere ausblenden, Alle einblenden", StringComparison.Ordinal)
-                && line.Contains(" beenden", StringComparison.Ordinal) && line.Contains("Über ", StringComparison.Ordinal)),
-                "the application menu with the name in place of {0}");
-            Console.WriteLine("PASS macOS menu titles: the standard menus took DesktopHostOptions.StandardMenuTitles.");
+            return found;
         }
 
         private static IEnumerable<nint> Items(nint menu)

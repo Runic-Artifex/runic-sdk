@@ -79,6 +79,10 @@ reads the SDK's `ApplicationId`, `ApplicationTitle`, `Version`, `Description`,
 | `RunicMacFileTypeHandlerRank` | `Alternate` | The macOS handler rank of those types: `Alternate` or `Default`. |
 | `RunicMacCameraUsageDescription` | none | `NSCameraUsageDescription` and the camera entitlement. |
 | `RunicMacMicrophoneUsageDescription` | none | `NSMicrophoneUsageDescription` and the audio-input entitlement. |
+| `RunicApplicationLocales` | none | The languages the packages declare, the first being the development language: `en;de;pt-BR`. See [Languages](packaging.md#languages). |
+
+The `RunicApplicationLocale` item adds a language too, with the application's
+name and description in it: `<RunicApplicationLocale Include="de" Name="Notizen" Description="Notizen für alle" />`.
 
 ## Runic.Assets
 

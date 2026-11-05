@@ -19,8 +19,9 @@ export {
   useText, useTextLocale, useWindowLocale, type TextHandle, type TextLocaleHandle, type WindowLocaleHandle,
 } from "./use-text.svelte.js";
 export {
-  configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
-  type TextTranslations,
+  configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,
+  windowLocale, type DocumentLocaleOptions, type FieldErrorArguments, type FieldErrorReason, type FieldErrorText,
+  type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 // blobs/1: uploads from the page and the blob values of state.
 export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";

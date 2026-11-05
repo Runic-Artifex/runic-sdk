@@ -6,7 +6,8 @@ using Runic.Platform;
 // prefers-color-scheme matches, and so does the window: its NSWindow.effectiveAppearance on macOS, its
 // DWMWA_USE_IMMERSIVE_DARK_MODE title bar on Windows. A window without the option leaves both to the system. B2: an open
 // window switches with DesktopWindow.SetColorSchemeAsync, and with DesktopHost.SetColorSchemeAsync while it has no
-// scheme of its own. Run with --color-scheme on Windows or macOS.
+// scheme of its own. S3: DesktopWindow.SetLayoutDirectionAsync mirrors the open WebView2 window (WS_EX_LAYOUTRTL) and
+// returns it; WKWebView reports no LayoutDirection capability. Run with --color-scheme on Windows or macOS.
 internal static partial class ColorSchemeSmoke
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(30);
@@ -77,12 +78,42 @@ internal static partial class ColorSchemeSmoke
                     if (appearance != "nil") throw new InvalidOperationException("Without ColorScheme the macOS window has its own appearance.");
                 }
                 Console.WriteLine("PASS color scheme: without the option the window follows the system.");
+                await LayoutDirectionAsync(window);
             }
             finally { if (window.IsOpen) await window.CloseAsync(); }
         }
         Console.WriteLine("COLOR SCHEME DONE");
         return 0;
     }
+
+    private static async Task LayoutDirectionAsync(DesktopWindow window)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            if (window.Capabilities.HasFlag(DesktopWindowCapabilities.LayoutDirection))
+                throw new InvalidOperationException("The WKWebView window reports DesktopWindowCapabilities.LayoutDirection.");
+            try
+            {
+                await window.SetLayoutDirectionAsync(DesktopLayoutDirection.RightToLeft);
+                throw new InvalidOperationException("SetLayoutDirectionAsync succeeded in the WKWebView window.");
+            }
+            catch (DesktopException error) when (error.Code == "window-capability-unavailable") { }
+            Console.WriteLine("PASS layout direction: the WKWebView window reports no run-time direction.");
+            return;
+        }
+        foreach (var (direction, mirrored) in new[] { (DesktopLayoutDirection.RightToLeft, true), (DesktopLayoutDirection.Default, false) })
+        {
+            await window.SetLayoutDirectionAsync(direction);
+            var extendedStyle = 0L;
+            await window.InvokeNativeAsync(handle => extendedStyle = GetWindowLongPtr(handle, -20));
+            if (((extendedStyle & 0x00400000) != 0) != mirrored || window.LayoutDirection != direction)
+                throw new InvalidOperationException($"After SetLayoutDirectionAsync({direction}) the window's extended style is 0x{extendedStyle:X}.");
+        }
+        Console.WriteLine("PASS layout direction: SetLayoutDirectionAsync mirrors the open WebView2 window and returns it.");
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static partial long GetWindowLongPtr(nint window, int index);
 
     // GTK has no per-window scheme: DesktopHost.SetColorSchemeAsync sets the process's prefer-dark setting, and WebKitGTK's
     // prefers-color-scheme follows it. Run with --color-scheme under Xvfb.

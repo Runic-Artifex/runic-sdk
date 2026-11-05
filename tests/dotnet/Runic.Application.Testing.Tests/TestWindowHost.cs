@@ -24,6 +24,7 @@ internal sealed class TestWindowHost(IServiceProvider services) : IRunicWindowHo
                 {
                     ViewLocator = new NavViewLocator(),
                     ModelContext = opening.Scope.ServiceProvider.GetRequiredService<IRunicModelContext>(),
+                    FlowCultureFromLocale = opening.Options.FlowCultureFromLocale,
                 });
             return new TestWindow<TViewModel>(opening.Scope, host, opening.CloseGuard);
         }

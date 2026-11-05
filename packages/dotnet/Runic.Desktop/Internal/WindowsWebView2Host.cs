@@ -57,6 +57,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpNoOwnerZOrder = 0x0200;
     private const int GwlStyle = -16;
+    private const int GwlExStyle = -20;
     private const uint WmDisplayChange = 0x007E;
     private const uint WsExLayoutRtl = 0x00400000;
     private const uint WsExNoInheritLayout = 0x00100000;
@@ -108,6 +109,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement |
         DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.Ownership |
+        DesktopWindowCapabilities.LayoutDirection |
         // Per window for a generated profile; WebUiWindow removes it for a ProfilePath the application configured.
         DesktopWindowCapabilities.PerWindowColorScheme;
     // A frameless or kiosk window has no frame for a menu bar.
@@ -164,6 +166,21 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
             _controller?.SetPreferredColorScheme(colorScheme, followSystem: true);
             if (_options is { } options) _options = options with { ColorScheme = colorScheme };
+        }, cancellationToken);
+    // DesktopWindow.SetLayoutDirectionAsync: mirrors the frame, caption buttons and system menu as the window's creation
+    // does (WS_EX_LAYOUTRTL; the WebView2 child keeps its own layout), and lays the menu bar out again.
+    public ValueTask SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default)
+        => InvokeAsync(() =>
+        {
+            if (_window == 0) return;
+            const nint mirrored = (nint)(WsExLayoutRtl | WsExNoInheritLayout);
+            var extendedStyle = Native.GetWindowLongPtr(_window, GwlExStyle);
+            extendedStyle = layoutDirection == Runic.Platform.DesktopLayoutDirection.RightToLeft ? extendedStyle | mirrored : extendedStyle & ~mirrored;
+            Native.SetWindowLongPtr(_window, GwlExStyle, extendedStyle);
+            if (_options is { } options) _options = options with { LayoutDirection = layoutDirection };
+            if (_appliedMenuBar is { } menus) ApplyMenuBar(menus);
+            // The frame redraws mirrored only after a frame change; the WebView2 child fills the client area.
+            Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
         }, cancellationToken);
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
