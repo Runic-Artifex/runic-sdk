@@ -316,6 +316,31 @@ Assert.Single(host.Connections.Current);
 context: a command's reply comes after the `Connected` of its connection, and
 after `CloseConnection` a test awaits a model turn before it reads the list.
 
+A test connection reports no languages by default.
+`host.Transport.SetLanguages(connectionKey, ["de-CH", "de"])` (since 0.17),
+before the connection's first request, makes its `hello` report them, as a
+browser reports `navigator.languages`; the window then lists them as the
+connection's `RunicConnection.Languages`, in BCP 47 case and each once, as the
+window keeps a browser's, and the driver's `Connection` carries them too.
+
+### The window's language
+
+A window follows the application's locale while it sets none of its own, as in
+the application ([translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`host.ApplicationLocale` (since 0.17) is the `IRunicApplicationLocale` registered
+in the services of `RunicWindowTestHost.Create(services)` and
+`CreateWindowAsync`, or, for a host built with a constructor, a locale of that
+host alone. Switch it as the application does, then read the window's locale:
+
+```csharp
+await host.ApplicationLocale.SetLocaleAsync("de");
+Assert.Equal("de", host.Content.Locale);              // pushed to pages with translation-text/1
+```
+
+The window follows in a turn of its model context, as in the application, and
+reading `host.ApplicationLocale` after the host was disposed throws
+`ObjectDisposedException`.
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host

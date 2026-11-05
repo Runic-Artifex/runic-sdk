@@ -18,6 +18,8 @@
     <!-- The menu bar checks menus with the internal DesktopMenuRules, as status icons do through Runic.Platform.Runtime's
          linked copy. Runic.Desktop pins Runic.Platform to its own version (eng/build/package-dependencies.targets). -->
     <InternalsVisibleTo Include="Runic.Desktop" />
+    <!-- DesktopLanguages.FromEnvironment and FromPosix are tested with the spell checker's languages. -->
+    <InternalsVisibleTo Include="Runic.Desktop.Tests" />
   </ItemGroup>
   <ItemGroup>
     <!-- RUNICPLAT analyzers and their code fixes ship in this package's analyzers/ folder (docs/diagnostics.md). -->

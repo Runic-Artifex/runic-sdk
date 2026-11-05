@@ -254,6 +254,36 @@ internal sealed class MenuBarPageChecks
         }
     }
 
+    // S4: the in-page bar's shortcut labels take the modifier names of the keyboard layout a Windows window thread read
+    // (ShortcutModifierNames), and the bar is laid out again when the user switches layout.
+    [Test, NotInParallel(Order = 45)]
+    public async Task AKeyboardLayoutSwitchLaysTheInPageBarOutAgain()
+    {
+        using var transport = new Runic.Application.Testing.InMemoryBridgeTransport();
+        using var routes = new MenuBarPageRoutes(new FixedMenuBar(Bar), transport,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, MenuPlatform.Windows);
+        // The state writes + as \u002B.
+        static string? SaveLabel(string menus) =>
+            JsonNode.Parse(menus)!.AsArray()[0]!["entries"]!.AsArray()[1]!["shortcutText"]?.GetValue<string>();
+        await WaitUntilAsync(() => SaveLabel(routes.MenusJson) == "Ctrl+S", $"The first state: {routes.MenusJson}");
+        try
+        {
+            var before = routes.Revision;
+            ShortcutModifierNames.UseLayoutNames("Strg", "Umschalt", "Alt");
+            await WaitUntilAsync(() => routes.Revision > before && SaveLabel(routes.MenusJson) == "Strg+S",
+                $"The bar kept its labels after a layout switch: {routes.MenusJson}");
+        }
+        finally { ShortcutModifierNames.UseLayoutNames(null, null, null); }
+        await WaitUntilAsync(() => SaveLabel(routes.MenusJson) == "Ctrl+S", $"The English labels: {routes.MenusJson}");
+    }
+
+    private sealed class FixedMenuBar(IReadOnlyList<DesktopMenu> bar) : IMenuBarSource
+    {
+        public IReadOnlyList<DesktopMenu> MenuBar => bar;
+        public event EventHandler? MenuBarChanged { add { } remove { } }
+        public MenuCommandBinding? ApplicationCommands => null;
+    }
+
     // The items of the state's first menu.
     private static IEnumerable<JsonObject> Items(JsonObject state) =>
         state["menus"]!.AsArray()[0]!["entries"]!.AsArray().Select(static entry => entry!.AsObject()).Where(static entry => entry["kind"]!.GetValue<string>() == "item");

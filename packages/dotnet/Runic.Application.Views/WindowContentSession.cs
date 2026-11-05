@@ -181,8 +181,10 @@ public sealed class WindowContentSession : IDisposable
     /// from any thread.
     /// </summary>
     /// <remarks>
-    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>.
-    /// Setting <see langword="null"/> after a locale leaves the pages in the language they show.
+    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>; a
+    /// value set here directly is that Window's own locale, and <see langword="null"/> makes it follow the application's
+    /// <see cref="IRunicApplicationLocale"/> again, which this property then shows. Otherwise, setting
+    /// <see langword="null"/> after a locale leaves the pages in the language they show.
     /// </remarks>
     /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
     public string? Locale

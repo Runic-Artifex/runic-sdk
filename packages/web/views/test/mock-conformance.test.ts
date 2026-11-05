@@ -493,7 +493,7 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 
 const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1", "region-collections/1", "client-errors/1", "query-collections/1", "blobs/1", "navigation-path/1"];
 // The features the mock lists in its hello reply.
-const producerFeatures = [...features.filter(feature => feature !== "navigation-path/1"), "validation-pending/1", "field-flush/1", "field-paths/1", "translation-text/1", "navigation-path/1"];
+const producerFeatures = [...features.filter(feature => feature !== "navigation-path/1"), "validation-pending/1", "field-flush/1", "field-paths/1", "translation-text/1", "navigation-path/1", "client-languages/1"];
 // The raw client sends no session with its requests, so it lists every feature but request-session/1.
 const helloWith = (raw: RawClient, list: readonly string[] = features.filter(feature => feature !== "request-session/1")) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
@@ -789,4 +789,27 @@ test("region-collections/1: a close of a region whose close is pending joins it,
   assert.deepEqual(view.state["documents"], { regions: [{ key: "1", content: reference(1) }, { key: "2", content: reference(2) }], selected: 1 });
   assert.equal(model.asks, 3);
   raw.done();
+});
+
+/* ------------------------------------------------------------------ client-languages/1 */
+
+test("client-languages/1: the mock keeps the hello's language tags in order, each once, and refuses languages that are not an array", async () => {
+  // A refused hello does not complete the handshake, so one connection tries both.
+  const { bridge, raw } = await connected();
+  const refused = await raw.send({ kind: "hello", protocol: 4, session: "s-1", client, features: ["client-languages/1"], languages: "de" });
+  assert.deepEqual(errorOf(refused), { kind: "rejected", reason: "invalid-request" });
+  const tooMany = await raw.send({ kind: "hello", protocol: 4, session: "s-2", client, features: ["client-languages/1"],
+    languages: Array.from({ length: 17 }, (_, index) => `l${index}`) });
+  assert.deepEqual(errorOf(tooMany), { kind: "rejected", reason: "invalid-request" });
+  const reply = await raw.send({ kind: "hello", protocol: 4, session: "s-3", client, features: ["client-languages/1"],
+    languages: ["de-CH", "de", "DE", "de_CH", "en"] });
+  assert.equal(reply.ok, true);
+  assert.ok((reply["features"] as string[]).includes("client-languages/1"));
+  assert.deepEqual(bridge.clientLanguages, ["de-CH", "de", "en"]);
+  raw.done();
+  // Without the feature the member is ignored.
+  const other = await connected();
+  assert.equal((await other.raw.send({ kind: "hello", protocol: 4, session: "s-4", client, languages: 7 })).ok, true);
+  assert.deepEqual(other.bridge.clientLanguages, []);
+  other.raw.done();
 });

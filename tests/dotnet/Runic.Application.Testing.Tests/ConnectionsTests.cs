@@ -31,6 +31,41 @@ internal sealed class ConnectionsTests
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     }
 
+    // client-languages/1: a connection lists the languages its hello reported, and compares by its keys only.
+    [Test]
+    public async Task AConnectionListsTheLanguagesItsPageReportedAsync()
+    {
+        await using var provider = Provider();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<ConnectionsWindow>();
+        var host = ((TestWindow<ConnectionsViewModel>)window.Host).Host;
+        var connections = window.Services.GetRequiredService<IRunicConnections>();
+        // Case-only duplicates collapse to one tag in BCP 47 case; a tag longer than 64 characters is ignored, not rejected.
+        host.Transport.SetLanguages(Bob.ConnectionKey,
+            ["DE-ch", "de", "DE", "not a tag", "de-CH", "en", "ZH-hant-TW", "es-419", "en-US-U-CA-Buddhist", "a" + new string('b', 64)]);
+        var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await host.Root.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        (await bob.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        var alice = Own(host.Root);
+        var listed = Own(bob);
+        Require(alice.Languages.Count == 0, $"A page that reported no languages lists [{string.Join(", ", alice.Languages)}].");
+        Require(listed.Languages.SequenceEqual(["de-CH", "de", "en", "zh-Hant-TW", "es-419", "en-US-u-ca-buddhist"]),
+            $"The connection lists [{string.Join(", ", listed.Languages)}], not the language tags of its hello once each, in BCP 47 case.");
+        Require(connections.Current.Single(connection => connection.Equals(listed)).Languages.Count == 6,
+            "IRunicConnections did not list the languages.");
+        // The list is read-only, and a list set with `with` is copied.
+        Require(listed.Languages is not List<string> && listed.Languages is ICollection<string> { IsReadOnly: true },
+            $"The languages are a {listed.Languages.GetType()}.");
+        var source = new List<string> { "fr" };
+        var copy = listed with { Languages = source };
+        source.Add("it");
+        Require(copy.Languages.SequenceEqual(["fr"]), "The languages were not copied when set.");
+        Require(listed.ToString() == $"RunicConnection {{ ConnectionKey = {listed.ConnectionKey}, ClientKey = {listed.ClientKey}, " +
+            "Languages = [de-CH, de, en, zh-Hant-TW, es-419, en-US-u-ca-buddhist] }", $"ToString: {listed}");
+        Require(listed.Equals(new RunicConnection(listed.ConnectionKey, listed.ClientKey))
+            && listed.GetHashCode() == new RunicConnection(listed.ConnectionKey, listed.ClientKey).GetHashCode(),
+            "Two connections with the same keys are not equal.");
+    }
+
     [Test]
     public async Task TwoConnectionsAreListedAndEachCommandRunsWithItsOwnCallerAsync()
     {

@@ -102,6 +102,32 @@ internal sealed partial class WindowsWebView2Host
         Native.DrawMenuBar(_window);
     }
 
+    // The bar again with the current direction and modifier names: the newest menus, also while a menu is open.
+    private void PlanMenuBarAgain()
+    {
+        if ((_pendingMenuBar ?? _appliedMenuBar) is { } menus) ApplyMenuBar(menus);
+    }
+
+    // The keyboard layout's modifier names changed (ShortcutModifierNames), read on this or another window's thread:
+    // the bar's shortcut labels take them. A window that closes meanwhile, or a bar that cannot be set, keeps its labels.
+    private void OnModifierNamesChanged(object? sender, EventArgs args)
+    {
+        try
+        {
+            if (!IsOpen || _window == 0) return;
+            var work = InvokeAsync(PlanMenuBarAgain, CancellationToken.None);
+            if (!work.IsCompletedSuccessfully) _ = ObserveAsync(work);
+        }
+        // It can run inside the window procedure, which must not throw.
+        catch (Exception error) when (error is not OutOfMemoryException) { }
+
+        static async Task ObserveAsync(ValueTask work)
+        {
+            try { await work.ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+        }
+    }
+
     // DestroyMenu on the returned menu destroys its submenus.
     private static unsafe nint CreateMenu(ImmutableArray<Win32MenuEntry> entries, bool popup, Dictionary<nint, ImmutableArray<Win32MenuEntry>>? popups)
     {

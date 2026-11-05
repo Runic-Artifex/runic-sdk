@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Runic.Platform;
 
 namespace Runic.Desktop.Internal;
 
@@ -50,7 +51,7 @@ internal static class SpellingLanguages
     internal static (string[] Dictionaries, DesktopDiagnostic? Missing) ForWebKitGtk(IReadOnlyList<string> languages)
     {
         var installed = EnchantDictionaries();
-        var user = LinuxUserLanguages(Environment.GetEnvironmentVariable);
+        var user = DesktopLanguages.Preferred;
         if (languages.Count == 0) return (Resolve(UserTags(user), user, installed).Dictionaries, null);
         var resolution = Resolve(languages, user, installed);
         if (resolution.Missing.Length == 0) return (resolution.Dictionaries, null);
@@ -93,18 +94,6 @@ internal static class SpellingLanguages
             if (!tags.Contains(tag, StringComparer.Ordinal)) tags.Add(tag);
         }
         return [.. tags];
-    }
-
-    // The user's languages on Linux, as gettext reads them: LANGUAGE's list, then LC_ALL, LC_MESSAGES and LANG.
-    internal static string[] LinuxUserLanguages(Func<string, string?> environment)
-    {
-        List<string> languages = [];
-        if (environment("LANGUAGE") is { Length: > 0 } list) languages.AddRange(list.Split(':', StringSplitOptions.RemoveEmptyEntries));
-        foreach (var name in (ReadOnlySpan<string>)["LC_ALL", "LC_MESSAGES", "LANG"])
-        {
-            if (environment(name) is { Length: > 0 } value) languages.Add(value);
-        }
-        return [.. languages];
     }
 
     // The name of a dictionary for a tag: language_REGION, or language_Script_REGION, as enchant and hunspell name them.
