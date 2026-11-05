@@ -1,3 +1,4 @@
 #nullable enable
+static Runic.Application.Views.CsWebUi.CsWebUiPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Runic.Platform.Runtime.IPickerBackend! unownedFileDialogs) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.get -> bool?
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.init -> void

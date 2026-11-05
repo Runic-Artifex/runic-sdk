@@ -15,7 +15,7 @@ internal sealed partial class MacAppKitNativeTests
 {
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(15);
 
-    [Test, Explicit, Category("NativeAppKit"), DisplayName("native AppKit: status item, login item, window presentation, message boxes and the Dock tile"), Timeout(180_000)]
+    [Test, Explicit, Category("NativeAppKit"), DisplayName("native AppKit: status item, login item, window presentation, unowned panels, message boxes and the Dock tile"), Timeout(180_000)]
     public async Task NativeAppKitAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The AppKit checks need macOS.");
@@ -25,6 +25,7 @@ internal sealed partial class MacAppKitNativeTests
         await LoginItemAsync();
         await PresentationAsync(cancellationToken);
         await FilterChoiceAsync();
+        await UnownedPanelsAsync();
         await MessageBoxesAsync(cancellationToken);
         await GlobalShortcutsAsync();
         await DockTileAsync(cancellationToken);
@@ -166,6 +167,121 @@ internal sealed partial class MacAppKitNativeTests
         Require(observed is [(3, "Images"), (1, "Text"), (2, "Text"), (0, "All files")],
             "Unexpected filter pop-up: " + string.Join(", ", observed.Select(static item => $"{item.Count} {item.Selected}")));
         Pass("the filter pop-up keeps filters with the same name and swaps the panel's types for the chosen filter");
+    }
+
+    // File panels without a window (MacOSPlatformProvider.CreateUnownedFileDialogs), as a CS-WebUI application shows them:
+    // under an AppKit event loop panels of their own (beginWithCompletionHandler:), two at once, and without one modal
+    // panels (runModal), forced here inside the Desktop event loop, one at a time (MacModalGate). The modal loop runs inside
+    // a main-queue block, which runs no other one: cancellation reaches the panel through the main run loop (cancel:), and a
+    // request waiting for it gives up at once. The CS-WebUI probe (--probe-unowned-dialogs) checks the modal case inside
+    // RunicCsWebUiHost.Run; choosing in a shown panel stays a manual check.
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static async Task UnownedPanelsAsync()
+    {
+        var dialogs = MacOSPlatformProvider.CreateUnownedFileDialogs();
+        Require(dialogs.IsAvailable && dialogs.SupportsDirectorySelection && dialogs.SupportsMultipleSelection, "The unowned panels are available.");
+        foreach (bool modal in new[] { false, true })
+        {
+            var picker = Picker(modal);
+            using var cancel = new CancellationTokenSource();
+            var pending = Select(picker, "Runic unowned panel", cancel.Token);
+            await picker.Shown.Task.WaitScaledAsync(Step);
+            // Let the panel, or its modal loop, start before cancelling it.
+            await Task.Delay(250);
+            cancel.Cancel();
+            var selection = await pending.WaitScaledAsync(Step);
+            Require(selection is null, $"A cancelled {(modal ? "modal" : "")} unowned panel selected {selection}.");
+        }
+        Pass("unowned file panels show without a window, also modally, and cancellation closes them");
+
+        // Under the event loop two panels are shown at once; cancelling the first closes it alone.
+        {
+            var (one, two) = (Picker(false), Picker(false));
+            using var first = new CancellationTokenSource();
+            using var second = new CancellationTokenSource();
+            var firstPick = Select(one, "Runic first panel", first.Token);
+            await one.Shown.Task.WaitScaledAsync(Step);
+            var secondPick = Select(two, "Runic second panel", second.Token);
+            await two.Shown.Task.WaitScaledAsync(Step);
+            await Task.Delay(250);
+            Require(!firstPick.IsCompleted && !secondPick.IsCompleted, "An unowned panel ended before it was cancelled.");
+            first.Cancel();
+            Require(await firstPick.WaitScaledAsync(Step) is null, "The first panel selected something.");
+            await Task.Delay(250);
+            Require(!secondPick.IsCompleted, "Cancelling the first panel ended the second.");
+            second.Cancel();
+            Require(await secondPick.WaitScaledAsync(Step) is null, "The second panel selected something.");
+        }
+        Pass("two unowned panels are shown at once under the event loop, and cancelling the first leaves the second");
+
+        // Modal panels one at a time: the second waits until the first has closed, then shows. The first, cancelled while
+        // the second waits, completes without waiting for the second.
+        {
+            var (one, two) = (Picker(true), Picker(true));
+            using var first = new CancellationTokenSource();
+            using var second = new CancellationTokenSource();
+            var firstPick = Select(one, "Runic first modal panel", first.Token);
+            await one.Shown.Task.WaitScaledAsync(Step);
+            var secondPick = Select(two, "Runic second modal panel", second.Token);
+            await Task.Delay(500);
+            Require(!two.Shown.Task.IsCompleted, "A second modal panel was shown while the first was.");
+            first.Cancel();
+            Require(await firstPick.WaitScaledAsync(Step) is null, "The first modal panel selected something.");
+            await two.Shown.Task.WaitScaledAsync(Step);
+            await Task.Delay(250);
+            Require(!secondPick.IsCompleted, "Cancelling the first modal panel ended the second.");
+            second.Cancel();
+            Require(await secondPick.WaitScaledAsync(Step) is null, "The second modal panel selected something.");
+        }
+        Pass("a modal panel requested while another is shown waits for it, then shows, and both close when cancelled");
+
+        // A request waiting for a modal panel gives up at once when cancelled, and leaves the panel.
+        {
+            var shown = Picker(true);
+            using var first = new CancellationTokenSource();
+            using var second = new CancellationTokenSource();
+            var modalPick = Select(shown, "Runic modal panel", first.Token);
+            await shown.Shown.Task.WaitScaledAsync(Step);
+            var waiting = Picker(true);
+            var queued = Select(waiting, "Runic queued panel", second.Token);
+            await Task.Delay(250);
+            second.Cancel();
+            Require(await queued.WaitScaledAsync(Step) is null && !waiting.Shown.Task.IsCompleted && !modalPick.IsCompleted,
+                "A waiting panel's cancellation waited for the modal panel, showed it, or ended the modal panel.");
+
+            // An unowned alert waits for the modal panel too, and gives up at once when cancelled.
+            var boxes = (MacMessageBoxes)MacOSPlatformProvider.CreateUnownedMessageBoxes();
+            var alertShown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            boxes.Shown = alert => alertShown.TrySetResult(alert);
+            using (var cancelAlert = new CancellationTokenSource())
+            {
+                var box = boxes.ShowAsync(new DesktopMessageBox("Runic queued alert"), cancelAlert.Token).AsTask();
+                await Task.Delay(250);
+                Require(!alertShown.Task.IsCompleted, "An unowned alert was shown while a modal panel was.");
+                cancelAlert.Cancel();
+                try { await box.WaitScaledAsync(Step); throw new InvalidOperationException("A cancelled waiting alert returned."); }
+                catch (OperationCanceledException) { }
+                Require(!alertShown.Task.IsCompleted && !modalPick.IsCompleted, "A waiting alert's cancellation showed it or ended the modal panel.");
+            }
+            first.Cancel();
+            Require(await modalPick.WaitScaledAsync(Step) is null, "The modal panel selected something.");
+
+            // Alone, the alert shows, and cancellation aborts its modal loop.
+            using (var cancelAlert = new CancellationTokenSource())
+            {
+                var box = boxes.ShowAsync(new DesktopMessageBox("Runic unowned alert"), cancelAlert.Token).AsTask();
+                await alertShown.Task.WaitScaledAsync(Step);
+                await Task.Delay(250);
+                cancelAlert.Cancel();
+                try { await box.WaitScaledAsync(Step); throw new InvalidOperationException("A cancelled unowned alert returned."); }
+                catch (OperationCanceledException) { }
+            }
+        }
+        Pass("a panel or an alert waiting for a modal panel gives up at once when cancelled, and an unowned alert closes when cancelled");
+
+        static MacOsFilePicker Picker(bool modal) => new(MacApplicationOwner.Shared) { ForceModal = modal };
+        static Task<NativeDirectorySelection?> Select(MacOsFilePicker picker, string title, CancellationToken cancellationToken) =>
+            ((INativeDirectoryPicker)picker).SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = title }, cancellationToken).AsTask();
     }
 
     // The event loop's [NSApp run] launches the application while the tests already run; the status item's requests give

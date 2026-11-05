@@ -18,7 +18,18 @@ Runic.Application.Views.Desktop's `DesktopPlatformServices.ForWindow` and
 file dialogs on the window's STA and drains native callbacks before disposal. This
 package does not discover providers or depend on Desktop.
 
-File dialogs require an owner, use filesystem-only Common Item Dialogs and retain
+A window's file dialogs require its owner. A presentation without a native window,
+such as a CS-WebUI browser window or a tray-only application, uses
+`WindowsPlatformProvider.CreateUnownedFileDialogs()`: the same dialogs without a
+parent, each on a single-threaded apartment thread of its own that Runic starts for
+it, so dialogs that two windows show at once close independently. Pass it to
+Runic.Application.Views.CsWebUi's `services.AddRunicPlatformServices(...)` so each
+window's `IFileDialogs` shows them for `OwnerPolicy.PreferOwner`, or call it directly
+from any thread. Cancellation closes a shown dialog from inside its modal loop.
+Windows' foreground rules apply: while another application, such as a browser, is
+in the foreground, the dialog may open behind it with a flashing taskbar button.
+
+File dialogs use filesystem-only Common Item Dialogs and retain
 the shared runtime's atomic replacement policy. Filters become the dialog's file type list, the first
 selected, and the type the user left selected (`GetFileTypeIndex`) is the result's `SelectedFilter`;
 MIME types are ignored, since the dialog filters by extension. `OpenFilesAsync` uses `FOS_ALLOWMULTISELECT`

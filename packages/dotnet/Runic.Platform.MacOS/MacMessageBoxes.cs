@@ -99,17 +99,28 @@ internal sealed class MacMessageBoxes(INativeWindowOwner owner, bool unowned = f
         return alert;
     }
 
-    // The application's box: an application-modal alert (runModal) on the main thread, in front of every window. The
-    // main queue keeps running during the modal loop, so cancellation aborts it from there.
+    // The application's box: an application-modal alert (runModal) on the main thread, in front of every window. The modal
+    // loop runs inside a main-queue block, so it runs no other main-queue block: cancellation aborts it from the main run
+    // loop instead (MacOsMainQueue.PerformAsync). One application-modal alert or panel at a time (MacModalGate): a box
+    // requested meanwhile waits, and gives up at once when cancelled.
     private async ValueTask<PlatformResult<DesktopMessageBoxButton?>> ShowUnownedAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken)
+    {
+        await MacModalGate.EnterAsync(cancellationToken).ConfigureAwait(false);
+        try { return await ShowModalAsync(messageBox, cancellationToken).ConfigureAwait(false); }
+        finally { MacModalGate.Exit(); }
+    }
+
+    private async ValueTask<PlatformResult<DesktopMessageBoxButton?>> ShowModalAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken)
     {
         var ordered = DesktopMessageBoxRules.Ordered(messageBox.Buttons, MessageBoxPlatform.MacOS);
         nint response = 0;
         bool running = false, answered = false;
         Task aborting = Task.CompletedTask;
-        using var registration = cancellationToken.Register(() => aborting = MacOsMainQueue.InvokeAsync(() =>
+        using var registration = cancellationToken.Register(() => aborting = MacOsMainQueue.PerformAsync(() =>
         {
-            if (running && !answered) Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("abortModal"));
+            if (!running || answered) return;
+            Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("abortModal"));
+            WakeModalLoop();
         }).AsTask());
         try
         {

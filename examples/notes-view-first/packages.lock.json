@@ -93,7 +93,8 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Application.Views": "[0.16.0, )",
           "Runic.Assets": "[0.16.0, )",
-          "Runic.Platform": "[0.16.0, )"
+          "Runic.Platform": "[0.16.0, )",
+          "Runic.Platform.Runtime": "[0.16.0, )"
         }
       },
       "runic.assets": {
@@ -108,6 +109,12 @@
       },
       "runic.platform": {
         "type": "Project"
+      },
+      "runic.platform.runtime": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform": "[0.16.0, )"
+        }
       },
       "CsWebUi": {
         "type": "CentralTransitive",

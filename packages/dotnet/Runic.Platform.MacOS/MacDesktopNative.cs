@@ -30,6 +30,22 @@ internal static partial class MacDesktopNative
     internal static nint Array(nint value) => Arg(Class("NSArray"), Sel("arrayWithObject:"), value);
     internal static nint Url(string path) => Arg(Class("NSURL"), Sel("fileURLWithPath:"), String(path));
     internal static void Release(nint value) { if (value != 0) Send(value, Sel("release")); }
+    // Main thread. A modal loop (runModal) notices cancel:, stopModal and abortModal only once it handles its next event,
+    // and without a user or an AppKit event loop none may come: post an application-defined event, which the loop takes
+    // and discards, so it ends at once.
+    internal static void WakeModalLoop()
+    {
+        using var pool = new Pool();
+        nint wake = OtherEvent(Class("NSEvent"), Sel("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:"),
+            EventTypeApplicationDefined, default, 0, 0, 0, 0, 0, 0, 0);
+        if (wake != 0) PostEvent(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("postEvent:atStart:"), wake, 1);
+    }
+    private const ulong EventTypeApplicationDefined = 15;
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct Point(double X, double Y);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void PostEvent(nint target, nint selector, nint appEvent, byte atStart);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
+    private static partial nint OtherEvent(nint target, nint selector, ulong type, Point location, ulong modifierFlags, double timestamp,
+        nint windowNumber, nint context, short subtype, nint data1, nint data2);
     internal readonly struct Pool : IDisposable
     {
         private readonly nint _pool;
@@ -49,6 +65,7 @@ internal static unsafe partial class MacDesktopBlock
     private static readonly nint ResponseDescriptor = DescriptorFor("v@?q");
     private static readonly nint TwoDescriptor = DescriptorFor("v@?@@");
     private static readonly nint BoolDescriptor = DescriptorFor("v@?B@");
+    private static readonly nint VoidDescriptor = DescriptorFor("v@?");
     private static nint DescriptorFor(string signature)
     {
         var d = (Descriptor*)NativeMemory.AllocZeroed((nuint)sizeof(Descriptor));
@@ -56,6 +73,8 @@ internal static unsafe partial class MacDesktopBlock
         d->Dispose = (nint)(delegate* unmanaged[Cdecl]<Block*, void>)&Destroy;
         d->Signature = Marshal.StringToCoTaskMemUTF8(signature); return (nint)d;
     }
+    // A block without arguments, such as CFRunLoopPerformBlock's.
+    internal static nint Create(Action callback) => Create((_, _) => callback(), VoidDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, void>)&None);
     internal static nint Create(Action<nint> callback) => Create((a, _) => callback(a), OneDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, nint, void>)&One);
     internal static nint Create(Action<nint, nint> callback) => Create(callback, TwoDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, nint, nint, void>)&Two);
     internal static nint Response(Action<nint> callback) => Create((a, _) => callback(a), ResponseDescriptor, (nint)(delegate* unmanaged[Cdecl]<Block*, nint, void>)&One);
@@ -73,6 +92,7 @@ internal static unsafe partial class MacDesktopBlock
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Copy(Block* to, Block* from) => to->Context = GCHandle.ToIntPtr(GCHandle.Alloc(GCHandle.FromIntPtr(from->Context).Target));
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Destroy(Block* block) => GCHandle.FromIntPtr(block->Context).Free();
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void None(Block* b) => Run(b, 0, 0);
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void One(Block* b, nint a) => Run(b, a, 0);
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Two(Block* b, nint a, nint c) => Run(b, a, c);
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])] private static void Boolean(Block* b, byte a, nint c) => Run(b, a, c);

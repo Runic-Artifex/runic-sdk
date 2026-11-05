@@ -36,7 +36,9 @@ application ID, or desktop-inferred identity without one. Its inhibition comes f
 `PortalApplication.CreateInhibition()`: an application-scoped Inhibit request with
 the empty parent window identifier, so it works without a window and is not tied to
 one, as the Windows and macOS inhibition is. An application without a window uses
-`CreateUnparentedFileDialogs()` for dialogs that the portal shows without a parent.
+`CreateUnparentedFileDialogs()` for dialogs that the portal shows without a parent;
+a CS-WebUI application passes them to `services.AddRunicPlatformServices(...)` so each
+window's `IFileDialogs` shows them for `OwnerPolicy.PreferOwner`.
 
 The services of a process share one session-bus connection per desktop identity:
 the application's ID, or desktop-inferred identity for the window services that

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -159,7 +160,12 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(application);
         var host = new RunicCsWebUiHost(services, options);
-        var loop = new MainThreadLoop();
+        // With unowned file dialogs on macOS, the main thread serves the main run loop, which their AppKit panels need, by
+        // blocking in it; WebUI's WKWebView windows run AppKit's own loop while they are shown. Without the dialogs, or for
+        // windows that cannot show them, the main thread blocks as WebUI's wait does.
+        bool panels = OperatingSystem.IsMacOS() && services.GetService<CsWebUiUnownedDialogs>() is not null
+            && options.ShowWindow is null && Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) != "1";
+        var loop = new MainThreadLoop(serveMainQueue: panels, serveWhileWaiting: panels && !options.UseWebView);
         host._loop = loop;
         try
         {
@@ -311,6 +317,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             }
             if (loop is null) Show();
             else host.WebUiClosed = await loop.ShowAsync(Show, cancellationToken).ConfigureAwait(false);
+            // Unowned file dialogs (AddRunicPlatformServices(unownedFileDialogs)) open only for a window no other computer
+            // can reach; each request checks the window again, as an application may make it public later.
+            bool serveOnly = Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1", customShow = ShowWindow is not null;
+            scope.ServiceProvider.GetService<CsWebUiWindowLocality>()?.Attach(() => CsWebUiWindowLocality.For(serveOnly, customShow, () => (int)native.Port));
             // Serve-only shows no window: the Window then has no presentation.
             if (Environment.GetEnvironmentVariable(CsWebUiBridgeWindow<TViewModel>.ServeOnlyEnvironmentVariable) != "1")
                 opening.UsePresentation(new CsWebUiWindowPresentation(native, UseWebView && ShowWindow is null));
@@ -387,8 +397,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         }
     }
 
-    // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown.
-    private sealed class MainThreadLoop
+    // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown. With
+    // serveMainQueue it blocks in the macOS main run loop while idle, and with serveWhileWaiting also while browser windows
+    // are shown, with WebUI's wait on a thread of its own; Signal and the end of that wait wake it.
+    private sealed class MainThreadLoop(bool serveMainQueue = false, bool serveWhileWaiting = false)
     {
         private readonly object _gate = new();
         private readonly Queue<(Action Show, TaskCompletionSource<Task> Done)> _pending = new();
@@ -418,18 +430,71 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 lock (_gate) _waiting = wait = _shown > 0;
                 if (!wait)
                 {
-                    // Wakes when the application posts a window or finishes.
-                    lock (_gate)
-                    {
-                        while (!_signaled) Monitor.Wait(_gate);
-                        _signaled = false;
-                    }
+                    WaitForSignal();
                     continue;
                 }
-                try { WebUiApplication.Wait(); }
+                try { WaitForWebUi(); }
                 finally { WebUiClosed(); }
             }
         }
+
+        // Wakes when the application posts a window or finishes.
+        private void WaitForSignal()
+        {
+            while (true)
+            {
+                lock (_gate)
+                {
+                    if (_signaled)
+                    {
+                        _signaled = false;
+                        return;
+                    }
+                    if (!serveMainQueue)
+                    {
+                        Monitor.Wait(_gate);
+                        continue;
+                    }
+                }
+                // Returns after each main-queue block, or when Signal wakes it. A run loop that cannot wait returns at
+                // once: wait on the gate instead of spinning.
+                if (!ServeMainQueue())
+                    lock (_gate)
+                        while (!_signaled) Monitor.Wait(_gate);
+            }
+        }
+
+        // Returns once every shown window has closed, or WebUI exits.
+        private void WaitForWebUi()
+        {
+            // WebUI's WKWebView windows need its wait on the main thread, where it runs [NSApp run], which also runs the
+            // main queue. Its browser-window wait only waits, on any thread.
+            if (!serveWhileWaiting || !OperatingSystem.IsMacOS() || CsWebUiMacMainQueue.WebUiRunsAppKit())
+            {
+                WebUiApplication.Wait();
+                return;
+            }
+            ExceptionDispatchInfo? failure = null;
+            var waited = 0;
+            var waiter = new Thread(() =>
+            {
+                try { WebUiApplication.Wait(); }
+                catch (Exception error) { failure = ExceptionDispatchInfo.Capture(error); }
+                finally
+                {
+                    Volatile.Write(ref waited, 1);
+                    if (OperatingSystem.IsMacOS()) CsWebUiMacMainQueue.Wake();
+                }
+            })
+            { IsBackground = true, Name = "Runic CS-WebUI wait" };
+            waiter.Start();
+            while (Volatile.Read(ref waited) == 0)
+                if (!ServeMainQueue()) break;
+            waiter.Join();
+            failure?.Throw();
+        }
+
+        private static bool ServeMainQueue() => OperatingSystem.IsMacOS() && CsWebUiMacMainQueue.Serve();
 
         // On the main thread while it is idle, as WebUI expects; inline while it waits for shown windows.
         // Returns the task that completes when WebUI reports this window closed.
@@ -454,6 +519,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 _signaled = true;
                 Monitor.PulseAll(_gate);
             }
+            if (serveMainQueue && OperatingSystem.IsMacOS()) CsWebUiMacMainQueue.Wake();
         }
 
         public void Stop()

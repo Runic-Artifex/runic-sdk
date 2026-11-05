@@ -209,10 +209,37 @@ public static class WindowsPlatformProvider
         ? new WindowsMessageBoxes(WindowsApplicationThread.Shared, controls, unowned: true)
         : DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.BackendUnavailable);
 
-    // File dialogs without a parent window, on the application's UI thread, for a presentation without a native owner.
+    /// <summary>Creates the application's file dialogs without an owner window: the Common Item Dialog
+    /// (<c>IFileOpenDialog</c>, <c>IFileSaveDialog</c>) shown without a parent.</summary>
+    /// <remarks>
+    /// <para>
+    /// For a presentation without a native window, such as a CS-WebUI browser window or a tray-only application. Prefer
+    /// a window's <see cref="IFileDialogs"/> while it has one, so the dialog is modal for it. Pass the result to
+    /// <c>services.AddRunicPlatformServices(...)</c> of Runic.Application.Views.CsWebUi to make the window services'
+    /// <see cref="IFileDialogs"/> show these dialogs for <see cref="OwnerPolicy.PreferOwner"/>, or call it directly.
+    /// </para>
+    /// <para>
+    /// Each dialog runs on a single-threaded apartment thread of its own, which Runic starts for it and ends when it
+    /// closes; call from any thread. Dialogs that several windows show at once are independent: each answers and closes
+    /// on its own. Windows' foreground rules apply to a dialog without an owner: when another application, such as the
+    /// browser that showed the request, is in the foreground, the dialog may open behind it with its taskbar button
+    /// flashing. Titles, filters, the initial directory, the suggested name and the selected filter behave as for an
+    /// owned dialog; the buttons are Windows' own, in the user's language. Cancellation closes a shown dialog and
+    /// throws <see cref="OperationCanceledException"/>; a dismissed dialog reports
+    /// <see cref="PickerResult{T}.Dismissed"/>. Open, multiple, directory, document and save selection are all
+    /// available, and saves replace the file atomically.
+    /// </para>
+    /// <para>
+    /// A lease from the backend directly is the caller's to dispose. Through a window's <see cref="IFileDialogs"/> a
+    /// second dialog while one is shown reports <see cref="PlatformFailureCode.ResourceBusy"/>, and closing the window
+    /// closes a shown dialog and releases what is left. The backend itself needs no disposal.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="PlatformNotSupportedException">Not Windows 8 or later.</exception>
     [SupportedOSPlatform("windows8.0")]
-    internal static IPickerBackend CreateUnownedFileDialogs()
+    public static IPickerBackend CreateUnownedFileDialogs()
     {
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
         var owner = WindowsApplicationThread.Shared;
         return new NativePickerBackend(owner, new WindowsFilePicker(owner, unowned: true));
     }

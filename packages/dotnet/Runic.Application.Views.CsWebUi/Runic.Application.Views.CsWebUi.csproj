@@ -11,6 +11,8 @@
     <PackageValidationBaselineVersion>$(RunicCsWebUiPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
     <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The macOS main run loop's wake source (CsWebUiMacMainQueue): a CoreFoundation callback and source context. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- The CS-WebUI probes check CsWebUiWindowPresentation through its seams, without a browser window. -->
@@ -21,17 +23,19 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- Unowned file dialogs (IPickerBackend) for the window services; PresentationFiles through InternalsVisibleTo, which
+         packing pins to the exact version (eng/build/README.md). -->
+    <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <!-- RunicCsWebUiHostOptions.Assets, and the build's embedded frontend (RunicApplicationFrontendDelivery=Embedded),
          which Runic.Assets' build targets pack. -->
     <ProjectReference Include="../Runic.Assets/Runic.Assets.csproj" />
-    <!-- The in-page menu bar (D036.14) shares Runic Desktop's routes, command binding, planner and menu rules as source,
-         without a reference to Runic.Desktop. -->
+    <!-- The in-page menu bar (D036.14) shares Runic Desktop's routes, command binding, planner and shortcut modifier names
+         as source, without a reference to Runic.Desktop; the menu rules and shortcut keys are Runic.Platform.Runtime's
+         (InternalsVisibleTo). -->
     <Compile Include="../Runic.Application.Views.Desktop/MenuBarPageRoutes.cs" Link="Shared/MenuBarPageRoutes.cs" />
     <Compile Include="../Runic.Application.Views.Desktop/MenuCommandBinding.cs" Link="Shared/MenuCommandBinding.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />
     <Compile Include="../Runic.Desktop/Internal/ShortcutModifierNames.cs" Link="Shared/ShortcutModifierNames.cs" />
-    <Compile Include="../Runic.Platform/DesktopMenuRules.cs" Link="Shared/DesktopMenuRules.cs" />
-    <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
     <Compile Include="../Runic.Application.Views.Desktop/FrontendArchive.Build.cs" Link="Shared/FrontendArchive.Build.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.CsWebUi.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.targets" />
