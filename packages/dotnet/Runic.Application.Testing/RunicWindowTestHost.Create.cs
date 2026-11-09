@@ -121,6 +121,15 @@ public static class RunicWindowTestHost
         where TWindow : class, IRunicWindow, new()
     {
         ArgumentNullException.ThrowIfNull(services);
+        // The application's language at start, as the application sets it before its first Window opens. Every Window
+        // follows it unless its ViewModel sets one of its own.
+        if (hostOptions?.Locale is { } locale)
+        {
+            var applicationLocale = services.GetService<IRunicApplicationLocale>() ?? throw new InvalidOperationException(
+                "RunicWindowTestHostOptions.Locale sets the application's IRunicApplicationLocale, which the services do not " +
+                "register. Call AddRunicWindowService() on them.");
+            await applicationLocale.SetLocaleAsync(locale, cancellationToken).ConfigureAwait(false);
+        }
         var application = new RunicTestWindowApplication(services, hostOptions ?? new RunicWindowTestHostOptions());
         try
         {
@@ -154,6 +163,7 @@ public static class RunicWindowTestHost
             IncludeFailureDetail = options.IncludeFailureDetail,
             Validation = options.Validation ?? services.GetService<RunicValidationOptions>(),
             FlowCultureFromLocale = options.FlowCultureFromLocale,
+            Locale = options.Locale,
             MaximumInputBytes = options.MaximumInputBytes,
             MaximumUploadBytes = options.MaximumUploadBytes,
             PublicationTimeout = options.PublicationTimeout,

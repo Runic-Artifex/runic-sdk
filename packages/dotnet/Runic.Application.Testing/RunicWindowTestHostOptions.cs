@@ -62,6 +62,21 @@ public sealed class RunicWindowTestHostOptions
     public bool? FlowCultureFromLocale { get; init; }
 
     /// <summary>
+    /// The window's own locale when the host starts, a BCP 47 tag such as <c>de</c> or <c>ar</c>, as a Window whose
+    /// ViewModel sets <see cref="IRunicWindowLocale.Locale"/> before it opens: the page's first <c>hello</c> receives
+    /// it, and with <see cref="FlowCultureFromLocale"/> the window's requests run in its culture.
+    /// <see langword="null"/>, the default, follows <see cref="RunicWindowTestHost{TViewModel}.ApplicationLocale"/>.
+    /// A locale the ViewModel sets through <see cref="IRunicWindowLocale"/> before the window opens takes precedence.
+    /// </summary>
+    /// <remarks>
+    /// <c>RunicWindowTestHost.CreateWindowAsync</c> has no single window: it sets the services'
+    /// <see cref="IRunicApplicationLocale"/> to this locale before the first Window opens, as the application does at
+    /// start, and every Window follows it. A value that is not 1 to 64 letters, digits and <c>-</c>, starting with a
+    /// letter, throws <see cref="ArgumentException"/>.
+    /// </remarks>
+    public string? Locale { get; init; }
+
+    /// <summary>
     /// The largest Bridge input of the window, in UTF-8 bytes
     /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>). <see langword="null"/>, the default, is 1 MiB.
     /// </summary>

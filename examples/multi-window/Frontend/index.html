@@ -12,15 +12,16 @@
     <h1 id="title">Connecting</h1>
     <p><output id="status" aria-live="polite"></output></p>
     <form id="rename">
-      <label>Project title <input id="new-title" required aria-describedby="title-error" /></label>
-      <button type="submit">Rename in every Window</button>
+      <label><span id="title-label">Project title</span> <input id="new-title" required aria-describedby="title-error" /></label>
+      <button id="rename-button" type="submit">Rename in every Window</button>
       <p id="title-error"></p>
     </form>
     <p>
-      <label>Language, saved in the app's settings file
+      <label><span id="language-label">Language</span>
         <select id="language">
           <option value="en">English</option>
           <option value="de">Deutsch</option>
+          <option value="ar">العربية</option>
         </select>
       </label>
     </p>

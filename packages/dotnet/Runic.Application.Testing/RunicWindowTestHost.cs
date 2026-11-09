@@ -30,7 +30,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable> attach,
         RunicWindowTestHostOptions? options)
         : this(viewModel, attach, options?.RootRoute ?? RunicMembers.RouteOf(typeof(TViewModel)), Create(viewModel, options),
-            options?.PublicationTimeout ?? TimeSpan.FromSeconds(5))
+            options?.PublicationTimeout ?? TimeSpan.FromSeconds(5), options?.Locale)
     {
     }
 
@@ -48,7 +48,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
 
     private RunicWindowTestHost(TViewModel viewModel,
         Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable> attach, string rootRoute,
-        WindowContentSessionOptions sessionOptions, TimeSpan publicationTimeout)
+        WindowContentSessionOptions sessionOptions, TimeSpan publicationTimeout, string? locale = null)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         ArgumentException.ThrowIfNullOrWhiteSpace(rootRoute);
@@ -60,6 +60,12 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         try
         {
             Content = new WindowContentSession(Transport, sessionOptions);
+            // The window's own locale, as one a ViewModel set before its Window opened.
+            if (locale is not null)
+            {
+                try { Content.Locale = locale; }
+                catch { Content.Dispose(); throw; }
+            }
             // blobs/1: the window serves blobs and uploads at the test origin; ReadBlobAsync serves what a page loads.
             Blobs.Attach(BridgeBlobEndpoint.Below(static () => RunicBlobs.TestOrigin));
             IDisposable? attachment = null;

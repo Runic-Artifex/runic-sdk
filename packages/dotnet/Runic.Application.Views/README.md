@@ -3035,7 +3035,10 @@ again.
 The guide [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md)
 walks through one catalog for the page and C#, the application's language,
 native text and tests, step by step. This section is the reference. It needs
-Runic Translations 0.9.1 or later.
+Runic Translations 0.9.1 or later. `dotnet new runic-app --translations` starts
+an application with all of it, and the
+[multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
+shows it in English, German and Arabic.
 
 **One catalog.** Keep the catalog with the frontend, where the Translations
 Vite plugin compiles it for the page, and name the same `runic.json` in the
@@ -3233,9 +3236,12 @@ TranslationContext translations = await TranslationContext.CreateBuilder()
 var locale = services.GetRequiredService<IRunicApplicationLocale>();
 locale.Follow(translations.SetLocaleAsync);        // every catalog of the context switches first
 locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
-// The user's choice, else the best match for the operating system's languages.
-await locale.SetLocaleAsync(settings.Language ?? LocaleNegotiation.Negotiate(
-    DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
+// RUNIC_LOCALE (a test or screenshot run), else the user's choice, else the best match for the
+// operating system's languages.
+var requested = Environment.GetEnvironmentVariable("RUNIC_LOCALE");
+await locale.SetLocaleAsync(!string.IsNullOrWhiteSpace(requested) ? requested.Trim()
+    : settings.Language ?? LocaleNegotiation.Negotiate(
+        DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
 
 // A language switch, from any ViewModel or menu command:
 [RelayCommand]
@@ -3262,6 +3268,14 @@ second call with the same locale updates the Windows that failed again. A
 follower, or a Window's `PropertyChanged` handler, must not call `SetLocaleAsync`
 during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
 handler may, and that switch's event follows the current handlers.
+
+**`RUNIC_LOCALE`.** Start the application in the locale that the
+`RUNIC_LOCALE` environment variable names, before the user's saved choice, as
+above and as `dotnet new runic-app --translations` does. Browser tests of a
+serve-only application (`RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de`),
+screenshots and translators' checks then run the unchanged application in any
+language. The Runic packages do not read it: it is a convention of the
+application's startup code, so the application decides where it applies.
 
 `IRunicWindowLocale.Locale` returns the application's locale while the Window
 has none of its own. To save a Window's language and set it back later, save
@@ -3451,7 +3465,9 @@ or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `host.Content.Locale` shows what the ViewModel set.
 `await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
 locale, the registered one or, for a host built with a constructor, one of the
-host's own, which the window follows. To check the text a user sees, resolve a
+host's own, which the window follows. `RunicWindowTestHostOptions.Locale` starts
+the window in a locale of its own (`CreateWindowAsync`: the application in it).
+To check the text a user sees, resolve a
 reference with the application's `TranslationContext` in the locale:
 
 ```csharp

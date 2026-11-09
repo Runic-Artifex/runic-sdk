@@ -4,6 +4,8 @@ using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using Runic.Platform;
+using Runic.Translations;
 
 namespace MultiWindow;
 
@@ -27,7 +29,26 @@ public static class ProjectServices
         // The per-Window dialogs and clipboard, and IDesktopSettings for the desktop's appearance.
         services.AddRunicPlatformServices();
         // IRunicWindowService, which ProjectViewModel uses to open more Windows, find open documents and ask for an account.
+        // It also registers IRunicApplicationLocale, the application's language.
         services.AddRunicWindowService();
+        // The C# side of the catalog: menus and other native text. StartLanguageAsync makes it follow the application.
+        services.AddSingleton(_ => TranslationContext.CreateBuilder().Add(ProjectTextCatalog.Registration).Build());
         return services;
+    }
+
+    /// <summary>
+    /// The application's language at start: <paramref name="requested"/> (Program.cs passes <c>RUNIC_LOCALE</c>, for a test
+    /// or screenshot run in a language), else the language the user chose, else the best match for the operating
+    /// system's languages. The C# catalog follows every switch before the Windows do.
+    /// </summary>
+    public static async Task StartLanguageAsync(this IServiceProvider services, string? requested, CancellationToken cancellationToken = default)
+    {
+        var translations = services.GetRequiredService<TranslationContext>();
+        var locale = services.GetRequiredService<IRunicApplicationLocale>();
+        locale.Follow(translations.SetLocaleAsync);
+        var chosen = !string.IsNullOrWhiteSpace(requested) ? requested.Trim()
+            : services.GetRequiredService<SettingsStore>().Load().Language
+            ?? LocaleNegotiation.Negotiate(DesktopLanguages.Preferred, translations.SupportedLocales, ProjectTextCatalog.DefaultLocale);
+        await locale.SetLocaleAsync(chosen, cancellationToken);
     }
 }

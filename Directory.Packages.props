@@ -53,6 +53,8 @@
     <!-- Test-only: TranslationReference members, results and validation texts (translation-text/1). No shipped package
          references Runic Translations; the generator recognizes the type by name. -->
     <PackageVersion Include="Runic.Translations" Version="0.9.1" />
+    <!-- Example-only: examples/multi-window generates its catalog's C# API and the page's ESM from one runic.json. -->
+    <PackageVersion Include="Runic.Translations.Build" Version="0.9.1" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="4.2.0" />
     <PackageVersion Include="Splat" Version="21.0.0" />
     <!-- Used only by compiler contract tests to validate emitted instances against draft 2020-12 schemas. -->

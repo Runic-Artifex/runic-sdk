@@ -6,3 +6,5 @@ Runic.Application.Testing.RunicWindowTestHost<TViewModel>.ApplicationLocale.get 
 Runic.Application.Testing.InMemoryBridgeTransport.SetLanguages(string! connectionKey, System.Collections.Generic.IReadOnlyList<string!>! languages) -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.get -> bool?
 Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.init -> void
+Runic.Application.Testing.RunicWindowTestHostOptions.Locale.get -> string?
+Runic.Application.Testing.RunicWindowTestHostOptions.Locale.init -> void

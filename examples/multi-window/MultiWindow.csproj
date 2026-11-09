@@ -15,8 +15,11 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />
     <PackageReference Include="ReactiveUI" />
-    <!-- TranslationReference, the text references of the status line and the validation message. -->
+    <!-- Runic Translations: one catalog, Frontend/translations/runic.json, for the page and C#. The build generates
+         ProjectText (messages, References factories, ProjectTextCatalog.Registration) and the page's ESM. -->
     <PackageReference Include="Runic.Translations" />
+    <PackageReference Include="Runic.Translations.Build" PrivateAssets="all" />
+    <RunicTranslationProject Include="Frontend/translations/runic.json" />
     <!-- The presentation server; -p:RunicDesktopServer=Native builds the application on the experimental native server
          without ASP.NET Core. -->
     <ProjectReference Include="../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" Condition="'$(RunicDesktopServer)' != 'Native'" />
@@ -31,6 +34,29 @@
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
+    <!-- The catalog's ESM for the page, beside the C# API, which a source generator writes. The ESM comes from the
+         dotnet-runic-translations tool of .config/dotnet-tools.json. The Bun bundler of Frontend/build.mjs has no
+         Translations plugin, so CopyTranslationsForThePage puts the ESM where the page imports it; a Vite page uses the
+         Translations Vite plugin instead, as the runic-app template's translations option does. -->
+    <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+  </PropertyGroup>
+  <!-- An application runs `dotnet tool restore` once after cloning; the example does it in its build, so the
+       repository's build needs no extra step. -->
+  <Target Name="RestoreTranslationsTool" BeforeTargets="PrepareForBuild"
+          Condition="'$(RunicTranslationsEmitEsm)' == 'true'"
+          Inputs=".config/dotnet-tools.json" Outputs="$(IntermediateOutputPath)translations-tool.stamp">
+    <Exec Command="dotnet tool restore" WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="low" />
+    <Touch Files="$(IntermediateOutputPath)translations-tool.stamp" AlwaysCreate="true" />
+  </Target>
+  <Target Name="CopyTranslationsForThePage" AfterTargets="RunicTranslationsGenerateTranslationArtifacts"
+          Condition="'$(RunicTranslationsEmitEsm)' == 'true'">
+    <ItemGroup>
+      <_PageTranslations Include="$(RunicTranslationsWebOutputPath)/multi-window.esm-v5/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PageTranslations)" DestinationFiles="@(_PageTranslations->'Frontend/.runic/translations/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
   <Import Project="../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
 </Project>

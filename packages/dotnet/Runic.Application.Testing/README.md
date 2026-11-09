@@ -341,6 +341,46 @@ The window follows in a turn of its model context, as in the application, and
 reading `host.ApplicationLocale` after the host was disposed throws
 `ObjectDisposedException`.
 
+`RunicWindowTestHostOptions.Locale` (since 0.17) starts the window in a locale,
+as its own, the way a ViewModel that sets `IRunicWindowLocale.Locale` before
+its Window opens does; that ViewModel's choice still wins. With
+`FlowCultureFromLocale = true`, the window's requests also run in the locale's
+culture. `CreateWindowAsync` has no single window, so there it sets the
+application's locale before the first Window opens:
+
+```csharp
+using var host = RunicWindowTestHost.Create<EditorViewModel>(services,
+    new RunicWindowTestHostOptions { Locale = "de", FlowCultureFromLocale = true });
+```
+
+**Translated text.** The Testing package does not reference Runic
+Translations. To check the text a user sees, read a `TranslationReference`
+member and resolve it with the application's `TranslationContext` in the same
+locale. A catalog with a right-to-left locale isolates placeholders with
+invisible characters; compare after `BidiText.RemoveIsolates`:
+
+```csharp
+TranslationReference status = host.Root.Snapshot().Read(vm => vm.Status);
+await translations.SetLocaleAsync("de");   // de.rmf2: saved = {$title} gespeichert.
+Assert.Equal("Atlas gespeichert.", translations.Resolve(status).Text);
+await translations.SetLocaleAsync("ar");
+Assert.Equal("تم حفظ Atlas.", BidiText.RemoveIsolates(translations.Resolve(status).Text!));
+```
+
+**End-to-end tests in a language.** Applications created with
+`dotnet new runic-app --translations` start in the locale that the
+`RUNIC_LOCALE` environment variable names, before the user's saved choice and
+the operating system's languages. With serve-only, a browser test runs
+the unchanged application in that language:
+
+```sh
+RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de dotnet run --project src/App
+```
+
+`RUNIC_LOCALE` is a convention of the application's startup code, not read by
+the Runic packages; see
+[the application's language](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text).
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host

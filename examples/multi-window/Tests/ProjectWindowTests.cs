@@ -5,6 +5,7 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
 using Runic.Platform;
+using Runic.Translations;
 
 namespace MultiWindow.Tests;
 
@@ -86,16 +87,54 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     }
 
     [Test]
-    public async Task The_saved_language_is_the_window_locale_and_a_switch_saves_it()
+    public async Task Choosing_a_language_switches_the_catalog_and_every_window_and_saves_it()
     {
+        await _services.StartLanguageAsync("en");
         await Assert.That(_first.Content.Locale).IsEqualTo("en");
         (await _first.Root.ExecuteAsync(vm => vm.ChooseLanguageCommand, "\"de\"")).ThrowIfFailed();
 
-        // The page follows the Window's locale; the other Window keeps its own until it switches.
+        // The C# catalog switched first, then both Windows; the pages follow their Window's locale.
+        await Assert.That(_services.GetRequiredService<TranslationContext>().RequestedLocale).IsEqualTo("de");
         await Assert.That(_first.Content.Locale).IsEqualTo("de");
-        await Assert.That(_second.Content.Locale).IsEqualTo("en");
-        await Assert.That(_first.Root.Snapshot().Read(vm => vm.Language)).IsEqualTo("de");
+        await Assert.That(_second.Content.Locale).IsEqualTo("de");
+        await _secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>().InvokeAsync(static () => { });
+        await Assert.That(_second.Root.Snapshot().Read(vm => vm.Language)).IsEqualTo("de");
         await Assert.That(new SettingsStore(_settingsPath).Load().Language).IsEqualTo("de");
+        // The menu bar's Language items run the same command.
+        await Assert.That(_first.ViewModel.GetMenuCommand("language")).IsSameReferenceAs(_first.ViewModel.ChooseLanguageCommand);
+    }
+
+    [Test]
+    public async Task The_saved_language_wins_over_the_system_and_RUNIC_LOCALE_over_both()
+    {
+        new SettingsStore(_settingsPath).Save(new AppSettings(Language: "ar"));
+        await _services.StartLanguageAsync(requested: null);
+        await Assert.That(_first.Content.Locale).IsEqualTo("ar");
+        await _services.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync(null);
+        await _services.StartLanguageAsync(requested: " de ");
+        await Assert.That(_first.Content.Locale).IsEqualTo("de");
+    }
+
+    [Test]
+    public async Task The_status_and_the_validation_message_read_in_the_users_language()
+    {
+        // What a user sees: the ViewModel's references, resolved with the application's catalog in its language.
+        var translations = _services.GetRequiredService<TranslationContext>();
+        await _services.StartLanguageAsync("de");
+        (await _first.Root.ExecuteAsync(vm => vm.RenameCommand, "\"Atlas\"")).ThrowIfFailed();
+        (await _first.Root.SetAsync(vm => vm.Draft, new string('x', ProjectViewModel.MaximumTitleLength + 1))).ThrowIfFailed();
+        var status = _first.Root.Snapshot().Read(vm => vm.Status);
+        var error = TranslationReference.Parse(_first.Root.Snapshot()["validation"].GetProperty("errors")[0].GetProperty("text").GetRawText());
+
+        await Assert.That(translations.Resolve(status).Text).IsEqualTo("Umbenannt in Atlas.");
+        await Assert.That(translations.Resolve(error).Text).IsEqualTo("Der Titel darf höchstens 40 Zeichen lang sein.");
+
+        // Arabic: the catalog declares a right-to-left locale, so placeholders are isolated with invisible characters.
+        await _services.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync("ar");
+        var arabic = translations.Resolve(status).Text!;
+        await Assert.That(arabic).IsNotEqualTo(BidiText.RemoveIsolates(arabic));
+        await Assert.That(BidiText.RemoveIsolates(arabic)).IsEqualTo("تمت إعادة التسمية إلى Atlas.");
+        await Assert.That(BidiText.RemoveIsolates(translations.Resolve(error).Text!)).IsEqualTo("يجب ألا يزيد العنوان عن 40 حرفًا.");
     }
 
     [Test]
