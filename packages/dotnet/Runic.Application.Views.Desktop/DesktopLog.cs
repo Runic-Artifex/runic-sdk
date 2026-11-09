@@ -53,4 +53,20 @@ internal static partial class DesktopLog
     [LoggerMessage(EventId = 2009, EventName = "DesktopAppearanceWatchFailed", Level = LogLevel.Warning,
         Message = "The desktop's appearance settings could not be watched ({ErrorType}); pages keep the last appearance read, and the next window that opens watches again.")]
     internal static partial void AppearanceWatchFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 2010, EventName = "DesktopHostedStartFailed", Level = LogLevel.Error,
+        Message = "Hosted mode did not start ({Code}): {Reason}")]
+    internal static partial void HostedStartFailed(ILogger logger, string code, string reason);
+
+    [LoggerMessage(EventId = 2011, EventName = "DesktopHostedShutdown", Level = LogLevel.Information,
+        Message = "Hosted mode ends: {Reason}; the Windows close and the application shuts down.")]
+    internal static partial void HostedShutdown(ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 2012, EventName = "DesktopHostedExit", Level = LogLevel.Warning,
+        Message = "The application did not end within {Seconds} seconds after its host went away; the process exits.")]
+    internal static partial void HostedExit(ILogger logger, int seconds);
+
+    [LoggerMessage(EventId = 2013, EventName = "DesktopHostedChannelFailed", Level = LogLevel.Warning,
+        Message = "A message of the host channel failed with {ErrorType}.")]
+    internal static partial void HostedChannelFailed(ILogger logger, Exception? exception, string errorType);
 }

@@ -503,7 +503,8 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
 
     // A Windows job object that kills its processes when its last handle closes, including when the test process
     // ends without disposing the application. Best effort: without it, the application only lacks that guarantee.
-    private sealed class WindowsJob : IDisposable
+    // RunicTestHost uses it for its guests too.
+    internal sealed class WindowsJob : IDisposable
     {
         private nint _handle;
 

@@ -6,3 +6,85 @@ Runic.Application.Testing.RunicWindowTestHost<TViewModel>.ApplicationLocale.get 
 Runic.Application.Testing.InMemoryBridgeTransport.SetLanguages(string! connectionKey, System.Collections.Generic.IReadOnlyList<string!>! languages) -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.get -> bool?
 Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.init -> void
+[RUNICDESK103]override Runic.Application.Testing.RunicTestGuest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Testing.RunicTestGuest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Testing.RunicTestGuest.ToString() -> string!
+[RUNICDESK103]override Runic.Application.Testing.RunicTestHostOptions.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Testing.RunicTestHostOptions.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Testing.RunicTestHostOptions.ToString() -> string!
+[RUNICDESK103]override Runic.Application.Testing.RunicTestPresentationRequest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Testing.RunicTestPresentationRequest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Testing.RunicTestPresentationRequest.ToString() -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.ApplicationId.get -> string?
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.ApplicationId.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.<Clone>$() -> Runic.Application.Testing.RunicTestGuest!
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.Deconstruct(out string! Name, out string! Version, out string? ApplicationId) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.Equals(Runic.Application.Testing.RunicTestGuest? other) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.Name.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.Name.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.RunicTestGuest(string! Name, string! Version, string? ApplicationId) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.Version.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestGuest.Version.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.DisposeAsync() -> System.Threading.Tasks.ValueTask
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Closed.get -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.GuardsClose.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Height.get -> int?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Id.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.IsClosed.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.IsModal.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.LaunchUrl.get -> System.Uri!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.OwnerId.get -> string?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.PresentationRequests.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestPresentationRequest!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Refused.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.RequestCloseAsync(bool force = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.SetActivityAsync(Runic.Application.Views.RunicWindowActivity! activity, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Type.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Width.get -> int?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.Exited.get -> System.Threading.Tasks.Task<int>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.Features.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.Guest.get -> Runic.Application.Testing.RunicTestGuest!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.<Clone>$() -> Runic.Application.Testing.RunicTestHostOptions!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Equals(Runic.Application.Testing.RunicTestHostOptions? other) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.HostName.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.HostName.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.HostVersion.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.HostVersion.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.OpenWindow.get -> System.Func<Runic.Application.Testing.RunicTestHostedWindow!, bool>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.OpenWindow.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Presentation.get -> System.Func<Runic.Application.Testing.RunicTestPresentationRequest!, Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Presentation.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Protocols.get -> System.Collections.Generic.IReadOnlyList<int>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Protocols.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.RunicTestHostOptions() -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.StartTimeout.get -> System.TimeSpan
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.StartTimeout.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.WindowFeatures.get -> Runic.Application.Views.RunicWindowPresentationFeatures
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.WindowFeatures.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.ProcessId.get -> int
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.StandardError.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.StandardOutput.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.WaitForWindowAsync(string! windowType, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestHostedWindow!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.Windows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestHostedWindow!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.<Clone>$() -> Runic.Application.Testing.RunicTestPresentationRequest!
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Deconstruct(out string! WindowId, out string! Kind, out System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Equals(Runic.Application.Testing.RunicTestPresentationRequest? other) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Kind.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Kind.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Message.get -> System.Text.Json.JsonElement
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.Message.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.RunicTestPresentationRequest(string! WindowId, string! Kind, System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.WindowId.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestPresentationRequest.WindowId.init -> void
+[RUNICDESK103]static Runic.Application.Testing.RunicTestGuest.operator !=(Runic.Application.Testing.RunicTestGuest? left, Runic.Application.Testing.RunicTestGuest? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestGuest.operator ==(Runic.Application.Testing.RunicTestGuest? left, Runic.Application.Testing.RunicTestGuest? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestHostOptions.operator !=(Runic.Application.Testing.RunicTestHostOptions? left, Runic.Application.Testing.RunicTestHostOptions? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestHostOptions.operator ==(Runic.Application.Testing.RunicTestHostOptions? left, Runic.Application.Testing.RunicTestHostOptions? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestHost.StartGuestAsync(System.Diagnostics.ProcessStartInfo! startInfo, Runic.Application.Testing.RunicTestHostOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestHost!>!
+[RUNICDESK103]static Runic.Application.Testing.RunicTestPresentationRequest.operator !=(Runic.Application.Testing.RunicTestPresentationRequest? left, Runic.Application.Testing.RunicTestPresentationRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestPresentationRequest.operator ==(Runic.Application.Testing.RunicTestPresentationRequest? left, Runic.Application.Testing.RunicTestPresentationRequest? right) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.StopAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!

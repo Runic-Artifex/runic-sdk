@@ -1,3 +1,45 @@
 #nullable enable
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.get -> bool?
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.init -> void
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostInfo.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostInfo.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostInfo.ToString() -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicDesktopHost.Guest.get -> Runic.Application.Views.Desktop.RunicGuestSession?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicDesktopHost.IsHosted.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicDesktopHostOptions.Guest.get -> Runic.Application.Views.Desktop.RunicGuestOptions?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicDesktopHostOptions.Guest.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AcceptHost.get -> System.Func<Runic.Application.Views.Desktop.RunicHostInfo!, bool>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AcceptHost.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.ApplicationId.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.ApplicationId.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.ApplicationName.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.ApplicationName.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.ApplicationVersion.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.ApplicationVersion.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.StartTimeout.get -> System.TimeSpan
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.StartTimeout.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.Features.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.Host.get -> Runic.Application.Views.Desktop.RunicHostInfo!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.HostGone.get -> System.Threading.CancellationToken
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.Protocol.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostInfo!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.Deconstruct(out string! Name, out string! Version) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.Equals(Runic.Application.Views.Desktop.RunicHostInfo? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.Name.get -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.Name.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.RunicHostInfo(string! Name, string! Version) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.Version.get -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostInfo.Version.init -> void
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicGuestOptions.FromStandardInput() -> Runic.Application.Views.Desktop.RunicGuestOptions!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostInfo.operator !=(Runic.Application.Views.Desktop.RunicHostInfo? left, Runic.Application.Views.Desktop.RunicHostInfo? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostInfo.operator ==(Runic.Application.Views.Desktop.RunicHostInfo? left, Runic.Application.Views.Desktop.RunicHostInfo? right) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicGuestOptions.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicGuestOptions.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicGuestOptions.ToString() -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.<Clone>$() -> Runic.Application.Views.Desktop.RunicGuestOptions!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.Equals(Runic.Application.Views.Desktop.RunicGuestOptions? other) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicGuestOptions.operator !=(Runic.Application.Views.Desktop.RunicGuestOptions? left, Runic.Application.Views.Desktop.RunicGuestOptions? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicGuestOptions.operator ==(Runic.Application.Views.Desktop.RunicGuestOptions? left, Runic.Application.Views.Desktop.RunicGuestOptions? right) -> bool

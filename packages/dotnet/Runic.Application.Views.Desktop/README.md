@@ -665,6 +665,75 @@ Test such a command with `CommandAppTester.Run` from
 thread, or start the application in serve-only mode with
 `RunicServeOnlyApplication` from `Runic.Application.Testing`.
 
+## Hosted mode
+
+Another Runic Desktop application, the host, can show this application's
+Windows in native windows of its own: a launcher, a suite shell or an IDE-like
+application that hosts tools as separate processes. The two talk over the
+[Runic host protocol](../../../specs/desktop/host-protocol.md), `runic-host/1`;
+the [security guide](../../../docs/security.md#hosted-application-windows)
+explains what it protects. Hosted mode is experimental: suppress
+[`RUNICDESK103`](../../../docs/experimental.md#RUNICDESK103).
+
+The application opts in on a code path of its own, reached by a parameter it
+defines, such as a hidden `hosted` command. Runic defines no flag or environment
+variable for it. That path runs `RunicDesktopHost.Run` with
+`RunicDesktopHostOptions.Guest`:
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+if (args is ["hosted"])
+{
+    try
+    {
+        return RunicDesktopHost.Run(provider, new DesktopHostOptions(),
+            new RunicDesktopHostOptions { Guest = RunicGuestOptions.FromStandardInput() },
+            async host =>
+            {
+                await using var window = await host.OpenWindowAsync<MainWindow>();
+                await window.WaitForCloseAsync();
+                return 0;
+            });
+    }
+    catch (RunicHostedApplicationException error)
+    {
+        Console.Error.WriteLine($"Not hosted ({error.Code}): {error.Message}");
+        return 1;
+    }
+}
+```
+
+- **Start.** Before the body runs, `Run` reads the host's offer from standard
+  input, opens the host channel on a loopback listener of its own, writes its
+  address and a random key to standard output and waits for the host to connect
+  and prove that it started this process. A failure, such as no offer or a host
+  that `RunicGuestOptions.AcceptHost` declines, throws
+  `RunicHostedApplicationException` with its `Code` and logs event 2010. Hosted
+  mode refuses to start elevated, as another user than its parent (Linux), or
+  with `DesktopHostOptions.NetworkExposure` other than loopback.
+- **Windows.** No window toolkit loop starts, and the application never shows a
+  window of its own. Each Window's page is served as in serve-only mode, and the
+  host opens a window that loads it with a one-time launch address; the host's
+  window policy may refuse it (`RunicWindowConfigurationException` with
+  `hosted-window-refused`). The Window's `IRunicWindowPresentation` (present,
+  minimize, visibility, full screen, document edited, colour scheme, activity)
+  goes through the host. A user close of the host's window asks the Window's
+  guard (`GuardClose`) first. Platform services that need the native window,
+  such as file dialogs, report `OwnerUnavailable`, as in serve-only mode.
+- **End.** When the host asks the application to shut down, or goes away
+  (standard input ends or the channel closes), the Windows close,
+  `DesktopHost.ShutdownRequested` and `RunicDesktopHost.Guest.HostGone` are
+  cancelled and `Run` returns when the body does (event 2011). A body that has
+  not returned 10 seconds later ends the process (event 2012).
+- `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` (the host's name and
+  version) tell the mode. A hosted application does not claim
+  `ApplicationInstance`: each host session starts a process of its own.
+- Test it without a host application with `RunicTestHost` from
+  `Runic.Application.Testing`
+  ([a hosted application](../Runic.Application.Testing/README.md#a-hosted-application)).
+
+The host side follows in a later 0.17 change.
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

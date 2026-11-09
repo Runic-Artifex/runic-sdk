@@ -17,6 +17,9 @@ internal static class Program
         if (args is [LoggingApplication.Argument]) return LoggingApplication.Run();
         // The same application started by a Runic.CommandLine command, which hands the host back to this thread.
         if (args is [CommandLineApplication.Command, ..]) return CommandLineApplication.Run(args);
+        // Hosted mode, reached through the parameter this application defines for it, and a guest without the nonce.
+        if (args is [HostedApplication.Argument]) return HostedApplication.Run();
+        if (args is [FakeGuest.Argument]) return FakeGuest.Run();
         // The application's child process: it runs until it is killed.
         if (args is [LoggingApplication.ChildProcessArgument])
         {

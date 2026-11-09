@@ -602,8 +602,9 @@ requirement, not a consumer one.
   in a minor release. An experimental type does not appear in a stable API's
   signature. Graduation removes the attribute and retires the ID, which is
   never reused. IDs follow the numbering in `docs/experimental.md` (from `100`
-  where the prefix already names diagnostics, such as `RUNICDBUS100`). No .NET
-  API is experimental today.
+  where the prefix already names diagnostics, such as `RUNICDBUS100`).
+  Experimental now: `RUNICDESK103` (hosted application windows and the Runic
+  host protocol, through 1.0).
   Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
   `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
   `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0),

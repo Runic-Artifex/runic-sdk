@@ -102,6 +102,17 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     // returns when serving ends.
     internal void ServeUntil(Task stopped) => Volatile.Write(ref _served, stopped);
 
+    // Completes when the window's close finished draining, however it started (hosted mode's window-closed).
+    internal async Task WhenClosedAsync()
+    {
+        await _closeStarted.Task.ConfigureAwait(false);
+        Task<RunicWindowCloseResult>? close;
+        lock (_closeGate) close = _close;
+        if (close is null) return;
+        try { _ = await close.ConfigureAwait(false); }
+        catch (Exception error) when (error is not OutOfMemoryException) { }
+    }
+
     internal void SetPresentation(DesktopWindow presentation)
     {
         lock (_closeGate)
