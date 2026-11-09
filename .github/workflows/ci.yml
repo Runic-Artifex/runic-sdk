@@ -1278,13 +1278,28 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativePresentation]" --output detailed
       # Task dialogs owned by a window on a thread of the test, answered with the messages Return, Esc, the close button and
       # a click send; the case also reports which Common Controls 6 activation sources work in each runtime.
+      # eng/ci/windows-native-run.mjs reports each test host's real exit code, and after a crash what Windows Error
+      # Reporting recorded, with a minidump for the native-crash-dumps artifact.
+      # TEMPORARY (#flake127 diagnosis): repeated to reproduce the win-arm64 crash.
       - name: Verify Windows message boxes with JIT and NativeAOT
         if: runner.os == 'Windows'
-        timeout-minutes: 3
+        timeout-minutes: 12
         shell: bash
         run: |
-          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
-          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            echo "=== Attempt $attempt"
+            node eng/ci/windows-native-run.mjs dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+            node eng/ci/windows-native-run.mjs ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+          done
+      - name: Retain Windows crash dumps
+        if: failure() && runner.os == 'Windows'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-crash-dumps-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/native-crash-dumps
+          if-no-files-found: ignore
+          retention-days: 14
       # Badges and progress on the taskbar button of a shown window through ITaskbarList3; what the taskbar draws stays a
       # manual check.
       - name: Verify the Windows taskbar badge and progress with JIT and NativeAOT

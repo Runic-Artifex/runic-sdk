@@ -43,7 +43,12 @@ internal sealed partial class UnownedDialogTests
         var thread = WindowsApplicationThread.Shared;
         var picker = new WindowsFilePicker(thread, unowned: true);
         var trace = new System.Collections.Concurrent.ConcurrentQueue<string>();
-        picker.Trace = trace.Enqueue;
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        picker.Trace = line =>
+        {
+            trace.Enqueue(line);
+            Live(started, "unowned", line);
+        };
         using var cancel = new CancellationTokenSource();
         var pending = picker.SelectAsync(new NativeFileDialogRequest(false, null) { Title = "Runic unowned dialog" }, cancel.Token).AsTask();
         await picker.Shown.Task.WaitScaledAsync(Wait);
@@ -71,7 +76,11 @@ internal sealed partial class UnownedDialogTests
         var trace = new System.Collections.Concurrent.ConcurrentQueue<string>();
         WindowsFilePicker Picker(string name) => new(WindowsApplicationThread.Shared, unowned: true)
         {
-            Trace = line => trace.Enqueue($"{started.ElapsedMilliseconds} ms {name}: {line}"),
+            Trace = line =>
+            {
+                trace.Enqueue($"{started.ElapsedMilliseconds} ms {name}: {line}");
+                Live(started, name, line);
+            },
         };
         INativeDirectoryPicker firstPicker = Picker("first"), secondPicker = Picker("second");
         using var first = new CancellationTokenSource();
@@ -80,6 +89,7 @@ internal sealed partial class UnownedDialogTests
         var two = secondPicker.SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Runic second unowned dialog" }, second.Token).AsTask();
         nint firstWindow = await FindAsync("Runic first unowned dialog"), secondWindow = await FindAsync("Runic second unowned dialog");
         trace.Enqueue($"{started.ElapsedMilliseconds} ms: both dialogs found");
+        Live(started, "test", "both dialogs found");
         string Trace() => string.Join(Environment.NewLine + "  ", trace);
         try
         {
@@ -100,6 +110,11 @@ internal sealed partial class UnownedDialogTests
         Console.WriteLine($"Two unowned file dialogs:{Environment.NewLine}  {Trace()}");
         Console.WriteLine("PASS two unowned file dialogs at once close independently");
     }
+
+    // Each step as it happens, with the native thread it runs on: a test host that crashes mid-test (exit 127 under Git
+    // Bash) leaves its last step in the log, and the thread ids match the crash dump's.
+    private static void Live(System.Diagnostics.Stopwatch started, string name, string line) =>
+        Console.WriteLine($"  [{started.ElapsedMilliseconds} ms, thread {GetCurrentThreadId()}] {name}: {line}");
 
     private static async Task<nint> FindAsync(string title)
     {
@@ -148,6 +163,7 @@ internal sealed partial class UnownedDialogTests
     [LibraryImport("user32.dll")] private static partial nint GetWindow(nint window, uint command);
     [LibraryImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static partial bool IsWindow(nint window);
     [LibraryImport("user32.dll")] private static partial uint GetWindowThreadProcessId(nint window, nint processId);
+    [LibraryImport("kernel32.dll")] private static partial uint GetCurrentThreadId();
 
     private static async Task<Exception?> Record(Func<Task> action)
     {

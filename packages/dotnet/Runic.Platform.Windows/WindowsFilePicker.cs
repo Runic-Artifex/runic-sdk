@@ -58,7 +58,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         bool save = request.Save, multiple = request.AllowMultiple && !save;
         var generation = owner.Generation;
         // The thread the dialog runs on, and its close requests with it.
-        WindowsApplicationThread? own = unowned && OperatingSystem.IsWindowsVersionAtLeast(8) ? WindowsApplicationThread.StartDialog() : null;
+        WindowsApplicationThread? own = unowned && OperatingSystem.IsWindowsVersionAtLeast(8) ? WindowsApplicationThread.StartDialog(Trace) : null;
         INativeWindowOwner thread = own ?? owner;
         nint dialog = 0;
         IReadOnlyList<NativeFileSelection>? selection = null;
@@ -110,6 +110,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                 try
                 {
                     Configure(dialog, save, directory, multiple, request);
+                    Trace?.Invoke("show starts");
                     Shown.TrySetResult();
                     int result = Show(dialog, handle);
                     Trace?.Invoke($"show returned 0x{result:X8}");
@@ -125,6 +126,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                 {
                     Release(dialog);
                     dialog = 0;
+                    Trace?.Invoke("dialog released");
                     shown.TrySetResult();
                 }
             }, cancellationToken).ConfigureAwait(false);
