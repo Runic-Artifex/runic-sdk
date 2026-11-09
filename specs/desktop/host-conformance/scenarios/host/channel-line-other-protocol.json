@@ -1,0 +1,16 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "host.channel-line-other-protocol.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "host",
+  "roles": ["host"],
+  "description": "A channel line whose protocol the offer did not list fails the host's start with guest-not-hostable.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"text":"RUNIC_HOST_CHANNEL={\"url\":\"ws://127.0.0.1:41234/_runic_host\",\"key\":\"Jm8pXcQ0yB4rT6wZ1aN3dF5hK7lP9sV2uE4iO6gH8jA\",\"protocol\":2}"}},
+    {"expect":{"startFailure":"guest-not-hostable"}}
+  ]
+}

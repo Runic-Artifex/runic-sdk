@@ -1,0 +1,25 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "host.connection-retried.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "host",
+  "roles": ["host"],
+  "description": "A host whose connection closes before the hello reply, as when the guest's listener closed it to make room, connects again within its start timeout and starts the guest.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "c2": {"kind":"connection"},
+    "hello": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"disconnect":"c1","note":"Closed before a reply; the host's hello on it is dropped."},
+    {"accept":"c2"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c2"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":[]},"connection":"c2"},
+    {"expect":{"started":true}}
+  ]
+}

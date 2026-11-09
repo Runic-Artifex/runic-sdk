@@ -125,6 +125,18 @@
             "unauthenticatedTimeout": {
               "type": "integer",
               "minimum": 1
+            },
+            "helloTimeout": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "requestTimeout": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "waitingRequests": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },
@@ -196,7 +208,9 @@
       "enum": [
         "startTimeout",
         "stopTimeout",
-        "unauthenticatedTimeout"
+        "unauthenticatedTimeout",
+        "helloTimeout",
+        "requestTimeout"
       ]
     },
     "outcome": {
@@ -457,6 +471,87 @@
         {
           "type": "object",
           "required": [
+            "sendRaw",
+            "connection"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "sendRaw": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "binary"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "binary": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "text"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "textBytes"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "textBytes": {
+                      "type": "integer",
+                      "minimum": 2
+                    }
+                  }
+                }
+              ]
+            },
+            "connection": {
+              "$ref": "#/$defs/name"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "receiveAll",
+            "connection"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "receiveAll": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/message"
+              }
+            },
+            "connection": {
+              "$ref": "#/$defs/name"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "closed"
           ],
           "additionalProperties": false,
@@ -569,7 +664,9 @@
                     "setDocumentEdited",
                     "setColorScheme",
                     "answerGuard",
-                    "activity"
+                    "activity",
+                    "holdGuard",
+                    "cancelOpen"
                   ]
                 },
                 "window": {
@@ -645,7 +742,8 @@
                           "requestClose",
                           "present",
                           "minimize",
-                          "activity"
+                          "activity",
+                          "cancelOpen"
                         ]
                       }
                     }
@@ -730,6 +828,9 @@
                           "type": "boolean"
                         }
                       }
+                    },
+                    "cancelled": {
+                      "const": true
                     }
                   }
                 },
@@ -772,6 +873,18 @@
                   "additionalProperties": false,
                   "properties": {
                     "running": {
+                      "const": true
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "started"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "started": {
                       "const": true
                     }
                   }

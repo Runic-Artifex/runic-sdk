@@ -124,7 +124,7 @@ RUNIC_HOST_REFUSED={"code":"protocol-unsupported","message":"The host offers run
 
 | Member | Contract |
 | --- | --- |
-| `code` | Why, a kebab-case token from the table below. Open: a host treats a code it does not know as the guest not being hostable. |
+| `code` | Why, a kebab-case token from the table below. Open: a host reports a code it does not know as `guest-refused` with that code. |
 | `message` | A human-readable explanation for the host's log, at most 1,024 characters. |
 | `protocols` | With `protocol-unsupported`: the versions the guest implements. |
 
@@ -134,8 +134,26 @@ RUNIC_HOST_REFUSED={"code":"protocol-unsupported","message":"The host offers run
 | `protocol-unsupported` | It implements none of the offer's `protocols`. |
 | `host-not-accepted` | The application's own filter (`RunicGuestOptions.AcceptHost`) declined the offer's `host`. |
 | `guest-elevated` | It runs elevated: as root on Linux or macOS, or with an elevated token on Windows. |
-| `guest-other-user` | It runs as another user than the process that started it, where the platform can tell. |
+| `guest-other-user` | It runs as another user than the process that started it, or it cannot tell ([same user](#same-user)). |
 | `network-exposure` | Its Desktop host is configured to listen on other interfaces than loopback (`DesktopHostOptions.NetworkExposure`). |
+
+### Same user
+
+A guest refuses hosted mode with `guest-other-user` unless it can show that it and its parent process, the host, run
+as the same user. The check fails closed: when the guest cannot determine its parent's user, it refuses.
+
+- **Linux.** The guest reads the real and effective uids (`Uid:`, its first two fields) of itself from
+  `/proc/self/status` and of its parent (`PPid:`) from `/proc/<ppid>/status`. All four MUST be equal. It refuses when
+  its parent id is 0 or 1 (the parent is gone) or the parent's status cannot be read, as under `hidepid=1` or
+  `hidepid=2` for another user's process.
+- **macOS.** The same four uids: its own from `getuid` and `geteuid`, its parent's (`getppid`) from `proc_pidinfo` with
+  `PROC_PIDTBSDINFO` (`pbi_ruid`, `pbi_uid`). It refuses when its parent id is 0 or 1 or `proc_pidinfo` fails.
+- **Windows.** The user SID of its process token (`TokenUser`) and of its parent's MUST be equal. It refuses when the
+  parent is gone or its token cannot be opened, which is the case for another user's process.
+
+A guest that is setuid to another account fails the check through its effective uid. The check keeps a host from
+controlling a guest that has rights the host does not have; it is not a boundary between processes of one user
+([security requirements](#security-requirements) 8).
 
 ## Channel listener
 
@@ -151,8 +169,15 @@ The guest opens the host channel on a listener of its own, separate from the lis
   header is not the listener's own address and port as a loopback literal (`127.0.0.1:41234`, `[::1]:41234`).
 - It negotiates no subprotocol and no extension: an upgrade that offers `Sec-WebSocket-Protocol` or
   `Sec-WebSocket-Extensions` is answered without them.
-- It reads at most 8 KiB of request headers, and closes a connection whose upgrade has not arrived within 10 seconds.
-- It holds at most 8 connections that have not completed the [handshake](#handshake) and closes further ones at once.
+- It reads at most 8 KiB of request headers, and closes a connection whose upgrade has not arrived within 10 seconds
+  of its accept.
+- After the upgrade, the first message MUST arrive within 2 seconds (the **hello timeout**); the host sends `hello` at
+  once. The guest closes a connection whose first message has not arrived in time.
+- Before a connection completes the handshake, the guest reads at most 16 KiB (16,384 bytes) of its first message; a
+  valid `hello` is far smaller. A larger message closes the connection with status 1009 without being read to its end.
+- It holds at most 8 connections that have not completed the [handshake](#handshake). When a ninth arrives, it closes
+  the oldest of them and keeps the new one: a local process that fills the slots cannot keep the host out, because
+  the host connects and sends `hello` at once, and [retries](#host-rules) when its connection is closed.
 - When one connection completes the handshake, the guest stops listening at once and closes every other connection
   that has not completed it. The channel then has exactly one connection, and a later connection to the port is
   refused by the operating system.
@@ -166,6 +191,9 @@ channel is open.
 {"id":1,"kind":"hello","protocol":1,"key":"Jm8pXcQ0yB4rT6wZ1aN3dF5hK7lP9sV2uE4iO6gH8jA","proof":"0Wb7oJ2c8F3sQ1nV5yK9xT4mL6pR2dH8aE0uG7iZ3cY","host":{"name":"Runic Control Center","version":"2.1.0"},"features":["menus/1","dialogs/1"],"locale":"de-CH","languages":["de-CH","en"],"appearance":{"colorScheme":"dark","contrast":"no-preference","reducedMotion":false,"textScale":1,"accentColor":"#3584e4","systemColors":null}}
 {"id":1,"ok":true,"protocol":1,"proof":"rX4kN8bV1cQ7mZ2sT9yH3wJ6pL0dF5gA8eU1iO4nB7k","guest":{"name":"Tool","version":"1.4.0","applicationId":"com.example.tool"},"features":["menus/1"]}
 ```
+
+`hello` is the host's first request. Its `id` is the host's choice, as for any [request](#messages), and the reply
+carries it.
 
 `hello` members:
 
@@ -183,8 +211,8 @@ Reply members:
 
 | Member | Contract |
 | --- | --- |
-| `protocol` | The protocol version, as in `hello`. |
-| `proof` | The guest's [proof](#proofs) that it knows the offer's nonce. |
+| `protocol` | The protocol version the guest chose, the channel line's `protocol`. |
+| `proof` | The guest's [proof](#proofs) that it knows the offer's nonce. Every reply to an authenticated `hello` carries it, a failed one too. |
 | `guest` | `{name, version, applicationId}`: the guest application's name (1 to 128 characters), version (1 to 64 characters) and application id (1 to 255 characters, or `null`), such as its reverse-DNS identity. The host may key what it keeps about a guest, such as saved window placements, by `applicationId`. |
 | `features` | Every feature the guest implements, whether or not `hello` listed it. |
 
@@ -197,7 +225,7 @@ the channel line, in base64url without padding (43 characters):
 | Proof | Label | Sent in |
 | --- | --- | --- |
 | host proof | `runic-host/1 host` | `hello` |
-| guest proof | `runic-host/1 guest` | the successful `hello` reply |
+| guest proof | `runic-host/1 guest` | every reply to an authenticated `hello`, successful or failed |
 
 For example, `proof` in `hello` is `base64url(HMAC-SHA256(nonce, "runic-host/1 host " + key))`. With the nonce
 bytes 0 to 31 (`AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8`) and the key of bytes 32 to 63
@@ -209,7 +237,8 @@ bytes 0 to 31 (`AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8`) and the key of byt
   process that learned one of the two still cannot open the channel.
 - The **guest proof** proves to the host that the listener belongs to the process it started, not to another process
   that took the port after the guest exited: the host's `hello` gives such a process the key and the host proof, but
-  neither lets it compute the guest proof.
+  neither lets it compute the guest proof. A failed reply carries it too, so such a process cannot make the host
+  report a failure of its choice either.
 
 ### Guest rules
 
@@ -218,10 +247,12 @@ bytes 0 to 31 (`AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8`) and the key of byt
   with WebSocket status 1008 and no reply: a party that cannot prove itself learns nothing, not even which check
   failed. The listener keeps listening, within its [limits](#channel-listener).
 - After the checks, a `hello` whose `protocol` is not the channel line's is answered
-  `{"id":1,"ok":false,"protocol":1,"error":{"kind":"failed","reason":"protocol-mismatch","message":"…"}}` and the
-  connection is closed with status 1002. A `hello` that misses a required member or has one of the wrong type is
-  answered `rejected` with `invalid-request` and closed with status 1002. Either way the key is spent: the guest stops
-  listening, writes nothing more to standard output and exits with a failure, as for a [host gone](#host-gone).
+  `{"id":1,"ok":false,"protocol":1,"proof":"…","error":{"kind":"failed","reason":"protocol-mismatch","message":"…"}}`
+  and the connection is closed with status 1002. A `hello` that misses a required member or has one of the wrong type
+  is answered `{"id":1,"ok":false,"protocol":1,"proof":"…","error":{"kind":"rejected","reason":"invalid-request","message":"…"}}`
+  and closed with status 1002; without a valid `id`, its reply's `id` is `null`. Both replies carry the guest proof.
+  Either way the key is spent: the guest stops listening, writes nothing more to standard output and exits with a
+  failure, as for a [host gone](#host-gone).
 - A `hello` that passes is answered with the successful reply, which carries the guest proof. The key is then spent:
   the guest stops listening and closes its other connections ([channel listener](#channel-listener)). A later `hello`
   on the channel is answered `rejected` with `invalid-request`.
@@ -230,13 +261,19 @@ bytes 0 to 31 (`AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8`) and the key of byt
 
 ### Host rules
 
-- The host sends nothing before `hello`, and nothing but `hello` until its reply arrived.
-- It checks the reply's `proof` in constant time before it acts on any other member or message. A reply without the
-  matching guest proof, a reply of another `protocol`, or a connection that closes first means that the guest is not
-  hostable: the host closes the connection and ends the guest process.
+- The host sends nothing before `hello`, and sends `hello` as soon as the upgrade completed. It sends nothing but
+  `hello` until its reply arrived.
+- It checks the reply's `proof` in constant time before it reads `ok`, `error` or any other member, or acts on another
+  message. A reply without the matching guest proof means that the guest is not hostable (`guest-not-hostable`),
+  whatever else it says.
+- A proven reply with `ok: false` ends the start: with the reason `protocol-mismatch` as `protocol-unsupported`, with
+  any other error as `guest-not-hostable`. A proven successful reply of another `protocol` is `guest-not-hostable`.
+- When the upgrade is refused or the connection closes before a reply arrived, as when the guest's listener closed it
+  to make room for a newer one, the host connects again, within its start timeout, after a short pause that grows from
+  100 milliseconds to at most 1 second. It does not retry after a reply, with or without a proof.
 - It waits for the channel line and the reply together up to its start timeout (30 seconds by default). After a
-  timeout, a refusal line, an early exit of the guest or a failed check, it ends the guest's process tree and reports
-  the failure ([errors](#host-start-failures)).
+  timeout, a refusal line, an early exit of the guest or a failed check, it closes the connection, ends the guest's
+  process tree and reports the failure ([errors](#host-start-failures)).
 
 ## Messages
 
@@ -248,10 +285,21 @@ After the handshake both sides send messages: **requests**, which the other side
   larger message with status 1009, and a text message that is not one JSON object with status 1007.
 - **Requests** have an `id` and a `kind`: `{"id":7,"kind":"present","window":"w1"}`. `id` is an integer from 1 to
   2^53−1 that the sender chooses; it MUST NOT reuse the id of one of its requests that has not been answered. The two
-  directions' ids are independent. `hello` has the id 1.
+  directions' ids are independent; the host's `hello` counts as one of its requests.
 - **Replies** have the `id` of their request and `ok`: `{"id":7,"ok":true,…}` or
   `{"id":7,"ok":false,"error":{…}}`. A side answers every request exactly once, in any order. A reply whose `id` names
   no request of the receiver that is waiting is ignored.
+- **Deadline.** A side SHOULD answer a request within 30 seconds (the **request timeout**). A requester that has had no
+  reply by then gives up: the request counts as `failed` on its side, a [platform outcome](#platform-outcomes) as
+  `failed` with `unknown`, and its reply, if it comes later, is ignored. Requests that wait for the user are exempt:
+  `close-request`, whose guard may ask the user, and the requests of `dialogs/1` and `show-context-menu`.
+  `window-open` has the deadline, but the guest keeps waiting for its reply after it gave up
+  ([window-open](#window-open)).
+- **Reading.** A side keeps reading the channel while it handles what it read: a handler that waits, for a reply, for
+  the user or for application code, MUST NOT stop it from reading the messages that follow. It applies one window's
+  pushes in the order they arrived.
+- **Sending.** A side that cannot send a message within 10 seconds, because the other side stopped reading, closes the
+  connection without waiting further; for the guest that is the [host gone](#host-gone).
 - **Pushes** have a `kind` and no `id`: `{"kind":"activity","window":"w1","active":true,"minimized":false,"visible":true}`.
 - **Tokens.** `kind`, `reason`, `outcome`, `code` and other enumerated values are kebab-case tokens.
 - **Unknown members** of a message are ignored. An unknown request kind, including one of a feature that is not in
@@ -293,7 +341,8 @@ unknown `reason` as `backend-unavailable` and an unknown `code` as `unknown`.
 
 A guest reports an error reply to such a request as a failure of the platform call: `refused` as `permission-denied`,
 `busy` and `capacity` as `resource-busy`, and any other error as `unknown`. A request whose channel closed before the
-reply, or that it could not send because the host is gone, reports `unavailable` with `owner-closed`.
+reply, or that it could not send because the host is gone, reports `unavailable` with `owner-closed`. A request without
+a reply within the [request timeout](#messages) reports `failed` with `unknown`.
 
 ## Features
 
@@ -353,12 +402,21 @@ also waits for the hosted window's page to connect to the surface, up to its con
 `close-request` or `shutdown` as soon as it sent the reply; a guest whose Window has not finished opening closes it once
 it has.
 
+The guest's open can end before the reply arrives: the application cancelled it, the [request timeout](#messages)
+passed (`hosted-window-failed`), or the host went away (`hosted-host-gone`). The guest then closes the Window's surface
+at once, but keeps waiting for the reply while the channel is open: a successful reply that arrives later is followed
+by `window-closed` for that window, so the host never keeps a window whose Window is gone. A host that sees
+`window-closed` right after its successful reply closes the window as for any `window-closed`.
+
 ### `window-closed`
 
 When a guest Window closes, for any reason, the guest pushes `{"kind":"window-closed","window":"w1"}` after the Window
 finished closing, and the host closes the hosted window. The host MUST close it without asking anyone, and MUST NOT
-reuse the id. A guest that closes its Window while its `window-open` is waiting for the reply pushes `window-closed`
-after the reply arrived.
+reuse the id. A guest that closes its Window, or gives up its open, while its `window-open` is waiting for the reply
+pushes `window-closed` after a successful reply arrived, and nothing after a failed one.
+
+After `window-closed` the window id names a closed window: a `close-request` for it is answered `allow: true`, and a
+push for it is ignored.
 
 ### `close-request`
 
@@ -518,8 +576,16 @@ The host launches with its own activation token, applies the same checks as `IDe
 The guest treats either of these as the host going away: its standard input reaches its end, or the host channel
 closes, for any reason, after the handshake. It then shuts down as for [`shutdown`](#shutdown): it cancels
 `DesktopHost.ShutdownRequested`, its Windows close and `Run` returns when its body does. A guest MUST NOT fall back to
-showing a window of its own, and a Window that opens after the host went away fails to open. When the body has not
-returned within 10 seconds, the guest's process exits. The host's job object or process group is the backstop.
+showing a window of its own and MUST NOT send another `window-open`:
+
+- A Window whose open is waiting for the `window-open` reply fails to open at once, with `hosted-host-gone`; the guest
+  pushes `window-closed` if a successful reply still arrives ([window-open](#window-open)).
+- A Window that opens after the host went away fails to open with `hosted-host-gone`, and nothing is sent.
+- The host going away is the normal end of a hosted application, not a crash: when the body ends with that failure,
+  or is cancelled through `ShutdownRequested`, `Run` returns 0.
+
+When the body has not returned within 10 seconds, the guest's process exits. The host's job object or process group is
+the backstop.
 
 ### Guest gone
 
@@ -551,12 +617,17 @@ The hosted window's page connects to the guest's surface directly; the host neve
 | Limit | Value | Over it |
 | --- | --- | --- |
 | Message size | 1 MiB | Channel closed with status 1009 |
+| First message before the handshake | 16 KiB | Connection closed with status 1009 |
 | A side's requests waiting for replies | 64 | `rejected` with `capacity` |
+| Request timeout | 30 seconds, except requests that wait for the user | The requester gives up: `failed` |
+| Send timeout | 10 seconds for one message | The sender closes the connection |
 | Open windows of a guest | The host's policy | `window-open` `rejected` with `refused` |
 | Requests per window | The host's policy, such as a rate | `rejected` with `capacity` |
 | Dialogs per window | 1 | `rejected` with `busy` |
 | Menu depth and entries | 8 levels, 1,000 entries | `rejected` with `capacity` |
-| Unauthenticated connections | 8 at once, 10 seconds each | Connection closed |
+| Unauthenticated connections | 8 at once | The oldest is closed for a new one |
+| Upgrade | 10 seconds from the accept | Connection closed |
+| Hello timeout | 2 seconds from the upgrade to the first message | Connection closed |
 | Start (offer to `hello` reply) | 30 seconds by default, on both sides | Guest exits; host ends the guest |
 | Stop (`shutdown` to exit) | 10 seconds by default | Host ends the guest's process tree |
 | Host gone to exit | 10 seconds | Guest process exits |
@@ -568,11 +639,11 @@ The vocabulary is open.
 
 | Code | Cause |
 | --- | --- |
-| `guest-start-timeout` | No channel line, or no `hello` reply, within the start timeout. |
+| `guest-start-timeout` | No channel line, or no `hello` reply, within the start timeout, retries included. |
 | `guest-exited` | The guest exited before the `hello` reply. |
-| `guest-not-hostable` | The guest wrote an invalid channel line, the channel refused the connection, or the guest proof did not match. |
-| `guest-refused` | The guest wrote a refusal line; the failure names the guest's `code`. |
-| `protocol-unsupported` | The guest refused with `protocol-unsupported`, or answered `protocol-mismatch`. |
+| `guest-not-hostable` | The guest wrote an invalid channel line, a reply carried no matching guest proof, or a proven reply failed for another reason than `protocol-mismatch`. |
+| `guest-refused` | The guest wrote a refusal line; the failure names the guest's `code`, also one the host does not know. |
+| `protocol-unsupported` | The guest refused with `protocol-unsupported`, or answered `hello` with a proven `protocol-mismatch`. |
 
 A guest reports a hosted start that failed with the same exception type, before its application body runs: the code
 of its refusal, or `offer-missing` (standard input ended or the start timeout passed before the offer),
@@ -611,11 +682,14 @@ application is in the [security guide](../../docs/security.md#hosted-application
 5. **Mutual proof.** The guest accepts a channel only with the key and a valid host proof; the host trusts a channel
    only after a valid guest proof.
 6. **One channel.** The guest accepts exactly one authenticated connection and stops listening at once. It closes
-   unauthenticated connections without a reply, and holds at most 8 of them, each for at most 10 seconds.
+   unauthenticated connections without a reply, holds at most 8 of them, closing the oldest for a new one, gives each
+   2 seconds after its upgrade for its first message and reads at most 16 KiB of it. The host retries a connection
+   that was closed before a reply.
 7. **No web pages.** The guest refuses an upgrade with an `Origin` header and one whose `Host` is not its loopback
    address and port.
-8. **No elevated guests.** A guest refuses hosted mode when it runs elevated, or as another user than its parent where
-   the platform can tell, because a host controls what it does with the user's answers.
+8. **No elevated guests.** A guest refuses hosted mode when it runs elevated, or when it cannot show that it runs as
+   the same user as its parent ([same user](#same-user), fail closed), because a host controls what it does with the
+   user's answers.
 9. **Least privilege.** The channel gives a guest its own windows only: no list of the host's windows, no script in
    the host's pages, no navigation outside its own origin. Window ids are scoped to the channel, and `owner` names only
    the guest's own windows. The host validates every message and applies its policy and limits.
@@ -639,6 +713,8 @@ application is in the [security guide](../../docs/security.md#hosted-application
 | T9 | Another process takes the port after the guest exited, and the host connects to it | The guest proof, which needs the nonce the host never sends |
 | T10 | Version skew or downgrade | The offer's `protocols` and the guest's highest common choice; features negotiated; unknown members ignored and unknown kinds `invalid-request` |
 | T11 | A local process that read one of the pipes, such as the guest's standard output in a log, opens the channel first | It needs both the key (standard output) and the host proof (standard input) |
+| T12 | Another local user fills the listener's unauthenticated slots, or sends large first messages, to keep the host out | The oldest pending connection is closed for a new one, the hello timeout is 2 seconds, a first message is at most 16 KiB, and the host retries within its start timeout |
+| T13 | A host that never answers, or a guest event handler that blocks, hangs the other side | The request timeout; a guest raises a window's events off the channel's receive loop and bounds its sends |
 
 Same-user processes are outside what Runic protects ([security guide](../../docs/security.md#what-runic-protects-and-what-it-does-not)):
 any process of the user that knows a guest's hosted parameter can host it, see its pages and answer its dialogs.
