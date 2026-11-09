@@ -1,0 +1,11 @@
+# The application's text, for the page (Frontend/src) and C# (the generated AppText). Add a language to "locales" in
+# runic.json and a <locale>.rmf2 beside this file; the build checks that both sides use every message correctly.
+
+# A text reference the ViewModel produces: the page shows it in the application's language.
+welcome_greeting = Your first Runic View is ready.
+
+# The page's own text.
+app {
+  title = Runic Views
+  language = Language
+}

@@ -76,4 +76,28 @@
     <PackageReference Include="Runic.Application.Views.CsWebUi" Version="__RUNIC_CSWEBUI_NUGET_VERSION__" />
 <!--#endif -->
   </ItemGroup>
+<!--#if (translations) -->
+  <!-- Runic Translations: one catalog, Frontend/translations/runic.json, for the page and C#. The build generates AppText
+       (the messages, the References factories for ViewModels and AppTextCatalog.Registration) and checks every
+       translation. https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md -->
+  <ItemGroup>
+    <PackageReference Include="Runic.Translations" Version="0.9.1" />
+    <PackageReference Include="Runic.Translations.Build" Version="0.9.1" PrivateAssets="all" />
+    <RunicTranslationProject Include="Frontend/translations/runic.json" />
+  </ItemGroup>
+  <PropertyGroup>
+    <!-- The page's ESM of the same catalog, which the dotnet-runic-translations tool of .config/dotnet-tools.json writes
+         (run dotnet tool restore once). CopyTranslationsForThePage puts it in Frontend/.runic/translations, where the
+         page imports it, before the frontend builds. -->
+    <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+  </PropertyGroup>
+  <Target Name="CopyTranslationsForThePage" AfterTargets="RunicTranslationsGenerateTranslationArtifacts"
+          Condition="'$(RunicTranslationsEmitEsm)' == 'true'">
+    <ItemGroup>
+      <_PageTranslations Include="$(RunicTranslationsWebOutputPath)/app.esm-v5/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PageTranslations)" DestinationFiles="@(_PageTranslations->'Frontend/.runic/translations/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+<!--#endif -->
 </Project>

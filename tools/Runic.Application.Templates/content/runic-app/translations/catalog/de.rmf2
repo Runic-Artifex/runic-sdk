@@ -1,0 +1,6 @@
+welcome_greeting = Deine erste Runic View ist bereit.
+
+app {
+  title = Runic Views
+  language = Sprache
+}

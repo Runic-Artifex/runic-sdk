@@ -7,6 +7,11 @@ using Runic.Application.Views.CsWebUi;
 #if (viewModels == "reactiveui")
 using Runic.Application.Views.ReactiveUI;
 #endif
+#if (translations)
+using Runic.Application.Views;
+using Runic.Platform;
+using Runic.Translations;
+#endif
 
 namespace RunicWindowApp;
 
@@ -33,6 +38,30 @@ public static class WorkspaceServices
         // dialogs and the clipboard.
 #endif
         services.AddRunicPlatformServices();
+#if (translations)
+        // IRunicApplicationLocale, the application's language, which every Window follows.
+        services.AddRunicWindowService();
+        // The C# side of the catalog (Frontend/translations): StartLanguageAsync makes it follow the application.
+        services.AddSingleton(_ => TranslationContext.CreateBuilder().Add(AppTextCatalog.Registration).Build());
+#endif
         return services;
     }
+#if (translations)
+
+    /// <summary>
+    /// Sets the application's language at start: <paramref name="requested"/> (Program.cs passes the RUNIC_LOCALE
+    /// environment variable, for a test or screenshot run in a language), else the best match for the operating
+    /// system's languages. The C# catalog switches before the Windows on every switch.
+    /// </summary>
+    public static async Task StartLanguageAsync(this IServiceProvider services, string? requested,
+        CancellationToken cancellationToken = default)
+    {
+        var translations = services.GetRequiredService<TranslationContext>();
+        var locale = services.GetRequiredService<IRunicApplicationLocale>();
+        locale.Follow(translations.SetLocaleAsync);
+        await locale.SetLocaleAsync(!string.IsNullOrWhiteSpace(requested) ? requested.Trim()
+            : LocaleNegotiation.Negotiate(DesktopLanguages.Preferred, translations.SupportedLocales, AppTextCatalog.DefaultLocale),
+            cancellationToken);
+    }
+#endif
 }
