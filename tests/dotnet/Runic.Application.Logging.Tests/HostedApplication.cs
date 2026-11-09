@@ -48,16 +48,20 @@ internal static class HostedApplication
     }
 }
 
-// A process that poses as a guest without the offer's nonce, as one that took a gone guest's port would: it answers the
-// host's hello with a guest proof computed from another nonce. Written without Runic's protocol code, from the spec.
+// A process that poses as a guest, written without Runic's protocol code, from the spec. By default it does not know the
+// offer's nonce, as one that took a gone guest's port would: it answers the host's hello with a guest proof computed
+// from another nonce. With MismatchArgument it is a guest that answers protocol-mismatch with the right proof.
 internal static class FakeGuest
 {
     internal const string Argument = "--run-fake-guest";
+    internal const string MismatchArgument = "--run-fake-guest-mismatch";
 
-    public static int Run()
+    public static int Run(bool mismatch = false)
     {
         var offer = Console.In.ReadLine();
         if (offer is null || !offer.StartsWith("RUNIC_HOST_OFFER=", StringComparison.Ordinal)) return 2;
+        var nonce = Convert.FromBase64String(JsonNode.Parse(offer["RUNIC_HOST_OFFER=".Length..])!["nonce"]!.GetValue<string>()
+            .Replace('-', '+').Replace('_', '/') + "=");
         var key = Base64Url(RandomNumberGenerator.GetBytes(32));
         int port;
         using (var probe = new TcpListener(IPAddress.Loopback, 0))
@@ -80,16 +84,21 @@ internal static class FakeGuest
         var buffer = new byte[65_536];
         var received = socket.ReceiveAsync(buffer, CancellationToken.None).GetAwaiter().GetResult();
         var hello = JsonNode.Parse(Encoding.UTF8.GetString(buffer, 0, received.Count))!.AsObject();
-        var otherNonce = RandomNumberGenerator.GetBytes(32);
+        var proofNonce = mismatch ? nonce : RandomNumberGenerator.GetBytes(32);
         var reply = new JsonObject
         {
             ["id"] = hello["id"]!.GetValue<long>(),
-            ["ok"] = true,
+            ["ok"] = !mismatch,
             ["protocol"] = 1,
-            ["proof"] = Base64Url(HMACSHA256.HashData(otherNonce, Encoding.ASCII.GetBytes("runic-host/1 guest " + key))),
-            ["guest"] = new JsonObject { ["name"] = "Fake", ["version"] = "1.0.0", ["applicationId"] = null },
-            ["features"] = new JsonArray(),
+            ["proof"] = Base64Url(HMACSHA256.HashData(proofNonce, Encoding.ASCII.GetBytes("runic-host/1 guest " + key))),
         };
+        if (mismatch)
+            reply["error"] = new JsonObject { ["kind"] = "failed", ["reason"] = "protocol-mismatch", ["message"] = "Another version." };
+        else
+        {
+            reply["guest"] = new JsonObject { ["name"] = "Fake", ["version"] = "1.0.0", ["applicationId"] = null };
+            reply["features"] = new JsonArray();
+        }
         socket.SendAsync(Encoding.UTF8.GetBytes(reply.ToJsonString()), WebSocketMessageType.Text, true, CancellationToken.None)
             .GetAwaiter().GetResult();
         // The host closes the connection; then this process waits to be ended.

@@ -69,6 +69,30 @@ internal sealed class HostProtocolChecks
               HostProtocol.Kebab(nameof(PlatformUnavailableReason.ProviderNotConfigured)) == "provider-not-configured", "kebab tokens");
     }
 
+    // host-protocol.md, Same user: all four uids equal, or refuse; a parent that cannot be read refuses (fail closed).
+    [Test]
+    public void TheSameUserCheckFailsClosed()
+    {
+        static Func<string, string[]?> Proc(string? self, string? parent) => path => path switch
+        {
+            "/proc/self/status" => self?.Split('\n'),
+            "/proc/4242/status" => parent?.Split('\n'),
+            _ => null,
+        };
+        const string Self = "Name:\tguest\nPPid:\t4242\nUid:\t1000\t1000\t1000\t1000";
+        Check(GuestPrivileges.SameUserOnLinux(Proc(Self, "Name:\thost\nUid:\t1000\t1000\t1000\t1000")), "the same user");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc(Self, null)), "a parent hidden by hidepid");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc(Self, "Name:\thost\nUid:\t1001\t1001\t1001\t1001")), "another user's parent");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc(Self, "Name:\thost\nUid:\t1000\t0\t1000\t1000")), "a parent with another effective uid");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc("PPid:\t4242\nUid:\t1000\t1001\t1001\t1001", "Uid:\t1000\t1000\t1000\t1000")),
+            "a setuid guest (its effective uid is another user's)");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc("PPid:\t1\nUid:\t1000\t1000\t1000\t1000", null)), "a parent that is gone");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc(null, null)), "no /proc");
+        Check(!GuestPrivileges.SameUserOnLinux(Proc(Self, "Name:\thost\nUid:\t1000")), "a parent status without an effective uid");
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            Check(GuestPrivileges.Check() is null || Environment.IsPrivilegedProcess, "this test process, started by its own user, passes");
+    }
+
     private static void Check(bool condition, string what)
     {
         if (!condition) throw new InvalidOperationException($"Failed: {what}.");

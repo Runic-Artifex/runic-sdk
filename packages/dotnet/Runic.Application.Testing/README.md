@@ -1153,7 +1153,18 @@ public async Task ClosesWhenTheHostAsks()
   reports (`WindowFeatures`), a policy that refuses windows (`OpenWindow`) and
   the outcome of each presentation request (`Presentation`). Each window's
   `PresentationRequests` lists what the application asked, such as `present`
-  or `set-full-screen`, and `SetActivityAsync` reports activity to it.
+  or `set-full-screen`. A request whose feature the window did not report is
+  answered unavailable, and a kind outside the base protocol is rejected with
+  `invalid-request`, as a real host does.
+- A window is listed in `Windows`, and found by `WaitForWindowAsync`, once the
+  test host answered its `window-open`; its `Opened` task has then completed
+  (or is cancelled for a refused window), so a test may stop the host at once.
+  `WaitForNthWindowAsync("DocumentWindow", 1, …)` waits for the second window of
+  a type, and `WaitForMatchingWindowAsync` for the first window a predicate
+  accepts.
+- `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
+  colour scheme to the application, and `RunicTestHost.SetAppearanceAsync` the
+  host's appearance (an application of this release keeps its own appearance).
 - The application's `OpenWindowAsync` waits for the page to connect when its
   `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
   real host. Load `LaunchUrl` in the browser under test, or start the

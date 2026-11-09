@@ -41,14 +41,16 @@ internal sealed class HostRoleConformanceTests
     {
         private readonly TcpListener _control = new(IPAddress.Loopback, 0);
         private readonly Dictionary<string, WebSocket> _connections = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Queue<JsonObject>> _pending = new(StringComparer.Ordinal);
         private readonly Dictionary<string, JsonNode?> _bindings = new(StringComparer.Ordinal);
         private HostFixture? _fixture;
         private Task<RunicHostedApplication>? _start;
         private TcpClient? _puppet;
         private StreamReader? _input;
         private StreamWriter? _commands;
-        private HostChannelListener? _listener;
+        private TcpListener? _listener;
+        private readonly List<TcpClient> _clients = [];
+        private RunicHostedApplication? _application;
+        private long _nextRequest = 1000;
         private byte[]? _nonce;
         private string? _key;
 
@@ -84,7 +86,7 @@ internal sealed class HostRoleConformanceTests
                 case "receive": await ReceiveAsync(connection!, value!.AsObject()); break;
                 case "send": await SendAsync(connection!, value!.AsObject()); break;
                 case "closed": await ClosedAsync(value!.AsObject()); break;
-                case "disconnect": await HostChannel.CloseAsync(_connections[value!["connection"]!.GetValue<string>()], WebSocketCloseStatus.NormalClosure, ""); break;
+                case "disconnect": await HostChannel.CloseAsync(_connections[value!.GetValue<string>()], WebSocketCloseStatus.NormalClosure, ""); break;
                 case "exit": await ExitAsync(value!.GetValue<int>()); break;
                 case "advance": await Task.Delay(Limit(value!.GetValue<string>(), StepTimeout)); break;
                 case "expect": await ExpectAsync(value!.AsObject()); break;
@@ -142,35 +144,46 @@ internal sealed class HostRoleConformanceTests
             }
             // The channel line names the runner's own listener and a new key.
             var channel = line["channel"]!.AsObject();
-            _listener = HostChannelListener.Start(TimeSpan.FromSeconds(10));
+            _listener = new TcpListener(IPAddress.Loopback, 0);
+            _listener.Start();
             _key = HostProtocol.NewSecret();
             await CommandAsync(HostProtocol.ChannelPrefix + new JsonObject
             {
-                ["url"] = _listener.Url.AbsoluteUri,
+                ["url"] = $"ws://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}{HostProtocol.ChannelPath}",
                 ["key"] = _key,
                 ["protocol"] = channel["protocol"]!.GetValue<int>(),
             }.ToJsonString());
         }
 
+        // A plain WebSocket upgrade on the runner's listener, which keeps listening for the host's next connection.
         private async Task AcceptAsync(string name)
         {
             using var timeout = TestTimeouts.Cancellation(StepTimeout);
-            var (socket, hello) = await _listener!.AcceptAsync((_, _) => Task.FromResult(HostHelloVerdict.Accepted), timeout.Token);
-            _connections[name] = socket;
-            _pending[name] = new Queue<JsonObject>([hello]);
+            var client = await _listener!.AcceptTcpClientAsync(timeout.Token);
+            _clients.Add(client);
+            var stream = client.GetStream();
+            var request = new StringBuilder();
+            var buffer = new byte[1];
+            while (!request.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal))
+            {
+                if (await stream.ReadAsync(buffer, timeout.Token) == 0) throw new InvalidOperationException("The host closed the connection before its upgrade.");
+                request.Append((char)buffer[0]);
+            }
+            var key = request.ToString().Split("\r\n").Select(static header => header.Split(':', 2))
+                .Single(static header => header.Length == 2 && header[0].Trim().Equals("Sec-WebSocket-Key", StringComparison.OrdinalIgnoreCase))[1].Trim();
+#pragma warning disable CA5350 // RFC 6455 defines the upgrade's accept value with SHA-1; it protects nothing.
+            var accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
+#pragma warning restore CA5350
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(
+                $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"), timeout.Token);
+            _connections[name] = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = true, KeepAliveInterval = TimeSpan.Zero });
         }
 
         private async Task ReceiveAsync(string name, JsonObject expected)
         {
-            var queue = _pending[name];
-            JsonObject message;
-            if (queue.Count > 0) message = queue.Dequeue();
-            else
-            {
-                using var timeout = TestTimeouts.Cancellation(StepTimeout);
-                message = await HostChannel.ReceiveAsync(_connections[name], timeout.Token)
-                    ?? throw new InvalidOperationException("The host closed the connection.");
-            }
+            using var timeout = TestTimeouts.Cancellation(StepTimeout);
+            var message = await HostChannel.ReceiveAsync(_connections[name], timeout.Token)
+                ?? throw new InvalidOperationException("The host closed the connection.");
             Match(expected, message, "message");
         }
 
@@ -190,7 +203,13 @@ internal sealed class HostRoleConformanceTests
 
         private async Task ExpectAsync(JsonObject expect)
         {
-            if (expect["startFailure"] is not { } code) throw new InvalidOperationException("The host runner checks start failures only.");
+            if (expect["started"] is not null)
+            {
+                _application = await _start!.WaitScaledAsync(StepTimeout);
+                Check(_application.Guest.ApplicationId == "dev.runic.conformance-guest", $"The host named the guest {_application.Guest}.");
+                return;
+            }
+            if (expect["startFailure"] is not { } code) throw new InvalidOperationException("The host runner checks start failures and starts only.");
             try
             {
                 await using var application = await _start!.WaitScaledAsync(StepTimeout);
@@ -218,7 +237,10 @@ internal sealed class HostRoleConformanceTests
                 case JsonObject { Count: 1 } single when single["$secret"] is { } secret:
                     return Secret(secret.GetValue<string>());
                 case JsonObject { Count: 1 } single when single["$id"] is { } id:
-                    return _bindings.TryGetValue(id.GetValue<string>(), out var bound) ? bound?.DeepClone() : throw new InvalidOperationException($"{id} is not bound.");
+                    // A request the runner sends gets a new id, which the host's reply then carries.
+                    if (!_bindings.TryGetValue(id.GetValue<string>(), out var bound))
+                        _bindings[id.GetValue<string>()] = bound = JsonValue.Create(++_nextRequest);
+                    return bound?.DeepClone();
                 case JsonObject value:
                     var copy = new JsonObject();
                     foreach (var (name, member) in value) copy[name] = Resolve(member);
@@ -296,8 +318,13 @@ internal sealed class HostRoleConformanceTests
         public async ValueTask DisposeAsync()
         {
             foreach (var socket in _connections.Values) socket.Dispose();
-            if (_listener is not null) await _listener.DisposeAsync();
-            if (_start is { IsCompletedSuccessfully: true } started) await started.Result.KillAsync();
+            foreach (var client in _clients) client.Dispose();
+            _listener?.Stop();
+            if (_start is { IsCompletedSuccessfully: true } started)
+            {
+                // The runner's guest never closes: end the host's session and the puppet with it.
+                _ = await started.Result.KillAsync().AsTask().WaitScaledAsync(StepTimeout);
+            }
             _puppet?.Dispose();
             _control.Stop();
             if (_fixture is not null) await _fixture.DisposeAsync();

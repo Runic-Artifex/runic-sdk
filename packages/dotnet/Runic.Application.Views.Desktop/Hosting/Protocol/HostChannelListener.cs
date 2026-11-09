@@ -18,8 +18,9 @@ internal enum HostHelloVerdict
 
 // The guest's own loopback listener for the host channel (host-protocol.md, Channel listener): an HTTP/1.1 WebSocket
 // upgrade of GET /_runic_host without Origin and with the listener's own Host, at most 8 connections that have not
-// authenticated, each for a limited time, and exactly one authenticated connection, after which it stops listening.
-// It needs nothing but the base class library, so it works with every Desktop server.
+// authenticated, the oldest of which a new one replaces, each with a limited time for its upgrade and for its first
+// message of at most 16 KiB, and exactly one authenticated connection, after which it stops listening. It needs
+// nothing but the base class library, so it works with every Desktop server.
 internal sealed class HostChannelListener : IAsyncDisposable
 {
     private const int MaximumHeaderBytes = 8_192;
@@ -28,15 +29,18 @@ internal sealed class HostChannelListener : IAsyncDisposable
     private readonly TcpListener _listener;
     private readonly string _host;
     private readonly TimeSpan _unauthenticatedTimeout;
+    private readonly TimeSpan _helloTimeout;
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
-    private readonly HashSet<TcpClient> _pending = [];
+    // The connections that have not authenticated, oldest first.
+    private readonly LinkedList<TcpClient> _pending = [];
     private int _stopped;
 
-    private HostChannelListener(TcpListener listener, TimeSpan unauthenticatedTimeout)
+    private HostChannelListener(TcpListener listener, TimeSpan unauthenticatedTimeout, TimeSpan helloTimeout)
     {
         _listener = listener;
         _unauthenticatedTimeout = unauthenticatedTimeout;
+        _helloTimeout = helloTimeout;
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
         _host = endpoint.AddressFamily == AddressFamily.InterNetworkV6
             ? $"[::1]:{endpoint.Port}"
@@ -47,7 +51,7 @@ internal sealed class HostChannelListener : IAsyncDisposable
     internal Uri Url { get; }
 
     // Listens on 127.0.0.1, or on ::1 where IPv4 loopback is unavailable, on a port the system chooses.
-    internal static HostChannelListener Start(TimeSpan unauthenticatedTimeout)
+    internal static HostChannelListener Start(TimeSpan unauthenticatedTimeout, TimeSpan helloTimeout)
     {
         TcpListener listener;
         try
@@ -60,7 +64,7 @@ internal sealed class HostChannelListener : IAsyncDisposable
             listener = new TcpListener(IPAddress.IPv6Loopback, 0);
             listener.Start();
         }
-        return new HostChannelListener(listener, unauthenticatedTimeout);
+        return new HostChannelListener(listener, unauthenticatedTimeout, helloTimeout);
     }
 
     // Accepts connections until one's first message is accepted by authenticate, then stops listening, closes the other
@@ -92,15 +96,24 @@ internal sealed class HostChannelListener : IAsyncDisposable
             {
                 return;
             }
+            TcpClient? oldest = null;
             lock (_gate)
             {
-                if (_stopped != 0 || _pending.Count >= HostProtocol.MaximumUnauthenticatedConnections)
+                if (_stopped != 0)
                 {
                     client.Dispose();
                     continue;
                 }
-                _pending.Add(client);
+                // Full: the oldest makes room, so connections held open by another process cannot keep the host out
+                // (host-protocol.md, Channel listener; T12).
+                if (_pending.Count >= HostProtocol.MaximumUnauthenticatedConnections)
+                {
+                    oldest = _pending.First!.Value;
+                    _pending.RemoveFirst();
+                }
+                _pending.AddLast(client);
             }
+            oldest?.Dispose();
             _ = HandleAsync(client, authenticate, accepted, cancellationToken);
         }
     }
@@ -118,12 +131,19 @@ internal sealed class HostChannelListener : IAsyncDisposable
             var stream = client.GetStream();
             if (!await UpgradeAsync(stream, deadline.Token).ConfigureAwait(false)) return;
             socket = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = true, KeepAliveInterval = TimeSpan.Zero });
+            // The host sends hello at once: the first message has a short time of its own, and at most 16 KiB.
+            deadline.CancelAfter(_helloTimeout);
             JsonObject? hello;
-            try { hello = await HostChannel.ReceiveAsync(socket, deadline.Token).ConfigureAwait(false); }
-            catch (HostProtocolViolationException) { hello = null; }
+            var status = WebSocketCloseStatus.PolicyViolation;
+            try { hello = await HostChannel.ReceiveAsync(socket, deadline.Token, HostProtocol.MaximumHelloBytes).ConfigureAwait(false); }
+            catch (HostProtocolViolationException violation)
+            {
+                hello = null;
+                if (violation.Status == WebSocketCloseStatus.MessageTooBig) status = WebSocketCloseStatus.MessageTooBig;
+            }
             if (hello is null || HostProtocol.String(hello, "kind") != "hello")
             {
-                await HostChannel.CloseAsync(socket, WebSocketCloseStatus.PolicyViolation, "").ConfigureAwait(false);
+                await HostChannel.CloseAsync(socket, status, "").ConfigureAwait(false);
                 return;
             }
             HostHelloVerdict verdict;

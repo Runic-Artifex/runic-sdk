@@ -16,11 +16,20 @@ internal static class HostProtocol
     internal const string ChannelPath = "/_runic_host";
     internal const int MaximumLineBytes = 4_096;
     internal const int MaximumMessageBytes = 1_048_576;
+    // The first message of a connection that has not completed the handshake; a valid hello is far smaller.
+    internal const int MaximumHelloBytes = 16_384;
     internal const int MaximumWaitingRequests = 64;
     internal const int MaximumUnauthenticatedConnections = 8;
     internal static readonly TimeSpan DefaultStartTimeout = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(10);
+    // From a connection's accept to its upgrade.
     internal static readonly TimeSpan UnauthenticatedTimeout = TimeSpan.FromSeconds(10);
+    // From the upgrade to the first message.
+    internal static readonly TimeSpan HelloTimeout = TimeSpan.FromSeconds(2);
+    // A requester gives up a request that has had no reply by then (requests that wait for the user are exempt).
+    internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+    // A side that cannot send one message in this time closes the connection.
+    internal static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(10);
     internal static readonly TimeSpan HostGoneExitTimeout = TimeSpan.FromSeconds(10);
     internal const string HostProofLabel = "runic-host/1 host";
     internal const string GuestProofLabel = "runic-host/1 guest";

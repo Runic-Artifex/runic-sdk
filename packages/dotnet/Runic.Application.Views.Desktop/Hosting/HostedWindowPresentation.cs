@@ -6,7 +6,9 @@ using Runic.Platform;
 namespace Runic.Application.Views.Desktop.Hosting;
 
 // IRunicWindowPresentation of a hosted Window (host-protocol.md, Presentation): each request goes to the host's window
-// over the channel and reports the host's platform outcome; activity and colour scheme follow the host's pushes.
+// over the channel and reports the host's platform outcome; activity and colour scheme follow the host's pushes. The
+// state changes when a push arrives, and the events are raised on a queue of the window's own, in order, so an
+// application handler that blocks, such as one that waits for another request's reply, never stops the channel.
 internal sealed class HostedWindowPresentation : IRunicWindowPresentation
 {
     private static readonly PlatformResult<PlatformUnit> Done = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
@@ -15,20 +17,45 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
     private const string Source = "Runic host protocol";
 
     private readonly Func<JsonObject, CancellationToken, Task<JsonObject?>> _request;
+    private readonly Action<Exception>? _onHandlerError;
     private readonly object _gate = new();
+    private readonly object _eventGate = new();
+    private Task _events = Task.CompletedTask;
     private readonly RunicWindowPresentationFeatures _features;
     private RunicWindowActivity _activity;
     private DesktopColorScheme _colorScheme;
     private volatile bool _closed;
 
-    // request sends a presentation request for this window and returns the reply, or null when the channel is gone.
+    // request sends a presentation request for this window and returns the reply, or null when the channel is gone;
+    // onHandlerError receives what an event handler threw.
     internal HostedWindowPresentation(RunicWindowPresentationFeatures features, RunicWindowActivity activity,
-        DesktopColorScheme colorScheme, Func<JsonObject, CancellationToken, Task<JsonObject?>> request)
+        DesktopColorScheme colorScheme, Func<JsonObject, CancellationToken, Task<JsonObject?>> request,
+        Action<Exception>? onHandlerError = null)
     {
         _features = features;
         _activity = activity;
         _colorScheme = colorScheme;
         _request = request;
+        _onHandlerError = onHandlerError;
+    }
+
+    // Raises an event after the ones raised before, off the caller's thread.
+    private void Raise(Action raise)
+    {
+        lock (_eventGate)
+        {
+            _events = _events.ContinueWith(_ =>
+            {
+                try { raise(); }
+                catch (Exception error) when (error is not OutOfMemoryException) { _onHandlerError?.Invoke(error); }
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
+    }
+
+    // Completes when the events raised so far have run (tests).
+    internal Task EventsRaised
+    {
+        get { lock (_eventGate) return _events; }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -106,7 +133,7 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
             if (Equals(previous, activity)) return;
             Volatile.Write(ref _activity, activity);
         }
-        ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, activity));
+        Raise(() => ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, activity)));
     }
 
     // The color-scheme push.
@@ -117,7 +144,7 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
             if (_closed || _colorScheme == scheme) return;
             _colorScheme = scheme;
         }
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColorScheme)));
+        Raise(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColorScheme))));
     }
 
     internal void MarkClosed()
@@ -131,7 +158,7 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
             Volatile.Write(ref _activity, RunicWindowActivity.Closed);
         }
         if (!Equals(previous, RunicWindowActivity.Closed))
-            ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, RunicWindowActivity.Closed));
+            Raise(() => ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, RunicWindowActivity.Closed)));
     }
 
     // The host owns the activation token (Wayland): the guest's own context does not apply to the host's window.

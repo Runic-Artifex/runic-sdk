@@ -148,26 +148,15 @@ public sealed class RunicHostedApplication : IAsyncDisposable
         {
             throw Failure("guest-start-timeout", $"The guest wrote no {HostProtocol.ChannelPrefix} line within {_options.StartTimeout}.");
         }
-        HostLaunch.Hello hello;
-        try
+        var channel = HostLaunch.Channel(line, [HostProtocol.Version], ExitCodeText, Failure);
+        // Appearance and locale follow in a later change; the guest keeps its own until then.
+        var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, new JsonObject
         {
-            var channel = HostLaunch.Channel(line, [HostProtocol.Version], ExitCodeText, Failure);
-            // Appearance and locale follow in a later change; the guest keeps its own until then.
-            hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, new JsonObject
-            {
-                ["features"] = new JsonArray(),
-                ["locale"] = null,
-                ["languages"] = new JsonArray(),
-                ["appearance"] = null,
-            }, Failure, deadline.Token, cancellationToken).ConfigureAwait(false);
-        }
-        catch (RunicHostedApplicationException failure) when (failure.Code is "guest-not-hostable" or "guest-start-timeout")
-        {
-            // A guest that exited during the handshake closed its channel with it.
-            try { _ = await _process.Exited.WaitAsync(TimeSpan.FromMilliseconds(500), CancellationToken.None).ConfigureAwait(false); }
-            catch (TimeoutException) { throw failure; }
-            throw Failure("guest-exited", $"The guest exited with {ExitCodeText()} before it answered the hello.", failure);
-        }
+            ["features"] = new JsonArray(),
+            ["locale"] = null,
+            ["languages"] = new JsonArray(),
+            ["appearance"] = null,
+        }, Failure, () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
         Guest = new RunicGuestInfo(hello.Name, hello.Version, hello.ApplicationId);
         Protocol = hello.Protocol;
         Features = hello.Features;

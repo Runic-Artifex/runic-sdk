@@ -48,7 +48,7 @@ internal static class HostedGuestProgram
             _ => (transport, model) => new OrderedCollectionBridge(transport, model));
         using var provider = services.BuildServiceProvider();
         // The guarded Window refuses every close its host asks for; a forced close skips it.
-        ConformanceGuardedWindow.Answer = mode != "guarded";
+        ConformanceGuardedWindow.Decide(mode != "guarded");
         try
         {
             return RunicDesktopHost.Run(provider, new DesktopHostOptions { WaitForConnection = false },

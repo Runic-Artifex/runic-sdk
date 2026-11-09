@@ -20,6 +20,7 @@ internal static class Program
         // Hosted mode, reached through the parameter this application defines for it, and a guest without the nonce.
         if (args is [HostedApplication.Argument]) return HostedApplication.Run();
         if (args is [FakeGuest.Argument]) return FakeGuest.Run();
+        if (args is [FakeGuest.MismatchArgument]) return FakeGuest.Run(mismatch: true);
         // The application's child process: it runs until it is killed.
         if (args is [LoggingApplication.ChildProcessArgument])
         {

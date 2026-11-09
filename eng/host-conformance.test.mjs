@@ -21,8 +21,10 @@ const secrets = new Set(["nonce", "key", "other-key", "host-proof", "host-proof-
   "guest-proof-other-nonce", "launch-url"]);
 const jsonTypes = new Set(["string", "number", "integer", "boolean", "object", "array", "null"]);
 const roleSteps = {
-  guest: new Set(["start", "line", "connect", "send", "receive", "closed", "disconnect", "closeInput", "advance", "guest", "expect"]),
-  host: new Set(["start", "offer", "line", "accept", "send", "receive", "closed", "disconnect", "exit", "advance", "expect"]),
+  guest: new Set(["start", "line", "connect", "send", "sendRaw", "receive", "receiveAll", "closed", "disconnect", "closeInput",
+    "advance", "guest", "expect"]),
+  host: new Set(["start", "offer", "line", "accept", "send", "sendRaw", "receive", "receiveAll", "closed", "disconnect", "exit",
+    "advance", "expect"]),
 };
 
 // The problems of one scenario that its schema cannot express. Empty when it is self-contained.
@@ -98,6 +100,11 @@ export function scenarioProblems(scenario) {
         exists(step.connection, "connection", where);
         // A window-open that a guest sends names the window its open action created.
         walk(step[action], `${where}/${action}`);
+        break;
+      case "sendRaw": exists(step.connection, "connection", where); break;
+      case "receiveAll":
+        exists(step.connection, "connection", where);
+        step.receiveAll.forEach((message, item) => walk(message, `${where}/receiveAll/${item}`));
         break;
       case "offer": walk(step.offer, `${where}/offer`); break;
       case "line": if (typeof step.line === "object") walk(step.line, `${where}/line`); break;

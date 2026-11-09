@@ -182,7 +182,7 @@ internal static class HostedSmoke
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    // The host's log: it shows everything, and keeps the guests' reports, which their standard output carries (event 2020).
+    // The host's log: it shows everything, and keeps the guests' reports, which their standard output carries (event 2021).
     private sealed class GuestOutput : ILoggerFactory
     {
         private readonly object _gate = new();
@@ -223,7 +223,7 @@ internal static class HostedSmoke
             {
                 var message = formatter(state, exception);
                 Console.Error.WriteLine($"{logLevel} {category}[{eventId.Id}]: {message}{(exception is null ? "" : " " + exception)}");
-                if (eventId.Id == 2020) output.Record(message);
+                if (eventId.Id == 2021) output.Record(message);
             }
         }
     }

@@ -200,7 +200,7 @@ internal sealed class HostedApplicationTests
         Check(policy.Windows.Single() is { Type: var type, WindowOptions.Browser: BrowserKind.Embedded } && type == typeof(ConformanceMainWindow).FullName,
             "The policy did not see the guest's request.");
         Check(fixture.Factory.Hosts.Count == 0, "The host opened a window the policy refused.");
-        Check(fixture.Logs.Entries.Any(entry => entry.EventId == 2021 && entry.Message.Contains("OPEN hosted-window-refused", StringComparison.Ordinal)),
+        Check(fixture.Logs.Entries.Any(entry => entry.EventId == 2022 && entry.Message.Contains("OPEN hosted-window-refused", StringComparison.Ordinal)),
             "The guest's open did not fail with hosted-window-refused.");
     }
 
@@ -235,7 +235,7 @@ internal sealed class HostedApplicationTests
         var failure = await StartFailureAsync(fixture, HostedGuestProgram.Guest("sleep"), new RunicHostedApplicationOptions { StartTimeout = TimeSpan.FromSeconds(2) });
         Check(failure.Code == "guest-start-timeout", $"The start failed with {failure.Code}: {failure.Message}");
         Check(watch.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(20)), $"The start took {watch.Elapsed}.");
-        Check(fixture.Logs.Entries.Any(entry => entry.EventId == 2015), "The failed start was not logged.");
+        Check(fixture.Logs.Entries.Any(entry => entry.EventId == 2016), "The failed start was not logged.");
     }
 
     [Test, NotInParallel(Order = 61)]
@@ -381,8 +381,8 @@ internal sealed class HostFixture : IAsyncDisposable
     public RecordingLoggerFactory Logs { get; }
     public IRunicHostedApplications Applications => Host.HostedApplications;
 
-    // What the guests wrote to standard error, which the host logs (event 2021).
-    public string GuestErrors => string.Join('\n', Logs.Entries.Where(static entry => entry.EventId == 2021).Select(static entry => entry.Message));
+    // What the guests wrote to standard error, which the host logs (event 2022).
+    public string GuestErrors => string.Join('\n', Logs.Entries.Where(static entry => entry.EventId == 2022).Select(static entry => entry.Message));
 
     public static async Task<HostFixture> StartAsync(bool serveOnly = false)
     {
