@@ -22,7 +22,7 @@
       },
       "Runic.Translations": {
         "type": "Direct",
-        "requested": "[0.9.1, 0.10.0-0.0)",
+        "requested": "[0.9.1, )",
         "resolved": "0.9.1",
         "contentHash": "Mn8Eo7XEyfHNEa7v8qsTH2hqsh0pNpffcWictp7V6cQWCbbixpYNhzeLNAcizw85r6IpNTW0p8UEMXPXqFx3tg=="
       },
@@ -34,7 +34,7 @@
       },
       "Runic.Translations.Hosting": {
         "type": "Direct",
-        "requested": "[0.9.1, 0.10.0-0.0)",
+        "requested": "[0.9.1, )",
         "resolved": "0.9.1",
         "contentHash": "gbWwTNzo7eUfkTYTs8BdHxsr+sRDkPJN6O9UFPAHJ0OjqwfGBj8acIOzL96Tny9mOFuvSHbJ4bs7qMJmIaOckQ==",
         "dependencies": {

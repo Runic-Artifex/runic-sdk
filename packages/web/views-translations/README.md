@@ -74,8 +74,15 @@ runicTranslations({ project: 'translations', dependencies: 'auto' })
 "overrides": [{ "catalog": "runic-views", "from": ["Runic.Application.Views.Translations", "@runic-artifex/views-translations"] }]
 ```
 
-See [Change single messages](../../dotnet/Runic.Application.Views.Translations/README.md#change-single-messages)
-and the list of keys in the NuGet package's README.
+The catalog has English and German. A language of your page that it lacks gets
+an override file, `translations/overrides/runic-views/<locale>.rmf2`, with the
+messages you translate; the others show in English. Without one, Runic's text in
+that language is English. See
+[Change single messages](../../dotnet/Runic.Application.Views.Translations/README.md#change-single-messages),
+[Your other languages](../../dotnet/Runic.Application.Views.Translations/README.md#your-other-languages)
+and the list of keys in the NuGet package's README. CI builds a page with an
+English override and added French against the packed package
+([fixture](../../../tests/fixtures/application/views-translations-vite/README.md)).
 
 ## Exports
 
@@ -93,5 +100,7 @@ and the list of keys in the NuGet package's README.
 `bun run build` copies the catalog's sources from
 `packages/dotnet/Runic.Application.Views.Translations/translations` to
 `dist/catalog` and generates `dist/translations` with the `runic-translations`
-tool pinned in `.config/dotnet-tools.json`, so the NuGet and npm packages ship one
-catalog. Licensed under the [MIT License](LICENSE).
+tool pinned in `.config/dotnet-tools.json`, the release of the
+`Runic.Translations.Build` that compiles the NuGet package's catalog
+(`eng/workspace.test.mjs` checks that they agree), so the NuGet and npm packages
+ship one catalog. Licensed under the [MIT License](LICENSE).

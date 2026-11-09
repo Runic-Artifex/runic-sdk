@@ -48,13 +48,13 @@ field {
     * {{{$text} hat mehr als {$scale} Nachkommastellen.}}
   out_of_range = {$text} ist zu groß.
   not_a_boolean = {$text} ist weder wahr noch falsch.
-  not_a_choice = {$text} ist keine der Möglichkeiten {$choices}.
+  not_a_choice = {$text} ist keiner der Werte {$choices :runic:list type=disjunction}.
   not_a_date = {$text} ist kein Datum.
-  not_a_date_in = {$text} ist kein Datum ({$patterns}).
+  not_a_date_in = {$text} ist kein Datum ({$patterns :runic:list type=disjunction}).
   not_a_time = {$text} ist keine Uhrzeit.
-  not_a_time_in = {$text} ist keine Uhrzeit ({$patterns}).
-  not_a_date_time = {$text} ist kein Datum mit Uhrzeit ({$patterns}).
-  offset_out_of_range = {$text} hat eine Zeitverschiebung über ±14:00.
+  not_a_time_in = {$text} ist keine Uhrzeit ({$patterns :runic:list type=disjunction}).
+  not_a_date_time = {$text} ist kein Datum mit Uhrzeit ({$patterns :runic:list type=disjunction}).
+  offset_out_of_range = {$text} hat eine UTC-Abweichung über ±14:00.
   no_text_form = Dieses Feld lässt sich nicht als Text eingeben.
 }
 platform {
@@ -74,6 +74,7 @@ platform {
   launch_link_invalid = Der Startlink dieses Fensters ist ungültig oder wurde bereits von einem anderen Client verwendet. Schließen Sie dieses Fenster und öffnen Sie es erneut aus der Anwendung.
   resource_unavailable_title = Ressource nicht verfügbar
   resource_unavailable = Die angeforderte Ressource ist nicht verfügbar.
+  loading_title = Wird geladen…
 }
 menu {
   about = Über {$app}

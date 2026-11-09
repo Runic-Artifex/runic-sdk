@@ -1,0 +1,4 @@
+# French, a locale runic-views lacks: one override adds it, and the messages it does not override show in English.
+platform {
+  untitled_file_name = Sans titre
+}

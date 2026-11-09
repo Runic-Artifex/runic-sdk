@@ -82,17 +82,17 @@ field {
     * {{{$text} has more than {$scale} digits after the decimal separator.}}
   out_of_range = {$text} is too large.
   not_a_boolean = {$text} is not true or false.
-  # @param $choices - The values the field takes, joined as a list in the locale.
-  not_a_choice = {$text} is not one of {$choices}.
+  # @param $choices - The values the field takes; the locale joins them as alternatives ("red, green, or blue").
+  not_a_choice = {$text} is not one of {$choices :runic:list type=disjunction}.
   # A text of the right form that names no day, such as 31 February.
   not_a_date = {$text} is not a date.
-  # @param $patterns - The forms a date takes, such as DD.MM.YYYY or YYYY-MM-DD, joined as a list in the locale.
-  not_a_date_in = {$text} is not a date ({$patterns}).
+  # @param $patterns - The forms a date takes, such as DD.MM.YYYY or YYYY-MM-DD; the locale joins them as alternatives.
+  not_a_date_in = {$text} is not a date ({$patterns :runic:list type=disjunction}).
   not_a_time = {$text} is not a time.
-  # @param $patterns - The forms a time takes, such as hh:mm or hh:mm:ss, joined as a list in the locale.
-  not_a_time_in = {$text} is not a time ({$patterns}).
-  # @param $patterns - The forms a date and time takes, joined as a list in the locale.
-  not_a_date_time = {$text} is not a date and time ({$patterns}).
+  # @param $patterns - The forms a time takes, such as hh:mm or hh:mm:ss; the locale joins them as alternatives.
+  not_a_time_in = {$text} is not a time ({$patterns :runic:list type=disjunction}).
+  # @param $patterns - The forms a date and time takes; the locale joins them as alternatives.
+  not_a_date_time = {$text} is not a date and time ({$patterns :runic:list type=disjunction}).
   offset_out_of_range = {$text} has an offset beyond ±14:00.
   no_text_form = This field has no text form.
 }
@@ -122,6 +122,8 @@ platform {
   launch_link_invalid = This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.
   resource_unavailable_title = Resource Not Available
   resource_unavailable = The requested resource is not available.
+  # The title of a Windows window while WebView2 starts, until the page has one; a screen reader reads it.
+  loading_title = Loading…
 }
 
 # DesktopStandardMenuTitles: the standard macOS menus Runic adds.

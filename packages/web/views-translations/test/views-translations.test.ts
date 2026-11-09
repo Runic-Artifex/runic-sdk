@@ -22,13 +22,13 @@ describe("runic-views field errors", () => {
     ["too-many-fraction-digits", { text: "1.23", scale: 1 }, "1.23 has more than 1 digit after the decimal separator.", "1.23 hat mehr als 1 Nachkommastelle."],
     ["out-of-range", { text: "9e99" }, "9e99 is too large.", "9e99 ist zu groß."],
     ["not-a-boolean", { text: "yes" }, "yes is not true or false.", "yes ist weder wahr noch falsch."],
-    ["not-a-choice", { text: "Large", choices: ["Small", "Medium"] }, "Large is not one of Small, Medium.", "Large ist keine der Möglichkeiten Small, Medium."],
+    ["not-a-choice", { text: "Huge", choices: ["Small", "Medium", "Large"] }, "Huge is not one of Small, Medium, or Large.", "Huge ist keiner der Werte Small, Medium oder Large."],
     ["not-a-date", { text: "31.02.2026" }, "31.02.2026 is not a date.", "31.02.2026 ist kein Datum."],
     ["not-a-date", { text: "x", patterns: ["DD.MM.YYYY", "YYYY-MM-DD"] }, "x is not a date (DD.MM.YYYY or YYYY-MM-DD).", "x ist kein Datum (DD.MM.YYYY oder YYYY-MM-DD)."],
     ["not-a-time", { text: "25:00" }, "25:00 is not a time.", "25:00 ist keine Uhrzeit."],
     ["not-a-time", { text: "x", patterns: ["hh:mm", "hh:mm:ss"] }, "x is not a time (hh:mm or hh:mm:ss).", "x ist keine Uhrzeit (hh:mm oder hh:mm:ss)."],
     ["not-a-date-time", { text: "x", patterns: ["YYYY-MM-DDThh:mm"] }, "x is not a date and time (YYYY-MM-DDThh:mm).", "x ist kein Datum mit Uhrzeit (YYYY-MM-DDThh:mm)."],
-    ["offset-out-of-range", { text: "+15:00" }, "+15:00 has an offset beyond ±14:00.", "+15:00 hat eine Zeitverschiebung über ±14:00."],
+    ["offset-out-of-range", { text: "+15:00" }, "+15:00 has an offset beyond ±14:00.", "+15:00 hat eine UTC-Abweichung über ±14:00."],
     ["no-text-form", {}, "This field has no text form.", "Dieses Feld lässt sich nicht als Text eingeben."],
   ];
 

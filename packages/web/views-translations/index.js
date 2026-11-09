@@ -4,7 +4,6 @@
 import { configureFieldErrorText } from "@runic-artifex/views";
 import { m } from "./dist/translations/runic-views.esm-v5/messages.js";
 import * as transport from "./dist/translations/runic-views.esm-v5/transport.js";
-import { getRequestedLocale } from "./dist/translations/runic-views.esm-v5/runtime.js";
 
 export { m as runicViewsMessages, transport as runicViewsTransport };
 
@@ -18,14 +17,8 @@ export function resolveRunicViewsText(reference, locale) {
   return resolution.outcome === "translated" ? resolution.text : undefined;
 }
 
-function list(items, locale, type) {
-  const values = [...(items ?? [])];
-  try {
-    return new Intl.ListFormat(locale ?? getRequestedLocale(), { type, style: type === "unit" ? "short" : "long" }).format(values);
-  } catch {
-    return values.join(", ");
-  }
-}
+// The catalog joins lists in the message's locale (:runic:list type=disjunction).
+const list = items => [...(items ?? [])].map(String);
 
 /** The text of a field error in `locale`, as `configureFieldErrorText` takes it; `undefined` for a reason it has none for. */
 export function runicViewsFieldErrorText(error, locale) {
@@ -47,14 +40,14 @@ export function runicViewsFieldErrorText(error, locale) {
     case "too-many-fraction-digits": return m.field_too_many_fraction_digits({ text, scale: args.scale ?? 0 }, options);
     case "out-of-range": return m.field_out_of_range({ text }, options);
     case "not-a-boolean": return m.field_not_a_boolean({ text }, options);
-    case "not-a-choice": return m.field_not_a_choice({ text, choices: list(args.choices, locale, "unit") }, options);
+    case "not-a-choice": return m.field_not_a_choice({ text, choices: list(args.choices) }, options);
     case "not-a-date":
-      return args.patterns?.length ? m.field_not_a_date_in({ text, patterns: list(args.patterns, locale, "disjunction") }, options)
+      return args.patterns?.length ? m.field_not_a_date_in({ text, patterns: list(args.patterns) }, options)
         : m.field_not_a_date({ text }, options);
     case "not-a-time":
-      return args.patterns?.length ? m.field_not_a_time_in({ text, patterns: list(args.patterns, locale, "disjunction") }, options)
+      return args.patterns?.length ? m.field_not_a_time_in({ text, patterns: list(args.patterns) }, options)
         : m.field_not_a_time({ text }, options);
-    case "not-a-date-time": return m.field_not_a_date_time({ text, patterns: list(args.patterns, locale, "disjunction") }, options);
+    case "not-a-date-time": return m.field_not_a_date_time({ text, patterns: list(args.patterns) }, options);
     case "offset-out-of-range": return m.field_offset_out_of_range({ text }, options);
     case "no-text-form": return m.field_no_text_form(options);
     // Another kind of error, or a reason this version does not know: its English message.

@@ -29,6 +29,14 @@ Check(english.UntitledFileName, "New document");
 Check(english.SaveFileTitle, "Save file");
 Check(translations.Resolve(required).Text, "Please fill in Name.");
 Check(provider.GetRequiredService<RunicValidationOptions>().TextFor is not null ? "set" : "missing", "set");
+
+// The application's French: runic-views has no French, so without the override SupportedLocales would be en and de.
+Check(string.Join(",", translations.SupportedLocales), "de,en,fr");
+await translations.SetLocaleAsync("fr");
+var french = RunicViewsTranslations.PlatformTexts(translations);
+Check(french.UntitledFileName, "Sans titre");
+Check(french.SaveFileTitle, "Save file");                   // not overridden: the library's English
+Check(RunicViewsTranslations.MenuTitles(translations).Quit, "Quit {0}");
 Console.WriteLine("Runic.Application.Views.Translations consumer passed.");
 
 static void Check(string? actual, string expected)

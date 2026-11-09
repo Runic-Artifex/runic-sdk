@@ -120,6 +120,12 @@ public sealed record DesktopPlatformTexts
     /// <summary>Gets the message of that page; <c>The requested resource is not available.</c></summary>
     public string ResourceUnavailableMessage { get; init; } = "The requested resource is not available.";
 
+    /// <summary>
+    /// Gets the title of a Windows window while WebView2 is still starting, until the page has a title; it is also the
+    /// loading surface's accessible name, which a screen reader reads. <c>Loading…</c>.
+    /// </summary>
+    public string LoadingTitle { get; init; } = "Loading…";
+
     private void Validate()
     {
         Check(OpenFileTitle, nameof(OpenFileTitle));
@@ -140,6 +146,7 @@ public sealed record DesktopPlatformTexts
         Check(LaunchLinkInvalidMessage, nameof(LaunchLinkInvalidMessage));
         Check(ResourceUnavailableTitle, nameof(ResourceUnavailableTitle));
         Check(ResourceUnavailableMessage, nameof(ResourceUnavailableMessage));
+        Check(LoadingTitle, nameof(LoadingTitle));
     }
 
     private static void Check(string? text, string name)

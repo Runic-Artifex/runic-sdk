@@ -103,7 +103,9 @@ export const packageLayouts = {
     dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions",
       "Runic.Application.Views", "Runic.Translations", "Runic.Translations.Hosting"],
     exactDependencies: ["Runic.Application.Views"],
-    minorBounded: ["Runic.Translations", "Runic.Translations.Hosting"],
+    // Runic.Translations.Build stamps the range when packing; Hosting keeps 0.9.1 and later, and a Hosting of another minor
+    // needs a Runic.Translations outside that range.
+    minorBounded: ["Runic.Translations"],
   },
   // Host adapters set _RunicApplicationHostAdapter, which turns Bridge generation on
   // in every project that references them, directly or transitively.
@@ -473,6 +475,8 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           "@sveltejs/kit": "3.0.0",
           "@sveltejs/adapter-static": "4.0.0",
           "@sveltejs/vite-plugin-svelte": "7.3.1",
+          // The release of the compiler that builds the runic-views catalog (one pin, eng/workspace.test.mjs).
+          "@runic-artifex/vite-plugin-runic-translations": pinnedPackageVersion("Runic.Translations.Build"),
         },
       },
       null,
@@ -570,6 +574,7 @@ console.log('Packed npm consumers passed.');
 `,
   );
   run("node", ["consumer.mjs"], frontend);
+  verifyViewsTranslationsVite(frontend, env);
   writeFileSync(
     join(frontend, "consumer.ts"),
     archives
@@ -609,15 +614,35 @@ function isToolPackage(packageEntry) {
 
 const viewsTranslations = "Runic.Application.Views.Translations";
 
+// A version that Directory.Packages.props pins.
+function pinnedPackageVersion(id) {
+  const versions = readFileSync(resolve(root, "Directory.Packages.props"), "utf8");
+  return new RegExp(`<PackageVersion Include="${id.replaceAll(".", "\\.")}" Version="([^"]+)"`).exec(versions)?.[1]
+    ?? assert.fail(`Directory.Packages.props pins no ${id}`);
+}
+
+// The npm override path: a page's Vite build whose runic.json overrides runic-views messages and adds French, with
+// @runic-artifex/vite-plugin-runic-translations' dependencies: "auto", which regenerates the packed package's prebuilt
+// catalog modules from its packed sources: tests/fixtures/application/views-translations-vite. It catches a dist/catalog
+// that does not match the prebuilt modules, a prebuilt module that index.js imports but the regenerated catalog lacks,
+// and a runic.json the plugin rejects.
+export function verifyViewsTranslationsVite(frontend, env) {
+  const app = join(frontend, "views-translations-vite");
+  cpSync(resolve(root, "tests/fixtures/application/views-translations-vite"), app, { recursive: true });
+  // The plugin runs dotnet tool run runic-translations, the release that built the package.
+  mkdirSync(join(app, ".config"));
+  cpSync(resolve(root, ".config/dotnet-tools.json"), join(app, ".config/dotnet-tools.json"));
+  run("dotnet", ["tool", "restore"], app, env);
+  run("node", [join(frontend, "node_modules/vite/bin/vite.js"), "build"], app, env);
+  run("node", ["check.mjs"], app, env);
+}
+
 // An application with German and its own wording of single runic-views messages (runic.json "overrides"), built against
 // the packed catalog: tests/fixtures/application/views-translations-consumer.
 function verifyViewsTranslationsConsumer(directory, env) {
   const consumer = join(directory, "views-translations-consumer");
   cpSync(resolve(root, "tests/fixtures/application/views-translations-consumer"), consumer, { recursive: true });
-  const versions = readFileSync(resolve(root, "Directory.Packages.props"), "utf8");
-  const pinned = id => new RegExp(`<PackageVersion Include="${id.replaceAll(".", "\\.")}" Version="([^"]+)"`).exec(versions)?.[1]
-    ?? assert.fail(`Directory.Packages.props pins no ${id}`);
-  writeFileSync(join(consumer, "Consumer.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled></PropertyGroup><ItemGroup><PackageReference Include="${viewsTranslations}" Version="${packageVersion(workspace, viewsTranslations)}"/><PackageReference Include="Runic.Translations.Build" Version="${pinned("Runic.Translations.Build")}" PrivateAssets="all"/><PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${pinned("Microsoft.Extensions.DependencyInjection")}"/></ItemGroup></Project>`);
+  writeFileSync(join(consumer, "Consumer.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled></PropertyGroup><ItemGroup><PackageReference Include="${viewsTranslations}" Version="${packageVersion(workspace, viewsTranslations)}"/><PackageReference Include="Runic.Translations.Build" Version="${pinnedPackageVersion("Runic.Translations.Build")}" PrivateAssets="all"/><PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${pinnedPackageVersion("Microsoft.Extensions.DependencyInjection")}"/></ItemGroup></Project>`);
   run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], consumer, env);
 }
 

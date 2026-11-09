@@ -52,11 +52,14 @@
     <PackageVersion Include="RunicArtifex.ReactiveUI.Validation.Reactive" Version="9.0.0" />
     <!-- Runic.Application.Views.Translations, the optional en/de catalog of Runic's own text (D055.3), is the only
          shipped package that references Runic Translations; the core packages recognize TranslationReference by name.
-         Its public API exposes Runic.Translations types, so both are bounded to the minor it is built with (before 1.0, a
-         Translations minor may break; Runic.Translations.Build stamps the same range into the packed dependency).
-         Tests also use Runic.Translations for TranslationReference members, results and validation texts. -->
-    <PackageVersion Include="Runic.Translations" Version="[0.9.1, 0.10.0-0.0)" />
-    <PackageVersion Include="Runic.Translations.Hosting" Version="[0.9.1, 0.10.0-0.0)" />
+         Plain versions: packing it, Runic.Translations.Build stamps the Runic.Translations dependency to the minor it is
+         built with, [0.9.1, 0.10.0-0.0) (before 1.0 a Translations minor may break). That happens after NuGet's pack
+         checks, so no NU5104; a range written here would fail them. Hosting keeps an open range: a Hosting of the next
+         minor needs a Runic.Translations outside the stamped range, which NuGet reports (NU1608). eng/workspace.test.mjs checks that the three
+         versions and .config/dotnet-tools.json agree. Tests also use Runic.Translations for TranslationReference members,
+         results and validation texts. -->
+    <PackageVersion Include="Runic.Translations" Version="0.9.1" />
+    <PackageVersion Include="Runic.Translations.Hosting" Version="0.9.1" />
     <!-- A development dependency: it compiles the catalog and packs its sources; packing removes it from dependencies. -->
     <PackageVersion Include="Runic.Translations.Build" Version="0.9.1" />
     <PackageVersion Include="ReactiveUI.SourceGenerators" Version="4.2.0" />

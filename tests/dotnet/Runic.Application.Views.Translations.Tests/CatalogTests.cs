@@ -13,6 +13,11 @@ public sealed class CatalogTests
     [Test]
     public void TheCatalogShipsEnglishAndGerman()
     {
+        Require(RunicViewsTranslations.CatalogId == RunicViewsTextCatalog.CatalogId
+            && ReferenceEquals(RunicViewsTranslations.CatalogRegistration, RunicViewsTextCatalog.Registration), "The public catalog members differ.");
+        // The generated classes are internal: their shape is the Translations generator's, not Runic's public API.
+        Require(!typeof(RunicViewsText).IsPublic && !typeof(RunicViewsTextCatalog).IsPublic && !typeof(RunicViewsTextMessages).IsPublic,
+            "A generated catalog class is public.");
         Require(RunicViewsTextCatalog.CatalogId == "runic-views" && RunicViewsTextCatalog.DefaultLocale == "en",
             $"Catalog {RunicViewsTextCatalog.CatalogId}, default {RunicViewsTextCatalog.DefaultLocale}.");
         Require(RunicViewsTextCatalog.SupportedLocales.Order().SequenceEqual(["de", "en"]),
@@ -41,7 +46,8 @@ public sealed class CatalogTests
             Require(de is not null && (de != en || property.Name is nameof(DesktopPlatformTexts.AltKeyName)),
                 $"DesktopPlatformTexts.{property.Name} has no German text: {de}");
         }
-        Require(german.UntitledFileName == "Unbenannt" && german.ControlKeyName == "Strg" && german.ShiftKeyName == "Umschalt",
+        Require(german.UntitledFileName == "Unbenannt" && german.ControlKeyName == "Strg" && german.ShiftKeyName == "Umschalt"
+            && german.LoadingTitle == "Wird geladen…",
             $"German platform texts: {german}");
         // DesktopPlatformTexts accepts them.
         DesktopPlatformTexts.Current = german;
@@ -52,24 +58,26 @@ public sealed class CatalogTests
     [Test]
     public void TheMenuTitlesCoverEveryStandardMenu()
     {
-        var english = StandardMenuTitles(new RunicViewsText(Context("en")).Messages);
+        var english = StandardMenuTitles(RunicViewsTranslations.MenuTitles(Context("en")));
         Require(english == new DesktopStandardMenuTitles(), $"English menu titles differ from Runic's defaults: {english}");
-        var german = StandardMenuTitles(new RunicViewsText(Context("de")).Messages);
+        var german = StandardMenuTitles(RunicViewsTranslations.MenuTitles(Context("de")));
         foreach (var property in typeof(DesktopStandardMenuTitles).GetProperties(BindingFlags.Public | BindingFlags.Instance))
             Require(!Equals(property.GetValue(german), property.GetValue(english)), $"DesktopStandardMenuTitles.{property.Name} has no German title.");
         Require(german.Quit == "{0} beenden" && german.About == "Über {0}" && german.Edit == "Bearbeiten", $"German menu titles: {german}");
+        // RunicViewsMenuTitles names every DesktopStandardMenuTitles member, and nothing else.
+        var names = typeof(RunicViewsMenuTitles).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(property => property.Name).Order();
+        Require(names.SequenceEqual(typeof(DesktopStandardMenuTitles).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(property => property.Name).Order()),
+            $"RunicViewsMenuTitles: {string.Join(", ", names)}");
     }
 
-    // As in the README: {0} stays for the application's name, which Runic inserts.
-    internal static DesktopStandardMenuTitles StandardMenuTitles(RunicViewsTextMessages text) => new()
+    // As in the README: the members have the same names; {0} stays for the application's name, which Runic inserts.
+    internal static DesktopStandardMenuTitles StandardMenuTitles(RunicViewsMenuTitles titles) => new()
     {
-        About = text.menu_about(app: "{0}"), Hide = text.menu_hide(app: "{0}"), HideOthers = text.menu_hide_others,
-        ShowAll = text.menu_show_all, Quit = text.menu_quit(app: "{0}"), File = text.menu_file, Close = text.menu_close,
-        OpenRecent = text.menu_open_recent, ClearMenu = text.menu_clear_menu, Edit = text.menu_edit, Undo = text.menu_undo,
-        Redo = text.menu_redo, Cut = text.menu_cut, Copy = text.menu_copy, Paste = text.menu_paste,
-        SelectAll = text.menu_select_all, View = text.menu_view, ActualSize = text.menu_actual_size, ZoomIn = text.menu_zoom_in,
-        ZoomOut = text.menu_zoom_out, Window = text.menu_window, Minimize = text.menu_minimize, Zoom = text.menu_zoom,
-        BringAllToFront = text.menu_bring_all_to_front,
+        About = titles.About, Hide = titles.Hide, HideOthers = titles.HideOthers, ShowAll = titles.ShowAll, Quit = titles.Quit,
+        File = titles.File, Close = titles.Close, OpenRecent = titles.OpenRecent, ClearMenu = titles.ClearMenu, Edit = titles.Edit,
+        Undo = titles.Undo, Redo = titles.Redo, Cut = titles.Cut, Copy = titles.Copy, Paste = titles.Paste, SelectAll = titles.SelectAll,
+        View = titles.View, ActualSize = titles.ActualSize, ZoomIn = titles.ZoomIn, ZoomOut = titles.ZoomOut, Window = titles.Window,
+        Minimize = titles.Minimize, Zoom = titles.Zoom, BringAllToFront = titles.BringAllToFront,
     };
 
     [Test]
@@ -97,10 +105,11 @@ public sealed class CatalogTests
     {
         RequireThrows<ArgumentNullException>(() => RunicViewsTranslations.PlatformTexts(null!));
         RequireThrows<ArgumentNullException>(() => RunicViewsTranslations.FollowPlatformTexts(null!));
+        RequireThrows<ArgumentNullException>(() => RunicViewsTranslations.MenuTitles(null!));
     }
 
     internal static TranslationContext Context(string locale) =>
-        TranslationContext.CreateBuilder().Add(RunicViewsTextCatalog.Registration).Build(locale);
+        TranslationContext.CreateBuilder().Add(RunicViewsTranslations.CatalogRegistration).Build(locale);
 
     internal static void Require(bool condition, string message)
     {

@@ -4,6 +4,6 @@
   "catalog": "consumer",
   "code": { "namespace": "ViewsTranslationsConsumer", "className": "ConsumerText" },
   "baseLocale": "en",
-  "locales": ["en", "de"],
+  "locales": ["en", "de", "fr"],
   "overrides": [{ "catalog": "runic-views", "from": ["Runic.Application.Views.Translations", "@runic-artifex/views-translations"] }]
 }

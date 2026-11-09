@@ -368,7 +368,8 @@
         "packages/dotnet/Runic.Application.Views.Translations",
         "packages/web/views-translations",
         "tests/dotnet/Runic.Application.Views.Translations.Tests",
-        "tests/fixtures/application/views-translations-consumer"
+        "tests/fixtures/application/views-translations-consumer",
+        "tests/fixtures/application/views-translations-vite"
       ]
     },
     "vite": {

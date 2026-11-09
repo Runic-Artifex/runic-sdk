@@ -15,7 +15,7 @@ public sealed class LoadingSurfaceTests
         // Warm WebView2 starts took about 0.4 s and cold ones 2 to 6 s on runners (sdk#784).
         Assert.InRange(WindowsLoadingSurface.GracePeriod, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
         Assert.Equal(WindowsLoadingSurface.GracePeriod, WindowsWebView2Host.LoadingSurfaceDelay);
-        Assert.Equal("Loading…", WindowsLoadingSurface.Title);
+        Assert.Equal("Loading…", new DesktopPlatformTexts().LoadingTitle);
     }
 
     [Test]

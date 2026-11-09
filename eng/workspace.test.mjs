@@ -274,16 +274,32 @@ test("exposed third-party packages are bounded to their tested major and referen
       assert.equal(Number(match[2]), Number(match[1]) + 1, `${name} is bounded to its major: ${range}`);
     }
   }
-  // Runic Translations releases on its own; before its 1.0 a minor may break, so the catalog package is bounded to the
-  // minor it is built with, as Runic.Translations.Build bounds a library: [0.N.x, 0.N+1.0-0.0).
-  const catalog = readFileSync(resolve(root, "packages/dotnet/Runic.Application.Views.Translations/Runic.Application.Views.Translations.csproj"), "utf8");
-  for (const name of ["Runic.Translations", "Runic.Translations.Hosting"]) {
-    assert.match(catalog, new RegExp(`<PackageReference Include="${name.replaceAll(".", "\\.")}" />`), `Runic.Application.Views.Translations references ${name}`);
-    const match = /^\[0\.(\d+)\.\d+, 0\.(\d+)\.0-0\.0\)$/.exec(versionOf(name) ?? "");
-    assert.ok(match && Number(match[2]) === Number(match[1]) + 1, `${name} is bounded to its minor: ${versionOf(name)}`);
-  }
   const effect = json("packages/web/views-effect/package.json").peerDependencies.effect;
   assert.match(effect, /^\^\d+\./, "views-effect bounds effect to its major");
+});
+
+// Runic Translations releases on its own; before its 1.0 a minor may break. The catalog package pins plain versions, and
+// packing it Runic.Translations.Build stamps the Runic.Translations dependency to its minor, [0.N.x, 0.N+1.0-0.0), after
+// NuGet's pack checks (verify-packages checks the packed range). A range written in Directory.Packages.props would fail
+// those checks (NU5104), and suppressing them would hide a real prerelease dependency. One compiler builds the catalog:
+// Runic.Translations.Build for the NuGet package, the dotnet-runic-translations tool for the npm package and for Vite
+// builds of the npm package's overrides, so every Runic Translations version here is the same release.
+test("Runic Translations is one release, stamped to its minor when packed", () => {
+  const props = readFileSync(resolve(root, "Directory.Packages.props"), "utf8");
+  const versionOf = name => props.match(new RegExp(`<PackageVersion Include="${name.replaceAll(".", "\\.")}" Version="([^"]+)"`))?.[1];
+  const project = "packages/dotnet/Runic.Application.Views.Translations/Runic.Application.Views.Translations.csproj";
+  const catalog = readFileSync(resolve(root, project), "utf8");
+  const build = versionOf("Runic.Translations.Build");
+  assert.match(build ?? "", /^\d+\.\d+\.\d+$/, `Runic.Translations.Build is a plain version: ${build}`);
+  for (const name of ["Runic.Translations", "Runic.Translations.Hosting"]) {
+    assert.match(catalog, new RegExp(`<PackageReference Include="${name.replaceAll(".", "\\.")}" />`), `${project} references ${name}`);
+    assert.equal(versionOf(name), build, `${name} is the release of Runic.Translations.Build`);
+  }
+  assert.match(catalog, /<PackageReference Include="Runic\.Translations\.Build" PrivateAssets="all" \/>/, `${project} packs with Runic.Translations.Build`);
+  assert.doesNotMatch(catalog, /NU5104|RunicTranslationsStampRuntimeRange/, `${project} keeps NuGet's prerelease check and the stamped range`);
+  const tool = json(".config/dotnet-tools.json").tools["dotnet-runic-translations"];
+  assert.equal(tool?.version, build, ".config/dotnet-tools.json pins the dotnet-runic-translations of Runic.Translations.Build");
+  assert.equal(tool?.rollForward, false, "dotnet-runic-translations does not roll forward");
 });
 
 // The DynamicData fork pin (dynamicData.forkRevision, which the DynamicData consumer workflow builds from source) and
