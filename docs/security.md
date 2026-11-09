@@ -232,6 +232,44 @@ Add the plugin as the
 [`dotnet runic dev` documentation](../tools/dotnet-runic/README.md) describes
 for your frontend.
 
+## Hosted application windows
+
+A Runic Desktop application can show another Runic Desktop application's windows: the **host** starts the
+**guest**, which serves its pages without a window of its own, and opens a native window of its own for each of the
+guest's Windows. The two talk over the [Runic host protocol](../specs/desktop/host-protocol.md), which is
+experimental (`RUNICDESK103`). What Runic enforces:
+
+- **Both sides opt in.** A guest can be hosted only through a code path of its own, reached by a parameter the
+  application defines; Runic has no well-known flag or environment variable for it. A host starts a guest only by
+  an explicit call.
+- **The channel is the parent's alone.** The host passes a random nonce on the guest's standard input, and the guest
+  passes a random key on its standard output: neither appears on a command line or in the environment. The guest's
+  channel listens on loopback only, accepts one connection that proves both, and then stops listening. It refuses
+  every upgrade that carries an `Origin` header, so no web page can reach it, and every `Host` that is not its
+  loopback address. The host trusts the channel, and every answer to its `hello`, only after the guest proved that it
+  knows the nonce, so a process that took the port of a guest that exited cannot pose as it. Connections that have not
+  proved themselves get a few seconds and a small first message, and a new one replaces the oldest, so another local
+  user cannot keep the host out by holding connections open; the host retries a connection that was closed.
+- **Pages stay apart.** The guest's page binds to its own surface with a one-time launch code, as an installed
+  browser does; the host injects no credential into it, does not admit its origin as one of its own and gives each
+  guest session a data store of its own, not persisted, so the guest never receives the host's cookies.
+- **The guest gets its own windows only.** The channel names windows by ids of the guest's own; it cannot list the
+  host's windows, run script in the host's pages or navigate a hosted window away from its own origin. The host's
+  policy (`IRunicHostedWindowPolicy`) can refuse or limit every request, and the protocol bounds message sizes, waiting
+  requests, menus and dialogs.
+- **No elevated guests, no orphans.** A guest refuses hosted mode when it runs elevated, or when it cannot show that
+  it runs as the same user as its parent: it compares real and effective user ids on Linux and macOS and the token's
+  user on Windows, and refuses when it cannot read its parent's. It exits when its host goes away and never shows a
+  window of its own; the host ends the guest's process tree when it stops.
+
+What it means for the guest application: **any process of the same user** that knows the guest's parameter can host
+it, see its pages and answer its dialogs, as such a process can already read its memory
+([what Runic does not protect against](#what-runic-protects-and-what-it-does-not)). `RunicGuestOptions.AcceptHost`
+filters hosts by name and version for the product's sake; it is not a security boundary. A host can forge what its
+dialogs return and decide its windows' close, so a guest acts only on the files a dialog returned, as with its own
+dialogs. A host should treat a guest like any other program it starts: start only the executables it chose, and keep
+the policy's limits for guests it does not ship itself.
+
 ## CS-WebUI windows
 
 `Runic.Application.Views.CsWebUi` adds no admission of its own. Who can connect

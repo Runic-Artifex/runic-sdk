@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "handshake.no-hello-in-time.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "handshake",
+  "roles": ["guest"],
+  "description": "When no authenticated hello arrives within the start timeout, the guest stops listening and exits with handshake-timeout.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"advance":"startTimeout"},
+    {"expect":{"startFailure":"handshake-timeout"}},
+    {"expect":{"exited":true}}
+  ]
+}

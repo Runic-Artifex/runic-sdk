@@ -1,0 +1,23 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "windows.unknown-window.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "windows",
+  "roles": ["guest"],
+  "description": "A request that names a window the channel never opened is rejected with invalid-request.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "close-1": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"send":{"id":{"$id":"close-1"},"kind":"close-request","window":"never-opened"},"connection":"c1"},
+    {"receive":{"id":{"$id":"close-1"},"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"connection":"c1"}
+  ]
+}

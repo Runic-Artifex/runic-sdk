@@ -4,7 +4,8 @@ Normative schemas, protocol contracts, and cross-language conformance corpora li
 here, grouped by the component that owns them. Managed and web tests consume these
 inputs. Translation CLI packages embed their schemas directly from this tree.
 
-- [Desktop](desktop): native transport contract and conformance vectors.
+- [Desktop](desktop): native transport contract and conformance vectors, and the [host protocol](desktop/host-protocol.md)
+  between a host application and the guest application whose windows it shows.
 - [Assets](assets): archive format decisions.
 - [Application](application): the Runic Application Views protocol between a producer (the backend of a window) and
   a client (the page), its value types and canonical form, and its [conformance corpus](application/conformance).

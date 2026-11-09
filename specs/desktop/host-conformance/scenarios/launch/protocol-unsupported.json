@@ -1,0 +1,16 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "launch.protocol-unsupported.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "launch",
+  "roles": ["guest"],
+  "description": "An offer without a version the guest implements is refused with protocol-unsupported and the versions the guest implements; the guest opens no listener and exits with a failure.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[2],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"refused":{"code":"protocol-unsupported","message":{"$any":"string"},"protocols":[1]}}},
+    {"expect":{"startFailure":"protocol-unsupported"}},
+    {"expect":{"exited":true}}
+  ]
+}

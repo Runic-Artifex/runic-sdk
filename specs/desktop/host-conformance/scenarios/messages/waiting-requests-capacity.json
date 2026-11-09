@@ -1,0 +1,37 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "messages.waiting-requests-capacity.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "messages",
+  "roles": ["guest"],
+  "description": "A request beyond the waiting-requests limit is rejected with capacity; a second close-request for a window whose decision is pending waits for the same decision.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "close-a": {"kind":"request"},
+    "close-b": {"kind":"request"},
+    "close-c": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000,"waitingRequests":2},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Guarded"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Guarded"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":true,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"guest":{"action":"holdGuard"}},
+    {"send":{"id":{"$id":"close-a"},"kind":"close-request","window":{"$id":"w1"}},"connection":"c1"},
+    {"send":{"id":{"$id":"close-b"},"kind":"close-request","window":{"$id":"w1"}},"connection":"c1","note":"Waits for the same decision."},
+    {"send":{"id":{"$id":"close-c"},"kind":"close-request","window":{"$id":"w1"}},"connection":"c1","note":"The third waiting request."},
+    {"receive":{"id":{"$id":"close-c"},"ok":false,"error":{"kind":"rejected","reason":"capacity","message":{"$any":"string"}}},"connection":"c1"},
+    {"guest":{"action":"answerGuard","allow":false}},
+    {"receiveAll":[{"id":{"$id":"close-a"},"ok":true,"allow":false},{"id":{"$id":"close-b"},"ok":true,"allow":false}],"connection":"c1"}
+  ]
+}
