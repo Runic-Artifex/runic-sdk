@@ -1,16 +1,23 @@
 // translation-text/1 against the real Runic Translations ESM: the state the .NET producer writes
 // (fixtures/translations/producer-state.json, TranslatedTextTests.TheProducersReferencesAreThePageFixture) is decoded by
 // the generated client's decoders and resolved with the generated `resolveTextReference` of a small catalog
-// (fixtures/translations/catalog, generated with runic-translations 0.8.0 into fixtures/translations/generated).
+// (fixtures/translations/catalog, generated with runic-translations 0.9.1 into fixtures/translations/generated), and
+// with `createReferenceResolver` beside a component library's catalog (fixtures/translations/library).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { configureTranslatedText, resolveText } from "../dist/index.js";
+import { configureTranslatedText, resolveText, syncDocumentLocale, textDirection } from "../dist/index.js";
 import { decodeBridgeValidation } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { m } from "./fixtures/translations/generated/notes.esm-v5/messages.js";
 import { configureLocaleResolver, createLocaleSource } from "./fixtures/translations/generated/notes.esm-v5/runtime.js";
 import { resolveTextReference } from "./fixtures/translations/generated/notes.esm-v5/transport.js";
+import * as notesTransport from "./fixtures/translations/generated/notes.esm-v5/transport.js";
+import { m as grid } from "./fixtures/translations/generated/acme.grid.esm-v5/messages.js";
+import {
+  configureSharedLocaleResolver, localeDirection, removeBidiIsolates,
+} from "./fixtures/translations/generated/acme.grid.esm-v5/runtime.js";
+import * as gridTransport from "./fixtures/translations/generated/acme.grid.esm-v5/transport.js";
 
 const state = JSON.parse(readFileSync(new URL("./fixtures/translations/producer-state.json", import.meta.url), "utf8")) as Record<string, unknown>;
 
@@ -53,5 +60,63 @@ test("the producer's references decode on the page and resolve with the generate
   } finally {
     stop();
     stopResolver();
+  }
+});
+
+test("references of an application's and a library's catalog resolve by catalog, and the Arabic catalog isolates its placeholders", () => {
+  const saved = bridgeWire.textReference(state["saved"]);
+  const selection = bridgeWire.textReference(state["selection"]);
+  // The application's language, which every catalog on the page follows through the shared locale.
+  let current = "en";
+  const listeners = new Set<(locale: string) => void>();
+  const stopShared = configureSharedLocaleResolver(() => current);
+  const resolveReference = notesTransport.createReferenceResolver([
+    { transport: notesTransport, messages: m },
+    { transport: gridTransport, messages: grid },
+  ]);
+  const stop = configureTranslatedText({
+    resolve: (reference, language) => resolveReference(reference, { locale: language }).text,
+    getLocale: () => current,
+    setLocale(next) { current = next; for (const listener of [...listeners]) listener(next); },
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    direction: localeDirection,
+  });
+  const root = { attributes: new Map<string, string>(),
+    getAttribute(name: string) { return this.attributes.get(name) ?? null; },
+    setAttribute(name: string, value: string) { this.attributes.set(name, value); } };
+  const stopDocument = syncDocumentLocale({ element: root as unknown as Element });
+  try {
+    assert.equal(resolveText(saved), "Saved Atlas.");
+    assert.equal(resolveText(selection), "3 rows selected in Orders");
+    // A reference of a catalog the page does not list shows its fallback text.
+    assert.equal(resolveText({ ...selection, catalog: "acme.charts" }), "3 rows selected in Orders");
+    // The library's messages follow the shared locale without a resolver of their own.
+    assert.equal(grid.rows_selected({ count: 2, table: "Kunden" }), "2 rows selected in Kunden");
+
+    current = "de";
+    for (const listener of [...listeners]) listener(current);
+    assert.equal(resolveText(saved), "Atlas gespeichert.");
+    assert.equal(resolveText(selection), "3 Zeilen in Orders ausgewählt");
+    assert.equal(grid.rows_selected({ count: 2, table: "Kunden" }), "2 Zeilen in Kunden ausgewählt");
+    assert.equal(root.getAttribute("lang"), "de");
+    assert.equal(root.getAttribute("dir"), "ltr");
+
+    // Arabic: the library declares it, the application's catalog does not and shows English. A catalog that declares a
+    // right-to-left locale isolates placeholders (FSI/LRI/RLI … PDI) in its formatted text since Runic Translations 0.9.
+    current = "ar";
+    for (const listener of [...listeners]) listener(current);
+    const arabic = resolveText(selection);
+    // RLI 3 PDI for the number, FSI Orders PDI for the string.
+    assert.equal(arabic, "تم تحديد \u20673\u2069 صفوف في \u2068Orders\u2069");
+    assert.equal(removeBidiIsolates(arabic), "تم تحديد 3 صفوف في Orders");
+    // The application's English fallback for an Arabic request is isolated too.
+    assert.equal(resolveText(saved), "Saved \u2068Atlas\u2069.");
+    assert.equal(textDirection(), "rtl");
+    assert.equal(root.getAttribute("lang"), "ar");
+    assert.equal(root.getAttribute("dir"), "rtl");
+  } finally {
+    stopDocument();
+    stop();
+    stopShared();
   }
 });

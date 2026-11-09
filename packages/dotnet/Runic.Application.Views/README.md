@@ -3026,41 +3026,64 @@ tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
 Text that a ViewModel produces, such as a status line or a validation
 message, can follow the window's language without a call per string. The
 ViewModel produces a text reference of
-[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/transport.md)
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/transport.md)
 (a message key, typed arguments and a fallback text) instead of a sentence, and
 the page formats it with its Translations runtime (the `translation-text/1`
 feature). When the language changes, the page formats the references it has
 again.
 
+The guide [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md)
+walks through one catalog for the page and C#, the application's language,
+native text and tests, step by step. This section is the reference. It needs
+Runic Translations 0.9.1 or later.
+
+**One catalog.** Keep the catalog with the frontend, where the Translations
+Vite plugin compiles it for the page, and name the same `runic.json` in the
+.NET project, which then gets the generated C# API for every message
+([Strings outside the Views](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-desktop.md#strings-outside-the-views)):
+
+```xml
+<PackageReference Include="Runic.Translations" Version="0.9.1" />
+<PackageReference Include="Runic.Translations.Build" Version="0.9.1" PrivateAssets="all" />
+<RunicTranslationProject Include="Frontend/translations/runic.json" />
+```
+
 **Values.** A member, DTO member, command input or result of type
 `Runic.Translations.TranslationReference` crosses the Bridge as the reference's
 transport JSON, and is a `TextReference` in TypeScript. The Views packages do
 not depend on Runic Translations: the generator recognizes the type by name, and
-the generated code, compiled into your application, calls its serializer. Add
-the `Runic.Translations` package and the generated catalog to the .NET project
-as the [Translations guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)
-shows. `RunicTextReference` holds a reference's JSON where Views code needs one:
+the generated code, compiled into your application, calls
+`TranslationReference.Parse` and
+`TranslationReferenceJsonContext.Default.TranslationReference`, which Runic
+Translations keeps stable. The generated catalog's `References` class creates a
+reference for each plain-text message, with its contract fingerprint, typed
+arguments and the base locale's text as the fallback.
+`RunicTextReference` holds a reference's JSON where Views code needs one:
+
+```rmf2
+ready = Ready
+saved = Saved {$title}.
+```
 
 ```csharp
 public partial class EditorViewModel : ObservableObject
 {
     [ObservableProperty]
-    public partial TranslationReference Status { get; set; } = NotesText.Ready();
+    public partial TranslationReference Status { get; set; } = NotesText.References.ready();
 
     [RelayCommand]
     private async Task SaveAsync()
     {
         await _store.SaveAsync(Title);
-        Status = NotesText.Saved(Title);
+        Status = NotesText.References.saved(title: Title);
     }
 }
-
-// NotesText.Saved: a reference with a fallback for a page that cannot translate it.
-public static TranslationReference Saved(string title) => new(NotesTextCatalog.CatalogId,
-    NotesTextCatalog.ContractFingerprint, "saved",
-    new Dictionary<string, TranslationReferenceArgument> { ["title"] = new(TextArgumentType.String, title) },
-    $"Saved {title}.");
 ```
+
+Messages with markup have no factory, as a reference resolves to plain text.
+`"code": { "referenceFallbackText": false }` in `runic.json` leaves the
+fallback text out; the page then shows the key when it cannot translate a
+reference.
 
 **Validation messages.** Give a validation message a reference, and the page
 shows the error's `text` in the window's language, with the message as the
@@ -3082,9 +3105,10 @@ fallback. `{name}Errors` keeps the messages.
   {
       TextFor = (attribute, member) => attribute switch
       {
-          RequiredAttribute => Text(NotesText.Required(member.DisplayName)),
-          MaxLengthAttribute maximum => Text(NotesText.TooLong(member.DisplayName, maximum.Length)),
-          RangeAttribute range => Text(NotesText.OutOfRange(member.DisplayName, $"{range.Minimum}", $"{range.Maximum}")),
+          RequiredAttribute => Text(NotesText.References.validation_required(field: member.DisplayName)),
+          MaxLengthAttribute maximum => Text(NotesText.References.validation_too_long(field: member.DisplayName, max: maximum.Length)),
+          RangeAttribute range => Text(NotesText.References.validation_out_of_range(
+              field: member.DisplayName, min: $"{range.Minimum}", max: $"{range.Maximum}")),
           _ => null,
       },
   });
@@ -3154,7 +3178,7 @@ fallback. `{name}Errors` keeps the messages.
   }
 
   this.ValidationRule(vm => vm.Title, this.WhenAnyValue(vm => vm.Title).Select(title => title.Length <= 80
-      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.TitleTooLong(80)))));
+      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.References.title_too_long(max: 80)))));
   ```
 
 - Any other entry of `GetErrors` can implement `IRunicTextReferenceSource`.
@@ -3203,11 +3227,15 @@ Views packages do not reference Runic Translations: `Follow` takes any
 // After the services are built, before the first Window opens. A handler runs on the
 // SynchronizationContext it subscribed on: in WPF's startup, the UI thread. A Runic
 // Desktop body has none, so it runs on the switch's thread; SetMenuBar is thread-safe.
+TranslationContext translations = await TranslationContext.CreateBuilder()
+    .Add(NotesTextCatalog.Registration)              // and the catalogs of your libraries
+    .BuildAsync();
 var locale = services.GetRequiredService<IRunicApplicationLocale>();
-locale.Follow(translations.SetLocaleAsync);        // TranslationContext (0.9) or ITranslationManager
+locale.Follow(translations.SetLocaleAsync);        // every catalog of the context switches first
 locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
 // The user's choice, else the best match for the operating system's languages.
-await locale.SetLocaleAsync(settings.Language ?? Negotiate(DesktopLanguages.Preferred, ["en", "de"]));
+await locale.SetLocaleAsync(settings.Language ?? LocaleNegotiation.Negotiate(
+    DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
 
 // A language switch, from any ViewModel or menu command:
 [RelayCommand]
@@ -3246,10 +3274,12 @@ showed. `WindowContentSession.Locale = null` on a Window that
 `DesktopLanguages.Preferred` (Runic.Platform) lists the user's languages as the
 operating system does, most preferred first: Windows' display languages,
 macOS' preferred languages, and on Linux `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`
-and `LANG` as gettext reads them. Negotiate it against the locales your catalog
-ships, with the generated catalog's `ResolveLocale` from Runic Translations 0.9,
-or by comparing each tag and then its language. `null` calls no follower and
-leaves the pages of following Windows in the language they show.
+and `LANG` as gettext reads them. Negotiate it against
+`TranslationContext.SupportedLocales`, the locales every catalog of the context
+shows, so no window mixes languages: `LocaleNegotiation.Negotiate` matches with
+CLDR likely subtags and parent locales (`de-CH` to `de`, `zh-TW` to `zh-Hant`).
+`null` calls no follower and leaves the pages of following Windows in the
+language they show.
 
 **One language per window.** A window has one locale, which all of its pages
 show, also when several browsers share a CS-WebUI window. A page cannot choose a
@@ -3295,13 +3325,14 @@ Runic Translations and its Vite plugin:
 ```ts
 import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
 import { useTextLocale } from "@runic-artifex/svelte";   // or @runic-artifex/vue
-import { m } from "virtual:runic-translations/app/messages";
-import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
+import { m } from "virtual:runic-translations/app";
+import { configureSharedLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
 import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 const locale = createLocaleSource({ initialLocale: navigator.language });
 const textLocale = useTextLocale();
-configureLocaleResolver(() => textLocale.current ?? locale.getLocale());   // Vue: textLocale.value
+// Every catalog on the page follows the window's language, library catalogs included.
+configureSharedLocaleResolver(() => textLocale.current ?? locale.getRequestedLocale());   // Vue: textLocale.value
 configureTranslatedText({
   ...locale,
   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
@@ -3310,16 +3341,61 @@ configureTranslatedText({
 syncDocumentLocale();   // <html lang dir> follow the text locale
 ```
 
+`configureSharedLocaleResolver` (Runic Translations 0.9) sets the locale of
+every generated catalog on the page that has no resolver of its own, so the
+text of component libraries switches with the page's. A page with only its own
+catalog can call that catalog's `configureLocaleResolver` instead.
+
 The locale source is plain state, so a template that calls `m.*()` renders
 again on a switch only when it reads a reactive text locale:
 
 | Framework | Re-render the page's own messages |
 | --- | --- |
-| Svelte | `configureLocaleResolver(() => useTextLocale().current ?? locale.getLocale())`: one handle for the page, read wherever `m.*()` runs |
-| Vue | `configureLocaleResolver(() => useTextLocale().value ?? locale.getLocale())`: one ref for the page |
-| Angular | `configureLocaleResolver(() => textLocaleSignal()() ?? locale.getLocale())`: one signal for the page, also for `OnPush` templates |
-| React | `configureLocaleResolver(locale.getLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
+| Svelte | `configureSharedLocaleResolver(() => useTextLocale().current ?? locale.getRequestedLocale())`: one handle for the page, read wherever `m.*()` runs |
+| Vue | `configureSharedLocaleResolver(() => useTextLocale().value ?? locale.getRequestedLocale())`: one ref for the page |
+| Angular | `configureSharedLocaleResolver(() => textLocaleSignal()() ?? locale.getRequestedLocale())`: one signal for the page, also for `OnPush` templates |
+| React | `configureSharedLocaleResolver(locale.getRequestedLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
 | Effect | `textLocales()`, a stream of the locale; render the messages again on each |
+
+**References of several catalogs.** `configureTranslatedText` takes one
+`resolve`, and a later call replaces an earlier one. When ViewModels send
+references of a library's catalog too, such as a component library's
+validation text, resolve them by catalog with the generated transport's
+`createReferenceResolver`. Each reference is formatted by its own catalog; one
+of a catalog the page does not list shows its fallback text, and one written
+against another release of a catalog is checked key by key:
+
+```ts
+import * as appTransport from "virtual:runic-translations/app/transport";
+import * as gridTransport from "virtual:runic-translations/acme.grid/transport";
+import { m as grid } from "virtual:runic-translations/acme.grid";
+
+const resolveReference = appTransport.createReferenceResolver([
+  { transport: appTransport, messages: m },
+  { transport: gridTransport, messages: grid },
+]);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveReference(reference, { locale: language }).text,
+  direction: localeDirection,
+});
+```
+
+With the Vite plugin's `dependencies: "auto"`, the page's copy of a library
+catalog is regenerated with the application's `overrides`, so a reference
+resolves to the same text as in C#
+([Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/libraries.md)).
+
+**Right-to-left text.** Since Runic Translations 0.9, a catalog that declares a
+right-to-left locale, such as `ar` or `he`, isolates the placeholders of its
+formatted text with invisible characters (FSI, LRI or RLI before a placeholder,
+PDI after it), also in the English fallback for an Arabic request. Pages show
+them correctly; compare such text in tests after the runtime's
+`removeBidiIsolates` (.NET: `BidiText.RemoveIsolates`). `runtime.bidiIsolation`
+in `runic.json` turns it on or off. The runtime's `localeDirection`, passed as
+`direction`, gives `syncDocumentLocale` and `textDirection()` the direction of
+each locale; see
+[Bidirectional text](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/bidi.md).
 
 `syncDocumentLocale()` sets `lang` and `dir` on `<html>` (direction from the
 runtime's `direction`, such as `localeDirection`, else the locale's script) and
@@ -3375,9 +3451,18 @@ or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `host.Content.Locale` shows what the ViewModel set.
 `await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
 locale, the registered one or, for a host built with a constructor, one of the
-host's own, which the window follows. In page tests, the mock bridge's
-`setWindowLocale("de")` pushes a locale as the application does, so a test can
-check that a template's `m.*()` text renders again.
+host's own, which the window follows. To check the text a user sees, resolve a
+reference with the application's `TranslationContext` in the locale:
+
+```csharp
+TranslationReference status = host.Root.Snapshot().Read(vm => vm.Status);
+await translations.SetLocaleAsync("de");   // de.rmf2: saved = {$title} gespeichert.
+Assert.Equal("Atlas gespeichert.", translations.Resolve(status).Text);
+```
+
+In page tests, the mock bridge's `setWindowLocale("de")` pushes a locale as the
+application does, so a test can check that a template's `m.*()` text renders
+again.
 
 ## Appearance
 

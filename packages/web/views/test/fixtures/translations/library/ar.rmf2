@@ -1,0 +1,1 @@
+rows_selected = تم تحديد {$count :integer} صفوف في {$table}
