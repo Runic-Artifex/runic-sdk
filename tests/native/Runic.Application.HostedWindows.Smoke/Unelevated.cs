@@ -4,51 +4,127 @@ using System.Runtime.Versioning;
 using System.Text;
 
 // GitHub's Windows runners run every step elevated, and an elevated guest refuses hosted mode (host-protocol.md, Same
-// user). The smoke, and the host cases it runs with --run-unelevated, therefore run with the runner user's token as a
-// standard user has it: SaferComputeTokenFromLevel(SAFER_LEVELID_NORMALUSER) keeps the user's SID, makes Administrators
-// deny-only and drops the privileges, and the token is lowered to medium integrity. The child shares this process's
-// standard handles and its exit code is this process's.
+// user). The smoke, and the host cases it runs with --run-unelevated, therefore run as the runner's user without the
+// elevation: with the token of an unelevated process of the same user in the same session, such as explorer.exe, which
+// UAC's filtered token gives (CreateProcessWithTokenW). A restricted token of the elevated one would not do: it keeps
+// the token's elevation (TokenIsElevated). The child shares this process's standard handles, gets its environment with
+// RUNIC_TEST_UNELEVATED=1 and its current directory, and its exit code is this process's.
 [SupportedOSPlatform("windows")]
 internal static partial class Unelevated
 {
+    internal const string Marker = "RUNIC_TEST_UNELEVATED";
+
     internal static int Run(IReadOnlyList<string> command)
     {
         if (command.Count == 0) throw new ArgumentException("No command to run unelevated.", nameof(command));
+        if (Environment.GetEnvironmentVariable(Marker) == "1")
+            throw new InvalidOperationException("This process was started unelevated and still runs elevated.");
         Console.Out.Flush();
         Console.Error.Flush();
-        if (!SaferCreateLevel(2 /* SAFER_SCOPEID_USER */, 0x20000 /* SAFER_LEVELID_NORMALUSER */, 1 /* SAFER_LEVEL_OPEN */, out var level, 0))
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), "SaferCreateLevel failed.");
-        nint token = 0;
+        var (token, source) = UnelevatedToken();
         try
         {
-            if (!SaferComputeTokenFromLevel(level, 0, out token, 0, 0))
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "SaferComputeTokenFromLevel failed.");
-            LowerToMediumIntegrity(token);
+            Console.WriteLine($"Running unelevated with the token of {source}: {string.Join(' ', command)}");
             var code = Start(token, command);
             Console.WriteLine($"The unelevated command exited with {code}.");
             return code;
         }
+        finally { CloseHandle(token); }
+    }
+
+    // A primary token of an unelevated, medium-integrity process of this user in this session.
+    private static unsafe (nint Token, string Source) UnelevatedToken()
+    {
+        var self = OwnUser();
+        var session = (uint)System.Diagnostics.Process.GetCurrentProcess().SessionId;
+        var candidates = System.Diagnostics.Process.GetProcesses()
+            .OrderBy(static process => process.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ToArray();
+        try
+        {
+            foreach (var candidate in candidates)
+            {
+                if (candidate.SessionId != session || candidate.Id == Environment.ProcessId) continue;
+                var process = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, (uint)candidate.Id);
+                if (process == 0) continue;
+                try
+                {
+                    if (!OpenProcessToken(process, 0x0002 | 0x0008 | 0x0001 /* DUPLICATE, QUERY, ASSIGN_PRIMARY */, out var token)) continue;
+                    try
+                    {
+                        if (Integer(token, 20 /* TokenElevation */) != 0) continue;
+                        if (IntegrityLevel(token) is not (>= 0x2000 and < 0x3000)) continue;
+                        if (!User(token).AsSpan().SequenceEqual(self)) continue;
+                        if (!DuplicateTokenEx(token, 0x02000000 /* MAXIMUM_ALLOWED */, 0, 2 /* SecurityImpersonation */, 1 /* TokenPrimary */, out var primary))
+                            continue;
+                        return (primary, $"{candidate.ProcessName} ({candidate.Id})");
+                    }
+                    finally { CloseHandle(token); }
+                }
+                finally { CloseHandle(process); }
+            }
+        }
         finally
         {
-            if (token != 0) CloseHandle(token);
-            SaferCloseLevel(level);
+            foreach (var candidate in candidates) candidate.Dispose();
+        }
+        throw new InvalidOperationException("No unelevated process of this user runs in this session, so nothing can be started unelevated.");
+    }
+
+    private static byte[] OwnUser()
+    {
+        if (!OpenProcessToken(GetCurrentProcess(), 0x0008, out var token))
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "This process's token could not be read.");
+        try { return User(token); }
+        finally { CloseHandle(token); }
+    }
+
+    private static unsafe byte[] Information(nint token, int informationClass)
+    {
+        _ = GetTokenInformation(token, informationClass, null, 0, out var size);
+        if (size == 0) return [];
+        var buffer = new byte[size];
+        fixed (byte* data = buffer)
+            return GetTokenInformation(token, informationClass, data, size, out _) ? buffer : [];
+    }
+
+    private static int Integer(nint token, int informationClass) =>
+        Information(token, informationClass) is { Length: >= 4 } data ? BitConverter.ToInt32(data) : -1;
+
+    // TOKEN_USER and TOKEN_MANDATORY_LABEL both start with SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes; }.
+    private static unsafe byte[] User(nint token)
+    {
+        var data = Information(token, 1 /* TokenUser */);
+        if (data.Length < sizeof(nint)) return [];
+        fixed (byte* pointer = data)
+        {
+            var sid = *(nint*)pointer;
+            return new ReadOnlySpan<byte>((void*)sid, GetLengthSid(sid)).ToArray();
         }
     }
 
-    private static unsafe void LowerToMediumIntegrity(nint token)
+    // The RID of the token's integrity SID: 0x2000 medium, 0x3000 high.
+    private static unsafe int IntegrityLevel(nint token)
     {
-        if (!ConvertStringSidToSidW("S-1-16-8192", out var sid))
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), "The medium integrity SID could not be created.");
-        try
+        var data = Information(token, 25 /* TokenIntegrityLevel */);
+        if (data.Length < sizeof(nint)) return -1;
+        fixed (byte* pointer = data)
         {
-            // TOKEN_MANDATORY_LABEL: SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes = SE_GROUP_INTEGRITY; }.
-            var label = stackalloc nint[2];
-            label[0] = sid;
-            label[1] = 0x20;
-            if (!SetTokenInformation(token, 25 /* TokenIntegrityLevel */, label, (uint)(2 * sizeof(nint)) + (uint)GetLengthSid(sid)))
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The token's integrity level could not be lowered.");
+            var sid = *(nint*)pointer;
+            var count = *GetSidSubAuthorityCount(sid);
+            return count == 0 ? -1 : (int)*GetSidSubAuthority(sid, (uint)(count - 1));
         }
-        finally { LocalFree(sid); }
+    }
+
+    private static string EnvironmentBlock()
+    {
+        var variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Collections.DictionaryEntry variable in Environment.GetEnvironmentVariables())
+            if (variable.Key is string name && variable.Value is string value) variables[name] = value;
+        variables[Marker] = "1";
+        var block = new StringBuilder();
+        foreach (var (name, value) in variables) block.Append(name).Append('=').Append(value).Append('\0');
+        return block.Append('\0').ToString();
     }
 
     private static unsafe int Start(nint token, IReadOnlyList<string> command)
@@ -74,10 +150,15 @@ internal static partial class Unelevated
                 StandardError = standard[2],
             };
             var line = (CommandLine(command) + "\0").ToCharArray();
+            var environment = EnvironmentBlock();
+            var directory = Environment.CurrentDirectory;
             ProcessInformation information;
             fixed (char* commandLine = line)
+            fixed (char* environmentBlock = environment)
+            fixed (char* currentDirectory = directory)
             {
-                if (!CreateProcessAsUserW(token, null, commandLine, 0, 0, true, 0, null, null, &startup, out information))
+                // CREATE_UNICODE_ENVIRONMENT. The secondary logon service duplicates the standard handles.
+                if (!CreateProcessWithTokenW(token, 0, null, commandLine, 0x400, environmentBlock, currentDirectory, &startup, out information))
                     throw new Win32Exception(Marshal.GetLastPInvokeError(), $"'{command[0]}' could not be started unelevated.");
             }
             CloseHandle(information.Thread);
@@ -157,37 +238,34 @@ internal static partial class Unelevated
         public int ThreadId;
     }
 
-    [LibraryImport("advapi32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SaferCreateLevel(uint scope, uint level, uint openFlags, out nint handle, nint reserved);
+    [LibraryImport("kernel32", SetLastError = true)]
+    private static partial nint OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
 
     [LibraryImport("advapi32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SaferComputeTokenFromLevel(nint level, nint inputToken, out nint outputToken, uint flags, nint reserved);
+    private static partial bool OpenProcessToken(nint process, uint access, out nint token);
 
-    [LibraryImport("advapi32")]
+    [LibraryImport("advapi32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SaferCloseLevel(nint level);
+    private static unsafe partial bool GetTokenInformation(nint token, int informationClass, void* information, uint length, out uint returned);
 
-    [LibraryImport("advapi32", EntryPoint = "ConvertStringSidToSidW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [LibraryImport("advapi32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool ConvertStringSidToSidW(string text, out nint sid);
+    private static partial bool DuplicateTokenEx(nint token, uint access, nint attributes, int impersonationLevel, int tokenType, out nint newToken);
 
     [LibraryImport("advapi32")]
     private static partial int GetLengthSid(nint sid);
 
-    [LibraryImport("advapi32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool SetTokenInformation(nint token, int informationClass, void* information, uint length);
+    [LibraryImport("advapi32")]
+    private static unsafe partial byte* GetSidSubAuthorityCount(nint sid);
+
+    [LibraryImport("advapi32")]
+    private static unsafe partial uint* GetSidSubAuthority(nint sid, uint index);
 
     [LibraryImport("advapi32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool CreateProcessAsUserW(nint token, char* applicationName, char* commandLine, nint processAttributes,
-        nint threadAttributes, [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, uint creationFlags, void* environment,
-        char* currentDirectory, StartupInformation* startupInfo, out ProcessInformation processInformation);
-
-    [LibraryImport("kernel32")]
-    private static partial nint LocalFree(nint memory);
+    private static unsafe partial bool CreateProcessWithTokenW(nint token, uint logonFlags, char* applicationName, char* commandLine,
+        uint creationFlags, void* environment, char* currentDirectory, StartupInformation* startupInfo, out ProcessInformation processInformation);
 
     [LibraryImport("kernel32")]
     private static partial nint GetCurrentProcess();
