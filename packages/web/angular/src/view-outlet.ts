@@ -3,16 +3,20 @@ import {
   type InputSignal,
   type TemplateRef, type Type,
 } from "@angular/core";
-import { regionEntries, type PageReference, type RegionCollection, type RegionEntry } from "@runic-artifex/views";
+import { regionEntries, type PageReference, type RegionCollection, type RegionEntry, type ViewRegistryPage } from "@runic-artifex/views";
 import { missingViewMessage, reportMissingView } from "@runic-artifex/views/bindings";
 
 /**
  * A build-known map checks each generated reference against its component input. A nullable
- * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
+ * reference, such as a region slot's `State["main"]`, checks its non-null kinds. A component whose `page` input is a
+ * shared page reference (`[RunicSharedClient]`), such as `ResultPagePageReference`, registers for each of its kinds.
  */
 export type ViewRegistry<R extends PageReference | null | undefined> = {
-  readonly [K in NonNullable<R>["kind"]]: Type<{ readonly page: InputSignal<Extract<NonNullable<R>, { readonly kind: K }>> }>;
+  readonly [K in NonNullable<R>["kind"]]: PageComponent<ViewRegistryPage<R, K>>;
 };
+
+// One component type per page type the entry accepts.
+type PageComponent<P> = P extends unknown ? Type<{ readonly page: InputSignal<P> }> : never;
 
 /** The context of a `missing` template: the reference without a component, as `$implicit` (`let-page`) and `content`. */
 export interface ViewOutletMissingContext<R extends PageReference = PageReference> {

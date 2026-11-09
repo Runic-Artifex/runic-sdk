@@ -19,7 +19,8 @@ internal sealed class GeneratedClientHarness
             "--noEmit", "--strict", "--noPropertyAccessFromIndexSignature", "--noImplicitReturns",
             "--noFallthroughCasesInSwitch", "--target", "ES2022", "--module", "ESNext",
             "--moduleResolution", "bundler", "--skipLibCheck", .. Directory.GetFiles(generated, "*.ts"),
-            Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "GeneratedTypesCheck.ts")], root)
+            Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "GeneratedTypesCheck.ts"),
+            Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "SharedClientTypesCheck.ts")], root)
             .ConfigureAwait(false);
         await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
             "GeneratedReconnectClientHarness.ts"), generated], root).ConfigureAwait(false);

@@ -35,6 +35,17 @@ internal static class RunicMembers
     // The generated root route: the lower-camel public name.
     internal static string RouteOf(Type model) => LowerFirst(PublicName(model));
 
+    // The public concrete classes of the type's assembly and another one that derive from it or implement it.
+    internal static IEnumerable<Type> Implementations(Type type, Assembly other) =>
+        new[] { type.Assembly, other }.Distinct().SelectMany(Exported)
+            .Where(candidate => candidate is { IsClass: true, IsAbstract: false } && type.IsAssignableFrom(candidate));
+
+    private static Type[] Exported(Assembly assembly)
+    {
+        try { return assembly.GetExportedTypes(); }
+        catch (Exception error) when (error is ReflectionTypeLoadException or FileNotFoundException or FileLoadException or TypeLoadException) { return []; }
+    }
+
     internal static string LowerFirst(string value) => value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value[1..];
 
     // `[RunicCollection]` fields of a ViewModel and the wire name of each row key.

@@ -1730,6 +1730,122 @@ class with only read-only or computed properties is fine as state or a result. A
 page sends needs a public constructor whose parameters map to its properties,
 or a public parameterless constructor with public setters (`RUNICBRIDGE003`).
 
+## Shared clients
+
+Since 0.17, ViewModels that publish the same members can share one generated
+client, so one web component renders all of them, for example read-only result
+pages with a table and a button each. Declare the members on an interface,
+mark it `[RunicSharedClient]`, and implement it in each ViewModel:
+
+```csharp
+/// <summary>A read-only result page with one action per element.</summary>
+[RunicSharedClient]
+public interface IResultPage
+{
+    /// <summary>The table the page shows.</summary>
+    ResultTable Page { get; }
+
+    /// <summary>Runs the action of the element with the id.</summary>
+    IAsyncRelayCommand<string> RunActionCommand { get; }
+}
+
+public sealed partial class OrdersViewModel : ObservableObject, IResultPage
+{
+    public ResultTable Page => _orders.ToTable();
+
+    [RelayCommand]
+    private Task RunActionAsync(string elementId) => _orders.RunAsync(elementId);
+}
+```
+
+Besides each ViewModel's own module, the generator writes `resultPage.ts`, named
+after the interface without its leading `I` (or `[RunicSharedClient(Name = "…")]`):
+
+```ts
+export interface ResultPageState {
+  readonly page: ResultTable;
+  readonly isRunActionExecuting: boolean;
+}
+export interface ResultPageClient extends ViewClient<ResultPageState> {
+  runAction(elementId: string): Promise<ResultPageState>;
+  canRunAction(elementId: string): Promise<boolean>;
+  startRunAction(elementId: string, options?: BridgeOperationStartOptions): Promise<ResultPageRunActionOperation>;
+  recoverRunAction(requestId: string): Promise<ResultPageRunActionOperation>;
+}
+/** The page reference of any View whose ViewModel implements `IResultPage`. */
+export interface ResultPagePageReference {
+  readonly kind: "invoices" | "orders" | "quotes";
+  connect(): Promise<ResultPageClient>;
+}
+export const resultPageKinds: readonly ResultPagePageReference["kind"][] = ["invoices", "orders", "quotes"];
+```
+
+Every implementing ViewModel's `{Name}PageReference` extends
+`ResultPagePageReference`, and its client has the shared client's members, so a
+component written against the shared types takes any of them without a cast.
+The frameworks' `ViewRegistry` types accept it for each kind of the shared
+reference, and `registryEntries` from `@runic-artifex/views` registers it for
+all of them:
+
+```tsx
+import { registryEntries } from "@runic-artifex/views";
+import { useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
+import { resultPageKinds, type ResultPagePageReference } from "./generated/resultPage.js";
+
+function ResultPage({ page }: { readonly page: ResultPagePageReference }) {
+  const { state, client } = useView(page); // a ResultPageClient
+  return <ResultTableView table={state?.page} onAction={id => void client?.runAction(id)} />;
+}
+
+const pages = { ...registryEntries(resultPageKinds, ResultPage), settings: SettingsPage }
+  satisfies ViewRegistry<MainState["main"]>;
+```
+
+A content slot or `NavigationRegion` typed as the interface presents any of the
+implementing ViewModels, and `RunicWindowTestHost`'s `View<IResultPage>(vm => vm.Main)`
+drives whichever one it presents. A web test mocks one implementing ViewModel
+with its own typed mock, such as `mockOrders`, and passes its reference to the
+shared component.
+
+**What the shared client contains.** The interface's properties, including those
+of the interfaces it extends, in declaration order: state, a setter for each
+property the interface declares settable, commands with their availability,
+execution state and operations, query collections and region collections. A
+member's validation errors (`{name}Errors`) are shared when every implementing
+ViewModel has them. Methods and events of the interface, the ViewModels' other
+members, checked writes, field descriptors, interactions and view requests are
+not. The shared client changes only the TypeScript types: the wire contract and
+the contract fingerprint stay the same, and a ViewModel that implements no
+`[RunicSharedClient]` interface generates exactly what it did before.
+
+**Matching.** Every ViewModel with a View that implements the interface must
+publish each of its properties alike, or the build fails with
+[`RUNICBRIDGE036`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge036):
+
+- through a public property that the ViewModel class declares, which the Bridge
+  publishes: not an explicit implementation, an inherited property or a
+  `[RunicIgnore]` one;
+- with the interface's nullability, including type arguments;
+- with the same generated TypeScript as the other implementing ViewModels: the
+  same wire name, value type, command input, key and declared failure. Only
+  parameter names may differ; the most common one names the shared parameter.
+  The error names the ViewModel that differs from the others and shows both
+  declarations.
+
+A ViewModel may be settable where the interface is get-only; the shared client
+then has no setter. C# already requires each property and its type; the
+generator checks what C# does not see, such as `[JsonPropertyName]`,
+`[RunicCommandInput]` or `[RunicFailure]` on one ViewModel only. Renaming a
+member in the interface renames it in the shared client, so a component that
+still reads the old name no longer compiles.
+
+**Several interfaces.** A ViewModel may implement several `[RunicSharedClient]`
+interfaces. Each gets its own module, the ViewModel's page reference extends
+all of their references, and a registry accepts any of their components for its
+kind. An interface that no ViewModel with a View implements generates nothing.
+A generic interface, or a name that collides with a ViewModel's module, is an
+error.
+
 ## Generator diagnostics
 
 The generator reports every ViewModel's first problem in one build. An error

@@ -44,6 +44,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type ViewRegistryPage,
   type FieldError,
   type TextReference,
   regionEntries,
@@ -241,11 +242,15 @@ export function useViewState<TClient extends ViewClient, TSelected>(
 
 /**
  * A build-known map checks each generated reference kind against its component's `page` prop. A nullable
- * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
+ * reference, such as a region slot's `State["main"]`, checks its non-null kinds. A component whose `page` is a shared
+ * page reference (`[RunicSharedClient]`), such as `ResultPagePageReference`, registers for each of its kinds.
  */
 export type ViewRegistry<R extends PageReference | null | undefined> = {
-  readonly [K in NonNullable<R>["kind"]]: ComponentType<{ readonly page: Extract<NonNullable<R>, { readonly kind: K }> }>;
+  readonly [K in NonNullable<R>["kind"]]: PageComponent<ViewRegistryPage<R, K>>;
 };
+
+// One component type per page type the entry accepts.
+type PageComponent<P> = P extends unknown ? ComponentType<{ readonly page: P }> : never;
 
 export interface ViewOutletProps<R extends PageReference> {
   /** The presented reference, such as `state.main`. */

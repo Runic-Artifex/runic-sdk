@@ -268,7 +268,11 @@ the reference as its `page` prop:
 ```
 
 The outlet is generic over the reference union, so the registry must have a
-component for every kind with a matching `page` prop. A different reference
+component for every kind with a matching `page` prop. A component whose `page`
+is a shared page reference, such as `ResultPagePageReference` of a .NET
+[`[RunicSharedClient]`](../../dotnet/Runic.Application.Views/README.md#shared-clients)
+interface, registers for each of its kinds:
+`{ ...registryEntries(resultPageKinds, ResultPage), settings: Settings }`. A different reference
 remounts the component, and the optional `fallback` snippet renders while
 `content` is empty. A kind without a component renders an English
 `<p role="alert">` in a development build (`process.env.NODE_ENV`, which Vite

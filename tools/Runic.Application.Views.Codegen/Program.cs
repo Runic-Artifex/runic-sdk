@@ -160,6 +160,10 @@ try
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Aot, unsupported.Reason, unsupported.Model);
         }
 
+        // [RunicSharedClient] interfaces that the ViewModels implement (#839).
+        var sharedClients = SharedClients.Discover(models);
+        if (Diagnostics.HasErrors) return;
+
         Directory.CreateDirectory(positional[2]);
         Directory.CreateDirectory(positional[3]);
         // View partials and ViewModel bridges use distinct suffixes and full
@@ -170,6 +174,7 @@ try
             .ToArray();
         var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
+            .Concat(sharedClients.Select(shared => (Path: $"{shared.Module}.ts", Owner: shared.Interface.FullName!)))
             .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types")).ToArray();
         foreach (var group in csharpOutputs.Concat(typescriptOutputs)
             .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
@@ -211,6 +216,8 @@ try
                 Diagnostics.Report(error, entry.Model);
             }
         }
+        if (Diagnostics.HasErrors) return;
+        SharedClients.Generate(positional[3], sharedClients, viewTypes, PageKind, ContractFor);
         if (Diagnostics.HasErrors) return;
         TypeScriptModules.WriteAll(positional[3]);
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
@@ -662,6 +669,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}: state properties {string.Join(" and ", duplicateWireName.Select(property => property.Name))} share the generated wire name '{duplicateWireName.Key}'.",
             duplicateWireName.Last());
+    // [RunicSharedClient] (#839): the client parts of each member, for the shared clients of the interfaces the
+    // ViewModel implements. The declaration names the ViewModel's own types with SharedClients.Owner.
+    var sharedClients = SharedClients.For(model);
+    void Shared(PropertyInfo owner, string key, string section, string declaration, string? documentation = null,
+        string? comparable = null, bool optional = false, IReadOnlyList<(string Module, string Type)>? imports = null, string? unsupported = null)
+    {
+        if (sharedClients.Count > 0)
+            SharedClients.Record(model, owner, new SharedClientPart(key, section, declaration, comparable ?? declaration, documentation,
+                optional, imports, unsupported));
+    }
+    foreach (var plan in interactions)
+        Shared(plan.Property, "unsupported", "", "", unsupported: "an interaction, which a shared client does not include. Remove it from the interface.");
+    foreach (var plan in requests)
+        Shared(plan.Property, "unsupported", "", "", unsupported: "a view request, which a shared client does not include. Remove it from the interface.");
     var nullability = new NullabilityInfoContext();
     if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0 && requests.Length == 0)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
@@ -1469,14 +1490,27 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         XmlDocumentation.Append(ts, "  ", stateDocumentation);
         ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};");
         if (hasErrors) ts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];");
+        var referencedPages = contentProperties.GetValueOrDefault(property) ?? regionCollections.GetValueOrDefault(property)
+            ?? contentCollections.GetValueOrDefault(property) ?? [];
+        Shared(property, "state", "state", $"readonly {TsPropertyName(WireName(property))}: {propertyType};", stateDocumentation,
+            imports: [.. referencedPages.Select(page => (LowerFirst(page.Name),
+                $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))]);
+        if (hasErrors)
+            Shared(property, "state-errors", "state", $"readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];", optional: true);
     }
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
         if (!plan.HasArgument)
+        {
             ts.AppendLine($"  readonly can{command.Name[..^"Command".Length]}: boolean;");
+            Shared(command, "can-state", "state", $"readonly can{command.Name[..^"Command".Length]}: boolean;");
+        }
         if (plan.HasExecutionState)
+        {
             ts.AppendLine($"  readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
+            Shared(command, "executing-state", "state", $"readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
+        }
     }
     ts.AppendLine("}");
     ts.AppendLine();
@@ -1505,18 +1539,27 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             XmlDocumentation.Append(ts, "    ", XmlDocumentation.Summary(property));
             ts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;");
+            Shared(property, "query", "queries", $"readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;",
+                XmlDocumentation.Summary(property));
         }
         ts.AppendLine("  };");
     }
+    const string UploadDocumentation = "Uploads a file to the window's .NET host over HTTP (blobs/1) and resolves with the reference that a command's\n`RunicUpload` input takes. `options.onProgress` reports the bytes sent; `options.signal` aborts the upload.";
+    const string UploadDeclaration = "upload(content: Blob, options?: import(\"@runic-artifex/views\").UploadOptions): Promise<import(\"@runic-artifex/views\").BlobRef>;";
     if (usesUploads)
     {
-        XmlDocumentation.Append(ts, "  ", "Uploads a file to the window's .NET host over HTTP (blobs/1) and resolves with the reference that a command's\n`RunicUpload` input takes. `options.onProgress` reports the bytes sent; `options.signal` aborts the upload.");
-        ts.AppendLine("  upload(content: Blob, options?: import(\"@runic-artifex/views\").UploadOptions): Promise<import(\"@runic-artifex/views\").BlobRef>;");
+        XmlDocumentation.Append(ts, "  ", UploadDocumentation);
+        ts.AppendLine("  " + UploadDeclaration);
     }
+    foreach (var command in commands.Where(command => commandPlans[command].InputGraph?.Nodes.Any(node => node.Kind == BridgeWireKind.Upload) == true))
+        Shared(command, "upload", "client", UploadDeclaration, UploadDocumentation);
+    foreach (var property in valueProperties.Where(entry => PageSettable(entry.Key) && entry.Value.Nodes.Any(node => node.Kind == BridgeWireKind.Upload)).Select(entry => entry.Key))
+        Shared(property, "upload", "client", UploadDeclaration, UploadDocumentation);
     foreach (var property in properties.Where(PageSettable))
     {
         XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
+        Shared(property, "setter", "client", $"set{property.Name}(value: {TsPropertyType(property)}): Promise<{SharedClients.Owner}State>;");
     }
     foreach (var property in checkedProperties)
     {
@@ -1547,18 +1590,31 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         XmlDocumentation.Append(ts, "  ", unresolved is null ? documentation
             : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved);
         var reply = plan.FailureGraph is { } declaredFailure
-            ? $"{Ref("BridgeOutcome")}<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
-        ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;");
-        if (plan.Key is not null)
-            XmlDocumentation.Append(ts, "  ", $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.");
-        if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
+            ? $"{Ref("BridgeOutcome")}<{SharedClients.Owner}State, {declaredFailure.TypeScriptType()}>" : $"{SharedClients.Owner}State";
+        var commandDeclaration = $"{LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;";
+        ts.AppendLine("  " + commandDeclaration.Replace(SharedClients.Owner, shortName, StringComparison.Ordinal));
+        var comparableInput = plan.HasArgument ? $"{SharedClients.Parameter}: {CommandInputType(plan)}" : "";
+        Shared(command, "command", "client", commandDeclaration, unresolved is null ? documentation
+            : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved,
+            comparable: $"{LowerFirst(command.Name[..^"Command".Length])}({comparableInput}): Promise<{reply}>;");
+        var availabilityDocumentation = plan.Key is null ? null
+            : $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.";
+        XmlDocumentation.Append(ts, "  ", availabilityDocumentation);
+        if (plan.HasArgument)
+        {
+            ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
+            Shared(command, "can-method", "client", $"can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;", availabilityDocumentation,
+                comparable: $"can{command.Name[..^"Command".Length]}({comparableInput}): Promise<boolean>;");
+        }
     }
     foreach (var (property, method, action) in regionMethods)
     {
-        XmlDocumentation.Append(ts, "  ", action == "select"
+        var regionDocumentation = action == "select"
             ? $"Selects the region of `{WireName(property)}` with `key`. The departure guards of the region left decide; resolves with the request's outcome once the state includes it (`region-collections/1`)."
-            : $"Closes the region of `{WireName(property)}` with `key` and removes it. Its departure guards decide; resolves with the request's outcome once the state includes it (`region-collections/1`).");
+            : $"Closes the region of `{WireName(property)}` with `key` and removes it. Its departure guards decide; resolves with the request's outcome once the state includes it (`region-collections/1`).";
+        XmlDocumentation.Append(ts, "  ", regionDocumentation);
         ts.AppendLine($"  {method}(key: string): Promise<{Ref("RegionOutcome")}>;");
+        Shared(property, "region-" + action, "client", $"{method}(key: string): Promise<{Ref("RegionOutcome")}>;", regionDocumentation);
     }
     foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
     {
@@ -1574,6 +1630,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;");
         ts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
         ts.AppendLine($"  recover{operationName}(requestId: string): Promise<{shortName}{operationName}Operation>;");
+        var operation = operationPlans.Single(candidate => candidate.Name == operationName);
+        Shared(command, "operation", "operations",
+            $"export interface {SharedClients.Owner}{operationName}Operation extends {Ref(operation.IsStream ? "BridgeStreamOperation" : "BridgeOperation")}<{operation.TypeArguments}> {{}}");
+        Shared(command, "start", "client", $"start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{SharedClients.Owner}{operationName}Operation>;",
+            $"Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;\n"
+            + "the default is a random id. A start with a request id that .NET already admitted returns that operation."
+            + (plan.Key is null ? "" : $"\nA new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`."),
+            comparable: $"start{operationName}({(plan.HasArgument ? $"{SharedClients.Parameter}: {CommandInputType(plan)}, " : "")}options?: {Ref("BridgeOperationStartOptions")}): Promise<{SharedClients.Owner}{operationName}Operation>;");
+        Shared(command, "recover", "client", $"recover{operationName}(requestId: string): Promise<{SharedClients.Owner}{operationName}Operation>;",
+            $"Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded.");
     }
     ts.AppendLine("}");
     ts.AppendLine();
@@ -1586,9 +1652,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var functionName = char.ToUpperInvariant(ownKind[0]) + ownKind[1..];
         var referenceType = $"{functionName}PageReference";
         var cacheName = Ref($"page{functionName}References");
-        ts.AppendLine($"export interface {referenceType} {{");
+        // A ViewModel with shared clients (#839): its reference is each shared reference, which the extends clause makes
+        // the compiler check, and names them for the frameworks' ViewRegistry types.
+        ts.AppendLine(sharedClients.Count == 0 ? $"export interface {referenceType} {{"
+            : $"export interface {referenceType} extends {string.Join(", ", sharedClients.Select(shared => shared.ReferenceType))} {{");
         ts.AppendLine($"  readonly kind: \"{ownKind}\";");
         ts.AppendLine($"  connect(): Promise<{clientName}>;");
+        if (sharedClients.Count > 0)
+        {
+            ts.AppendLine("  /** Type-only: the shared page references (`[RunicSharedClient]`) whose components a `ViewRegistry` accepts for this kind. */");
+            ts.AppendLine($"  readonly [{Ref("sharedPageReferences")}]?: {string.Join(" | ", sharedClients.Select(shared => shared.ReferenceType))};");
+        }
         ts.AppendLine("}");
         ts.AppendLine($"const {cacheName} = {Ref("viewReferences")}<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => {connectAt}(`content${{id}}`) }}));");
         ts.AppendLine($"export function page{functionName}(id: string): {referenceType} {{ return {cacheName}(id); }}");
@@ -1777,6 +1851,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasValidation) publicImports.Add("type " + Import("BridgeValidationState"));
     publicImports.Add("type " + Import("BridgeConnectOptions"));
     publicImports.Add("type " + Import("ViewClient"));
+    if (sharedClients.Count > 0) publicImports.Add("type " + Import("sharedPageReferences"));
     if (needsCheckedWriter || hasFieldPaths) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt"), "type " + Import("BridgeField")]);
     if (rowPaths.Values.Any(leaves => leaves.Count > 0)) publicImports.Add("type " + Import("BridgeRowFields"));
     if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type " + Import("BridgeOutcome"));
@@ -1812,6 +1887,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (body.Contains("bridgeWire.", StringComparison.Ordinal))
         ts.AppendLine("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
     ts.Append(contentImports);
+    foreach (var shared in sharedClients)
+        ts.AppendLine($"import type {{ {shared.ReferenceType} }} from \"./{shared.Module}.js\";");
     ts.AppendLine(TypeScriptModules.NamedTypeImports);
     ts.AppendLine();
     ts.Append(body);
@@ -2502,6 +2579,8 @@ static class BridgeDiagnosticCodes
     internal const string PresentationScoped = "RUNICBRIDGE034";
     /// <summary>A ViewRequest or ViewQuestion member is not a get-only property.</summary>
     internal const string ViewMember = "RUNICBRIDGE035";
+    /// <summary>A ViewModel does not match a [RunicSharedClient] interface it implements, or the declaration is invalid.</summary>
+    internal const string SharedClient = "RUNICBRIDGE036";
     /// <summary>A [RunicRowEditor] method matches no keyed collection, or several, or has an unsupported signature.</summary>
     internal const string RowEditor = "RUNICBRIDGE050";
     /// <summary>A keyed collection has two [RunicRowEditor] methods.</summary>
@@ -2559,6 +2638,7 @@ static class BridgeDiagnosticCodes
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
         (ViewMember, "error", "A ViewRequest or ViewQuestion member is not a get-only property"),
+        (SharedClient, "error", "A ViewModel does not publish a member of a [RunicSharedClient] interface alike, or the interface cannot have a shared client"),
         (RowEditor, "error", "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"),
         (RowEditors, "error", "A keyed collection has more than one [RunicRowEditor] method"),
         (RowCopy, "error", "The rows of a [RunicRowEditor] collection cannot be copied with one cell changed"),
