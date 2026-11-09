@@ -7,8 +7,10 @@ namespace Runic.Platform;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Runic ships no translations: take the texts from the application's own, for example its Runic Translations catalog,
-/// and set <see cref="Current"/> again after a language switch, as for <c>DesktopHost.SetMenuBar</c>. Dialogs and pages
+/// Take the texts from the application's own translations, for example its Runic Translations catalog, and set
+/// <see cref="Current"/> again after a language switch, as for <c>DesktopHost.SetMenuBar</c>. The optional
+/// <c>Runic.Application.Views.Translations</c> package has them in English and German and keeps them in the application's
+/// locale. Dialogs and pages
 /// that open later use the new texts; open ones keep theirs.
 /// </para>
 /// <para>

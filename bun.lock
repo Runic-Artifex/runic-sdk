@@ -137,6 +137,19 @@
         "react",
       ],
     },
+    "packages/web/views-translations": {
+      "name": "@runic-artifex/views-translations",
+      "version": "0.16.0",
+      "devDependencies": {
+        "@runic-artifex/views": "workspace:*",
+        "happy-dom": "21.0.4",
+        "typescript": "6.0.3",
+        "vitest": "5.0.3",
+      },
+      "peerDependencies": {
+        "@runic-artifex/views": "0.16.0",
+      },
+    },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
       "version": "0.16.0",
@@ -351,6 +364,8 @@
     "@runic-artifex/views": ["@runic-artifex/views@workspace:packages/web/views"],
 
     "@runic-artifex/views-effect": ["@runic-artifex/views-effect@workspace:packages/web/views-effect"],
+
+    "@runic-artifex/views-translations": ["@runic-artifex/views-translations@workspace:packages/web/views-translations"],
 
     "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@workspace:packages/web/vite-plugin-runic"],
 

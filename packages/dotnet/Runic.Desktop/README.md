@@ -1790,8 +1790,10 @@ completes AppKit's empty default menu instead of adding a second one:
 - Window: Minimize (Command and M), Zoom and Bring All to Front.
 
 The titles are English unless `DesktopHostOptions.StandardMenuTitles` supplies
-them. Runic ships no translations: take them from the application's own, such
-as its Runic Translations catalog, for the user's language when the host starts.
+them. Take them from the application's own translations, such as its Runic
+Translations catalog, for the user's language when the host starts, or from the
+optional [Runic.Application.Views.Translations](../Runic.Application.Views.Translations/README.md#standard-macos-menus)
+package, which has them in English and German.
 `DesktopHost.SetStandardMenuTitles(titles)` replaces them while the application
 runs, for example after a language switch, together with `SetMenuBar`; `null`
 returns to English.

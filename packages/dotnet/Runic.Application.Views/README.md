@@ -3159,6 +3159,15 @@ fallback. `{name}Errors` keeps the messages.
 
 - Any other entry of `GetErrors` can implement `IRunicTextReferenceSource`.
 
+**Runic's own text in German.** The optional
+[Runic.Application.Views.Translations](../Runic.Application.Views.Translations/README.md)
+package (with `@runic-artifex/views-translations` on the page) ships English and
+German text for the built-in validation attributes, field errors,
+`DesktopPlatformTexts` and the standard macOS menus as a Runic Translations
+library catalog, `runic-views`. `services.AddRunicViewsTranslations()` sets
+`TextFor` and keeps the platform texts in the application's locale; an
+application overrides single messages in its `runic.json`.
+
 **The window's language.** The application owns the window's locale: take
 `IRunicWindowLocale` in the ViewModel's constructor and set `Locale`, for
 example from the application's settings, before the window opens, and again

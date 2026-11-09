@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Views.Translations</PackageId>
+    <Description>Optional English and German text for Runic's own messages (validation, field errors, dialog titles, error pages, standard menus), as a Runic Translations library catalog that follows the application's locale.</Description>
+    <PackageTags>runic-artifex;application;i18n;localization;translations;dotnet;nativeaot</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Packs runic/runic-views/ (runic.json, sources, contract.json) and buildTransitive/Runic.Application.Views.Translations.props,
+         so an application overrides single messages in its runic.json:
+         "overrides": [{ "catalog": "runic-views", "from": ["Runic.Application.Views.Translations", "@runic-artifex/views-translations"] }]. -->
+    <RunicTranslationsPackCatalog>true</RunicTranslationsPackCatalog>
+    <!-- Runic Translations bounds a library's dependency below the next minor's prereleases, [0.9.1, 0.10.0-0.0), which
+         nuget.org accepts; NuGet still calls the -0.0 bound a prerelease dependency of a stable package (NU5104). -->
+    <NoWarn>$(NoWarn);NU5104</NoWarn>
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <RunicPackageFirstReleaseVersion>0.17.0</RunicPackageFirstReleaseVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Runic.Translations" />
+    <PackageReference Include="Runic.Translations.Hosting" />
+    <PackageReference Include="Runic.Translations.Build" PrivateAssets="all" />
+    <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

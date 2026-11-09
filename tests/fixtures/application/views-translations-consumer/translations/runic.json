@@ -1,0 +1,9 @@
+{
+  "$schema": "https://runic-artifex.eu/schemas/translations/project-v1.schema.json",
+  "schemaVersion": 1,
+  "catalog": "consumer",
+  "code": { "namespace": "ViewsTranslationsConsumer", "className": "ConsumerText" },
+  "baseLocale": "en",
+  "locales": ["en", "de"],
+  "overrides": [{ "catalog": "runic-views", "from": ["Runic.Application.Views.Translations", "@runic-artifex/views-translations"] }]
+}

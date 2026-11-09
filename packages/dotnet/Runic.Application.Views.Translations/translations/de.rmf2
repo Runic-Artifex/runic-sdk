@@ -1,0 +1,103 @@
+validation {
+  required = {$field} ist erforderlich.
+  max_length =
+    .input {$max :integer}
+    {{{$field} darf höchstens {$max} Zeichen haben.}}
+  min_length =
+    .input {$min :integer}
+    {{{$field} muss mindestens {$min} Zeichen haben.}}
+  length_between =
+    .input {$min :integer}
+    .input {$max :integer}
+    {{{$field} muss {$min} bis {$max} Zeichen haben.}}
+  range_integer =
+    .input {$min :integer}
+    .input {$max :integer}
+    {{{$field} muss zwischen {$min} und {$max} liegen.}}
+  range_number =
+    .input {$min :number}
+    .input {$max :number}
+    {{{$field} muss zwischen {$min} und {$max} liegen.}}
+  range = {$field} muss zwischen {$min} und {$max} liegen.
+  email = {$field} ist keine gültige E-Mail-Adresse.
+  phone = {$field} ist keine gültige Telefonnummer.
+  url = {$field} ist keine gültige Webadresse (http, https oder ftp).
+  credit_card = {$field} ist keine gültige Kreditkartennummer.
+  pattern = {$field} hat nicht das erwartete Format.
+  compare = {$field} und {$other} stimmen nicht überein.
+  file_extensions = {$field} muss eine dieser Dateiendungen haben: {$extensions}.
+  base64 = {$field} ist kein gültiger Base64-Text.
+  allowed_values = {$field} hat keinen der zulässigen Werte.
+  denied_values = {$field} hat einen Wert, der nicht zulässig ist.
+  enum = {$field} hat keinen der verfügbaren Werte.
+}
+field {
+  required {
+    number = Geben Sie eine Zahl ein.
+    whole_number = Geben Sie eine ganze Zahl ein.
+    date = Geben Sie ein Datum ein.
+    time = Geben Sie eine Uhrzeit ein.
+    date_time = Geben Sie ein Datum mit Uhrzeit ein.
+  }
+  not_a_number = {$text} ist keine Zahl.
+  not_a_whole_number = {$text} ist keine ganze Zahl.
+  too_many_fraction_digits =
+    .input {$scale :integer}
+    .match $scale
+    one {{{$text} hat mehr als {$scale} Nachkommastelle.}}
+    * {{{$text} hat mehr als {$scale} Nachkommastellen.}}
+  out_of_range = {$text} ist zu groß.
+  not_a_boolean = {$text} ist weder wahr noch falsch.
+  not_a_choice = {$text} ist keine der Möglichkeiten {$choices}.
+  not_a_date = {$text} ist kein Datum.
+  not_a_date_in = {$text} ist kein Datum ({$patterns}).
+  not_a_time = {$text} ist keine Uhrzeit.
+  not_a_time_in = {$text} ist keine Uhrzeit ({$patterns}).
+  not_a_date_time = {$text} ist kein Datum mit Uhrzeit ({$patterns}).
+  offset_out_of_range = {$text} hat eine Zeitverschiebung über ±14:00.
+  no_text_form = Dieses Feld lässt sich nicht als Text eingeben.
+}
+platform {
+  open_file_title = Datei öffnen
+  open_files_title = Dateien öffnen
+  open_directory_title = Ordner öffnen
+  open_directories_title = Ordner öffnen
+  save_file_title = Datei speichern
+  untitled_file_name = Unbenannt
+  choose_application_title = App auswählen
+  secret_collection_label = Standard-Schlüsselbund
+  control_key = Strg
+  shift_key = Umschalt
+  alt_key = Alt
+  access_denied_title = Zugriff verweigert
+  content_in_use = Dieser Inhalt wird bereits in einem anderen Client angezeigt, und mehrere Clients sind nicht zugelassen.
+  launch_link_invalid = Der Startlink dieses Fensters ist ungültig oder wurde bereits von einem anderen Client verwendet. Schließen Sie dieses Fenster und öffnen Sie es erneut aus der Anwendung.
+  resource_unavailable_title = Ressource nicht verfügbar
+  resource_unavailable = Die angeforderte Ressource ist nicht verfügbar.
+}
+menu {
+  about = Über {$app}
+  hide = {$app} ausblenden
+  hide_others = Andere ausblenden
+  show_all = Alle einblenden
+  quit = {$app} beenden
+  file = Ablage
+  close = Schließen
+  open_recent = Benutzte Dokumente öffnen
+  clear_menu = Einträge löschen
+  edit = Bearbeiten
+  undo = Widerrufen
+  redo = Wiederholen
+  cut = Ausschneiden
+  copy = Kopieren
+  paste = Einsetzen
+  select_all = Alles auswählen
+  view = Darstellung
+  actual_size = Originalgröße
+  zoom_in = Vergrößern
+  zoom_out = Verkleinern
+  window = Fenster
+  minimize = Im Dock ablegen
+  zoom = Zoomen
+  bring_all_to_front = Alle nach vorne bringen
+}

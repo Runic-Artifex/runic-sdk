@@ -9,8 +9,8 @@ import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveM
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 39);
-  assert.equal(workspace.npm.length, 8);
+  assert.equal(workspace.nuget.length, 40);
+  assert.equal(workspace.npm.length, 9);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
   for (const p of workspace.nuget) {
@@ -127,7 +127,7 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    ["desktop", "assets", "platform", "application", "application-wpf", "views-effect", "vite", "svelte", "templates", "packaging", "examples"].sort(),
+    ["desktop", "assets", "platform", "application", "application-wpf", "views-effect", "views-translations", "vite", "svelte", "templates", "packaging", "examples"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["packages/web/svelte/src/index.ts"]).sort(),
@@ -273,6 +273,14 @@ test("exposed third-party packages are bounded to their tested major and referen
       assert.ok(match, `${name} has a bounded range in Directory.Packages.props, not ${range}`);
       assert.equal(Number(match[2]), Number(match[1]) + 1, `${name} is bounded to its major: ${range}`);
     }
+  }
+  // Runic Translations releases on its own; before its 1.0 a minor may break, so the catalog package is bounded to the
+  // minor it is built with, as Runic.Translations.Build bounds a library: [0.N.x, 0.N+1.0-0.0).
+  const catalog = readFileSync(resolve(root, "packages/dotnet/Runic.Application.Views.Translations/Runic.Application.Views.Translations.csproj"), "utf8");
+  for (const name of ["Runic.Translations", "Runic.Translations.Hosting"]) {
+    assert.match(catalog, new RegExp(`<PackageReference Include="${name.replaceAll(".", "\\.")}" />`), `Runic.Application.Views.Translations references ${name}`);
+    const match = /^\[0\.(\d+)\.\d+, 0\.(\d+)\.0-0\.0\)$/.exec(versionOf(name) ?? "");
+    assert.ok(match && Number(match[2]) === Number(match[1]) + 1, `${name} is bounded to its minor: ${versionOf(name)}`);
   }
   const effect = json("packages/web/views-effect/package.json").peerDependencies.effect;
   assert.match(effect, /^\^\d+\./, "views-effect bounds effect to its major");

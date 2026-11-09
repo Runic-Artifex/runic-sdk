@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  cpSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -92,6 +93,18 @@ export const packageLayouts = {
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },
+  // The optional en/de catalog of Runic's own text (D055.3): the packed catalog for application overrides, the Translations
+  // runtime bounded to its minor, and no dependency on the development-only Runic.Translations.Build.
+  "Runic.Application.Views.Translations": {
+    files: ["README.md", "Runic.Application.Views.Translations.nuspec", "icon.png",
+      "lib/net10.0/Runic.Application.Views.Translations.dll", "lib/net10.0/Runic.Application.Views.Translations.xml",
+      "buildTransitive/Runic.Application.Views.Translations.props", "runic/runic-views/catalog.props", "runic/runic-views/contract.json",
+      "runic/runic-views/runic.json", "runic/runic-views/en.rmf2", "runic/runic-views/de.rmf2"],
+    dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions",
+      "Runic.Application.Views", "Runic.Translations", "Runic.Translations.Hosting"],
+    exactDependencies: ["Runic.Application.Views"],
+    minorBounded: ["Runic.Translations", "Runic.Translations.Hosting"],
+  },
   // Host adapters set _RunicApplicationHostAdapter, which turns Bridge generation on
   // in every project that references them, directly or transitively.
   "Runic.Application.Views.Desktop": { includes: ["buildTransitive/Runic.Application.Views.Desktop.props"] },
@@ -178,6 +191,13 @@ export function verifyPackageLayout(nupkg, name, version, layout = packageLayout
   for (const id of layout.requires ?? []) assert.ok(dependencies.includes(id), `${name} does not depend on ${id}`);
   for (const pattern of layout.forbidden ?? [])
     assert.ok(!dependencies.some(id => pattern.test(id)), `${name} depends on ${dependencies.filter(id => pattern.test(id)).join(", ")}`);
+  // Runic Translations' library range before 1.0: [N, next minor-0.0), which keeps the next minor's previews out too.
+  for (const id of layout.minorBounded ?? []) {
+    const ranges = nupkgDependencyVersions(nupkg).get(id) ?? [];
+    assert.ok(ranges.length > 0 && ranges.every(range => /^\[0\.(\d+)\.\d+, 0\.(\d+)\.0-0\.0\)$/.test(range)
+      && Number(/^\[0\.(\d+)/.exec(range)[1]) + 1 === Number(/, 0\.(\d+)/.exec(range)[1])),
+      `${name} does not bound ${id} to its minor: ${ranges.join(", ")}`);
+  }
   for (const file of layout.rollForwardMajor ?? [])
     assert.equal(JSON.parse(nupkgFileText(nupkg, file)).runtimeOptions?.rollForward, "Major",
       `${name}: ${file} does not roll forward to a newer major runtime`);
@@ -334,8 +354,13 @@ async function verifyConsumers(directory, packageName) {
       `Pack ${p.name} first`,
     );
   }
-  for (const p of packageName ? libraries : packedNuget())
-    verifyPackageLayout(join(nuget, `${p.name}.${packageVersion(workspace, p.name)}.nupkg`), p.name, workspace.version);
+  for (const p of packageName ? libraries : packedNuget()) {
+    const nupkg = join(nuget, `${p.name}.${packageVersion(workspace, p.name)}.nupkg`);
+    verifyPackageLayout(nupkg, p.name, workspace.version);
+    // Core packages keep no Runic Translations dependency (D055.3); the generator recognizes TranslationReference by name.
+    if (p.name !== viewsTranslations)
+      assert.ok(!nupkgDependencies(nupkg).some(id => /^Runic\.Translations/i.test(id)), `${p.name} depends on Runic Translations`);
+  }
   const archives = (packageName ? [] : workspace.npm).map((p) => {
     const file = `${p.name.replace("@", "").replace("/", "-")}-${workspace.version}.tgz`;
     assert.ok(readdirSync(npm).includes(file), `Pack ${p.name} first`);
@@ -418,6 +443,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
       selectedProvider: nativeProviders.has(p.name.toLowerCase()) ? p.name.toLowerCase() : undefined,
     });
   }
+  if (!packageName || packageName === viewsTranslations) verifyViewsTranslationsConsumer(directory, env);
   if (packageName) {
     console.log(`Packed ${packageName} consumer passed.`);
     return;
@@ -497,8 +523,14 @@ import { installMockBridge } from '@runic-artifex/views/mock';
 import { useView as useReactView } from '@runic-artifex/react';
 import { useView as useVueView } from '@runic-artifex/vue';
 import { command } from '@runic-artifex/views-effect';
+import { FieldError } from '@runic-artifex/views';
+import { runicViewsFieldErrorText, runicViewsMessages } from '@runic-artifex/views-translations';
 import { Effect } from 'effect';
 assert.equal(runicSpaPageOptions.ssr, false);
+// The prebuilt runic-views catalog loads from the archive, with its German text.
+assert.equal(runicViewsMessages.platform_untitled_file_name({ locale: 'de' }), 'Unbenannt');
+assert.equal(runicViewsFieldErrorText(new FieldError('invalid-text', '1e is not a number.', undefined,
+  { reason: 'not-a-number', arguments: { text: '1e' } }), 'de'), '1e ist keine Zahl.');
 assert.ok(Object.keys(vite).length);
 const bridge = installMockBridge();
 const consumerView = bridge.view('consumer', { state: { value: 1, rows: [{ id: 1 }] }, contract: 'Consumer:fingerprint',
@@ -573,6 +605,20 @@ console.log('Packed npm consumers passed.');
 // .NET tools install with dotnet tool, not as package references.
 function isToolPackage(packageEntry) {
   return /<PackAsTool>true<\/PackAsTool>/.test(readFileSync(resolve(root, packageEntry.project), "utf8"));
+}
+
+const viewsTranslations = "Runic.Application.Views.Translations";
+
+// An application with German and its own wording of single runic-views messages (runic.json "overrides"), built against
+// the packed catalog: tests/fixtures/application/views-translations-consumer.
+function verifyViewsTranslationsConsumer(directory, env) {
+  const consumer = join(directory, "views-translations-consumer");
+  cpSync(resolve(root, "tests/fixtures/application/views-translations-consumer"), consumer, { recursive: true });
+  const versions = readFileSync(resolve(root, "Directory.Packages.props"), "utf8");
+  const pinned = id => new RegExp(`<PackageVersion Include="${id.replaceAll(".", "\\.")}" Version="([^"]+)"`).exec(versions)?.[1]
+    ?? assert.fail(`Directory.Packages.props pins no ${id}`);
+  writeFileSync(join(consumer, "Consumer.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled></PropertyGroup><ItemGroup><PackageReference Include="${viewsTranslations}" Version="${packageVersion(workspace, viewsTranslations)}"/><PackageReference Include="Runic.Translations.Build" Version="${pinned("Runic.Translations.Build")}" PrivateAssets="all"/><PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${pinned("Microsoft.Extensions.DependencyInjection")}"/></ItemGroup></Project>`);
+  run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], consumer, env);
 }
 
 export async function verifyToolAndTemplatePackages(directory, nuget, env) {

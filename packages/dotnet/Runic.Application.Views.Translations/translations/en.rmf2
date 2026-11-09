@@ -1,0 +1,154 @@
+# Runic's own user-visible text (Runic.Application.Views.Translations, @runic-artifex/views-translations).
+# Keys and inputs are API: an application overrides single messages by key ("overrides" in its runic.json), so a
+# message whose meaning changes gets a new key, and removed keys are listed in the release notes.
+
+# Validation messages of the built-in DataAnnotations attributes (RunicValidationOptions.TextFor).
+# @param $field - The member's display name: [Display(Name)], [DisplayName] or the property name.
+validation {
+  # [Required]
+  required = {$field} is required.
+  # [MaxLength], [StringLength] without a minimum: the most characters (or items).
+  max_length =
+    .input {$max :integer}
+    .match $max
+    one {{{$field} can have at most {$max} character.}}
+    * {{{$field} can have at most {$max} characters.}}
+  # [MinLength]: the fewest characters (or items).
+  min_length =
+    .input {$min :integer}
+    .match $min
+    one {{{$field} must have at least {$min} character.}}
+    * {{{$field} must have at least {$min} characters.}}
+  # [StringLength] with a minimum, [Length].
+  length_between =
+    .input {$min :integer}
+    .input {$max :integer}
+    {{{$field} must have {$min} to {$max} characters.}}
+  # [Range] over whole numbers.
+  range_integer =
+    .input {$min :integer}
+    .input {$max :integer}
+    {{{$field} must be between {$min} and {$max}.}}
+  # [Range] over numbers with fractions.
+  range_number =
+    .input {$min :number}
+    .input {$max :number}
+    {{{$field} must be between {$min} and {$max}.}}
+  # [Range] over other values, such as dates; the limits as the attribute writes them.
+  range = {$field} must be between {$min} and {$max}.
+  # [EmailAddress]
+  email = {$field} is not a valid email address.
+  # [Phone]
+  phone = {$field} is not a valid phone number.
+  # [Url]
+  url = {$field} is not a valid web address (http, https or ftp).
+  # [CreditCard]
+  credit_card = {$field} is not a valid credit card number.
+  # [RegularExpression]
+  pattern = {$field} is not in the expected format.
+  # [Compare]
+  # @param $other - The display name of the member it must match.
+  compare = {$field} and {$other} do not match.
+  # [FileExtensions]
+  # @param $extensions - The allowed extensions, such as png, jpg, jpeg, gif.
+  file_extensions = {$field} must have one of these file extensions: {$extensions}.
+  # [Base64String]
+  base64 = {$field} is not valid Base64 text.
+  # [AllowedValues]
+  allowed_values = {$field} is not one of the allowed values.
+  # [DeniedValues]
+  denied_values = {$field} is one of the values that are not allowed.
+  # [EnumDataType]
+  enum = {$field} is not one of the available values.
+}
+
+# Text the page shows for a field whose typed text does not parse (FieldError reasons, configureFieldErrorText).
+# @param $text - The text the user typed.
+field {
+  # required, by the value an empty field needs.
+  required {
+    number = Enter a number.
+    whole_number = Enter a whole number.
+    date = Enter a date.
+    time = Enter a time.
+    date_time = Enter a date and time.
+  }
+  not_a_number = {$text} is not a number.
+  not_a_whole_number = {$text} is not a whole number.
+  too_many_fraction_digits =
+    .input {$scale :integer}
+    .match $scale
+    one {{{$text} has more than {$scale} digit after the decimal separator.}}
+    * {{{$text} has more than {$scale} digits after the decimal separator.}}
+  out_of_range = {$text} is too large.
+  not_a_boolean = {$text} is not true or false.
+  # @param $choices - The values the field takes, joined as a list in the locale.
+  not_a_choice = {$text} is not one of {$choices}.
+  # A text of the right form that names no day, such as 31 February.
+  not_a_date = {$text} is not a date.
+  # @param $patterns - The forms a date takes, such as DD.MM.YYYY or YYYY-MM-DD, joined as a list in the locale.
+  not_a_date_in = {$text} is not a date ({$patterns}).
+  not_a_time = {$text} is not a time.
+  # @param $patterns - The forms a time takes, such as hh:mm or hh:mm:ss, joined as a list in the locale.
+  not_a_time_in = {$text} is not a time ({$patterns}).
+  # @param $patterns - The forms a date and time takes, joined as a list in the locale.
+  not_a_date_time = {$text} is not a date and time ({$patterns}).
+  offset_out_of_range = {$text} has an offset beyond ±14:00.
+  no_text_form = This field has no text form.
+}
+
+# DesktopPlatformTexts: text Runic shows in native UI where the platform has none of its own.
+platform {
+  # Titles of Linux file dialogs without a title of their own.
+  open_file_title = Open file
+  open_files_title = Open files
+  open_directory_title = Open directory
+  open_directories_title = Open directories
+  save_file_title = Save file
+  # The name a save dialog suggests when the request names none. A file name: no / or \.
+  @maxLength 255
+  untitled_file_name = Untitled
+  # The title of the macOS panel that chooses the application to open a file with.
+  choose_application_title = Choose an application
+  # The label of the keyring Runic creates on Linux when the user has none; the keyring manager shows it.
+  secret_collection_label = Default keyring
+  # Modifier key names in shortcut labels Runic writes itself (the Windows menu bar, the in-page menu bar).
+  control_key = Ctrl
+  shift_key = Shift
+  alt_key = Alt
+  # Error pages of a browser window.
+  access_denied_title = Access Denied
+  content_in_use = This content is already in use and multi-client mode is disabled.
+  launch_link_invalid = This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.
+  resource_unavailable_title = Resource Not Available
+  resource_unavailable = The requested resource is not available.
+}
+
+# DesktopStandardMenuTitles: the standard macOS menus Runic adds.
+# @param $app - The application's name.
+menu {
+  about = About {$app}
+  hide = Hide {$app}
+  hide_others = Hide Others
+  show_all = Show All
+  quit = Quit {$app}
+  file = File
+  close = Close
+  open_recent = Open Recent
+  clear_menu = Clear Menu
+  edit = Edit
+  undo = Undo
+  redo = Redo
+  cut = Cut
+  copy = Copy
+  paste = Paste
+  select_all = Select All
+  view = View
+  actual_size = Actual Size
+  zoom_in = Zoom In
+  zoom_out = Zoom Out
+  window = Window
+  minimize = Minimize
+  zoom = Zoom
+  bring_all_to_front = Bring All to Front
+}

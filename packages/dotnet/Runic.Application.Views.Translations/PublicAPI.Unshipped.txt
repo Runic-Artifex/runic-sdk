@@ -1,0 +1,421 @@
+#nullable enable
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.CatalogId = "runic-views" -> string!
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.ContractFingerprint = "sha256:a325c65c907bc6efedf20f2118f789e90e2efed78d2736c12804e0df0133fdbe" -> string!
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.DefaultLocale = "en" -> string!
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.GeneratedNameVersion = 1 -> int
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.GeneratorVersion = 1 -> int
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.MessageGrammarVersion = 5 -> int
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.Rmf2Profile = "rmf2-execution-v2" -> string!
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.Rmf2RuntimeAbiVersion = 3 -> int
+const Runic.Application.Views.Translations.RunicViewsTextCatalog.RuntimeAbiVersion = 1 -> int
+const Runic.Application.Views.Translations.RunicViewsTextMessages.ReadableNameVersion = 1 -> int
+Microsoft.Extensions.DependencyInjection.RunicViewsTranslationsServiceCollectionExtensions
+Runic.Application.Views.Translations.RunicViewsText
+Runic.Application.Views.Translations.RunicViewsTextCatalog
+Runic.Application.Views.Translations.RunicViewsTextKeys
+Runic.Application.Views.Translations.RunicViewsTextMessages
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_boolean(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_choice(string! choices, string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_date_in(string! patterns, string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_date(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_date_time(string! patterns, string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_number(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_time_in(string! patterns, string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_time(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_not_a_whole_number(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_no_text_form.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_offset_out_of_range(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_out_of_range(string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_required_date.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_required_date_time.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_required_number.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_required_time.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_required_whole_number.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.field_too_many_fraction_digits(long scale, string! text) -> string!
+Runic.Application.Views.Translations.RunicViewsText.Messages.get -> Runic.Application.Views.Translations.RunicViewsTextMessages!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_about(string! app) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_actual_size.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_bring_all_to_front.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_clear_menu.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_close.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_copy.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_cut.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_edit.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_file.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_hide_others.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_hide(string! app) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_minimize.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_open_recent.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_paste.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_quit(string! app) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_redo.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_select_all.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_show_all.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_undo.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_view.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_window.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_zoom.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_zoom_in.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.menu_zoom_out.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_access_denied_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_alt_key.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_choose_application_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_content_in_use.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_control_key.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_launch_link_invalid.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_open_directories_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_open_directory_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_open_files_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_open_file_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_resource_unavailable.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_resource_unavailable_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_save_file_title.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_secret_collection_label.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_shift_key.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.platform_untitled_file_name.get -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_allowed_values(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_base64(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_compare(string! field, string! other) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_credit_card(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_denied_values(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_email(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_enum(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_file_extensions(string! extensions, string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_length_between(string! field, long max, long min) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_max_length(string! field, long max) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_min_length(string! field, long min) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_pattern(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_phone(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_range_integer(string! field, long max, long min) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_range_number(string! field, decimal max, decimal min) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_range(string! field, string! max, string! min) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_required(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsTextMessages.validation_url(string! field) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f5f746578745f666f726d.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f626f6f6c65616e(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f63686f696365(string! r_63686f69636573, string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f646174655f696e(string! r_7061747465726e73, string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f646174655f74696d65(string! r_7061747465726e73, string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f64617465(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f6e756d626572(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f74696d655f696e(string! r_7061747465726e73, string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f74696d65(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6e6f745f615f77686f6c655f6e756d626572(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6f66667365745f6f75745f6f665f72616e6765(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_6f75745f6f665f72616e6765(string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_7265717569726564_r_646174655f74696d65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_7265717569726564_r_64617465.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_7265717569726564_r_6e756d626572.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_7265717569726564_r_74696d65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_7265717569726564_r_77686f6c655f6e756d626572.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6669656c64_r_746f6f5f6d616e795f6672616374696f6e5f646967697473(long r_7363616c65, string! r_74657874) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_61626f7574(string! r_617070) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_61637475616c5f73697a65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_6272696e675f616c6c5f746f5f66726f6e74.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_636c6561725f6d656e75.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_636c6f7365.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_636f7079.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_637574.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_65646974.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_66696c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_686964655f6f7468657273.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_68696465(string! r_617070) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_6d696e696d697a65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_6f70656e5f726563656e74.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_7061737465.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_71756974(string! r_617070) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_7265646f.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_73656c6563745f616c6c.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_73686f775f616c6c.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_756e646f.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_76696577.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_77696e646f77.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_7a6f6f6d5f696e.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_7a6f6f6d5f6f7574.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_6d656e75_r_7a6f6f6d.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_6163636573735f64656e6965645f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_616c745f6b6579.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_63686f6f73655f6170706c69636174696f6e5f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_636f6e74656e745f696e5f757365.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_636f6e74726f6c5f6b6579.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_6c61756e63685f6c696e6b5f696e76616c6964.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_6f70656e5f6469726563746f726965735f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_6f70656e5f6469726563746f72795f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_6f70656e5f66696c655f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_6f70656e5f66696c65735f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_7265736f757263655f756e617661696c61626c655f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_7265736f757263655f756e617661696c61626c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_736176655f66696c655f7469746c65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_7365637265745f636f6c6c656374696f6e5f6c6162656c.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_73686966745f6b6579.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_706c6174666f726d_r_756e7469746c65645f66696c655f6e616d65.get -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_616c6c6f7765645f76616c756573(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_626173653634(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_636f6d70617265(string! r_6669656c64, string! r_6f74686572) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_6372656469745f63617264(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_64656e6965645f76616c756573(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_656d61696c(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_656e756d(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_66696c655f657874656e73696f6e73(string! r_657874656e73696f6e73, string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_6c656e6774685f6265747765656e(string! r_6669656c64, long r_6d6178, long r_6d696e) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_6d61785f6c656e677468(string! r_6669656c64, long r_6d6178) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_6d696e5f6c656e677468(string! r_6669656c64, long r_6d696e) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_7061747465726e(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_70686f6e65(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_72616e67655f696e7465676572(string! r_6669656c64, long r_6d6178, long r_6d696e) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_72616e67655f6e756d626572(string! r_6669656c64, decimal r_6d6178, decimal r_6d696e) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_72616e6765(string! r_6669656c64, string! r_6d6178, string! r_6d696e) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_7265717569726564(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_76616c69646174696f6e_r_75726c(string! r_6669656c64) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f5f746578745f666f726d(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f626f6f6c65616e(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f63686f696365(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f646174655f696e(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f646174655f74696d65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f64617465(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f6e756d626572(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f74696d655f696e(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f74696d65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6e6f745f615f77686f6c655f6e756d626572(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6f66667365745f6f75745f6f665f72616e6765(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_6f75745f6f665f72616e6765(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_7265717569726564_r_646174655f74696d65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_7265717569726564_r_64617465(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_7265717569726564_r_6e756d626572(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_7265717569726564_r_74696d65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_7265717569726564_r_77686f6c655f6e756d626572(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6669656c64_r_746f6f5f6d616e795f6672616374696f6e5f646967697473(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_61626f7574(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_61637475616c5f73697a65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_6272696e675f616c6c5f746f5f66726f6e74(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_636c6561725f6d656e75(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_636c6f7365(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_636f7079(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_637574(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_65646974(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_66696c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_686964655f6f7468657273(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_68696465(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_6d696e696d697a65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_6f70656e5f726563656e74(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_7061737465(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_71756974(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_7265646f(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_73656c6563745f616c6c(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_73686f775f616c6c(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_756e646f(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_76696577(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_77696e646f77(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_7a6f6f6d5f696e(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_7a6f6f6d5f6f7574(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_6d656e75_r_7a6f6f6d(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_6163636573735f64656e6965645f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_616c745f6b6579(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_63686f6f73655f6170706c69636174696f6e5f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_636f6e74656e745f696e5f757365(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_636f6e74726f6c5f6b6579(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_6c61756e63685f6c696e6b5f696e76616c6964(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_6f70656e5f6469726563746f726965735f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_6f70656e5f6469726563746f72795f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_6f70656e5f66696c655f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_6f70656e5f66696c65735f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_7265736f757263655f756e617661696c61626c655f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_7265736f757263655f756e617661696c61626c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_736176655f66696c655f7469746c65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_7365637265745f636f6c6c656374696f6e5f6c6162656c(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_73686966745f6b6579(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_706c6174666f726d_r_756e7469746c65645f66696c655f6e616d65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_616c6c6f7765645f76616c756573(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_626173653634(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_636f6d70617265(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_6372656469745f63617264(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_64656e6965645f76616c756573(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_656d61696c(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_656e756d(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_66696c655f657874656e73696f6e73(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_6c656e6774685f6265747765656e(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_6d61785f6c656e677468(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_6d696e5f6c656e677468(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_7061747465726e(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_70686f6e65(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_72616e67655f696e7465676572(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_72616e67655f6e756d626572(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_72616e6765(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_7265717569726564(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.r_args_r_76616c69646174696f6e_r_75726c(System.ReadOnlySpan<Runic.Translations.TextArgument> arguments) -> string!
+Runic.Application.Views.Translations.RunicViewsText.References
+Runic.Application.Views.Translations.RunicViewsText.RunicViewsText(Runic.Translations.ITranslationContext! context) -> void
+Runic.Application.Views.Translations.RunicViewsText.RunicViewsText(Runic.Translations.ITranslationManager! manager) -> void
+Runic.Application.Views.Translations.RunicViewsTextSlots
+Runic.Application.Views.Translations.RunicViewsTranslations
+static Microsoft.Extensions.DependencyInjection.RunicViewsTranslationsServiceCollectionExtensions.AddRunicViewsTranslations(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateExternalManagerAsync(Runic.Translations.IExternalTranslationSource! externalSource, string? initialLocale = null, Runic.Translations.TranslationOptions? options = null, Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.TranslationPackLimits? limits = null, Runic.Translations.TranslationPackIntegrityVerifier? integrityVerifier = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Translations.ITranslationManager!>
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateExternalPackContract(string! locale) -> Runic.Translations.TranslationPackContract!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateExternalProvider(Runic.Translations.IExternalTranslationSource! externalSource, Runic.Translations.TranslationOptions? options = null, Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.TranslationPackLimits? limits = null, Runic.Translations.TranslationPackIntegrityVerifier? integrityVerifier = null) -> Runic.Translations.ITranslationProvider!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateManagerAsync(string? initialLocale = null, Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.ITranslationSnapshotFactory? snapshotFactory = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), Runic.Translations.TranslationOptions? options = null) -> System.Threading.Tasks.ValueTask<Runic.Translations.ITranslationManager!>
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateManagerFromPreferencesAsync(System.Collections.Generic.IEnumerable<string!>! preferredLocales, Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.ITranslationSnapshotFactory? snapshotFactory = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), Runic.Translations.TranslationOptions? options = null) -> System.Threading.Tasks.ValueTask<Runic.Translations.ITranslationManager!>
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateManagerFromPreferences(System.Collections.Generic.IEnumerable<string!>! preferredLocales, Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.TranslationOptions? options = null) -> Runic.Translations.ITranslationManager!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateManager(string? initialLocale = null, Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.TranslationOptions? options = null) -> Runic.Translations.ITranslationManager!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.CreateProvider(Runic.Translations.ITextValueFormatter? valueFormatter = null, Runic.Translations.ITranslationSnapshotFactory? snapshotFactory = null, Runic.Translations.TranslationOptions? options = null) -> Runic.Translations.ITranslationProvider!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.LoadExternalPackAsync(Runic.Translations.IExternalTranslationSource! source, string! locale, Runic.Translations.TranslationPackLimits? limits = null, Runic.Translations.TranslationPackIntegrityVerifier? integrityVerifier = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Translations.VerifiedExternalTranslationPack?>
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.Registration.get -> Runic.Translations.TranslationCatalogRegistration!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.ResolveLocale(System.Collections.Generic.IEnumerable<string!>! preferredLocales) -> string!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.Rmf2MarkupContract.get -> string!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.SourceHash.get -> string!
+static Runic.Application.Views.Translations.RunicViewsTextCatalog.SupportedLocales.get -> System.Collections.Generic.IReadOnlyList<string!>!
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f5f746578745f666f726d.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f626f6f6c65616e.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f63686f696365.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f646174655f696e.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f646174655f74696d65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f64617465.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f6e756d626572.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f74696d655f696e.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f74696d65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6e6f745f615f77686f6c655f6e756d626572.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6f66667365745f6f75745f6f665f72616e6765.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_6f75745f6f665f72616e6765.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_7265717569726564_r_646174655f74696d65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_7265717569726564_r_64617465.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_7265717569726564_r_6e756d626572.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_7265717569726564_r_74696d65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_7265717569726564_r_77686f6c655f6e756d626572.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6669656c64_r_746f6f5f6d616e795f6672616374696f6e5f646967697473.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_61626f7574.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_61637475616c5f73697a65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_6272696e675f616c6c5f746f5f66726f6e74.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_636c6561725f6d656e75.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_636c6f7365.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_636f7079.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_637574.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_65646974.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_66696c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_686964655f6f7468657273.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_68696465.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_6d696e696d697a65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_6f70656e5f726563656e74.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_7061737465.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_71756974.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_7265646f.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_73656c6563745f616c6c.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_73686f775f616c6c.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_756e646f.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_76696577.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_77696e646f77.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_7a6f6f6d5f696e.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_7a6f6f6d5f6f7574.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_6d656e75_r_7a6f6f6d.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_6163636573735f64656e6965645f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_616c745f6b6579.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_63686f6f73655f6170706c69636174696f6e5f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_636f6e74656e745f696e5f757365.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_636f6e74726f6c5f6b6579.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_6c61756e63685f6c696e6b5f696e76616c6964.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_6f70656e5f6469726563746f726965735f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_6f70656e5f6469726563746f72795f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_6f70656e5f66696c655f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_6f70656e5f66696c65735f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_7265736f757263655f756e617661696c61626c655f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_7265736f757263655f756e617661696c61626c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_736176655f66696c655f7469746c65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_7365637265745f636f6c6c656374696f6e5f6c6162656c.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_73686966745f6b6579.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_706c6174666f726d_r_756e7469746c65645f66696c655f6e616d65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_616c6c6f7765645f76616c756573.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_626173653634.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_636f6d70617265.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_6372656469745f63617264.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_64656e6965645f76616c756573.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_656d61696c.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_656e756d.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_66696c655f657874656e73696f6e73.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_6c656e6774685f6265747765656e.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_6d61785f6c656e677468.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_6d696e5f6c656e677468.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_7061747465726e.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_70686f6e65.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_72616e67655f696e7465676572.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_72616e67655f6e756d626572.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_72616e6765.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_7265717569726564.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsTextKeys.r_76616c69646174696f6e_r_75726c.get -> Runic.Translations.TranslationKey
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_boolean(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_choice(string! choices, string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_date_in(string! patterns, string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_date(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_date_time(string! patterns, string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_number(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_time_in(string! patterns, string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_time(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_not_a_whole_number(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_no_text_form() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_offset_out_of_range(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_out_of_range(string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_required_date() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_required_date_time() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_required_number() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_required_time() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_required_whole_number() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.field_too_many_fraction_digits(long scale, string! text) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_about(string! app) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_actual_size() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_bring_all_to_front() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_clear_menu() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_close() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_copy() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_cut() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_edit() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_file() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_hide_others() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_hide(string! app) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_minimize() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_open_recent() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_paste() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_quit(string! app) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_redo() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_select_all() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_show_all() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_undo() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_view() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_window() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_zoom_in() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_zoom_out() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.menu_zoom() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_access_denied_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_alt_key() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_choose_application_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_content_in_use() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_control_key() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_launch_link_invalid() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_open_directories_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_open_directory_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_open_files_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_open_file_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_resource_unavailable() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_resource_unavailable_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_save_file_title() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_secret_collection_label() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_shift_key() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.platform_untitled_file_name() -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_allowed_values(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_base64(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_compare(string! field, string! other) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_credit_card(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_denied_values(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_email(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_enum(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_file_extensions(string! extensions, string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_length_between(string! field, long max, long min) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_max_length(string! field, long max) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_min_length(string! field, long min) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_pattern(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_phone(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_range_integer(string! field, long max, long min) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_range_number(string! field, decimal max, decimal min) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_range(string! field, string! max, string! min) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_required(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsText.References.validation_url(string! field) -> Runic.Translations.TranslationReference!
+static Runic.Application.Views.Translations.RunicViewsTranslations.FollowPlatformTexts(Runic.Translations.ITranslationContext! context, System.Action<System.ArgumentException!>? onError = null) -> System.IDisposable!
+static Runic.Application.Views.Translations.RunicViewsTranslations.PlatformTexts(Runic.Translations.ITranslationContext! context) -> Runic.Platform.DesktopPlatformTexts!
+static Runic.Application.Views.Translations.RunicViewsTranslations.ValidationReference(System.ComponentModel.DataAnnotations.ValidationAttribute! attribute, Runic.Application.Views.RunicValidationMember! member) -> Runic.Translations.TranslationReference?
+static Runic.Application.Views.Translations.RunicViewsTranslations.ValidationText(System.ComponentModel.DataAnnotations.ValidationAttribute! attribute, Runic.Application.Views.RunicValidationMember! member) -> Runic.Application.Views.RunicTextReference?

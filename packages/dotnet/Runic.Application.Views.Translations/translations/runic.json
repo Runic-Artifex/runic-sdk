@@ -1,0 +1,8 @@
+{
+  "$schema": "https://runic-artifex.eu/schemas/translations/project-v1.schema.json",
+  "schemaVersion": 1,
+  "catalog": "runic-views",
+  "code": { "namespace": "Runic.Application.Views.Translations", "className": "RunicViewsText", "visibility": "public" },
+  "baseLocale": "en",
+  "locales": ["en", "de"]
+}
