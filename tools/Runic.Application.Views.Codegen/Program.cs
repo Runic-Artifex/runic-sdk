@@ -161,7 +161,7 @@ try
         }
 
         // [RunicSharedClient] interfaces that the ViewModels implement (#839).
-        var sharedClients = SharedClients.Discover(models);
+        var sharedClients = SharedClients.Discover(models, presentationKinds);
         if (Diagnostics.HasErrors) return;
 
         Directory.CreateDirectory(positional[2]);

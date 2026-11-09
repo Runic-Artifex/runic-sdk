@@ -45,7 +45,7 @@ internal static class SharedClients
     private static readonly Dictionary<Type, SharedClientDeclaration[]> ByModel = [];
 
     /// <summary>The shared clients of the generated ViewModels; reports invalid declarations.</summary>
-    internal static SharedClientDeclaration[] Discover((Type Model, string Name)[] models)
+    internal static SharedClientDeclaration[] Discover((Type Model, string Name)[] models, IEnumerable<(string Kind, MemberInfo Member)> kinds)
     {
         var implementers = new Dictionary<Type, List<(Type Model, string Name)>>();
         var invalid = new HashSet<Type>();
@@ -82,6 +82,16 @@ internal static class SharedClients
             Diagnostics.Report(new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                 $"[RunicSharedClient] names must be unique: {string.Join(" and ", group.Select(declaration => declaration.Interface.FullName))} both use '{group.Key}'. Set Name on one of them.",
                 group.Last().Interface));
+        // An implementing ViewModel's module imports {Name}PageReference, and a module declares or imports the page
+        // reference of each kind it presents, so the name must not be one of a kind's.
+        var kindReferences = kinds.GroupBy(kind => char.ToUpperInvariant(kind.Kind[0]) + kind.Kind[1..] + "PageReference", StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        foreach (var declaration in ordered)
+            if (kindReferences.TryGetValue(declaration.ReferenceType, out var kind))
+                Diagnostics.Report(new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                    $"{declaration.Interface.Name}: the shared client {declaration.Name} declares {declaration.ReferenceType}, which is also the page reference of the kind '{kind.Kind}' of {kind.Member.Name}. "
+                    + $"Name the shared client with [RunicSharedClient(Name = \"…\")] on {declaration.Interface.Name}.",
+                    declaration.Interface));
         foreach (var declaration in ordered)
             foreach (var (model, _) in declaration.Implementers)
                 ByModel[model] = [.. ByModel.GetValueOrDefault(model) ?? [], declaration];
@@ -119,6 +129,8 @@ internal static class SharedClients
     internal static void Generate(string directory, IReadOnlyList<SharedClientDeclaration> declarations,
         IReadOnlyDictionary<Type, List<Type>> viewTypes, Func<string, string?, string> pageKind, Func<MemberInfo, string?> contractFor)
     {
+        // A member of an interface that another shared interface extends is checked for both; it is reported once.
+        var reportedMembers = new HashSet<(Type Model, Module Module, int Token)>();
         foreach (var declaration in declarations)
         {
             PropertyInfo[] members;
@@ -128,11 +140,15 @@ internal static class SharedClients
             foreach (var (model, _) in declaration.Implementers)
             {
                 try { collected.Add((model, Collect(declaration, model, members))); }
+                catch (MemberProblem problem)
+                {
+                    if (reportedMembers.Add((model, problem.Member.Module, problem.Member.MetadataToken))) Diagnostics.Report(problem.Error, model);
+                }
                 catch (Exception error) when (Diagnostics.IsReportable(error)) { Diagnostics.Report(error, model); }
             }
-            if (collected.Count != declaration.Implementers.Length) continue;
-            var shared = Compare(declaration, members, collected);
-            if (shared is null) continue;
+            // The ViewModels that do implement every member are compared too, so one build reports each one's first problem.
+            var shared = Compare(declaration, members, collected, reportedMembers);
+            if (shared is null || collected.Count != declaration.Implementers.Length) continue;
             var kinds = declaration.Implementers.SelectMany(entry => viewTypes.TryGetValue(entry.Model, out var views)
                 ? views.Select(view => pageKind(entry.Name, contractFor(view))) : [pageKind(entry.Name, null)]).ToArray();
             TypeScriptModules.Add(Path.Combine(directory, $"{declaration.Module}.ts"), Emit(declaration, shared, kinds), declaration.Interface);
@@ -165,46 +181,60 @@ internal static class SharedClients
         var result = new Dictionary<PropertyInfo, (PropertyInfo, List<SharedClientPart>)>();
         foreach (var member in members)
         {
-            var source = $"{member.DeclaringType!.Name}.{member.Name}";
-            var map = model.GetInterfaceMap(member.DeclaringType!);
-            var index = Array.FindIndex(map.InterfaceMethods, method => method.MetadataToken == member.GetMethod!.MetadataToken);
-            var target = index < 0 ? null : map.TargetMethods[index];
-            var published = target is null ? null : recorded.Keys.FirstOrDefault(property =>
-                property.GetMethod is { } getter && getter.MetadataToken == target.MetadataToken && getter.Module == target.Module);
-            if (published is null)
-            {
-                var declared = target is null ? null : model.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
-                    .FirstOrDefault(property => property.GetMethod is { } getter && getter.MetadataToken == target.MetadataToken && getter.Module == target.Module);
-                var reason = target is null ? "does not implement it"
-                    : target.DeclaringType!.IsInterface ? "uses the interface's default implementation, which the Bridge does not publish"
-                    : target.DeclaringType != model ? $"inherits it from {target.DeclaringType.Name}, and the Bridge publishes only properties the ViewModel class declares"
-                    : !target.IsPublic ? "implements it explicitly, which the Bridge does not publish; implement it with a public property"
-                    : declared is not null && BridgeDtoContract.IsRunicIgnored(declared) ? $"marks {declared.Name} [RunicIgnore]"
-                    : declared is not null ? $"publishes {declared.Name} under another member of its client, such as a command's availability"
-                    : "does not publish it";
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
-                    $"{model.Name} implements {source} of the shared client {declaration.Name}, but {reason}.",
-                    (MemberInfo?)declared ?? model);
-            }
-            var parts = recorded[published];
-            if (parts.FirstOrDefault(part => part.Unsupported is not null) is { } unsupported)
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
-                    $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is {unsupported.Unsupported}", published);
-            var expected = nullability.Create(member);
-            var actual = nullability.Create(published);
-            if (!SameNullability(expected, actual, member.SetMethod is not null))
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
-                    $"{model.Name}.{published.Name} is {Show(actual)}, but {source} of the shared client {declaration.Name} is {Show(expected)}. Declare the same nullability.",
-                    published);
-            // The interface decides whether the shared client sets the member.
-            var kept = parts.Where(part => part.Key != "setter" || member.SetMethod is not null).ToList();
-            if (member.SetMethod is not null && !kept.Any(part => part.Key == "setter"))
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
-                    $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is settable, but the page cannot set {published.Name}. Make the interface property get-only.",
-                    published);
-            result.Add(member, (published, kept));
+            try { result.Add(member, CollectMember(declaration, model, member, recorded, nullability)); }
+            catch (BridgeDiagnosticException error) { throw new MemberProblem(member, error); }
         }
         return result;
+    }
+
+    // A member's problem in one implementing ViewModel; Generate reports it once for the shared clients that include it.
+    private sealed class MemberProblem(PropertyInfo member, BridgeDiagnosticException error) : Exception(error.Message, error)
+    {
+        internal PropertyInfo Member { get; } = member;
+        internal BridgeDiagnosticException Error { get; } = error;
+    }
+
+    private static (PropertyInfo Published, List<SharedClientPart> Parts) CollectMember(SharedClientDeclaration declaration, Type model,
+        PropertyInfo member, Dictionary<PropertyInfo, List<SharedClientPart>> recorded, NullabilityInfoContext nullability)
+    {
+        var source = $"{member.DeclaringType!.Name}.{member.Name}";
+        var map = model.GetInterfaceMap(member.DeclaringType!);
+        var index = Array.FindIndex(map.InterfaceMethods, method => method.MetadataToken == member.GetMethod!.MetadataToken);
+        var target = index < 0 ? null : map.TargetMethods[index];
+        var published = target is null ? null : recorded.Keys.FirstOrDefault(property =>
+            property.GetMethod is { } getter && getter.MetadataToken == target.MetadataToken && getter.Module == target.Module);
+        if (published is null)
+        {
+            var declared = target is null ? null : model.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                .FirstOrDefault(property => property.GetMethod is { } getter && getter.MetadataToken == target.MetadataToken && getter.Module == target.Module);
+            var reason = target is null ? "does not implement it"
+                : target.DeclaringType!.IsInterface ? "uses the interface's default implementation, which the Bridge does not publish"
+                : target.DeclaringType != model ? $"inherits it from {target.DeclaringType.Name}, and the Bridge publishes only properties the ViewModel class declares"
+                : !target.IsPublic ? "implements it explicitly, which the Bridge does not publish; implement it with a public property"
+                : declared is not null && BridgeDtoContract.IsRunicIgnored(declared) ? $"marks {declared.Name} [RunicIgnore]"
+                : declared is not null ? $"publishes {declared.Name} under another member of its client, such as a command's availability"
+                : "does not publish it";
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
+                $"{model.Name} implements {source} of the shared client {declaration.Name}, but {reason}.",
+                (MemberInfo?)declared ?? model);
+        }
+        var parts = recorded[published];
+        if (parts.FirstOrDefault(part => part.Unsupported is not null) is { } unsupported)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
+                $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is {unsupported.Unsupported}", published);
+        var expected = nullability.Create(member);
+        var actual = nullability.Create(published);
+        if (!SameNullability(expected, actual, member.SetMethod is not null))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
+                $"{model.Name}.{published.Name} is {Show(actual)}, but {source} of the shared client {declaration.Name} is {Show(expected)}. Declare the same nullability.",
+                published);
+        // The interface decides whether the shared client sets the member.
+        var kept = parts.Where(part => part.Key != "setter" || member.SetMethod is not null).ToList();
+        if (member.SetMethod is not null && !kept.Any(part => part.Key == "setter"))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
+                $"{model.Name}.{published.Name}: {source} of the shared client {declaration.Name} is settable, but the page cannot set {published.Name}. Make the interface property get-only.",
+                published);
+        return (published, kept);
     }
 
     // Unknown (an oblivious context) matches either state.
@@ -219,20 +249,43 @@ internal static class SharedClients
         return expected.GenericTypeArguments.Zip(actual.GenericTypeArguments).All(pair => SameNullability(pair.First, pair.Second, false));
     }
 
+    // The type as C# declares it, such as string? or List<int>.
     private static string Show(NullabilityInfo info)
     {
         var type = Nullable.GetUnderlyingType(info.Type) ?? info.Type;
         var name = info.ElementType is { } element ? Show(element) + "[]"
             : type.IsGenericType ? $"{type.Name.Split('`')[0]}<{string.Join(", ", info.GenericTypeArguments.Select(Show))}>"
-            : type.Name;
+            : Keyword(type) ?? type.Name;
         return info.ReadState == NullabilityState.Nullable ? name + "?" : name;
     }
+
+    private static string? Keyword(Type type) => Type.GetTypeCode(type) switch
+    {
+        _ when type == typeof(object) => "object",
+        _ when type.IsEnum => null,
+        TypeCode.Boolean => "bool",
+        TypeCode.Byte => "byte",
+        TypeCode.SByte => "sbyte",
+        TypeCode.Int16 => "short",
+        TypeCode.UInt16 => "ushort",
+        TypeCode.Int32 => "int",
+        TypeCode.UInt32 => "uint",
+        TypeCode.Int64 => "long",
+        TypeCode.UInt64 => "ulong",
+        TypeCode.Single => "float",
+        TypeCode.Double => "double",
+        TypeCode.Decimal => "decimal",
+        TypeCode.Char => "char",
+        TypeCode.String => "string",
+        _ => null,
+    };
 
     // The parts every implementing ViewModel publishes alike, or null after reporting the ones that differ. For each part,
     // the declaration most implementing ViewModels have is the expected one, so the report names the ViewModels that
     // differ from it.
     private static List<(PropertyInfo Member, SharedClientPart Part)>? Compare(SharedClientDeclaration declaration, PropertyInfo[] members,
-        List<(Type Model, Dictionary<PropertyInfo, (PropertyInfo Published, List<SharedClientPart> Parts)> Members)> collected)
+        List<(Type Model, Dictionary<PropertyInfo, (PropertyInfo Published, List<SharedClientPart> Parts)> Members)> collected,
+        HashSet<(Type Model, Module Module, int Token)> reportedMembers)
     {
         var shared = new List<(PropertyInfo, SharedClientPart)>();
         var reported = new HashSet<Type>();
@@ -256,10 +309,13 @@ internal static class SharedClients
                 var expectedPart = expected.First().Part;
                 foreach (var entry in entries.Where(entry => entry.Part?.Comparable != expected.Key))
                 {
-                    if (!reported.Add(entry.Model)) continue;
+                    if (!reported.Add(entry.Model) || !reportedMembers.Add((entry.Model, member.Module, member.MetadataToken))) continue;
+                    var others = expected.Select(other => other.Model.Name).ToArray();
                     Diagnostics.Report(new BridgeDiagnosticException(BridgeDiagnosticCodes.SharedClient,
                         $"{entry.Model.Name}.{entry.Published.Name}: every ViewModel that implements {member.DeclaringType!.Name}.{member.Name} of the shared client {declaration.Name} must publish it alike, but {entry.Model.Name}'s client "
-                        + $"{Describe(entry.Part, declaration.Name)} where {string.Join(", ", expected.Select(other => other.Model.Name))}'s {Describe(expectedPart, declaration.Name)}. "
+                        + $"{Describe(entry.Part, declaration.Name, plural: false)} where "
+                        + (others.Length == 1 ? $"{others[0]}'s client " : $"{string.Join(", ", others[..^1])} and {others[^1]}'s clients ")
+                        + $"{Describe(expectedPart, declaration.Name, plural: others.Length > 1)}. "
                         + "Check the member's type and attributes, such as [JsonPropertyName], [RunicCommandInput], [RunicCommandKey] and [RunicFailure].",
                         entry.Published), entry.Model);
                 }
@@ -268,8 +324,8 @@ internal static class SharedClients
         return reported.Count == 0 ? shared : null;
     }
 
-    private static string Describe(SharedClientPart? part, string name) => part is null ? "has no such member"
-        : $"has `{TypeScriptNamedTypes.Display(part.Declaration.Replace(Owner, name, StringComparison.Ordinal)).Replace("\u0003", "", StringComparison.Ordinal)}`";
+    private static string Describe(SharedClientPart? part, string name, bool plural) => (plural ? "have" : "has") + (part is null ? " no such member"
+        : $" `{TypeScriptNamedTypes.Display(part.Declaration.Replace(Owner, name, StringComparison.Ordinal)).Replace("\u0003", "", StringComparison.Ordinal)}`");
 
     private static string Emit(SharedClientDeclaration declaration, List<(PropertyInfo Member, SharedClientPart Part)> shared, string[] kinds)
     {

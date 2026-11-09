@@ -149,6 +149,13 @@ runtime imports and page reference caches, never collide with names derived
 from your types: when a ViewModel is named `WireViewModel` or `ViewViewModel`,
 the module uses `_WireState` or imports `ViewClient as _ViewClient` instead.
 
+A `[RunicSharedClient]` interface's shared client declares `{Name}PageReference`,
+which every implementing ViewModel's module imports. When that is also the page
+reference of a presentation kind, such as `OrdersPagePageReference` for the
+shared client `OrdersPage` and `OrdersView` with `[RunicViewContract("Page")]`,
+or `OrdersPageReference` for an interface `IOrders` beside `OrdersViewModel`,
+the error asks for another name: set `[RunicSharedClient(Name = "…")]`.
+
 **Fix:** rename one member or type, or set a wire name with `[RunicAlias]`.
 Rename a reserved command; the message suggests a name, such as `CreateCommand`
 for `NewCommand`.
@@ -656,6 +663,8 @@ write the interface's shared client, because:
   another wire name (`[JsonPropertyName]`), command input (`[RunicCommandInput]`,
   `[RunicCommandKey]`) or declared failure (`[RunicFailure]`). The error names
   the ViewModel that differs from the most common declaration and shows both;
+  a property of an interface that another `[RunicSharedClient]` interface
+  extends is reported once;
 - the property is settable in the interface, but the page cannot set it, or it
   is an interaction or a view request, which a shared client does not include;
 - the interface is generic, declares a property name twice through the

@@ -1843,8 +1843,10 @@ still reads the old name no longer compiles.
 interfaces. Each gets its own module, the ViewModel's page reference extends
 all of their references, and a registry accepts any of their components for its
 kind. An interface that no ViewModel with a View implements generates nothing.
-A generic interface, or a name that collides with a ViewModel's module, is an
-error.
+A generic interface is an error, and so is a name that collides with a
+ViewModel's module or whose `{Name}PageReference` is a presentation kind's page
+reference ([`RUNICBRIDGE004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge004));
+give the interface another name with `[RunicSharedClient(Name = "…")]`.
 
 ## Generator diagnostics
 

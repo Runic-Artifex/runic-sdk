@@ -35,15 +35,28 @@ internal static class RunicMembers
     // The generated root route: the lower-camel public name.
     internal static string RouteOf(Type model) => LowerFirst(PublicName(model));
 
-    // The public concrete classes of the type's assembly and another one that derive from it or implement it.
-    internal static IEnumerable<Type> Implementations(Type type, Assembly other) =>
-        new[] { type.Assembly, other }.Distinct().SelectMany(Exported)
+    // The public concrete classes that derive from the type or implement it, in its assembly, another one and every loaded
+    // assembly that references its assembly. A presented ViewModel's assembly is loaded, because the ViewModel exists.
+    internal static IEnumerable<Type> Implementations(Type type, Assembly other)
+    {
+        var name = type.Assembly.GetName().Name;
+        return new[] { type.Assembly, other }
+            .Concat(AppDomain.CurrentDomain.GetAssemblies().Where(assembly => !assembly.IsDynamic
+                && References(assembly).Any(reference => string.Equals(reference.Name, name, StringComparison.Ordinal))))
+            .Distinct().SelectMany(Exported)
             .Where(candidate => candidate is { IsClass: true, IsAbstract: false } && type.IsAssignableFrom(candidate));
+    }
+
+    private static AssemblyName[] References(Assembly assembly)
+    {
+        try { return assembly.GetReferencedAssemblies(); }
+        catch (Exception error) when (error is NotSupportedException or FileNotFoundException or FileLoadException or BadImageFormatException) { return []; }
+    }
 
     private static Type[] Exported(Assembly assembly)
     {
         try { return assembly.GetExportedTypes(); }
-        catch (Exception error) when (error is ReflectionTypeLoadException or FileNotFoundException or FileLoadException or TypeLoadException) { return []; }
+        catch (Exception error) when (error is ReflectionTypeLoadException or FileNotFoundException or FileLoadException or TypeLoadException or NotSupportedException) { return []; }
     }
 
     internal static string LowerFirst(string value) => value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value[1..];

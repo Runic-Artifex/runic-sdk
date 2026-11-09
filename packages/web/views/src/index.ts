@@ -210,10 +210,12 @@ export interface PageReference<TClient = unknown> {
 /**
  * The type-only key under which a generated `{Name}PageReference` names the shared page references it extends, such as
  * `ResultPagePageReference` for a ViewModel that implements a .NET `[RunicSharedClient]` interface `IResultPage`. The
- * frameworks' `ViewRegistry` types read it, so a shared component registers for each kind without a cast. No
- * reference has the property at run time.
+ * frameworks' `ViewRegistry` types read it, so a shared component registers for each kind without a cast. It exists
+ * only in the types: import it with `import type`; no reference has the property and the package has no such value at
+ * run time.
  */
-export const sharedPageReferences: unique symbol = Symbol("@runic-artifex/views.sharedPageReferences");
+declare const sharedPageReferences: unique symbol;
+export type { sharedPageReferences };
 
 /** The shared page references (`[RunicSharedClient]`) that a generated page reference extends; `never` when it has none. */
 export type SharedPageReferences<R> = R extends unknown

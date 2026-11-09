@@ -808,8 +808,8 @@ public sealed partial class RunicViewDriver<TModel> where TModel : class
     private RunicViewDriver<TContent> Content<TContent>(PageReference reference, PropertyInfo member) where TContent : class
     {
         // The kind is the presented ViewModel's name, with a View contract after it. An interface or abstract class, such
-        // as a [RunicSharedClient] interface or a slot's content type, takes the kinds of the concrete ViewModels in its
-        // and the presenting ViewModel's assemblies that derive from it too.
+        // as a [RunicSharedClient] interface or a slot's content type, takes the kinds of the concrete ViewModels that derive
+        // from it too: in its assembly, the presenting ViewModel's and every loaded assembly that references its assembly.
         static bool Presents(string presented, string kind) => presented.StartsWith(kind, StringComparison.Ordinal)
             && (presented.Length == kind.Length || char.IsUpper(presented[kind.Length]));
         if (!Presents(reference.Kind, RunicMembers.RouteOf(typeof(TContent)))

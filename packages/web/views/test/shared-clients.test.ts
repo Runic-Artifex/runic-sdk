@@ -2,7 +2,8 @@
 // per kind of a shared reference.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { registryEntries, sharedPageReferences, type SharedPageReferences, type ViewRegistryPage } from "../dist/index.js";
+import * as views from "../dist/index.js";
+import { registryEntries, type SharedPageReferences, type sharedPageReferences, type ViewRegistryPage } from "../dist/index.js";
 
 type ResultPage = { readonly kind: "orders" | "invoices"; connect(): Promise<{ readonly title: string }> };
 type Orders = { readonly kind: "orders"; connect(): Promise<{ readonly title: string; readonly total: number }>; readonly [sharedPageReferences]?: ResultPage };
@@ -22,7 +23,7 @@ test("registryEntries maps every kind to the component", () => {
   assert.deepEqual(registryEntries([], component), {});
 });
 
-test("sharedPageReferences is a symbol that no reference carries at run time", () => {
-  assert.equal(typeof sharedPageReferences, "symbol");
+test("sharedPageReferences exists only in the types", () => {
+  assert.equal("sharedPageReferences" in views, false);
   assert.ok(ordersPages && settingsPages && noShared);
 });
