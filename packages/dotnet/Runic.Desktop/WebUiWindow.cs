@@ -101,6 +101,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string? _embeddedHtml;
     private string? _entryFile;
     private Uri? _externalUrl;
+    // runic-host/1: the key of the host session's ephemeral data store when this surface's window shows a hosted
+    // application's page (DesktopHost.CreateHostedSurfaceAsync).
+    private string? _hostedDataStore;
     private WebUiFileHandler? _fileHandler;
     private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _requestHandler;
     // DesktopSurfaceOptions.Resources: asked for what the content does not serve, before 404 (#313).
@@ -2064,15 +2067,32 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private void StopCloseConfirmation() => Interlocked.Exchange(ref _closeController, null)?.Dispose();
 
+    // runic-host/1 hosted windows (host-protocol.md, Page admission): the window loads the guest's launch address
+    // (DesktopContent.ExternalUrl), whose origin is the only application origin of the window. It injects no credential,
+    // admits no origin of this surface and uses the host session's ephemeral data store.
+    internal string? HostedDataStore
+    {
+        get => Volatile.Read(ref _hostedDataStore);
+        set => Volatile.Write(ref _hostedDataStore, value);
+    }
+
     private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
     {
+        var hosted = HostedDataStore;
+        if (hosted is not null) Internal.EphemeralDataStores.RequireActive(hosted);
         // Only a host that can own windows receives the owner; the others open the window on its own.
         var ownerHandle = _embeddedHost is { } ownedHost && ownedHost.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership)
             ? _ownerHandle
             : 0;
         string? profilePath = null;
         _configuredProfilePath = _profileConfigured ? _profilePath : null;
-        if (_profileConfigured)
+        if (hosted is not null)
+        {
+            // WebView2's data store is its user data folder: the host session's own, which its windows share like a
+            // configured ProfilePath (SharedProfile).
+            profilePath = _configuredProfilePath = OperatingSystem.IsWindows() ? Internal.EphemeralDataStores.Folder(hosted) : null;
+        }
+        else if (_profileConfigured)
         {
             profilePath = _profilePath;
         }
@@ -2103,15 +2123,24 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ProfilePath = profilePath,
             BrowserArguments = _browserArguments,
             AllowedPermissions = _allowedPermissions,
-            WebContent = WebContentRules.Resolve(_webContent, Environment.GetEnvironmentVariable),
-            // The surface's own origin too: a window presenting external content can return to it.
-            AdditionalOrigins = (_securityPolicy?.AdditionalOrigins ?? Enumerable.Empty<string>())
-                .Select(static origin => new Uri(origin, UriKind.Absolute))
-                .Prepend(Url!)
-                .ToArray(),
-            DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true
-                ? _spellChecking ? CreateDocumentStartScript() : SpellCheckingOffScript + "\n" + CreateDocumentStartScript()
-                : null,
+            WebContent = hosted is null
+                ? WebContentRules.Resolve(_webContent, Environment.GetEnvironmentVariable)
+                : HostedWebContent(WebContentRules.Resolve(_webContent, Environment.GetEnvironmentVariable)),
+            // The surface's own origin too: a window presenting external content can return to it. A hosted window
+            // (host-protocol.md, Page admission) has the guest's origin alone, the presented launch address's.
+            AdditionalOrigins = hosted is not null
+                ? []
+                : (_securityPolicy?.AdditionalOrigins ?? Enumerable.Empty<string>())
+                    .Select(static origin => new Uri(origin, UriKind.Absolute))
+                    .Prepend(Url!)
+                    .ToArray(),
+            // A hosted window injects no credential into the guest's documents.
+            DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript != true
+                ? null
+                : hosted is not null
+                    ? _spellChecking ? null : SpellCheckingOffScript
+                    : _spellChecking ? CreateDocumentStartScript() : SpellCheckingOffScript + "\n" + CreateDocumentStartScript(),
+            EphemeralDataStore = hosted,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
             // The log of the open in progress: BeginConnection replaced it before the window is shown.
             StartupProgress = description => HandshakeLog.Record(description),
@@ -2130,6 +2159,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             SpellCheckingLanguages = _openedSpellCheckingLanguages = MenuHost?.SpellCheckingLanguages ?? [],
         };
     }
+
+    // A hosted window's top-level navigation stays on the guest's origin; links elsewhere open in the default browser.
+    private static DesktopWebContentPolicy HostedWebContent(DesktopWebContentPolicy policy) =>
+        policy.ExternalNavigation == DesktopExternalNavigation.AllowInWindow
+            ? policy with { ExternalNavigation = DesktopExternalNavigation.OpenInBrowser }
+            : policy;
 
     // An embedded window's own event, such as a crashed web process (#313): to the sink, whose failure is logged, and
     // to the log.

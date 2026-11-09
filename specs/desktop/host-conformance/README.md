@@ -14,7 +14,9 @@ The repository checks the corpus itself in `eng/host-conformance.test.mjs` (`bun
 and in the engineering job): every scenario against [`scenario.schema.json`](scenario.schema.json), its id against its
 path, and that it is self-contained. The .NET guest runner is `HostConformanceTests` in
 `Runic.Application.Views.Desktop.Tests`: it plays the host against `RunicDesktopHost.Run` in hosted mode, in its own
-process. A host runner belongs in the tests of Runic's host and is added with it.
+process. The .NET host runner is `HostRoleConformanceTests` in the same suite: it plays the guest against
+`IRunicHostedApplications`, through a guest process that relays its standard input and output to the runner, which
+listens on its own channel.
 
 ## Scenarios
 

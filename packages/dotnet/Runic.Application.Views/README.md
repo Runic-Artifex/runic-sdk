@@ -4274,6 +4274,14 @@ trace id; correlate them with the host's spans by time and route.
 | 2011 | `DesktopHostedShutdown` | Information | A hosted application's host went away or asked it to shut down; its Windows close. | `Reason` |
 | 2012 | `DesktopHostedExit` | Warning | A hosted application's body did not return within 10 seconds after its host went away, so the process exits. | `Seconds` |
 | 2013 | `DesktopHostedChannelFailed` | Warning | Handling a message of the host channel, or closing a hosted Window, failed. | `ErrorType` |
+| 2014 | `DesktopHostedApplicationStarted` | Information | A host (`IRunicHostedApplications`) started a guest application and completed the handshake. | `Name`, `Version`, `ProcessId` |
+| 2015 | `DesktopHostedApplicationStartFailed` | Warning | A host could not start a guest application; `StartAsync` throws `RunicHostedApplicationException` with the same code. | `FileName`, `Code`, `Reason` |
+| 2016 | `DesktopHostedApplicationExited` | Information | A hosted guest application exited, crashed or was stopped; the host closed its windows. | `Name`, `ExitCode` |
+| 2017 | `DesktopHostedApplicationChannelFailed` | Warning | Handling a message of a guest's host channel, or stopping the guest, failed. | `ErrorType` |
+| 2018 | `DesktopHostedWindowFailed` | Warning | The host could not open a guest's window, or release its surface after it closed. | `Name`, `ErrorType` |
+| 2019 | `DesktopHostedWindowPolicyFailed` | Error | The host's `IRunicHostedWindowPolicy` or a `WindowOpened`/`WindowClosed` handler threw; the guest's request fails. | `ErrorType` |
+| 2020 | `DesktopHostedGuestOutput` | Debug | A line a guest application wrote to its standard output, other than its launch line, which carries a secret. | `FileName`, `Line` |
+| 2021 | `DesktopHostedGuestError` | Debug | A line a guest application wrote to its standard error. | `FileName`, `Line` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `2b35db13f` (CsWebUi 2.5.0-beta.4.8). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |

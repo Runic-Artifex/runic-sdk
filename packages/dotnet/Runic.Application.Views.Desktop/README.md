@@ -732,7 +732,60 @@ if (args is ["hosted"])
   `Runic.Application.Testing`
   ([a hosted application](../Runic.Application.Testing/README.md#a-hosted-application)).
 
-The host side follows in a later 0.17 change.
+### Hosting another application
+
+The host side is `IRunicHostedApplications`, from `RunicDesktopHost.HostedApplications` or, after
+`services.AddRunicHostedApplications()`, from the services. It starts the guest's executable with the parameter
+that selects its hosted mode and shows each of the guest's Windows in a native window of the host (window mode):
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+var applications = host.HostedApplications;
+applications.WindowOpened += (_, e) => Console.WriteLine($"{e.Window.Application.Guest.Name} opened {e.Window.Type}");
+await using var tool = await applications.StartAsync(
+    new RunicGuestStartInfo("/opt/tool/Tool", ["hosted"]),
+    new RunicHostedApplicationOptions { Policy = new ToolWindowPolicy() });
+var exitCode = await tool.Exited;
+```
+
+- **Start.** `StartAsync` starts the executable directly, never through a shell, with standard input and output
+  piped, standard error and the other output lines in the log (events 2020 and 2021, `Debug`), and without
+  `RUNIC_APPLICATION_SERVE_ONLY` and `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. The guest runs in a kill-on-close job
+  object on Windows and leads a process group of its own on Linux and macOS. The start writes the offer, reads the
+  channel line, connects and checks the guest's proof within `StartTimeout` (30 seconds); a failure ends the guest's
+  process tree and throws `RunicHostedApplicationException` (`guest-start-timeout`, `guest-exited`,
+  `guest-not-hostable`, `guest-refused`, `protocol-unsupported`; event 2015).
+- **Windows.** Each guest Window becomes a `RunicHostedWindow`, whose `Presentation` is a native `DesktopWindow` of
+  the host, embedded and without a browser fallback. It loads the guest's one-time launch address top-level from the
+  guest's loopback origin: the host injects none of its credentials, admits no other origin for top-level navigation
+  and gives each guest session a data store of its own that is not persisted. A user's close, and
+  `RequestCloseAsync`, ask the guest first; the window closes when the guest's Window has. The guest's presentation
+  requests (present, minimize, visibility, full screen, maximize, size, position, document edited, represented
+  file, colour scheme, layout direction, announcements) apply to that window, and its activity, placement and colour
+  scheme go back to the guest. `IRunicHostedApplications.WindowOpened` and `WindowClosed` report the windows: add
+  the handlers before `StartAsync`.
+- **Policy.** `IRunicHostedWindowPolicy` decides each window (`OpenWindowAsync`: refuse, or open with other
+  `DesktopWindowOptions` such as a saved placement keyed by `Guest.ApplicationId`) and each presentation request
+  (`Present`: apply, clamp or refuse). Without a policy, every window of the guest opens and every request applies.
+- **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
+  and completes `Exited` with its exit code (event 2016). `StopAsync` asks the guest to shut down and ends it after
+  `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests
+  still running stop when the host's Desktop shuts down and when `RunicDesktopHost.Run` returns. A hosted or
+  serve-only application cannot host.
+
+Each engine keeps a guest session's cookies, storage and caches apart from the host's and from other guests':
+
+| Engine | Data store of a guest session | Isolation |
+| --- | --- | --- |
+| WebView2 | A user data folder of its own in the temporary folder, deleted after the session | Everything WebView2 keeps per user data folder, in a browser process of its own. The folder is on disk while the session runs. |
+| WKWebView | `WKWebsiteDataStore.nonPersistentDataStore` | Cookies, storage and caches in memory, shared by the session's windows. |
+| WebKitGTK 4.1 (GTK 3) | An ephemeral `WebKitWebContext` | Cookies, storage and caches in memory, in a network process of its own. Spell checking and the page language are set when the session's first window opens. |
+| WebKitGTK 6 (`Runic.Desktop.Gtk4`) | An ephemeral `WebKitNetworkSession` | Cookies, storage and caches in memory. |
+
+On WKWebView and WebKitGTK the store lives while a window of the session is open: a guest that opens a window after
+all its windows closed starts with an empty store. HTTP authentication, client certificates and the system's proxy and
+trust settings are the engine's and the user's, not the store's. A custom `IDesktopWindowHostFactory` shows hosted
+windows only if its window host implements `IDesktopEphemeralDataStoreWindowHost`.
 
 ## Automation
 

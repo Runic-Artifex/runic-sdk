@@ -312,6 +312,7 @@
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Logging.Tests",
         "tests/dotnet/Runic.Application.Views.Desktop.Tests",
+        "tests/native/Runic.Application.HostedWindows.Smoke",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
         "tests/benchmarks/host-scripts",
         "tests/benchmarks/Runic.Desktop.ServerBenchmarks",

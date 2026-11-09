@@ -15,6 +15,8 @@
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <!-- The package uses its own experimental runic-host/1 API. -->
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+    <!-- A host starts each guest application with posix_spawn in a process group of its own on Linux and macOS. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">
     <DefineConstants>$(DefineConstants);RUNIC_PORTABLE_PLATFORMS</DefineConstants>

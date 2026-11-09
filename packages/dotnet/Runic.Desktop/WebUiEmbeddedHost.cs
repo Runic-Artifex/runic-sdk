@@ -220,6 +220,10 @@ internal sealed record WebUiEmbeddedHostOptions
     /// </summary>
     public Action<Internal.WebViewStartupSignal>? StartupSignal { get; init; }
 
+    // runic-host/1 hosted windows: the key of the host session's ephemeral data store (Internal.EphemeralDataStores),
+    // which the window uses instead of the default one. Null for every other window.
+    public string? EphemeralDataStore { get; init; }
+
     /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 

@@ -69,4 +69,37 @@ internal static partial class DesktopLog
     [LoggerMessage(EventId = 2013, EventName = "DesktopHostedChannelFailed", Level = LogLevel.Warning,
         Message = "A message of the host channel failed with {ErrorType}.")]
     internal static partial void HostedChannelFailed(ILogger logger, Exception? exception, string errorType);
+
+    // The host of hosted applications (IRunicHostedApplications).
+    [LoggerMessage(EventId = 2014, EventName = "DesktopHostedApplicationStarted", Level = LogLevel.Information,
+        Message = "The hosted application {Name} {Version} started (process {ProcessId}).")]
+    internal static partial void HostedApplicationStarted(ILogger logger, string name, string version, int processId);
+
+    [LoggerMessage(EventId = 2015, EventName = "DesktopHostedApplicationStartFailed", Level = LogLevel.Warning,
+        Message = "The hosted application {FileName} did not start ({Code}): {Reason}")]
+    internal static partial void HostedApplicationStartFailed(ILogger logger, string fileName, string code, string reason);
+
+    [LoggerMessage(EventId = 2016, EventName = "DesktopHostedApplicationExited", Level = LogLevel.Information,
+        Message = "The hosted application {Name} exited with {ExitCode}; its windows closed.")]
+    internal static partial void HostedApplicationExited(ILogger logger, string name, int exitCode);
+
+    [LoggerMessage(EventId = 2017, EventName = "DesktopHostedApplicationChannelFailed", Level = LogLevel.Warning,
+        Message = "A message of a hosted application's channel failed with {ErrorType}.")]
+    internal static partial void HostedApplicationChannelFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 2018, EventName = "DesktopHostedWindowFailed", Level = LogLevel.Warning,
+        Message = "A window of the hosted application {Name} did not open or close cleanly ({ErrorType}).")]
+    internal static partial void HostedWindowFailed(ILogger logger, Exception? exception, string name, string errorType);
+
+    [LoggerMessage(EventId = 2019, EventName = "DesktopHostedWindowPolicyFailed", Level = LogLevel.Error,
+        Message = "The hosted window policy or a hosted window event handler failed with {ErrorType}.")]
+    internal static partial void HostedWindowPolicyFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 2020, EventName = "DesktopHostedGuestOutput", Level = LogLevel.Debug,
+        Message = "{FileName}: {Line}")]
+    internal static partial void HostedGuestOutput(ILogger logger, string fileName, string line);
+
+    [LoggerMessage(EventId = 2021, EventName = "DesktopHostedGuestError", Level = LogLevel.Debug,
+        Message = "{FileName} (standard error): {Line}")]
+    internal static partial void HostedGuestError(ILogger logger, string fileName, string line);
 }

@@ -126,6 +126,54 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // Serve-only services decide on first use (DesktopServeOnlyState). A hosted application runs on the host's
         // desktop, so its application services, such as power events, stay its own.
         DesktopServeOnlyState.RecordFor(services, options.ServeOnly && options.Guest is null);
+        // AddRunicHostedApplications resolves the host that runs with these services.
+        lock (HostsGate)
+        {
+            Hosts.AddOrUpdate(services, this);
+            s_latest = new WeakReference<RunicDesktopHost>(this);
+        }
+    }
+
+    private static readonly object HostsGate = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IServiceProvider, RunicDesktopHost> Hosts = [];
+    private static WeakReference<RunicDesktopHost>? s_latest;
+
+    // The host created with these services, or the latest one for another provider of the same application, such as a
+    // provider an application built for its services' resolution.
+    internal static RunicDesktopHost? ForServices(IServiceProvider services)
+    {
+        lock (HostsGate)
+        {
+            if (Hosts.TryGetValue(services, out var host)) return host;
+            return s_latest is { } latest && latest.TryGetTarget(out var last) ? last : null;
+        }
+    }
+
+    private Hosting.RunicHostedApplications? _hostedApplications;
+
+    /// <summary>
+    /// Starts other Runic applications as guests and shows their Windows in native windows of this host (the Runic host
+    /// protocol, <c>runic-host/1</c>, in window mode).
+    /// </summary>
+    /// <remarks>
+    /// The guests still running are stopped when <see cref="Desktop"/> shuts down and when
+    /// <see cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// returns. A hosted or serve-only host cannot start guests. Experimental; see <c>docs/experimental.md</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public IRunicHostedApplications HostedApplications
+    {
+        get
+        {
+            if (Volatile.Read(ref _hostedApplications) is { } applications) return applications;
+            lock (HostsGate) return _hostedApplications ??= new Hosting.RunicHostedApplications(this);
+        }
+    }
+
+    // Run returned: the guests this host started stop before the Desktop host is disposed.
+    internal async Task StopHostedApplicationsAsync()
+    {
+        if (Volatile.Read(ref _hostedApplications) is { } applications) await applications.DisposeAsync().ConfigureAwait(false);
     }
 
     private readonly RunicGuestOptions? _guestOptions;
@@ -330,7 +378,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Func<RunicDesktopHost, Task<int>> application)
     {
         var host = new RunicDesktopHost(services, desktop, hostOptions, startsGuest: true);
-        if (host._guestOptions is null) return await application(host).ConfigureAwait(false);
+        if (host._guestOptions is null)
+        {
+            try { return await application(host).ConfigureAwait(false); }
+            finally { await host.StopHostedApplicationsAsync().ConfigureAwait(false); }
+        }
         // Hosted mode: the host's handshake first; a failure throws RunicHostedApplicationException without the body.
         await host.StartGuestAsync().ConfigureAwait(false);
         try { return await application(host).ConfigureAwait(false); }

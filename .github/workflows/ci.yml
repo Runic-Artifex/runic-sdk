@@ -849,7 +849,9 @@ jobs:
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh
       - name: Build native window smoke
-        run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
+        run: |
+          dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
+          dotnet build tests/native/Runic.Application.HostedWindows.Smoke -c Release
       - name: Exercise native window close interception on Linux
         if: runner.os == 'Linux'
         # Real pointer drags through XTEST: a stuck drag must not hold the runner.
@@ -885,6 +887,13 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # S11 window mode (runic-host/1): Runic.Application.HostedWindows.Smoke hosts itself as guests; each guest page
+      # loads in a GTK 3 window of the host in an ephemeral web context, without the host's or another guest's cookies;
+      # close, crash and stop.
+      - name: Show hosted application windows in GTK 3
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -941,6 +950,8 @@ jobs:
           done
           # B6: an owned GTK 4 window is transient for its owner, and a window-modal one makes the owner insensitive.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --owner
+          # S11 window mode (runic-host/1): guest pages in GTK 4 windows of the host, each guest in an ephemeral network session.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll gtk4
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
@@ -1093,6 +1104,14 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # S11 window mode (runic-host/1): the smoke hosts itself as guests, started in a job object (Windows) or a process
+      # group of their own (macOS). Each guest page loads in a native window of the host with the session's own data store
+      # (a WebView2 user data folder, a non-persistent WKWebsiteDataStore), without the host's or another guest's
+      # cookies; close, crash and stop.
+      - name: Show hosted application windows on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
       # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
       # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page

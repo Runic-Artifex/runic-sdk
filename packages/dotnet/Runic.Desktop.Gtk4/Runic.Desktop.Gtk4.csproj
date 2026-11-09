@@ -9,6 +9,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
+    <!-- The GTK 4 window host honours Runic Desktop's experimental runic-host/1 data store option. -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
@@ -22,6 +24,7 @@
     <Compile Include="../Runic.Desktop/Internal/GtkDragSupport.cs" Link="Shared/GtkDragSupport.cs" />
     <Compile Include="../Runic.Desktop/Internal/WebKitGtkMediaFrames.cs" Link="Shared/WebKitGtkMediaFrames.cs" />
     <Compile Include="../Runic.Desktop/Internal/WebContentRules.cs" Link="Shared/WebContentRules.cs" />
+    <Compile Include="../Runic.Desktop/Internal/EphemeralDataStoreCache.cs" Link="Shared/EphemeralDataStoreCache.cs" />
     <Compile Include="../Runic.Desktop/Internal/WebKitGtkWebContent.cs" Link="Shared/WebKitGtkWebContent.cs" />
     <Compile Include="../Runic.Desktop/Internal/SpellingLanguages.cs" Link="Shared/SpellingLanguages.cs" />
     <Compile Include="../Runic.Desktop/Internal/WindowPlacementClamp.cs" Link="Shared/WindowPlacementClamp.cs" />
