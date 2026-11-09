@@ -1,0 +1,16 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "launch.offer-invalid.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "launch",
+  "roles": ["guest"],
+  "description": "An offer line without a nonce is refused with offer-invalid.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offerLine":"RUNIC_HOST_OFFER={\"protocols\":[1],\"host\":{\"name\":\"Conformance Host\",\"version\":\"1.0.0\"}}"}},
+    {"line":{"refused":{"code":"offer-invalid","message":{"$any":"string"}}}},
+    {"expect":{"startFailure":"offer-invalid"}},
+    {"expect":{"exited":true}}
+  ]
+}

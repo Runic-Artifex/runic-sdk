@@ -1,0 +1,14 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "launch.highest-common-protocol.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "launch",
+  "roles": ["guest"],
+  "description": "The guest chooses the highest version of the offer's protocols that it implements.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[7,1,2],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}}
+  ]
+}

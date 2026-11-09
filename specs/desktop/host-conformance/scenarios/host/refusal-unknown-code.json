@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "host.refusal-unknown-code.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "host",
+  "roles": ["host"],
+  "description": "A refusal line with a code the host does not know fails the host's start with guest-refused, naming that code.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"refused":{"code":"later-reason","message":"A reason of a later release."}}},
+    {"exit":1},
+    {"expect":{"startFailure":"guest-refused"}}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "host.guest-refuses.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "host",
+  "roles": ["host"],
+  "description": "A refusal line fails the host's start with protocol-unsupported.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"refused":{"code":"protocol-unsupported","message":"This application implements runic-host 2.","protocols":[2]}}},
+    {"exit":1},
+    {"expect":{"startFailure":"protocol-unsupported"}}
+  ]
+}
