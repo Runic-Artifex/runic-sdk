@@ -4,130 +4,99 @@ using System.Runtime.Versioning;
 using System.Text;
 
 // GitHub's Windows runners run every step elevated, and an elevated guest refuses hosted mode (host-protocol.md, Same
-// user). The smoke, and the host cases it runs with --run-unelevated, therefore run as the runner's user without the
-// elevation: with the token of an unelevated process of the same user in the same session, such as explorer.exe, which
-// UAC's filtered token gives (CreateProcessWithTokenW). A restricted token of the elevated one would not do: it keeps
-// the token's elevation (TokenIsElevated). The child shares this process's standard handles, gets its environment with
-// RUNIC_TEST_UNELEVATED=1 and its current directory, and its exit code is this process's.
+// user). The smoke, and the host cases it runs with --run-unelevated, therefore run as a standard user that the CI step
+// creates (RUNIC_TEST_UNELEVATED_USER and RUNIC_TEST_UNELEVATED_PASSWORD), through CreateProcessWithLogonW, which also
+// lets the user's process use this window station and desktop. Neither a restricted token of the elevated one (it keeps
+// TokenIsElevated) nor the token of another process of the runner's user (none runs unelevated) would do. The child gets
+// the user's own profile variables, such as TEMP, with this process's others, such as PATH, and RUNIC_TEST_UNELEVATED=1;
+// it shares this process's standard handles and current directory, and its exit code is this process's.
 [SupportedOSPlatform("windows")]
 internal static partial class Unelevated
 {
     internal const string Marker = "RUNIC_TEST_UNELEVATED";
+    private const string UserVariable = "RUNIC_TEST_UNELEVATED_USER";
+    private const string PasswordVariable = "RUNIC_TEST_UNELEVATED_PASSWORD";
+
+    // The variables of the user's own profile, which the child keeps from the user's environment block.
+    private static readonly HashSet<string> ProfileVariables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "HOME", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "USERNAME", "USERDOMAIN",
+        "USERDOMAIN_ROAMINGPROFILE", "OneDrive", "ProgramData", "PUBLIC",
+    };
 
     internal static int Run(IReadOnlyList<string> command)
     {
         if (command.Count == 0) throw new ArgumentException("No command to run unelevated.", nameof(command));
         if (Environment.GetEnvironmentVariable(Marker) == "1")
             throw new InvalidOperationException("This process was started unelevated and still runs elevated.");
+        var user = Environment.GetEnvironmentVariable(UserVariable);
+        var password = Environment.GetEnvironmentVariable(PasswordVariable);
+        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password))
+            throw new InvalidOperationException($"Set {UserVariable} and {PasswordVariable} to a standard user to run unelevated.");
+        Console.WriteLine($"Running as the standard user {user}: {string.Join(' ', command)}");
         Console.Out.Flush();
         Console.Error.Flush();
-        var (token, source) = UnelevatedToken();
-        try
-        {
-            Console.WriteLine($"Running unelevated with the token of {source}: {string.Join(' ', command)}");
-            var code = Start(token, command);
-            Console.WriteLine($"The unelevated command exited with {code}.");
-            return code;
-        }
-        finally { CloseHandle(token); }
+        var environment = EnvironmentBlock(UserEnvironment(user, password));
+        var code = Start(user, password, environment, command);
+        Console.WriteLine($"The unelevated command exited with {code}.");
+        return code;
     }
 
-    // A primary token of an unelevated, medium-integrity process of this user in this session.
-    private static unsafe (nint Token, string Source) UnelevatedToken()
+    // The user's environment block (CreateEnvironmentBlock) after its profile was loaded, which creates it on the first
+    // logon.
+    private static unsafe Dictionary<string, string> UserEnvironment(string user, string password)
     {
-        var self = OwnUser();
-        var session = (uint)System.Diagnostics.Process.GetCurrentProcess().SessionId;
-        var candidates = System.Diagnostics.Process.GetProcesses()
-            .OrderBy(static process => process.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-            .ToArray();
+        if (!LogonUserW(user, ".", password, 2 /* LOGON32_LOGON_INTERACTIVE */, 0, out var token))
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The user {user} could not log on.");
         try
         {
-            foreach (var candidate in candidates)
+            fixed (char* name = user)
             {
-                if (candidate.SessionId != session || candidate.Id == Environment.ProcessId) continue;
-                var process = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, (uint)candidate.Id);
-                if (process == 0) continue;
+                var profile = new ProfileInformation { Size = (uint)sizeof(ProfileInformation), Flags = 1 /* PI_NOUI */, UserName = name };
+                if (!LoadUserProfileW(token, ref profile))
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The profile of {user} could not be loaded.");
                 try
                 {
-                    if (!OpenProcessToken(process, 0x0002 | 0x0008 | 0x0001 /* DUPLICATE, QUERY, ASSIGN_PRIMARY */, out var token)) continue;
+                    if (!CreateEnvironmentBlock(out var block, token, false))
+                        throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The environment of {user} could not be read.");
                     try
                     {
-                        if (Integer(token, 20 /* TokenElevation */) != 0) continue;
-                        if (IntegrityLevel(token) is not (>= 0x2000 and < 0x3000)) continue;
-                        if (!User(token).AsSpan().SequenceEqual(self)) continue;
-                        if (!DuplicateTokenEx(token, 0x02000000 /* MAXIMUM_ALLOWED */, 0, 2 /* SecurityImpersonation */, 1 /* TokenPrimary */, out var primary))
-                            continue;
-                        return (primary, $"{candidate.ProcessName} ({candidate.Id})");
+                        var variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        for (var entry = (char*)block; *entry != '\0';)
+                        {
+                            var text = new string(entry);
+                            entry += text.Length + 1;
+                            var separator = text.IndexOf('=', 1);
+                            if (separator > 0) variables[text[..separator]] = text[(separator + 1)..];
+                        }
+                        return variables;
                     }
-                    finally { CloseHandle(token); }
+                    finally { DestroyEnvironmentBlock(block); }
                 }
-                finally { CloseHandle(process); }
+                finally { _ = UnloadUserProfile(token, profile.Profile); }
             }
         }
-        finally
-        {
-            foreach (var candidate in candidates) candidate.Dispose();
-        }
-        throw new InvalidOperationException("No unelevated process of this user runs in this session, so nothing can be started unelevated.");
-    }
-
-    private static byte[] OwnUser()
-    {
-        if (!OpenProcessToken(GetCurrentProcess(), 0x0008, out var token))
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), "This process's token could not be read.");
-        try { return User(token); }
         finally { CloseHandle(token); }
     }
 
-    private static unsafe byte[] Information(nint token, int informationClass)
-    {
-        _ = GetTokenInformation(token, informationClass, null, 0, out var size);
-        if (size == 0) return [];
-        var buffer = new byte[size];
-        fixed (byte* data = buffer)
-            return GetTokenInformation(token, informationClass, data, size, out _) ? buffer : [];
-    }
-
-    private static int Integer(nint token, int informationClass) =>
-        Information(token, informationClass) is { Length: >= 4 } data ? BitConverter.ToInt32(data) : -1;
-
-    // TOKEN_USER and TOKEN_MANDATORY_LABEL both start with SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes; }.
-    private static unsafe byte[] User(nint token)
-    {
-        var data = Information(token, 1 /* TokenUser */);
-        if (data.Length < sizeof(nint)) return [];
-        fixed (byte* pointer = data)
-        {
-            var sid = *(nint*)pointer;
-            return new ReadOnlySpan<byte>((void*)sid, GetLengthSid(sid)).ToArray();
-        }
-    }
-
-    // The RID of the token's integrity SID: 0x2000 medium, 0x3000 high.
-    private static unsafe int IntegrityLevel(nint token)
-    {
-        var data = Information(token, 25 /* TokenIntegrityLevel */);
-        if (data.Length < sizeof(nint)) return -1;
-        fixed (byte* pointer = data)
-        {
-            var sid = *(nint*)pointer;
-            var count = *GetSidSubAuthorityCount(sid);
-            return count == 0 ? -1 : (int)*GetSidSubAuthority(sid, (uint)(count - 1));
-        }
-    }
-
-    private static string EnvironmentBlock()
+    private static string EnvironmentBlock(Dictionary<string, string> user)
     {
         var variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (System.Collections.DictionaryEntry variable in Environment.GetEnvironmentVariables())
-            if (variable.Key is string name && variable.Value is string value) variables[name] = value;
+        {
+            if (variable.Key is not string name || variable.Value is not string value) continue;
+            if (ProfileVariables.Contains(name) || name is UserVariable or PasswordVariable) continue;
+            variables[name] = value;
+        }
+        foreach (var (name, value) in user)
+            if (ProfileVariables.Contains(name)) variables[name] = value;
         variables[Marker] = "1";
         var block = new StringBuilder();
         foreach (var (name, value) in variables) block.Append(name).Append('=').Append(value).Append('\0');
         return block.Append('\0').ToString();
     }
 
-    private static unsafe int Start(nint token, IReadOnlyList<string> command)
+    private static unsafe int Start(string user, string password, string environment, IReadOnlyList<string> command)
     {
         var process = GetCurrentProcess();
         var standard = new nint[3];
@@ -150,16 +119,18 @@ internal static partial class Unelevated
                 StandardError = standard[2],
             };
             var line = (CommandLine(command) + "\0").ToCharArray();
-            var environment = EnvironmentBlock();
             var directory = Environment.CurrentDirectory;
             ProcessInformation information;
+            fixed (char* userName = user)
+            fixed (char* domain = ".")
+            fixed (char* secret = password)
             fixed (char* commandLine = line)
             fixed (char* environmentBlock = environment)
             fixed (char* currentDirectory = directory)
             {
-                // CREATE_UNICODE_ENVIRONMENT. The secondary logon service duplicates the standard handles.
-                if (!CreateProcessWithTokenW(token, 0, null, commandLine, 0x400, environmentBlock, currentDirectory, &startup, out information))
-                    throw new Win32Exception(Marshal.GetLastPInvokeError(), $"'{command[0]}' could not be started unelevated.");
+                // LOGON_WITH_PROFILE; CREATE_UNICODE_ENVIRONMENT.
+                if (!CreateProcessWithLogonW(userName, domain, secret, 1, null, commandLine, 0x400, environmentBlock, currentDirectory, &startup, out information))
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), $"'{command[0]}' could not be started as {user}.");
             }
             CloseHandle(information.Thread);
             try
@@ -174,6 +145,19 @@ internal static partial class Unelevated
             foreach (var handle in standard)
                 if (handle != 0) CloseHandle(handle);
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct ProfileInformation
+    {
+        public uint Size;
+        public uint Flags;
+        public char* UserName;
+        public char* ProfilePath;
+        public char* DefaultPath;
+        public char* ServerName;
+        public char* PolicyPath;
+        public nint Profile;
     }
 
     // The quoting CommandLineToArgvW and the C runtime read back.
@@ -238,34 +222,31 @@ internal static partial class Unelevated
         public int ThreadId;
     }
 
-    [LibraryImport("kernel32", SetLastError = true)]
-    private static partial nint OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
+    [LibraryImport("advapi32", EntryPoint = "LogonUserW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool LogonUserW(string user, string domain, string password, int logonType, int provider, out nint token);
+
+    [LibraryImport("userenv", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool LoadUserProfileW(nint token, ref ProfileInformation profile);
+
+    [LibraryImport("userenv", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UnloadUserProfile(nint token, nint profile);
+
+    [LibraryImport("userenv", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CreateEnvironmentBlock(out nint environment, nint token, [MarshalAs(UnmanagedType.Bool)] bool inherit);
+
+    [LibraryImport("userenv")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyEnvironmentBlock(nint environment);
 
     [LibraryImport("advapi32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool OpenProcessToken(nint process, uint access, out nint token);
-
-    [LibraryImport("advapi32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool GetTokenInformation(nint token, int informationClass, void* information, uint length, out uint returned);
-
-    [LibraryImport("advapi32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool DuplicateTokenEx(nint token, uint access, nint attributes, int impersonationLevel, int tokenType, out nint newToken);
-
-    [LibraryImport("advapi32")]
-    private static partial int GetLengthSid(nint sid);
-
-    [LibraryImport("advapi32")]
-    private static unsafe partial byte* GetSidSubAuthorityCount(nint sid);
-
-    [LibraryImport("advapi32")]
-    private static unsafe partial uint* GetSidSubAuthority(nint sid, uint index);
-
-    [LibraryImport("advapi32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static unsafe partial bool CreateProcessWithTokenW(nint token, uint logonFlags, char* applicationName, char* commandLine,
-        uint creationFlags, void* environment, char* currentDirectory, StartupInformation* startupInfo, out ProcessInformation processInformation);
+    private static unsafe partial bool CreateProcessWithLogonW(char* userName, char* domain, char* password, uint logonFlags,
+        char* applicationName, char* commandLine, uint creationFlags, void* environment, char* currentDirectory,
+        StartupInformation* startupInfo, out ProcessInformation processInformation);
 
     [LibraryImport("kernel32")]
     private static partial nint GetCurrentProcess();

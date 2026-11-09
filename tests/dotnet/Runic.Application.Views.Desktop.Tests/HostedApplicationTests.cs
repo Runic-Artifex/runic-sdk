@@ -276,6 +276,16 @@ internal sealed class HostedApplicationTests
         finally { directory.Delete(recursive: true); }
     }
 
+    // The command line CreateProcessW receives: CommandLineToArgvW and the C runtime read the same arguments back.
+    [Test, NotInParallel(Order = 62)]
+    public void TheWindowsCommandLineQuotesEachArgument()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var line = WindowsGuestProcess.CommandLine(@"C:\Program Files\Tool\tool.exe", ["plain", "", "a b", "a\"b", @"a\b", @"a\ b\", "\\\""]);
+        const string Expected = "\"C:\\Program Files\\Tool\\tool.exe\" plain \"\" \"a b\" \"a\\\"b\" a\\b \"a\\ b\\\\\" \"\\\\\\\"\"";
+        Check(line == Expected, $"The command line is {line}.");
+    }
+
     // M1: the guest goes away while the host opens its window. The window that opened after the guest's end closes at
     // once, without WindowOpened or WindowClosed, and the application ends.
     [Test, NotInParallel(Order = 67)]
