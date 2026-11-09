@@ -24,6 +24,7 @@ dotnet runic dev
 | `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from | `native` |
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
+| `--translations` | Translates the application with [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk) 0.9: one catalog in English and German (`Frontend/translations`) for the page and C#, a language switch, the application's language for every window, `RUNIC_LOCALE` for test runs, and page and .NET tests of the translated text | English text in the code |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
 | `--packaging` | Adds the `packaging/` manifests that `dotnet runic package` fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), as editable overrides of the command's defaults | The command's built-in manifests |
 | `--restore` | Restores the created projects' NuGet packages, for an IDE that opens the project next | No restore; `dotnet runic dev` and `dotnet build` restore |
