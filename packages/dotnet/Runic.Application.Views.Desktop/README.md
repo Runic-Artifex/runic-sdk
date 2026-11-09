@@ -762,11 +762,18 @@ var exitCode = await tool.Exited;
 
 - **Start.** `StartAsync` starts the executable directly, never through a shell, with standard input and output
   piped, standard error and the other output lines in the log (events 2021 and 2022, `Debug`), and without
-  `RUNIC_APPLICATION_SERVE_ONLY` and `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. The guest runs in a kill-on-close job
-  object on Windows and leads a process group of its own on Linux and macOS. The start writes the offer, reads the
-  channel line, connects and checks the guest's proof within `StartTimeout` (30 seconds); a failure ends the guest's
-  process tree and throws `RunicHostedApplicationException` (`guest-start-timeout`, `guest-exited`,
-  `guest-not-hostable`, `guest-refused`, `protocol-unsupported`; event 2016).
+  `RUNIC_APPLICATION_SERVE_ONLY` and `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. On Windows the guest starts suspended,
+  joins a kill-on-close job object and only then runs, so nothing it starts escapes the job, also when the host
+  crashes; a job that cannot be created or joined fails the start. A batch file (`.bat`, `.cmd`) is refused with
+  `ArgumentException`, since `cmd.exe` would parse its arguments. On Linux and macOS the guest leads a process group of
+  its own, which ends with it; on Linux it inherits no descriptor but its standard streams (glibc 2.34 and later). A
+  host that exits normally ends its guests' groups; a host that crashes or is killed cannot, and its guests exit when
+  their standard input ends, within 10 seconds, while what a guest started itself may outlive it. The start writes the
+  offer, reads the channel line, connects, without a proxy, and checks the guest's proof within `StartTimeout` (30
+  seconds); a failure ends the guest's process tree and throws `RunicHostedApplicationException`
+  (`guest-start-failed` for an executable that cannot be started, `guest-start-timeout`, `guest-exited`,
+  `guest-not-hostable`, `guest-refused`, `protocol-unsupported`; event 2016). A shutdown or disposal of the host
+  while a start is pending fails it with `InvalidOperationException` and ends the guest.
 - **Windows.** Each guest Window becomes a `RunicHostedWindow`, whose `Presentation` is a native `DesktopWindow` of
   the host, embedded and without a browser fallback. It loads the guest's one-time launch address top-level from the
   guest's loopback origin: the host injects none of its credentials, admits no other origin for top-level navigation
@@ -774,11 +781,17 @@ var exitCode = await tool.Exited;
   `RequestCloseAsync`, ask the guest first; the window closes when the guest's Window has. The guest's presentation
   requests (present, minimize, visibility, full screen, maximize, size, position, document edited, represented
   file, colour scheme, layout direction, announcements) apply to that window, and its activity, placement and colour
-  scheme go back to the guest. `IRunicHostedApplications.WindowOpened` and `WindowClosed` report the windows: add
-  the handlers before `StartAsync`.
+  scheme go back to the guest; a guest that reads slowly receives the latest placement and activity, not every
+  change. `IRunicHostedApplications.WindowOpened` and `WindowClosed` report the windows, one after the other and in
+  order: add the handlers before `StartAsync`. A window that finishes opening after its guest went away closes at
+  once and raises neither.
+- **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
+  own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest
+  nothing. A policy can grant more through `RunicHostedWindowDecision.Allow(request.WindowOptions with { ... })`.
 - **Policy.** `IRunicHostedWindowPolicy` decides each window (`OpenWindowAsync`: refuse, or open with other
   `DesktopWindowOptions` such as a saved placement keyed by `Guest.ApplicationId`) and each presentation request
-  (`Present`: apply, clamp or refuse). Without a policy, every window of the guest opens and every request applies.
+  (`Present`: apply, clamp or refuse; the request a policy returns applies as it is). Without a policy, every window
+  of the guest opens and every request applies.
 - **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
   and completes `Exited` with its exit code (event 2017). `StopAsync` asks the guest to shut down and ends it after
   `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests
@@ -789,13 +802,14 @@ Each engine keeps a guest session's cookies, storage and caches apart from the h
 
 | Engine | Data store of a guest session | Isolation |
 | --- | --- | --- |
-| WebView2 | A user data folder of its own in the temporary folder, deleted after the session | Everything WebView2 keeps per user data folder, in a browser process of its own. The folder is on disk while the session runs. |
+| WebView2 | An InPrivate profile named for the session, in a user data folder of its own in the temporary folder that is deleted after the session | Cookies, storage and caches in memory, in a browser process of its own. The folder holds only the browser's own files. |
 | WKWebView | `WKWebsiteDataStore.nonPersistentDataStore` | Cookies, storage and caches in memory, shared by the session's windows. |
 | WebKitGTK 4.1 (GTK 3) | An ephemeral `WebKitWebContext` | Cookies, storage and caches in memory, in a network process of its own. Spell checking and the page language are set when the session's first window opens. |
 | WebKitGTK 6 (`Runic.Desktop.Gtk4`) | An ephemeral `WebKitNetworkSession` | Cookies, storage and caches in memory. |
 
-On WKWebView and WebKitGTK the store lives while a window of the session is open: a guest that opens a window after
-all its windows closed starts with an empty store. HTTP authentication, client certificates and the system's proxy and
+On WKWebView and WebKitGTK the store lives only while a window of the session is open: a guest that opens a window
+after all its windows closed starts with an empty store, cookies, localStorage and IndexedDB included. On WebView2 the
+store lives for the whole session. HTTP authentication, client certificates and the system's proxy and
 trust settings are the engine's and the user's, not the store's. A custom `IDesktopWindowHostFactory` shows hosted
 windows only if its window host implements `IDesktopEphemeralDataStoreWindowHost`.
 

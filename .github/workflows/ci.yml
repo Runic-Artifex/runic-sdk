@@ -1106,12 +1106,29 @@ jobs:
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
       # S11 window mode (runic-host/1): the smoke hosts itself as guests, started in a job object (Windows) or a process
       # group of their own (macOS). Each guest page loads in a native window of the host with the session's own data store
-      # (a WebView2 user data folder, a non-persistent WKWebsiteDataStore), without the host's or another guest's
-      # cookies; close, crash and stop.
+      # (a WebView2 InPrivate profile, a non-persistent WKWebsiteDataStore), without the host's or another guest's
+      # cookies; close, crash and stop. On Windows the guest's cookie and storage stay off the disk, and the session's
+      # folder is deleted. The runner's steps run elevated, which a guest refuses: the smoke restarts itself unelevated.
       - name: Show hosted application windows on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
+      # The host cases against real guest processes on the native platforms: the Windows job object (started suspended,
+      # kill-on-close, grandchildren), the macOS process group, the same-user check against the real parent (Windows
+      # token users), pending starts and windows that open after the guest ended. Unelevated on Windows, as above.
+      - name: Run the hosted application host cases on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          dotnet build tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release
+          tests=(dotnet tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll
+            --treenode-filter '/*/*/(HostedApplicationTests)|(HostProtocolChecks)/*' --output detailed)
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --run-unelevated "${tests[@]}"
+          else
+            "${tests[@]}"
+          fi
       # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
       # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page

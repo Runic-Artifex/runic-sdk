@@ -259,8 +259,13 @@ experimental (`RUNICDESK103`). What Runic enforces:
   requests, menus and dialogs.
 - **No elevated guests, no orphans.** A guest refuses hosted mode when it runs elevated, or when it cannot show that
   it runs as the same user as its parent: it compares real and effective user ids on Linux and macOS and the token's
-  user on Windows, and refuses when it cannot read its parent's. It exits when its host goes away and never shows a
-  window of its own; the host ends the guest's process tree when it stops.
+  user on Windows, also checking that its parent is not a newer process that reused a gone parent's id, and refuses
+  when it cannot read its parent's. It exits when its host goes away and never shows a window of its own; the host
+  ends the guest's process tree when it stops. On Windows that tree is a job object that ends with the host, also when
+  the host crashes; on Linux and macOS a host that crashes leaves its guests to exit on the end of their standard
+  input.
+- **The guest gets no more than the host's own windows.** A guest's request for the camera and microphone is granted
+  only as far as the host grants its own windows, unless the host's policy grants more.
 
 What it means for the guest application: **any process of the same user** that knows the guest's parameter can host
 it, see its pages and answer its dialogs, as such a process can already read its memory

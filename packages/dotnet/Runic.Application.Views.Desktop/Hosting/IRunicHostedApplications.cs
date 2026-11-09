@@ -43,6 +43,11 @@ public interface IRunicHostedApplications
     /// Raised when a window of any guest opened, on a thread-pool thread. Add the handler before
     /// <see cref="StartAsync"/>: a guest can open its first window before the start returns.
     /// </summary>
+    /// <remarks>
+    /// <see cref="WindowOpened"/> and <see cref="WindowClosed"/> are raised one at a time, in order: a window's
+    /// <see cref="WindowClosed"/> follows its <see cref="WindowOpened"/>, and a window that never opened for the host, such
+    /// as one whose guest went away while it opened, raises neither.
+    /// </remarks>
     event EventHandler<RunicHostedWindowEventArgs>? WindowOpened;
 
     /// <summary>Raised when a window of any guest closed, for any reason, on a thread-pool thread.</summary>
@@ -55,11 +60,15 @@ public interface IRunicHostedApplications
     /// <returns>The running guest. Its Windows open in this application's windows from now on.</returns>
     /// <exception cref="RunicHostedApplicationException">
     /// The guest could not be hosted, and its process tree was ended. <see cref="RunicHostedApplicationException.Code"/>
-    /// is <c>guest-start-timeout</c>, <c>guest-exited</c>, <c>guest-not-hostable</c>, <c>guest-refused</c> (with
-    /// <see cref="RunicHostedApplicationException.GuestCode"/>) or <c>protocol-unsupported</c>.
+    /// is <c>guest-start-failed</c> (the executable could not be started, or not in a job object on Windows; see
+    /// <see cref="Exception.InnerException"/>), <c>guest-start-timeout</c>, <c>guest-exited</c>, <c>guest-not-hostable</c>,
+    /// <c>guest-refused</c> (with <see cref="RunicHostedApplicationException.GuestCode"/>) or <c>protocol-unsupported</c>.
     /// </exception>
-    /// <exception cref="System.ComponentModel.Win32Exception">The executable could not be started.</exception>
-    /// <exception cref="InvalidOperationException">The Desktop host is shutting down, or runs serve-only or hosted itself.</exception>
+    /// <exception cref="ArgumentException">On Windows, the executable is a batch file (<c>.bat</c>, <c>.cmd</c>), which only <c>cmd.exe</c> runs.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The Desktop host is shutting down, or runs serve-only or hosted itself. A shutdown or disposal of the Desktop host
+    /// while the start is pending also fails it this way, and ends the guest's process tree.
+    /// </exception>
     ValueTask<RunicHostedApplication> StartAsync(RunicGuestStartInfo startInfo, RunicHostedApplicationOptions? options = null,
         CancellationToken cancellationToken = default);
 }

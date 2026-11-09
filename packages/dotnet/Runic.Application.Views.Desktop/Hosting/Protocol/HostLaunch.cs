@@ -5,8 +5,8 @@ using Runic.Application.Views;
 namespace Runic.Application.Views.Desktop.Hosting;
 
 // The host's side of the launch contract and the handshake (host-protocol.md, Lines, Handshake and Host rules): the
-// guest's launch line, the hello and the check of its reply, for the host (RunicHostedApplication). RunicTestHost, which
-// links this file, applies the same rules in its own handshake.
+// guest's launch line, the hello and the check of its reply, for the host (RunicHostedApplication) and for RunicTestHost,
+// which links this file.
 internal static class HostLaunch
 {
     // Creates the start failure (host-protocol.md, Host start failures); the caller adds what it knows of the guest.
@@ -71,6 +71,9 @@ internal static class HostLaunch
         {
             socket = new ClientWebSocket();
             socket.Options.KeepAliveInterval = TimeSpan.Zero;
+            // Straight to the loopback channel: a proxy from HTTP_PROXY, ALL_PROXY or the system's must never see the key
+            // and the host proof.
+            socket.Options.Proxy = null;
             JsonObject? received = null;
             Exception? lost = null;
             try

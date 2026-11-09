@@ -8,6 +8,22 @@ using Runic.Desktop.Gtk4;
 if (Array.IndexOf(args, HostedSmoke.GuestArgument) is var guest and >= 0 && guest + 2 < args.Length)
     return HostedSmoke.RunGuest(args[guest + 1], args[guest + 2]);
 
+// --run-unelevated <command> [arguments]: runs a command, such as the host cases, as the runner's user without its
+// elevation (Unelevated); an elevated guest refuses hosted mode.
+if (args is ["--run-unelevated", .. var command])
+    return OperatingSystem.IsWindows() ? Unelevated.Run(command) : throw new PlatformNotSupportedException("--run-unelevated is for Windows.");
+
+// The smoke itself runs unelevated on an elevated Windows runner.
+if (OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess)
+{
+    var self = new List<string> { Environment.ProcessPath ?? throw new InvalidOperationException("The smoke has no process path.") };
+    if (string.Equals(Path.GetFileNameWithoutExtension(self[0]), "dotnet", StringComparison.OrdinalIgnoreCase))
+        self.Add(Path.GetFullPath(Environment.GetCommandLineArgs()[0]));
+    self.AddRange(args);
+    Console.WriteLine("The smoke runs elevated; it starts itself again without the elevation.");
+    return Unelevated.Run(self);
+}
+
 // A stalled native event loop otherwise occupies a runner until the job timeout.
 using var watchdog = new Timer(static _ =>
 {

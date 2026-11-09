@@ -24,7 +24,8 @@ public sealed class RunicHostedWindow
     // The guest's window-closed push arrived, or the guest is gone: nothing asks it about the close any more.
     private readonly TaskCompletionSource _guestClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _pushGate = new();
-    private Task _pushes = Task.CompletedTask;
+    private readonly List<(string Kind, Func<JsonObject> Push)> _pendingPushes = [];
+    private bool _pushing;
     private DesktopWindow? _presentation;
 
     internal RunicHostedWindow(RunicHostedApplication application, string id, string type, RunicHostedWindow? owner, bool isModal,
@@ -133,13 +134,39 @@ public sealed class RunicHostedWindow
 
     internal void MarkClosed() => _closed.TrySetResult();
 
-    // The host's pushes for the window, one after the other, so they arrive in the order the window changed.
-    internal void Push(JsonObject push)
+    // The host's pushes for the window, one after the other, so they arrive in the order the window changed. A push of
+    // a kind that is still waiting is replaced by the newer one in its place, so a guest that reads slowly, such as
+    // during a long drag, receives the latest state instead of a queue of every change.
+    internal void Push(string kind, Func<JsonObject> push)
     {
         lock (_pushGate)
         {
-            _pushes = _pushes.ContinueWith(_ => Application.PushAsync(push), CancellationToken.None,
-                TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+            if (_pendingPushes.FindIndex(pending => pending.Kind == kind) is var index and >= 0) _pendingPushes[index] = (kind, push);
+            else _pendingPushes.Add((kind, push));
+            if (_pushing) return;
+            _pushing = true;
+        }
+        _ = Task.Run(SendPushesAsync);
+    }
+
+    private async Task SendPushesAsync()
+    {
+        while (true)
+        {
+            Func<JsonObject> next;
+            lock (_pushGate)
+            {
+                if (_pendingPushes.Count == 0)
+                {
+                    _pushing = false;
+                    return;
+                }
+                next = _pendingPushes[0].Push;
+                _pendingPushes.RemoveAt(0);
+            }
+            // A push that cannot be sent is dropped; the channel's own failure ends the guest.
+            try { await Application.PushAsync(next()).ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
         }
     }
 }

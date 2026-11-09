@@ -4,7 +4,10 @@ namespace Runic.Desktop.Internal;
 // host session, not persisted, shared by that session's windows and by no other window, so a guest's server never
 // receives the host's cookies and two guests never share storage. A session names its store with the key Begin returns
 // and ends it with End; a hosted window carries the key (DesktopWindowHostOptions.EphemeralDataStore):
-// - WebView2: a user data folder of the session in the temporary folder (Folder), deleted after End;
+// - WebView2: an InPrivate profile named by the key (WindowsWebView2Controller), whose cookies, storage and caches are in
+//   memory only, in a user data folder of the session in the temporary folder (Folder) that holds only the browser's own
+//   files and is deleted after End. A folder of its own keeps each guest in a browser process of its own, and its
+//   environment options apart from the host's and other guests';
 // - WKWebView: a non-persistent WKWebsiteDataStore, WebKitGTK 4.1 an ephemeral WebKitWebContext, WebKitGTK 6
 //   (Runic.Desktop.Gtk4) an ephemeral WebKitNetworkSession, each kept by the engine while a window of the key is open
 //   (EphemeralDataStoreCache).

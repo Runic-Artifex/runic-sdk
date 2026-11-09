@@ -62,9 +62,23 @@ internal static class HostedSmoke
             }
         }
 
+        // WebView2 keeps each guest session's InPrivate profile in a user data folder of its own in the temporary folder.
+        var foldersBefore = HostedFolders();
+
         // Guest a: its page connects to its own surface, sees no cookie of the host and sets its own.
         var a = await applications.StartAsync(Guest("a", "stay"));
         var reportA = await logs.ReportAsync("a");
+        if (OperatingSystem.IsWindows())
+        {
+            // The page set a persistent cookie and localStorage; InPrivate writes neither to the folder.
+            var folders = HostedFolders().Except(foldersBefore).ToArray();
+            Check(folders.Length == 1, $"Guest a's session has {folders.Length} user data folders.");
+            var written = Directory.EnumerateFileSystemEntries(folders[0], "*", SearchOption.AllDirectories)
+                .Where(static entry => Path.GetFileName(entry) is "Cookies" or "Local Storage" or "IndexedDB")
+                .ToArray();
+            Check(written.Length == 0, $"Guest a's data is on disk: {string.Join(", ", written)}.");
+            Console.WriteLine($"PASS hosted {toolkit}: guest a's cookies and storage are not in its user data folder.");
+        }
         var windowA = await WindowOf(a);
         CheckPage(reportA, "a", host.Desktop.Port, mustNotSee: ["runic_host_probe"]);
         Check(windowA.IsOpen && windowA.Presentation.Browser == BrowserKind.Embedded && windowA.Presentation.NativeHandle != 0,
@@ -97,14 +111,33 @@ internal static class HostedSmoke
         Check(applications.Applications.Count == 0, "A guest is still listed after it exited.");
         Console.WriteLine($"PASS hosted {toolkit}: the stopped guest's window closed and the guest exited.");
 
+        if (OperatingSystem.IsWindows())
+        {
+            // Each ended session's folder is deleted once WebView2's browser process let go of it.
+            var left = HostedFolders().Except(foldersBefore).ToArray();
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            while (left.Length > 0 && !deadline.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+                left = HostedFolders().Except(foldersBefore).ToArray();
+            }
+            Check(left.Length == 0, $"The ended sessions' user data folders were not deleted: {string.Join(", ", left)}.");
+            Console.WriteLine($"PASS hosted {toolkit}: the ended sessions' user data folders were deleted.");
+        }
+
         await hostWindow.CloseAsync();
         return 0;
     }
 
+    private static string[] HostedFolders() =>
+        OperatingSystem.IsWindows() ? Directory.GetDirectories(Path.GetTempPath(), "runic-desktop-hosted-*") : [];
+
     private static void CheckPage(JsonObject report, string name, int hostPort, string[] mustNotSee)
     {
         var origin = new Uri(report["origin"]!.GetValue<string>());
-        Check(origin.Host is "127.0.0.1" or "[::1]" && origin.Port != hostPort, $"Guest {name}'s page is not on its own loopback origin: {origin}.");
+        // 127.0.0.1, the host page's own host: cookies ignore ports, so only there does a missing host cookie prove that
+        // the stores are apart. A guest on [::1] would pass the check without testing anything.
+        Check(origin.Host == "127.0.0.1" && origin.Port != hostPort, $"Guest {name}'s page is not on its own 127.0.0.1 origin: {origin}.");
         var cookies = report["cookies"]!.GetValue<string>();
         Check(cookies.Contains($"runic_guest_{name}=1", StringComparison.Ordinal), $"Guest {name}'s page could not set its cookie: '{cookies}'.");
         foreach (var cookie in mustNotSee)
@@ -149,7 +182,8 @@ internal static class HostedSmoke
                     await using var window = await host.OpenWindowAsync<HostedSmokeWindow>();
                     var surface = RunicDesktopHost.GetSurface(window) ?? throw new InvalidOperationException("The Window has no surface.");
                     var seen = await surface.ExecuteJavaScriptAsync($$"""
-                        document.cookie = "runic_guest_{{name}}=1; path=/";
+                        document.cookie = "runic_guest_{{name}}=1; path=/; max-age=3600";
+                        localStorage.setItem("runic_guest_{{name}}", "1");
                         return JSON.stringify({
                           origin: location.origin,
                           cookies: document.cookie,

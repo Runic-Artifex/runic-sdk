@@ -250,8 +250,216 @@ internal sealed class HostedApplicationTests
     public async Task AMissingExecutableFailsTheStart()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await Throws<Win32Exception>(() => fixture.Applications.StartAsync(
-            new RunicGuestStartInfo(Path.Combine(AppContext.BaseDirectory, "no-such-guest"), [])).AsTask());
+        var failure = await StartFailureAsync(fixture, new RunicGuestStartInfo(Path.Combine(AppContext.BaseDirectory, "no-such-guest"), []), null);
+        Check(failure.Code == "guest-start-failed" && failure.InnerException is Win32Exception, $"The start failed with {failure.Code}: {failure.Message}");
+        failure = await StartFailureAsync(fixture, new RunicGuestStartInfo("runic-no-such-guest-in-path", []), null);
+        Check(failure.Code == "guest-start-failed", $"A name not in PATH failed with {failure.Code}: {failure.Message}");
+        Check(fixture.Logs.Entries.Any(entry => entry.EventId == 2016), "The failed start was not logged.");
+    }
+
+    // CreateProcess runs a batch file through cmd.exe, whose parsing no argument quoting protects (BatBadBut).
+    [Test, NotInParallel(Order = 62)]
+    public async Task ABatchFileGuestIsRefusedOnWindows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        await using var fixture = await HostFixture.StartAsync();
+        var directory = Directory.CreateTempSubdirectory("runic-hosted-batch-");
+        try
+        {
+            foreach (var name in new[] { "guest.bat", "guest.CMD" })
+            {
+                var path = Path.Combine(directory.FullName, name);
+                await File.WriteAllTextAsync(path, "@echo off\r\n");
+                await Throws<ArgumentException>(() => fixture.Applications.StartAsync(new RunicGuestStartInfo(path, ["a&b"])).AsTask());
+            }
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    // M1: the guest goes away while the host opens its window. The window that opened after the guest's end closes at
+    // once, without WindowOpened or WindowClosed, and the application ends.
+    [Test, NotInParallel(Order = 67)]
+    public async Task AWindowThatOpensAfterTheGuestEndedIsClosed()
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        if (await fixture.RefusedAsElevatedAsync()) return;
+        var events = new List<string>();
+        fixture.Applications.WindowOpened += (_, e) => { lock (events) events.Add("opened " + e.Window.Id); };
+        fixture.Applications.WindowClosed += (_, e) => { lock (events) events.Add("closed " + e.Window.Id); };
+        var opening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Factory.OpenGate = () =>
+        {
+            opening.TrySetResult();
+            return release.Task;
+        };
+        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
+        await opening.Task.WaitScaledAsync(Timeout);
+        // The guest ends while its window is opening; the host has seen it go before the open completes.
+        Check(await application.KillAsync().AsTask().WaitScaledAsync(Timeout) != 0, "A killed guest reported a clean exit.");
+        release.TrySetResult();
+        var native = fixture.Factory.Hosts.Single();
+        Check(await TestTimeouts.UntilAsync(() => !native.IsOpen && native.Options is not null, Timeout), "The window that opened after the guest ended is open.");
+        await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(500)));
+        Check(application.Windows.Count == 0, "The guest that ended lists a window.");
+        lock (events) Check(events.Count == 0, $"Events were raised for a window that never opened for the host: {string.Join(", ", events)}.");
+    }
+
+    // L5: a Window that closes as soon as it opened raises WindowOpened, then WindowClosed.
+    [Test, NotInParallel(Order = 68)]
+    public async Task WindowClosedFollowsWindowOpened()
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        if (await fixture.RefusedAsElevatedAsync()) return;
+        var events = new List<string>();
+        var closed = fixture.Next(opened: false);
+        fixture.Applications.WindowOpened += (_, e) =>
+        {
+            // A slow handler: WindowClosed still waits for it.
+            Thread.Sleep(200);
+            lock (events) events.Add("opened " + e.Window.Id);
+        };
+        fixture.Applications.WindowClosed += (_, e) => { lock (events) events.Add("closed " + e.Window.Id); };
+        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("flash"));
+        var window = await closed.WaitScaledAsync(Timeout);
+        Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.");
+        await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(300)));
+        lock (events)
+            Check(events.SequenceEqual(["opened " + window.Id, "closed " + window.Id]), $"The events were {string.Join(", ", events)}.");
+    }
+
+    // M2: a guest's media-capture request is granted only as far as the host grants its own windows, and a policy can
+    // grant more.
+    [Test, NotInParallel(Order = 69)]
+    public async Task AGuestGetsOnlyThePermissionsTheHostGrants()
+    {
+        // A host whose windows are granted nothing: the request is not granted.
+        await using (var fixture = await HostFixture.StartAsync())
+        {
+            if (await fixture.RefusedAsElevatedAsync()) return;
+            var policy = new RecordingPolicy();
+            var opened = fixture.Next(opened: true);
+            var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("media"), new RunicHostedApplicationOptions { Policy = policy });
+            var window = await opened.WaitScaledAsync(Timeout);
+            var request = policy.Windows.Single();
+            Check(request.Permissions == DesktopPermissionGrant.MediaCapture, $"The guest asked for {request.Permissions}.");
+            Check(request.WindowOptions.AllowedPermissions == DesktopPermissionGrant.None, $"The request grants {request.WindowOptions.AllowedPermissions}.");
+            Check(fixture.Factory.Hosts.Single().Options!.AllowedPermissions == DesktopPermissionGrant.None, "The window was granted the camera and microphone.");
+            Check(await window.RequestCloseAsync(), "The guest refused the close.");
+            Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.");
+
+            // The policy grants it explicitly.
+            policy = new RecordingPolicy { Grant = DesktopPermissionGrant.MediaCapture };
+            opened = fixture.Next(opened: true);
+            application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("media"), new RunicHostedApplicationOptions { Policy = policy });
+            window = await opened.WaitScaledAsync(Timeout);
+            Check(fixture.Factory.Hosts[^1].Options!.AllowedPermissions == DesktopPermissionGrant.MediaCapture, "The policy's grant did not apply.");
+            Check(await window.RequestCloseAsync(), "The guest refused the close.");
+            Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.");
+        }
+
+        // A host that grants its own windows the camera and microphone grants the guest's request.
+        await using (var fixture = await HostFixture.StartAsync(windowOptions: RunicDesktopHost.DefaultWindowOptions with { AllowedPermissions = DesktopPermissionGrant.MediaCapture }))
+        {
+            var opened = fixture.Next(opened: true);
+            var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
+            var window = await opened.WaitScaledAsync(Timeout);
+            Check(fixture.Factory.Hosts.Single().Options!.AllowedPermissions == DesktopPermissionGrant.None, "A guest that asked for nothing was granted a permission.");
+            Check(await window.RequestCloseAsync(), "The guest refused the close.");
+            Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.");
+            opened = fixture.Next(opened: true);
+            application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("media"));
+            window = await opened.WaitScaledAsync(Timeout);
+            Check(fixture.Factory.Hosts[^1].Options!.AllowedPermissions == DesktopPermissionGrant.MediaCapture, "The host's own grant did not reach the guest.");
+            Check(await window.RequestCloseAsync(), "The guest refused the close.");
+            Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.");
+        }
+    }
+
+    // M5: disposing the host's applications, as the end of Run does, or the host's shutdown, while a start waits for
+    // the guest's handshake fails the start at once and ends the guest.
+    [Test, NotInParallel(Order = 70)]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("A pending start ends with the host (shutdown: $shutdown)")]
+    public async Task APendingStartEndsWithTheHost(bool shutdown)
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        var watch = Stopwatch.StartNew();
+        var start = fixture.Applications.StartAsync(HostedGuestProgram.Guest("sleep"), new RunicHostedApplicationOptions { StartTimeout = TimeSpan.FromMinutes(2) }).AsTask();
+        Check(await TestTimeouts.UntilAsync(() => GuestPid(fixture) is not null, Timeout), "The guest did not start.");
+        var pid = GuestPid(fixture)!.Value;
+        if (shutdown) fixture.Desktop.RequestShutdown("The test stops the host.");
+        else await fixture.Host.StopHostedApplicationsAsync().WaitScaledAsync(Timeout);
+        await Throws<InvalidOperationException>(() => start.WaitScaledAsync(Timeout));
+        Check(watch.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(30)), $"The start took {watch.Elapsed}.");
+        Check(await TestTimeouts.UntilAsync(() => ProcessGone(pid), Timeout), $"The guest {pid} still runs.");
+        Check(fixture.Applications.Applications.Count == 0, "A guest is listed.");
+    }
+
+    // The guest's own processes end with it: through its job object on Windows, its process group elsewhere.
+    [Test, NotInParallel(Order = 71)]
+    public async Task KillingTheGuestEndsTheProcessesItStarted()
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        if (await fixture.RefusedAsElevatedAsync()) return;
+        var opened = fixture.Next(opened: true);
+        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("grandchild"));
+        _ = await opened.WaitScaledAsync(Timeout);
+        Check(await TestTimeouts.UntilAsync(() => Grandchild(fixture) is not null, Timeout), "The guest did not report its child.");
+        var grandchild = Grandchild(fixture)!.Value;
+        Check(!ProcessGone(grandchild), "The guest's child is not running.");
+        _ = await application.KillAsync().AsTask().WaitScaledAsync(Timeout);
+        Check(await TestTimeouts.UntilAsync(() => ProcessGone(grandchild), Timeout), $"The guest's child {grandchild} outlived it.");
+    }
+
+    // H1: the same-user check against this test process, the real parent of the child that runs it: on Windows the
+    // token users and the parent's creation time, on Linux /proc, on macOS proc_pidinfo.
+    [Test, NotInParallel(Order = 72)]
+    public async Task TheSameUserCheckPassesForAChildOfTheSameUser()
+    {
+        var start = HostedGuestProgram.Guest("same-user");
+        var info = new ProcessStartInfo(start.FileName) { UseShellExecute = false, RedirectStandardOutput = true };
+        foreach (var argument in start.Arguments) info.ArgumentList.Add(argument);
+        using var child = Process.Start(info)!;
+        var output = await child.StandardOutput.ReadToEndAsync().WaitScaledAsync(Timeout);
+        await child.WaitForExitAsync().WaitScaledAsync(Timeout);
+        Check(output.Contains("SAME-USER True", StringComparison.Ordinal), $"The child's check reported: {output}");
+    }
+
+    private static int? GuestPid(HostFixture fixture) => LoggedNumber(fixture, "PID ");
+
+    private static int? Grandchild(HostFixture fixture) => LoggedNumber(fixture, "GRANDCHILD ");
+
+    private static int? LoggedNumber(HostFixture fixture, string prefix)
+    {
+        foreach (var entry in fixture.Logs.Entries.Where(static entry => entry.EventId == 2022))
+        {
+            var index = entry.Message.IndexOf(prefix, StringComparison.Ordinal);
+            if (index >= 0 && int.TryParse(entry.Message[(index + prefix.Length)..].Trim(), System.Globalization.CultureInfo.InvariantCulture, out var value))
+                return value;
+        }
+        return null;
+    }
+
+    // Exited, or a zombie that only waits for its reaper (Linux).
+    private static bool ProcessGone(int pid)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                var stat = File.ReadAllText($"/proc/{pid}/stat");
+                return stat[(stat.LastIndexOf(')') + 2)] is 'Z' or 'X';
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return true; }
+        }
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return process.HasExited;
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException) { return true; }
     }
 
     [Test, NotInParallel(Order = 63)]
@@ -344,6 +552,7 @@ internal sealed class HostedApplicationTests
     private sealed class RecordingPolicy : IRunicHostedWindowPolicy
     {
         public bool RefuseWindows { get; init; }
+        public DesktopPermissionGrant? Grant { get; init; }
         public RunicHostedPresentationKind? Refused { get; init; }
         public List<RunicHostedWindowRequest> Windows { get; } = [];
         public List<RunicHostedPresentationKind> Presented { get; } = [];
@@ -351,7 +560,9 @@ internal sealed class HostedApplicationTests
         public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken)
         {
             lock (Windows) Windows.Add(request);
-            return ValueTask.FromResult(RefuseWindows ? RunicHostedWindowDecision.Refuse("The test policy refuses windows.") : RunicHostedWindowDecision.Allow());
+            return ValueTask.FromResult(RefuseWindows ? RunicHostedWindowDecision.Refuse("The test policy refuses windows.")
+                : Grant is { } grant ? RunicHostedWindowDecision.Allow(request.WindowOptions with { AllowedPermissions = grant })
+                : RunicHostedWindowDecision.Allow());
         }
 
         public RunicHostedPresentationDecision Present(RunicHostedPresentationRequest request)
@@ -384,7 +595,7 @@ internal sealed class HostFixture : IAsyncDisposable
     // What the guests wrote to standard error, which the host logs (event 2022).
     public string GuestErrors => string.Join('\n', Logs.Entries.Where(static entry => entry.EventId == 2022).Select(static entry => entry.Message));
 
-    public static async Task<HostFixture> StartAsync(bool serveOnly = false)
+    public static async Task<HostFixture> StartAsync(bool serveOnly = false, DesktopWindowOptions? windowOptions = null)
     {
         var logs = new RecordingLoggerFactory();
         var services = new ServiceCollection();
@@ -393,7 +604,11 @@ internal sealed class HostFixture : IAsyncDisposable
         var provider = services.BuildServiceProvider();
         var factory = new HostedWindowFactory();
         var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
-        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions { ServeOnly = serveOnly });
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+        {
+            ServeOnly = serveOnly,
+            WindowOptions = windowOptions ?? RunicDesktopHost.DefaultWindowOptions,
+        });
         return new HostFixture(provider, desktop, host, factory, logs);
     }
 
@@ -442,9 +657,12 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
     public bool IsSupported => true;
     public DesktopWindowCapabilities Capabilities => HostedWindowHost.SupportedCapabilities;
 
+    // Holds each window's open until it completes, such as while the test ends the guest.
+    public Func<Task>? OpenGate { get; set; }
+
     public IDesktopWindowHost Create()
     {
-        var host = new HostedWindowHost();
+        var host = new HostedWindowHost(this);
         lock (_hosts) _hosts.Add(host);
         return host;
     }
@@ -458,8 +676,11 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move |
         DesktopWindowCapabilities.Visibility | DesktopWindowCapabilities.CloseConfirmation;
 
+    private readonly HostedWindowFactory? _factory;
     private volatile bool _open;
     private int _focused;
+
+    public HostedWindowHost(HostedWindowFactory? factory = null) => _factory = factory;
 
     public Uri? Url { get; private set; }
     public DesktopWindowHostOptions? Options { get; private set; }
@@ -476,12 +697,12 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
         else CloseAsync().AsTask().GetAwaiter().GetResult();
     }
 
-    public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
+    public async ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
     {
         Url = url;
         Options = options;
+        if (_factory?.OpenGate is { } gate) await gate();
         _open = true;
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)

@@ -65,10 +65,29 @@ internal static class GuestPrivileges
     {
         // Root on Linux and macOS, an elevated token on Windows.
         if (Environment.IsPrivilegedProcess) return "guest-elevated";
-        if (OperatingSystem.IsLinux()) return SameUserOnLinux(ReadLines) ? null : "guest-other-user";
-        if (OperatingSystem.IsMacOS()) return SameUserOnMacOS() ? null : "guest-other-user";
-        // Windows compares the token users of the guest and its parent with the host's process code (SH3).
-        return null;
+        return SameUser() ? null : "guest-other-user";
+    }
+
+    // Whether this process and its parent run as the same user, on this system; false when that cannot be shown.
+    internal static bool SameUser()
+    {
+        if (OperatingSystem.IsLinux()) return SameUserOnLinux(ReadLines);
+        if (OperatingSystem.IsMacOS()) return SameUserOnMacOS();
+        if (OperatingSystem.IsWindows()) return WindowsProcesses.SameUser();
+        return false;
+    }
+
+    // A process as the Windows check sees it: when it was created (FILETIME) and the user SID of its token (TokenUser).
+    internal readonly record struct WindowsProcessIdentity(long CreationTime, byte[] UserSid);
+
+    // Windows: the user SIDs of this process's token and its parent's must be equal. The parent is the process that
+    // created this one (InheritedFromUniqueProcessId), held open while it is read; one created after this process is
+    // another process that reused the gone parent's id. A parent that is gone, or whose token cannot be read, as for
+    // another user's process, fails.
+    internal static bool SameUserOnWindows(Func<WindowsProcessIdentity?> self, Func<int?> parentId, Func<int, WindowsProcessIdentity?> parent)
+    {
+        if (self() is not { } own || parentId() is not { } id || id <= 0 || parent(id) is not { } creator) return false;
+        return creator.CreationTime <= own.CreationTime && own.UserSid.Length > 0 && own.UserSid.AsSpan().SequenceEqual(creator.UserSid);
     }
 
     // Linux: the real and effective uids of this process and its parent from /proc; all four must be equal. A parent
@@ -140,4 +159,96 @@ internal static class GuestPrivileges
         [System.Runtime.InteropServices.DllImport("/usr/lib/libproc.dylib", EntryPoint = "proc_pidinfo")]
         internal static extern int ProcessInformation(int pid, int flavor, ulong argument, byte[] buffer, int size);
     }
+}
+
+// The process queries of GuestPrivileges.SameUserOnWindows: NtQueryInformationProcess for the parent's id, OpenProcess
+// with PROCESS_QUERY_LIMITED_INFORMATION, GetProcessTimes and the token's TokenUser. Any failure reads as null.
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
+internal static partial class WindowsProcesses
+{
+    private const uint QueryLimitedInformation = 0x1000; // PROCESS_QUERY_LIMITED_INFORMATION
+    private const uint TokenQuery = 0x0008;
+    private const int TokenUserClass = 1;
+    private const int ProcessBasicInformationClass = 0;
+
+    internal static bool SameUser()
+    {
+        try { return GuestPrivileges.SameUserOnWindows(Self, ParentId, Parent); }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return false; }
+    }
+
+    internal static GuestPrivileges.WindowsProcessIdentity? Self() => Identity(GetCurrentProcess());
+
+    // InheritedFromUniqueProcessId of PROCESS_BASIC_INFORMATION: six pointer-sized fields on 32-bit and 64-bit Windows.
+    internal static unsafe int? ParentId()
+    {
+        var information = stackalloc nint[6];
+        if (NtQueryInformationProcess(GetCurrentProcess(), ProcessBasicInformationClass, information, (uint)(6 * sizeof(nint)), out _) != 0) return null;
+        var parent = information[5];
+        return parent is > 0 and <= int.MaxValue ? (int)parent : null;
+    }
+
+    // The parent, held open while its creation time and user are read.
+    internal static GuestPrivileges.WindowsProcessIdentity? Parent(int processId)
+    {
+        var process = OpenProcess(QueryLimitedInformation, false, (uint)processId);
+        if (process == 0) return null;
+        try { return Identity(process); }
+        finally { _ = CloseHandle(process); }
+    }
+
+    private static unsafe GuestPrivileges.WindowsProcessIdentity? Identity(nint process)
+    {
+        if (!GetProcessTimes(process, out var created, out _, out _, out _)) return null;
+        if (!OpenProcessToken(process, TokenQuery, out var token)) return null;
+        try
+        {
+            _ = GetTokenInformation(token, TokenUserClass, null, 0, out var size);
+            if (size is 0 or > 4_096) return null;
+            var buffer = new byte[size];
+            fixed (byte* data = buffer)
+            {
+                if (!GetTokenInformation(token, TokenUserClass, data, size, out _)) return null;
+                // TOKEN_USER: SID_AND_ATTRIBUTES { PSID Sid; DWORD Attributes; }.
+                var sid = *(nint*)data;
+                if (sid == 0 || !IsValidSid(sid)) return null;
+                var length = GetLengthSid(sid);
+                if (length is 0 or > 68) return null;
+                return new GuestPrivileges.WindowsProcessIdentity(created, new ReadOnlySpan<byte>((void*)sid, (int)length).ToArray());
+            }
+        }
+        finally { _ = CloseHandle(token); }
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32")]
+    private static partial nint GetCurrentProcess();
+
+    [System.Runtime.InteropServices.LibraryImport("ntdll")]
+    private static unsafe partial int NtQueryInformationProcess(nint process, int informationClass, void* information, uint length, out uint returned);
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32", SetLastError = true)]
+    private static partial nint OpenProcess(uint access, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool inherit, uint processId);
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool GetProcessTimes(nint process, out long creation, out long exit, out long kernel, out long user);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool OpenProcessToken(nint process, uint access, out nint token);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static unsafe partial bool GetTokenInformation(nint token, int informationClass, void* information, uint length, out uint returned);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool IsValidSid(nint sid);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32")]
+    private static partial uint GetLengthSid(nint sid);
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint handle);
 }

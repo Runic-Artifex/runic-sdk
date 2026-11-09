@@ -128,26 +128,35 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // unavailable, as in serve-only mode (D055.8).
         DesktopServeOnlyState.RecordFor(services, options.ServeOnly && options.Guest is null, hosted: options.Guest is not null);
         // AddRunicHostedApplications resolves the host that runs with these services.
+        var container = ContainerOf(services);
         lock (HostsGate)
         {
             Hosts.AddOrUpdate(services, this);
-            s_latest = new WeakReference<RunicDesktopHost>(this);
+            if (container is not null && !ReferenceEquals(container, services)) Hosts.AddOrUpdate(container, this);
         }
     }
 
     private static readonly object HostsGate = new();
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IServiceProvider, RunicDesktopHost> Hosts = [];
-    private static WeakReference<RunicDesktopHost>? s_latest;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, RunicDesktopHost> Hosts = [];
 
-    // The host created with these services, or the latest one for another provider of the same application, such as a
-    // provider an application built for its services' resolution.
+    // The host created with these services, or with another provider of the same container, such as its root scope,
+    // which resolves singletons. Only that host: an unknown provider finds none, also when other hosts run.
     internal static RunicDesktopHost? ForServices(IServiceProvider services)
     {
         lock (HostsGate)
         {
             if (Hosts.TryGetValue(services, out var host)) return host;
-            return s_latest is { } latest && latest.TryGetTarget(out var last) ? last : null;
         }
+        var container = ContainerOf(services);
+        lock (HostsGate) return container is not null && Hosts.TryGetValue(container, out var host) ? host : null;
+    }
+
+    // The container's own identity: Microsoft.Extensions.DependencyInjection resolves IServiceScopeFactory to the root
+    // scope from the provider and from each of its scopes.
+    private static object? ContainerOf(IServiceProvider services)
+    {
+        try { return services.GetService(typeof(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory)); }
+        catch (ObjectDisposedException) { return null; }
     }
 
     private Hosting.RunicHostedApplications? _hostedApplications;

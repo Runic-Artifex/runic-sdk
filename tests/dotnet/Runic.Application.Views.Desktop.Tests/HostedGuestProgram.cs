@@ -38,8 +38,16 @@ internal static class HostedGuestProgram
         if (mode == "exit") return StartFailedExitCode;
         if (mode == "sleep")
         {
-            // Reads no offer and writes no line.
+            // Reads no offer and writes no line on standard output; standard error, which the host logs, names it.
+            Console.Error.WriteLine("PID " + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Console.Error.Flush();
             Thread.Sleep(Timeout.Infinite);
+            return 0;
+        }
+        if (mode == "same-user")
+        {
+            // The same-user check of hosted mode (host-protocol.md, Same user) against this process's real parent.
+            Console.Out.WriteLine("SAME-USER " + Runic.Application.Views.Desktop.Hosting.GuestPrivileges.SameUser());
             return 0;
         }
         var services = new ServiceCollection();
@@ -55,6 +63,10 @@ internal static class HostedGuestProgram
                 new RunicDesktopHostOptions
                 {
                     SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+                    // The media mode's Windows ask for the camera and microphone (window-open permissions).
+                    WindowOptions = mode == "media"
+                        ? RunicDesktopHost.DefaultWindowOptions with { AllowedPermissions = DesktopPermissionGrant.MediaCapture }
+                        : RunicDesktopHost.DefaultWindowOptions,
                     Guest = RunicGuestOptions.FromStandardInput() with
                     {
                         ApplicationName = "Hosted guest",
@@ -76,6 +88,7 @@ internal static class HostedGuestProgram
         switch (mode)
         {
             case "main":
+            case "media":
             {
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
                 await window.WaitForCloseAsync();
@@ -102,6 +115,26 @@ internal static class HostedGuestProgram
                 await using var owned = await host.OpenWindowAsync<ConformanceMainWindow>(
                     new RunicWindowOptions { Owner = main, Modality = RunicWindowModality.Window }, null);
                 await main.WaitForCloseAsync();
+                return 0;
+            }
+            case "flash":
+            {
+                // Closes its Window as soon as it opened: the host's WindowClosed follows its WindowOpened.
+                var window = await host.OpenWindowAsync<ConformanceMainWindow>();
+                await window.DisposeAsync();
+                return 0;
+            }
+            case "grandchild":
+            {
+                // A process of its own that outlives nothing: the host's kill reaches it through the job object or the
+                // process group.
+                var start = StartInfo(Argument, "sleep");
+                var info = new System.Diagnostics.ProcessStartInfo(start.FileName) { UseShellExecute = false, RedirectStandardError = true };
+                foreach (var argument in start.Arguments) info.ArgumentList.Add(argument);
+                using var child = System.Diagnostics.Process.Start(info) ?? throw new InvalidOperationException("The grandchild did not start.");
+                Console.Error.WriteLine("GRANDCHILD " + child.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
+                await window.WaitForCloseAsync();
                 return 0;
             }
             case "refused":

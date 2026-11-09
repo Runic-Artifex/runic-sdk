@@ -94,12 +94,18 @@ public sealed class RunicHostedWindowRequest
     /// <summary>Whether the guest decides about the window's close, so that a user's close asks it first.</summary>
     public bool GuardsClose { get; }
 
-    /// <summary>The permissions the guest's page asks for; <see cref="WindowOptions"/> grants them unless the policy changes it.</summary>
+    /// <summary>
+    /// The permissions the guest's page asks for. <see cref="WindowOptions"/> grants only those that the host grants its
+    /// own windows (<see cref="RunicDesktopHost.WindowOptions"/>): a host that grants nothing grants the guest nothing,
+    /// and the page cannot pass a prompt the host's own pages would see. A policy grants more explicitly, with
+    /// <c>RunicHostedWindowDecision.Allow(request.WindowOptions with { AllowedPermissions = request.Permissions })</c>.
+    /// </summary>
     public DesktopPermissionGrant Permissions { get; }
 
     /// <summary>
     /// The options the host opens the window with unless the policy decides others: <see cref="RunicDesktopHost.WindowOptions"/>
-    /// with the guest's size, minimum size, owner, modality and permissions.
+    /// with the guest's size, minimum size, owner and modality, and the guest's permissions that the host grants its own
+    /// windows (<see cref="Permissions"/>).
     /// </summary>
     /// <remarks>
     /// Whatever the policy returns, the host opens the window embedded, without a browser fallback, routes its close
@@ -269,7 +275,8 @@ public sealed class RunicHostedPresentationDecision
 
     /// <summary>
     /// Applies a changed request instead, such as a clamped size: <c>request with { Width = Math.Min(request.Width ?? 0, 1600) }</c>.
-    /// Its <see cref="RunicHostedPresentationRequest.Window"/> and <see cref="RunicHostedPresentationRequest.Kind"/> must be the guest's.
+    /// The host applies it as it is, to its <see cref="RunicHostedPresentationRequest.Window"/>, which must be a window of
+    /// the same guest; another guest's window fails the guest's request.
     /// </summary>
     /// <param name="request">The request to apply.</param>
     /// <returns>The decision.</returns>

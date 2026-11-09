@@ -10,8 +10,11 @@ namespace Runic.Application.Views.Desktop.Hosting;
 // A guest application's process (host-protocol.md, Starting the guest): started directly, without a shell, with its
 // standard input and output piped and its standard error read as diagnostic text, without RUNIC_APPLICATION_SERVE_ONLY
 // and RUNIC_APPLICATION_CLOSE_AFTER_OPEN, and tied to the host. On Windows it runs in a job object that kills its
-// processes when the host's handle closes, also when the host crashes; elsewhere it leads a process group of its own,
-// which KillTree ends, and the host's exit ends the groups of the guests still running.
+// processes when the host's handle closes, also when the host crashes. Elsewhere it leads a process group of its own,
+// which KillTree ends; a host that exits normally ends the groups of the guests still running. A host that crashes or is
+// killed cannot: its guests see their standard input end and exit within 10 seconds (host-protocol.md, Host gone), and
+// what a guest started itself may outlive it. PR_SET_PDEATHSIG is not used: Linux sends it when the thread that started
+// the child ends, and a .NET thread-pool thread can end at any time.
 internal abstract class GuestProcess : IDisposable
 {
     internal static readonly string[] RemovedVariables = ["RUNIC_APPLICATION_SERVE_ONLY", "RUNIC_APPLICATION_CLOSE_AFTER_OPEN"];
@@ -59,180 +62,493 @@ internal abstract class GuestProcess : IDisposable
     public abstract void Dispose();
 }
 
+// CreateProcessW: the guest starts suspended, joins a job object whose processes end when its last handle closes, also
+// when the host crashes, and only then runs, so nothing it starts escapes the job. It inherits only its three pipe ends
+// (PROC_THREAD_ATTRIBUTE_HANDLE_LIST). A job that cannot be created or joined fails the start.
 [SupportedOSPlatform("windows")]
 internal sealed partial class WindowsGuestProcess : GuestProcess
 {
-    private readonly Process _process;
-    private readonly WindowsJob? _job;
-    private readonly Task<int> _exited;
+    private readonly SafeProcessHandle _process;
+    private readonly SafeJobHandle _job;
+    private readonly int _id;
+    private readonly FileStream _input;
+    private readonly FileStream _output;
+    private readonly FileStream _errors;
+    private readonly TaskCompletionSource<int> _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly RegisteredWaitHandle _wait;
+    private readonly ProcessWaitHandle _waitHandle;
 
-    private WindowsGuestProcess(Process process, WindowsJob? job)
+    private WindowsGuestProcess(SafeProcessHandle process, int id, SafeJobHandle job, SafeFileHandle input, SafeFileHandle output, SafeFileHandle errors)
     {
         _process = process;
+        _id = id;
         _job = job;
-        _exited = WaitAsync(process);
+        _input = new FileStream(input, FileAccess.Write, bufferSize: 0);
+        _output = new FileStream(output, FileAccess.Read, bufferSize: 0);
+        _errors = new FileStream(errors, FileAccess.Read, bufferSize: 0);
+        _waitHandle = new ProcessWaitHandle(process);
+        _wait = ThreadPool.RegisterWaitForSingleObject(_waitHandle, static (state, _) => ((WindowsGuestProcess)state!).OnExited(), this,
+            Timeout.Infinite, executeOnlyOnce: true);
     }
 
     internal static GuestProcess Start(RunicGuestStartInfo startInfo, Dictionary<string, string> environment)
     {
-        var start = new ProcessStartInfo(startInfo.FileName)
-        {
-            UseShellExecute = false,
-            // A console guest started by a windowed host would otherwise get a console window of its own.
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        if (startInfo.WorkingDirectory is { } directory) start.WorkingDirectory = directory;
-        foreach (var argument in startInfo.Arguments) start.ArgumentList.Add(argument);
-        start.Environment.Clear();
-        foreach (var (name, value) in environment) start.Environment[name] = value;
-        var job = WindowsJob.TryCreate();
-        Process process;
+        var path = Resolve(startInfo.FileName, environment);
+        // CreateProcess runs a batch file through cmd.exe, whose own parsing of the command line no quoting of the
+        // arguments protects against (the BatBadBut class): such a guest is refused.
+        var extension = Path.GetExtension(path.TrimEnd('.', ' '));
+        if (extension.Equals(".bat", StringComparison.OrdinalIgnoreCase) || extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException($"The guest '{startInfo.FileName}' is a batch file, which only cmd.exe runs; start an executable.", nameof(startInfo));
+        var directory = startInfo.WorkingDirectory is { } workingDirectory ? Path.GetFullPath(workingDirectory) : null;
+        var commandLine = CommandLine(path, startInfo.Arguments);
+
+        using var job = CreateJob();
+        CreatePipe(out var inputRead, out var inputWrite, childReads: true);
+        CreatePipe(out var outputRead, out var outputWrite, childReads: false);
+        CreatePipe(out var errorsRead, out var errorsWrite, childReads: false);
+        var parentEnds = new SafeFileHandle[] { inputWrite, outputRead, errorsRead };
         try
         {
-            process = Process.Start(start) ?? throw new InvalidOperationException($"The guest '{startInfo.FileName}' did not start.");
+            var information = Spawn(path, commandLine, directory, Block(environment), inputRead, outputWrite, errorsWrite, startInfo.FileName);
+            var process = new SafeProcessHandle(information.Process, ownsHandle: true);
+            using var thread = new SafeProcessHandle(information.Thread, ownsHandle: true);
+            if (!AssignProcessToJobObject(job, process))
+            {
+                var error = Marshal.GetLastPInvokeError();
+                _ = TerminateProcess(process, 1);
+                process.Dispose();
+                throw new Win32Exception(error, $"The guest '{startInfo.FileName}' could not join its job object.");
+            }
+            if (ResumeThread(thread) == uint.MaxValue)
+            {
+                var error = Marshal.GetLastPInvokeError();
+                _ = TerminateJobObject(job, 1);
+                process.Dispose();
+                throw new Win32Exception(error, $"The guest '{startInfo.FileName}' could not be resumed.");
+            }
+            var guest = new WindowsGuestProcess(process, information.ProcessId, job.Transfer(), inputWrite, outputRead, errorsRead);
+            parentEnds = [];
+            return guest;
         }
-        catch
+        finally
         {
-            job?.Dispose();
-            throw;
+            // The child's ends are the child's now; the parent's are closed only when the start failed.
+            inputRead.Dispose();
+            outputWrite.Dispose();
+            errorsWrite.Dispose();
+            foreach (var end in parentEnds) end.Dispose();
         }
-        // The guest's own children inherit the job; one it started before this call escapes it.
-        job?.TryAssign(process);
-        return new WindowsGuestProcess(process, job);
     }
 
-    private static async Task<int> WaitAsync(Process process)
+    // As System.Diagnostics.Process resolves a file name: a path is relative to the current directory; a name without
+    // a directory is looked up in the host's directory, the current directory, the system directories and PATH. A name
+    // without an extension gets .exe.
+    internal static string Resolve(string fileName, Dictionary<string, string> environment)
     {
-        try
+        if (fileName.IndexOfAny(['\\', '/', ':']) >= 0)
         {
-            await process.WaitForExitAsync().ConfigureAwait(false);
-            return process.ExitCode;
+            var full = Path.GetFullPath(fileName);
+            if (File.Exists(full)) return full;
+            if (!Path.HasExtension(full) && File.Exists(full + ".exe")) return full + ".exe";
+            throw new Win32Exception(2, $"The guest '{fileName}' was not found.");
         }
-        catch (Exception error) when (error is InvalidOperationException or Win32Exception) { return -1; }
+        var name = Path.HasExtension(fileName) ? fileName : fileName + ".exe";
+        var directories = new List<string>();
+        if (System.Environment.ProcessPath is { } host && Path.GetDirectoryName(host) is { } hostDirectory) directories.Add(hostDirectory);
+        directories.Add(System.Environment.CurrentDirectory);
+        directories.Add(System.Environment.SystemDirectory);
+        directories.Add(System.Environment.GetFolderPath(System.Environment.SpecialFolder.Windows));
+        var search = environment.GetValueOrDefault("PATH") ?? System.Environment.GetEnvironmentVariable("PATH") ?? "";
+        directories.AddRange(search.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(static d => d.Trim('"')));
+        foreach (var directory in directories)
+        {
+            if (directory.Length == 0) continue;
+            string candidate;
+            try { candidate = Path.GetFullPath(Path.Combine(directory, name)); }
+            catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { continue; }
+            if (File.Exists(candidate)) return candidate;
+        }
+        throw new Win32Exception(2, $"The guest '{fileName}' was not found in PATH.");
     }
 
-    internal override int Id => _process.Id;
+    // The command line that the C runtime's and CommandLineToArgvW's parsing turn back into the program and the arguments.
+    internal static string CommandLine(string path, IReadOnlyList<string> arguments)
+    {
+        var line = new System.Text.StringBuilder();
+        line.Append('"').Append(path).Append('"');
+        foreach (var argument in arguments)
+        {
+            line.Append(' ');
+            if (argument.Length > 0 && argument.IndexOfAny([' ', '\t', '\n', '\v', '"']) < 0)
+            {
+                line.Append(argument);
+                continue;
+            }
+            line.Append('"');
+            var backslashes = 0;
+            foreach (var character in argument)
+            {
+                if (character == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+                if (character == '"')
+                {
+                    line.Append('\\', backslashes * 2 + 1);
+                }
+                else
+                {
+                    line.Append('\\', backslashes);
+                }
+                backslashes = 0;
+                line.Append(character);
+            }
+            line.Append('\\', backslashes * 2).Append('"');
+        }
+        return line.ToString();
+    }
 
-    internal override Stream StandardInput => _process.StandardInput.BaseStream;
+    // CREATE_UNICODE_ENVIRONMENT's block: name=value strings, sorted without regard to case, each ending in a null
+    // character, and a null character at the end.
+    private static string Block(Dictionary<string, string> environment)
+    {
+        var block = new System.Text.StringBuilder();
+        foreach (var (name, value) in environment.OrderBy(static variable => variable.Key, StringComparer.OrdinalIgnoreCase))
+            block.Append(name).Append('=').Append(value).Append('\0');
+        if (block.Length == 0) block.Append('\0');
+        return block.Append('\0').ToString();
+    }
 
-    internal override Stream StandardOutput => _process.StandardOutput.BaseStream;
+    private static SafeJobHandle CreateJob()
+    {
+        var job = CreateJobObjectW(0, null);
+        if (job.IsInvalid)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            job.Dispose();
+            throw new Win32Exception(error, "The guest's job object could not be created.");
+        }
+        var limits = new ExtendedLimitInformation { BasicLimitInformation = new() { LimitFlags = KillOnJobClose } };
+        if (!SetInformationJobObject(job, ExtendedLimitInformationClass, ref limits, (uint)Marshal.SizeOf<ExtendedLimitInformation>()))
+        {
+            var error = Marshal.GetLastPInvokeError();
+            job.Dispose();
+            throw new Win32Exception(error, "The guest's job object could not be limited.");
+        }
+        return job;
+    }
 
-    internal override Stream StandardError => _process.StandardError.BaseStream;
+    // A pipe whose child end is inheritable; the parent's end is not.
+    private static unsafe void CreatePipe(out SafeFileHandle parent, out SafeFileHandle child, bool childReads)
+    {
+        var attributes = new SecurityAttributes { Length = (uint)sizeof(SecurityAttributes), InheritHandle = 1 };
+        if (!CreatePipe(out var read, out var write, ref attributes, 0))
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "A pipe for the guest could not be created.");
+        parent = childReads ? write : read;
+        child = childReads ? read : write;
+        if (!SetHandleInformation(parent, HandleFlagInherit, 0))
+        {
+            var error = Marshal.GetLastPInvokeError();
+            read.Dispose();
+            write.Dispose();
+            throw new Win32Exception(error, "A pipe for the guest could not be prepared.");
+        }
+    }
 
-    internal override Task<int> Exited => _exited;
+    private static unsafe ProcessInformation Spawn(string path, string commandLine, string? directory, string environment,
+        SafeFileHandle input, SafeFileHandle output, SafeFileHandle errors, string fileName)
+    {
+        var handles = new nint[] { input.DangerousGetHandle(), output.DangerousGetHandle(), errors.DangerousGetHandle() };
+        nuint size = 0;
+        _ = InitializeProcThreadAttributeList(0, 1, 0, ref size);
+        var list = Marshal.AllocHGlobal((nint)size);
+        var listReady = false;
+        try
+        {
+            if (!InitializeProcThreadAttributeList(list, 1, 0, ref size))
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's start attributes could not be prepared.");
+            listReady = true;
+            fixed (nint* handleList = handles)
+            fixed (char* applicationName = path)
+            fixed (char* environmentBlock = environment)
+            fixed (char* currentDirectory = directory)
+            {
+                if (!UpdateProcThreadAttribute(list, 0, ProcThreadAttributeHandleList, (nint)handleList, (nuint)(handles.Length * sizeof(nint)), 0, 0))
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's inherited handles could not be set.");
+                var startup = new StartupInformationEx
+                {
+                    StartupInfo = new StartupInformation
+                    {
+                        Size = (uint)sizeof(StartupInformationEx),
+                        Flags = StartfUseStdHandles,
+                        StandardInput = handles[0],
+                        StandardOutput = handles[1],
+                        StandardError = handles[2],
+                    },
+                    AttributeList = list,
+                };
+                // CreateProcessW may write to the command line.
+                var line = (commandLine + "\0").ToCharArray();
+                fixed (char* commandLineBuffer = line)
+                {
+                    bool added = false, addedOutput = false, addedErrors = false;
+                    try
+                    {
+                        input.DangerousAddRef(ref added);
+                        output.DangerousAddRef(ref addedOutput);
+                        errors.DangerousAddRef(ref addedErrors);
+                        if (!CreateProcessW(applicationName, commandLineBuffer, 0, 0, true,
+                                CreateSuspended | CreateNoWindow | CreateUnicodeEnvironment | ExtendedStartupInfoPresent,
+                                environmentBlock, currentDirectory, &startup, out var information))
+                            throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The guest '{fileName}' could not be started.");
+                        return information;
+                    }
+                    finally
+                    {
+                        if (added) input.DangerousRelease();
+                        if (addedOutput) output.DangerousRelease();
+                        if (addedErrors) errors.DangerousRelease();
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (listReady) DeleteProcThreadAttributeList(list);
+            Marshal.FreeHGlobal(list);
+        }
+    }
 
+    private void OnExited()
+    {
+        int code;
+        try { code = GetExitCodeProcess(_process, out var exitCode) ? (int)exitCode : -1; }
+        catch (ObjectDisposedException) { code = -1; }
+        _exited.TrySetResult(code);
+    }
+
+    internal override int Id => _id;
+
+    internal override Stream StandardInput => _input;
+
+    internal override Stream StandardOutput => _output;
+
+    internal override Stream StandardError => _errors;
+
+    internal override Task<int> Exited => _exited.Task;
+
+    // The job holds the guest and what it started; SafeHandle keeps the handle valid while TerminateJobObject runs, also
+    // when Dispose closes it meanwhile.
     internal override void KillTree()
     {
-        if (_job is not null && _job.Terminate()) return;
-        try { _process.Kill(entireProcessTree: true); }
-        catch (Exception error) when (error is InvalidOperationException or AggregateException or Win32Exception or NotSupportedException) { }
+        try
+        {
+            if (TerminateJobObject(_job, 1)) return;
+        }
+        catch (ObjectDisposedException) { return; }
+        try { _ = TerminateProcess(_process, 1); }
+        catch (ObjectDisposedException) { }
     }
 
     // Closing the job's handle kills what still runs in it.
     public override void Dispose()
     {
-        _job?.Dispose();
+        _wait.Unregister(null);
+        _input.Dispose();
+        _output.Dispose();
+        _errors.Dispose();
+        _job.Dispose();
+        _waitHandle.Dispose();
         _process.Dispose();
     }
 
-    // A job object whose processes end when its last handle closes (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE).
-    private sealed partial class WindowsJob : IDisposable
+    private sealed class ProcessWaitHandle : WaitHandle
     {
-        private nint _handle;
-
-        private WindowsJob(nint handle) => _handle = handle;
-
-        internal static WindowsJob? TryCreate()
+        internal ProcessWaitHandle(SafeProcessHandle process)
         {
-            var handle = CreateJobObjectW(0, null);
-            if (handle == 0) return null;
-            var limits = new ExtendedLimitInformation { BasicLimitInformation = new() { LimitFlags = KillOnJobClose } };
-            if (SetInformationJobObject(handle, ExtendedLimitInformationClass, ref limits, (uint)Marshal.SizeOf<ExtendedLimitInformation>()))
-                return new WindowsJob(handle);
-            CloseHandle(handle);
-            return null;
+            bool added = false;
+            process.DangerousAddRef(ref added);
+            SafeWaitHandle = new SafeWaitHandle(process.DangerousGetHandle(), ownsHandle: false);
+            _process = process;
+            _added = added;
         }
 
-        internal void TryAssign(Process process)
+        private readonly SafeProcessHandle _process;
+        private readonly bool _added;
+
+        protected override void Dispose(bool explicitDisposing)
         {
-            try { _ = AssignProcessToJobObject(_handle, process.Handle); }
-            catch (Exception error) when (error is InvalidOperationException or Win32Exception) { }
+            base.Dispose(explicitDisposing);
+            if (_added) _process.DangerousRelease();
         }
-
-        internal bool Terminate()
-        {
-            var handle = Volatile.Read(ref _handle);
-            return handle != 0 && TerminateJobObject(handle, 1);
-        }
-
-        public void Dispose()
-        {
-            var handle = Interlocked.Exchange(ref _handle, 0);
-            if (handle != 0) CloseHandle(handle);
-        }
-
-        private const uint KillOnJobClose = 0x2000;
-        private const int ExtendedLimitInformationClass = 9;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct BasicLimitInformation
-        {
-            public long PerProcessUserTimeLimit;
-            public long PerJobUserTimeLimit;
-            public uint LimitFlags;
-            public nuint MinimumWorkingSetSize;
-            public nuint MaximumWorkingSetSize;
-            public uint ActiveProcessLimit;
-            public nuint Affinity;
-            public uint PriorityClass;
-            public uint SchedulingClass;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct IoCounters
-        {
-            public ulong ReadOperationCount;
-            public ulong WriteOperationCount;
-            public ulong OtherOperationCount;
-            public ulong ReadTransferCount;
-            public ulong WriteTransferCount;
-            public ulong OtherTransferCount;
-        }
-
-        // JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
-        [StructLayout(LayoutKind.Sequential)]
-        private struct ExtendedLimitInformation
-        {
-            public BasicLimitInformation BasicLimitInformation;
-            public IoCounters IoInfo;
-            public nuint ProcessMemoryLimit;
-            public nuint JobMemoryLimit;
-            public nuint PeakProcessMemoryUsed;
-            public nuint PeakJobMemoryUsed;
-        }
-
-        [LibraryImport("kernel32", EntryPoint = "CreateJobObjectW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
-        private static partial nint CreateJobObjectW(nint attributes, string? name);
-
-        [LibraryImport("kernel32", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool SetInformationJobObject(nint job, int infoClass, ref ExtendedLimitInformation info, uint length);
-
-        [LibraryImport("kernel32", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool AssignProcessToJobObject(nint job, nint process);
-
-        [LibraryImport("kernel32", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool TerminateJobObject(nint job, uint exitCode);
-
-        [LibraryImport("kernel32")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static partial bool CloseHandle(nint handle);
     }
+
+    // A job object handle (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE).
+    internal sealed class SafeJobHandle : SafeHandleZeroOrMinusOneIsInvalid
+    {
+        public SafeJobHandle() : base(ownsHandle: true) { }
+
+        // The handle moves to a new owner; this one no longer closes it.
+        internal SafeJobHandle Transfer()
+        {
+            var job = new SafeJobHandle();
+            job.SetHandle(handle);
+            SetHandleAsInvalid();
+            return job;
+        }
+
+        protected override bool ReleaseHandle() => CloseHandle(handle);
+    }
+
+    private const uint KillOnJobClose = 0x2000;
+    private const int ExtendedLimitInformationClass = 9;
+    private const uint HandleFlagInherit = 0x1;
+    private const uint StartfUseStdHandles = 0x100;
+    private const uint CreateSuspended = 0x4;
+    private const uint CreateNoWindow = 0x08000000;
+    private const uint CreateUnicodeEnvironment = 0x400;
+    private const uint ExtendedStartupInfoPresent = 0x80000;
+    private const nuint ProcThreadAttributeHandleList = 0x20002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SecurityAttributes
+    {
+        public uint Length;
+        public nint SecurityDescriptor;
+        public int InheritHandle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInformation
+    {
+        public uint Size;
+        public nint Reserved;
+        public nint Desktop;
+        public nint Title;
+        public uint X;
+        public uint Y;
+        public uint XSize;
+        public uint YSize;
+        public uint XCountChars;
+        public uint YCountChars;
+        public uint FillAttribute;
+        public uint Flags;
+        public ushort ShowWindow;
+        public ushort Reserved2Size;
+        public nint Reserved2;
+        public nint StandardInput;
+        public nint StandardOutput;
+        public nint StandardError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInformationEx
+    {
+        public StartupInformation StartupInfo;
+        public nint AttributeList;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInformation
+    {
+        public nint Process;
+        public nint Thread;
+        public int ProcessId;
+        public int ThreadId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BasicLimitInformation
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public nuint MinimumWorkingSetSize;
+        public nuint MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public nuint Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IoCounters
+    {
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+    }
+
+    // JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ExtendedLimitInformation
+    {
+        public BasicLimitInformation BasicLimitInformation;
+        public IoCounters IoInfo;
+        public nuint ProcessMemoryLimit;
+        public nuint JobMemoryLimit;
+        public nuint PeakProcessMemoryUsed;
+        public nuint PeakJobMemoryUsed;
+    }
+
+    [LibraryImport("kernel32", EntryPoint = "CreateJobObjectW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial SafeJobHandle CreateJobObjectW(nint attributes, string? name);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetInformationJobObject(SafeJobHandle job, int infoClass, ref ExtendedLimitInformation info, uint length);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AssignProcessToJobObject(SafeJobHandle job, SafeProcessHandle process);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateJobObject(SafeJobHandle job, uint exitCode);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateProcess(SafeProcessHandle process, uint exitCode);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    private static partial uint ResumeThread(SafeProcessHandle thread);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetExitCodeProcess(SafeProcessHandle process, out uint exitCode);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CreatePipe(out SafeFileHandle read, out SafeFileHandle write, ref SecurityAttributes attributes, uint size);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetHandleInformation(SafeFileHandle handle, uint mask, uint flags);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool InitializeProcThreadAttributeList(nint list, int count, int flags, ref nuint size);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UpdateProcThreadAttribute(nint list, uint flags, nuint attribute, nint value, nuint size, nint previous, nint returnSize);
+
+    [LibraryImport("kernel32")]
+    private static partial void DeleteProcThreadAttributeList(nint list);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool CreateProcessW(char* applicationName, char* commandLine, nint processAttributes, nint threadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, uint creationFlags, char* environment, char* currentDirectory,
+        StartupInformationEx* startupInfo, out ProcessInformation processInformation);
+
+    [LibraryImport("kernel32")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint handle);
 }
 
 // posix_spawn with POSIX_SPAWN_SETPGROUP: the guest leads a new process group, so KillTree reaches the processes it
@@ -251,6 +567,7 @@ internal sealed partial class UnixGuestProcess : GuestProcess
     private readonly FileStream _output;
     private readonly FileStream _errors;
     private readonly TaskCompletionSource<int> _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool _reaped;
 
     private UnixGuestProcess(int pid, SafeFileHandle input, SafeFileHandle output, SafeFileHandle errors)
     {
@@ -342,6 +659,11 @@ internal sealed partial class UnixGuestProcess : GuestProcess
             Check(posix_spawn_file_actions_adddup2(fileActions, errors, 2), "posix_spawn_file_actions_adddup2");
             if (startInfo.WorkingDirectory is { } directory)
                 Check(posix_spawn_file_actions_addchdir_np(fileActions, Utf8(Path.GetFullPath(directory))), "posix_spawn_file_actions_addchdir_np");
+            // Linux: every descriptor above standard error closes before the guest runs, also one a native library of
+            // the host opened without O_CLOEXEC (glibc 2.34). macOS has POSIX_SPAWN_CLOEXEC_DEFAULT; an older glibc or
+            // musl relies on the host's descriptors being close-on-exec, as .NET's are.
+            if (OperatingSystem.IsLinux() && CloseFrom.Value is { } closeFrom)
+                Check(((delegate* unmanaged<nint, int, int>)closeFrom)(fileActions, 3), "posix_spawn_file_actions_addclosefrom_np");
 
             Check(posix_spawnattr_init(attributes), "posix_spawnattr_init");
             attributesReady = true;
@@ -389,25 +711,47 @@ internal sealed partial class UnixGuestProcess : GuestProcess
         }
     }
 
+    // The guest exited: it stays a zombie (waitid with WNOWAIT) while what it started in its group is killed, so the
+    // group's id cannot belong to another process group yet; then it is reaped. A group id that the system reused would
+    // otherwise receive the SIGKILL of KillTree.
     private void Wait()
     {
+        var info = new byte[128]; // siginfo_t
+        while (true)
+        {
+            if (waitid(PIdentifierProcess, _pid, info, WaitExited | WaitNoWait) == 0) break;
+            if (Marshal.GetLastPInvokeError() == ErrorInterrupted) continue;
+            // Another part of the process reaped it, such as a SIGCHLD disposition of SIG_IGN; its group may be gone.
+            lock (RunningGate)
+            {
+                Running.Remove(_pid);
+                _reaped = true;
+            }
+            _exited.TrySetResult(-1);
+            return;
+        }
         int code;
+        lock (RunningGate)
+        {
+            // The guest's own processes go with it (host-protocol.md, Guest gone): none outlives the session.
+            _ = kill(-_pid, SignalKill);
+            Running.Remove(_pid);
+            code = Reap();
+            _reaped = true;
+        }
+        _exited.TrySetResult(code);
+    }
+
+    private int Reap()
+    {
         while (true)
         {
             var waited = waitpid(_pid, out var status, 0);
-            if (waited == _pid)
-            {
-                // WIFEXITED: the exit status; WIFSIGNALED: 128 plus the signal, as System.Diagnostics.Process reports it.
-                code = (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f);
-                break;
-            }
+            // WIFEXITED: the exit status; WIFSIGNALED: 128 plus the signal, as System.Diagnostics.Process reports it.
+            if (waited == _pid) return (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f);
             if (waited == -1 && Marshal.GetLastPInvokeError() == ErrorInterrupted) continue;
-            // Another part of the process reaped it, such as a SIGCHLD disposition of SIG_IGN.
-            code = -1;
-            break;
+            return -1;
         }
-        lock (RunningGate) Running.Remove(_pid);
-        _exited.TrySetResult(code);
     }
 
     internal override int Id => _pid;
@@ -420,12 +764,16 @@ internal sealed partial class UnixGuestProcess : GuestProcess
 
     internal override Task<int> Exited => _exited.Task;
 
-    // The group outlives its leader while a member runs, and its id is not reused until then, so the group can be
-    // signalled after the guest itself exited.
+    // Only while the guest is not reaped: its id, and its group's, are its own until then. Its group is killed when it
+    // exits (Wait), so nothing is left to signal afterwards.
     internal override void KillTree()
     {
-        _ = kill(-_pid, SignalKill);
-        if (!_exited.Task.IsCompleted) _ = kill(_pid, SignalKill);
+        lock (RunningGate)
+        {
+            if (_reaped) return;
+            _ = kill(-_pid, SignalKill);
+            _ = kill(_pid, SignalKill);
+        }
     }
 
     public override void Dispose()
@@ -443,8 +791,12 @@ internal sealed partial class UnixGuestProcess : GuestProcess
         AppDomain.CurrentDomain.ProcessExit += static (_, _) =>
         {
             int[] groups;
-            lock (RunningGate) groups = [.. Running];
-            foreach (var group in groups) _ = kill(-group, SignalKill);
+            // Running holds only guests that are not reaped, under the same lock as the reaping.
+            lock (RunningGate)
+            {
+                groups = [.. Running];
+                foreach (var group in groups) _ = kill(-group, SignalKill);
+            }
         };
     }
 
@@ -458,6 +810,18 @@ internal sealed partial class UnixGuestProcess : GuestProcess
     private const int SignalPipe = 13;
     private const int SignalKill = 9;
     private const int ErrorInterrupted = 4;
+    private const int PIdentifierProcess = 1; // P_PID
+    private const int WaitExited = 0x04; // WEXITED, on Linux and macOS
+    private static int WaitNoWait => OperatingSystem.IsMacOS() ? 0x20 : 0x01000000; // WNOWAIT
+
+    // posix_spawn_file_actions_addclosefrom_np, from glibc 2.34; null where libc does not export it.
+    private static readonly Lazy<nint?> CloseFrom = new(static () =>
+        NativeLibrary.TryLoad("libc.so.6", out var libc) && NativeLibrary.TryGetExport(libc, "posix_spawn_file_actions_addclosefrom_np", out var export)
+            ? export
+            : null);
+
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int waitid(int idType, int id, [Out] byte[] info, int options);
 
     [LibraryImport("libc", SetLastError = true)]
     private static partial int pipe2([Out] int[] fds, int flags);

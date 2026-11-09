@@ -53,7 +53,8 @@ public sealed class RunicHostedApplication : IAsyncDisposable
     private readonly CancellationTokenSource _ending = new();
     private HostChannel? _channel;
     private string? _dataStore;
-    private int _ended;
+    // Set under _gate when the guest is gone: no window joins _open after that.
+    private bool _ended;
     private int _stopping;
 
     private RunicHostedApplication(RunicHostedApplications owner, RunicDesktopHost host, RunicHostedApplicationOptions options,
@@ -100,7 +101,16 @@ public sealed class RunicHostedApplication : IAsyncDisposable
     internal static async Task<RunicHostedApplication> StartAsync(RunicHostedApplications owner, RunicDesktopHost host,
         RunicGuestStartInfo startInfo, RunicHostedApplicationOptions options, ILogger logger, CancellationToken cancellationToken)
     {
-        var process = GuestProcess.Start(startInfo);
+        GuestProcess process;
+        try { process = GuestProcess.Start(startInfo); }
+        catch (Exception error) when (error is Win32Exception or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // A missing executable, one this user cannot run, or a job object the guest cannot be contained in.
+            var failure = new RunicHostedApplicationException("guest-start-failed",
+                $"'{startInfo.FileName}': The guest could not be started: {error.Message}", error);
+            DesktopLog.HostedApplicationStartFailed(logger, startInfo.FileName, failure.Code, failure.Message);
+            throw failure;
+        }
         var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName);
         try
         {
@@ -186,10 +196,14 @@ public sealed class RunicHostedApplication : IAsyncDisposable
 
     private async Task EndAsync()
     {
-        if (Interlocked.Exchange(ref _ended, 1) != 0) return;
-        await _ending.CancelAsync().ConfigureAwait(false);
         RunicHostedWindow[] open;
-        lock (_gate) open = [.. _open];
+        lock (_gate)
+        {
+            if (_ended) return;
+            _ended = true;
+            open = [.. _open];
+        }
+        await _ending.CancelAsync().ConfigureAwait(false);
         foreach (var window in open)
         {
             try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
@@ -360,8 +374,15 @@ public sealed class RunicHostedApplication : IAsyncDisposable
             await request.FailAsync("rejected", "refused", decision.Message ?? "The host's window policy refused the request.").ConfigureAwait(false);
             return;
         }
-        var applied = decision.Request is { } changed && ReferenceEquals(changed.Window, window) && changed.Kind == kind ? changed : presentation;
-        var result = await HostedPresentation.ApplyAsync(window, applied, _ending.Token).ConfigureAwait(false);
+        // The policy's request applies as it returned it, also with another kind or another window of this guest.
+        var applied = decision.Request ?? presentation;
+        if (!ReferenceEquals(applied.Window.Application, this))
+        {
+            DesktopLog.HostedWindowPolicyFailed(_logger, null, "ForeignWindow");
+            await request.FailAsync("failed", null, "The host's window policy named a window of another application.").ConfigureAwait(false);
+            return;
+        }
+        var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
         await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
     }
 
@@ -405,7 +426,7 @@ public sealed class RunicHostedApplication : IAsyncDisposable
             await request.FailAsync("rejected", "invalid-request", "The window-open is not valid: a member is missing, out of range or names no open window.").ConfigureAwait(false);
             return;
         }
-        if (_ending.IsCancellationRequested || Volatile.Read(ref _stopping) != 0)
+        if (_ending.IsCancellationRequested || Volatile.Read(ref _stopping) != 0 || _owner.IsClosing)
         {
             await request.FailAsync("rejected", "refused", "The host is stopping the application.").ConfigureAwait(false);
             return;
@@ -415,6 +436,7 @@ public sealed class RunicHostedApplication : IAsyncDisposable
             ? DesktopPermissionGrant.MediaCapture
             : DesktopPermissionGrant.None;
         var defaults = _host.WindowOptions;
+        // The guest gets what it asks for only as far as the host grants its own windows; a policy can grant more.
         var proposed = defaults with
         {
             Width = width ?? defaults.Width,
@@ -423,7 +445,7 @@ public sealed class RunicHostedApplication : IAsyncDisposable
             MinimumHeight = minimumHeight ?? defaults.MinimumHeight,
             Owner = owner?.PresentationOrNull is { IsOpen: true } ownerWindow ? DesktopWindowOwner.FromWindow(ownerWindow) : null,
             Modality = owner is not null && modality == "window" ? DesktopWindowModality.Window : DesktopWindowModality.None,
-            AllowedPermissions = permissions,
+            AllowedPermissions = permissions & defaults.AllowedPermissions,
         };
         var window = new RunicHostedWindow(this, id!, type, owner, modality == "window" && owner is not null, guardClose);
         var windowRequest = new RunicHostedWindowRequest(this, id!, type, title, owner, window.IsModal, guardClose, permissions, proposed);
@@ -467,33 +489,72 @@ public sealed class RunicHostedApplication : IAsyncDisposable
         }
         var adapter = new DesktopWindowPresentation(presentation, () => new DesktopNativeOwner(presentation));
         window.Attach(presentation, adapter);
+        bool ended;
         lock (_gate)
         {
-            _windows[window.Id] = window;
-            _open.Add(window);
+            // The guest went away while the window opened: EndAsync closed the others and does not know this one.
+            ended = _ended;
+            if (!ended)
+            {
+                _windows[window.Id] = window;
+                _open.Add(window);
+            }
         }
+        var hostedSurface = surface!;
+        if (ended)
+        {
+            await CloseUnlistedAsync(window, hostedSurface).ConfigureAwait(false);
+            await AnswerAsync(request.FailAsync("failed", null, "The application ended while its window opened.")).ConfigureAwait(false);
+            return;
+        }
+        // WindowOpened before the reply, and before the window's Closed handler can raise WindowClosed: the guest can
+        // close the window as soon as the reply arrives, and the events are raised in order.
+        _owner.RaiseWindowOpened(window);
         // The host's pushes for the window (host-protocol.md, Activity and placement).
         adapter.ActivityChanged += (_, e) =>
         {
             if (window.Features.HasFlag(RunicWindowPresentationFeatures.Activity))
-                window.Push(Activity(window.Id, e.Activity));
+                window.Push("activity", () => Activity(window.Id, e.Activity));
         };
         adapter.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(IRunicWindowPresentation.ColorScheme))
-                window.Push(new JsonObject { ["kind"] = "color-scheme", ["window"] = window.Id, ["colorScheme"] = Token(adapter.ColorScheme) });
+                window.Push("color-scheme", () => new JsonObject { ["kind"] = "color-scheme", ["window"] = window.Id, ["colorScheme"] = Token(adapter.ColorScheme) });
         };
-        presentation.StateChanged += (_, e) => window.Push(Placement(window.Id, e.State));
-        var hostedSurface = surface!;
+        presentation.StateChanged += (_, e) => window.Push("placement", () => Placement(window.Id, e.State));
         presentation.Closed += (_, _) => _ = OnWindowClosedAsync(window, hostedSurface);
-        await request.ReplyAsync(new JsonObject
+        try
         {
-            ["features"] = new JsonArray([.. FeatureNames(window.Features).Select(static name => (JsonNode)name)]),
-            ["activity"] = ActivityMembers(adapter.Activity),
-            ["colorScheme"] = Token(adapter.ColorScheme),
-        }).ConfigureAwait(false);
+            await request.ReplyAsync(new JsonObject
+            {
+                ["features"] = new JsonArray([.. FeatureNames(window.Features).Select(static name => (JsonNode)name)]),
+                ["activity"] = ActivityMembers(adapter.Activity),
+                ["colorScheme"] = Token(adapter.ColorScheme),
+            }).ConfigureAwait(false);
+        }
+        catch (HostChannelClosedException)
+        {
+            // The guest never learns of the window: it closes as for a guest that is gone.
+            await window.OnGuestClosedAsync().ConfigureAwait(false);
+        }
         if (!presentation.IsOpen) _ = OnWindowClosedAsync(window, hostedSurface);
-        _owner.RaiseWindowOpened(window);
+    }
+
+    // A window that opened after its guest went away: closed and released without events, since it never opened for the
+    // host application.
+    private async Task CloseUnlistedAsync(RunicHostedWindow window, DesktopSurface surface)
+    {
+        try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
+        catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
+        try { await surface.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
+        window.MarkClosed();
+    }
+
+    private static async Task AnswerAsync(Task answer)
+    {
+        try { await answer.ConfigureAwait(false); }
+        catch (HostChannelClosedException) { }
     }
 
     // The native window closed, for any reason. A window the guest did not close, such as one the host's shutdown

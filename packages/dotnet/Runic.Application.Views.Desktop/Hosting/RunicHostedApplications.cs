@@ -14,7 +14,13 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
     private readonly ILogger _logger;
     private readonly object _gate = new();
     private readonly List<RunicHostedApplication> _running = [];
+    // The starts still in their handshake, which the host's shutdown or disposal cancels and waits for.
+    private readonly HashSet<Task> _starting = [];
+    // Cancelled when the Desktop host's shutdown was requested or this is disposed: no guest starts or opens a window.
+    private readonly CancellationTokenSource _closing = new();
     private readonly CancellationTokenRegistration _shutdown;
+    private readonly object _eventGate = new();
+    private Task _events = Task.CompletedTask;
     private int _disposed;
 
     internal RunicHostedApplications(RunicDesktopHost host)
@@ -30,29 +36,56 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
         get { lock (_gate) return [.. _running]; }
     }
 
+    // Whether the host is shutting down: a guest's window-open is refused.
+    internal bool IsClosing => _closing.IsCancellationRequested || _host.Desktop.ShutdownRequested.IsCancellationRequested;
+
     public async ValueTask<RunicHostedApplication> StartAsync(RunicGuestStartInfo startInfo, RunicHostedApplicationOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
         if (_host.IsHosted || _host.ServeOnly)
             throw new InvalidOperationException("A hosted or serve-only application shows no windows of its own, so it cannot host another application.");
-        if (Volatile.Read(ref _disposed) != 0 || _host.Desktop.ShutdownRequested.IsCancellationRequested)
-            throw new InvalidOperationException("The Desktop host is shutting down.");
-        var application = await RunicHostedApplication.StartAsync(this, _host, startInfo, options ?? new RunicHostedApplicationOptions(),
-            _logger, cancellationToken).ConfigureAwait(false);
-        var stop = false;
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
         {
-            if (Volatile.Read(ref _disposed) != 0) stop = true;
-            else if (!application.Exited.IsCompleted) _running.Add(application);
+            if (Volatile.Read(ref _disposed) != 0 || IsClosing) throw ShuttingDown();
+            _starting.Add(completion.Task);
         }
-        if (stop)
+        try
         {
-            await application.StopCoreAsync("host-exit", CancellationToken.None).ConfigureAwait(false);
-            throw new InvalidOperationException("The Desktop host is shutting down.");
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _closing.Token);
+            RunicHostedApplication application;
+            try
+            {
+                application = await RunicHostedApplication.StartAsync(this, _host, startInfo, options ?? new RunicHostedApplicationOptions(),
+                    _logger, linked.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && _closing.IsCancellationRequested)
+            {
+                // The start ended the guest's process tree.
+                throw ShuttingDown();
+            }
+            var stop = false;
+            lock (_gate)
+            {
+                if (Volatile.Read(ref _disposed) != 0 || IsClosing) stop = true;
+                else if (!application.Exited.IsCompleted) _running.Add(application);
+            }
+            if (stop)
+            {
+                await application.StopCoreAsync("host-exit", CancellationToken.None).ConfigureAwait(false);
+                throw ShuttingDown();
+            }
+            return application;
         }
-        return application;
+        finally
+        {
+            lock (_gate) _starting.Remove(completion.Task);
+            completion.TrySetResult();
+        }
     }
+
+    private static InvalidOperationException ShuttingDown() => new("The Desktop host is shutting down.");
 
     public event EventHandler<RunicHostedWindowEventArgs>? WindowOpened;
 
@@ -62,15 +95,19 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
 
     internal void RaiseWindowClosed(RunicHostedWindow window) => Raise(WindowClosed, window);
 
-    // On a thread-pool thread, so a handler never runs in the channel's receive loop or a native callback.
+    // On a thread-pool thread, so a handler never runs in the channel's receive loop or a native callback, and one event
+    // after the other, so a window's WindowClosed follows its WindowOpened.
     private void Raise(EventHandler<RunicHostedWindowEventArgs>? handler, RunicHostedWindow window)
     {
         if (handler is null) return;
-        ThreadPool.QueueUserWorkItem(_ =>
+        lock (_eventGate)
         {
-            try { handler(this, new RunicHostedWindowEventArgs(window)); }
-            catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowPolicyFailed(_logger, error, error.GetType().Name); }
-        });
+            _events = _events.ContinueWith(_ =>
+            {
+                try { handler(this, new RunicHostedWindowEventArgs(window)); }
+                catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowPolicyFailed(_logger, error, error.GetType().Name); }
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
     }
 
     internal void Remove(RunicHostedApplication application)
@@ -78,8 +115,14 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
         lock (_gate) _running.Remove(application);
     }
 
+    // The host shuts down: pending starts are cancelled, which ends their guests, and the running guests stop.
     private async Task StopAllAsync(string reason)
     {
+        try { await _closing.CancelAsync().ConfigureAwait(false); }
+        catch (ObjectDisposedException) { }
+        Task[] starting;
+        lock (_gate) starting = [.. _starting];
+        await Task.WhenAll(starting).ConfigureAwait(false);
         RunicHostedApplication[] running;
         lock (_gate) running = [.. _running];
         await Task.WhenAll(running.Select(async application =>
@@ -89,7 +132,8 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
         })).ConfigureAwait(false);
     }
 
-    // RunicDesktopHost.Run returned, or the services are disposed: every guest still running stops.
+    // RunicDesktopHost.Run returned, or the services are disposed: pending starts fail and every guest still running
+    // stops.
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;

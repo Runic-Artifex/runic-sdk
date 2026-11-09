@@ -150,6 +150,35 @@ internal static partial class WindowsWebView2Interop
         => Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, nint, nint, int>)Slot(environment, EnvironmentCreateControllerSlot))(
             environment, window, callback));
 
+    // ICoreWebView2Environment10 (WebView2 runtime 101): a controller in an InPrivate profile of its own name, whose
+    // cookies, storage and caches live in memory only and are dropped with its last controller; a profile name is a
+    // profile of its own, apart from the folder's default profile and every other name.
+    internal static readonly Guid Environment10Interface = new("ee0eb9df-6f12-46ce-b53f-3f47b9c928e0");
+    internal const int Environment10CreateControllerOptionsSlot = 20;
+    internal const int Environment10CreateControllerWithOptionsSlot = 21;
+    internal const int ControllerOptionsProfileNameSlot = 4;
+    internal const int ControllerOptionsInPrivateSlot = 6;
+
+    internal static unsafe void CreateInPrivateController(nint environment, string profileName, nint window, nint callback)
+    {
+        var environment10 = Query(environment, Environment10Interface);
+        nint options = 0;
+        try
+        {
+            options = GetPointer(environment10, Environment10CreateControllerOptionsSlot);
+            fixed (char* name = profileName)
+                Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, int>)Slot(options, ControllerOptionsProfileNameSlot))(options, name));
+            SetInteger(options, ControllerOptionsInPrivateSlot, 1);
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, nint, nint, nint, int>)Slot(environment10, Environment10CreateControllerWithOptionsSlot))(
+                environment10, window, options, callback));
+        }
+        finally
+        {
+            Release(options);
+            Release(environment10);
+        }
+    }
+
     internal static unsafe nint GetPointer(nint instance, int slot)
     {
         nint result;
@@ -285,7 +314,21 @@ internal sealed class WindowsWebView2Controller : IDisposable
         {
             var controllerCompletion = new WebViewCompletion();
             using var controllerHandler = new WebViewComReference<IWebViewControllerCompleted>(controllerCompletion);
-            WindowsWebView2Interop.CreateController(environment, window, controllerHandler.Pointer);
+            // runic-host/1 hosted windows (EphemeralDataStores): the session's InPrivate profile, so the guest's data is
+            // never written to the session's user data folder. A runtime without it cannot open a hosted window.
+            if (options.EphemeralDataStore is { } dataStore)
+            {
+                try { WindowsWebView2Interop.CreateInPrivateController(environment, dataStore, window, controllerHandler.Pointer); }
+                catch (InvalidCastException error)
+                {
+                    throw new DesktopException(DesktopErrorCategory.Unavailable, "hosted-data-store-unavailable",
+                        "The WebView2 runtime has no InPrivate profiles (ICoreWebView2Environment10), which hosted windows need.", innerException: error);
+                }
+            }
+            else
+            {
+                WindowsWebView2Interop.CreateController(environment, window, controllerHandler.Pointer);
+            }
             controller = await controllerCompletion.Task;
             return new WindowsWebView2Controller(environment, controller);
         }
