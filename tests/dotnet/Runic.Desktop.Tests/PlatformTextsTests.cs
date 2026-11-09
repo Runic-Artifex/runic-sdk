@@ -17,6 +17,7 @@ public sealed class PlatformTextsTests
             var defaults = DesktopPlatformTexts.Current;
             Assert.Equal("Untitled", defaults.UntitledFileName);
             Assert.Equal("Open file", defaults.OpenFileTitle);
+            Assert.Equal("Loading…", defaults.LoadingTitle);
             Assert.Null(defaults.ControlKeyName);
             DesktopPlatformTexts.Current = new DesktopPlatformTexts { UntitledFileName = "Unbenannt" };
             Assert.Equal("Unbenannt", DesktopPlatformTexts.Current.UntitledFileName);
@@ -26,6 +27,7 @@ public sealed class PlatformTextsTests
             Assert.Throws<ArgumentException>(() => DesktopPlatformTexts.Current = new DesktopPlatformTexts { UntitledFileName = "a/b" });
             Assert.Throws<ArgumentException>(() => DesktopPlatformTexts.Current = new DesktopPlatformTexts { ControlKeyName = "St\0rg" });
             Assert.Throws<ArgumentException>(() => DesktopPlatformTexts.Current = new DesktopPlatformTexts { AccessDeniedTitle = new string('x', 1025) });
+            Assert.Throws<ArgumentException>(() => DesktopPlatformTexts.Current = new DesktopPlatformTexts { LoadingTitle = "" });
             Assert.Equal("Untitled", DesktopPlatformTexts.Current.UntitledFileName);
         }
         finally { DesktopPlatformTexts.Current = null!; }

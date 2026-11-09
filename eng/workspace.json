@@ -32,6 +32,10 @@
       "path": "packages/web/views-effect"
     },
     {
+      "name": "@runic-artifex/views-translations",
+      "path": "packages/web/views-translations"
+    },
+    {
       "name": "@runic-artifex/react",
       "path": "packages/web/react"
     },
@@ -105,6 +109,10 @@
     {
       "name": "Runic.Application.Views.Wpf",
       "project": "packages/dotnet/Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj"
+    },
+    {
+      "name": "Runic.Application.Views.Translations",
+      "project": "packages/dotnet/Runic.Application.Views.Translations/Runic.Application.Views.Translations.csproj"
     },
     {
       "name": "Runic.Application.Templates",
@@ -350,6 +358,18 @@
       ],
       "paths": [
         "packages/web/views-effect"
+      ]
+    },
+    "views-translations": {
+      "dependsOn": [
+        "application"
+      ],
+      "paths": [
+        "packages/dotnet/Runic.Application.Views.Translations",
+        "packages/web/views-translations",
+        "tests/dotnet/Runic.Application.Views.Translations.Tests",
+        "tests/fixtures/application/views-translations-consumer",
+        "tests/fixtures/application/views-translations-vite"
       ]
     },
     "vite": {
