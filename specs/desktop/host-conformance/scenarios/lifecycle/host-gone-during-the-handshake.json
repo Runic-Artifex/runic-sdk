@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "lifecycle.host-gone-during-the-handshake.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "lifecycle",
+  "roles": ["guest"],
+  "description": "When standard input ends before an authenticated hello, the guest stops listening and exits with host-gone.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"closeInput":true},
+    {"expect":{"startFailure":"host-gone"}},
+    {"expect":{"exited":true}}
+  ]
+}

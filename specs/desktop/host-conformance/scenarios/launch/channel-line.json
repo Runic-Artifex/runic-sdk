@@ -1,0 +1,21 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "launch.channel-line.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "launch",
+  "roles": ["guest"],
+  "description": "The guest reads the offer, opens its listener and writes one channel line with the protocol it chose; the host's hello with the key and the host proof is answered with the guest proof and the guest's identity.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"expect":{"running":true}}
+  ]
+}

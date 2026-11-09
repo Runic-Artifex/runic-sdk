@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "handshake.host-header-refused.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "handshake",
+  "roles": ["guest"],
+  "description": "An upgrade whose Host header is a name, not the listener's loopback literal, is refused with 403, as a DNS rebinding page's would be.",
+  "ids": {
+    "c1": {"kind":"connection"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1","host":"localhost:{port}","status":403}
+  ]
+}
