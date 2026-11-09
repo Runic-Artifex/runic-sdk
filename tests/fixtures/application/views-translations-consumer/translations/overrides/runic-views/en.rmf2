@@ -1,0 +1,7 @@
+# The application's English for two runic-views messages; German keeps the library's text for required.
+platform {
+  untitled_file_name = New document
+}
+validation {
+  required = Please fill in {$field}.
+}

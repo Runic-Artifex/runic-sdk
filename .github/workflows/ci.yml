@@ -348,6 +348,10 @@ jobs:
         if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'views-effect') }}
         working-directory: packages/web/views-effect
         run: bun run --bun test
+      - name: Test views-translations
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'views-translations') }}
+        working-directory: packages/web/views-translations
+        run: bun run --bun test
       - name: Test react
         if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.web), 'react') }}
         working-directory: packages/web/react

@@ -1,0 +1,7 @@
+# French, a locale runic-views lacks; the messages it does not override show in English.
+platform {
+  untitled_file_name = Sans titre
+}
+field {
+  not_a_number = {$text} n’est pas un nombre.
+}

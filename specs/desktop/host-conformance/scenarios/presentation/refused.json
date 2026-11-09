@@ -1,0 +1,33 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "presentation.refused.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "presentation",
+  "roles": ["guest"],
+  "description": "A presentation request the host's policy refuses fails with permission-denied in the guest.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "p1": {"kind":"action"},
+    "p1-request": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"guest":{"action":"setFullScreen","window":"w1","value":true},"as":"p1"},
+    {"receive":{"id":{"$id":"p1-request"},"kind":"set-full-screen","window":{"$id":"w1"},"fullScreen":true},"connection":"c1"},
+    {"send":{"id":{"$id":"p1-request"},"ok":false,"error":{"kind":"rejected","reason":"refused","message":"Full screen is not allowed."}},"connection":"c1"},
+    {"expect":{"action":"p1","outcome":{"failed":"permission-denied"}}}
+  ]
+}

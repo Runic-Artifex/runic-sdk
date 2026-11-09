@@ -4,7 +4,9 @@
   "tools": {
     "dotnet-runic-translations": {
       "version": "0.9.1",
-      "commands": ["runic-translations"],
+      "commands": [
+        "runic-translations"
+      ],
       "rollForward": false
     }
   }

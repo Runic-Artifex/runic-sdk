@@ -1,0 +1,16 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "host.guest-exits.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "host",
+  "roles": ["host"],
+  "description": "A guest that exits before its channel line fails the host's start with guest-exited.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"exit":3},
+    {"expect":{"startFailure":"guest-exited"}}
+  ]
+}
