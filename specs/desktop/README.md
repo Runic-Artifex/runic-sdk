@@ -34,6 +34,10 @@ intentionally divergent, or not applicable.
 - [In-page menu bar routes](menu-bar-page.md) are the reserved Bridge routes a
   page uses to render the menu bar and run its items, with the shared
   [state cases](fixtures/menu-bar-page.json).
+- The [Runic host protocol](host-protocol.md) (`runic-host/1`, experimental) is
+  how a host application shows a guest application's windows, with its own
+  [conformance scenarios](host-conformance/README.md). It versions
+  independently of this contract.
 
 The schemas and committed examples under `conformance/` are normative test
 inputs. Test reports, platform receipts, performance measurements, WebUI

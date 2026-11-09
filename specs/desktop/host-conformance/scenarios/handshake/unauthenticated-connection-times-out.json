@@ -1,0 +1,24 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "handshake.unauthenticated-connection-times-out.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "handshake",
+  "roles": ["guest"],
+  "description": "A connection that sends no first message within the hello timeout after its upgrade is closed; the listener keeps listening, and the host's next connection opens the channel.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "c2": {"kind":"connection"},
+    "hello": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":5000,"stopTimeout":2000,"unauthenticatedTimeout":5000,"helloTimeout":500},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"advance":"helloTimeout"},
+    {"closed":{"connection":"c1"}},
+    {"connect":"c2"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c2"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c2"}
+  ]
+}

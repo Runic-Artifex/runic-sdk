@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "host.no-channel-line-in-time.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "host",
+  "roles": ["host"],
+  "description": "A guest that writes no channel line within the start timeout fails the host's start with guest-start-timeout.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"text":"Starting Tool 1.4.0"},"note":"Other output is diagnostic text."},
+    {"advance":"startTimeout"},
+    {"expect":{"startFailure":"guest-start-timeout"}}
+  ]
+}

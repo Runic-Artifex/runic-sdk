@@ -1,0 +1,25 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "handshake.second-connection.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "handshake",
+  "roles": ["guest"],
+  "description": "Once one connection completed the handshake, the guest stops listening: a connection opened before it that has not authenticated is closed, and a new one is refused.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "c2": {"kind":"connection"},
+    "c3": {"kind":"connection"},
+    "hello": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"connect":"c2"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c2"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c2"},
+    {"closed":{"connection":"c1"}},
+    {"connect":"c3","refused":true}
+  ]
+}

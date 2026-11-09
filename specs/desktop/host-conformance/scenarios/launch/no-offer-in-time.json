@@ -1,0 +1,17 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "launch.no-offer-in-time.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "launch",
+  "roles": ["guest"],
+  "description": "When no offer arrives within the start timeout, the guest writes no line and exits with offer-missing.",
+  "ids": {},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":"none"},
+    {"advance":"startTimeout"},
+    {"line":"none"},
+    {"expect":{"startFailure":"offer-missing"}},
+    {"expect":{"exited":true}}
+  ]
+}

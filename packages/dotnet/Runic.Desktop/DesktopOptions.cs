@@ -216,8 +216,9 @@ public sealed record DesktopHostOptions
     /// <see langword="null"/>, the default, for the English titles.
     /// </summary>
     /// <remarks>
-    /// Runic ships no translations: take the titles from the application's own, for example from its Runic Translations
-    /// catalog for the user's language, as for <see cref="MenuBar"/>. They apply when the first window opens and to
+    /// Take the titles from the application's own translations, for example from its Runic Translations catalog for the
+    /// user's language, as for <see cref="MenuBar"/>, or from the optional <c>Runic.Application.Views.Translations</c>
+    /// package (English and German). They apply when the first window opens and to
     /// the menus Runic adds to an empty main menu; an application that builds its own main menu keeps its titles.
     /// <see cref="DesktopHost.SetStandardMenuTitles"/> changes them while the application runs. Windows
     /// and Linux show no standard menus. Building the host throws <see cref="ArgumentException"/> for an invalid title,

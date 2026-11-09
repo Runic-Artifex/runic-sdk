@@ -1,0 +1,4 @@
+# The application's English for one runic-views message; German keeps the package's.
+platform {
+  untitled_file_name = New document
+}

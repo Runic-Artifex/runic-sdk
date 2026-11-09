@@ -14,6 +14,7 @@
     "packages/web/sveltekit",
     "packages/web/views",
     "packages/web/views-effect",
+    "packages/web/views-translations",
     "packages/web/react",
     "packages/web/vue"
   ],
