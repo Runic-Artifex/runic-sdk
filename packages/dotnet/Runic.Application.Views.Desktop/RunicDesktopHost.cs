@@ -124,8 +124,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         _guestOptions = options.Guest;
         _serveOnly = options.ServeOnly;
         // Serve-only services decide on first use (DesktopServeOnlyState). A hosted application runs on the host's
-        // desktop, so its application services, such as power events, stay its own.
-        DesktopServeOnlyState.RecordFor(services, options.ServeOnly && options.Guest is null);
+        // desktop, so its application services, such as power events, stay its own; its recent documents are
+        // unavailable, as in serve-only mode (D055.8).
+        DesktopServeOnlyState.RecordFor(services, options.ServeOnly && options.Guest is null, hosted: options.Guest is not null);
     }
 
     private readonly RunicGuestOptions? _guestOptions;
@@ -148,10 +149,20 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // Hosted mode's launch contract and handshake, before the application's body runs.
     private async Task StartGuestAsync()
     {
-        var logger = (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
-            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-        _guest = await Hosting.HostedGuest.StartAsync(_guestOptions!, Desktop, logger).ConfigureAwait(false);
+        _guest = await Hosting.HostedGuest.StartAsync(_guestOptions!, Desktop, GuestLogger).ConfigureAwait(false);
     }
+
+    private ILogger GuestLogger => (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
+        ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+    // The host going away is the normal end of a hosted application (host-protocol.md, Host gone): a Window whose open it
+    // ended, or a body cancelled through ShutdownRequested, does not make Run throw.
+    private static bool EndedByHostGone(Exception error) => error switch
+    {
+        RunicWindowConfigurationException configuration => configuration.Diagnostics.Any(static diagnostic => diagnostic.Code == "hosted-host-gone"),
+        OperationCanceledException => true,
+        _ => false,
+    };
 
     private readonly bool _serveOnly;
 
@@ -333,8 +344,15 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         if (host._guestOptions is null) return await application(host).ConfigureAwait(false);
         // Hosted mode: the host's handshake first; a failure throws RunicHostedApplicationException without the body.
         await host.StartGuestAsync().ConfigureAwait(false);
+        var guest = host._guest!;
         try { return await application(host).ConfigureAwait(false); }
-        finally { await host._guest!.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception error) when (guest.IsHostGone && EndedByHostGone(error))
+        {
+            var errorType = error.GetType().Name;
+            DesktopLog.HostedBodyEnded(host.GuestLogger, error, errorType);
+            return 0;
+        }
+        finally { await guest.DisposeAsync().ConfigureAwait(false); }
     }
 
     /// <summary>
@@ -445,6 +463,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         IDisposable? connectionBinding = null;
         DesktopBridgeWindow<TViewModel>? owner = null;
         DevelopmentAssets.Window? development = null;
+        // A hosted application never opens a window after its host went away (host-protocol.md, Host gone), also when
+        // Run has returned meanwhile.
+        if (_guest is { IsHostGone: true }) throw Hosting.HostedGuest.HostGone();
         try
         {
             var viewModel = opening.ViewModel;

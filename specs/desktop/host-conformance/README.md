@@ -25,17 +25,18 @@ uses, and `steps` what happens, in order.
 
 ### Arrange
 
-- `limits`: `startTimeout`, `stopTimeout` and `unauthenticatedTimeout`, in milliseconds, that the runner configures
-  the implementation under test with. A scenario that waits for a limit names it in an [`advance`](#steps) step; a
-  runner waits the configured time, so scenarios use small values.
+- `limits`: `startTimeout`, `stopTimeout`, `unauthenticatedTimeout` (the upgrade's limit), `helloTimeout` and
+  `requestTimeout`, in milliseconds, and `waitingRequests`, a count, that the runner configures the implementation
+  under test with; the protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
+  a limit names it in an [`advance`](#steps) step; a runner waits the configured time, so scenarios use small values.
 - `application`: for the `guest` role, the guest application's `name`, `version` and `applicationId`, which its
   successful `hello` reply carries.
 - `host`: for the `host` role, the host's `name` and `version`, which its offer carries.
 
 ### Steps
 
-Each step has one action. `connection` names the connection of a `send`, `receive`, `closed` or `disconnect` step;
-`note` is a comment.
+Each step has one action. `connection` names the connection of a `send`, `sendRaw`, `receive`, `receiveAll`, `closed`
+or `disconnect` step; `note` is a comment.
 
 | Step | Guest runner (plays the host) | Host runner (plays the guest) |
 | --- | --- | --- |
@@ -45,14 +46,16 @@ Each step has one action. `connection` names the connection of a `send`, `receiv
 | `connect` | Opens a WebSocket to the channel line's `url`, with `headers` added and the `Host` header or the path replaced by `host` or `path` (`{port}` in them is the listener's port), and requires the upgrade's `status` (101 by default), or with `refused`, that the connection is refused or closed before an upgrade response | — |
 | `accept` | — | Accepts the host's connection on its listener |
 | `send` | Sends the message to the guest | Sends the message to the host |
+| `sendRaw` | Sends a WebSocket message that breaks the profile: `binary`, that many zero bytes in a binary message; `text`, that text in a text message; `textBytes`, a text message of that many bytes, `{}` followed by spaces | The same, to the host |
 | `receive` | Requires the guest's next message on the connection to equal it | Requires the host's next message on the connection to equal it |
+| `receiveAll` | Requires the guest's next messages, as many as listed, to equal them in any order | The same, for the host |
 | `closed` | Requires that the guest closes the connection, with `status` when given, without sending another message | The same, for the host |
 | `disconnect` | Closes the connection | Closes the connection |
 | `closeInput` | Closes the guest's standard input | — |
 | `exit` | — | Ends its own process with `code` |
 | `advance` | Waits for the named limit of `arrange.limits` to pass | The same |
 | `guest` | Makes the test application do one [action](#test-application) | — |
-| `expect` | Checks the outcome of the guest application: an action's result, the guest's start failure, its exit | Checks the host's outcome: its start failure code, its windows |
+| `expect` | Checks the outcome of the guest application: an action's result, the guest's start failure, its exit | Checks the host's outcome: its start, or its start failure code |
 
 A `receive` step waits until a message arrives, up to the runner's own timeout; time in a scenario passes only through
 `advance` and the work the implementation does on its own. When the scenario ends, each open connection must have no
@@ -89,18 +92,21 @@ runner checks the protocol, not the page. A guest application under test opens n
 | Window type | Guards its close |
 | --- | --- |
 | `Main` | no |
-| `Guarded` | yes: its guard answers what the last `answerGuard` action said, `true` before any |
+| `Guarded` | yes: its guard answers what the last `answerGuard` action said, `true` before any; after `holdGuard` it waits for the next `answerGuard` |
 
 | Action | Members | Result for `expect` |
 | --- | --- | --- |
-| `open` | `window` (a `window` id it binds), `type`, optional `owner` (a `window` id), `modality` | `opened`, or `failed` with a code |
+| `open` | `window` (a `window` id it binds), `type`, optional `owner` (a `window` id), `modality` | `opened`, `failed` with a code, or `cancelled` |
+| `cancelOpen` | `window` | — (it cancels the window's `open` action through its cancellation token) |
 | `close` | `window` | — |
 | `requestClose` | `window` | `closed`: `true` or `false` |
 | `present`, `minimize` | `window` | A platform outcome: `success`, `unavailable` with `reason`, `failed` with `code` |
 | `setVisible`, `setFullScreen`, `setDocumentEdited` | `window`, `value` | A platform outcome |
 | `setColorScheme` | `window`, `value` | A platform outcome |
 | `answerGuard` | `allow` | — |
+| `holdGuard` | — | — |
 | `activity` | `window` | The Window's `IRunicWindowPresentation.Activity`, `{active, minimized, visible}` |
 
-`expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start failed with a code),
-`exited` (the guest process exited; a code when given), or `running` (the guest still runs).
+`expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start, or the host's start
+of the guest, failed with a code), `exited` (the guest process exited; a code when given), `running` (the guest still
+runs) or `started` (the host's start of the guest succeeded).

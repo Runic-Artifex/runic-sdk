@@ -690,6 +690,7 @@ if (args is ["hosted"])
             new RunicDesktopHostOptions { Guest = RunicGuestOptions.FromStandardInput() },
             async host =>
             {
+                // When the host goes away while the Window opens, the open throws; Run then returns 0.
                 await using var window = await host.OpenWindowAsync<MainWindow>();
                 await window.WaitForCloseAsync();
                 return 0;
@@ -709,8 +710,9 @@ if (args is ["hosted"])
   and prove that it started this process. A failure, such as no offer or a host
   that `RunicGuestOptions.AcceptHost` declines, throws
   `RunicHostedApplicationException` with its `Code` and logs event 2010. Hosted
-  mode refuses to start elevated, as another user than its parent (Linux), or
-  with `DesktopHostOptions.NetworkExposure` other than loopback.
+  mode refuses to start elevated, with `DesktopHostOptions.NetworkExposure`
+  other than loopback, or, on Linux and macOS, when its real or effective user
+  is not its parent's or it cannot read its parent's (`guest-other-user`).
 - **Windows.** No window toolkit loop starts, and the application never shows a
   window of its own. Each Window's page is served as in serve-only mode, and the
   host opens a window that loads it with a one-time launch address; the host's
@@ -718,13 +720,23 @@ if (args is ["hosted"])
   `hosted-window-refused`). The Window's `IRunicWindowPresentation` (present,
   minimize, visibility, full screen, document edited, colour scheme, activity)
   goes through the host. A user close of the host's window asks the Window's
-  guard (`GuardClose`) first. Platform services that need the native window,
-  such as file dialogs, report `OwnerUnavailable`, as in serve-only mode.
+  guard (`GuardClose`) first. A presentation request that the host has not
+  answered within 30 seconds reports `Failed` with `Unknown`, and an open that
+  the host has not answered by then fails with `hosted-window-failed`; the
+  application's own event handlers for the presentation run off the channel, so
+  a handler that waits cannot stall it. Platform services that need the native
+  window, such as file dialogs, report `OwnerUnavailable`, as in serve-only
+  mode, and recent documents (`IDesktopRecentDocuments`) report
+  `BackendUnavailable`.
 - **End.** When the host asks the application to shut down, or goes away
   (standard input ends or the channel closes), the Windows close,
   `DesktopHost.ShutdownRequested` and `RunicDesktopHost.Guest.HostGone` are
-  cancelled and `Run` returns when the body does (event 2011). A body that has
-  not returned 10 seconds later ends the process (event 2012).
+  cancelled and `Run` returns when the body does (event 2011). A Window that is
+  opening or opens after that fails with `hosted-host-gone`; when the body ends
+  with that failure, or with an `OperationCanceledException`, `Run` returns 0
+  (event 2014): the host going away is the normal end of a hosted application,
+  so the body need not catch it. A body that has not returned 10 seconds later
+  ends the process (event 2012).
 - `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` (the host's name and
   version) tell the mode. A hosted application does not claim
   `ApplicationInstance`: each host session starts a process of its own.

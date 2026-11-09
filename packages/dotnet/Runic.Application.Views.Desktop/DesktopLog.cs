@@ -69,4 +69,8 @@ internal static partial class DesktopLog
     [LoggerMessage(EventId = 2013, EventName = "DesktopHostedChannelFailed", Level = LogLevel.Warning,
         Message = "A message of the host channel failed with {ErrorType}.")]
     internal static partial void HostedChannelFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 2014, EventName = "DesktopHostedBodyEnded", Level = LogLevel.Information,
+        Message = "The application's body ended with {ErrorType} after its host went away; Run returns 0.")]
+    internal static partial void HostedBodyEnded(ILogger logger, Exception? exception, string errorType);
 }

@@ -24,6 +24,7 @@ namespace Runic.Application.Views.Desktop;
 ///             new RunicDesktopHostOptions { Guest = RunicGuestOptions.FromStandardInput() },
 ///             async host =&gt;
 ///             {
+///                 // When the host goes away while the Window opens, the open throws; Run then returns 0.
 ///                 await using var window = await host.OpenWindowAsync&lt;MainWindow&gt;();
 ///                 await window.WaitForCloseAsync();
 ///                 return 0;
@@ -44,13 +45,18 @@ namespace Runic.Application.Views.Desktop;
 /// <para>
 /// When the host goes away (standard input ends or the channel closes) or asks to shut down, the Windows close,
 /// <see cref="Runic.Desktop.DesktopHost.ShutdownRequested"/> is cancelled and <c>Run</c> returns when the body does; a body
-/// that has not returned 10 seconds later ends the process. A hosted application does not claim
-/// <c>ApplicationInstance</c>: each host session has a guest process of its own.
+/// that has not returned 10 seconds later ends the process. A Window that is opening or opens after the host went away
+/// fails with a <see cref="RunicWindowConfigurationException"/> of code <c>hosted-host-gone</c>; when the body ends with
+/// it, or with an <see cref="OperationCanceledException"/>, after the host went away, <c>Run</c> returns 0, since the host
+/// going away is the normal end of a hosted application. A request to the host that has had no reply within 30
+/// seconds reports a failure. Recent documents report <c>BackendUnavailable</c> in hosted mode, as in serve-only mode. A
+/// hosted application does not claim <c>ApplicationInstance</c>: each host session has a guest process of its own.
 /// </para>
 /// <para>
 /// Any process of the same user that knows the parameter can host the application; <see cref="AcceptHost"/> is a product
-/// filter, not a security boundary. Hosted mode refuses to start when the process runs elevated, or (on Linux) as another
-/// user than its parent. The protocol is experimental; see <c>docs/experimental.md</c>.
+/// filter, not a security boundary. Hosted mode refuses to start when the process runs elevated, or, on Linux and macOS,
+/// when its real or effective user is not its parent's or it cannot read its parent's. The protocol is experimental; see
+/// <c>docs/experimental.md</c>.
 /// </para>
 /// </remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
@@ -115,8 +121,19 @@ public sealed record RunicGuestOptions
     /// </summary>
     public string? ApplicationId { get; init; }
 
-    // How long a connection may take to upgrade and authenticate (host-protocol.md, Channel listener).
+    // How long a connection may take to upgrade, and then to send its first message (host-protocol.md, Channel listener).
     internal TimeSpan UnauthenticatedTimeout { get; init; } = Hosting.HostProtocol.UnauthenticatedTimeout;
+
+    internal TimeSpan HelloTimeout { get; init; } = Hosting.HostProtocol.HelloTimeout;
+
+    // How long the guest waits for the reply to one of its requests, and for the host to take one message
+    // (host-protocol.md, Messages).
+    internal TimeSpan RequestTimeout { get; init; } = Hosting.HostProtocol.RequestTimeout;
+
+    internal TimeSpan SendTimeout { get; init; } = Hosting.HostProtocol.SendTimeout;
+
+    // The host's requests the guest handles at once.
+    internal int MaximumWaitingRequests { get; init; } = Hosting.HostProtocol.MaximumWaitingRequests;
 
     // How long the body may run after the host went away before the process exits.
     internal TimeSpan HostGoneExitTimeout { get; init; } = Hosting.HostProtocol.HostGoneExitTimeout;

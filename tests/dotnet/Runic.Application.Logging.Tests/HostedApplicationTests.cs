@@ -67,7 +67,9 @@ internal sealed class HostedApplicationTests
         Require(window.IsClosed, "The guest exited without window-closed.", host);
     }
 
-    // The host goes away: its standard input ends and the channel closes, so the guest closes its window and exits.
+    // The host goes away: its standard input ends and the channel closes, so the guest closes its window and exits. It
+    // goes away right after it answered the window-open, so the guest's open either completed or fails with
+    // hosted-host-gone; either way the guest exits with 0, never with an unhandled exception.
     [Test]
     public async Task ExitsWhenTheHostGoesAway()
     {
@@ -77,11 +79,13 @@ internal sealed class HostedApplicationTests
             return;
         }
         var host = await RunicTestHost.StartGuestAsync(Guest(), new RunicTestHostOptions { StartTimeout = TestTimeouts.Scale(Timeout) });
-        _ = await host.WaitForWindowAsync(nameof(LoggingWindow), TestTimeouts.Scale(Timeout));
+        var window = await host.WaitForWindowAsync(nameof(LoggingWindow), TestTimeouts.Scale(Timeout));
+        Require(window.Opened.IsCompletedSuccessfully, "A listed window's open was not answered.", host);
         var exited = host.Exited;
         var watch = Stopwatch.StartNew();
         await host.DisposeAsync();
         Require(exited.IsCompletedSuccessfully && exited.Result == 0, $"The guest did not exit by itself: {(exited.IsCompleted ? exited.Result : "still running")}.", host);
+        Require(!host.StandardError.Contains("Unhandled exception", StringComparison.Ordinal), "The guest crashed.", host);
         Require(watch.Elapsed < TimeSpan.FromSeconds(10), $"The guest took {watch.Elapsed} to exit.", host);
     }
 
@@ -101,6 +105,16 @@ internal sealed class HostedApplicationTests
         var failure = await StartFailureAsync(LoggingApplication.SelfStartInfo(FakeGuest.Argument),
             new RunicTestHostOptions { StartTimeout = TestTimeouts.Scale(Timeout) });
         if (failure.Code != "guest-not-hostable")
+            throw new InvalidOperationException($"The start failed with {failure.Code}: {failure.Message}");
+    }
+
+    // A proven failed hello reply is read: protocol-mismatch ends the start as protocol-unsupported.
+    [Test]
+    public async Task ReportsAProvenProtocolMismatch()
+    {
+        var failure = await StartFailureAsync(LoggingApplication.SelfStartInfo(FakeGuest.MismatchArgument),
+            new RunicTestHostOptions { StartTimeout = TestTimeouts.Scale(Timeout) });
+        if (failure.Code != "protocol-unsupported")
             throw new InvalidOperationException($"The start failed with {failure.Code}: {failure.Message}");
     }
 

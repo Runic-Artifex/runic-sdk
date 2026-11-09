@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "handshake",
   "roles": ["guest"],
-  "description": "An authenticated hello of another protocol version is answered failed with protocol-mismatch and closed with 1002; the key is spent and the guest exits.",
+  "description": "An authenticated hello of another protocol version is answered failed with protocol-mismatch, with the guest proof, and closed with 1002; the key is spent and the guest exits.",
   "ids": {
     "c1": {"kind":"connection"},
     "hello": {"kind":"request"}
@@ -15,7 +15,7 @@
     {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
     {"connect":"c1"},
     {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":2,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
-    {"receive":{"id":{"$id":"hello"},"ok":false,"protocol":1,"error":{"kind":"failed","reason":"protocol-mismatch","message":{"$any":"string"}}},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":false,"protocol":1,"proof":{"$secret":"guest-proof"},"error":{"kind":"failed","reason":"protocol-mismatch","message":{"$any":"string"}}},"connection":"c1"},
     {"closed":{"connection":"c1","status":1002}},
     {"expect":{"startFailure":"protocol-unsupported"}},
     {"expect":{"exited":true}}

@@ -53,6 +53,7 @@ internal sealed class HostConformanceTests
         private readonly Dictionary<string, JsonNode?> _bindings = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Task<object?>> _actions = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Task<IRunicWindow>> _windows = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, CancellationTokenSource> _openCancellations = new(StringComparer.Ordinal);
         private readonly byte[] _nonce = RandomNumberGenerator.GetBytes(32);
         private readonly ConcurrentQueue<int> _exits = new();
         private readonly TaskCompletionSource<RunicDesktopHost> _host = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -90,7 +91,9 @@ internal sealed class HostConformanceTests
             else if (step["line"] is { } line) await LineAsync(line);
             else if (step["connect"] is { } connect) await ConnectAsync(connect.GetValue<string>(), step);
             else if (step["send"] is JsonObject send) await _connections[Name(step["connection"])].SendAsync(Resolve(send)!.AsObject());
+            else if (step["sendRaw"] is JsonObject raw) await _connections[Name(step["connection"])].SendRawAsync(raw);
             else if (step["receive"] is JsonObject receive) await ReceiveAsync(Name(step["connection"]), receive);
+            else if (step["receiveAll"] is JsonArray all) await ReceiveAllAsync(Name(step["connection"]), all);
             else if (step["closed"] is JsonObject closed) await ClosedAsync(closed);
             else if (step["disconnect"] is { } disconnect) await _connections[disconnect.GetValue<string>()].DisposeAsync();
             else if (step["closeInput"] is not null) CloseInput();
@@ -108,8 +111,8 @@ internal sealed class HostConformanceTests
         private void Start(JsonNode start)
         {
             var application = scenario["arrange"]!["application"]!.AsObject();
-            // Each scenario starts with a guard that allows.
-            ConformanceGuardedWindow.Answer = true;
+            // Each scenario starts with a guard that allows at once.
+            ConformanceGuardedWindow.Reset();
             TimeSpan Limit(string name, TimeSpan fallback) =>
                 Limits[name] is { } value ? TimeSpan.FromMilliseconds(value.GetValue<int>()) : fallback;
             var guest = RunicGuestOptions.FromStreams(new AnonymousPipeClientStream(PipeDirection.In, _input.ClientSafePipeHandle), _output) with
@@ -119,6 +122,9 @@ internal sealed class HostConformanceTests
                 ApplicationId = application["applicationId"]?.GetValue<string>(),
                 StartTimeout = Limit("startTimeout", HostProtocol.DefaultStartTimeout),
                 UnauthenticatedTimeout = Limit("unauthenticatedTimeout", HostProtocol.UnauthenticatedTimeout),
+                HelloTimeout = Limit("helloTimeout", HostProtocol.HelloTimeout),
+                RequestTimeout = Limit("requestTimeout", HostProtocol.RequestTimeout),
+                MaximumWaitingRequests = Limits["waitingRequests"]?.GetValue<int>() ?? HostProtocol.MaximumWaitingRequests,
                 ExitProcess = code => _exits.Enqueue(code),
                 CheckPrivileges = static () => null,
             };
@@ -207,9 +213,11 @@ internal sealed class HostConformanceTests
                         Owner = owner,
                         Modality = guest["modality"]?.GetValue<string>() == "window" ? RunicWindowModality.Window : RunicWindowModality.None,
                     };
+                    var cancellation = new CancellationTokenSource();
+                    _openCancellations[guest["window"]!.GetValue<string>()] = cancellation;
                     Task<IRunicWindow> opening = guest["type"]!.GetValue<string>() == "Guarded"
-                        ? Open<ConformanceGuardedWindow>(host, options)
-                        : Open<ConformanceMainWindow>(host, options);
+                        ? Open<ConformanceGuardedWindow>(host, options, cancellation.Token)
+                        : Open<ConformanceMainWindow>(host, options, cancellation.Token);
                     _windows[guest["window"]!.GetValue<string>()] = opening;
                     result = Run(async () => (object?)await opening);
                     break;
@@ -233,8 +241,16 @@ internal sealed class HostConformanceTests
                     };
                     result = Present(async window => await window.Presentation.SetColorSchemeAsync(scheme));
                     break;
+                case "cancelOpen":
+                    await _openCancellations[guest["window"]!.GetValue<string>()].CancelAsync();
+                    result = Task.FromResult<object?>(null);
+                    break;
                 case "answerGuard":
-                    ConformanceGuardedWindow.Answer = guest["allow"]!.GetValue<bool>();
+                    ConformanceGuardedWindow.Decide(guest["allow"]!.GetValue<bool>());
+                    result = Task.FromResult<object?>(null);
+                    break;
+                case "holdGuard":
+                    ConformanceGuardedWindow.Hold();
                     result = Task.FromResult<object?>(null);
                     break;
                 case "activity":
@@ -250,15 +266,25 @@ internal sealed class HostConformanceTests
 
         private static Task<object?> Run(Func<Task<object?>> work) => Task.Run(work);
 
-        private static async Task<IRunicWindow> Open<TWindow>(RunicDesktopHost host, RunicWindowOptions? options)
+        private static async Task<IRunicWindow> Open<TWindow>(RunicDesktopHost host, RunicWindowOptions? options, CancellationToken cancellationToken)
             where TWindow : class, IRunicWindow, new() =>
-            await host.OpenWindowAsync<TWindow>(options, null);
+            await host.OpenWindowAsync<TWindow>(options, null, cancellationToken);
 
         private async Task ExpectAsync(JsonObject expect)
         {
             if (expect["action"] is { } actionName)
             {
                 var action = _actions[actionName.GetValue<string>()];
+                if (expect["cancelled"] is not null)
+                {
+                    try
+                    {
+                        await action.WaitScaledAsync(StepTimeout);
+                        throw new InvalidOperationException("The action was not cancelled.");
+                    }
+                    catch (OperationCanceledException) { }
+                    return;
+                }
                 if (expect["failed"] is { } failed)
                 {
                     try
@@ -413,6 +439,39 @@ internal sealed class HostConformanceTests
             Match(expected, message, "message");
         }
 
+        // The next messages, as many as expected, in any order: each matches one expected message.
+        private async Task ReceiveAllAsync(string name, JsonArray expected)
+        {
+            var messages = new List<JsonObject>();
+            for (var i = 0; i < expected.Count; i++)
+                messages.Add(await _connections[name].NextAsync(TestTimeouts.Scale(StepTimeout))
+                    ?? throw new InvalidOperationException($"{name} closed after {i} of {expected.Count} messages."));
+            var left = expected.ToList();
+            foreach (var message in messages)
+            {
+                var matched = left.FindIndex(candidate => TryMatch(candidate, message));
+                Check(matched >= 0, $"{message.ToJsonString()} matches none of {new JsonArray([.. left.Select(m => m!.DeepClone())]).ToJsonString()}.");
+                left.RemoveAt(matched);
+            }
+        }
+
+        // Match without binding anything when it fails.
+        private bool TryMatch(JsonNode? expected, JsonNode? actual)
+        {
+            var bindings = new Dictionary<string, JsonNode?>(_bindings, StringComparer.Ordinal);
+            try
+            {
+                Match(expected, actual, "message");
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                _bindings.Clear();
+                foreach (var (key, value) in bindings) _bindings[key] = value;
+                return false;
+            }
+        }
+
         private async Task ClosedAsync(JsonObject closed)
         {
             var connection = _connections[closed["connection"]!.GetValue<string>()];
@@ -522,6 +581,7 @@ internal sealed class HostConformanceTests
 
         public async ValueTask DisposeAsync()
         {
+            ConformanceGuardedWindow.Reset();
             CloseInput();
             foreach (var connection in _connections.Values) await connection.DisposeAsync();
             if (_run is not null)
@@ -530,6 +590,7 @@ internal sealed class HostConformanceTests
                 catch (Exception error) when (error is RunicHostedApplicationException or TimeoutException) { }
             }
             if (_provider is not null) await _provider.DisposeAsync();
+            foreach (var cancellation in _openCancellations.Values) cancellation.Dispose();
             _output.Dispose();
         }
     }
@@ -577,6 +638,19 @@ internal sealed class HostConformanceTests
         }
 
         public Task SendAsync(JsonObject message) => HostChannel.SendAsync(_socket, message, CancellationToken.None);
+
+        // A message that breaks the profile; the guest may close the connection before it took all of it.
+        public async Task SendRawAsync(JsonObject raw)
+        {
+            var (bytes, type) = raw switch
+            {
+                _ when raw["binary"] is { } binary => (new byte[binary.GetValue<int>()], WebSocketMessageType.Binary),
+                _ when raw["text"] is { } text => (Encoding.UTF8.GetBytes(text.GetValue<string>()), WebSocketMessageType.Text),
+                _ => (Encoding.ASCII.GetBytes("{}" + new string(' ', raw["textBytes"]!.GetValue<int>() - 2)), WebSocketMessageType.Text),
+            };
+            try { await _socket.SendAsync(bytes, type, endOfMessage: true, CancellationToken.None); }
+            catch (Exception error) when (error is WebSocketException or IOException) { }
+        }
 
         public async ValueTask DisposeAsync()
         {
@@ -638,10 +712,34 @@ sealed class ConformanceMainWindow : RunicWindow<OrderedCollectionModel>;
 
 sealed class ConformanceGuardedWindow : RunicWindow<OrderedCollectionModel>
 {
-    // What the guard answers (the corpus's answerGuard action); the conformance cases run one at a time.
-    public static volatile bool Answer = true;
+    private static readonly object s_gate = new();
+    // What the guard answers (the corpus's answerGuard action), and the decision it waits for after holdGuard; the
+    // conformance cases run one at a time.
+    private static bool s_answer = true;
+    private static TaskCompletionSource<bool>? s_held;
 
     public ConformanceGuardedWindow() => GuardClose = true;
 
-    protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken) => ValueTask.FromResult(Answer);
+    public static void Reset() => Decide(true);
+
+    public static void Hold()
+    {
+        lock (s_gate) s_held ??= new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public static void Decide(bool allow)
+    {
+        TaskCompletionSource<bool>? held;
+        lock (s_gate)
+        {
+            s_answer = allow;
+            (held, s_held) = (s_held, null);
+        }
+        held?.TrySetResult(allow);
+    }
+
+    protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+    {
+        lock (s_gate) return s_held is { } held ? new ValueTask<bool>(held.Task) : ValueTask.FromResult(s_answer);
+    }
 }

@@ -1,0 +1,27 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "lifecycle.no-window-after-host-gone.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "lifecycle",
+  "roles": ["guest"],
+  "description": "After the host went away, a Window that opens fails with hosted-host-gone and no window-open is sent: the guest never shows a window of its own.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1-action": {"kind":"action"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"closeInput":true},
+    {"closed":{"connection":"c1"},"note":"The guest shut down and closed the channel."},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"expect":{"action":"open-w1-action","failed":"hosted-host-gone"}},
+    {"expect":{"exited":0}}
+  ]
+}
