@@ -171,3 +171,13 @@ test("the self-containment check finds what it is for", () => {
   assert.match(scenarioProblems({ ...base, steps: [start, { connect: "c1" }, { send: { key: { $secret: "password" } }, connection: "c1" }] }).join(), /unknown secret/);
   assert.match(scenarioProblems({ ...base, steps: [start] }).join(), /never used/);
 });
+
+test("the proof example in the specification is HMAC-SHA256 of its nonce and key", async () => {
+  const { createHmac } = await import("node:crypto");
+  const spec = readFileSync(resolve(root, "specs/desktop/host-protocol.md"), "utf8");
+  const nonce = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
+  const key = Buffer.from(Array.from({ length: 32 }, (_, i) => 32 + i)).toString("base64url");
+  const proof = label => createHmac("sha256", nonce).update(`${label} ${key}`, "ascii").digest("base64url");
+  for (const value of [nonce.toString("base64url"), key, proof("runic-host/1 host"), proof("runic-host/1 guest")])
+    assert.ok(spec.includes(`\`${value}\``), `host-protocol.md does not give ${value}`);
+});

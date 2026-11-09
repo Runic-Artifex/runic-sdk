@@ -199,7 +199,10 @@ the channel line, in base64url without padding (43 characters):
 | host proof | `runic-host/1 host` | `hello` |
 | guest proof | `runic-host/1 guest` | the successful `hello` reply |
 
-For example, `proof` in `hello` is `base64url(HMAC-SHA256(nonce, "runic-host/1 host " + key))`.
+For example, `proof` in `hello` is `base64url(HMAC-SHA256(nonce, "runic-host/1 host " + key))`. With the nonce
+bytes 0 to 31 (`AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8`) and the key of bytes 32 to 63
+(`ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8`), the host proof is
+`yimS5xcNM_YD_FItXRTnVjS5J28tOoyGrJDDyVNWtLc` and the guest proof `_GCMgx2rs30ncRjekFxud93sLUfLdj2fZ08dXHOFyOI`.
 
 - The **key** proves to the guest that the connection comes from the process that read its standard output, and the
   **host proof** that it comes from the process that wrote the offer: both are the parent that started it. A local
@@ -324,7 +327,7 @@ host for a window:
 | --- | --- |
 | `window` | The window id: a string of 1 to 128 characters from U+0021 to U+007E, new on the channel. The guest never reuses an id, also not after the window closed. |
 | `type` | The Window's type, as the serve-only window line names it (`MyApp.DocumentWindow`1[Report]`), at most 512 characters. Informational: the host's policy and placement may key on it. |
-| `url` | The page's one-time launch address: `http://` on a loopback literal, the surface's port and the path `/_runic_launch/<code>`, at most 2,048 characters. The first request with it binds the surface to the hosted window's web view ([page admission](#page-admission)). |
+| `url` | The page's one-time launch address: `http://` on a loopback literal and the surface's port, with a path that ends in `/_runic_launch/<code>` (a surface of a shared listener has a path of its own before it), at most 2,048 characters. The first request with it binds the surface to the hosted window's web view ([page admission](#page-admission)). |
 | `title` | Optional. The title the window shows until the page sets `document.title`, at most 1,024 characters. |
 | `width`, `height` | Optional. The requested size of the window's content in device-independent pixels, integers from 1 to 32,767. |
 | `minWidth`, `minHeight` | Optional. The smallest size of the window's content, as above. |
@@ -346,7 +349,9 @@ A refusal is answered `rejected` with `refused`, and the guest's open fails (`Ru
 the code `hosted-window-refused`); the guest closes the Window's surface. A `window` already used, an `owner` that is
 not an open window of the channel, or a `url` not of the form above is `rejected` with `invalid-request`. The guest
 treats the window as open when the reply arrives; when its Desktop options wait for the page's connection, its open
-also waits for the hosted window's page to connect to the surface, up to its connection timeout.
+also waits for the hosted window's page to connect to the surface, up to its connection timeout. The host may send
+`close-request` or `shutdown` as soon as it sent the reply; a guest whose Window has not finished opening closes it once
+it has.
 
 ### `window-closed`
 
