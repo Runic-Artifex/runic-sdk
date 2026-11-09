@@ -43,7 +43,7 @@
   </PropertyGroup>
   <!-- An application runs `dotnet tool restore` once after cloning; the example does it in its build, so the
        repository's build needs no extra step. -->
-  <Target Name="RestoreTranslationsTool" BeforeTargets="PrepareForBuild"
+  <Target Name="RestoreTranslationsTool" AfterTargets="PrepareForBuild"
           Condition="'$(RunicTranslationsEmitEsm)' == 'true'"
           Inputs=".config/dotnet-tools.json" Outputs="$(IntermediateOutputPath)translations-tool.stamp">
     <Exec Command="dotnet tool restore" WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="low" />
