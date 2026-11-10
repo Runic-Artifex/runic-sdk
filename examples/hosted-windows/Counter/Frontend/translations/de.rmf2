@@ -1,0 +1,23 @@
+link_refused = Der Host hat das Öffnen des Links nicht erlaubt.
+
+page {
+  title = Zähler
+  count = Stand
+  increment = Erhöhen
+  reset = Zurücksetzen…
+  documentation = Runic-Dokumentation
+}
+
+menu {
+  counter = Zähler
+  increment = Erhöhen
+  reset = Zurücksetzen…
+  help = Hilfe
+  documentation = Runic-Dokumentation
+}
+
+reset {
+  question = Den Stand {$count :integer} auf 0 zurücksetzen?
+  confirm = Zurücksetzen
+  cancel = Abbrechen
+}

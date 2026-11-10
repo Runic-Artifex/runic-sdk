@@ -480,15 +480,17 @@ jobs:
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
           node examples/notes-view-first/window-smoke.mjs
-      - name: Run the Notes, multi-window and document tabs example unit tests
+      - name: Run the Notes, multi-window, document tabs and hosted counter example unit tests
         run: |
           dotnet run --project examples/notes-view-first/Tests -c Release --no-build
           dotnet run --project examples/multi-window/Tests -c Release --no-build
           dotnet run --project examples/document-tabs/Tests -c Release --no-build
+          dotnet run --project examples/hosted-windows/Counter/Tests -c Release --no-build
           (cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
       # One Runic Translations catalog for the page and C#: RUNIC_LOCALE starts it in German, the page switches to Arabic.
       - name: Exercise the translated multi-window example
         run: node examples/multi-window/browser-smoke.mjs
+      # The hosted windows example's shell runs in the native job's Linux legs, which have GTK 3 and WebKitGTK 4.1.
       - name: Exercise CommunityToolkit and ReactiveUI typed clients
         run: |
           node examples/notes-view-first/browser-smoke.mjs
@@ -919,6 +921,15 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
+      # The hosted windows example (runic-host/1): its shell starts the counter, whose window opens as a GTK 3 WebKitGTK
+      # window of the shell with the counter's menu bar, which follows the shell's language. The views job runs the
+      # counter's unit tests.
+      - name: Exercise the hosted windows example in GTK 3
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          dotnet build examples/hosted-windows/Shell/HostedShell.csproj -c Release
+          GDK_BACKEND=x11 xvfb-run -a dotnet run --project examples/hosted-windows/Shell/HostedShell.csproj -c Release --no-build -- --probe
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5

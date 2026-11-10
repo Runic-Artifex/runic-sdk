@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicApplicationFrontendCompositionType>CounterTool.RunicViewsComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
+    <!-- Hosted mode is experimental (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="ReactiveUI" />
+    <!-- Runic Translations: one catalog, Frontend/translations/runic.json, for the page and the menu bar. -->
+    <PackageReference Include="Runic.Translations" />
+    <PackageReference Include="Runic.Translations.Build" PrivateAssets="all" />
+    <RunicTranslationProject Include="Frontend/translations/runic.json" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The tests are their own project. -->
+    <Compile Remove="Tests/**" />
+    <None Remove="Tests/**" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
+    <!-- The catalog's ESM for the page, which Frontend/build.mjs bundles from Frontend/.runic/translations
+         (examples/multi-window explains the three properties and the target below). -->
+    <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+    <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
+  </PropertyGroup>
+  <Target Name="RestoreTranslationsTool" AfterTargets="PrepareForBuild"
+          Condition="'$(RunicTranslationsEmitEsm)' == 'true'"
+          Inputs="../../../.config/dotnet-tools.json" Outputs="$(IntermediateOutputPath)translations-tool.stamp">
+    <Exec Command="dotnet tool restore" WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="low" />
+    <Touch Files="$(IntermediateOutputPath)translations-tool.stamp" AlwaysCreate="true" />
+  </Target>
+  <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
+</Project>

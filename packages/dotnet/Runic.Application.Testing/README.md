@@ -1284,7 +1284,15 @@ public async Task ClosesWhenTheHostAsks()
 - The application's `OpenWindowAsync` waits for the page to connect when its
   `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
   real host. Load `LaunchUrl` in the browser under test, or start the
-  application without that wait for a test without a browser.
+  application without that wait for a test without a browser. The
+  [hosted windows example](../../../examples/hosted-windows/Counter/Tests/HostedCounterTests.cs)
+  does the latter: it checks a guest's menu bar in the host's language, a
+  language switch, a message box and a link without a browser, choosing menu
+  items with `InvokeMenuItemAsync`. That call returns once the push is sent; the
+  application runs chosen items one at a time in the order sent, each once the
+  one before has returned, and ignores an item whose command cannot run when its
+  turn comes, such as an asynchronous command still running. A test that needs
+  an item's effect waits for it, such as its dialog request.
 - A start that fails throws `RunicHostedApplicationException` with its `Code`
   (`guest-start-timeout`, `guest-exited`, `guest-not-hostable`, `guest-refused`
   with the application's `GuestCode`, `protocol-unsupported`) and kills the

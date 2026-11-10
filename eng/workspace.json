@@ -438,6 +438,7 @@
         "examples/notes-view-first",
         "examples/notes-reactive-views",
         "examples/document-tabs",
+        "examples/hosted-windows",
         "examples/dynamicdata",
         "examples/invoice-grid",
         "examples/query-collections",

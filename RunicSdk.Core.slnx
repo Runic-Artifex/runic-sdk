@@ -13,6 +13,9 @@
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
     <Project Path="examples/document-tabs/DocumentTabs.csproj" />
     <Project Path="examples/document-tabs/Tests/DocumentTabs.Tests.csproj" />
+    <Project Path="examples/hosted-windows/Counter/CounterTool.csproj" />
+    <Project Path="examples/hosted-windows/Counter/Tests/CounterTool.Tests.csproj" />
+    <Project Path="examples/hosted-windows/Shell/HostedShell.csproj" />
     <Project Path="examples/query-collections/QueryCollectionsExample.csproj" />
     <Project Path="examples/wpf-navigation/NotesNavigation/NotesNavigation.csproj" />
     <Project Path="examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj" />
