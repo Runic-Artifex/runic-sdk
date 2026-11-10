@@ -177,6 +177,11 @@
       "title": "A ViewRequest or ViewQuestion member is not a get-only property"
     },
     {
+      "id": "RUNICBRIDGE036",
+      "severity": "error",
+      "title": "A ViewModel does not publish a member of a [RunicSharedClient] interface alike, or the interface cannot have a shared client"
+    },
+    {
       "id": "RUNICBRIDGE037",
       "severity": "error",
       "title": "The build has no Runic Translations ESM for the page, or its directory holds other files"

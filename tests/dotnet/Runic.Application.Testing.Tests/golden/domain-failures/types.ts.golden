@@ -334,6 +334,18 @@ export type ScalarMode = "Plain" | "fancy";
 /** The values of {@link ScalarMode} that .NET writes, in declaration order. */
 export const ScalarModeValues = ["Plain", "fancy"] as const satisfies readonly ScalarMode[];
 
+/** A link or button of a result page. */
+export interface SharedResultElement {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** A computed, read-only result page. */
+export interface SharedResultPage {
+  readonly title: string;
+  readonly elements: readonly SharedResultElement[];
+}
+
 export interface TestsNamingState {
   readonly count: number;
 }
