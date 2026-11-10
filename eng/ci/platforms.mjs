@@ -85,8 +85,8 @@ export const platformRules = [
     // The development-directory source's per-OS root and watcher, tested in the native job's Windows and macOS step,
     // and its Desktop adapter, which the Runic Desktop Views host references.
     "packages/dotnet/Runic.Assets", "packages/dotnet/Runic.Assets.Desktop", "tests/dotnet/Runic.Assets.Tests",
-    // The CS-WebUI blob endpoint's checks, which the native job's Windows and macOS step runs.
-    "tests/dotnet/Runic.Application.Views.Desktop.Tests/CsWebUiBlobEndpointChecks.cs"] },
+    // The CS-WebUI blob endpoint's checks, which the native job's Windows and macOS steps run.
+    "tests/dotnet/Runic.Application.Views.Desktop.Tests/CsWebUiBlobEndpointChecks*", "eng/ci/windows-httpsys-isolation.ps1"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },

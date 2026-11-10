@@ -20,7 +20,7 @@ using LoopbackRelay = cswebui::Runic.Application.Views.CsWebUi.CsWebUiLoopbackRe
 // The checks run on every OS. Outside Windows, TheChecksAlsoPassWhereDotNetResolvesLocalhostToIPv4Only runs them again
 // in a child process with DOTNET_SYSTEM_NET_DISABLEIPV6=1, where .NET resolves localhost to 127.0.0.1 only and the
 // relay holds ::1: the layout where 0.16.0 left ::1 free, whatever the machine's resolver prefers.
-internal sealed class CsWebUiBlobEndpointChecks
+internal sealed partial class CsWebUiBlobEndpointChecks
 {
     private const int PagePort = 45_678;
     private const string ConnectionKey = "c1";
