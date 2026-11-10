@@ -21,6 +21,10 @@ Runic.Application.Views.RunicValidationOptions
 Runic.Application.Views.RunicValidationOptions.RunicValidationOptions() -> void
 Runic.Application.Views.RunicValidationOptions.TextFor.get -> System.Func<System.ComponentModel.DataAnnotations.ValidationAttribute!, Runic.Application.Views.RunicValidationMember!, Runic.Application.Views.RunicTextReference?>?
 Runic.Application.Views.RunicValidationOptions.TextFor.init -> void
+Runic.Application.Views.RunicSharedClientAttribute
+Runic.Application.Views.RunicSharedClientAttribute.Name.get -> string?
+Runic.Application.Views.RunicSharedClientAttribute.Name.set -> void
+Runic.Application.Views.RunicSharedClientAttribute.RunicSharedClientAttribute() -> void
 Runic.Application.Views.WindowContentSessionOptions.Validation.get -> Runic.Application.Views.RunicValidationOptions?
 Runic.Application.Views.WindowContentSessionOptions.Validation.init -> void
 static Runic.Application.Views.RunicValidationMember.operator !=(Runic.Application.Views.RunicValidationMember? left, Runic.Application.Views.RunicValidationMember? right) -> bool

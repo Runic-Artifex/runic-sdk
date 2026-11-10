@@ -219,4 +219,41 @@ function fresh(): MockBridge {
   client.dispose();
 }
 
+// [RunicSharedClient] (#839): one component renders ViewModels that implement ISharedResultPage, each through its
+// own typed mock, with the same code for every kind. SharedClientTypesCheck.ts types it with ResultPagePageReference.
+{
+  const bridge = fresh();
+  const { pageSharedOrders } = await load("sharedOrders");
+  const { pageSharedInvoices } = await load("sharedInvoices");
+  const { mockSharedOrders } = await load("sharedOrders.mock");
+  const { mockSharedInvoices } = await load("sharedInvoices.mock");
+  const { resultPageKinds } = await load("resultPage");
+  const runs: string[] = [];
+  const orders = mockSharedOrders(bridge, {
+    id: "1",
+    state: { page: { title: "Orders", elements: [{ id: "o-1", label: "Order 1" }] }, filter: null, openOrders: 1 },
+    commands: { runAction: (_state: unknown, id: string) => { runs.push(`orders:${id}`); } },
+  });
+  mockSharedInvoices(bridge, {
+    id: "2",
+    state: { page: { title: "Invoices", elements: [{ id: "i-1", label: "Invoice 1" }] }, filter: null },
+    commands: { runAction: (_state: unknown, id: string) => { runs.push(`invoices:${id}`); } },
+  });
+  async function renderResultPage(page: { readonly kind: string; connect(): Promise<any> }): Promise<string> {
+    const client = await page.connect();
+    try {
+      await client.runAction(client.snapshot.page.elements[0].id);
+      await client.setFilter("1");
+      return `${page.kind}: ${client.snapshot.page.title} (${client.snapshot.filter})`;
+    } finally {
+      client.dispose();
+    }
+  }
+  assert.deepEqual([await renderResultPage(pageSharedOrders("1")), await renderResultPage(pageSharedInvoices("2"))],
+    ["sharedOrders: Orders (1)", "sharedInvoices: Invoices (1)"]);
+  assert.deepEqual(runs, ["orders:o-1", "invoices:i-1"]);
+  assert.equal(orders.state.filter, "1");
+  assert.deepEqual(resultPageKinds, ["sharedInvoices", "sharedOrders", "sharedOrdersCompact"]);
+}
+
 console.log("GENERATED_MOCKS_OK");
