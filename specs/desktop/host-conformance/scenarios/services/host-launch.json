@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "services",
   "roles": ["host"],
-  "description": "By default the host opens http, https and mailto links of the active window, and refuses other links, files the user did not give the guest, and anything for a window that is not active.",
+  "description": "By default the host opens http, https and mailto links of the window the user works in, and refuses other links, files the user did not give the guest, and anything for a window that is not active.",
   "requires": ["window-services/1"],
   "ids": {
     "c1": {"kind":"connection"},
@@ -27,6 +27,8 @@
     {"expect":{"started":true}},
     {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
     {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"user":{"action":"deactivateWindow","window":"w1"}},
+    {"user":{"action":"activateWindow","window":"w1"},"note":"The user switches to the window: the user activated it."},
     {"send":{"id":{"$id":"l1"},"kind":"launch","window":"w1","uri":"https://runic.dev/docs"},"connection":"c1"},
     {"receive":{"id":{"$id":"l1"},"ok":true,"outcome":"success"},"connection":"c1"},
     {"send":{"id":{"$id":"l2"},"kind":"launch","window":"w1","uri":"ms-settings:display"},"connection":"c1"},

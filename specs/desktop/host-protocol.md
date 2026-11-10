@@ -475,7 +475,18 @@ send it.
 The host's policy can refuse or clamp each request: a refused one is answered `rejected` with `refused`, a clamped one,
 such as a size above the policy's maximum, applies the clamped value and answers `success`. The host presents with its
 own activation rights: on Wayland the host, not the guest, holds the activation token, so the hosted window gets focus
-as the host's own windows do.
+as the host's own windows do. A window that `window-open`, `present` or `set-visible` with `visible: true` activated
+is active because of the guest, not the user, which the [window services](#window-services-window-services1) take
+into account.
+
+- **Rates.** A host bounds how often a guest brings its windows to the front (`present`, and `set-visible` that shows
+  a window) and how often it announces; a request over the rate is `rejected` with `capacity`, which Runic's guest
+  reports as `ResourceBusy` ([limits](#limits)).
+- **Announcements.** An announcement speaks through the host's window, so the user's screen reader attributes it to
+  the host application. An `assertive` one interrupts the screen reader, so Runic's host makes it `polite` unless the
+  user works in the window: it is active, and not because of the guest (see the clipboard rule in
+  [window services](#window-services-window-services1)). The host's policy decides the announcement as it will be
+  made.
 
 ### Activity and placement
 
@@ -697,17 +708,32 @@ into one, which Runic's guest reports without sending it. A clipboard of the hos
 one, reads every other format as `unavailable` with `backend-unavailable`.
 
 **The clipboard.** The host's clipboard is the user's, which holds what they copy in every application, such as a
-password from a password manager. Runic's host therefore reads it for a guest only while the window the request names is
-active (it has the keyboard focus, as for [context menus](#context-menus)): a guest the user is not working in cannot read
-what the user copies elsewhere, and a guest cannot poll the clipboard in the background. A read for a window that is not
-active is `rejected` with `refused`. The host cannot see the user's gestures in the guest's page, so it cannot also
-require one; a guest that the user works in can read the clipboard as any application with the focus can. The host's
-policy may require more, such as no reads at all. Runic's host allows writes by default, from any window, as a native
-application of the user's can write the clipboard; a host that does not trust a guest refuses writes from windows that are
-not active, or all of them, in its policy. The clipboard's watch is not proxied: a guest learns of the content only when
-it reads it, never when the user copies, and Runic's guest reports its watch `unavailable` with `backend-unavailable`.
-Wayland's rule that only a focused application reads the clipboard applies to the host, whose window has the focus when
-the guest's has.
+password from a password manager. Runic's host therefore reads and writes it for a guest only while the user works in
+the window the request names:
+
+- The window is active (it has the keyboard focus, as for [context menus](#context-menus)), and
+- not because of the guest: it did not become active within two seconds after the guest's own `window-open`,
+  `present` or `set-visible` (with `visible: true`) for it, or the user worked in it since. The host sees the user's
+  work in the window when the user activates it, chooses an item of its menus (a `menu-invoke` or a context menu's
+  item) or drops files onto it; it does not see the user's input in the guest's page. A guest's request accounts for
+  the first activation that follows it only. Without this rule, a guest that presents its window would take the focus
+  from the window where the user just copied a secret, and read it.
+- A write is also allowed within one second after such a window stopped being active, for a copy that closes its
+  window.
+
+A read or write outside this rule is `rejected` with `refused`. A guest the user is not working in cannot read what the
+user copies elsewhere or replace it (such as with a command line or an account number the user is about to paste), and a
+guest cannot poll the clipboard in the background. A guest that the user works in can read the clipboard as any
+application with the focus can. The page's own copy and paste, such as Ctrl+C and Ctrl+V, use the host's web view and
+are not window services. The host's policy may require more, such as no reads at all, writes of plain text only, or
+allow more, such as writes from any window of a trusted guest (`RunicHostedServiceRequest.IsGuestActivated` tells it
+whether the guest activated the window). A native application does not always have more: on Wayland only an application
+with the focus and a recent input event of the user can set the clipboard, and the host would otherwise set it, with
+its own focus, for a guest in the background. The clipboard's watch is not proxied: a guest learns of the content only
+when it reads it, never when the user copies, and Runic's guest reports its watch `unavailable` with
+`backend-unavailable`. Wayland's rule that only a focused application reads the clipboard applies to the host, whose
+window has the focus when the guest's has. A host never reads more of the clipboard than a reply can carry: content
+over a [message](#messages)'s size is `failed` with `too-large` however large the guest's `maximum`.
 
 **Monitors.** The host's monitors, read-only: the guest cannot move a window to a monitor, which stays the host's
 placement. After a `monitors` request, the host pushes `monitors-changed` for the window when its monitors change, and
@@ -720,10 +746,15 @@ application the desktop chose for its type, with the user's rights, so Runic's h
 user chose:
 
 - links with `http`, `https` and `mailto`, as the host's own pages open links in the default browser, and
-- files the user gave the guest through this host: the paths of its file dialogs ([`dialogs/1`](#dialogs-dialogs1)) and
-  of its drops, compared after `.` and `..` segments are removed. A file the guest created itself, or found in a folder
-  the user chose, is not among them;
-- each only while the window the request names is active, so a guest the user is not working in opens nothing.
+- files the user gave the guest through this host: the paths of its open and folder dialogs
+  ([`dialogs/1`](#dialogs-dialogs1)) and of its drops, compared after `.` and `..` segments are removed, while each is
+  still the file it was when the user gave it: the same file identity (device and inode on Unix, volume and file index
+  on Windows) behind the same path with symbolic links resolved. A file the guest created itself, at a save dialog's
+  destination or anywhere else, or found in a folder the user chose, is not among them, and neither is a given file the
+  guest replaced, such as with a link to another file; a file saved by replacing it, as many editors do, is no longer
+  given either;
+- each only while the user works in the window the request names, as for the clipboard, so a guest the user is not
+  working in opens nothing, and neither does a guest that brought its window to the front itself.
 
 Everything else, `ms-settings` links included, is `rejected` with `refused` unless the host's policy allows it, and the
 host's policy can change a request, such as revealing a file instead of opening it. A guest opens at most as many files
@@ -806,8 +837,10 @@ The hosted window's page connects to the guest's surface directly; the host neve
 | Dialog title, message and detail | 1,024, 4,096 and 4,096 characters | `rejected` with `invalid-request` |
 | Clipboard and monitor requests of a guest, across its windows | The host's policy; Runic's host: 20 a second after a burst of 20 (`RunicHostedLimits`) | `rejected` with `capacity` |
 | Files and links a guest opens, across its windows | The host's policy; Runic's host: 5 per ten seconds after a burst of 5 (`RunicHostedLimits`) | `rejected` with `capacity` |
-| Clipboard reads | The active window's only, by default | `rejected` with `refused` |
-| Clipboard content, a read's value | One message | `failed` with `too-large` |
+| Requests that bring a window to the front (`present`, `set-visible` that shows it), across a guest's windows | The host's policy; Runic's host: 2 a second after a burst of 3 (`RunicHostedLimits`) | `rejected` with `capacity` |
+| Announcements of a guest, across its windows | The host's policy; Runic's host: 2 a second after a burst of 5 (`RunicHostedLimits`); `assertive` only from the window the user works in | `rejected` with `capacity`; made `polite` |
+| Clipboard reads and writes, launches | The window the user works in only, by default; writes also within a second after | `rejected` with `refused` |
+| Clipboard content, a read's value | One message; the host reads no more than that | `failed` with `too-large` |
 | Dropped paths, monitors | 1,024 paths, 64 monitors | — |
 | Menu bar depth and entries | 8 levels, 1,000 entries | `rejected` with `capacity` |
 | Context menu depth and entries | 5 levels, 256 entries | `rejected` with `capacity` |
@@ -884,9 +917,11 @@ application is in the [security guide](../../docs/security.md#hosted-application
     as one of its own and uses a data store of its own for the host session.
 11. **Lifetime.** The guest exits when the host goes away and never shows a window of its own; the host ends the
     guest's process tree when it stops.
-12. **Window services.** A host reads its clipboard for a guest only for the window the user works in, unless its policy
-    says otherwise, never reports clipboard changes to a guest, opens only the files and links its policy allows, with
-    its own launcher's rules, and forwards only paths its platform reported for a drop onto the guest's window.
+12. **Window services.** A host reads and writes its clipboard and opens files and links for a guest only for the
+    window the user works in, not for one the guest activated itself, unless its policy says otherwise; never reports
+    clipboard changes to a guest; opens only the files and links its policy allows, with its own launcher's rules; and
+    forwards only paths its platform reported for a drop onto the guest's window. It bounds how often a guest brings its
+    windows to the front and announces, and makes only the window the user works in announce assertively.
 
 ### Threats
 
@@ -905,9 +940,10 @@ application is in the [security guide](../../docs/security.md#hosted-application
 | T11 | A local process that read one of the pipes, such as the guest's standard output in a log, opens the channel first | It needs both the key (standard output) and the host proof (standard input) |
 | T12 | Another local user fills the listener's unauthenticated slots, or sends large first messages, to keep the host out | The oldest pending connection is closed for a new one, the hello timeout is 2 seconds, a first message is at most 16 KiB, and the host retries within its start timeout |
 | T13 | A host that never answers, or a guest event handler that blocks, hangs the other side | The request timeout; a guest raises a window's events off the channel's receive loop and bounds its sends |
-| T14 | A malicious guest snoops on the clipboard, such as a password the user copies in another application | Reads only for the active window by default, no clipboard watch, the service rate. Residual: a guest the user works in reads what the clipboard holds, as any focused application can; a policy can refuse reads. A guest can also replace the clipboard's content (writes are allowed by default); a policy can refuse writes from inactive windows. |
-| T15 | A malicious guest opens files or links to run programs, phish or flood the desktop | Only `http`, `https` and `mailto` links and files the user gave the guest, only for the active window, by default; the host's launcher's own rules (no programs, scripts or `mailto` attachments, the `ms-settings` page rule); the launch rate |
-| T16 | Paths in a drop or in the given set lead a guest elsewhere: a page forges a drop, or a guest names a path through a given one (`../`) | Dropped paths come from the host's platform only, never from a page; the page's `target` and `effect` are routing hints; given paths are compared without `.` and `..` segments, and a folder the user chose does not give its contents |
+| T14 | A malicious guest snoops on the clipboard, such as a password the user copies in another application, or replaces it (pastejacking), also by bringing its own window to the front first | Reads and writes only for the window the user works in by default, not for one the guest activated itself (`window-open`, `present`, `set-visible`), writes also within a second after; no clipboard watch; the service rate and the rate of requests that bring a window to the front. Residual: a guest the user works in reads what the clipboard holds and writes it, as any focused application can; a policy can refuse reads or narrow writes. |
+| T15 | A malicious guest opens files or links to run programs, phish or flood the desktop | Only `http`, `https` and `mailto` links and files the user gave the guest, only for the window the user works in and not one the guest activated itself, by default; the host's launcher's own rules (no programs, scripts or `mailto` attachments, the `ms-settings` page rule); the launch rate |
+| T16 | Paths in a drop or in the given set lead a guest elsewhere: a page forges a drop, a guest names a path through a given one (`../`), opens a file it wrote at a save dialog's destination, or replaces a given file, or links it to another, before it opens it | Dropped paths come from the host's platform only, never from a page; the page's `target` and `effect` are routing hints; given paths are compared without `.` and `..` segments, only open and folder dialogs and drops give paths, a folder the user chose does not give its contents, and a given path opens only while its file identity and its target with links resolved are the ones it had when given |
+| T17 | A malicious guest speaks through the user's screen reader as the host application, such as a fake security alert, or floods it | Announcements are bounded by a rate, and `assertive` ones, which interrupt, come only from the window the user works in; others are `polite`. Residual: an announcement's text is the guest's, as its dialogs' are (T5); a policy can refuse or reword announcements. |
 
 Same-user processes are outside what Runic protects ([security guide](../../docs/security.md#what-runic-protects-and-what-it-does-not)):
 any process of the user that knows a guest's hosted parameter can host it, see its pages and answer its dialogs.

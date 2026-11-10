@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using Runic.Application.Testing;
 using Runic.Application.Views.Desktop;
+using Runic.Desktop;
 using Runic.Platform;
 using TUnit.Core;
 using static HostedApplicationTests;
@@ -92,7 +93,7 @@ internal sealed class HostedWindowServicesTests
             await WaitForAsync(Errors, line, "the window services");
         Check(host.Clipboard.Content is { Text: "from guest", Html: "<b>from guest</b>" }, "The guest's write did not reach the host's clipboard.");
         var launches = window.LaunchRequests;
-        Check(launches.Count == 4 && launches[0].Uri == new Uri("https://runic.dev/docs") && launches[2].Path == file &&
+        Check(launches.Count == 5 && launches[0].Uri == new Uri("https://runic.dev/docs") && launches[2].Path == file &&
             launches[2].Operation == DesktopFileOperation.Reveal, $"The host recorded {string.Join("; ", launches)}.");
         Check(window.PresentationRequests.Any(static request => request.Kind == "announce" && request.Message.GetProperty("text").GetString() == "Ready"),
             "The announcement did not reach the host's window.");
@@ -108,6 +109,8 @@ internal sealed class HostedWindowServicesTests
         await host.SetLocaleAsync("fr");
         await WaitForAsync(Errors, "PHASE 2", "the inactive window");
         await WaitForAsync(Errors, "READ-INACTIVE failed PermissionDenied", "the inactive window's read");
+        // The test host does not refuse writes from inactive windows, or replaced files.
+        await WaitForAsync(Errors, "WRITE-INACTIVE success", "the inactive window's write");
         await WaitForAsync(Errors, "OWN en", "the application's own locale");
         await host.SetLocaleAsync("de");
         await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(500)));
@@ -199,10 +202,15 @@ internal sealed class HostedWindowServicesTests
         await WaitForAsync(Errors, "PHASE 1", "the window services");
         // Reads for the active window; links of http, https and mailto, and the files the user gave the guest; no
         // settings page and no other file; no drags out of the window.
+        // The drop was the user's work in the window, which the guest's own window-open had activated.
         foreach (var line in (string[])["READ from host", "WRITE success", "FORMATS Text, Html", "CLIPBOARD-WATCH unavailable BackendUnavailable",
             "MONITORS primary,side", "LAUNCH-URI success", "LAUNCH-SETTINGS failed PermissionDenied", "LAUNCH-GIVEN success",
-            "LAUNCH-OTHER failed PermissionDenied", "DRAG unavailable OwnerUnavailable"])
+            "LAUNCH-OTHER failed PermissionDenied", "DRAG unavailable OwnerUnavailable", "LAUNCH-REPLACED failed PermissionDenied"])
             await WaitForAsync(Errors, line, "the window services");
+        Check(policy.Services.Where(static request => request.Kind is RunicHostedServiceKind.ClipboardRead or RunicHostedServiceKind.Launch)
+            .All(static request => !request.IsGuestActivated), "The user's drop did not end the guest's activation.");
+        Check(policy.Presented.Any(static request => request is { Kind: RunicHostedPresentationKind.Announce, Text: "Now", Priority: DesktopAnnouncementPriority.Assertive }),
+            "The active window's assertive announcement was not assertive.");
         Check(platform.Clipboard.Content is { Text: "from guest", Html: "<b>from guest</b>" }, "The guest's write did not reach the host's clipboard.");
         var launches = platform.Launches;
         Check(launches.Count == 2 && launches[0].Uri == new Uri("https://runic.dev/docs") && launches[1].Path == file &&
@@ -220,6 +228,10 @@ internal sealed class HostedWindowServicesTests
         native.SetActive(false);
         await fixture.Locale.SetLocaleAsync("fr");
         await WaitForAsync(Errors, "READ-INACTIVE failed PermissionDenied", "the inactive window's read");
+        Check(await TestTimeouts.UntilAsync(() => policy.Presented.Any(static request =>
+            request is { Kind: RunicHostedPresentationKind.Announce, Text: "Later", Priority: DesktopAnnouncementPriority.Polite }), Timeout),
+            "The inactive window's assertive announcement was not made polite.");
+        await WaitForAsync(Errors, "WRITE-INACTIVE failed PermissionDenied", "the inactive window's write after the grace");
         await WaitForAsync(Errors, "OWN en", "the application's own locale");
         await fixture.Locale.SetLocaleAsync("de");
         await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(500)));
@@ -229,7 +241,8 @@ internal sealed class HostedWindowServicesTests
         Check(await application.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{Errors()}");
     }
 
-    // A policy that widens the defaults: the guest may open settings pages, and drops reach it without the second path.
+    // A policy that widens the defaults: the guest may open settings pages, and drops reach it without the second path; and
+    // narrows them: no clipboard reads, and writes of plain text only.
     [Test, NotInParallel(Order = 73)]
     public async Task APolicyWidensOrNarrowsTheDefaults()
     {
@@ -247,7 +260,9 @@ internal sealed class HostedWindowServicesTests
             {
                 { Kind: RunicHostedServiceKind.Launch, Uri.Scheme: "ms-settings" } => RunicHostedServiceDecision.Allow(),
                 { Kind: RunicHostedServiceKind.FileDrop } => RunicHostedServiceDecision.Apply(request with { Paths = [.. request.Paths.Where(path => path != hidden)] }),
-                { Kind: RunicHostedServiceKind.ClipboardRead } => RunicHostedServiceDecision.Refuse("No clipboard for guests."),
+                { Kind: RunicHostedServiceKind.ClipboardRead } => RunicHostedServiceDecision.Refuse("No clipboard reads for guests."),
+                // Plain text only.
+                { Kind: RunicHostedServiceKind.ClipboardWrite } => RunicHostedServiceDecision.Apply(request with { ClipboardFormats = DesktopClipboardFormats.Text }),
                 _ => null,
             },
         };
@@ -260,6 +275,8 @@ internal sealed class HostedWindowServicesTests
         await WaitForAsync(Errors, "PHASE 1", "the window services");
         await WaitForAsync(Errors, "READ failed PermissionDenied", "the refused read");
         await WaitForAsync(Errors, "LAUNCH-SETTINGS success", "the widened launch");
+        await WaitForAsync(Errors, "WRITE success", "the narrowed write");
+        Check(platform.Clipboard.Content is { Text: "from guest", Html: null }, "The narrowed write did not write the text only.");
         Check(platform.Launches.Any(static launch => launch.Uri?.Scheme == "ms-settings"), "The settings page was not opened.");
         Check(await window.RequestCloseAsync(), "The guest refused the close.");
         Check(await application.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{Errors()}");

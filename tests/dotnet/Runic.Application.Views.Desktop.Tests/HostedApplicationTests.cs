@@ -909,9 +909,11 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
+    // A focus request activates the window, as the host's present does on a desktop that lets it.
     public ValueTask FocusAsync(CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _focused);
+        if (!_active) SetActive(true);
         return ValueTask.CompletedTask;
     }
 

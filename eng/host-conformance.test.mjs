@@ -72,7 +72,11 @@ export function scenarioProblems(scenario) {
       return;
     }
     if ("$file" in value || "$directory" in value) {
-      if (Object.keys(value).length !== 1) problems.push(`${where}: $file or $directory has other members`);
+      // then: path segments after the file or directory, such as ".." and a name.
+      const others = Object.keys(value).filter(key => key !== "$file" && key !== "$directory" && key !== "then");
+      if (others.length > 0 || ("$file" in value && "$directory" in value)) problems.push(`${where}: $file or $directory has other members`);
+      if ("then" in value && !(Array.isArray(value.then) && value.then.length > 0 && value.then.every(segment => typeof segment === "string" && /^(\.|\.\.|[A-Za-z0-9][A-Za-z0-9._-]*)$/.test(segment))))
+        problems.push(`${where}: then is not a list of path segments`);
       return;
     }
     if ("$any" in value) {

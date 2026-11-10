@@ -34,6 +34,8 @@
     {"receive":{"id":{"$id":"l1"},"ok":true,"outcome":"success"},"connection":"c1","note":"The user gave the guest the file."},
     {"send":{"id":{"$id":"m"},"kind":"monitors","window":"w1"},"connection":"c1"},
     {"receive":{"id":{"$id":"m"},"ok":true,"outcome":"success","monitors":{"$any":"array"},"current":{"$any":["string","null"]}},"connection":"c1"},
+    {"user":{"action":"changeMonitors"},"note":"After a monitors request, the host reports each change of its monitors."},
+    {"receive":{"kind":"monitors-changed","window":"w1"},"connection":"c1"},
     {"expect":{"launched":[{"$file":"a.txt"}]}}
   ]
 }

@@ -39,8 +39,9 @@ public sealed partial class RunicHostedApplication
         var appearance = _host.AppearanceFeed.Current;
         lock (_environmentGate)
         {
+            // An appearance that arrived after the read above stays due: after the handshake, FollowEnvironment pushes
+            // the feed's latest one unless it is the one hello carries.
             _sentAppearance = appearance;
-            _appearanceDue = false;
             _localeDue = false;
         }
         return new JsonObject
@@ -154,30 +155,55 @@ public sealed partial class RunicHostedApplication
     private RequestRate LaunchRate => Volatile.Read(ref _launchRate) ?? Interlocked.CompareExchange(
         ref _launchRate, new RequestRate(Limits.LaunchesPerTenSeconds, TimeSpan.FromSeconds(10)), null) ?? _launchRate!;
 
-    // The paths the user gave the guest through this host, its file dialogs and drops, which the guest may open by
-    // default; the most recent 4,096.
+    // The paths the user gave the guest through this host, its open dialogs and drops, which the guest may open by
+    // default while they are still the files the user gave: each path's file identity and its final target when given.
+    // The most recent 4,096.
     private readonly object _givenGate = new();
-    private readonly HashSet<string> _given = new(HostServices.PathComparer);
+    private readonly Dictionary<string, GivenFile> _given = new(HostServices.PathComparer);
     private readonly Queue<string> _givenOrder = new();
     private const int MaximumGivenPaths = 4_096;
 
+    // A given file: its identity (device and inode on Unix, volume and file index on Windows; null where unknown) and
+    // its path with symbolic links resolved.
+    private sealed record GivenFile(string? Identity, string Target);
+
     internal void GivePaths(IEnumerable<string> paths)
     {
+        var given = new List<(string Path, GivenFile File)>();
+        foreach (var path in paths)
+        {
+            if (FullPath(path) is { } full && Identify(full) is { } file) given.Add((full, file));
+        }
         lock (_givenGate)
         {
-            foreach (var path in paths)
+            foreach (var (full, file) in given)
             {
-                if (FullPath(path) is not { } full || !_given.Add(full)) continue;
-                _givenOrder.Enqueue(full);
+                if (_given.TryAdd(full, file)) _givenOrder.Enqueue(full);
+                else _given[full] = file;
                 if (_givenOrder.Count > MaximumGivenPaths) _given.Remove(_givenOrder.Dequeue());
             }
         }
     }
 
+    // Whether the user gave the guest the path, and it is still the same file: a guest cannot replace a given file with
+    // another, or with a link to another, and open that.
     private bool IsGiven(string path)
     {
         if (FullPath(path) is not { } full) return false;
-        lock (_givenGate) return _given.Contains(full);
+        GivenFile? given;
+        lock (_givenGate) given = _given.GetValueOrDefault(full);
+        return given is not null && Identify(full) is { } now && now.Target == given.Target && now.Identity == given.Identity;
+    }
+
+    private static GivenFile? Identify(string full)
+    {
+        try
+        {
+            // A path that is a symbolic link, to the file at its end; a path that does not exist has no identity.
+            var link = File.Exists(full) || Directory.Exists(full) ? File.ResolveLinkTarget(full, returnFinalTarget: true) : null;
+            return new GivenFile(Views.DirectoryIdentity.Read(full), link is null ? full : Path.GetFullPath(link.FullName));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return null; }
     }
 
     // The path without . and .. segments, so a guest cannot reach another file through a given one's directory.
@@ -250,9 +276,15 @@ public sealed partial class RunicHostedApplication
         return true;
     }
 
-    private static bool IsActive(RunicHostedWindow window) => window.PresentationOrNull?.Activity is { IsActive: true };
+    // A request of the guest for the window, with the window's activation as it is now.
+    private static RunicHostedServiceRequest ServiceRequest(RunicHostedWindow window, RunicHostedServiceKind kind, Func<bool, bool> isAllowedByDefault)
+    {
+        var guestActivated = window.IsGuestActivated;
+        return new RunicHostedServiceRequest(window, kind, isAllowedByDefault(window.IsActive && !guestActivated), guestActivated);
+    }
 
-    // The policy's decision; the request that runs, which keeps the guest's kind and window.
+    // The policy's decision; the request that runs, which keeps the guest's kind and window, and a clipboard request's
+    // formats or fewer.
     private async Task<RunicHostedServiceRequest> DecideServiceAsync(RunicHostedServiceRequest proposed, CancellationToken cancellationToken)
     {
         RunicHostedServiceDecision decision;
@@ -266,19 +298,25 @@ public sealed partial class RunicHostedApplication
         if (!decision.IsAllowed)
             throw new RejectedException("rejected", "refused", decision.Message ?? DefaultRefusal(proposed));
         var applied = decision.Request ?? proposed;
-        if (!ReferenceEquals(applied.Window, proposed.Window) || applied.Kind != proposed.Kind)
+        if (!ReferenceEquals(applied.Window, proposed.Window) || applied.Kind != proposed.Kind ||
+            (applied.ClipboardFormats & ~proposed.ClipboardFormats) != 0)
         {
             DesktopLog.HostedWindowPolicyFailed(_logger, null, "InvalidService");
-            throw new RejectedException("failed", null, "The host's window policy returned another kind of request or another window.");
+            throw new RejectedException("failed", null, "The host's window policy returned another kind of request, another window or other clipboard formats.");
         }
         return applied;
     }
 
     private static string DefaultRefusal(RunicHostedServiceRequest request) => request.Kind switch
     {
-        RunicHostedServiceKind.ClipboardRead => "The host reads the clipboard only for the active window.",
-        RunicHostedServiceKind.Launch when request.Uri is not null => "The host opens only http, https and mailto links of the active window.",
-        RunicHostedServiceKind.Launch => "The host opens only files the user gave the application, for the active window.",
+        RunicHostedServiceKind.ClipboardRead or RunicHostedServiceKind.ClipboardWrite when request.IsGuestActivated =>
+            "The host uses the clipboard only for the window the user works in, not for one the application brought to the front itself.",
+        RunicHostedServiceKind.ClipboardRead => "The host reads the clipboard only for the window the user works in.",
+        RunicHostedServiceKind.ClipboardWrite => "The host writes the clipboard only for the window the user works in.",
+        RunicHostedServiceKind.Launch when request.IsGuestActivated =>
+            "The host opens files and links only for the window the user works in, not for one the application brought to the front itself.",
+        RunicHostedServiceKind.Launch when request.Uri is not null => "The host opens only http, https and mailto links of the window the user works in.",
+        RunicHostedServiceKind.Launch => "The host opens only files the user gave the application, for the window the user works in.",
         _ => "The host's window policy refused the request.",
     };
 
@@ -286,12 +324,16 @@ public sealed partial class RunicHostedApplication
     {
         var format = HostServices.Format(HostProtocol.String(message, "format")) ?? DesktopClipboardFormats.None;
         // Reads only for the window the user works in (host-protocol.md, Window services).
-        _ = await DecideServiceAsync(new RunicHostedServiceRequest(window, RunicHostedServiceKind.ClipboardRead, IsActive(window))
+        var applied = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.ClipboardRead, static userActive => userActive) with
         {
             ClipboardFormats = format,
         }, cancellationToken).ConfigureAwait(false);
+        // A policy that narrowed the read to no format: as if the clipboard had none of it.
+        if (format != DesktopClipboardFormats.None && applied.ClipboardFormats == DesktopClipboardFormats.None)
+            return new JsonObject { ["outcome"] = "success", ["value"] = format == DesktopClipboardFormats.Files ? new JsonArray() : null };
         var clipboard = window.Dialogs(CreateDialogs).Clipboard;
-        var maximum = (int)(HostProtocol.Integer(message, "maximum") ?? 0);
+        // Never more than a reply can carry: the host does not read what it could not send.
+        var maximum = HostServices.ClampedBound(format, (int)(HostProtocol.Integer(message, "maximum") ?? 0));
         if (format is not (DesktopClipboardFormats.None or DesktopClipboardFormats.Text) && clipboard is not IDesktopClipboard)
             return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
         var data = clipboard as IDesktopClipboard;
@@ -331,13 +373,29 @@ public sealed partial class RunicHostedApplication
     private async Task<JsonObject> ClipboardWriteAsync(JsonObject message, RunicHostedWindow window, CancellationToken cancellationToken)
     {
         var content = HostServices.ReadClipboardContent((JsonObject)message["content"]!);
-        var formats = (content.Text is null ? 0 : DesktopClipboardFormats.Text) | (content.Html is null ? 0 : DesktopClipboardFormats.Html)
-            | (content.Rtf is null ? 0 : DesktopClipboardFormats.Rtf) | (content.Image.IsEmpty ? 0 : DesktopClipboardFormats.Image)
-            | (content.Files.IsDefaultOrEmpty ? 0 : DesktopClipboardFormats.Files);
-        _ = await DecideServiceAsync(new RunicHostedServiceRequest(window, RunicHostedServiceKind.ClipboardWrite, isAllowedByDefault: true)
+        var formats = Formats(content);
+        // Writes only for the window the user works in, or just worked in, so a guest cannot replace what the user copies
+        // in another window (host-protocol.md, Window services).
+        var inGrace = window.IsInWriteGrace;
+        var applied = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.ClipboardWrite, userActive => userActive || inGrace) with
         {
             ClipboardFormats = formats,
         }, cancellationToken).ConfigureAwait(false);
+        // A policy that narrowed the formats: only those of the guest's content.
+        if (applied.ClipboardFormats != formats)
+        {
+            var keep = applied.ClipboardFormats;
+            content = new DesktopClipboardContent
+            {
+                Text = keep.HasFlag(DesktopClipboardFormats.Text) ? content.Text : null,
+                Html = keep.HasFlag(DesktopClipboardFormats.Html) ? content.Html : null,
+                Rtf = keep.HasFlag(DesktopClipboardFormats.Rtf) ? content.Rtf : null,
+                Image = keep.HasFlag(DesktopClipboardFormats.Image) ? content.Image : default,
+                Files = keep.HasFlag(DesktopClipboardFormats.Files) ? content.Files : [],
+            };
+            formats = Formats(content);
+            if (formats == DesktopClipboardFormats.None) return Outcome(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()));
+        }
         var clipboard = window.Dialogs(CreateDialogs).Clipboard;
         try
         {
@@ -351,16 +409,21 @@ public sealed partial class RunicHostedApplication
         catch (ArgumentException error) { throw new RejectedException("rejected", "invalid-request", $"The clipboard content is not valid: {error.Message}"); }
     }
 
+    private static DesktopClipboardFormats Formats(DesktopClipboardContent content) =>
+        (content.Text is null ? 0 : DesktopClipboardFormats.Text) | (content.Html is null ? 0 : DesktopClipboardFormats.Html)
+        | (content.Rtf is null ? 0 : DesktopClipboardFormats.Rtf) | (content.Image.IsEmpty ? 0 : DesktopClipboardFormats.Image)
+        | (content.Files.IsDefaultOrEmpty ? 0 : DesktopClipboardFormats.Files);
+
     private async Task<JsonObject> MonitorsAsync(RunicHostedWindow window, CancellationToken cancellationToken)
     {
-        _ = await DecideServiceAsync(new RunicHostedServiceRequest(window, RunicHostedServiceKind.Monitors, isAllowedByDefault: true),
-            cancellationToken).ConfigureAwait(false);
+        _ = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.Monitors, static _ => true), cancellationToken).ConfigureAwait(false);
         var presentation = window.Presentation;
         var monitors = presentation.Monitors;
         WatchMonitors(window, monitors);
         var result = await monitors.ListAsync(cancellationToken).ConfigureAwait(false);
         if (result is not PlatformResult<ImmutableArray<DesktopMonitor>>.Success(var list))
             return Outcome(Read(result, static _ => null).Failure ?? new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Unknown));
+        window.ListedMonitors = list;
         return new JsonObject
         {
             ["outcome"] = "success",
@@ -370,7 +433,8 @@ public sealed partial class RunicHostedApplication
     }
 
     // monitors-changed for a window whose guest listed the monitors, while it is open: after each change the host's
-    // monitors report, coalesced as the window's other pushes.
+    // monitors report, coalesced as the window's other pushes. The watch's first report is the monitors when it started,
+    // which is a change only when they are not the ones the guest listed.
     private static void WatchMonitors(RunicHostedWindow window, IDesktopMonitors monitors)
     {
         if (!window.BeginMonitorWatch()) return;
@@ -379,12 +443,13 @@ public sealed partial class RunicHostedApplication
             var first = true;
             try
             {
-                await foreach (var _ in monitors.WatchAsync(window.Closing).ConfigureAwait(false))
+                await foreach (var report in monitors.WatchAsync(window.Closing).ConfigureAwait(false))
                 {
                     if (first)
                     {
                         first = false;
-                        continue;
+                        if (report is not PlatformResult<ImmutableArray<DesktopMonitor>>.Success(var now) || window.ListedMonitors is not { } listed ||
+                            now.SequenceEqual(listed)) continue;
                     }
                     window.Push("monitors-changed", () => new JsonObject { ["kind"] = "monitors-changed", ["window"] = window.Id });
                 }
@@ -395,17 +460,17 @@ public sealed partial class RunicHostedApplication
 
     private async Task<JsonObject> LaunchAsync(JsonObject message, RunicHostedWindow window, CancellationToken cancellationToken)
     {
-        var active = IsActive(window);
+        // Only for the window the user works in (host-protocol.md, Window services).
         RunicHostedServiceRequest proposed;
         if (HostProtocol.String(message, "uri") is { } text)
         {
             var uri = new Uri(text, UriKind.Absolute);
-            proposed = new RunicHostedServiceRequest(window, RunicHostedServiceKind.Launch, active && HostServices.IsDefaultUri(uri)) { Uri = uri };
+            proposed = ServiceRequest(window, RunicHostedServiceKind.Launch, userActive => userActive && HostServices.IsDefaultUri(uri)) with { Uri = uri };
         }
         else
         {
             var path = HostProtocol.String(message, "path")!;
-            proposed = new RunicHostedServiceRequest(window, RunicHostedServiceKind.Launch, active && IsGiven(path))
+            proposed = ServiceRequest(window, RunicHostedServiceKind.Launch, userActive => userActive && IsGiven(path)) with
             {
                 Path = path,
                 Operation = HostServices.Operation(HostProtocol.String(message, "operation") ?? "open")!.Value,
@@ -438,7 +503,12 @@ public sealed partial class RunicHostedApplication
     // allows; the paths become ones the guest may open. Files without a path, such as macOS file promises, are not
     // forwarded: the host releases them.
     private void ForwardDrops(RunicHostedWindow window, DesktopWindow presentation) =>
-        presentation.FilesDropped += (_, drop) => _ = ForwardDropAsync(window, drop);
+        presentation.FilesDropped += (_, drop) =>
+        {
+            // The user worked in the window.
+            window.NoteUserInteraction();
+            _ = ForwardDropAsync(window, drop);
+        };
 
     private async Task ForwardDropAsync(RunicHostedWindow window, DesktopFileDropEventArgs drop)
     {
@@ -451,7 +521,7 @@ public sealed partial class RunicHostedApplication
         ImmutableArray<string> paths;
         try
         {
-            var proposed = new RunicHostedServiceRequest(window, RunicHostedServiceKind.FileDrop, isAllowedByDefault: true) { Paths = [.. drop.Paths] };
+            var proposed = ServiceRequest(window, RunicHostedServiceKind.FileDrop, static _ => true) with { Paths = [.. drop.Paths] };
             var applied = await DecideServiceAsync(proposed, window.Closing).ConfigureAwait(false);
             paths = applied.Paths.IsDefault
                 ? []

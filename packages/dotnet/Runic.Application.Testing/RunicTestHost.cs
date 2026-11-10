@@ -692,6 +692,12 @@ public sealed record RunicTestHostOptions
     /// <see langword="true"/> by default. Each window is active when it opens; <see cref="RunicTestHostedWindow.SetActivityAsync"/>
     /// changes it.
     /// </summary>
+    /// <remarks>
+    /// Runic's host is stricter: it also refuses clipboard writes and launches for a window the user is not working in,
+    /// and treats a window the guest opened or presented itself as not the user's until the user switches to it
+    /// (<c>RunicHostedServiceRequest.IsGuestActivated</c>). The test host does not
+    /// model the user's activation; test those rules against Runic's host.
+    /// </remarks>
     public bool ClipboardReadsOnlyActiveWindow { get; init; } = true;
 
     /// <summary>

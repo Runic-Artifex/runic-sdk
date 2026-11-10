@@ -31,11 +31,16 @@ uses, and `steps` what happens, in order.
   `requestTimeout`, in milliseconds, and `waitingRequests`, a count, that the runner configures the implementation
   under test with; for the `host` role also `menuRequests`, a window's menu requests per second, `guestMenuRequests`,
   the guest's menu requests per second across its windows, `dialogs`, the dialogs a guest shows at once, and
-  `dialogRate`, the dialogs a guest shows per ten seconds, which are the host's defaults when absent; the protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
+  `dialogRate`, the dialogs a guest shows per ten seconds, `serviceRate`, the guest's clipboard and monitor requests per
+  second, `launchRate`, its launches per ten seconds, `presentRate`, its `present` and `set-visible` requests that show a
+  window per second, and `announcementRate`, its announcements per second (each rate also its burst), which are the
+  host's defaults when absent. Rates are the host's policy, not the protocol's: a host may choose others, and a scenario
+  that checks one names it. The protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
   a limit names it in an [`advance`](#steps) step; a runner waits the configured time, so scenarios use small values.
 - `application`: for the `guest` role, the guest application's `name`, `version` and `applicationId`, which its
   successful `hello` reply carries.
-- `host`: for the `host` role, the host's `name` and `version`, which its offer carries.
+- `host`: for the `host` role, the host's `name` and `version`, which its offer carries, and optionally its `policy`:
+  `"fails-services"`, a window policy that fails (in .NET, throws) for every window service request.
 
 ### Steps
 
@@ -82,7 +87,9 @@ Messages are compared by JSON value, never by bytes or member order.
   runner is the guest, so its window and item ids are literal values of the scenario.
 - **`{"$file": name}`** and **`{"$directory": name}`** are the absolute path of a file or directory `name` (a plain name,
   no separators) in a temporary directory of the runner, which creates it on first use with some content and removes
-  it after the scenario: the paths a dialog returns (`dialogs/1`) are real and absolute on every platform.
+  it after the scenario: the paths a dialog returns (`dialogs/1`) are real and absolute on every platform. With `then`,
+  a list of path segments (`.`, `..` or a plain name), the path continues with them, joined by the platform's
+  separator and not normalized, such as `{"$file": "a.txt", "then": ["..", "b.txt"]}`.
 - **`{"$secret": name}`** is a secret of the launch, which the runner computes:
 
 | `name` | Value |
@@ -184,8 +191,9 @@ for a `user` step that answers it, or until the host closes it.
 | `answerDialog` | optional `dialog`; `paths` (`$file` or `$directory` values), `button`, or `dismiss: true` | Answers the oldest open dialog (of that kind): selects the paths, presses the button, or closes the dialog without either |
 | `awaitDialogClosed` | optional `dialog` | Waits until the host closes the oldest dialog (of that kind) that an `awaitDialog` step left open |
 | `closeWindow` | `window` | Presses the window's close button, which asks the guest (`close-request`) |
-| `deactivateWindow`, `activateWindow` | `window` | Gives the keyboard focus to another window, or back to this one; each window is active when it opens |
-| `copyText` | `text` | Copies the text in another application: the host's clipboard has it |
+| `deactivateWindow`, `activateWindow` | `window` | Gives the keyboard focus to another window, or back to this one, as the user switching windows does; each window is active when it opens, and a window gets the focus when the host presents it |
+| `copyText` | `text`, optional `repeat` | Copies the text, repeated that many times, in another application: the host's clipboard has it |
+| `changeMonitors` | — | Changes the host's monitors, such as a monitor unplugged |
 | `dropFiles` | `window`, `paths` (`$file` or `$directory` values) | Drops the files onto the window |
 | `setLocale` | `locale`: a tag or `null` | Changes the host application's locale (`IRunicApplicationLocale`) |
 | `setAppearance` | `appearance`: `{colorScheme, contrast}`, `colorScheme` `light` or `dark`, `contrast` `no-preference`, `more` or `forced-colors` | Changes the host's desktop appearance, with no reduced motion, a text scale of 1 and no accent colour |

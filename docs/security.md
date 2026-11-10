@@ -277,17 +277,27 @@ experimental (`RUNICDESK103`). What Runic enforces:
   window, one dialog per guest, by default).
 - **Clipboard, links and files: the host's rights, the user's choices.** With `window-services/1` a guest uses the
   host's clipboard, monitors and launcher, which act with the host's rights. The clipboard holds what the user copies in
-  every application, passwords included, so the host reads it for a guest only while the guest's window is active, and
-  never tells a guest when the clipboard changes: a guest in the background cannot snoop on it (threat T14). A guest the
-  user works in can read what the clipboard holds, as any focused application can, and a guest can write the clipboard
-  from any window by default; a host that does not trust a guest refuses reads, or writes from inactive windows, in
-  `IRunicHostedWindowPolicy.ServiceAsync`. The host opens for a guest only `http`, `https` and `mailto` links and files
-  the user gave it through the host (its file dialogs and drops), only for the active window, with the host launcher's
-  own rules (no programs or scripts on Windows and macOS, no `mailto` attachments), at most five per ten seconds by
-  default: a guest cannot start a program, open a settings page or flood the desktop with browser tabs unless the
-  host's policy widens this (T15). The paths of a drop come from the host's platform, never from a page; the drop's
-  target label and effect are routing hints (T16). `RunicHostedLimits` bounds a guest's clipboard and monitor requests
-  (20 a second) and its launches.
+  every application, passwords included, so the host reads and writes it for a guest only while the user works in the
+  guest's window: it is active, and not because the guest itself opened, presented or showed it within the last two
+  seconds. A guest that brings its window to the front cannot use that focus to read what the user just copied, replace
+  it or open links; the user's own switch to the window, a choice in its menus or a drop onto it gives it back. A write
+  is also allowed within a second after the user left the window, for a copy that closes it. The host never tells a
+  guest when the clipboard changes: a guest in the background cannot snoop on it or replace what the user copies
+  elsewhere (threat T14). A guest the user works in can read what the clipboard holds, as any focused application can;
+  a host that does not trust a guest refuses reads, or narrows writes to plain text, in
+  `IRunicHostedWindowPolicy.ServiceAsync`, which also sees `RunicHostedServiceRequest.IsGuestActivated`. The host opens
+  for a guest only `http`, `https` and `mailto` links and files the user gave it through the host (its open dialogs and
+  drops, not a save dialog's destination, whose content the guest wrote), only while it is still the same file and only
+  for the window the user works in, with the host launcher's own rules (no programs or scripts on Windows and macOS, no
+  `mailto` attachments), at most five per ten seconds by default: a guest cannot start a program, open a settings page
+  or flood the desktop with browser tabs unless the host's policy widens this (T15). The paths of a drop come from the
+  host's platform, never from a page; the drop's target label and effect are routing hints (T16). `RunicHostedLimits`
+  bounds a guest's clipboard and monitor requests (20 a second), its launches, its requests that bring a window to the
+  front (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5).
+- **Screen reader announcements.** A guest's announcements speak through the host's window, so assistive technology
+  attributes them to the host application. Only the window the user works in announces assertively, interrupting the
+  screen reader; another window's announcements are polite, and their rate is bounded (T17). A host that does not trust
+  a guest refuses or rewords them in `IRunicHostedWindowPolicy.Present`.
 - **Appearance and locale.** A guest's pages show the host's appearance (contrast, forced colours, reduced motion, text
   scale) and follow its locale, which the host sends; they never read the guest process's own desktop settings.
 - **What a guest can still word.** The guest chooses the titles, messages, details and button labels of its dialogs

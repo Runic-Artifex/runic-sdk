@@ -1045,8 +1045,11 @@ internal sealed class ScenarioFiles : IDisposable
 {
     private string? _root;
 
-    public static bool IsPath(JsonObject placeholder) => placeholder.Count == 1 && (placeholder.ContainsKey("$file") || placeholder.ContainsKey("$directory"));
+    public static bool IsPath(JsonObject placeholder) =>
+        (placeholder.ContainsKey("$file") || placeholder.ContainsKey("$directory")) && placeholder.Count == (placeholder.ContainsKey("then") ? 2 : 1);
 
+    // The path of the file or directory, created on first use, followed by the segments of then, such as ".." and a name,
+    // as they are.
     public string Path(JsonObject placeholder)
     {
         _root ??= Directory.CreateTempSubdirectory("runic-host-conformance-").FullName;
@@ -1055,6 +1058,8 @@ internal sealed class ScenarioFiles : IDisposable
         var path = System.IO.Path.Combine(_root, name);
         if (directory) Directory.CreateDirectory(path);
         else if (!File.Exists(path)) File.WriteAllText(path, "Runic host conformance\n");
+        if (placeholder["then"] is JsonArray then)
+            path = string.Join(System.IO.Path.DirectorySeparatorChar, [path, .. then.Select(static segment => segment!.GetValue<string>())]);
         return path;
     }
 

@@ -89,6 +89,29 @@ public sealed class ApplicationLocaleTests
         Require(Host(window).Content.Locale == "pt-BR", "A locale set on the session followed the application.");
     }
 
+    // Hosted mode (runic-host/1): an application that gives its own locale up switches once, straight to the host's,
+    // instead of to no locale and then to the host's.
+    [Test]
+    public async Task GivingTheOwnLocaleUpInHostedModeSwitchesOnceToTheHostsAsync()
+    {
+        await using var provider = Services();
+        var application = (RunicApplicationLocale)provider.GetRequiredService<IRunicApplicationLocale>();
+        Require(await application.FollowHostAsync("de"), "The application did not follow the host's locale.");
+        application.HostLocale = () => "de";
+        await application.SetLocaleAsync("fr");
+        Require(!await application.FollowHostAsync("it") && application.Locale == "fr", "The host's locale replaced the application's own.");
+        application.HostLocale = () => "it";
+        var changes = new List<string?>();
+        application.LocaleChanged += (_, e) =>
+        {
+            lock (changes) changes.Add(e.Locale);
+        };
+        await application.SetLocaleAsync(null);
+        Require(application.Locale == "it" && !application.HasOwnLocale, $"The application's locale is {application.Locale ?? "none"}, not the host's.");
+        lock (changes) Require(changes.SequenceEqual(["it"]), $"The application switched to [{string.Join(", ", changes)}], not once to the host's locale.");
+        Require(await application.FollowHostAsync("es") && application.Locale == "es", "The application did not follow the host again.");
+    }
+
     [Test]
     public async Task FollowersPrepareTheLocaleBeforeTheWindowsAndLocaleChangedAsync()
     {

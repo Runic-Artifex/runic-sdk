@@ -326,3 +326,12 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceDecision.Refuse(string? message = null) -> Runic.Application.Views.Desktop.RunicHostedServiceDecision!
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceRequest.operator !=(Runic.Application.Views.Desktop.RunicHostedServiceRequest? left, Runic.Application.Views.Desktop.RunicHostedServiceRequest? right) -> bool
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceRequest.operator ==(Runic.Application.Views.Desktop.RunicHostedServiceRequest? left, Runic.Application.Views.Desktop.RunicHostedServiceRequest? right) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementBurst.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementBurst.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementsPerSecond.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentBurst.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentBurst.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentsPerSecond.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.IsGuestActivated.get -> bool

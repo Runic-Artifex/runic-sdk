@@ -368,6 +368,18 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable))).ConfigureAwait(false);
             return;
         }
+        // The guest's requests that can activate the window, and its announcements, have rates of their own (Limits).
+        if ((IsActivation(presentation) && !PresentRate.TryTake()) || (kind == RunicHostedPresentationKind.Announce && !AnnouncementRate.TryTake()))
+        {
+            await request.FailAsync("rejected", "capacity", kind == RunicHostedPresentationKind.Announce
+                ? "The application's announcements are over the host's rate."
+                : "The application's requests to bring its windows to the front are over the host's rate.").ConfigureAwait(false);
+            return;
+        }
+        // An assertive announcement interrupts the user's screen reader, so it comes only from the window the user works
+        // in; another window's is polite.
+        if (presentation.Priority == DesktopAnnouncementPriority.Assertive && !window.IsUserActive)
+            presentation = presentation with { Priority = DesktopAnnouncementPriority.Polite };
         RunicHostedPresentationDecision decision;
         try { decision = Policy.Present(presentation); }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -389,9 +401,24 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.FailAsync("failed", null, "The host's window policy named a window of another application.").ConfigureAwait(false);
             return;
         }
+        // An activation that follows is the guest's, not the user's (window-services/1).
+        if (IsActivation(applied)) applied.Window.NoteGuestActivationRequest();
         var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
         await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
     }
+
+    private static bool IsActivation(RunicHostedPresentationRequest request) =>
+        request.Kind == RunicHostedPresentationKind.Present || request is { Kind: RunicHostedPresentationKind.SetVisible, Value: true };
+
+    // The guest's present and set-visible requests, and its announcements, across its windows (RunicHostedLimits).
+    private RequestRate? _presentRate;
+    private RequestRate? _announcementRate;
+
+    private RequestRate PresentRate => Volatile.Read(ref _presentRate) ?? Interlocked.CompareExchange(
+        ref _presentRate, new RequestRate(Limits.PresentsPerSecond, TimeSpan.FromSeconds(1), Limits.PresentBurst), null) ?? _presentRate!;
+
+    private RequestRate AnnouncementRate => Volatile.Read(ref _announcementRate) ?? Interlocked.CompareExchange(
+        ref _announcementRate, new RequestRate(Limits.AnnouncementsPerSecond, TimeSpan.FromSeconds(1), Limits.AnnouncementBurst), null) ?? _announcementRate!;
 
     private IRunicHostedWindowPolicy Policy => _options.Policy ?? AllowAllPolicy.Instance;
 
@@ -493,6 +520,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         try
         {
             surface = await _host.Desktop.CreateHostedSurfaceAsync(url!, _dataStore!, _ending.Token).ConfigureAwait(false);
+            // The window gets the focus at the guest's request (window-services/1, the guest's activation).
+            window.NoteGuestActivationRequest();
             presentation = await surface.OpenWindowAsync(options, _ending.Token).ConfigureAwait(false);
             if (!presentation.IsOpen) throw new InvalidOperationException("The window was closed while it opened.");
         }

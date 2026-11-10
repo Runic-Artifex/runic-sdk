@@ -3,13 +3,16 @@ using System.Diagnostics;
 namespace Runic.Application.Views.Desktop.Hosting;
 
 // A rate of a guest's requests (host-protocol.md, Limits), such as a window's menu requests or the guest's dialogs: a
-// token bucket that holds count requests and refills them over the period, so a guest may make a burst of count
-// requests and then count per period.
-internal sealed class RequestRate(int count, TimeSpan period)
+// token bucket that holds burst requests and refills count of them over the period, so a guest may make a burst of
+// burst requests and then count per period.
+internal sealed class RequestRate(int count, TimeSpan period, int burst)
 {
+    // count per period, after a burst of as many.
+    internal RequestRate(int count, TimeSpan period) : this(count, period, count) { }
+
     private readonly object _gate = new();
     private readonly double _perSecond = count / period.TotalSeconds;
-    private double _tokens = count;
+    private double _tokens = burst;
     private long _last = Stopwatch.GetTimestamp();
 
     // Whether one more request is within the rate; it is counted when it is.
@@ -18,7 +21,7 @@ internal sealed class RequestRate(int count, TimeSpan period)
         lock (_gate)
         {
             var now = Stopwatch.GetTimestamp();
-            _tokens = Math.Min(count, _tokens + Stopwatch.GetElapsedTime(_last, now).TotalSeconds * _perSecond);
+            _tokens = Math.Min(burst, _tokens + Stopwatch.GetElapsedTime(_last, now).TotalSeconds * _perSecond);
             _last = now;
             if (_tokens < 1) return false;
             _tokens -= 1;
