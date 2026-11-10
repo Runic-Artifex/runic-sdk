@@ -28,9 +28,12 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
     private readonly TaskCompletionSource<bool> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private nint _window;
     private int _threadId;
+    // Tests follow a dialog thread's end: its message loop, window and COM.
+    private readonly Action<string>? _trace;
 
-    private WindowsApplicationThread(string name)
+    private WindowsApplicationThread(string name, Action<string>? trace = null)
     {
+        _trace = trace;
         var thread = new Thread(Run) { IsBackground = true, Name = name };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -40,7 +43,7 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
     internal static WindowsApplicationThread Shared => Instance.Value;
 
     // A thread of its own for one dialog; Stop ends it once the dialog is done.
-    internal static WindowsApplicationThread StartDialog() => new("Runic unowned dialog");
+    internal static WindowsApplicationThread StartDialog(Action<string>? trace = null) => new("Runic unowned dialog", trace);
 
     // Ends the thread's message loop after the work queued before it; the thread then releases its window and COM.
     internal void Stop()
@@ -119,10 +122,12 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
         {
             _ready.TrySetResult(false);
             t_current = null;
+            _trace?.Invoke("thread's message loop ended");
             // A stopped dialog thread: work queued after Stop fails, as its window is gone.
             Volatile.Write(ref _window, 0);
             if (window != default) PInvoke.DestroyWindow(window);
             if (com) PInvoke.CoUninitialize();
+            _trace?.Invoke("thread ends");
         }
     }
 
