@@ -152,7 +152,7 @@ internal sealed class HostedWindowMenus : IDisposable
             var state = State(item);
             if (states.TryGetValue(id, out var previous) && previous == state) continue;
             states[id] = state;
-            changes.Add(new JsonObject { ["id"] = id, ["enabled"] = state.Enabled, ["checked"] = state.Checked });
+            changes.Add((JsonNode)new JsonObject { ["id"] = id, ["enabled"] = state.Enabled, ["checked"] = state.Checked });
         }
         return changes.Count == 0 ? null : new JsonObject { ["id"] = 0, ["kind"] = "update-menu-items", ["items"] = changes };
     }

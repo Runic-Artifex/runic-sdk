@@ -40,10 +40,10 @@ internal static class HostedWire
                     };
                     if (item.RadioGroup is { } group) node["radioGroup"] = group;
                     if (item.AccessKey is { } key) node["accessKey"] = key.ToString();
-                    list.Add(node);
+                    list.Add((JsonNode)node);
                     break;
                 case DesktopMenuSeparator:
-                    list.Add(new JsonObject { ["kind"] = "separator" });
+                    list.Add((JsonNode)new JsonObject { ["kind"] = "separator" });
                     break;
                 case DesktopMenu menu:
                     var submenu = new JsonObject
@@ -55,7 +55,7 @@ internal static class HostedWire
                     };
                     if (menu.AccessKey is { } menuKey) submenu["accessKey"] = menuKey.ToString();
                     submenu["items"] = WriteEntries(menu.Items, items, state);
-                    list.Add(submenu);
+                    list.Add((JsonNode)submenu);
                     break;
                 // An entry kind of a later release that the protocol does not carry.
             }
@@ -181,7 +181,7 @@ internal static class HostedWire
                 },
             };
             if (button.AccessKey is { } key) node["accessKey"] = key.ToString();
-            buttons.Add(node);
+            buttons.Add((JsonNode)node);
         }
         message["buttons"] = buttons;
         return message;
