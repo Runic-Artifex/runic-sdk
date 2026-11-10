@@ -14,6 +14,8 @@
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <!-- Program.cs is hand-written: the hosted application cases start this executable as their guest. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <!-- InheritedHandles' LibraryImport declarations. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- The tests construct generated-code support types directly. -->

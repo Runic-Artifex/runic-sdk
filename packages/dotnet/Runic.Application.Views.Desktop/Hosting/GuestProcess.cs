@@ -64,8 +64,11 @@ internal abstract class GuestProcess : IDisposable
 
 // CreateProcessW: the guest starts suspended, joins a job object whose processes end when its last handle closes, also
 // when the host crashes, and only then runs, so nothing it starts escapes the job. A job that cannot be created or joined
-// fails the start. Its three pipe ends are its only inheritable handles from this class: the pipes are created and the
-// guest started under one lock, as System.Diagnostics.Process does for its own, so one guest's ends never reach another.
+// fails the start. The guest inherits exactly its three pipe ends (PROC_THREAD_ATTRIBUTE_HANDLE_LIST), none of the host's
+// other inheritable handles, such as the pipes of a process the host starts at the same time or what the host inherited
+// itself. The ends are inheritable from their creation until they are closed after the start, under one lock, so no other
+// guest's start sees them; a process that System.Diagnostics.Process starts meanwhile, which inherits every inheritable
+// handle of the host, can (its lock is its own).
 [SupportedOSPlatform("windows")]
 internal sealed partial class WindowsGuestProcess : GuestProcess
 {
@@ -276,22 +279,47 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
         }
     }
 
+    // The handle list names the three ends: CreateProcessW's bInheritHandles then passes only those, and they must be
+    // inheritable. UpdateProcThreadAttribute keeps a pointer to the list, not a copy, so it lives on this method's stack
+    // until CreateProcessW returned; the attribute list is deleted and freed after it.
     private static unsafe ProcessInformation Spawn(string path, string commandLine, string? directory, string environment,
         SafeFileHandle input, SafeFileHandle output, SafeFileHandle errors, string fileName)
     {
         bool addedInput = false, addedOutput = false, addedErrors = false;
+        nint attributeList = 0;
+        var attributeListReady = false;
         try
         {
             input.DangerousAddRef(ref addedInput);
             output.DangerousAddRef(ref addedOutput);
             errors.DangerousAddRef(ref addedErrors);
-            var startup = new StartupInformation
+            var inherited = stackalloc nint[3];
+            inherited[0] = input.DangerousGetHandle();
+            inherited[1] = output.DangerousGetHandle();
+            inherited[2] = errors.DangerousGetHandle();
+
+            // The first call reports the size the list needs and fails with ERROR_INSUFFICIENT_BUFFER.
+            nint size = 0;
+            _ = InitializeProcThreadAttributeList(0, 1, 0, ref size);
+            if (size == 0) throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's inherited handles could not be listed.");
+            attributeList = Marshal.AllocHGlobal(size);
+            if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref size))
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's inherited handles could not be listed.");
+            attributeListReady = true;
+            if (!UpdateProcThreadAttribute(attributeList, 0, ProcThreadAttributeHandleList, inherited, 3 * sizeof(nint), 0, 0))
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's inherited handles could not be listed.");
+
+            var startup = new StartupInformationEx
             {
-                Size = (uint)sizeof(StartupInformation),
-                Flags = StartfUseStdHandles,
-                StandardInput = input.DangerousGetHandle(),
-                StandardOutput = output.DangerousGetHandle(),
-                StandardError = errors.DangerousGetHandle(),
+                StartupInfo = new StartupInformation
+                {
+                    Size = (uint)sizeof(StartupInformationEx),
+                    Flags = StartfUseStdHandles,
+                    StandardInput = inherited[0],
+                    StandardOutput = inherited[1],
+                    StandardError = inherited[2],
+                },
+                AttributeList = attributeList,
             };
             // CreateProcessW may write to the command line.
             var line = (commandLine + "\0").ToCharArray();
@@ -300,7 +328,8 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
             fixed (char* environmentBlock = environment)
             fixed (char* currentDirectory = directory)
             {
-                if (!CreateProcessW(applicationName, commandLineBuffer, 0, 0, true, CreateSuspended | CreateNoWindow | CreateUnicodeEnvironment,
+                if (!CreateProcessW(applicationName, commandLineBuffer, 0, 0, true,
+                        CreateSuspended | CreateNoWindow | CreateUnicodeEnvironment | ExtendedStartupInfoPresent,
                         environmentBlock, currentDirectory, &startup, out var information))
                     throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The guest '{fileName}' could not be started.");
                 return information;
@@ -308,6 +337,8 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
         }
         finally
         {
+            if (attributeListReady) DeleteProcThreadAttributeList(attributeList);
+            if (attributeList != 0) Marshal.FreeHGlobal(attributeList);
             if (addedInput) input.DangerousRelease();
             if (addedOutput) output.DangerousRelease();
             if (addedErrors) errors.DangerousRelease();
@@ -402,6 +433,8 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
     private const uint CreateSuspended = 0x4;
     private const uint CreateNoWindow = 0x08000000;
     private const uint CreateUnicodeEnvironment = 0x400;
+    private const uint ExtendedStartupInfoPresent = 0x80000;
+    private const nint ProcThreadAttributeHandleList = 0x20002;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SecurityAttributes
@@ -432,6 +465,14 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
         public nint StandardInput;
         public nint StandardOutput;
         public nint StandardError;
+    }
+
+    // STARTUPINFOEXW: 112 bytes on 64-bit Windows, 72 on 32-bit.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInformationEx
+    {
+        public StartupInformation StartupInfo;
+        public nint AttributeList;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -518,7 +559,19 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
     [return: MarshalAs(UnmanagedType.Bool)]
     private static unsafe partial bool CreateProcessW(char* applicationName, char* commandLine, nint processAttributes, nint threadAttributes,
         [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, uint creationFlags, char* environment, char* currentDirectory,
-        StartupInformation* startupInfo, out ProcessInformation processInformation);
+        StartupInformationEx* startupInfo, out ProcessInformation processInformation);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool InitializeProcThreadAttributeList(nint attributeList, int attributeCount, int flags, ref nint size);
+
+    [LibraryImport("kernel32", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static unsafe partial bool UpdateProcThreadAttribute(nint attributeList, uint flags, nint attribute, void* value, nint size,
+        nint previousValue, nint returnSize);
+
+    [LibraryImport("kernel32")]
+    private static partial void DeleteProcThreadAttributeList(nint attributeList);
 
     [LibraryImport("kernel32")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -557,11 +610,13 @@ internal sealed partial class UnixGuestProcess : GuestProcess
     {
         HookProcessExit();
         var path = Resolve(startInfo.FileName, environment);
-        int[] input = Pipe(), output = Pipe(), errors = Pipe();
-        var parentEnds = new[] { input[1], output[0], errors[0] };
+        int[]? input = null, output = null, errors = null;
         var started = false;
         try
         {
+            input = Pipe();
+            output = Pipe();
+            errors = Pipe();
             var pid = Spawn(path, startInfo, environment, input[0], output[1], errors[1]);
             started = true;
             return new UnixGuestProcess(pid, new SafeFileHandle(input[1], ownsHandle: true),
@@ -570,11 +625,15 @@ internal sealed partial class UnixGuestProcess : GuestProcess
         finally
         {
             // The child's ends belong to the child now; the parent's are closed only when the start failed.
-            _ = close(input[0]);
-            _ = close(output[1]);
-            _ = close(errors[1]);
+            if (input is not null) _ = close(input[0]);
+            if (output is not null) _ = close(output[1]);
+            if (errors is not null) _ = close(errors[1]);
             if (!started)
-                foreach (var end in parentEnds) _ = close(end);
+            {
+                if (input is not null) _ = close(input[1]);
+                if (output is not null) _ = close(output[0]);
+                if (errors is not null) _ = close(errors[0]);
+            }
         }
     }
 
@@ -592,6 +651,10 @@ internal sealed partial class UnixGuestProcess : GuestProcess
         throw new Win32Exception(2, $"The guest '{fileName}' was not found in PATH.");
     }
 
+    // A pipe whose ends are close-on-exec. Linux creates them so (pipe2). macOS has no pipe2: pipe, then fcntl, so a
+    // process the host forks between the two, such as one System.Diagnostics.Process starts on another thread, can
+    // inherit the host's ends. The guest itself cannot: POSIX_SPAWN_CLOEXEC_DEFAULT passes it only the descriptors the
+    // file actions name, its standard input, output and error.
     private static int[] Pipe()
     {
         var ends = new int[2];
@@ -601,10 +664,11 @@ internal sealed partial class UnixGuestProcess : GuestProcess
             return ends;
         }
         if (pipe(ends) != 0) throw new Win32Exception(Marshal.GetLastPInvokeError(), "A pipe for the guest could not be created.");
-        // macOS has no pipe2; posix_spawn's POSIX_SPAWN_CLOEXEC_DEFAULT keeps the ends from the guest itself.
-        _ = fcntl(ends[0], FSetFd, FdCloseOnExec);
-        _ = fcntl(ends[1], FSetFd, FdCloseOnExec);
-        return ends;
+        if (fcntl(ends[0], FSetFd, FdCloseOnExec) == 0 && fcntl(ends[1], FSetFd, FdCloseOnExec) == 0) return ends;
+        var error = Marshal.GetLastPInvokeError();
+        _ = close(ends[0]);
+        _ = close(ends[1]);
+        throw new Win32Exception(error, "A pipe for the guest could not be made close-on-exec.");
     }
 
     private static unsafe int Spawn(string path, RunicGuestStartInfo startInfo, Dictionary<string, string> environment,

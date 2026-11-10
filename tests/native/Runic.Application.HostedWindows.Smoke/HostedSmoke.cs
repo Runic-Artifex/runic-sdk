@@ -13,8 +13,9 @@ using Runic.Desktop;
 // (--hosted-guest) and shows their Windows in native windows of the host. Each guest page loads top-level from the guest's
 // loopback origin through its one-time launch address, in the host session's own data store: it connects to the guest's
 // surface without the host's credential, sees none of the host's cookies and none of another guest's. A user's close goes
-// through the guest, a guest that crashes loses its windows, and a stopped guest exits. Run it without arguments (WebView2,
-// WKWebView, WebKitGTK 4.1) or gtk4 (WebKitGTK 6).
+// through the guest, a guest that crashes loses its windows, and a stopped guest exits. On Windows the guest's cookie and
+// storage never reach the disk, which a window with a persistent profile shows the same scan would find. Run it without
+// arguments (WebView2, WKWebView, WebKitGTK 4.1) or gtk4 (WebKitGTK 6).
 internal static class HostedSmoke
 {
     internal const string GuestArgument = "--hosted-guest";
@@ -65,10 +66,10 @@ internal static class HostedSmoke
         // WebView2 keeps each guest session's InPrivate profile in a user data folder of its own in the temporary folder.
         var foldersBefore = HostedFolders();
 
-        // Guest a: its page connects to its own surface, sees no cookie of the host and sets its own.
-        var a = await applications.StartAsync(Guest("a", "stay"));
+        // Guest a: its page connects to its own surface, sees no cookie of the host and sets its own. It stays without a
+        // window after its window closed, until the host stops it, so its session's folder stays while the scan below runs.
+        var a = await applications.StartAsync(Guest("a", "linger"));
         var reportA = await logs.ReportAsync("a");
-        var reportedA = DateTime.UtcNow;
         var foldersA = HostedFolders().Except(foldersBefore).ToArray();
         var windowA = await WindowOf(a);
         CheckPage(reportA, "a", host.Desktop.Port, mustNotSee: ["runic_host_probe"]);
@@ -87,25 +88,28 @@ internal static class HostedSmoke
         Check(!windowB.Presentation.IsOpen && windowA.IsOpen, "The crashed guest's window is open, or guest a's closed.");
         Console.WriteLine($"PASS hosted {toolkit}: the host closed the crashed guest's window and reported its exit code.");
 
-        if (OperatingSystem.IsWindows())
-        {
-            // Guest a's page set a persistent cookie and localStorage. WebView2 writes a profile's cookies within about 30
-            // seconds and its storage sooner; an InPrivate profile writes neither. Its folder holds the files of the
-            // profile an InPrivate one derives from, without the guest's data.
-            Check(foldersA.Length == 1, $"Guest a's session has {foldersA.Length} user data folders.");
-            var wait = TimeSpan.FromSeconds(40) - (DateTime.UtcNow - reportedA);
-            if (wait > TimeSpan.Zero) await Task.Delay(wait);
-            var (scanned, found) = FindOnDisk(foldersA[0], "runic_guest_a");
-            Check(found.Length == 0, $"Guest a's data is on disk, in {string.Join(", ", found)}.");
-            Check(scanned > 0, "No file of guest a's user data folder could be read.");
-            Console.WriteLine($"PASS hosted {toolkit}: none of the {scanned} files in guest a's user data folder holds its cookie or storage.");
-        }
-
-        // A close through the guest: its Window closes, then the host's window, then the guest exits.
+        // A close through the guest: its Window closes, then the host's window.
         Check(await windowA.RequestCloseAsync(), "Guest a refused the close.");
         await windowA.Closed.WaitAsync(TestTimeouts.Scale(Wait));
-        Check(await a.Exited.WaitAsync(TestTimeouts.Scale(Wait)) == 0, "Guest a did not exit cleanly after its window closed.");
-        Console.WriteLine($"PASS hosted {toolkit}: the window closed through the guest, which then exited.");
+        Check(!windowA.Presentation.IsOpen && !a.Exited.IsCompleted, "Guest a's window is open, or guest a exited with it.");
+        Console.WriteLine($"PASS hosted {toolkit}: the window closed through the guest.");
+
+        if (OperatingSystem.IsWindows())
+        {
+            // Guest a's page set a persistent cookie and localStorage; an InPrivate profile writes neither. Its window
+            // closed, so WebView2's browser process ends and writes what it would write; the session, and so its folder,
+            // lasts until guest a stops. The folder holds the files of the profile an InPrivate one derives from.
+            Check(foldersA.Length == 1, $"Guest a's session has {foldersA.Length} user data folders.");
+            var (scanned, found) = await FindOnDiskAsync(foldersA[0], "runic_guest_a");
+            Check(found.Length == 0, $"Guest a's data is on disk, in {string.Join(", ", found)}.");
+            Check(scanned > 0, "Guest a's user data folder has no file.");
+            Console.WriteLine($"PASS hosted {toolkit}: none of the {scanned} files in guest a's user data folder holds its cookie or storage.");
+            await PersistentControlAsync(host, toolkit);
+        }
+
+        // A guest without a window stops when asked.
+        Check(await a.StopAsync().AsTask().WaitAsync(TestTimeouts.Scale(Wait)) == 0, "Guest a did not exit cleanly after shutdown.");
+        Console.WriteLine($"PASS hosted {toolkit}: guest a, without a window, exited when stopped.");
 
         // A stop: shutdown closes the guest's Windows and it exits.
         var c = await applications.StartAsync(Guest("c", "stay"));
@@ -134,30 +138,95 @@ internal static class HostedSmoke
         return 0;
     }
 
-    // The files under the folder that contain the text in ASCII or UTF-16, and how many files could be read; a file the
-    // browser holds without sharing is skipped.
-    private static (int Scanned, string[] Found) FindOnDisk(string folder, string text)
+    // The positive control for the scan: the same page script in a window with a persistent profile, in a scratch folder.
+    // Once its browser process let go of the folder, the same scan must find the cookie or the storage key, so a hosted
+    // session whose data reached the disk would fail the check above.
+    private static async Task PersistentControlAsync(RunicDesktopHost host, string toolkit)
+    {
+        var folder = Directory.CreateTempSubdirectory("runic-hosted-smoke-control-").FullName;
+        try
+        {
+            await using (var surface = await host.Desktop.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page("Control")) }))
+            {
+                await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+                {
+                    Browser = BrowserKind.Embedded,
+                    Width = 420,
+                    Height = 300,
+                    ProfilePath = folder,
+                });
+                var seen = await surface.ExecuteJavaScriptAsync(StoreScript("control"));
+                Check(seen.Contains("runic_guest_control=1", StringComparison.Ordinal), $"The control page could not set its cookie: {seen}.");
+                // Gives the profile time to commit as it runs; the browser's exit writes the rest.
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                await window.CloseAsync();
+            }
+            var (scanned, found) = await FindOnDiskAsync(folder, "runic_guest_control");
+            Check(found.Length > 0, $"The scan found the persistent profile's cookie and storage in none of its {scanned} files.");
+            Console.WriteLine($"PASS hosted {toolkit}: the same scan finds a persistent profile's cookie or storage, in {string.Join(", ", found)}.");
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"The control profile {folder} could not be deleted: {error.Message}");
+            }
+        }
+    }
+
+    // The files under the folder that contain the text in ASCII or UTF-16, and how many files there are, once WebView2's
+    // browser process let go of the folder: every file opens without sharing, which fails while another process has it
+    // open, twice in a row a second apart. A file that stays open or unreadable for 60 seconds fails the smoke; none is
+    // skipped.
+    private static async Task<(int Scanned, string[] Found)> FindOnDiskAsync(string folder, string text)
     {
         var ascii = System.Text.Encoding.ASCII.GetBytes(text);
         var utf16 = System.Text.Encoding.Unicode.GetBytes(text);
-        var scanned = 0;
-        var found = new List<string>();
-        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(60));
+        var clear = 0;
+        while (true)
         {
-            byte[] content;
-            try
+            var scanned = 0;
+            var found = new List<string>();
+            var held = new List<string>();
+            foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
             {
-                using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                if (stream.Length > 64 * 1024 * 1024) continue;
-                content = new byte[stream.Length];
-                stream.ReadExactly(content);
+                byte[] content;
+                try
+                {
+                    using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+                    content = new byte[stream.Length];
+                    stream.ReadExactly(content);
+                }
+                // Deleted since the listing, such as a temporary file of the browser.
+                catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { continue; }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    held.Add($"{Path.GetRelativePath(folder, file)} ({error.Message.Trim()})");
+                    continue;
+                }
+                scanned++;
+                if (content.AsSpan().IndexOf(ascii) >= 0 || content.AsSpan().IndexOf(utf16) >= 0) found.Add(Path.GetRelativePath(folder, file));
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { continue; }
-            scanned++;
-            if (content.AsSpan().IndexOf(ascii) >= 0 || content.AsSpan().IndexOf(utf16) >= 0) found.Add(Path.GetRelativePath(folder, file));
+            clear = held.Count == 0 ? clear + 1 : 0;
+            if (clear == 2) return (scanned, [.. found]);
+            if (DateTime.UtcNow > deadline)
+                throw new InvalidOperationException($"Files in {folder} stayed open or unreadable, so the scan cannot check them: {string.Join("; ", held)}.");
+            await Task.Delay(TimeSpan.FromSeconds(1));
         }
-        return (scanned, [.. found]);
     }
+
+    // The page script of a guest and of the control: a persistent cookie and a localStorage key named after it.
+    private static string StoreScript(string name) => $$"""
+        document.cookie = "runic_guest_{{name}}=1; path=/; max-age=3600";
+        localStorage.setItem("runic_guest_{{name}}", "1");
+        return JSON.stringify({
+          origin: location.origin,
+          cookies: document.cookie,
+          bootstrap: typeof globalThis[Symbol.for("runic-desktop.bootstrap")]
+        });
+        """;
 
     private static string[] HostedFolders() =>
         OperatingSystem.IsWindows() ? Directory.GetDirectories(Path.GetTempPath(), "runic-desktop-hosted-*") : [];
@@ -211,15 +280,7 @@ internal static class HostedSmoke
                 {
                     await using var window = await host.OpenWindowAsync<HostedSmokeWindow>();
                     var surface = RunicDesktopHost.GetSurface(window) ?? throw new InvalidOperationException("The Window has no surface.");
-                    var seen = await surface.ExecuteJavaScriptAsync($$"""
-                        document.cookie = "runic_guest_{{name}}=1; path=/; max-age=3600";
-                        localStorage.setItem("runic_guest_{{name}}", "1");
-                        return JSON.stringify({
-                          origin: location.origin,
-                          cookies: document.cookie,
-                          bootstrap: typeof globalThis[Symbol.for("runic-desktop.bootstrap")]
-                        });
-                        """);
+                    var seen = await surface.ExecuteJavaScriptAsync(StoreScript(name));
                     Console.Out.Write(Report + name + " " + seen + "\n");
                     Console.Out.Flush();
                     if (behaviour == "crash")
@@ -228,6 +289,12 @@ internal static class HostedSmoke
                         Environment.Exit(CrashExitCode);
                     }
                     await window.WaitForCloseAsync();
+                    if (behaviour == "linger")
+                    {
+                        // Without a window until the host stops it (shutdown).
+                        try { await Task.Delay(Timeout.Infinite, host.Desktop.ShutdownRequested); }
+                        catch (OperationCanceledException) { }
+                    }
                     return 0;
                 });
         }
