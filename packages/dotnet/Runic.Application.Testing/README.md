@@ -344,6 +344,66 @@ The window follows in a turn of its model context, as in the application, and
 reading `host.ApplicationLocale` after the host was disposed throws
 `ObjectDisposedException`.
 
+Two options (since 0.17) start a test in a language:
+
+- `RunicWindowTestHostOptions.Locale` is the window's own locale from the
+  start, the way a ViewModel that sets `IRunicWindowLocale.Locale` before its
+  Window opens does; that ViewModel's choice still wins. The window keeps it
+  when the application switches. It means the same on every host: the
+  constructors, `Create`, and each Window that `CreateWindowAsync` opens.
+- `RunicWindowTestHostOptions.ApplicationLocale` starts the application in a
+  locale, as the application's startup code does before its first Window opens.
+  Windows without a locale of their own follow it, and follow a later switch.
+  `Create` and `CreateWindowAsync` set the `IRunicApplicationLocale` the
+  services register (with its followers, such as a Translations context), and
+  disposing the host, or the Window that `CreateWindowAsync` returned, sets it
+  back to what it was, so tests that share one provider do not inherit the
+  language. A host built with a constructor, or whose services register none,
+  starts its own `host.ApplicationLocale` in it. `CreateWindowAsync` requires
+  `AddRunicWindowService()` for it.
+
+With `FlowCultureFromLocale = true`, the window's requests also run in the
+locale's culture.
+
+```csharp
+// The application starts in German and can switch, as a user would.
+using var host = RunicWindowTestHost.Create<EditorViewModel>(services,
+    new RunicWindowTestHostOptions { ApplicationLocale = "de", FlowCultureFromLocale = true });
+await host.ApplicationLocale.SetLocaleAsync("en");   // the window follows
+
+// This window stays in Arabic whatever the application shows.
+using var arabic = RunicWindowTestHost.Create<EditorViewModel>(services,
+    new RunicWindowTestHostOptions { Locale = "ar" });
+```
+
+**Translated text.** The Testing package does not reference Runic
+Translations. To check the text a user sees, read a `TranslationReference`
+member and resolve it with the application's `TranslationContext` in the same
+locale. A catalog with a right-to-left locale isolates placeholders with
+invisible characters; compare after `BidiText.RemoveIsolates`:
+
+```csharp
+TranslationReference status = host.Root.Snapshot().Read(vm => vm.Status);
+await translations.SetLocaleAsync("de");   // de.rmf2: saved = {$title} gespeichert.
+Assert.Equal("Atlas gespeichert.", translations.Resolve(status).Text);
+await translations.SetLocaleAsync("ar");
+Assert.Equal("تم حفظ Atlas.", BidiText.RemoveIsolates(translations.Resolve(status).Text!));
+```
+
+**End-to-end tests in a language.** Applications created with
+`dotnet new runic-app --translations` start in the catalog's language for the
+`RUNIC_LOCALE` environment variable (`de-CH` starts in `de`), else in the
+operating system's language; the template saves no choice of the user's. With
+serve-only, a browser test runs the unchanged application in that language:
+
+```sh
+RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de dotnet run --project src/App
+```
+
+`RUNIC_LOCALE` is a convention of the application's startup code, not read by
+the Runic packages; see
+[the application's language](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text).
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host

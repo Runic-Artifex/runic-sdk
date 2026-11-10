@@ -1,0 +1,13 @@
+ready = Bereit.
+renamed = Umbenannt in {$title}.
+title_too_long = Der Titel darf höchstens {$max :integer} Zeichen lang sein.
+
+page {
+  title_label = Projekttitel
+  rename = In jedem Fenster umbenennen
+  language = Sprache
+}
+
+menu {
+  language = Sprache
+}

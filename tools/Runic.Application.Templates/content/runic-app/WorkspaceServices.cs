@@ -7,6 +7,11 @@ using Runic.Application.Views.CsWebUi;
 #if (viewModels == "reactiveui")
 using Runic.Application.Views.ReactiveUI;
 #endif
+#if (translations)
+using Runic.Application.Views;
+using Runic.Platform;
+using Runic.Translations;
+#endif
 
 namespace RunicWindowApp;
 
@@ -33,6 +38,45 @@ public static class WorkspaceServices
         // dialogs and the clipboard.
 #endif
         services.AddRunicPlatformServices();
+#if (translations)
+        // IRunicApplicationLocale, the application's language, which every Window follows.
+        services.AddRunicWindowService();
+        // The C# side of the catalog (Frontend/translations). It follows the application's language from its creation,
+        // before the Windows on every switch; both are singletons, so the subscription lasts as long as the application.
+        services.AddSingleton(provider =>
+        {
+            var translations = TranslationContext.CreateBuilder().Add(AppTextCatalog.Registration).Build();
+            provider.GetRequiredService<IRunicApplicationLocale>().Follow(translations.SetLocaleAsync);
+            return translations;
+        });
+#endif
         return services;
     }
+#if (translations)
+
+    /// <summary>
+    /// Sets the application's language at start: <paramref name="requested"/> (Program.cs passes the RUNIC_LOCALE
+    /// environment variable, for a test or screenshot run in a language; pass the user's saved choice too), else the best
+    /// match for the operating system's languages. Each is matched to the catalog's languages, so <c>de-CH</c> starts in
+    /// <c>de</c>; a requested tag the catalog has no language for is ignored with a warning.
+    /// </summary>
+    public static async Task StartLanguageAsync(this IServiceProvider services, string? requested,
+        CancellationToken cancellationToken = default)
+    {
+        var translations = services.GetRequiredService<TranslationContext>();
+        var language = SupportedLanguage(translations, requested);
+        if (language is null && !string.IsNullOrWhiteSpace(requested))
+            Console.Error.WriteLine($"warning: '{requested}' is none of the application's languages " +
+                $"({string.Join(", ", translations.SupportedLocales)}); it starts in the operating system's language.");
+        language ??= LocaleNegotiation.Negotiate(DesktopLanguages.Preferred, translations.SupportedLocales, AppTextCatalog.DefaultLocale);
+        await services.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync(language, cancellationToken);
+    }
+
+    /// <summary>
+    /// The catalog's language for <paramref name="requested"/>, such as <c>de</c> for <c>de-CH</c>, or
+    /// <see langword="null"/> when it names none of them or is not a language tag.
+    /// </summary>
+    public static string? SupportedLanguage(TranslationContext translations, string? requested) =>
+        string.IsNullOrWhiteSpace(requested) ? null : LocaleNegotiation.Match(requested.Trim(), translations.SupportedLocales);
+#endif
 }

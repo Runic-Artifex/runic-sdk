@@ -62,8 +62,16 @@ return RunicCsWebUiHost.Run(provider, RunAsync);
 #endif
 
 // The application is the same on every host: open the Window, then wait until it closes.
+#if (translations)
+async Task<int> RunAsync(IRunicWindowHost host)
+{
+    // The application's language: RUNIC_LOCALE (RUNIC_LOCALE=de dotnet run starts in German), else the best match for
+    // the operating system's languages. Save the user's choice and pass it here to keep it across starts.
+    await provider.StartLanguageAsync(Environment.GetEnvironmentVariable("RUNIC_LOCALE"));
+#else
 static async Task<int> RunAsync(IRunicWindowHost host)
 {
+#endif
     await using var window = await host.OpenWindowAsync<WorkspaceWindow>(new RunicWindowOptions { Width = 1000, Height = 700 });
     await window.WaitForCloseAsync();
     return 0;
