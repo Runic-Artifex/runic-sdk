@@ -317,6 +317,43 @@ public sealed class TranslatedTextTests
             "A DTO member's TextFor call did not name its type and display name.");
     }
 
+    // A Window that the window-level test host opens takes the application's RunicValidationOptions from its scope,
+    // as on Runic Desktop and CS-WebUI; the test host's options name others.
+    [Test]
+    public async Task WindowsTheTestHostOpensTakeTheApplicationsValidationOptionsAsync()
+    {
+        var calls = new List<(ValidationAttribute Attribute, RunicValidationMember Member)>();
+        var services = new ServiceCollection();
+        services.AddRunicReactiveModelContext();
+        services.AddScoped(_ =>
+        {
+            var model = new ValidationTextViewModel { Tag = "much too long" };
+            model.Validate();
+            return model;
+        });
+        services.AddScoped<Func<IBridgeTransport, WindowContentSession, ValidationTextViewModel, IDisposable>>(
+            _ => (transport, content, vm) => new ValidationTextBridge(transport, vm, content: content));
+        services.AddSingleton(AttributeTexts(calls));
+        services.AddRunicWindowService();
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+
+        await using (var window = await RunicWindowTestHost.CreateWindowAsync<ValidationTextWindow>(provider))
+        {
+            var errors = ValidationErrors(window.Host<ValidationTextViewModel>());
+            Require(TextKey(errors, "title") == "required" && TextKey(errors, "tag") == "too_long",
+                $"A test Window did not take the application's RunicValidationOptions: {errors}");
+            Require(calls.Count > 0, "TextFor of the application's RunicValidationOptions was not called.");
+        }
+
+        var other = new RunicValidationOptions { TextFor = (_, member) => TranslatedText.Text(TranslatedText.Reference("other", member.Message)) };
+        await using (var window = await RunicWindowTestHost.CreateWindowAsync<ValidationTextWindow>(provider,
+            hostOptions: new RunicWindowTestHostOptions { Validation = other }))
+        {
+            var errors = ValidationErrors(window.Host<ValidationTextViewModel>());
+            Require(TextKey(errors, "title") == "other", $"The test host's RunicValidationOptions did not take precedence: {errors}");
+        }
+    }
+
     private static T InCulture<T>(string name, Func<T> action)
     {
         var (culture, uiCulture) = (CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture);
