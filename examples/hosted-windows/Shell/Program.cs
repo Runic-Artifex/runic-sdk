@@ -8,8 +8,14 @@ using Runic.Desktop;
 using Runic.Platform;
 
 var services = new ServiceCollection();
+// --probe also reads the log for a counter window that did not open (ShellProbe.cs).
+var failures = args is ["--probe"] ? new HostedWindowFailures() : null;
 // Warnings reach the console, such as a counter window that did not open (event 2019).
-services.AddLogging(logging => logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning));
+services.AddLogging(logging =>
+{
+    logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning);
+    if (failures is not null) logging.AddProvider(failures);
+});
 services.AddRunicReactiveModelContext();
 services.AddScoped<ShellViewModel>();
 services.AddSingleton<ShellTheme>();
@@ -32,8 +38,8 @@ return RunicDesktopHost.Run(provider, options, async host =>
     var theme = provider.GetRequiredService<ShellTheme>();
     theme.Changed += (_, _) => _ = host.Desktop.SetColorSchemeAsync(theme.ColorScheme).AsTask();
 
-    // CI's check of the example on a real desktop (the views job, under Xvfb): ShellProbe.cs.
-    if (args is ["--probe"]) return await ShellProbe.RunAsync(host);
+    // CI's check of the example on a real desktop (the native job's Linux legs, under Xvfb): ShellProbe.cs.
+    if (failures is not null) return await ShellProbe.RunAsync(host, failures);
 
     await using var window = await host.OpenWindowAsync<ShellWindow>(new RunicWindowOptions { Width = 560, Height = 360 });
     await window.WaitForCloseAsync();

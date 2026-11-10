@@ -74,7 +74,9 @@ xvfb-run -a dotnet run --project examples/hosted-windows/Shell -c Release -- --p
 The counter's tests start the built counter with `RunicTestHost` and need no
 display. `--probe` is CI's check on a real desktop. The shell starts the
 counter, waits for its window and menu bar, switches to German and stops it.
-CI runs both in the Window and View journeys job.
+CI runs the tests in the Window and View journeys job and the probe in the native
+job's Linux legs, which have GTK 3 and WebKitGTK 4.1. Without them the probe
+fails with the reason the shell could not open the counter's window.
 
 The example builds the Runic packages from source. To copy it, replace the
 `ProjectReference` and `Import` lines with package references, as
