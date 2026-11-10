@@ -22,3 +22,9 @@ export declare function parseTextReference(json: string): { readonly ok: true; r
 export declare function decodeTextReference(value: unknown): DecodeResult;
 export declare function formatTextReference(reference: DecodedTextReference, handlers: TextReferenceHandlers, options?: MessageOptions): string | LocalizedContent | LocalizedDocument;
 export declare function resolveTextReference(value: unknown, handlers: TextReferenceHandlers, options?: MessageOptions): TextReferenceResolution;
+export declare const catalog: string;
+export declare const contractFingerprint: string;
+/** A catalog for createReferenceResolver: its generated transport module (`import * as transport from ".../transport.js"`) and its message namespace `m`. A transport module generated before Runic Translations 0.9 does not export its catalog ID, so its entry names it in `catalog`. */
+export interface ReferenceCatalog { readonly catalog?: string; readonly transport: Readonly<{ catalog?: string; resolveTextReference(value: unknown, handlers: TextReferenceHandlers, options?: MessageOptions): TextReferenceResolution }>; readonly messages: TextReferenceHandlers; }
+/** Resolves references of every listed catalog, such as the application's and its libraries', by the reference's catalog, with that catalog's resolveTextReference (a version 2 reference written against another release of a catalog is checked key by key and reports `contract-changed`). A reference of an unlisted catalog shows its fallback text (`catalog-mismatch`). */
+export declare function createReferenceResolver(catalogs: readonly ReferenceCatalog[]): (value: unknown, options?: MessageOptions) => TextReferenceResolution;

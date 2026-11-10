@@ -1,0 +1,2 @@
+# A component library's catalog for translated-text.esm.test.ts: references of two catalogs on one page.
+rows_selected = {$count :integer} rows selected in {$table}

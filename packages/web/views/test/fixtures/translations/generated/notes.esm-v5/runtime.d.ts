@@ -13,8 +13,10 @@ export type Rmf2Input = string | boolean | bigint | number | Rmf2Decimal;
 export type MessageOptions = Readonly<{ locale?: string }>;
 export type Rmf2Annotation = Readonly<{ name: string; value?: string | Rmf2Decimal }>;
 export type LocalizedContentNode = Readonly<{ kind: "text"; value: string; annotations: readonly Rmf2Annotation[] } | { kind: "element"; name: string; attributes: Readonly<Record<string,string>>; annotations: readonly Rmf2Annotation[]; closingAnnotations: readonly Rmf2Annotation[]; standalone: boolean; occurrence: string; children: readonly LocalizedContentNode[] }>;
-export type LocalizedContent<Slots extends Record<string,string> = Record<string,string>> = Readonly<{ readonly __slots?: Slots; kind: "localized-content"; key: string; locale: string; nodes: readonly LocalizedContentNode[] }>;
-export type LocalizedDocument<Slots extends Record<string,string> = Record<string,string>> = Readonly<{ readonly __slots?: Slots; kind: "localized-document"; key: string; locale: string; nodes: readonly LocalizedContentNode[] }>;
+export type LocalizedContent<Slots extends Record<string,string> = Record<string,string>> = Readonly<{ readonly __slots?: Slots; kind: "localized-content"; key: string; locale: string; formatLocale: string; nodes: readonly LocalizedContentNode[] }>;
+export type LocalizedDocument<Slots extends Record<string,string> = Record<string,string>> = Readonly<{ readonly __slots?: Slots; kind: "localized-document"; key: string; locale: string; formatLocale: string; nodes: readonly LocalizedContentNode[] }>;
+/** The locale whose text a message shows (`locale`, for `lang`) and the locale its numbers and dates format in. */
+export type MessageLocale = Readonly<{ key: string; locale: Locale; formatLocale: string }>;
 export type LinkBinding = Readonly<{ kind: "runic:link"; href: string }>;
 export type ActionBinding = Readonly<{ kind: "runic:action"; onActivate: () => void }>;
 export type IconBinding = Readonly<{ kind: "runic:icon"; asset: unknown; decorative: boolean; accessibleName?: (locale: string) => string }>;
@@ -31,11 +33,27 @@ export declare const baseLocale: Locale;
 export declare const locales: readonly Locale[];
 export declare function decimal(value: string): Rmf2Decimal;
 export declare function resolveLocale(locale: string): Locale;
+/** The best declared locale for an ordered preference list (navigator.languages, Accept-Language, LANGUAGE), matched with CLDR likely subtags; the base locale when none matches. */
+export declare function negotiateLocale(preferences: Iterable<string>): Locale;
 /** The text direction of any BCP 47 locale tag's script, for the page's `dir` attribute. */
 export declare function localeDirection(locale: string): "ltr" | "rtl";
+/** Removes the bidi isolation controls U+2066–U+2069 that formatting puts around placeholders, for plain-text sinks such as terminals, logs and tests. */
+export declare function removeBidiIsolates(text: string): string;
 export declare function getLocale(): Locale;
+/** The canonical tag the locale resolver asks for, before it resolves to a catalog locale (`de-CH` where `getLocale()` gives `de`). */
+export declare function getRequestedLocale(): string;
+/** The content and formatting locales of a message for the current or given locale, such as the `lang` of a string message. */
+export declare function getMessageLocale(key: string, options?: MessageOptions): MessageLocale;
+/** Calls the listener when a message shows the text of a fallback locale: its key, the catalog locale it was requested in and the locale of its text. Returns a function that removes the listener. */
+export declare function onFallback(listener: (key: string, requested: Locale, content: Locale) => void): () => void;
+/** Sets the locale of this catalog only, over the shared locale; returns a function that removes the resolver. */
 export declare function configureLocaleResolver(resolver: () => string): () => void;
-export declare function createLocaleSource(options?: { initialLocale?: string }): Readonly<{ getLocale(): Locale; setLocale(locale: Locale): void; subscribe(listener: (locale: Locale) => void): () => void }>;
+/** Sets the locale of every catalog on the page (or in the process) that has no resolver of its own, such as a library's: the shared locale channel. Each catalog resolves the tag under its own locales, so pass the requested tag (`source.getRequestedLocale`). Inside `runWithLocale`, the request's locale applies instead; on a server, use `runWithLocale`, as this resolver is process-wide. Returns a function that removes this resolver: the latest one still installed then applies, whatever order they are removed in. */
+export declare function configureSharedLocaleResolver(resolver: () => string): () => void;
+/** Sets the zone that `timeZone=local` formats in, such as the browser's zone that an SSR request carries in a cookie; `undefined`, or a zone the engine does not know, means the host's zone. Returns a function that removes the resolver. */
+export declare function configureTimeZoneResolver(resolver: () => string | null | undefined): () => void;
+/** `getLocale()` is the catalog locale and `getRequestedLocale()` the canonical tag it was set to (`initialLocale: "de-CH"` gives `de` and `de-CH`), which numbers and dates format in. `setLocale` with the current catalog locale keeps a regional requested tag, so a locale-prefixed navigation to `/de` keeps Swiss formatting. */
+export declare function createLocaleSource(options?: { initialLocale?: string }): Readonly<{ getLocale(): Locale; getRequestedLocale(): string; localeDirection(locale: string): "ltr" | "rtl"; setLocale(locale: Locale): void; subscribe(listener: (locale: Locale) => void): () => void }>;
 export declare function linkBinding(options: { href: string }): LinkBinding;
 export declare function actionBinding(options: { onActivate: () => void }): ActionBinding;
 export declare function iconBinding(options: { asset: unknown; decorative: true } | { asset: unknown; decorative: false; accessibleName: (locale: string) => string }): IconBinding;
@@ -49,4 +67,4 @@ export declare function toPlainText<S extends Record<string,string>>(content: Lo
 export declare function toPlainText<S extends Record<string,string>>(content: LocalizedContent<S> | LocalizedDocument<S>, options: { slots: SlotBindings<S>; allowActionLabels?: boolean; annotateLinkDestinations?: boolean; custom?: readonly MarkupBinding<string>[]; listMarker?: string }): string;
 export declare function createDomInlineRenderer(document: Document, bindings?: readonly MarkupBinding<Node>[]): InlineRenderer<Node>;
 export interface DomDocumentRenderer extends DocumentRenderer<Node> { setContent<S extends Record<string,string>>(target: Element | DocumentFragment, content: LocalizedDocument<S>, options: { slots: SlotBindings<S> }): void; clearContent(target: Element | DocumentFragment): void; extend(bindings: readonly MarkupBinding<Node>[]): DomDocumentRenderer; }
-export declare function createDomDocumentRenderer(document: Document, options?: { headingBase?: number; custom?: readonly MarkupBinding<Node>[] }): DomDocumentRenderer;export declare const projectMarkup: Readonly<Record<never, MarkupContract>>;
+export declare function createDomDocumentRenderer(document: Document, options?: { headingBase?: number; custom?: readonly MarkupBinding<Node>[]; /** The page's direction: a top-level block whose content locale has the other direction gets dir. By default the document's <html dir> when it is "ltr" or "rtl", else the active locale's (getLocale()). */ pageDirection?: "ltr" | "rtl" }): DomDocumentRenderer;export declare const projectMarkup: Readonly<Record<never, MarkupContract>>;
