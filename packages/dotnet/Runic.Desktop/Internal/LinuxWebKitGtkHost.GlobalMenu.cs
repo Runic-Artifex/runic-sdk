@@ -113,7 +113,8 @@ internal sealed partial class LinuxWebKitGtkHost
 
         public bool? IsChecked(DesktopMenuItem item) => host.IsMenuItemChecked(item);
 
-        public void Execute(DesktopMenuItem item) => host.RunMenuItem(item);
+        // A choice in the desktop's global menu, which shows the window's bar.
+        public void Execute(DesktopMenuItem item) => HostMenuChoice.Run(() => host.RunMenuItem(item));
 
         public void PlacementChanged(bool global) => host.OnGlobalPlacement(global);
 

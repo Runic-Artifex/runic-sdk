@@ -18,7 +18,7 @@
     "w1-write": {"kind":"request"},
     "r2": {"kind":"request"}
   },
-  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000,"guestActivation":2000},"host":{"name":"Conformance Host","version":"1.0.0"}},
   "steps": [
     {"start":{"host":true}},
     {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
@@ -32,6 +32,7 @@
     {"user":{"action":"copyText","text":"Pasted"},"note":"The user copied text in another application."},
     {"send":{"id":{"$id":"r0"},"kind":"clipboard-read","window":"w1","format":"text","maximum":1024},"connection":"c1"},
     {"receive":{"id":{"$id":"r0"},"ok":false,"error":{"kind":"rejected","reason":"refused","message":{"$any":"string"}}},"connection":"c1","note":"w1 is active because the guest opened it."},
+    {"advance":"guestActivation","note":"Any activation of the guest's windows right after its own request counts as the guest's."},
     {"user":{"action":"deactivateWindow","window":"w1"}},
     {"user":{"action":"activateWindow","window":"w1"},"note":"The user switches to the window: the user activated it."},
     {"send":{"id":{"$id":"r1"},"kind":"clipboard-read","window":"w1","format":"text","maximum":1024},"connection":"c1"},

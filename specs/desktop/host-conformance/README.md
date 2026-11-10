@@ -32,9 +32,12 @@ uses, and `steps` what happens, in order.
   under test with; for the `host` role also `menuRequests`, a window's menu requests per second, `guestMenuRequests`,
   the guest's menu requests per second across its windows, `dialogs`, the dialogs a guest shows at once, and
   `dialogRate`, the dialogs a guest shows per ten seconds, `serviceRate`, the guest's clipboard and monitor requests per
-  second, `launchRate`, its launches per ten seconds, `presentRate`, its `present` and `set-visible` requests that show a
-  window per second, and `announcementRate`, its announcements per second (each rate also its burst), which are the
-  host's defaults when absent. Rates are the host's policy, not the protocol's: a host may choose others, and a scenario
+  second, `launchRate`, its launches per ten seconds, `presentRate`, its requests that can activate a window
+  (`present`, `minimize`, `set-visible`, `set-full-screen` and `toggle-maximized`) per second, and `announcementRate`,
+  its announcements per second (each rate also its burst), which are the host's defaults when absent. Also for the
+  `host` role, `guestActivation`: how long after the guest's last request that can activate one of its windows the host
+  counts an activation as the guest's; a host that fixes it, as Runic's does at 2,000, is not configured with it, and its
+  runner waits at least the host's own value. Rates are the host's policy, not the protocol's: a host may choose others, and a scenario
   that checks one names it. The protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
   a limit names it in an [`advance`](#steps) step; a runner waits the configured time, so scenarios use small values.
 - `application`: for the `guest` role, the guest application's `name`, `version` and `applicationId`, which its
@@ -184,7 +187,7 @@ for a `user` step that answers it, or until the host closes it.
 
 | Action | Members | What the user does |
 | --- | --- | --- |
-| `chooseMenuItem` | `window`, `titles`: the path of titles to an item of the window's menu bar; optional `bar: "previous"` | Chooses the item, as its native bar or its shortcut does; the step fails when the bar has no such enabled item. With `bar: "previous"`, an item of the bar the window showed before its current one, as a click on the native bar while the guest's new bar arrived: the host decides whether it runs |
+| `chooseMenuItem` | `window`, `titles`: the path of titles to an item of the window's menu bar; optional `bar: "previous"`; optional `by`: `"click"`, the default, or `"shortcut"` | Chooses the item, with a click in its native bar or, with `by: "shortcut"`, with its shortcut, a key the page left unhandled; the step fails when the bar has no such enabled item. With `bar: "previous"`, an item of the bar the window showed before its current one, as a click on the native bar while the guest's new bar arrived: the host decides whether it runs |
 | `awaitContextMenu` | — | Waits until the host shows a context menu, and leaves it open |
 | `chooseContextItem` | `title`, or `dismiss: true` | Chooses the item of that title in the oldest open context menu, or dismisses it |
 | `awaitDialog` | optional `dialog` | Waits until the host shows a dialog (of that kind), and leaves it open |

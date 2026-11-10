@@ -71,9 +71,10 @@ internal static class FileDropSupport
 
     // For WebView2, whose File objects carry their paths only to the host: every document, subframes included, hands
     // the dropped files to chrome.webview.postMessageWithAdditionalObjects; the host hears the top-level document and
-    // frames of the presented origin only. The function and the token are captured before any page script runs. Page
-    // script in the same world can still dispatch a drop of File objects it holds, which the user handed it, so the
-    // token only keeps other messages from passing as drops, and the reported effect is as untrusted as the label.
+    // frames of the presented origin only. The function and the token are captured before any page script runs, and
+    // only a trusted drop, the user's, is reported: page script cannot dispatch a drop of File objects it holds. The
+    // report is a null-prototype object, so nothing the page puts on Object.prototype, such as toJSON, sees the token
+    // while JSON.stringify writes it. The reported effect is as untrusted as the label.
     internal static string WebView2Script(string token) => $$"""
         (() => {
           "use strict";
@@ -89,9 +90,12 @@ internal static class FileDropSupport
           globalThis.addEventListener("drop", event => {
             if (!hasFiles(event)) return;
             event.preventDefault();
+            if (!event.isTrusted) return;
             const effect = marked(event);
             if (effect === "none" || event.dataTransfer.files.length === 0) return;
-            post(stringify({ runicFileDrop: "{{token}}", target: label(event), effect: performed(event, effect) }), event.dataTransfer.files);
+            const target = label(event), performedEffect = performed(event, effect);
+            post(stringify({ __proto__: null, runicFileDrop: "{{token}}", target: typeof target === "string" ? target : null,
+              effect: typeof performedEffect === "string" ? performedEffect : null }), event.dataTransfer.files);
           }, true);
         })();
         """;

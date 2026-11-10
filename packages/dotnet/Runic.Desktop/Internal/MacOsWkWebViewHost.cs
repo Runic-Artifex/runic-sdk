@@ -1209,13 +1209,21 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
-            if (Declared(sender) is { Enabled: true, Entry: DesktopMenuItem item }) ExecuteMenuCommand(item);
+            if (Declared(sender) is not { Enabled: true, Entry: DesktopMenuItem item }) return;
+            // AppKit runs a key equivalent through the same action: only a choice in the menu, such as a click, is one
+            // in the host's native menu (HostMenuChoice). The menu's own keyboard navigation counts as a key too.
+            var application = Api.SharedApplicationIfCreated();
+            var current = application == 0 ? 0 : Api.SendNint(application, "currentEvent");
+            if (current != 0 && Api.SendNint(current, "type") == NsEventTypeKeyDown) ExecuteMenuCommand(item);
+            else HostMenuChoice.Run(() => ExecuteMenuCommand(item));
         }
         catch
         {
             // Never unwind through AppKit.
         }
     }
+
+    private const nint NsEventTypeKeyDown = 10;
 
     // AppKit asks before it shows a menu or answers a key equivalent. Only the declared items depend on a command. A check
     // or radio item also takes its check mark from the key window's command path here, so it follows the front window.

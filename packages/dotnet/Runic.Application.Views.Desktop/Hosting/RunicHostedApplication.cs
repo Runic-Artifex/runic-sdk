@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net.WebSockets;
@@ -327,8 +328,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         if (HostProtocol.String(push, "kind") != "window-closed") return;
         RunicHostedWindow? window;
         lock (_gate) window = HostProtocol.String(push, "window") is { } id ? _windows.GetValueOrDefault(id) : null;
-        // The push runs in the receive loop; the close does not hold it.
-        if (window is not null) _ = window.OnGuestClosedAsync();
+        // The push runs in the receive loop; the close does not hold it. Closing a window activates another one, such as
+        // its owner, at the guest's request (window-services/1).
+        if (window is not null) _ = CloseForGuestAsync(window);
+    }
+
+    private async Task CloseForGuestAsync(RunicHostedWindow window)
+    {
+        NoteGuestActivation();
+        try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
+        finally { NoteGuestActivation(); }
     }
 
     private async Task OnRequestAsync(HostRequest request)
@@ -368,12 +377,12 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable))).ConfigureAwait(false);
             return;
         }
-        // The guest's requests that can activate the window, and its announcements, have rates of their own (Limits).
-        if ((IsActivation(presentation) && !PresentRate.TryTake()) || (kind == RunicHostedPresentationKind.Announce && !AnnouncementRate.TryTake()))
+        // The guest's requests that can activate a window, and its announcements, have rates of their own (Limits).
+        if ((CanActivate(presentation.Kind) && !PresentRate.TryTake()) || (kind == RunicHostedPresentationKind.Announce && !AnnouncementRate.TryTake()))
         {
             await request.FailAsync("rejected", "capacity", kind == RunicHostedPresentationKind.Announce
                 ? "The application's announcements are over the host's rate."
-                : "The application's requests to bring its windows to the front are over the host's rate.").ConfigureAwait(false);
+                : "The application's requests that can activate its windows are over the host's rate.").ConfigureAwait(false);
             return;
         }
         // An assertive announcement interrupts the user's screen reader, so it comes only from the window the user works
@@ -401,16 +410,52 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.FailAsync("failed", null, "The host's window policy named a window of another application.").ConfigureAwait(false);
             return;
         }
-        // An activation that follows is the guest's, not the user's (window-services/1).
-        if (IsActivation(applied)) applied.Window.NoteGuestActivationRequest();
-        var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
-        await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+        // An activation that follows is the guest's, not the user's (window-services/1): noted before the request, and
+        // again once it applied, since the platform reports the activation after the request.
+        var activates = CanActivate(presentation.Kind) || CanActivate(applied.Kind);
+        if (activates) NoteGuestActivation();
+        try
+        {
+            var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
+            await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (activates) NoteGuestActivation();
+        }
     }
 
-    private static bool IsActivation(RunicHostedPresentationRequest request) =>
-        request.Kind == RunicHostedPresentationKind.Present || request is { Kind: RunicHostedPresentationKind.SetVisible, Value: true };
+    // The presentation requests that can activate one of the guest's windows, or another window when theirs loses the
+    // activation: present, minimize, set-visible either way, set-full-screen either way and toggle-maximized, which on
+    // Windows show the window with activation. Resizing, moving and the others never activate.
+    private static bool CanActivate(RunicHostedPresentationKind kind) => kind is RunicHostedPresentationKind.Present
+        or RunicHostedPresentationKind.Minimize or RunicHostedPresentationKind.SetVisible or RunicHostedPresentationKind.SetFullScreen
+        or RunicHostedPresentationKind.ToggleMaximized;
 
-    // The guest's present and set-visible requests, and its announcements, across its windows (RunicHostedLimits).
+    // window-services/1: the guest's last request that can activate one of its windows (a Stopwatch timestamp; 0 for
+    // none), across its windows: an activation of any of them within RunicHostedWindow.GuestActivationWindow after it is
+    // the guest's. Besides the requests above: window-open, the guest's close of a window (window-closed), and the end of
+    // its dialogs and context menus, after which the platform activates their owner, also when the user answered.
+    private long _guestActivation;
+
+    // The guest's dialogs and context menus shown now: while one is, and within GuestActivationWindow after it ended,
+    // an activation is the guest's, since the platform activates the owner as it closes, before the host learns why.
+    private int _guestPrompts;
+
+    internal void NoteGuestActivation() => Volatile.Write(ref _guestActivation, Stopwatch.GetTimestamp());
+
+    internal void BeginGuestPrompt() => Interlocked.Increment(ref _guestPrompts);
+
+    internal void EndGuestPrompt()
+    {
+        NoteGuestActivation();
+        Interlocked.Decrement(ref _guestPrompts);
+    }
+
+    internal bool IsGuestActivationRecent => Volatile.Read(ref _guestPrompts) > 0 ||
+        (Volatile.Read(ref _guestActivation) is var noted and not 0 && Stopwatch.GetElapsedTime(noted) <= RunicHostedWindow.GuestActivationWindow);
+
+    // The guest's requests that can activate a window, and its announcements, across its windows (RunicHostedLimits).
     private RequestRate? _presentRate;
     private RequestRate? _announcementRate;
 
@@ -521,8 +566,9 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         {
             surface = await _host.Desktop.CreateHostedSurfaceAsync(url!, _dataStore!, _ending.Token).ConfigureAwait(false);
             // The window gets the focus at the guest's request (window-services/1, the guest's activation).
-            window.NoteGuestActivationRequest();
+            NoteGuestActivation();
             presentation = await surface.OpenWindowAsync(options, _ending.Token).ConfigureAwait(false);
+            NoteGuestActivation();
             if (!presentation.IsOpen) throw new InvalidOperationException("The window was closed while it opened.");
         }
         catch (Exception error) when (error is not OutOfMemoryException)

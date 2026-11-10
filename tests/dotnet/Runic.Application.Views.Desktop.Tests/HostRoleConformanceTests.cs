@@ -10,6 +10,7 @@ using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Desktop.Hosting;
 using Runic.Desktop;
+using Runic.Desktop.Internal;
 using Runic.Platform;
 using TUnit.Core;
 
@@ -72,6 +73,16 @@ internal sealed class HostRoleConformanceTests
         private TimeSpan Limit(string name, TimeSpan fallback) =>
             Limits[name] is { } value ? TimeSpan.FromMilliseconds(value.GetValue<int>()) : fallback;
 
+        // The wait of an advance step. Runic's host fixes how long an activation after the guest's request counts as the
+        // guest's (RunicHostedWindow.GuestActivationWindow), so the runner waits at least that long, and a little more.
+        private TimeSpan Advance(string name)
+        {
+            var wait = Limit(name, StepTimeout);
+            return name == "guestActivation"
+                ? TimeSpan.FromTicks(Math.Max(wait.Ticks, RunicHostedWindow.GuestActivationWindow.Ticks)) + TimeSpan.FromMilliseconds(100)
+                : wait;
+        }
+
         public async Task RunAsync()
         {
             var steps = scenario["steps"]!.AsArray();
@@ -101,7 +112,7 @@ internal sealed class HostRoleConformanceTests
                 case "closed": await ClosedAsync(value!.AsObject()); break;
                 case "disconnect": await HostChannel.CloseAsync(_connections[value!.GetValue<string>()], WebSocketCloseStatus.NormalClosure, ""); break;
                 case "exit": await ExitAsync(value!.GetValue<int>()); break;
-                case "advance": await Task.Delay(Limit(value!.GetValue<string>(), StepTimeout)); break;
+                case "advance": await Task.Delay(Advance(value!.GetValue<string>())); break;
                 case "expect": await ExpectAsync(value!.AsObject()); break;
                 case "user": await UserAsync(value!.AsObject()); break;
                 default: throw new InvalidOperationException($"The host runner does not implement the step '{action}'.");
@@ -287,11 +298,13 @@ internal sealed class HostRoleConformanceTests
                     if (user["bar"] is not null)
                     {
                         // The bar the window showed before its current one, which the user still clicks during a change.
-                        Check(native.ChoosePrevious(titles),
+                        Check(HostMenuChoice.Run(() => native.ChoosePrevious(titles)),
                             $"The window's previous menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.PreviousMenuBar)}.");
                         break;
                     }
-                    Check(native.Choose(titles), $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
+                    // A click in the native bar is a choice in the host's own menu; a shortcut is a key the page left alone.
+                    var chosen = user["by"]?.GetValue<string>() == "shortcut" ? native.Choose(titles) : HostMenuChoice.Run(() => native.Choose(titles));
+                    Check(chosen, $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
                     break;
                 case "deactivateWindow" or "activateWindow":
                     await SwitchAsync(user["window"]!.GetValue<string>(), action == "activateWindow");

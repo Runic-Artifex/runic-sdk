@@ -186,13 +186,14 @@ public sealed partial class RunicHostedApplication
     }
 
     // Whether the user gave the guest the path, and it is still the same file: a guest cannot replace a given file with
-    // another, or with a link to another, and open that.
-    private bool IsGiven(string path)
+    // another, or with a link to another, and open that. With opened, the identity of the file opened for the launch too.
+    private bool IsGiven(string path, GivenFileHandle? opened = null)
     {
         if (FullPath(path) is not { } full) return false;
         GivenFile? given;
         lock (_givenGate) given = _given.GetValueOrDefault(full);
-        return given is not null && Identify(full) is { } now && now.Target == given.Target && now.Identity == given.Identity;
+        return given is not null && Identify(full) is { } now && now.Target == given.Target && now.Identity == given.Identity &&
+            (opened is null || opened.IsFile(given.Identity));
     }
 
     private static GivenFile? Identify(string full)
@@ -276,11 +277,12 @@ public sealed partial class RunicHostedApplication
         return true;
     }
 
-    // A request of the guest for the window, with the window's activation as it is now.
-    private static RunicHostedServiceRequest ServiceRequest(RunicHostedWindow window, RunicHostedServiceKind kind, Func<bool, bool> isAllowedByDefault)
+    // A request of the guest for the window, with the window's activation as it is now, read once for the decision.
+    private static RunicHostedServiceRequest ServiceRequest(RunicHostedWindow window, RunicHostedServiceKind kind,
+        Func<RunicHostedWindow.ActivationSnapshot, bool> isAllowedByDefault)
     {
-        var guestActivated = window.IsGuestActivated;
-        return new RunicHostedServiceRequest(window, kind, isAllowedByDefault(window.IsActive && !guestActivated), guestActivated);
+        var activation = window.Activation;
+        return new RunicHostedServiceRequest(window, kind, isAllowedByDefault(activation), activation.GuestActivated);
     }
 
     // The policy's decision; the request that runs, which keeps the guest's kind and window, and a clipboard request's
@@ -324,7 +326,7 @@ public sealed partial class RunicHostedApplication
     {
         var format = HostServices.Format(HostProtocol.String(message, "format")) ?? DesktopClipboardFormats.None;
         // Reads only for the window the user works in (host-protocol.md, Window services).
-        var applied = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.ClipboardRead, static userActive => userActive) with
+        var applied = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.ClipboardRead, static activation => activation.UserActive) with
         {
             ClipboardFormats = format,
         }, cancellationToken).ConfigureAwait(false);
@@ -376,8 +378,8 @@ public sealed partial class RunicHostedApplication
         var formats = Formats(content);
         // Writes only for the window the user works in, or just worked in, so a guest cannot replace what the user copies
         // in another window (host-protocol.md, Window services).
-        var inGrace = window.IsInWriteGrace;
-        var applied = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.ClipboardWrite, userActive => userActive || inGrace) with
+        var applied = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.ClipboardWrite,
+            static activation => activation.UserActive || activation.InWriteGrace) with
         {
             ClipboardFormats = formats,
         }, cancellationToken).ConfigureAwait(false);
@@ -465,12 +467,12 @@ public sealed partial class RunicHostedApplication
         if (HostProtocol.String(message, "uri") is { } text)
         {
             var uri = new Uri(text, UriKind.Absolute);
-            proposed = ServiceRequest(window, RunicHostedServiceKind.Launch, userActive => userActive && HostServices.IsDefaultUri(uri)) with { Uri = uri };
+            proposed = ServiceRequest(window, RunicHostedServiceKind.Launch, activation => activation.UserActive && HostServices.IsDefaultUri(uri)) with { Uri = uri };
         }
         else
         {
             var path = HostProtocol.String(message, "path")!;
-            proposed = ServiceRequest(window, RunicHostedServiceKind.Launch, userActive => userActive && IsGiven(path)) with
+            proposed = ServiceRequest(window, RunicHostedServiceKind.Launch, activation => activation.UserActive && IsGiven(path)) with
             {
                 Path = path,
                 Operation = HostServices.Operation(HostProtocol.String(message, "operation") ?? "open")!.Value,
@@ -485,7 +487,10 @@ public sealed partial class RunicHostedApplication
             var result = applied.Uri is { } link
                 ? await launcher.LaunchUriAsync(link, cancellationToken).ConfigureAwait(false)
                 : applied.Path is { } file && Path.IsPathFullyQualified(file)
-                    ? await launcher.LaunchAsync(file, applied.Operation, cancellationToken).ConfigureAwait(false)
+                    // A file the defaults allowed because the user gave it is checked again as it is launched.
+                    ? proposed.IsAllowedByDefault && file == proposed.Path
+                        ? await LaunchGivenAsync(launcher, file, applied.Operation, cancellationToken).ConfigureAwait(false)
+                        : await launcher.LaunchAsync(file, applied.Operation, cancellationToken).ConfigureAwait(false)
                     : throw new RejectedException("failed", null, "The host's window policy returned a launch without an absolute path or a link.");
             return Outcome(result);
         }
@@ -496,6 +501,35 @@ public sealed partial class RunicHostedApplication
                 : new RejectedException("failed", null, "The host's window policy returned a launch that is not valid.");
         }
     }
+
+    // A given file, after the policy's decision: opened, checked through the handle and launched through it on Linux,
+    // with the handle held across the launch on Windows, and checked by path right before the launch on macOS
+    // (GivenFileHandle). A guest that renamed another file over the path meanwhile opens nothing.
+    private async Task<PlatformResult<PlatformUnit>> LaunchGivenAsync(IDesktopFileLauncher launcher, string file, DesktopFileOperation operation,
+        CancellationToken cancellationToken)
+    {
+        using var opened = GivenFileHandle.Open(file, out var inUse);
+        if (inUse) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Conflict);
+        if ((GivenFileHandle.IsSupported && opened is null) || !IsGiven(file, opened))
+            throw new RejectedException("rejected", "refused", "The host opens only files the user gave the application, and this one changed since.");
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) return await LaunchThroughPortalAsync(launcher, file, operation, opened!.Handle, cancellationToken).ConfigureAwait(false);
+#endif
+        return await launcher.LaunchAsync(file, operation, cancellationToken).ConfigureAwait(false);
+    }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    // The portal launcher of the window's services hands the portal the opened descriptor (PortalFileLauncher.Preopened);
+    // the value ends with this method. In a method of its own, so only Linux loads the portal's assembly.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static async Task<PlatformResult<PlatformUnit>> LaunchThroughPortalAsync(IDesktopFileLauncher launcher, string file,
+        DesktopFileOperation operation, Microsoft.Win32.SafeHandles.SafeFileHandle handle, CancellationToken cancellationToken)
+    {
+        Runic.Platform.Linux.Portal.PortalFileLauncher.Preopened.Value = (file, handle);
+        return await launcher.LaunchAsync(file, operation, cancellationToken).ConfigureAwait(false);
+    }
+#endif
 
     // ----- Drops
 

@@ -858,8 +858,9 @@ var exitCode = await tool.Exited;
   the host's rights, and receives the files the user drops onto a window whose Window takes them; dropped files
   without a path, such as macOS file promises, are not forwarded. `IRunicHostedWindowPolicy.ServiceAsync` decides each
   request (`RunicHostedServiceRequest`); by default (`IsAllowedByDefault`) the host reads and writes the clipboard only
-  for the window the user works in (active, and not because the guest opened, presented or showed it:
-  `IsGuestActivated`; writes also within a second after the user left it), lists monitors for any window, and opens
+  for the window the user works in (active, and not within two seconds after any of the guest's requests that can
+  activate one of its windows, such as opening, presenting, maximizing or closing one: `IsGuestActivated`; writes also
+  within a second after the user left it), lists monitors for any window, and opens
   only `http`, `https` and `mailto` links and the files the user gave the guest through the host's open dialogs or
   drops, while each is still the same file, only for the window the user works in. A
   policy can widen or narrow this, change a launch (such as reveal instead of open) or forward only some dropped
@@ -868,8 +869,8 @@ var exitCode = await tool.Exited;
 - **Limits.** `IRunicHostedWindowPolicy.Limits` (`RunicHostedLimits`) bounds a window's menu requests (20 a second by
   default; Runic's guest sends its latest menus again when one is turned away), the dialogs a guest shows at once,
   across its windows (one by default; another reports `ResourceBusy` to a Runic guest), its clipboard and monitor
-  requests (20 a second), the files and links it opens (5 per ten seconds), its requests that bring a window to the
-  front (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5). The host rebuilds a window's native bar
+  requests (20 a second), the files and links it opens (5 per ten seconds), its requests that can activate a window
+  (present, minimize, set-visible, set-full-screen and toggle-maximized: 2 a second after a burst of 3) and its announcements (2 a second after a burst of 5). The host rebuilds a window's native bar
   at most every 50 milliseconds, however many changes arrive.
 - **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
   own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest

@@ -191,12 +191,12 @@ internal sealed partial class WindowsWebView2Host
         }
     }
 
-    // WM_COMMAND from the bar: the item of the id, through the command path. Ids are never reused, so a choice that
-    // arrives after SetMenuBar removed the item runs nothing.
+    // WM_COMMAND from the bar: the item of the id, through the command path, as a choice in the host's native menu.
+    // Ids are never reused, so a choice that arrives after SetMenuBar removed the item runs nothing.
     private void RunBarItem(uint id)
     {
         if (_menuBar.Items.TryGetValue(id, out var entry) && entry is { Planned.Enabled: true, Item: { } item })
-            RunItem(item);
+            HostMenuChoice.Run(() => RunItem(item));
     }
 
     private void RunItem(DesktopMenuItem item)

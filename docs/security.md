@@ -278,9 +278,13 @@ experimental (`RUNICDESK103`). What Runic enforces:
 - **Clipboard, links and files: the host's rights, the user's choices.** With `window-services/1` a guest uses the
   host's clipboard, monitors and launcher, which act with the host's rights. The clipboard holds what the user copies in
   every application, passwords included, so the host reads and writes it for a guest only while the user works in the
-  guest's window: it is active, and not because the guest itself opened, presented or showed it within the last two
-  seconds. A guest that brings its window to the front cannot use that focus to read what the user just copied, replace
-  it or open links; the user's own switch to the window, a choice in its menus or a drop onto it gives it back. A write
+  guest's window: it is active, and not within two seconds after any of the guest's requests that can activate one of
+  its windows, such as opening, presenting, maximizing or leaving full screen, closing an owned window, which activates
+  its owner, or the end of one of its dialogs. A guest that brings its window to the front cannot use that focus to read
+  what the user just copied, replace it or open links; the user's own later switch to the window, a choice in its native
+  menu bar or in a context menu shown while the user worked in it, or a drop onto it gives it back. A shortcut of its
+  menus does not, since a key the guest's page leaves unhandled runs it, and neither does an answer to the guest's own
+  dialog or context menu. A write
   is also allowed within a second after the user left the window, for a copy that closes it. The host never tells a
   guest when the clipboard changes: a guest in the background cannot snoop on it or replace what the user copies
   elsewhere (threat T14). A guest the user works in can read what the clipboard holds, as any focused application can;
@@ -292,8 +296,8 @@ experimental (`RUNICDESK103`). What Runic enforces:
   `mailto` attachments), at most five per ten seconds by default: a guest cannot start a program, open a settings page
   or flood the desktop with browser tabs unless the host's policy widens this (T15). The paths of a drop come from the
   host's platform, never from a page; the drop's target label and effect are routing hints (T16). `RunicHostedLimits`
-  bounds a guest's clipboard and monitor requests (20 a second), its launches, its requests that bring a window to the
-  front (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5).
+  bounds a guest's clipboard and monitor requests (20 a second), its launches, its requests that can activate a window
+  (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5).
 - **Screen reader announcements.** A guest's announcements speak through the host's window, so assistive technology
   attributes them to the host application. Only the window the user works in announces assertively, interrupting the
   screen reader; another window's announcements are polite, and their rate is bounded (T17). A host that does not trust

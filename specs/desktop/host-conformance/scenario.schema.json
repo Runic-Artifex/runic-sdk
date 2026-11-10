@@ -170,6 +170,10 @@
             "announcementRate": {
               "type": "integer",
               "minimum": 1
+            },
+            "guestActivation": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },
@@ -248,7 +252,8 @@
         "stopTimeout",
         "unauthenticatedTimeout",
         "helloTimeout",
-        "requestTimeout"
+        "requestTimeout",
+        "guestActivation"
       ]
     },
     "outcome": {
@@ -991,6 +996,12 @@
                 },
                 "bar": {
                   "const": "previous"
+                },
+                "by": {
+                  "enum": [
+                    "click",
+                    "shortcut"
+                  ]
                 },
                 "title": {
                   "type": "string"

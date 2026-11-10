@@ -208,71 +208,50 @@ public sealed class RunicHostedWindow
         {
             _active = presentation.Activity is { IsActive: true };
             _guestActivated = _active;
-            if (_active) _guestRequest = 0;
         }
         presentation.ActivityChanged += (_, _) => Observe();
     }
 
     // ----- Activation (host-protocol.md, Window services): whether the window is active because the guest asked.
 
-    // How long after the guest's own request that can activate the window (window-open, present, set-visible) an
-    // activation counts as the guest's, and how long after the user's activation ended a clipboard write is still allowed.
+    // How long after the guest's last request that can activate one of its windows an activation counts as the guest's
+    // (RunicHostedApplication.NoteGuestActivation), and how long after the user's activation ended a clipboard write is
+    // still allowed.
     internal static readonly TimeSpan GuestActivationWindow = TimeSpan.FromSeconds(2);
     internal static readonly TimeSpan ClipboardWriteGrace = TimeSpan.FromSeconds(1);
 
     private readonly object _activationGate = new();
-    // Stopwatch timestamps: the guest's last request that can activate the window, until an activation followed it, and
-    // when an activation that was not the guest's ended; 0 for none.
-    private long _guestRequest;
+    // When an activation that was not the guest's ended (a Stopwatch timestamp; 0 for none).
     private long _userActivationEnded;
     private bool _active;
     private bool _guestActivated;
 
-    // The guest asked for a request that can activate the window: an activation that follows within
-    // GuestActivationWindow is the guest's.
-    internal void NoteGuestActivationRequest()
-    {
-        lock (_activationGate) _guestRequest = Stopwatch.GetTimestamp();
-    }
-
-    // The user worked in the window in a way the host sees: chose an item of its menus, or dropped files onto it.
+    // The user worked in the window through the host's own UI: chose an item of its native menu bar, or of a context
+    // menu shown while the user worked in the window, or dropped files onto it. Never for the page's input, a shortcut
+    // or a dialog's answer.
     internal void NoteUserInteraction()
     {
         lock (_activationGate) _guestActivated = false;
     }
 
-    // The window has the keyboard focus.
-    internal bool IsActive => Observe().Active;
-
-    // The window is active because of the guest's own request, and the user has not worked in it since.
-    internal bool IsGuestActivated => Observe().GuestActivated;
+    // The window's activation, read once for one decision.
+    internal ActivationSnapshot Activation => Observe();
 
     // The user works in the window: it is active, and not because of the guest's own request.
     internal bool IsUserActive => Observe() is { Active: true, GuestActivated: false };
 
-    // The user's activation of the window ended less than ClipboardWriteGrace ago.
-    internal bool IsInWriteGrace
+    // The platform's activity, read at once under the gate, so concurrent observations apply in order; its change event
+    // follows on the thread pool, so a change the event has not reported yet counts from now.
+    private ActivationSnapshot Observe()
     {
-        get
-        {
-            var (active, _) = Observe();
-            lock (_activationGate)
-                return !active && _userActivationEnded != 0 && Stopwatch.GetElapsedTime(_userActivationEnded) <= ClipboardWriteGrace;
-        }
-    }
-
-    // The platform's activity, read at once; its change event follows on the thread pool, so a change the event has not
-    // reported yet counts from now.
-    private (bool Active, bool GuestActivated) Observe()
-    {
-        var active = _presentation?.Activity is { IsActive: true };
         lock (_activationGate)
         {
+            var active = _presentation?.Activity is { IsActive: true };
             if (active && !_active)
             {
-                // The guest's request accounts for one activation: the user's next one is the user's.
-                _guestActivated = _guestRequest != 0 && Stopwatch.GetElapsedTime(_guestRequest) <= GuestActivationWindow;
-                _guestRequest = 0;
+                // Any request of the guest that can activate one of its windows, also another one's, such as the close
+                // of an owned window that activates its owner, makes the activations that follow it the guest's.
+                _guestActivated = Application.IsGuestActivationRecent;
             }
             else if (!active && _active)
             {
@@ -280,8 +259,16 @@ public sealed class RunicHostedWindow
                 _guestActivated = false;
             }
             _active = active;
-            return (_active, _active && _guestActivated);
+            var inWriteGrace = !active && _userActivationEnded != 0 && Stopwatch.GetElapsedTime(_userActivationEnded) <= ClipboardWriteGrace;
+            return new ActivationSnapshot(active, active && _guestActivated, inWriteGrace);
         }
+    }
+
+    // Whether the window is active, whether because of the guest's own request, and whether the user's activation
+    // ended less than ClipboardWriteGrace ago.
+    internal readonly record struct ActivationSnapshot(bool Active, bool GuestActivated, bool InWriteGrace)
+    {
+        internal bool UserActive => Active && !GuestActivated;
     }
 
     // The native window as IRunicWindowPresentation, for the requests it shares with a Window's presentation.

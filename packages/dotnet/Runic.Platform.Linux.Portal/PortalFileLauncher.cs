@@ -11,12 +11,20 @@ internal sealed partial class PortalFileLauncher(IPortalWindowOwner owner, Porta
     public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default) =>
         PortalPlatformProvider.OpenUriCoreAsync(owner, uri, uriTransport ?? new PortalTransport(application: application), cancellationToken);
 
+    // A file its caller opened and checked for this launch (runic-host/1, Runic.Application.Views.Desktop's hosted
+    // windows): a launch of the same path in this asynchronous flow hands the portal this descriptor instead of opening
+    // the path again, so the file launched is the one checked. The caller keeps and disposes it.
+    internal static readonly AsyncLocal<(string Path, SafeFileHandle File)?> Preopened = new();
+
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
+        var preopened = Preopened.Value is { } given && string.Equals(given.Path, path, StringComparison.Ordinal) ? given.File : null;
         path = DesktopServiceValidation.FilePath(path, operation);
         cancellationToken.ThrowIfCancellationRequested();
         if (!owner.IsAvailable) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
-        using var file = new SafeFileHandle(Open(path, 0x80000 | 0x800), ownsHandle: true); // O_RDONLY | O_CLOEXEC | O_NONBLOCK: a special file must not block the caller.
+        // O_RDONLY | O_CLOEXEC | O_NONBLOCK: a special file must not block the caller.
+        using var opened = preopened is null ? new SafeFileHandle(Open(path, 0x80000 | 0x800), ownsHandle: true) : null;
+        var file = preopened ?? opened!;
         if (file.IsInvalid)
         {
             int errno = Marshal.GetLastPInvokeError();

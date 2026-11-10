@@ -127,7 +127,9 @@ internal sealed record MenuKeyReport(int KeyCode, string Key, bool Control, bool
 // WebView2 has no unhandled-key event, so the page reports its keys: after the page's own listeners ran, a trusted
 // keydown that no listener cancelled and that can be a shortcut (with Ctrl, Alt or the Windows key, or a key without
 // text, such as F2 or Delete) reaches the host. The host runs only a declared, enabled item whose command can run, so
-// a page that sends such messages itself gains nothing it could not do by pressing the key.
+// a page that sends such messages itself gains nothing it could not do by pressing the key. The token keeps the page's
+// own messages out all the same: the report is a null-prototype object of primitives, so nothing the page puts on
+// Object.prototype, such as toJSON or a getter, sees it while JSON.stringify, captured before any page script, writes it.
 internal static class WindowsMenuKeys
 {
     internal static string Script(string token) => $$"""
@@ -146,8 +148,10 @@ internal static class WindowsMenuKeys
             // After dispatch: a listener of the page may still cancel the key.
             later(() => {
               if (event.defaultPrevented) return;
-              post(stringify({ runicMenuKey: "{{token}}", keyCode: event.keyCode, key: event.key,
-                ctrl: event.ctrlKey, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey }));
+              const keyCode = event.keyCode, key = event.key;
+              if (typeof keyCode !== "number" || typeof key !== "string") return;
+              post(stringify({ __proto__: null, runicMenuKey: "{{token}}", keyCode, key,
+                ctrl: event.ctrlKey === true, shift: event.shiftKey === true, alt: event.altKey === true, meta: event.metaKey === true }));
             });
           }, true);
         })();
