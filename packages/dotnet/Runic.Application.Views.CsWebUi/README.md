@@ -85,7 +85,7 @@ Frames queue in the bridge, which sends a recovery state once the queue is
 full, and the window's other clients wait for the same write. Other CS-WebUI windows are not held back:
 WebUI before nightly `9264f7ae9` (webui-dev/webui#723) wrote every WebSocket
 frame under one process-wide lock, so one stalled client delayed every window in
-the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.8, the lowest
+the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.9, the lowest
 version this package accepts, includes the fix.
 
 ## What a window opens
@@ -341,8 +341,8 @@ requests can reach WebUI at once. Runic relies on WebUI's fix for concurrent cal
 two calls that arrive together. One call could then run with the other's
 arguments or receive the other's reply, and one of them could receive no reply
 at all. The fix is in WebUI nightly `efac0e24d` and in every CsWebUi since
-2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.8, the lowest version this package
-accepts, bundles WebUI nightly `2b35db13f864031543f61816c496b1035c026340`,
+2.5.0-beta.4.7. CsWebUi 2.5.0-beta.4.9, the lowest version this package
+accepts, bundles WebUI nightly `24c7d196edc63f5b777d465063c3d26731f52dea`,
 which also removes the process-wide send lock (webui-dev/webui#723) and gives
 navigation events their URL argument (webui-dev/webui#724). An application that
 loads its own WebUI through `CSWEBUI_NATIVE_LIBRARY` or
@@ -501,7 +501,7 @@ decisions:
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
   with an older WebUI, Bridge calls that arrive together can run with each
   other's arguments or receive each other's replies. Runic is tested with
-  `2b35db13f`, which CsWebUi 2.5.0-beta.4.8 bundles (see above). Runic cannot
+  `24c7d196e`, which CsWebUi 2.5.0-beta.4.9 bundles (see above). Runic cannot
   check a custom build, so the host logs event 2101 when one is configured.
 
 - **Embedded frontends and file handlers.** WebUI turns its authentication

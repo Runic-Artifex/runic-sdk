@@ -53,6 +53,16 @@ the release notes, which give the full detail and the pull requests:
   [Testing and page errors](../eng/release/notes/0.16.0.md#testing-and-page-errors-t),
   [Views protocol 4 features](../eng/release/notes/0.16.0.md#views-protocol-4-features),
   [Known issues](../eng/release/notes/0.16.0.md#known-issues)
+- 0.17.0: [Upgrading from 0.16](../eng/release/notes/0.17.0.md#upgrading-from-016),
+  [Security](../eng/release/notes/0.17.0.md#security-cs-webui-blob-endpoint),
+  [The application's language](../eng/release/notes/0.17.0.md#the-applications-language-and-runics-own-text),
+  [Translations 0.9.1](../eng/release/notes/0.17.0.md#runic-translations-091-and-the-translated-template-sx),
+  [Appearance](../eng/release/notes/0.17.0.md#appearance-beyond-light-and-dark-s10),
+  [Shared clients](../eng/release/notes/0.17.0.md#shared-clients-for-viewmodels-with-the-same-members-sc-839),
+  [Owner-less file dialogs](../eng/release/notes/0.17.0.md#owner-less-file-dialogs-for-cs-webui),
+  [Hosted application windows](../eng/release/notes/0.17.0.md#hosted-application-windows-experimental-runicdesk103),
+  [Views protocol 4 features](../eng/release/notes/0.17.0.md#views-protocol-4-features),
+  [Known issues](../eng/release/notes/0.17.0.md#known-issues)
 
 ## Before you start
 
@@ -1170,6 +1180,63 @@ Details: 0.16.0 [Window presentation and color schemes](../eng/release/notes/0.1
 Details: 0.16.0 [Testing and page errors](../eng/release/notes/0.16.0.md#testing-and-page-errors-t).
 
 ## From 0.16 to 0.17
+
+0.17.0 only adds APIs. Its new wire members are Views protocol 4 features negotiated in `hello` (`client-languages/1`,
+`appearance/1`), so a 0.16 page and a 0.17 host, or the reverse, connect and behave as in 0.16. Update every Runic NuGet
+and npm package to 0.17.0 together and rebuild so that the generated clients are regenerated;
+`Runic.Application.Views.CsWebUi` is `0.17.0-preview.1`. An application that uses Runic Translations moves every
+Translations package to 0.9.1. The tables below list what an application must check (behaviour that changed) and what it
+may replace with a new API.
+
+### Language and Runic's own text
+
+| 0.16 | 0.17 |
+| --- | --- |
+| Runic Translations 0.9.0 or 0.8 packages | 0.9.1 of every Translations package; `Runic.Translations` and `Runic.Translations.Build` 0.9.0 are deprecated on nuget.org |
+| Code that set every Window's `IRunicWindowLocale.Locale` after a language switch | `IRunicApplicationLocale.SetLocaleAsync`; Windows that set none follow it. Save `IRunicWindowLocale.OwnLocale`, not `Locale`, to restore a Window's own language |
+| Menu bar, status icon or notification text built once in English | Rebuild it in `IRunicApplicationLocale.LocaleChanged` |
+| A `de-CH` window locale that the page's catalog lacked reported an error | The page falls back to `de` first; a parent in another script is skipped |
+| Pages did not tell the host the browser's languages | They send them in `hello` (`client-languages/1`, `RunicConnection.Languages`). Don't log them; a page opts out with `configureClientLanguages({ send: false })` |
+| English validation messages of `[Required]`, `[Range]` and the other built-in attributes, and English field errors | `RunicValidationOptions.TextFor` and `configureFieldErrorText`, or `Runic.Application.Views.Translations` / `@runic-artifex/views-translations` with `AddRunicViewsTranslations()` and `configureRunicViewsText()` |
+| `ViewOutlet` and `RegionOutlets` showed the English "No web component is registered" alert in every build | Only in development builds; production renders nothing and reports the kind once. Pass `missing` for your own text |
+| Windows shortcut labels were always `Ctrl+S` | They use the keyboard layout's names (`Strg+S`), or `DesktopPlatformTexts`' names when the application sets them |
+| Runic Desktop's Resource Not Available and Access Denied pages were English | They take `DesktopPlatformTexts`; CS-WebUI's own pages stay English |
+
+Details: 0.17.0 [The application's language and Runic's own text](../eng/release/notes/0.17.0.md#the-applications-language-and-runics-own-text),
+[Runic Translations 0.9.1 and the translated template](../eng/release/notes/0.17.0.md#runic-translations-091-and-the-translated-template-sx).
+
+### Windows, platform and packages
+
+| 0.16 | 0.17 |
+| --- | --- |
+| A Runic Views Desktop window on Windows or Linux opened left-to-right with the platform's web view language | It opens with its window locale's direction and language and mirrors when the locale changes. `DesktopWindowOptions.LayoutDirection` and `Language` in `RunicDesktopHostOptions.WindowOptions` still win |
+| On macOS, `DesktopAppearance.ColorScheme` reported the scheme the application set for every window | It reports the desktop's scheme |
+| `DesktopAppearance.HighContrast` | Unchanged; `Contrast` adds "more contrast" and forced colours, `SystemColors` the palette |
+| Page code that read `prefers-color-scheme` or `forced-colors` itself | The page appearance store (`appearance`, `useAppearance`, `injectAppearance`, `appearances()`) |
+| A Linux `.desktop` file with `Name=Notes &amp; Co` | `Name=Notes & Co`; check tests or scripts that compared the escaped text |
+| A manifest copied into `packaging/` | Unchanged until the application sets `RunicApplicationLocales`; then add the fields `RAPPPKG1006` names |
+| The Linux spell checker read `LANGUAGE` with the messages locale `C` | It ignores `LANGUAGE` then, as gettext does |
+| Several ViewModels with the same members and one hand-written union client | `[RunicSharedClient]` on their interface and `registryEntries(kinds, component)` |
+
+Details: 0.17.0 [Upgrading from 0.16](../eng/release/notes/0.17.0.md#upgrading-from-016),
+[Appearance](../eng/release/notes/0.17.0.md#appearance-beyond-light-and-dark-s10),
+[Shared clients](../eng/release/notes/0.17.0.md#shared-clients-for-viewmodels-with-the-same-members-sc-839).
+
+### CS-WebUI
+
+| 0.16 | 0.17 |
+| --- | --- |
+| A CS-WebUI application on 0.16.0 that uses blobs or uploads | Update to 0.17.0 for the [security fix](../eng/release/notes/0.17.0.md#security-cs-webui-blob-endpoint); no code change |
+| A request to the blob endpoint with `Host: 127.0.0.1:{port}` | 404 on Linux and macOS; use the endpoint's URLs, which name `localhost` |
+| A window started without blobs and logged only 1207 | 2103 or 2104 first names the held or reserved address |
+
+### Tests
+
+| 0.16 | 0.17 |
+| --- | --- |
+| A test that compared the in-memory test transport's messages exactly | Its `hello` lists `client-languages/1` (with `"languages":[]`) and `appearance/1`, and an `appearance` push with every member `null` follows the `hello` |
+| A test window from `RunicWindowTestHost.CreateWindowAsync` showed untranslated validation messages and the default upload limit | It uses the application's `RunicValidationOptions` and the Window's `MaximumUploadBytes` |
+| A test that set the window locale through its own fake | `RunicWindowTestHostOptions.Locale` and `ApplicationLocale`, `InMemoryBridgeTransport.SetLanguages` |
 
 ### Hosted application windows
 

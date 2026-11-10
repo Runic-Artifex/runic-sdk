@@ -110,7 +110,7 @@
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.14, )",
           "ReactiveUI": "[26.0.1, 27.0.0)",
-          "Runic.Application.Views.CsWebUi": "[0.16.0-preview.1, )",
+          "Runic.Application.Views.CsWebUi": "[0.17.0-preview.1, )",
           "Splat": "[21.0.0, )"
         }
       },
@@ -118,7 +118,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, 11.0.0)",
-          "Runic.Application.Views": "[0.16.0, )"
+          "Runic.Application.Views": "[0.17.0, )"
         }
       },
       "runic.application.views": {
@@ -126,19 +126,19 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.16.0, )",
-          "Runic.Platform": "[0.16.0, )"
+          "Runic.Navigation": "[0.17.0, )",
+          "Runic.Platform": "[0.17.0, )"
         }
       },
       "runic.application.views.cswebui": {
         "type": "Project",
         "dependencies": {
-          "CsWebUi": "[2.5.0-beta.4.8, 3.0.0)",
+          "CsWebUi": "[2.5.0-beta.4.9, 3.0.0)",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
-          "Runic.Application.Views": "[0.16.0, )",
-          "Runic.Assets": "[0.16.0, )",
-          "Runic.Platform": "[0.16.0, )",
-          "Runic.Platform.Runtime": "[0.16.0, )"
+          "Runic.Application.Views": "[0.17.0, )",
+          "Runic.Assets": "[0.17.0, )",
+          "Runic.Platform": "[0.17.0, )",
+          "Runic.Platform.Runtime": "[0.17.0, )"
         }
       },
       "runic.assets": {
@@ -157,7 +157,7 @@
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.16.0, )"
+          "Runic.Platform": "[0.17.0, )"
         }
       },
       "CommunityToolkit.Mvvm": {
@@ -168,18 +168,18 @@
       },
       "CsWebUi": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.8, 3.0.0)",
-        "resolved": "2.5.0-beta.4.8",
-        "contentHash": "aMxHOArj1jDnEFC7xGNkZGy0qvAUjc8vi58kUoSZbHEG29v3bdFC3zjkEVmfkpzME0H7PD0uzh/i0d0dbUSPGA==",
+        "requested": "[2.5.0-beta.4.9, 3.0.0)",
+        "resolved": "2.5.0-beta.4.9",
+        "contentHash": "hmlVi2rrzS3izrwhVzONpljZk5kvP7wv3LVskEnVCEjW/zkbQiD3+CUH713Vkavu7hLb4S7CaZv9utC1AMLR+g==",
         "dependencies": {
-          "CsWebUi.Native": "2.5.0-beta.4.8"
+          "CsWebUi.Native": "2.5.0-beta.4.9"
         }
       },
       "CsWebUi.Native": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.8, 3.0.0)",
-        "resolved": "2.5.0-beta.4.8",
-        "contentHash": "iBKMpmB1mRsLJ+nmnUhW7XPKbLpBEgLikRZGKRMIZKqd3TMeWkk6Kt7Cs711YM7/2q1Kr1NFf6+r0D3pBvdX3Q=="
+        "requested": "[2.5.0-beta.4.9, 3.0.0)",
+        "resolved": "2.5.0-beta.4.9",
+        "contentHash": "CKK1EJTkR49Jf09l1LBu412FVcrgfaUNopeqqDuMxUbztQz6yKpH4jDhvCosOH7NNFO+ZB9frvuaCMsQzgB/eg=="
       },
       "Microsoft.Extensions.DependencyInjection": {
         "type": "CentralTransitive",
