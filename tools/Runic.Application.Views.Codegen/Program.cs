@@ -2502,6 +2502,8 @@ static class BridgeDiagnosticCodes
     internal const string PresentationScoped = "RUNICBRIDGE034";
     /// <summary>A ViewRequest or ViewQuestion member is not a get-only property.</summary>
     internal const string ViewMember = "RUNICBRIDGE035";
+    /// <summary>RunicApplicationFrontendTranslations has no Runic Translations ESM to copy, or its directory holds other files.</summary>
+    internal const string FrontendTranslations = "RUNICBRIDGE037";
     /// <summary>A [RunicRowEditor] method matches no keyed collection, or several, or has an unsupported signature.</summary>
     internal const string RowEditor = "RUNICBRIDGE050";
     /// <summary>A keyed collection has two [RunicRowEditor] methods.</summary>
@@ -2559,6 +2561,7 @@ static class BridgeDiagnosticCodes
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
         (ViewMember, "error", "A ViewRequest or ViewQuestion member is not a get-only property"),
+        (FrontendTranslations, "error", "The build has no Runic Translations ESM for the page, or its directory holds other files"),
         (RowEditor, "error", "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"),
         (RowEditors, "error", "A keyed collection has more than one [RunicRowEditor] method"),
         (RowCopy, "error", "The rows of a [RunicRowEditor] collection cannot be copied with one cell changed"),

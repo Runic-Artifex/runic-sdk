@@ -177,6 +177,11 @@
       "title": "A ViewRequest or ViewQuestion member is not a get-only property"
     },
     {
+      "id": "RUNICBRIDGE037",
+      "severity": "error",
+      "title": "The build has no Runic Translations ESM for the page, or its directory holds other files"
+    },
+    {
       "id": "RUNICBRIDGE050",
       "severity": "error",
       "title": "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"

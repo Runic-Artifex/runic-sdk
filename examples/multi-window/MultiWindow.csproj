@@ -36,10 +36,11 @@
   </ItemGroup>
   <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <!-- The catalog's ESM for the page, beside the C# API, which a source generator writes. The ESM comes from the
-         dotnet-runic-translations tool of the repository's .config/dotnet-tools.json. The Bun bundler of Frontend/build.mjs has no
-         Translations plugin, so CopyTranslationsForThePage puts the ESM where the page imports it; a Vite page uses the
-         Translations Vite plugin instead, as the runic-app template's translations option does. -->
+         dotnet-runic-translations tool of the repository's .config/dotnet-tools.json. The Bun bundler of
+         Frontend/build.mjs imports it from Frontend/.runic/translations, which RunicApplicationFrontendTranslations keeps
+         equal to it before the frontend builds. -->
     <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+    <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
   </PropertyGroup>
   <!-- An application runs `dotnet tool restore` once after cloning; the example does it in its build, before the
        repository's web packages restore the same manifest, so the repository's build needs no extra step. -->
@@ -48,14 +49,6 @@
           Inputs="../../.config/dotnet-tools.json" Outputs="$(IntermediateOutputPath)translations-tool.stamp">
     <Exec Command="dotnet tool restore" WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="low" />
     <Touch Files="$(IntermediateOutputPath)translations-tool.stamp" AlwaysCreate="true" />
-  </Target>
-  <Target Name="CopyTranslationsForThePage" AfterTargets="RunicTranslationsGenerateTranslationArtifacts"
-          Condition="'$(RunicTranslationsEmitEsm)' == 'true'">
-    <ItemGroup>
-      <_PageTranslations Include="$(RunicTranslationsWebOutputPath)/multi-window.esm-v5/**/*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_PageTranslations)" DestinationFiles="@(_PageTranslations->'Frontend/.runic/translations/%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
   </Target>
   <Import Project="../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
