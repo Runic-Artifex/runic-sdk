@@ -49,7 +49,9 @@ Hosted application windows (0.17): one Runic Desktop application shows another
 one's windows over the [Runic host protocol](../specs/desktop/host-protocol.md),
 `runic-host/1`. The protocol and its API stay experimental through 1.0, so they
 can change in a minor release, also after 1.0 (D055.8). Suppress the ID in the
-guest application, the host application and their tests.
+guest application, the host application and their tests. Start with
+[hosted applications](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-applications)
+and the [hosted windows example](../examples/hosted-windows/README.md).
 
 | Package | API |
 | --- | --- |
