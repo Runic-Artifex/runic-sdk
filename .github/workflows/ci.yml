@@ -1108,12 +1108,21 @@ jobs:
       # group of their own (macOS). Each guest page loads in a native window of the host with the session's own data store
       # (a WebView2 InPrivate profile, a non-persistent WKWebsiteDataStore), without the host's or another guest's
       # cookies; close, crash and stop. On Windows the guest's cookie and storage stay off the disk, and the session's
-      # folder is deleted. The runner's steps run elevated, which a guest refuses: the smoke restarts itself as the
-      # standard user created above (Unelevated.cs).
-      # The runner's steps run elevated, which a hosted guest refuses. A standard user of this runner, created here,
-      # runs the hosted smoke and host cases (Unelevated.cs); it reads the workspace and writes the test results.
+      # folder is deleted, and a persistent profile's are found by the same scan. The runner's steps run elevated, which a
+      # guest refuses: the smoke restarts itself as the standard user created below (Unelevated.cs).
+      # A standard user of this runner runs the hosted smoke and host cases (Unelevated.cs); it reads the workspace and
+      # writes the test results. Only an ephemeral GitHub-hosted runner gets the account, and the step after the checks
+      # removes it. Its password is a masked output of this step, which only the two steps that start processes as the
+      # user receive.
+      - name: Refuse the hosted application checks on a self-hosted Windows runner
+        if: runner.os == 'Windows' && runner.environment != 'github-hosted'
+        shell: pwsh
+        run: |
+          Write-Output "::error::The hosted application checks create a local user account and need an ephemeral GitHub-hosted runner."
+          exit 1
       - name: Create a standard user for the hosted application checks on Windows
-        if: runner.os == 'Windows'
+        id: hosted-user
+        if: runner.os == 'Windows' && runner.environment == 'github-hosted'
         timeout-minutes: 5
         shell: pwsh
         run: |
@@ -1123,8 +1132,8 @@ jobs:
           $secure = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name runic-hosted -Password $secure -PasswordNeverExpires -AccountNeverExpires | Out-Null
           Add-LocalGroupMember -Group Users -Member runic-hosted -ErrorAction SilentlyContinue
-          "RUNIC_TEST_UNELEVATED_USER=runic-hosted" >> $env:GITHUB_ENV
-          "RUNIC_TEST_UNELEVATED_PASSWORD=$password" >> $env:GITHUB_ENV
+          "user=runic-hosted" >> $env:GITHUB_OUTPUT
+          "password=$password" >> $env:GITHUB_OUTPUT
           icacls $env:GITHUB_WORKSPACE /grant 'runic-hosted:(OI)(CI)RX' /C /Q | Out-Null
           New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
           icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
@@ -1132,14 +1141,21 @@ jobs:
       - name: Show hosted application windows on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5
+        env:
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
         run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
       # The host cases against real guest processes on the native platforms: the Windows job object (started suspended,
       # kill-on-close, grandchildren), the macOS process group, the same-user check against the real parent (Windows
-      # token users), pending starts and windows that open after the guest ended. Unelevated on Windows, as above.
+      # token users), pending starts, windows that open after the guest ended, and the Windows guest's inherited handles.
+      # Unelevated on Windows, as above; an elevated run fails each case under CI.
       - name: Run the hosted application host cases on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 8
         shell: bash
+        env:
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
         run: |
           dotnet build tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release
           tests=(dotnet tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll
@@ -1151,6 +1167,22 @@ jobs:
           else
             "${tests[@]}"
           fi
+      # Also after a failure or cancellation: the user's processes, its profile, its access to the workspace and the account.
+      - name: Remove the hosted application checks' standard user on Windows
+        if: always() && steps.hosted-user.outcome != 'skipped' && runner.os == 'Windows' && runner.environment == 'github-hosted'
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $account = Get-LocalUser -Name runic-hosted -ErrorAction SilentlyContinue
+          if (-not $account) { exit 0 }
+          Get-Process -IncludeUserName | Where-Object { $_.UserName -like '*\runic-hosted' } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Get-CimInstance Win32_UserProfile -Filter "SID = '$($account.SID.Value)'" | Remove-CimInstance
+          icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /remove runic-hosted /T /C /Q | Out-Null
+          icacls $env:GITHUB_WORKSPACE /remove runic-hosted /C /Q | Out-Null
+          Remove-LocalUser -Name runic-hosted
+          if (Get-LocalUser -Name runic-hosted -ErrorAction SilentlyContinue) { Write-Output "::warning::The runic-hosted account remains."; exit 1 }
       # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
       # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page
