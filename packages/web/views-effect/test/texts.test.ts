@@ -27,9 +27,15 @@ describe("texts", () => {
     const stop = configureTranslatedText(runtime);
     try {
       const seen: string[] = [];
-      const fiber = Effect.runFork(Stream.runForEach(Stream.take(texts(tooLong), 2), text => Effect.sync(() => { seen.push(text); })));
-      await Effect.runPromise(Effect.yieldNow);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      let firstSeen!: () => void;
+      const first = new Promise<void>(resolve => { firstSeen = resolve; });
+      const fiber = Effect.runFork(Stream.runForEach(Stream.take(texts(tooLong), 2), text => Effect.sync(() => {
+        seen.push(text);
+        if (seen.length === 1) firstSeen();
+      })));
+      // Switch only after the consumer has the first text. A switch before that replaces the pending first signal (a slow
+      // consumer skips to the latest change), so the stream would give only the German text and take(2) would wait forever.
+      await first;
       runtime.setLocale("de");
       await Effect.runPromise(Fiber.join(fiber));
       expect(seen).toEqual(["Title is too long.", "Der Titel ist zu lang."]);
