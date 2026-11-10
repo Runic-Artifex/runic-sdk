@@ -3502,6 +3502,20 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         context.StatusCode = PresentationStatus.Forbidden;
     }
 
+    // runic-host/1 hosted mode: a host application's window loads this surface through a one-time launch code, as a
+    // browser Runic launched does (BrowserLaunchBinding), so its page is admitted through the client cookie and the
+    // surface's credential never leaves this process. A new launch replaces an earlier code.
+    internal Uri BeginHostedLaunch()
+    {
+        var url = Url ?? throw new InvalidOperationException("The surface must be started before a hosted launch.");
+        if (_embeddedHost is not null)
+            throw new InvalidOperationException("This surface is already hosted by an embedded WebView.");
+        if (!BindsBrowserLaunch)
+            throw new InvalidOperationException(
+                "A hosted launch needs the session credential, client cookies and a single client (DesktopSecurityPolicy).");
+        return new Uri(url, $"{BrowserLaunchBinding.PathSegment.TrimStart('/')}/{_launchBinding.Begin(GetBrowserUrl(url))}");
+    }
+
     // Launch binding needs the client cookie, a credential to protect and a single client.
     private bool BindsBrowserLaunch =>
         _securityPolicy is { RequireSessionCredential: true } && !AllowMultipleClients && UseClientCookies;

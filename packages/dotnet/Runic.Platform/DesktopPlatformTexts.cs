@@ -99,7 +99,10 @@ public sealed record DesktopPlatformTexts
     /// <summary>Gets the name of the Alt key in shortcut labels, as for <see cref="ControlKeyName"/>; else <c>Alt</c>.</summary>
     public string? AltKeyName { get; init; }
 
-    /// <summary>Gets the title of the page a browser window shows when it may not connect; <c>Access Denied</c>.</summary>
+    /// <summary>
+    /// Gets the title of the page a Runic Desktop browser window shows when it may not connect; <c>Access Denied</c>.
+    /// CS-WebUI windows show WebUI's own English page, which these texts do not reach.
+    /// </summary>
     public string AccessDeniedTitle { get; init; } = "Access Denied";
 
     /// <summary>
@@ -114,7 +117,10 @@ public sealed record DesktopPlatformTexts
     public string LaunchLinkInvalidMessage { get; init; } =
         "This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.";
 
-    /// <summary>Gets the title of the page for a resource the window does not serve; <c>Resource Not Available</c>.</summary>
+    /// <summary>
+    /// Gets the title of the page for a resource a Runic Desktop browser window does not serve;
+    /// <c>Resource Not Available</c>. CS-WebUI windows show WebUI's own English page.
+    /// </summary>
     public string ResourceUnavailableTitle { get; init; } = "Resource Not Available";
 
     /// <summary>Gets the message of that page; <c>The requested resource is not available.</c></summary>

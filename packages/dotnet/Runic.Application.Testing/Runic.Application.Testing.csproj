@@ -7,6 +7,10 @@
     <PackageId>Runic.Application.Testing</PackageId>
     <Description>Headless Window and View test host for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The experimental runic-host/1 API links its RUNICDESK103 entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <!-- The package uses its own experimental runic-host/1 API. -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>
     <!-- A test-only package: it reflects over the application's ViewModels in an
          untrimmed test process. -->
@@ -25,6 +29,8 @@
     <None Include="README.md" Pack="true" PackagePath="/" />
     <!-- The test clipboard checks writes with the real clipboard's rules, as Runic.Platform.Runtime does. -->
     <Compile Include="../Runic.Platform/DesktopClipboardRules.cs" Link="Shared/DesktopClipboardRules.cs" />
+    <!-- RunicTestHost speaks the Runic host protocol with the code the guest and the host share. -->
+    <Compile Include="../Runic.Application.Views.Desktop/Hosting/Protocol/*.cs" Link="Shared/Hosting/%(Filename)%(Extension)" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

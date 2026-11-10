@@ -1181,3 +1181,61 @@ A scripted line that the application cannot apply, such as malformed JSON or an
 unknown service, does not fail the application's call: it is recorded as a
 `script.error` event with the `message`, and `WaitForEventAsync` then throws
 `InvalidOperationException` with that message.
+
+### A hosted application
+
+An application that can be hosted in another Runic application's windows
+([hosted mode](../Runic.Application.Views.Desktop/README.md#hosted-mode)) is
+tested without a native host: `RunicTestHost` plays the host of the
+[Runic host protocol](../../../specs/desktop/host-protocol.md). It starts the
+application with the parameter that selects its hosted mode, completes the
+handshake, answers each Window's `window-open` and exposes the Window's one-time
+launch address, which the browser under test opens once, as the host's window
+would. The API is experimental: suppress
+[`RUNICDESK103`](../../../docs/experimental.md#RUNICDESK103).
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+[Test]
+public async Task ClosesWhenTheHostAsks()
+{
+    var start = RunicServeOnlyApplication.CreateStartInfo("../../../../Tool/bin/Debug/net10.0/Tool.dll");
+    start.ArgumentList.Add("hosted");            // The parameter the application defines for hosted mode.
+    await using var host = await RunicTestHost.StartGuestAsync(start);
+    var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+    await page.GotoAsync(window.LaunchUrl.ToString());
+
+    Assert.True(await window.RequestCloseAsync());   // close-request: the Window's guard decides.
+    await window.Closed;
+    Assert.Equal(0, await host.StopAsync());          // shutdown, then the exit code.
+}
+```
+
+- `RunicTestHostOptions` sets the offer (`HostName`, `HostVersion`,
+  `Protocols`), the `StartTimeout`, the presentation features each window
+  reports (`WindowFeatures`), a policy that refuses windows (`OpenWindow`) and
+  the outcome of each presentation request (`Presentation`). Each window's
+  `PresentationRequests` lists what the application asked, such as `present`
+  or `set-full-screen`. A request whose feature the window did not report is
+  answered unavailable, and a kind outside the base protocol is rejected with
+  `invalid-request`, as a real host does.
+- A window is listed in `Windows`, and found by `WaitForWindowAsync`, once the
+  test host answered its `window-open`; its `Opened` task has then completed
+  (or is cancelled for a refused window), so a test may stop the host at once.
+  `WaitForNthWindowAsync("DocumentWindow", 1, …)` waits for the second window of
+  a type, and `WaitForMatchingWindowAsync` for the first window a predicate
+  accepts.
+- `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
+  colour scheme to the application, and `RunicTestHost.SetAppearanceAsync` the
+  host's appearance (an application of this release keeps its own appearance).
+- The application's `OpenWindowAsync` waits for the page to connect when its
+  `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
+  real host. Load `LaunchUrl` in the browser under test, or start the
+  application without that wait for a test without a browser.
+- A start that fails throws `RunicHostedApplicationException` with its `Code`
+  (`guest-start-timeout`, `guest-exited`, `guest-not-hostable`, `guest-refused`
+  with the application's `GuestCode`, `protocol-unsupported`) and kills the
+  application.
+- Disposing goes away as a host that exits does: it closes the application's
+  standard input and the channel, so the application closes its windows and
+  exits, and kills its process tree after 15 seconds.
