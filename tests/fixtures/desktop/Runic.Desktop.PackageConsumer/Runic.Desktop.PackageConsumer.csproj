@@ -15,4 +15,18 @@
     <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicDesktopPackageVersion)" Condition="'$(RunicPackageConsumerServer)' != 'Native'" />
     <PackageReference Include="Runic.Desktop.NativeServer" Version="$(RunicDesktopPackageVersion)" Condition="'$(RunicPackageConsumerServer)' == 'Native'" />
   </ItemGroup>
+
+  <!-- The application's own Rust static library (native/, built by eng/native/verify-native-server-package.mjs), linked
+       into a NativeAOT publish as an application links one: -p:RunicPackageConsumerNativeLibrary=<path of the .a/.lib>,
+       with the system libraries Rust's standard library needs (rustc's native-static-libs). -->
+  <PropertyGroup Condition="'$(RunicPackageConsumerNativeLibrary)' != ''">
+    <DefineConstants>$(DefineConstants);RUNIC_CONSUMER_NATIVE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(RunicPackageConsumerNativeLibrary)' != '' and '$(PublishAot)' == 'true'">
+    <DirectPInvoke Include="consumer_native" />
+    <NativeLibrary Include="$(RunicPackageConsumerNativeLibrary)" />
+    <LinkerArg Include="-lgcc_s;-lutil;-lrt;-lpthread;-lm;-ldl" Condition="$(RuntimeIdentifier.StartsWith('linux-'))" />
+    <LinkerArg Include="-lc;-lm;-liconv" Condition="$(RuntimeIdentifier.StartsWith('osx-'))" />
+    <NativeLibrary Include="kernel32.lib;advapi32.lib;ntdll.lib;userenv.lib;ws2_32.lib;dbghelp.lib;bcrypt.lib" Condition="$(RuntimeIdentifier.StartsWith('win-'))" />
+  </ItemGroup>
 </Project>
