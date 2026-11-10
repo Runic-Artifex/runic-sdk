@@ -33,7 +33,27 @@ internal sealed class HostedWindow
 
     internal string Id { get; }
 
+    internal HostedGuest Guest => _guest;
+
     internal HostedWindowPresentation? Presentation { get; private set; }
+
+    // menus/1: the window's menu bar, once the window opened with the feature in use.
+    internal HostedWindowMenus? Menus { get; private set; }
+
+    // Starts the window's menu bar; a window that closed meanwhile disposes it.
+    internal void UseMenus(HostedWindowMenus menus)
+    {
+        lock (_gate)
+        {
+            if (!IsClosed)
+            {
+                Menus = menus;
+                menus.Start();
+                return;
+            }
+        }
+        menus.Dispose();
+    }
 
     internal bool IsClosed => Volatile.Read(ref _closed) != 0;
 
@@ -71,6 +91,9 @@ internal sealed class HostedWindow
     internal async Task OnClosedAsync()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0) return;
+        HostedWindowMenus? menus;
+        lock (_gate) (menus, Menus) = (Menus, null);
+        menus?.Dispose();
         Interlocked.Exchange(ref _closing, 1);
         try
         {
@@ -185,9 +208,12 @@ internal sealed class HostedGuest : IAsyncDisposable
             throw Failure("handshake-timeout", "The host did not connect and prove itself within the start timeout.");
         }
 
-        // The key is spent: nothing listens any more.
-        var features = new JsonArray();
-        Session = new RunicGuestSession(host, HostProtocol.Version, [], _hostGone.Token);
+        // The key is spent: nothing listens any more. A feature is in use when both hellos list it (host-protocol.md, Features).
+        var features = new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]);
+        var offered = hello["features"] is JsonArray list
+            ? list.Select(static item => item is JsonValue value && value.TryGetValue<string>(out var name) ? name : null).ToHashSet(StringComparer.Ordinal)
+            : [];
+        Session = new RunicGuestSession(host, HostProtocol.Version, [.. HostFeatures.Implemented.Where(offered.Contains)], _hostGone.Token);
         try
         {
             await HostChannel.SendAsync(socket, new JsonObject
@@ -417,7 +443,28 @@ internal sealed class HostedGuest : IAsyncDisposable
         "The host application has gone away, so the hosted application opens no more windows.",
         "A hosted application never shows a window of its own; end the application.")]);
 
-    private async Task<JsonObject?> WindowRequestAsync(string window, JsonObject request, CancellationToken cancellationToken)
+    internal bool InUse(string feature) => Session.Features.Contains(feature, StringComparer.Ordinal);
+
+    // A request for a window that waits for the user (host-protocol.md, Dialogs): no request timeout; giving it up sends
+    // the cancel push, and the host's later reply is ignored. Null when the channel closed.
+    internal async Task<JsonObject?> UserRequestAsync(string window, JsonObject request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_channel is not { IsOpen: true } channel) return null;
+        request["window"] = window;
+        Task<JsonObject> replied;
+        try { replied = await channel.BeginRequestAsync(request, CancellationToken.None).ConfigureAwait(false); }
+        catch (HostChannelClosedException) { return null; }
+        try { return await replied.WaitAsync(cancellationToken).ConfigureAwait(false); }
+        catch (HostChannelClosedException) { return null; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await PushAsync(new JsonObject { ["kind"] = "cancel", ["request"] = HostProtocol.Integer(request, "id") }).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    internal async Task<JsonObject?> WindowRequestAsync(string window, JsonObject request, CancellationToken cancellationToken)
     {
         if (_channel is not { IsOpen: true } channel) return null;
         request["window"] = window;
@@ -474,6 +521,9 @@ internal sealed class HostedGuest : IAsyncDisposable
                 if (FindWindow(push)?.Presentation is { } schemeWindow &&
                     HostedWindowPresentation.ColorSchemeOf(HostProtocol.String(push, "colorScheme")) is { } scheme)
                     schemeWindow.OnColorScheme(scheme);
+                return;
+            case "menu-invoke":
+                if (FindWindow(push)?.Menus is { } menus && HostProtocol.String(push, "itemId") is { } itemId) menus.Invoke(itemId);
                 return;
             // placement, appearance, locale and unknown pushes: not followed yet, ignored.
         }

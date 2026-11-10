@@ -167,6 +167,16 @@ internal static class DesktopMenuBar
         return (key, modifiers);
     }
 
+    // runic-host/1 menus/1 on macOS, while a hosted window is key: the application's Application-role menu, whose
+    // items join the application menu after About, then the guest's menus. About, Settings and Quit stay the host's, so
+    // a guest's Application-role menu shows as an ordinary menu under its own title; the guest's File and Help menus
+    // take the places of the host's, whose other menus give way until a window of the host is key again.
+    internal static IReadOnlyList<DesktopMenu> MergeHosted(IReadOnlyList<DesktopMenu> application, IReadOnlyList<DesktopMenu> guest) =>
+    [
+        .. application.Where(static menu => menu.Role == DesktopMenuRole.Application),
+        .. guest.Select(static menu => menu.Role == DesktopMenuRole.Application ? menu with { Role = DesktopMenuRole.None } : menu),
+    ];
+
     // Where the declared menus go: File right after the application menu, others before the Window menu, Help last.
     internal static int InsertionIndex(DesktopMenuRole role, int count, int windowMenuIndex) => role switch
     {

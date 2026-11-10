@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
+using Runic.Application.Views.Desktop.Hosting;
 using Runic.Desktop;
+using Runic.Platform;
 
 namespace Runic.Application.Views.Desktop;
 
@@ -18,6 +20,8 @@ namespace Runic.Application.Views.Desktop;
 /// <para>Experimental; see <c>docs/experimental.md</c>.</para>
 /// </remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "The cancellation source has no timer and the menu gate no wait handle; neither holds anything to release.")]
 public sealed class RunicHostedWindow
 {
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -65,6 +69,74 @@ public sealed class RunicHostedWindow
 
     /// <summary>Completes when the window has closed, for any reason.</summary>
     public Task Closed => _closed.Task;
+
+    /// <summary>
+    /// The guest's menus that the window shows now (<c>menus/1</c>), as the host's policy decided them; empty when the
+    /// guest has none, the policy refused them or the feature is not in use.
+    /// </summary>
+    /// <remarks>
+    /// A guest's item runs the guest's command, through the window's <see cref="DesktopWindow.MenuCommands"/>: choose it
+    /// with <see cref="DesktopWindow.TryExecuteMenuItemAsync"/>, as the native bar and its shortcuts do. On Windows and
+    /// Linux the window shows them as its own bar; on macOS they join the application menu bar while the window is key.
+    /// </remarks>
+    public IReadOnlyList<DesktopMenu> MenuBar => Volatile.Read(ref _menuBar);
+
+    private IReadOnlyList<DesktopMenu> _menuBar = [];
+
+    // menus/1: the guest's bar as it sent it, with its updates; null for none. Changed under MenuGate.
+    internal JsonArray? GuestMenuBar { get; set; }
+
+    internal readonly SemaphoreSlim MenuGate = new(1, 1);
+
+    // The guest's item ids of the bar shown now, which menu-invoke may name.
+    private HashSet<string> _menuItems = new(StringComparer.Ordinal);
+
+    internal void ShowMenuBar(IReadOnlyList<DesktopMenu> menus)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        Collect(menus, ids);
+        Volatile.Write(ref _menuItems, ids);
+        Volatile.Write(ref _menuBar, menus);
+
+        static void Collect(IEnumerable<DesktopMenuEntry> entries, HashSet<string> ids)
+        {
+            foreach (var entry in entries)
+            {
+                if (entry is DesktopMenuItem item && HostedWire.ItemId(item) is { } id) ids.Add(id);
+                else if (entry is DesktopMenu menu) Collect(menu.Items, ids);
+            }
+        }
+    }
+
+    internal bool ShowsMenuItem(string id) => Volatile.Read(ref _menuItems).Contains(id);
+
+    // dialogs/1: one dialog at a time, owned by the native window; the services that show them, created on first use.
+    private int _dialog;
+    private HostDialogServices? _dialogs;
+    private readonly object _dialogGate = new();
+
+    internal bool TryBeginDialog() => Interlocked.CompareExchange(ref _dialog, 1, 0) == 0;
+
+    internal void EndDialog() => Volatile.Write(ref _dialog, 0);
+
+    internal HostDialogServices Dialogs(Func<DesktopWindow, HostDialogServices> create)
+    {
+        lock (_dialogGate) return _dialogs ??= create(Presentation);
+    }
+
+    // Cancelled when the native window closes, which ends its dialogs and context menus (host-protocol.md, Dialogs).
+    private readonly CancellationTokenSource _closing = new();
+
+    internal CancellationToken Closing => _closing.Token;
+
+    internal async Task EndUserRequestsAsync()
+    {
+        try { await _closing.CancelAsync().ConfigureAwait(false); }
+        catch (ObjectDisposedException) { }
+        HostDialogServices? dialogs;
+        lock (_dialogGate) (dialogs, _dialogs) = (_dialogs, null);
+        if (dialogs is not null) await dialogs.DisposeAsync().ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Asks the guest to close the window, as the user's close does: a Window that guards its close decides first.

@@ -198,3 +198,68 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.Refuse(string? message = null) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
 [RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedApplications.WindowClosed -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedWindowEventArgs!>?
 [RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedApplications.WindowOpened -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedWindowEventArgs!>?
+[RUNICDESK103]const Runic.Application.Views.Desktop.RunicHostedMenuRequest.GuestCommandId = "runic-hosted-item" -> string!
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedDialogRequest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedDialogRequest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedDialogRequest.ToString() -> string!
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedMenuRequest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedMenuRequest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedMenuRequest.ToString() -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedWindowPolicy.DialogAsync(Runic.Application.Views.Desktop.RunicHostedDialogRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.Desktop.RunicHostedDialogDecision!>
+[RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedWindowPolicy.Menu(Runic.Application.Views.Desktop.RunicHostedMenuRequest! request) -> Runic.Application.Views.Desktop.RunicHostedMenuDecision!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogDecision
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogDecision.IsAllowed.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogDecision.Message.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogDecision.Request.get -> Runic.Application.Views.Desktop.RunicHostedDialogRequest?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.MessageBox = 5 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFile = 0 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFiles = 1 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFolder = 3 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFolders = 4 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.SaveFile = 2 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedDialogRequest!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Equals(Runic.Application.Views.Desktop.RunicHostedDialogRequest? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Filters.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.FileDialogFilter!>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Filters.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.InitialDirectory.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.InitialDirectory.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Kind.get -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.MessageBox.get -> Runic.Platform.DesktopMessageBox?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.MessageBox.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.ShowFilterChoice.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.ShowFilterChoice.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.SuggestedName.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.SuggestedName.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Title.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Title.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogRequest.Window.get -> Runic.Application.Views.Desktop.RunicHostedWindow!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuDecision
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuDecision.IsAllowed.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuDecision.Message.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuDecision.Request.get -> Runic.Application.Views.Desktop.RunicHostedMenuRequest?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuKind.ContextMenu = 1 -> Runic.Application.Views.Desktop.RunicHostedMenuKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuKind.MenuBar = 0 -> Runic.Application.Views.Desktop.RunicHostedMenuKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedMenuRequest!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Entries.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Entries.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Equals(Runic.Application.Views.Desktop.RunicHostedMenuRequest? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Kind.get -> Runic.Application.Views.Desktop.RunicHostedMenuKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Position.get -> Runic.Platform.DesktopContextMenuOptions?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Position.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedMenuRequest.Window.get -> Runic.Application.Views.Desktop.RunicHostedWindow!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedDialogDecision.Allow() -> Runic.Application.Views.Desktop.RunicHostedDialogDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedDialogDecision.Apply(Runic.Application.Views.Desktop.RunicHostedDialogRequest! request) -> Runic.Application.Views.Desktop.RunicHostedDialogDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedDialogDecision.Refuse(string? message = null) -> Runic.Application.Views.Desktop.RunicHostedDialogDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedDialogRequest.operator !=(Runic.Application.Views.Desktop.RunicHostedDialogRequest? left, Runic.Application.Views.Desktop.RunicHostedDialogRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedDialogRequest.operator ==(Runic.Application.Views.Desktop.RunicHostedDialogRequest? left, Runic.Application.Views.Desktop.RunicHostedDialogRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuDecision.Allow() -> Runic.Application.Views.Desktop.RunicHostedMenuDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuDecision.Apply(Runic.Application.Views.Desktop.RunicHostedMenuRequest! request) -> Runic.Application.Views.Desktop.RunicHostedMenuDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuDecision.Refuse(string? message = null) -> Runic.Application.Views.Desktop.RunicHostedMenuDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuRequest.GuestItemId(Runic.Platform.DesktopMenuItem! item) -> string?
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuRequest.operator !=(Runic.Application.Views.Desktop.RunicHostedMenuRequest? left, Runic.Application.Views.Desktop.RunicHostedMenuRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuRequest.operator ==(Runic.Application.Views.Desktop.RunicHostedMenuRequest? left, Runic.Application.Views.Desktop.RunicHostedMenuRequest? right) -> bool

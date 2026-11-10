@@ -806,6 +806,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         try
         {
             if (Hosts.TryGetValue(Api.SendNint(notification, "object"), out var host) && host.IsOpen) host.UpdateActivity();
+            // A hosted window that becomes or stops being key brings its menus to the application menu bar or takes them away.
+            RefreshHostedMenuBar();
         }
         catch
         {
@@ -980,7 +982,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, standardFile)), standardFile,
                 Volatile.Read(ref HostSettings.Titles).File);
         }
-        var menus = Volatile.Read(ref s_menuBar);
+        var menus = EffectiveMenuBar(out var shown);
+        Volatile.Write(ref s_menuBarWindow, shown);
         var declared = ImmutableArray.CreateBuilder<DeclaredEntry>();
         foreach (var menu in menus)
         {
@@ -1098,6 +1101,58 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             Add(Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
         }
+    }
+
+    // runic-host/1 menus/1: the menus a hosted window shows (DesktopWindow.SetHostedMenuBarAsync). The process has one
+    // menu bar, so they join it while the window is key; every other window shares the application's (s_menuBar).
+    public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(menus);
+        if (Volatile.Read(ref _ephemeralDataStore) is null) return ValueTask.CompletedTask;
+        Volatile.Write(ref _hostedMenuBar, menus);
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable) return ValueTask.CompletedTask;
+        return InvokeOnMainAsync(() =>
+        {
+            // The bar shows this window's menus now: apply the new ones; otherwise a key change applies them later.
+            if (ReferenceEquals(Volatile.Read(ref s_menuBarWindow), this)) ApplyMenuBar(Api.SharedApplicationIfCreated());
+            else RefreshHostedMenuBar();
+        }, cancellationToken);
+    }
+
+    // A hosted window's own menus; null for every other window.
+    private IReadOnlyList<DesktopMenu>? _hostedMenuBar;
+
+    // The hosted window whose menus the application menu bar shows, or null for the application's own. Main thread only.
+    private static MacOsWkWebViewHost? s_menuBarWindow;
+
+    // The key window, or the main window while a panel is key.
+    private static MacOsWkWebViewHost? KeyWindowHost()
+    {
+        var application = Api.SharedApplicationIfCreated();
+        if (application == 0) return null;
+        foreach (var selector in (string[])["keyWindow", "mainWindow"])
+        {
+            if (Hosts.TryGetValue(Api.SendNint(application, selector), out var host) && host.IsOpen) return host;
+        }
+        return null;
+    }
+
+    // The menus the bar shows: the key window's when it is a hosted window, merged with the application's
+    // (DesktopMenuBar.MergeHosted), else the application's.
+    private static IReadOnlyList<DesktopMenu> EffectiveMenuBar(out MacOsWkWebViewHost? shown)
+    {
+        var application = Volatile.Read(ref s_menuBar);
+        shown = KeyWindowHost() is { } key && Volatile.Read(ref key._hostedMenuBar) is not null ? key : null;
+        return shown is null ? application : DesktopMenuBar.MergeHosted(application, Volatile.Read(ref shown._hostedMenuBar)!);
+    }
+
+    // Main thread only. Applies the bar again when another window's menus, or the application's, should show now.
+    private static void RefreshHostedMenuBar()
+    {
+        var application = Api.SharedApplicationIfCreated();
+        if (application == 0) return;
+        _ = EffectiveMenuBar(out var shown);
+        if (!ReferenceEquals(shown, Volatile.Read(ref s_menuBarWindow))) ApplyMenuBar(application);
     }
 
     // The command path of the key window, or of the main window while a panel is key: its target, then the
@@ -1510,6 +1565,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DetachOwnedWindows();
         ReleaseParent();
         Hosts.TryRemove(_window, out _);
+        // A hosted window's menus leave the application menu bar with it.
+        if (ReferenceEquals(Volatile.Read(ref s_menuBarWindow), this))
+        {
+            if (IsMainThread) RefreshHostedMenuBar();
+            else _ = InvokeOnMainAsync(RefreshHostedMenuBar, CancellationToken.None).AsTask();
+        }
         WebViews.TryRemove(_webView, out _);
         EndDrags();
         lock (_promiseGate) _drops?.Dispose();

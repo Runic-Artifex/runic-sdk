@@ -311,7 +311,7 @@ A failed reply's `error` is an object, as in the [Views protocol](../application
 
 | Member | Contract |
 | --- | --- |
-| `kind` | `rejected` (nothing ran), `failed` (it ran and failed, or the side cannot tell) or `cancelled` (the side gave up the request, such as for a window that closed while a dialog was pending). |
+| `kind` | `rejected` (nothing ran), `failed` (it ran and failed, or the side cannot tell) or `cancelled` (the requester gave the request up, such as a dialog its [`cancel` push](#giving-up-a-request) closed). |
 | `reason` | Optional. A token that refines `kind`, from the table below. Open: a receiver keeps a reason it does not know. |
 | `message` | A human-readable message, at most 1,024 characters. It never carries a key, a nonce, a proof or a launch code. |
 
@@ -320,7 +320,7 @@ A failed reply's `error` is an object, as in the [Views protocol](../application
 | `invalid-request` | `rejected` | The request is not one of this protocol: an unknown `kind`, a kind of a feature that is not in use, a missing member, a member of the wrong type or out of range, or a `window` that names no window this channel opened. |
 | `refused` | `rejected` | The host's policy refused it (`IRunicHostedWindowPolicy`), such as another window, full screen or a dialog. |
 | `busy` | `rejected` | The window already shows a dialog ([dialogs](#dialogs-dialogs1)). |
-| `capacity` | `rejected` | A [limit](#limits) is reached. |
+| `capacity` | `rejected` | A [limit](#limits) is reached, such as a menu larger than [menus](#menu-entries) allow. |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
 
 ### Platform outcomes
@@ -506,51 +506,117 @@ not implement them yet ignores both pushes and keeps its own.
 ## Menus (`menus/1`)
 
 With `menus/1`, a hosted window shows the guest's menu bar as the host's native menu bar, and the guest's context
-menus as native menus.
+menus as native menus of the hosted window. The guest's application keeps its commands: the host runs none of them,
+it tells the guest which item the user chose.
 
 | Message | Direction | Members | Reply |
 | --- | --- | --- | --- |
-| `set-menu-bar` | guest → host request | `window`; `menu`: an array of [menu entries](#menu-entries), or `null` for none | `{}` |
-| `update-menu-items` | guest → host request | `window`; `items`: an array of `{id, title?, enabled?, checked?}` | `{}` |
-| `show-context-menu` | guest → host request | `window`; `menu`: an array of menu entries; `point`: `{x, y}` in the window's content coordinates, or `null` for the pointer's position | `{itemId}`: the chosen item's id, or `null` when the menu was dismissed |
+| `set-menu-bar` | guest → host request | `window`; `menu`: an array of submenu [entries](#menu-entries), the bar's menus in the guest's order, or `null` for none | A [platform outcome](#platform-outcomes) |
+| `update-menu-items` | guest → host request | `window`; `items`: an array of 1 to 1,000 `{id, title?, enabled?, checked?}` | A platform outcome |
+| `show-context-menu` | guest → host request | `window`; `menu`: an array of 1 or more entries; `point`: `{x, y}` in CSS pixels of the page's viewport, or `null` for the pointer's position | A platform outcome; with `success`, `itemId`: the chosen item's id, or `null` when the menu was dismissed |
 | `menu-invoke` | host → guest push | `window`; `itemId` | — |
 
 ### Menu entries
 
 An entry is one of:
 
-- `{"kind":"item","id":"file.save","title":"Save","accelerator":"CmdOrCtrl+S","enabled":true,"checked":null,"role":null}`.
-  `id` is 1 to 128 characters and unique in the menu; `accelerator` follows the
-  [shortcut text](fixtures/shortcuts.json); `checked` is `true`, `false` or `null` (not a check item); `role` is a
-  `DesktopMenu` role token or `null`.
+- `{"kind":"item","id":"i3","title":"Save","shortcut":"Primary+S","enabled":true,"checked":null}`. `id` is an
+  [identifier](#windows), unique in the menu; `title` is 1 to 128 characters, not blank, without NUL, literal text in
+  the guest's language; `shortcut` is a [shortcut text](fixtures/shortcuts.json) such as `Primary+Shift+S`, or `null`
+  for none; `enabled` is `true` (the default) or `false`; `checked` is `null` (the default) for a plain item, or
+  `true` or `false` for a check item. Optional: `radioGroup`, the radio group's name (1 to 64 ASCII letters, digits,
+  dots, underscores or hyphens), which needs `checked`; `accessKey`, one letter or digit.
 - `{"kind":"separator"}`.
-- `{"kind":"submenu","title":"File","role":null,"items":[…]}`.
+- `{"kind":"submenu","title":"File","role":null,"enabled":true,"items":[…]}`. `role` places a menu of the bar:
+  `"application"`, `"file"`, `"help"` or `null`; an open set, which a receiver reads as `null` when it does not know a
+  value, and ignores in a context menu and below the bar's top level. A bar has at most one menu of each role.
+  Optional: `accessKey`.
 
-A menu is at most 8 levels deep and has at most 1,000 entries in all; a larger one is `rejected` with `capacity`.
+The bar's top level holds submenus only. A bar nests at most 8 levels of entry arrays and has at most 1,000 entries in
+all; a context menu nests at most 5 levels (four submenus) and has at most 256 entries. A larger menu is `rejected`
+with `capacity`; another entry that breaks these rules is `rejected` with `invalid-request`. The guest's command ids
+and command parameters do not cross the channel: the guest chooses the item ids, such as `i1`, `i2` in the order of the
+menu, and keeps the item of each.
 
-- **Placement.** On macOS the host's process owns the one menu bar: while a hosted window is key, the host shows its
-  own application menu, whose About and Quit stay the host's, then the guest's menus; a guest `Window` or `Help` menu
-  is merged with the host's by its role. When a host window becomes key, the host's own menus return. On Windows and
-  Linux each hosted window shows the guest's bar.
-- **Shortcuts.** Accelerators belong to the host's native menu. When the user chooses an item, or presses its
-  accelerator, the host pushes `menu-invoke`, and the guest runs the item's command as its own menu bar would.
-- `itemId` of a `menu-invoke` that names no current item of the window is ignored.
+### The guest's menu bar
+
+- **What the guest sends.** Runic's guest sends its application's menu bar (`DesktopHost.MenuBar`) for each of its
+  hosted windows, with each item's state from the Window's command path, as a window of its own would show it: an item
+  is `enabled` when it is declared enabled and the Window's root ViewModel (`IRunicMenuCommandSource`) or the
+  application's menu commands (`DesktopHost.MenuCommands`) can run it now, and `checked` is the first answer of that
+  path (`IRunicMenuCheckedSource`) or the declaration.
+- **When.** After a successful `window-open` reply, the guest sends `set-menu-bar` when its bar has a menu, and again
+  each time the application declares another bar, such as one with titles in another language; a bar that became empty
+  is sent as `null`. When an item's state changes, the guest sends `update-menu-items` with the items that changed. A
+  guest sends one window's menu requests one at a time, each after the reply to the one before, so the host applies
+  them in order; it MAY coalesce changes that happen meanwhile.
+- **The host's bar.** The host shows the window's latest bar with its updates. An `update-menu-items` id that names no
+  item of the current bar is ignored, since the bar may have changed meanwhile; `checked` applies to check and radio
+  items only. The host's policy decides each bar it would show (`IRunicHostedWindowPolicy.Menu`): it may show it, show
+  a changed bar, such as one without an item or with an item of the host's own, or refuse it, which is answered
+  `rejected` with `refused`, and the window then shows no menus of the guest. A hosted window never shows the host
+  application's own menu bar. A request for a window the host closed is answered `unavailable` with `owner-closed`.
+- **Placement.** On Windows and Linux each hosted window shows the guest's bar as its own, in the window or in the
+  desktop's global menu. On macOS the host's process owns the one menu bar: while a hosted window is key, the bar shows
+  the host's application menu, whose About, Settings and Quit stay the host's, with the items of the host's
+  Application-role menu, then the guest's menus: the guest's File menu takes the File menu's place, its Help menu is
+  last, and its other menus come before the Window menu, as the host's own would. A guest menu with the `application`
+  role is shown as an ordinary menu under its own title. The standard Edit, View and Window menus stay, in the host's
+  language; the host's other declared menus give way. When a window of the host becomes key, or the hosted window
+  closes, the host's own menus return.
+- **Shortcuts.** Shortcuts belong to the host's native menu: the host matches them as for its own menus, after the
+  guest's page saw the key and left it alone, and leaves out the shortcuts the platform reserves. A shortcut that both
+  the host's application menu and the guest's menus use on macOS is the host's.
+- **Choosing an item.** When the user chooses an enabled item of the guest's, or presses its shortcut, the host pushes
+  `menu-invoke` with its id. The guest runs the item through the Window's command path, as its own menu bar would: the
+  Window's root ViewModel first, then the application's commands, each asked whether it can run the item now. A
+  `menu-invoke` whose `itemId` names no item of the window's current bar, such as after the bar changed, is ignored.
+  An item a host policy added runs the host application's command (`DesktopHost.MenuCommands`) and is not pushed.
+
+### Context menus
+
+The guest's `IWindowPlatformServices.ShowContextMenuAsync` of a hosted Window sends `show-context-menu`; the host shows
+the entries as a native context menu of the hosted window, at `point` or at the pointer, and answers the chosen item's
+id. The guest returns its own item of that id, which its caller runs. Items are shown with the `enabled` and `checked`
+they carry, shortcuts as hints only. The host's policy may show a changed menu or refuse it (`rejected` with
+`refused`). An item a policy added runs the host application's command, and the guest receives `itemId: null`. A new
+context menu of the window dismisses the open one, which is answered `itemId: null`. When the window closes while its
+menu is open, the request is answered `unavailable` with `owner-closed`.
+
+### Giving up a request
+
+`show-context-menu` and the requests of [`dialogs/1`](#dialogs-dialogs1) wait for the user and have no
+[request timeout](#messages). The guest MAY give one up, such as when its application cancelled the call, with a
+`cancel` push: `{"kind":"cancel","request":<the request's id>}`. The host closes the menu or dialog and answers the
+request `{"ok":false,"error":{"kind":"cancelled",…}}`, unless it already answered; the guest ignores that reply. A
+`cancel` that names no waiting request of these kinds is ignored. Either feature in use allows the push.
 
 ## Dialogs (`dialogs/1`)
 
 With `dialogs/1`, the guest's `IFileDialogs` and `IDesktopMessageBoxes` of a hosted Window ask the host, which shows
-each dialog owned by the hosted window, with its own activation rights.
+each dialog owned by the hosted window, with its own activation rights. Runic's host shows its platform's own dialogs,
+the same that its windows show for itself; a guest that is not Runic's chooses how it asks.
 
 | Request | Members | Reply |
 | --- | --- | --- |
-| `file-dialog` | `window`; `dialog`: `"open"`, `"open-multiple"`, `"folder"` or `"save"`; `title`, `defaultPath`, `suggestedName`: optional strings; `filters`: optional array of `{name, patterns}` with patterns such as `"*.txt"` | A [platform outcome](#platform-outcomes); with `success`, `paths`: an array of absolute paths (one, except for `open-multiple`). A dismissed dialog is `failed` with `user-dismissed`. |
-| `message-box` | `window`; `kind`: `"info"`, `"warning"`, `"error"` or `"question"`; `title`, `message`, `detail`: strings, `message` required; `buttons`: 1 to 8 `{id, label, default?, cancel?}` | A platform outcome; with `success`, `button`: the chosen button's `id`, or the `cancel` button's when dismissed. |
+| `file-dialog` | `window`; `dialog`: `"open"`, `"open-multiple"`, `"save"`, `"folder"` or `"folder-multiple"`; optional: `title`, a string without NUL; `initialDirectory`, an absolute path; `suggestedName`, 1 to 255 characters, required for `"save"` and absent otherwise; `filters`, for the open and save dialogs, at most 64 of `{name, extensions, mimeTypes?}` (as `FileDialogFilter`: extensions without the dot, or `"*"`); `showFilterChoice`, a boolean | A [platform outcome](#platform-outcomes); with `success`, `paths`: absolute paths, one for `"open"`, `"save"` and `"folder"`, one or more otherwise; `filter`: the index in `filters` of the filter the user chose, or `null`. A dismissed dialog is `failed` with `user-dismissed`. |
+| `message-box` | `window`; `message`: 1 to 4,096 characters, not blank; optional: `title`, `detail`; `icon`: `"none"`, `"information"`, `"warning"` or `"error"` (an open set; an unknown one shows none); `buttons`: at most 6 `{id, label, role?, accessKey?}` with unique ids, `role` `"normal"` (the default), `"default"`, `"cancel"` or `"destructive"`, at most one default and one cancel button; none shows one OK button | A platform outcome; with `success`, `button`: the chosen button's `id`, or `null` when the box closed without one of its buttons |
 
-- A window shows one dialog at a time. A dialog request for a window that shows one is `rejected` with `busy`, as
-  `PlatformFailureCode.ResourceBusy` on the guest's side.
-- When the window closes while its dialog is open, the host closes the dialog and answers the request `cancelled`.
-- The guest acts only on the paths a file dialog returns, as with its own dialogs. A host can return any path: a
-  guest cannot tell a dialog the user answered from a forged reply ([security](#security-requirements)).
+- **One dialog per window.** A window shows one dialog at a time. A dialog request for a window that shows one is
+  `rejected` with `busy`; Runic's guest reports it as `PlatformFailureCode.ResourceBusy` without asking the host.
+- **The guest's own access.** The guest opens, reads and writes the paths itself, through the same leases as its own
+  dialogs give it (`IFileDialogs`), and acts only on the paths a dialog returned. The host keeps no access to them. A
+  host can return any path: a guest cannot tell a dialog the user answered from a forged reply
+  ([security](#security-requirements)).
+- **Policy.** The host's policy decides each dialog (`IRunicHostedWindowPolicy.DialogAsync`): show it, show it changed
+  within its kind, such as with another initial directory, or refuse it, which is answered `rejected` with `refused`
+  and which Runic's guest reports as `PermissionDenied`.
+- **When the window closes** while its dialog is open, also because the guest closed its Window, the host closes the
+  dialog and answers the request `unavailable` with `owner-closed`. The guest's closed Window reports
+  `OwnerClosed` for its dialogs in any case.
+- **When the guest gives the dialog up** (`cancel`), the host closes it and answers `cancelled`. When the guest goes
+  away, the host closes its dialogs.
+- A platform that cannot show a dialog, such as a host window without a native owner, answers `unavailable`.
 
 ## Window services (`window-services/1`)
 
@@ -624,7 +690,8 @@ The hosted window's page connects to the guest's surface directly; the host neve
 | Open windows of a guest | The host's policy | `window-open` `rejected` with `refused` |
 | Requests per window | The host's policy, such as a rate | `rejected` with `capacity` |
 | Dialogs per window | 1 | `rejected` with `busy` |
-| Menu depth and entries | 8 levels, 1,000 entries | `rejected` with `capacity` |
+| Menu bar depth and entries | 8 levels, 1,000 entries | `rejected` with `capacity` |
+| Context menu depth and entries | 5 levels, 256 entries | `rejected` with `capacity` |
 | Unauthenticated connections | 8 at once | The oldest is closed for a new one |
 | Upgrade | 10 seconds from the accept | Connection closed |
 | Hello timeout | 2 seconds from the upgrade to the first message | Connection closed |

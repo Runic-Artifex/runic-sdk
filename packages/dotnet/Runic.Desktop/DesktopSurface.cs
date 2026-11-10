@@ -1377,6 +1377,15 @@ public sealed class DesktopWindow : IAsyncDisposable
         return _engine.MenuItemStatesAsync(items, MenuCommands, cancellationToken);
     }
 
+    // runic-host/1 menus/1 (Runic.Application.Views.Desktop): a hosted window's own menus, checked by the caller, which
+    // it shows instead of DesktopHost.MenuBar; on macOS they join the application menu bar while the window is key.
+    internal Task SetHostedMenuBarAsync(IReadOnlyList<DesktopMenu> menus)
+    {
+        ArgumentNullException.ThrowIfNull(menus);
+        if (!AcceptsState || !IsOpen) return Task.CompletedTask;
+        return _engine.SetHostedMenuBarAsync(menus);
+    }
+
     // The in-page menu bar: a page that matches the items' shortcuts itself suspends the host's own matching.
     internal void SuspendHostMenuShortcuts(bool suspended)
     {
