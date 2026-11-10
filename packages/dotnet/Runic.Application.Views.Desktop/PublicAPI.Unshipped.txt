@@ -270,6 +270,10 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedLimits!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.Equals(Runic.Application.Views.Desktop.RunicHostedLimits? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.DialogsPerTenSeconds.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.DialogsPerTenSeconds.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.GuestMenuRequestsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.GuestMenuRequestsPerSecond.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MaximumDialogs.get -> int
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MaximumDialogs.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MenuRequestsPerSecond.get -> int

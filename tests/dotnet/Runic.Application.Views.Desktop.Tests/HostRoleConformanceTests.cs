@@ -128,11 +128,13 @@ internal sealed class HostRoleConformanceTests
                 StopTimeout = Limit("stopTimeout", HostProtocol.DefaultStopTimeout),
                 HostName = host["name"]!.GetValue<string>(),
                 HostVersion = host["version"]!.GetValue<string>(),
-                // The scenario's menu rate and dialogs per guest, or the protocol's defaults.
+                // The scenario's menu rates, dialogs per guest and dialog rate, or the protocol's defaults.
                 Policy = new ScenarioPolicy(new RunicHostedLimits
                 {
                     MenuRequestsPerSecond = Limits["menuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.MenuRequestsPerSecond,
                     MaximumDialogs = Limits["dialogs"]?.GetValue<int>() ?? RunicHostedLimits.Default.MaximumDialogs,
+                    GuestMenuRequestsPerSecond = Limits["guestMenuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.GuestMenuRequestsPerSecond,
+                    DialogsPerTenSeconds = Limits["dialogRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.DialogsPerTenSeconds,
                 }),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);

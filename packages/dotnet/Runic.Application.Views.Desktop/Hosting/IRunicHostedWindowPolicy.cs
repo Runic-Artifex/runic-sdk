@@ -136,6 +136,23 @@ public sealed record RunicHostedLimits
     } = Hosting.HostFeatures.DefaultMenuRequestsPerSecond;
 
     /// <summary>
+    /// How many menu requests the guest may make per second across all its windows, after a burst of as many; 80 by
+    /// default. It bounds a guest that opens many windows, each within <see cref="MenuRequestsPerSecond"/>, and with it
+    /// the native menu bar rebuilds of its windows, each of which follows a request the host accepted. A request over
+    /// the rate is turned away as one over <see cref="MenuRequestsPerSecond"/> is.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int GuestMenuRequestsPerSecond
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(GuestMenuRequestsPerSecond));
+            field = value;
+        }
+    } = Hosting.HostFeatures.DefaultGuestMenuRequestsPerSecond;
+
+    /// <summary>
     /// How many dialogs (file dialogs and message boxes) the guest may show at once, across its windows; 1 by default. A
     /// window shows one dialog at a time in any case. A dialog over the limit fails as busy.
     /// </summary>
@@ -149,6 +166,23 @@ public sealed record RunicHostedLimits
             field = value;
         }
     } = Hosting.HostFeatures.DefaultDialogsPerGuest;
+
+    /// <summary>
+    /// How many dialogs (file dialogs and message boxes) the guest may show per ten seconds, across its windows, after a
+    /// burst of as many; 10 by default, so one a second after the burst. It keeps a guest that shows a dialog and
+    /// cancels it again and again from bringing dialogs to the front faster than that. A dialog over the rate fails as
+    /// busy.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int DialogsPerTenSeconds
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(DialogsPerTenSeconds));
+            field = value;
+        }
+    } = Hosting.HostFeatures.DefaultDialogsPerTenSeconds;
 }
 
 /// <summary>Which menus of a guest a <see cref="RunicHostedMenuRequest"/> is.</summary>

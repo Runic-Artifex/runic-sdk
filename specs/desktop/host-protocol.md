@@ -319,7 +319,7 @@ A failed reply's `error` is an object, as in the [Views protocol](../application
 | --- | --- | --- |
 | `invalid-request` | `rejected` | The request is not one of this protocol: an unknown `kind`, a kind of a feature that is not in use, a missing member, a member of the wrong type or out of range, or a `window` that names no window this channel opened. |
 | `refused` | `rejected` | The host's policy refused it (`IRunicHostedWindowPolicy`), such as another window, full screen or a dialog. |
-| `busy` | `rejected` | The window already shows a dialog ([dialogs](#dialogs-dialogs1)). |
+| `busy` | `rejected` | The window already shows a dialog, or the guest shows as many as the host allows at once or for now ([dialogs](#dialogs-dialogs1)). |
 | `capacity` | `rejected` | A [limit](#limits) is reached, such as a menu larger than [menus](#menu-entries) allow. |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
 
@@ -638,8 +638,10 @@ the same that its windows show for itself; a guest that is not Runic's chooses h
 - **Texts.** Titles, messages, details and labels are literal text without NUL. Runic's guest shortens a longer title,
   message or detail to the limit, so its dialogs never fail for their length.
 - **One dialog per window, and few per guest.** A window shows one dialog at a time, and a guest at most as many at
-  once, across its windows, as the host allows (one by default, [limits](#limits)). A dialog request for a window that
-  shows one, or beyond the guest's dialogs, is `rejected` with `busy`; Runic's guest reports either as
+  once, across its windows, as the host allows (one by default, [limits](#limits)), and at most as many over time as
+  the host's dialog rate allows, so a guest that shows a dialog and cancels it again and again cannot bring dialogs to
+  the front one after another. A dialog request for a window that shows one, or beyond the guest's dialogs or their
+  rate, is `rejected` with `busy`; Runic's guest reports either as
   `PlatformFailureCode.ResourceBusy`, the first without asking the host.
 - **The guest's own access.** The guest opens, reads and writes the paths itself, through the same leases as its own
   dialogs give it (`IFileDialogs`), and acts only on the paths a dialog returned. The host keeps no access to them. A
@@ -730,9 +732,11 @@ The hosted window's page connects to the guest's surface directly; the host neve
 | Open windows of a guest | The host's policy | `window-open` `rejected` with `refused` |
 | Requests per window | The host's policy, such as a rate | `rejected` with `capacity` |
 | Menu requests per window (`set-menu-bar`, `update-menu-items`, `show-context-menu`) | The host's policy; Runic's host: 20 a second after a burst of 20 (`RunicHostedLimits`) | `rejected` with `capacity` |
+| Menu requests of a guest, across its windows | The host's policy; Runic's host: 80 a second after a burst of 80 (`RunicHostedLimits`), which also bounds the native menu bar rebuilds of the guest's windows | `rejected` with `capacity` |
 | Native menu bar rebuilds per window | The host's choice; Runic's host: one per 50 milliseconds, coalescing the requests meanwhile | — |
 | Dialogs per window | 1 | `rejected` with `busy` |
 | Dialogs of a guest at once, across its windows | The host's policy; Runic's host: 1 (`RunicHostedLimits`) | `rejected` with `busy` |
+| Dialogs of a guest over time, across its windows | The host's policy; Runic's host: 10 per ten seconds after a burst of 10 (`RunicHostedLimits`), counting dialogs the guest cancelled | `rejected` with `busy` |
 | Context menus | The active window's, inside its viewport | `rejected` with `refused`; the point is clamped |
 | Dialog title, message and detail | 1,024, 4,096 and 4,096 characters | `rejected` with `invalid-request` |
 | Menu bar depth and entries | 8 levels, 1,000 entries | `rejected` with `capacity` |
@@ -820,7 +824,7 @@ application is in the [security guide](../../docs/security.md#hosted-application
 | T3 | Secrets leak through the command line or the environment | Nonce and key on pipes only; launch codes over the channel |
 | T4 | A malicious guest takes the host's credential or cookies | No credential injection; a data store per host session; the guest's origin is not one of the host's |
 | T5 | A malicious guest escapes its window (navigates away, opens pop-ups, spoofs other windows) | The host's web content policy; window ids per channel; the host's policy; context menus only in the active window and inside it. A guest can still draw convincing UI in its own window, as any application can, and words its dialogs' and menus' texts, which nothing marks as the guest's: a host that does not trust a guest marks or refuses them in its policy. |
-| T6 | A guest floods the host with windows, dialogs, menus or messages | Message size, waiting requests, menu size, one dialog per window and the host's dialogs per guest, the host's menu request rate and coalesced menu rebuilds, context menus only in the active window, the host's window limits |
+| T6 | A guest floods the host with windows, dialogs, menus or messages | Message size, waiting requests, menu size, one dialog per window and the host's dialogs per guest at once and per ten seconds, the host's menu request rates per window and per guest and coalesced menu rebuilds, context menus only in the active window, the host's window limits |
 | T7 | A malicious host forges dialog results or close decisions | Inherent to hosting: a guest trusts its host as it trusts its own native dialogs, so elevated guests refuse hosted mode and a guest acts only on what a dialog returned, as always |
 | T8 | Orphaned guests | Standard input end or channel loss shut the guest down, which exits within 10 seconds; job object or process group; the host's stop timeout |
 | T9 | Another process takes the port after the guest exited, and the host connects to it | The guest proof, which needs the nonce the host never sends |

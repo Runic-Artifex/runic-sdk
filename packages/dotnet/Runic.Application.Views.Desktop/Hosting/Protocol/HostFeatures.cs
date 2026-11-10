@@ -27,10 +27,13 @@ internal static class HostFeatures
     internal const int MaximumSuggestedName = 255;
     internal const int MaximumFilters = 64;
 
-    // The host's limits by default (host-protocol.md, Limits): menu requests per second and window, dialogs a guest shows
-    // at once, and how often a window's native menu bar is rebuilt at most.
+    // The host's limits by default (host-protocol.md, Limits): menu requests per second and window, and across the
+    // guest's windows; dialogs a guest shows at once, and per ten seconds; and how often a window's native menu bar is
+    // rebuilt at most.
     internal const int DefaultMenuRequestsPerSecond = 20;
+    internal const int DefaultGuestMenuRequestsPerSecond = 80;
     internal const int DefaultDialogsPerGuest = 1;
+    internal const int DefaultDialogsPerTenSeconds = 10;
     internal static readonly TimeSpan MenuRebuildInterval = TimeSpan.FromMilliseconds(50);
 
     // The requests that wait for the user, which a requester may give up with a cancel push (host-protocol.md, Dialogs).

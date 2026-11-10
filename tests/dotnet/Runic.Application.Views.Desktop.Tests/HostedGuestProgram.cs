@@ -170,10 +170,12 @@ internal static class HostedGuestProgram
             }
             case "menus":
             {
-                // menus/1: the application's bar, in English until the Window's Deutsch item declares it in German; each
+                // menus/1: the application's bar, in English until the Window's Deutsch item declares it in German, and
+                // empty once its Clear item ran; each
                 // command that runs is reported as RAN <id> [<parameter>].
                 HostedMenuModel.Ran = static (id, parameter) => Console.Error.WriteLine("RAN " + id + (parameter is null ? "" : " " + parameter));
                 HostedMenuModel.Declare = german => host.Desktop.SetMenuBar(HostedMenuModel.Bar(german));
+                HostedMenuModel.Clear = () => host.Desktop.SetMenuBar([]);
                 host.Desktop.SetMenuBar(HostedMenuModel.Bar(german: false));
                 await using var window = await host.OpenWindowAsync<HostedMenuWindow>();
                 await window.WaitForCloseAsync();

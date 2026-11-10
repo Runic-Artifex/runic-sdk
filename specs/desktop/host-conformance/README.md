@@ -29,8 +29,9 @@ uses, and `steps` what happens, in order.
 
 - `limits`: `startTimeout`, `stopTimeout`, `unauthenticatedTimeout` (the upgrade's limit), `helloTimeout` and
   `requestTimeout`, in milliseconds, and `waitingRequests`, a count, that the runner configures the implementation
-  under test with; for the `host` role also `menuRequests`, a window's menu requests per second, and `dialogs`, the
-  dialogs a guest shows at once, which are the host's defaults when absent; the protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
+  under test with; for the `host` role also `menuRequests`, a window's menu requests per second, `guestMenuRequests`,
+  the guest's menu requests per second across its windows, `dialogs`, the dialogs a guest shows at once, and
+  `dialogRate`, the dialogs a guest shows per ten seconds, which are the host's defaults when absent; the protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
   a limit names it in an [`advance`](#steps) step; a runner waits the configured time, so scenarios use small values.
 - `application`: for the `guest` role, the guest application's `name`, `version` and `applicationId`, which its
   successful `hello` reply carries.

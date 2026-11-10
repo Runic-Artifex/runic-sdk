@@ -146,6 +146,14 @@
             "dialogs": {
               "type": "integer",
               "minimum": 1
+            },
+            "guestMenuRequests": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "dialogRate": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },

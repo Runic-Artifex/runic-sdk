@@ -107,14 +107,25 @@ public sealed partial class RunicHostedApplication
         }
     }
 
-    // Whether the window's menu requests are within the rate; the first request sets the window's rate and rebuilds up.
+    // The guest's menu requests across its windows, and its dialogs (RunicHostedLimits); set up on first use.
+    private RequestRate? _guestMenuRate;
+    private RequestRate? _dialogRate;
+
+    private RequestRate GuestMenuRate => Volatile.Read(ref _guestMenuRate) ?? Interlocked.CompareExchange(
+        ref _guestMenuRate, new RequestRate(Limits.GuestMenuRequestsPerSecond, TimeSpan.FromSeconds(1)), null) ?? _guestMenuRate!;
+
+    private RequestRate DialogRate => Volatile.Read(ref _dialogRate) ?? Interlocked.CompareExchange(
+        ref _dialogRate, new RequestRate(Limits.DialogsPerTenSeconds, TimeSpan.FromSeconds(10)), null) ?? _dialogRate!;
+
+    // Whether the window's menu requests are within its rate and the guest's; the first request sets the window's rate
+    // and rebuilds up.
     private bool WithinMenuRate(RunicHostedWindow window)
     {
         lock (window.MenuModel)
         {
-            window.MenuRate ??= new MenuRequestRate(Limits.MenuRequestsPerSecond);
+            window.MenuRate ??= new RequestRate(Limits.MenuRequestsPerSecond, TimeSpan.FromSeconds(1));
             window.MenuRebuild ??= new CoalescedRebuild<MenuBarAnswer>(HostFeatures.MenuRebuildInterval, () => RebuildMenuBarAsync(window));
-            return window.MenuRate.TryTake();
+            return window.MenuRate.TryTake() && GuestMenuRate.TryTake();
         }
     }
 
@@ -254,7 +265,7 @@ public sealed partial class RunicHostedApplication
             await request.FailAsync("rejected", "refused", "The window is not active: a context menu shows only in the active window.").ConfigureAwait(false);
             return;
         }
-        // One dialog per window, and at most the policy's number per guest (host-protocol.md, Dialogs).
+        // One dialog per window, at most the policy's number per guest, and within its rate (host-protocol.md, Dialogs).
         if (dialog && !window.TryBeginDialog())
         {
             await request.FailAsync("rejected", "busy", "The window already shows a dialog.").ConfigureAwait(false);
@@ -264,6 +275,14 @@ public sealed partial class RunicHostedApplication
         {
             window.EndDialog();
             await request.FailAsync("rejected", "busy", "The application already shows as many dialogs as the host allows.").ConfigureAwait(false);
+            return;
+        }
+        // The guest's dialogs per ten seconds, so a guest that cancels its dialogs cannot show one after another.
+        if (dialog && !DialogRate.TryTake())
+        {
+            EndGuestDialog();
+            window.EndDialog();
+            await request.FailAsync("rejected", "busy", "The application showed as many dialogs as the host allows for now.").ConfigureAwait(false);
             return;
         }
         // A new context menu of the window dismisses the open one, on every platform (host-protocol.md, Context menus).

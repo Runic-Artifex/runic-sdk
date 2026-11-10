@@ -122,6 +122,7 @@ internal static class HostedSmoke
         {
             var closed = await NativeMenus.WaitAsync(hostWindow, toolkit, static titles => IsHostBar(titles), TestTimeouts.Scale(Wait));
             Check(IsHostBar(closed), $"After the key hosted window closed, the application menu bar shows [{string.Join(", ", closed)}], not the host's menus.");
+            await CheckNoMergedItemsAsync(hostWindow, "after the key hosted window closed");
             Console.WriteLine($"PASS hosted {toolkit}: the host's menus returned to the application menu bar when the key hosted window closed.");
         }
 
@@ -146,6 +147,8 @@ internal static class HostedSmoke
         var c = await applications.StartAsync(Guest("c", "stay"));
         _ = await logs.ReportAsync("c");
         var windowC = await WindowOf(c);
+        // Guest c declares no bar: its window stays as before a guest's first bar.
+        await CheckBarBeforeTheGuestsAsync(toolkit, windowC.Presentation);
         Check(await c.StopAsync().AsTask().WaitAsync(TestTimeouts.Scale(Wait)) == 0, "Guest c did not exit cleanly after shutdown.");
         Check(windowC.Closed.IsCompleted && !windowC.Presentation.IsOpen, "Guest c's window is still open after it stopped.");
         Check(applications.Applications.Count == 0, "A guest is still listed after it exited.");
@@ -197,12 +200,46 @@ internal static class HostedSmoke
                 await hostWindow.FocusAsync();
                 var back = await NativeMenus.WaitAsync(hostWindow, toolkit, static titles => IsHostBar(titles), TestTimeouts.Scale(Wait));
                 Check(IsHostBar(back), $"While the host's window is key, NSApp.mainMenu is [{string.Join(", ", back)}], not the host's menus.");
+                await CheckNoMergedItemsAsync(hostWindow, "while the host's window is key");
                 Console.WriteLine($"PASS hosted {toolkit}: when the host's window is key, NSApp.mainMenu shows the host's menus again.");
                 break;
             default:
                 Console.WriteLine($"Hosted {toolkit}: the native menu bar is not read on this platform; the managed model was checked.");
                 break;
         }
+    }
+
+    // macOS: the guest's items that merged into the standard View menu left it with the guest's bar.
+    private static async Task CheckNoMergedItemsAsync(DesktopWindow hostWindow, string when)
+    {
+        var view = await NativeMenus.MacItemsAsync(hostWindow, "View");
+        Check(!view.Contains("Smoke Zoom"), $"The guest's item stayed in the standard View menu {when}: [{string.Join(", ", view)}].");
+    }
+
+    // A hosted window before the guest's first bar shows no menus of the host's application, nor of a guest: on GTK no
+    // bar; on macOS, while it is key, an application menu bar without the host's or a guest's menus.
+    private static async Task CheckBarBeforeTheGuestsAsync(string toolkit, DesktopWindow hosted)
+    {
+        switch (toolkit)
+        {
+            case "gtk3" or "gtk4":
+                // Nothing will change the bar: a moment shows whether the host's bar arrives anyway.
+                await Task.Delay(TimeSpan.FromSeconds(1));
+                var titles = await NativeMenus.TitlesAsync(hosted, toolkit);
+                Check(titles.Length == 0, $"Before the guest's first bar, its window shows the native bar [{string.Join(", ", titles)}].");
+                break;
+            case "wkwebview":
+                await hosted.FocusAsync();
+                var bar = await NativeMenus.WaitAsync(hosted, toolkit, static titles => !titles.Contains("Host Tools"), TestTimeouts.Scale(Wait));
+                Check(!bar.Contains("Host Tools") && !bar.Contains("Smoke File"),
+                    $"While a hosted window without the guest's bar is key, NSApp.mainMenu is [{string.Join(", ", bar)}].");
+                var view = await NativeMenus.MacItemsAsync(hosted, "View");
+                Check(!view.Contains("Smoke Zoom"), $"The View menu holds a guest's item before the guest's bar: [{string.Join(", ", view)}].");
+                break;
+            default:
+                return;
+        }
+        Console.WriteLine($"PASS hosted {toolkit}: a hosted window shows an empty bar until the guest's first bar.");
     }
 
     // The host's bar on macOS: its declared menu, the standard File menu under its own title, and no menu of a guest.
@@ -349,8 +386,8 @@ internal static class HostedSmoke
                 },
                 async host =>
                 {
-                    // menus/1: the application's bar, whose command reports that it ran.
-                    host.Desktop.SetMenuBar(
+                    // menus/1: the application's bar, whose command reports that it ran; guest c ("stay") declares none.
+                    if (behaviour != "stay") host.Desktop.SetMenuBar(
                     [
                         new DesktopMenu("Smoke File", [new DesktopMenuItem("Open…", "file.open") { Shortcut = new DesktopShortcut("O") }])
                         {

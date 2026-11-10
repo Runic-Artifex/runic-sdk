@@ -93,8 +93,8 @@ internal sealed class FakeHostDialogs : INativeFilePicker, INativeDirectoryPicke
 }
 
 // A Window whose root ViewModel takes part in the menu bar (IRunicMenuCommandSource, IRunicMenuCheckedSource), for the
-// hosted guest's menus: Open makes Save available, Grid toggles its check mark, Deutsch declares the bar in German. Each
-// command that runs is reported to Ran.
+// hosted guest's menus: Open makes Save available, Grid toggles its check mark, Deutsch declares the bar in German, Clear
+// declares an empty bar. Each command that runs is reported to Ran.
 internal sealed class HostedMenuWindow : RunicWindow<HostedMenuModel>;
 
 internal sealed class HostedMenuModel : INotifyPropertyChanged, IRunicMenuCommandSource, IRunicMenuCheckedSource
@@ -105,7 +105,10 @@ internal sealed class HostedMenuModel : INotifyPropertyChanged, IRunicMenuComman
     // The application's bar declares itself, such as in German.
     public static Action<bool>? Declare { get; set; }
 
-    private readonly HostedTestCommand _open, _save, _recent, _grid, _german;
+    // The application declares an empty bar.
+    public static Action? Clear { get; set; }
+
+    private readonly HostedTestCommand _open, _save, _recent, _grid, _german, _clear;
     private bool _openRan;
     private bool _gridShown;
 
@@ -130,6 +133,11 @@ internal sealed class HostedMenuModel : INotifyPropertyChanged, IRunicMenuComman
             Ran("view.german", parameter);
             Declare?.Invoke(true);
         });
+        _clear = new HostedTestCommand(() => true, parameter =>
+        {
+            Ran("view.clear", parameter);
+            Clear?.Invoke();
+        });
     }
 
     public bool GridShown => _gridShown;
@@ -143,6 +151,7 @@ internal sealed class HostedMenuModel : INotifyPropertyChanged, IRunicMenuComman
         "file.recent" => _recent,
         "view.grid" => _grid,
         "view.german" => _german,
+        "view.clear" => _clear,
         _ => null,
     };
 
@@ -162,6 +171,7 @@ internal sealed class HostedMenuModel : INotifyPropertyChanged, IRunicMenuComman
         [
             new DesktopMenuItem(german ? "Raster" : "Grid", "view.grid") { IsChecked = false },
             new DesktopMenuItem("Deutsch", "view.german"),
+            new DesktopMenuItem(german ? "Leeren" : "Clear", "view.clear"),
         ]),
     ];
 }

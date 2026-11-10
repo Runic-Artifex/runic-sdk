@@ -153,8 +153,13 @@ internal sealed class HostedWindowMenus : IDisposable
         await Task.Delay(RetryDelay).ConfigureAwait(false);
         lock (_gate)
         {
-            // The host does not have the bar: it goes again.
-            if (bar) _publishedBar = null;
+            // The host does not have the bar: it goes again. The host may still show the bar before, so an empty bar
+            // goes too.
+            if (bar)
+            {
+                _publishedBar = null;
+                _sentBar = true;
+            }
             _statesChanged = true;
         }
     }

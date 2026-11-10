@@ -116,6 +116,28 @@ internal sealed class HostedMenusAndDialogsTests
         Check(await application.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{fixture.GuestErrors}");
     }
 
+    // The host's rate turns away the guest's empty bar, which declares that the window shows no menus: Runic's guest
+    // sends it again, so the host does not keep showing the bar before, whose items the guest no longer runs.
+    [Test, NotInParallel(Order = 65)]
+    public async Task AnEmptyBarTheHostsRateTurnedAwayIsSentAgain()
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        await fixture.RequireUnelevatedAsync();
+        var opened = fixture.Next(opened: true);
+        // One menu request a second: the bar takes the window's request, so the empty bar right after it is turned away.
+        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("menus"),
+            new RunicHostedApplicationOptions { Policy = new LimitsPolicy(new RunicHostedLimits { MenuRequestsPerSecond = 1 }) });
+        var window = await opened.WaitScaledAsync(Timeout);
+        var native = fixture.Factory.Hosts.Single();
+        await native.WaitForMenuBarAsync(static menus => HasItem(menus, "View", "Clear"), Timeout);
+        Check(native.Choose("View", "Clear"), "Clear could not be chosen.");
+        Check(await TestTimeouts.UntilAsync(() => fixture.GuestErrors.Contains("RAN view.clear"), Timeout), "The guest did not run Clear.");
+        await native.WaitForMenuBarAsync(static menus => menus.Count == 0, Timeout);
+        Check(window.MenuBar.Count == 0, "RunicHostedWindow.MenuBar still shows the bar before.");
+        Check(await window.RequestCloseAsync(), "The guest refused the close.");
+        Check(await application.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{fixture.GuestErrors}");
+    }
+
     [Test, NotInParallel(Order = 62)]
     public async Task TheHostShowsTheGuestsContextMenusAndDialogsOwnedByItsWindow()
     {
@@ -324,11 +346,21 @@ internal sealed class HostedMenusAndDialogsTests
     [Test]
     public async Task MenuRequestsAreRateLimitedAndRebuildsCoalesced()
     {
-        var rate = new MenuRequestRate(3);
+        var rate = new RequestRate(3, TimeSpan.FromSeconds(1));
         Check(rate.TryTake() && rate.TryTake() && rate.TryTake(), "The burst of three was refused.");
         Check(!rate.TryTake(), "A fourth request in the same moment is within the rate.");
         await Task.Delay(TimeSpan.FromMilliseconds(500));
         Check(rate.TryTake(), "Half a second at three per second did not refill one request.");
+        // The guest's dialogs: two per ten seconds refill one in five seconds, not in half a second.
+        var dialogs = new RequestRate(2, TimeSpan.FromSeconds(10));
+        Check(dialogs.TryTake() && dialogs.TryTake(), "The burst of two dialogs was refused.");
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        Check(!dialogs.TryTake(), "Half a second refilled a dialog at two per ten seconds.");
+        Check(RunicHostedLimits.Default is { MenuRequestsPerSecond: 20, GuestMenuRequestsPerSecond: 80, MaximumDialogs: 1, DialogsPerTenSeconds: 10 },
+            $"The default limits are {RunicHostedLimits.Default}.");
+        Check(Throws<ArgumentOutOfRangeException>(static () => _ = new RunicHostedLimits { DialogsPerTenSeconds = 0 })
+            && Throws<ArgumentOutOfRangeException>(static () => _ = new RunicHostedLimits { GuestMenuRequestsPerSecond = 0 }),
+            "A rate of zero is accepted.");
 
         var starts = new List<long>();
         var interval = TimeSpan.FromMilliseconds(300);
@@ -364,6 +396,18 @@ internal sealed class HostedMenusAndDialogsTests
         {
             lock (Ran) Ran.Add(item.CommandId);
         }
+    }
+
+    private static bool Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T) { return true; }
+        return false;
+    }
+
+    private sealed class LimitsPolicy(RunicHostedLimits limits) : IRunicHostedWindowPolicy
+    {
+        public RunicHostedLimits Limits => limits;
     }
 
     private sealed class MenuPolicy(Func<RunicHostedMenuRequest, RunicHostedMenuRequest> change) : IRunicHostedWindowPolicy

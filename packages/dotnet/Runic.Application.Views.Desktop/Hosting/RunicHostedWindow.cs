@@ -90,7 +90,7 @@ public sealed class RunicHostedWindow
 
     // menus/1 limits (host-protocol.md, Limits): the rate of the window's menu requests, and its native bar's rebuilds,
     // coalesced; set by the application when the window opens.
-    internal MenuRequestRate? MenuRate { get; set; }
+    internal RequestRate? MenuRate { get; set; }
 
     internal CoalescedRebuild<MenuBarAnswer>? MenuRebuild { get; set; }
 
