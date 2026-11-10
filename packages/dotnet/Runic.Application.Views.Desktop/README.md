@@ -665,20 +665,110 @@ Test such a command with `CommandAppTester.Run` from
 thread, or start the application in serve-only mode with
 `RunicServeOnlyApplication` from `Runic.Application.Testing`.
 
-## Hosted mode
+## Hosted applications
 
-Another Runic Desktop application, the host, can show this application's
-Windows in native windows of its own: a launcher, a suite shell or an IDE-like
-application that hosts tools as separate processes. The two talk over the
-[Runic host protocol](../../../specs/desktop/host-protocol.md), `runic-host/1`;
-the [security guide](../../../docs/security.md#hosted-application-windows)
-explains what it protects. Hosted mode is experimental: suppress
-[`RUNICDESK103`](../../../docs/experimental.md#RUNICDESK103).
+A Runic Desktop application, the **host**, can show the Windows of another
+Runic Desktop application, the **guest**, in native windows of its own. Typical
+hosts are launchers, suite shells and IDE-like applications that run tools as
+separate processes. Each guest keeps its own process, ViewModels, translations
+and Runic version, so a guest that crashes takes only its own windows with it.
+The two talk over the
+[Runic host protocol](../../../specs/desktop/host-protocol.md), `runic-host/1`.
+The [hosted windows example](../../../examples/hosted-windows/README.md) is a
+shell that hosts a counter.
+
+**Experimental.** The host and guest APIs, `RunicTestHost` and the protocol are
+experimental: suppress
+[`RUNICDESK103`](../../../docs/experimental.md#RUNICDESK103). They can change in
+a minor release, also after 1.0.
+
+**Quick start.** The guest opts in on a code path of its own. The host starts
+the guest's executable with the parameter that selects that path:
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+// The guest (its Program.cs): only its own `hosted` parameter accepts a host.
+if (args is ["hosted"])
+    return RunicDesktopHost.Run(provider, new DesktopHostOptions(),
+        new RunicDesktopHostOptions { Guest = RunicGuestOptions.FromStandardInput() },
+        async host =>
+        {
+            await using var window = await host.OpenWindowAsync<MainWindow>();
+            await window.WaitForCloseAsync();
+            return 0;
+        });
+
+// The host: each StartAsync starts a guest process for this host session.
+await using var tool = await host.HostedApplications.StartAsync(
+    new RunicGuestStartInfo("/opt/tool/Tool", ["hosted"]),
+    new RunicHostedApplicationOptions { Policy = new ToolPolicy() });
+```
+
+[Hosted mode](#hosted-mode) describes the guest side and
+[Hosting another application](#hosting-another-application) the host side. Test
+a guest without a host application with `RunicTestHost`
+([a hosted application](../Runic.Application.Testing/README.md#a-hosted-application)).
+An application changes behaviour only when it opts in. An application without a
+guest code path cannot be hosted, and one that never calls `StartAsync` hosts
+nothing.
+
+**Opt-in and policy.** Runic defines no flag or environment variable for hosted
+mode, so the processes a guest starts never inherit it. The host decides what a
+guest may do with `IRunicHostedWindowPolicy`: which windows open and how, its
+presentation requests, menus, dialogs and window services. Without a policy,
+every window, menu and dialog shows unchanged. Window services follow
+conservative defaults: the clipboard is read and written only for the window the
+user works in, and only `http`, `https` and `mailto` links and files the user
+gave the guest are opened. A policy can mark a guest's dialogs, refuse its message boxes or narrow
+the launcher. The example's `CounterPolicy` does both.
+
+**Limits.** `RunicHostedLimits`, from the policy's `Limits`, bounds a guest's
+requests. Its defaults are 20 menu requests a second per window, 80 per guest,
+one dialog at a time per guest, 10 dialogs per ten seconds, 20 clipboard and
+monitor requests a second, 5 opened files or links per ten seconds, and 2
+requests a second that bring a window to the front or announce text. The
+protocol also bounds messages (1 MiB), waiting requests (64), menus (8 levels,
+1,000 entries) and dialog texts
+([limits](../../../specs/desktop/host-protocol.md#limits)).
+
+**Security in short.** Both sides opt in. The channel is a loopback WebSocket
+that only the host that started the guest can join: a nonce on the guest's
+standard input and a key on its standard output prove it, and an upgrade from a
+web page is refused. A guest's page gets none of the host's credentials or
+cookies, and each guest session has its own web view data store. The guest
+reaches its own windows only. Elevated guests, and guests of another user than
+their parent, refuse hosted mode. Any process of the same user that knows a
+guest's parameter can host it; `RunicGuestOptions.AcceptHost` is a product
+filter, not a security boundary. A guest words its own dialog and menu texts,
+so a host that does not trust a guest marks or refuses them in its policy. The
+[security guide](../../../docs/security.md#hosted-application-windows) has the
+details.
+
+**Platform notes.**
+
+- Hosts and guests run on Runic Desktop only. A CS-WebUI, hosted or serve-only
+  application cannot host.
+- Hosted windows have no browser fallback: a browser tab would send the user's
+  own `127.0.0.1` cookies to the guest. The host needs an embedded web view.
+  WebView2 and WKWebView are built in. On Linux the host selects one:
+  `DesktopHostOptions.Linux.EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41`,
+  or `WithGtk4()` from `Runic.Desktop.Gtk4`.
+- WebView2 gives each guest session an InPrivate profile in a user data folder
+  of its own, deleted after the session, with a browser process of its own.
+- On WKWebView and WebKitGTK, a guest session's data store lives only while one
+  of its windows is open. A guest that opens a window after all its windows
+  closed starts with empty cookies and storage.
+- On macOS the one menu bar shows the host's application menu and then the
+  guest's menus while a hosted window is key.
+- On Windows a guest runs in a kill-on-close job object, which ends it also when
+  the host crashes. On Linux and macOS it leads a process group, and a guest
+  whose host crashed exits when its standard input ends.
+
+### Hosted mode
 
 The application opts in on a code path of its own, reached by a parameter it
-defines, such as a hidden `hosted` command. Runic defines no flag or environment
-variable for it. That path runs `RunicDesktopHost.Run` with
-`RunicDesktopHostOptions.Guest`:
+defines, such as a hidden `hosted` command. That path runs
+`RunicDesktopHost.Run` with `RunicDesktopHostOptions.Guest`:
 
 ```csharp
 #pragma warning disable RUNICDESK103 // Hosted application windows are experimental.

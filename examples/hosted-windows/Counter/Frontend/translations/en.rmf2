@@ -1,0 +1,29 @@
+# The counter's text: the page (Frontend/src/app.ts), the menu bar and the message box (C#) share it.
+
+# Text references the ViewModel produces, which the page shows in the application's language.
+link_refused = The host did not allow opening the link.
+
+# The page's own text.
+page {
+  title = Counter
+  count = Count
+  increment = Increment
+  reset = Reset…
+  documentation = Runic documentation
+}
+
+# The native menu bar, which Program.cs sets again on each language switch.
+menu {
+  counter = Counter
+  increment = Increment
+  reset = Reset…
+  help = Help
+  documentation = Runic documentation
+}
+
+# The message box that Reset… shows.
+reset {
+  question = Reset the count of {$count :integer} to 0?
+  confirm = Reset
+  cancel = Cancel
+}

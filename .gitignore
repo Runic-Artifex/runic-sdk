@@ -23,3 +23,5 @@
 
 # examples/multi-window: the catalog ESM its build writes for the page.
 examples/multi-window/Frontend/.runic/
+# examples/hosted-windows: the counter's catalog ESM, as for multi-window.
+examples/hosted-windows/Counter/Frontend/.runic/

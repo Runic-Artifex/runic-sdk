@@ -1168,3 +1168,22 @@ Details: 0.16.0 [Window presentation and color schemes](../eng/release/notes/0.1
 | A test that opened a second Window through a fake window service | `RunicWindowTestHost.CreateWindowAsync<TWindow>(services)` and `WaitForOpenedWindowAsync<TWindow>()` |
 
 Details: 0.16.0 [Testing and page errors](../eng/release/notes/0.16.0.md#testing-and-page-errors-t).
+
+## From 0.16 to 0.17
+
+### Hosted application windows
+
+0.17.0 adds [hosted applications](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-applications):
+a Runic Desktop application, the host, shows another one's Windows in native windows of its own, over the
+[Runic host protocol](../specs/desktop/host-protocol.md). The
+[hosted windows example](../examples/hosted-windows/README.md) has a shell and a counter. Nothing changes for an
+application that does not opt in: an application without a guest code path cannot be hosted, and one that never calls
+`StartAsync` hosts nothing. The API and the protocol are experimental through 1.0
+([`RUNICDESK103`](experimental.md#RUNICDESK103)): code that uses them does not compile until it suppresses the ID.
+
+| 0.16 | 0.17 |
+| --- | --- |
+| A launcher or suite that started its tools as separate applications, each with its own window | `IRunicHostedApplications.StartAsync(new RunicGuestStartInfo(path, ["hosted"]))` shows each tool's Windows in native windows of the launcher, with the tool's menu bar and dialogs and the launcher's language and theme. `IRunicHostedWindowPolicy` decides what the tool may do |
+| A tool that should show inside such a launcher | A code path of its own, reached by a parameter it defines, that runs `RunicDesktopHost.Run` with `RunicDesktopHostOptions.Guest = RunicGuestOptions.FromStandardInput()`. Its ViewModels, menus, dialogs, clipboard and launcher need no change: hosted, they go to the host |
+| Tests that drove such a tool through serve-only mode and `RunicServeOnlyApplication` | `RunicTestHost.StartGuestAsync` plays the host and answers its menus, dialogs and window services |
+| A custom `IDesktopWindowHostFactory` | Unchanged for the application's own windows. To show hosted windows, its window host implements `IDesktopEphemeralDataStoreWindowHost` |

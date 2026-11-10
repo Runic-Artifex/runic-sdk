@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The page follows the window's colour scheme: the desktop's, or the shell's theme when a shell hosts it. -->
+    <meta name="color-scheme" content="light dark" />
+    <title>Counter</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 1.5rem; background: Canvas; color: CanvasText; }
+      output[role="status"]:empty { display: none; }
+    </style>
+    <script src="webui.js"></script>
+    <script src="runic-desktop-views.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <h1 id="title">Counter</h1>
+    <p><span id="count-label">Count</span>: <output id="count">Connecting</output></p>
+    <p>
+      <button id="increment" type="button">Increment</button>
+      <button id="reset" type="button">Reset…</button>
+      <button id="documentation" type="button">Runic documentation</button>
+    </p>
+    <p><output id="status" role="status"></output></p>
+  </body>
+</html>

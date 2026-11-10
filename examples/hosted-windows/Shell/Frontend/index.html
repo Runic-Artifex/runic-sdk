@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Hosted windows shell</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 1.5rem; background: Canvas; color: CanvasText; }
+      fieldset { margin-block: 1rem; }
+    </style>
+    <script src="webui.js"></script>
+    <script src="runic-desktop-views.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <h1>Hosted windows shell</h1>
+    <p>
+      <button id="open-counter" type="button">Open the counter</button>
+      <button id="stop-counter" type="button">Quit the counter</button>
+      Counter: <output id="counter-state">Connecting</output>
+    </p>
+    <!-- The counter's windows follow both: the language through its own catalog, the theme through the window. -->
+    <fieldset>
+      <legend>Language</legend>
+      <label><input type="radio" name="language" value="en" /> English</label>
+      <label><input type="radio" name="language" value="de" /> Deutsch</label>
+    </fieldset>
+    <fieldset>
+      <legend>Theme</legend>
+      <label><input type="radio" name="theme" value="system" /> System</label>
+      <label><input type="radio" name="theme" value="light" /> Light</label>
+      <label><input type="radio" name="theme" value="dark" /> Dark</label>
+    </fieldset>
+  </body>
+</html>
