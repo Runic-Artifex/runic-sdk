@@ -27,6 +27,7 @@
       "exclude": [
         ".template.config/**/*",
         "frontends/**/*",
+        "translations/**/*",
         "**/*.filelist",
         "**/*.user"
       ],
@@ -42,6 +43,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'react')",
       "modifiers": [
+        { "condition": "(translations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -52,6 +54,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'vue')",
       "modifiers": [
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -62,6 +65,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'svelte')",
       "modifiers": [
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -72,6 +76,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'sveltekit')",
       "modifiers": [
+        { "condition": "(translations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -82,10 +87,41 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'angular')",
       "modifiers": [
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml", "pnpm-workspace.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
       ]
+    },
+    {
+      "source": "./translations/catalog/",
+      "target": "./Frontend/translations/",
+      "condition": "(translations)"
+    },
+    {
+      "source": "./translations/react/",
+      "target": "./Frontend/",
+      "condition": "(translations && frontend == 'react')"
+    },
+    {
+      "source": "./translations/vue/",
+      "target": "./Frontend/",
+      "condition": "(translations && frontend == 'vue')"
+    },
+    {
+      "source": "./translations/svelte/",
+      "target": "./Frontend/",
+      "condition": "(translations && frontend == 'svelte')"
+    },
+    {
+      "source": "./translations/sveltekit/",
+      "target": "./Frontend/",
+      "condition": "(translations && frontend == 'sveltekit')"
+    },
+    {
+      "source": "./translations/angular/",
+      "target": "./Frontend/",
+      "condition": "(translations && frontend == 'angular')"
     }
   ],
   "symbols": {
@@ -193,6 +229,13 @@
       "defaultValue": "false",
       "displayName": "Test project",
       "description": "Adds a TUnit test project that drives the Window headlessly with Runic.Application.Testing."
+    },
+    "translations": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Translations",
+      "description": "Translates the application with Runic Translations 0.9: one catalog in English and German for the page and C#, a language switch, the application's language for every window, RUNIC_LOCALE for test runs, and a test of the translated text."
     },
     "nix": {
       "type": "parameter",

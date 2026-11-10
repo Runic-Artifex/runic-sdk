@@ -34,11 +34,25 @@ export type { TextReference } from "./wire.js";
  * transport's `createReferenceResolver` resolves references of each catalog:
  *
  * ```ts
- * const resolveReference = createReferenceResolver([
+ * import { configureTranslatedText } from "@runic-artifex/views";
+ * import { m } from "virtual:runic-translations/app";
+ * import { configureSharedLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
+ * import * as appTransport from "virtual:runic-translations/app/transport";
+ * import { m as grid } from "virtual:runic-translations/acme.grid";
+ * import * as gridTransport from "virtual:runic-translations/acme.grid/transport";
+ *
+ * const locale = createLocaleSource({ initialLocale: navigator.language });
+ * configureSharedLocaleResolver(locale.getRequestedLocale);
+ * // createReferenceResolver belongs to a generated transport module, not to @runic-artifex/views.
+ * const resolveReference = appTransport.createReferenceResolver([
  *   { transport: appTransport, messages: m },
  *   { transport: gridTransport, messages: grid },
  * ]);
- * configureTranslatedText({ ...locale, resolve: (reference, language) => resolveReference(reference, { locale: language }).text });
+ * configureTranslatedText({
+ *   ...locale,
+ *   resolve: (reference, language) => resolveReference(reference, { locale: language }).text,
+ *   direction: localeDirection,
+ * });
  * ```
  */
 export interface TextTranslations {

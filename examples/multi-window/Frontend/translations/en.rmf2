@@ -1,0 +1,18 @@
+# The multi-window example's text: the page (Frontend/src/app.ts) and C# (ProjectViewModel, Program.cs) share it.
+
+# Text references the ViewModel produces, which the page shows in the application's language.
+ready = Ready.
+renamed = Renamed to {$title}.
+title_too_long = The title must be at most {$max :integer} characters.
+
+# The page's own text.
+page {
+  title_label = Project title
+  rename = Rename in every Window
+  language = Language
+}
+
+# The native menu bar, which Program.cs sets again on each language switch.
+menu {
+  language = Language
+}
