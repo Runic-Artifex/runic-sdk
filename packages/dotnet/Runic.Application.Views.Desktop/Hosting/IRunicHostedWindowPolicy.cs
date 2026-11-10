@@ -7,15 +7,16 @@ namespace Runic.Application.Views.Desktop;
 
 /// <summary>
 /// A host's rules for what a guest application may do with the windows the host shows for it (the Runic host protocol,
-/// <c>runic-host/1</c>): which windows open, with which native options, which presentation requests apply, and which
-/// menus and dialogs the guest shows.
+/// <c>runic-host/1</c>): which windows open, with which native options, which presentation requests apply, which menus
+/// and dialogs the guest shows, and which window services it uses.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every member has a default that allows the request unchanged, and <see cref="Limits"/> the protocol's default limits,
-/// so a policy implements only what it restricts. A later release can add members for later protocol features, such as
-/// window services, with defaults that allow them. A policy's members can run concurrently, for different windows and
-/// requests.
+/// Every member has a default, and <see cref="Limits"/> the protocol's default limits, so a policy implements only what it
+/// changes. The defaults allow windows, presentation, menus and dialogs unchanged; window services follow
+/// <see cref="RunicHostedServiceRequest.IsAllowedByDefault"/>, which keeps the clipboard's content and other applications
+/// from a guest the user is not working in. A later release can add members for later protocol features, with defaults
+/// that keep this release's behaviour. A policy's members can run concurrently, for different windows and requests.
 /// </para>
 /// <code>
 /// sealed class OneWindowPolicy : IRunicHostedWindowPolicy
@@ -102,15 +103,51 @@ public interface IRunicHostedWindowPolicy
         ValueTask.FromResult(RunicHostedDialogDecision.Allow());
 
     /// <summary>
-    /// The limits of the guest's menu and dialog requests (<c>menus/1</c>, <c>dialogs/1</c>); the host reads them once,
-    /// when the guest started. The default is <see cref="RunicHostedLimits.Default"/>.
+    /// Decides a window service a guest uses for one of its windows (<c>window-services/1</c>): a clipboard read or write,
+    /// the monitors, opening a file or link, or files the user dropped onto the window. The default allows what
+    /// <see cref="RunicHostedServiceRequest.IsAllowedByDefault"/> allows.
+    /// </summary>
+    /// <param name="request">The request.</param>
+    /// <param name="cancellationToken">Cancelled when the window closes or the guest goes away.</param>
+    /// <returns>
+    /// The decision: allow it, allow a changed request (<see cref="RunicHostedServiceDecision.Apply"/>), such as revealing a
+    /// file instead of opening it or only some of the dropped files, or refuse it, which the guest receives as
+    /// <see cref="PlatformFailureCode.PermissionDenied"/>; a refused drop does not reach the guest.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The host serves each request with its own rights: its clipboard, its monitors, and its activation rights to open a
+    /// file or link. By default a guest reads and writes the clipboard only while the user works in the window (it is
+    /// active, not because the guest asked: <see cref="RunicHostedServiceRequest.IsGuestActivated"/>), so a guest the user
+    /// is not working in cannot read what the user copies elsewhere or replace it, and opens only web and mail links and
+    /// the files the user gave it through the host, from the host's open dialogs or a drop, while the user works in the
+    /// window. Widen it with care: a guest that may open any file can start any program the desktop runs for a file type.
+    /// </para>
+    /// <code>
+    /// // Let a trusted tool write the clipboard from any of its windows, and paste only as plain text.
+    /// public ValueTask&lt;RunicHostedServiceDecision&gt; ServiceAsync(RunicHostedServiceRequest request, CancellationToken cancellationToken) =&gt;
+    ///     ValueTask.FromResult(request.Kind switch
+    ///     {
+    ///         RunicHostedServiceKind.ClipboardWrite =&gt; RunicHostedServiceDecision.Apply(request with { ClipboardFormats = DesktopClipboardFormats.Text }),
+    ///         _ =&gt; request.IsAllowedByDefault ? RunicHostedServiceDecision.Allow() : RunicHostedServiceDecision.Refuse(),
+    ///     });
+    /// </code>
+    /// <para>A policy that throws fails the guest's request as failed, and drops the files of a drop.</para>
+    /// </remarks>
+    ValueTask<RunicHostedServiceDecision> ServiceAsync(RunicHostedServiceRequest request, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(request.IsAllowedByDefault ? RunicHostedServiceDecision.Allow() : RunicHostedServiceDecision.Refuse());
+
+    /// <summary>
+    /// The limits of the guest's menu, dialog and window service requests (<c>menus/1</c>, <c>dialogs/1</c>,
+    /// <c>window-services/1</c>); the host reads them once, when the guest started. The default is
+    /// <see cref="RunicHostedLimits.Default"/>.
     /// </summary>
     RunicHostedLimits Limits => RunicHostedLimits.Default;
 }
 
 /// <summary>
-/// The limits of a guest's menu and dialog requests (the Runic host protocol, <c>runic-host/1</c>), which keep a guest
-/// from flooding the host's user interface (<see cref="IRunicHostedWindowPolicy.Limits"/>).
+/// The limits of a guest's menu, dialog, presentation and window service requests (the Runic host protocol,
+/// <c>runic-host/1</c>), which keep a guest from flooding the host's user interface (<see cref="IRunicHostedWindowPolicy.Limits"/>).
 /// </summary>
 /// <remarks>Experimental; see <c>docs/experimental.md</c>.</remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
@@ -183,6 +220,241 @@ public sealed record RunicHostedLimits
             field = value;
         }
     } = Hosting.HostFeatures.DefaultDialogsPerTenSeconds;
+
+    /// <summary>
+    /// How many clipboard and monitor requests (<c>clipboard-read</c>, <c>clipboard-write</c>, <c>monitors</c>) the guest
+    /// may make per second across its windows, after a burst of as many; 20 by default. A request over the rate fails as
+    /// busy.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int ServiceRequestsPerSecond
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(ServiceRequestsPerSecond));
+            field = value;
+        }
+    } = Hosting.HostServices.DefaultServiceRequestsPerSecond;
+
+    /// <summary>
+    /// How many files and links the guest may open (<c>launch</c>) per ten seconds across its windows, after a burst of as
+    /// many; 5 by default, so a guest cannot open browser tabs or applications one after another. A request over the rate
+    /// fails as busy.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int LaunchesPerTenSeconds
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(LaunchesPerTenSeconds));
+            field = value;
+        }
+    } = Hosting.HostServices.DefaultLaunchesPerTenSeconds;
+
+    /// <summary>
+    /// How many requests that can activate a window (<c>present</c>, <c>minimize</c>, <c>set-visible</c>,
+    /// <c>set-full-screen</c> and <c>toggle-maximized</c>) the guest may make per second across its windows, after a burst
+    /// of <see cref="PresentBurst"/>; 2 by default. It keeps a guest from taking the focus again and again. A request over
+    /// the rate fails as busy.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int PresentsPerSecond
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(PresentsPerSecond));
+            field = value;
+        }
+    } = Hosting.HostServices.DefaultPresentsPerSecond;
+
+    /// <summary>The burst of <see cref="PresentsPerSecond"/>; 3 by default.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int PresentBurst
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(PresentBurst));
+            field = value;
+        }
+    } = Hosting.HostServices.DefaultPresentBurst;
+
+    /// <summary>
+    /// How many announcements (<c>announce</c>) the guest may send the user's screen reader per second across its windows,
+    /// after a burst of <see cref="AnnouncementBurst"/>; 2 by default, so a guest cannot talk over the user's screen reader.
+    /// An announcement over the rate fails as busy.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int AnnouncementsPerSecond
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(AnnouncementsPerSecond));
+            field = value;
+        }
+    } = Hosting.HostServices.DefaultAnnouncementsPerSecond;
+
+    /// <summary>The burst of <see cref="AnnouncementsPerSecond"/>; 5 by default.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int AnnouncementBurst
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(AnnouncementBurst));
+            field = value;
+        }
+    } = Hosting.HostServices.DefaultAnnouncementBurst;
+}
+
+/// <summary>Which window service a <see cref="RunicHostedServiceRequest"/> is (<c>window-services/1</c>).</summary>
+/// <remarks>Open: a later release can add kinds. Experimental; see <c>docs/experimental.md</c>.</remarks>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public enum RunicHostedServiceKind
+{
+    /// <summary>A read of the host's clipboard (<c>clipboard-read</c>): <see cref="RunicHostedServiceRequest.ClipboardFormats"/>.</summary>
+    ClipboardRead,
+
+    /// <summary>A write of the host's clipboard (<c>clipboard-write</c>): <see cref="RunicHostedServiceRequest.ClipboardFormats"/>.</summary>
+    ClipboardWrite,
+
+    /// <summary>A list of the host's monitors (<c>monitors</c>).</summary>
+    Monitors,
+
+    /// <summary>
+    /// Opening a file or link (<c>launch</c>): <see cref="RunicHostedServiceRequest.Uri"/>, or
+    /// <see cref="RunicHostedServiceRequest.Path"/> with <see cref="RunicHostedServiceRequest.Operation"/>.
+    /// </summary>
+    Launch,
+
+    /// <summary>Files the user dropped onto the window (<c>files-dropped</c>): <see cref="RunicHostedServiceRequest.Paths"/>.</summary>
+    FileDrop,
+}
+
+/// <summary>
+/// A window service a guest application uses for one of its windows, or files the user dropped onto it. Only the members
+/// of its <see cref="Kind"/> are set.
+/// </summary>
+/// <remarks>Experimental; see <c>docs/experimental.md</c>.</remarks>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed record RunicHostedServiceRequest
+{
+    internal RunicHostedServiceRequest(RunicHostedWindow window, RunicHostedServiceKind kind, bool isAllowedByDefault, bool isGuestActivated)
+    {
+        Window = window;
+        Kind = kind;
+        IsAllowedByDefault = isAllowedByDefault;
+        IsGuestActivated = isGuestActivated;
+    }
+
+    /// <summary>The window.</summary>
+    public RunicHostedWindow Window { get; }
+
+    /// <summary>What the guest asks for.</summary>
+    public RunicHostedServiceKind Kind { get; }
+
+    /// <summary>
+    /// Whether the host's default rules allow it. A clipboard read only while the user works in <see cref="Window"/>: it is
+    /// active (has the keyboard focus), and not because of the guest's own request (<see cref="IsGuestActivated"/>). A
+    /// clipboard write likewise, or within a second after such an activation ended. Opening a link only for an
+    /// <c>http</c>, <c>https</c> or <c>mailto</c> URI, and a file only for a path the user gave the guest through the host
+    /// (an open or folder dialog's selection or a drop) that is still the same file, each only while the user works in
+    /// the window. The monitors and a drop always.
+    /// </summary>
+    public bool IsAllowedByDefault { get; }
+
+    /// <summary>
+    /// Whether <see cref="Window"/> is active because of the guest's own request, and the user has not worked in it since:
+    /// it became active within two seconds after any request of the guest that can activate one of its windows, such as
+    /// opening, presenting, showing, hiding, minimizing or maximizing a window, entering or leaving full screen, closing
+    /// one of its windows, which activates its owner, or the end of one of its dialogs or context menus, also one the
+    /// user answered, or while one of them shows. The user's own later activation of the window, a choice in its native menu bar, a choice in a
+    /// context menu shown while the user worked in the window, and a drop onto it end it; a shortcut of its menus does
+    /// not, since a key the guest's page leaves unhandled runs it. A guest that takes the focus this way cannot use it to
+    /// read the clipboard, write it or open files and links by default.
+    /// </summary>
+    /// <remarks>
+    /// The host does not see the user's input in the guest's page, so a guest's window the user works in stays
+    /// guest-activated until one of these happens. A policy that trusts a guest can allow its requests anyway.
+    /// </remarks>
+    public bool IsGuestActivated { get; }
+
+    /// <summary>
+    /// The format a <see cref="RunicHostedServiceKind.ClipboardRead"/> reads (<see cref="DesktopClipboardFormats.None"/> when
+    /// it reads which formats the clipboard has), or the formats a <see cref="RunicHostedServiceKind.ClipboardWrite"/> writes.
+    /// </summary>
+    public DesktopClipboardFormats ClipboardFormats { get; init; }
+
+    /// <summary>The link of a <see cref="RunicHostedServiceKind.Launch"/>; <see langword="null"/> for a file.</summary>
+    /// <remarks>The host opens it with the rules of <see cref="IDesktopFileLauncher.LaunchUriAsync"/>.</remarks>
+    public Uri? Uri { get; init; }
+
+    /// <summary>The absolute path of a <see cref="RunicHostedServiceKind.Launch"/> of a file; <see langword="null"/> for a link.</summary>
+    /// <remarks>The host opens it with the rules of <see cref="IDesktopFileLauncher.LaunchAsync"/>.</remarks>
+    public string? Path { get; init; }
+
+    /// <summary>What a <see cref="RunicHostedServiceKind.Launch"/> of a file does with it.</summary>
+    public DesktopFileOperation Operation { get; init; }
+
+    /// <summary>The absolute paths of a <see cref="RunicHostedServiceKind.FileDrop"/>, as the platform reported them.</summary>
+    public ImmutableArray<string> Paths { get; init; } = [];
+}
+
+/// <summary>A host policy's decision about a guest's window service.</summary>
+/// <remarks>Experimental; see <c>docs/experimental.md</c>.</remarks>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed class RunicHostedServiceDecision
+{
+    private static readonly RunicHostedServiceDecision Allowed = new(true, null, null);
+
+    private RunicHostedServiceDecision(bool allowed, RunicHostedServiceRequest? request, string? message)
+    {
+        IsAllowed = allowed;
+        Request = request;
+        Message = message;
+    }
+
+    /// <summary>Whether the service runs.</summary>
+    public bool IsAllowed { get; }
+
+    /// <summary>The request that runs instead of the guest's, or <see langword="null"/> for the guest's.</summary>
+    public RunicHostedServiceRequest? Request { get; }
+
+    /// <summary>For a refusal, why, as the guest's failure message; it must not carry a secret.</summary>
+    public string? Message { get; }
+
+    /// <summary>Runs the guest's request.</summary>
+    /// <returns>The decision.</returns>
+    public static RunicHostedServiceDecision Allow() => Allowed;
+
+    /// <summary>
+    /// Runs a changed request instead: for a <see cref="RunicHostedServiceKind.Launch"/> another
+    /// <see cref="RunicHostedServiceRequest.Uri"/>, <see cref="RunicHostedServiceRequest.Path"/> or
+    /// <see cref="RunicHostedServiceRequest.Operation"/>, such as <c>request with { Operation = DesktopFileOperation.Reveal }</c>;
+    /// for a <see cref="RunicHostedServiceKind.FileDrop"/> other absolute <see cref="RunicHostedServiceRequest.Paths"/>, such
+    /// as only some of them; for a <see cref="RunicHostedServiceKind.ClipboardWrite"/> fewer
+    /// <see cref="RunicHostedServiceRequest.ClipboardFormats"/>, which writes only those of the guest's content (none
+    /// writes nothing and succeeds); for a <see cref="RunicHostedServiceKind.ClipboardRead"/> of one format,
+    /// <see cref="DesktopClipboardFormats.None"/>, which reads as if the clipboard had no such format. For
+    /// <see cref="RunicHostedServiceKind.Monitors"/> it allows the guest's request. It keeps the request's kind and window,
+    /// and a clipboard request's formats can only shrink: another kind, window or format fails the guest's request.
+    /// </summary>
+    /// <param name="request">The request to run.</param>
+    /// <returns>The decision.</returns>
+    public static RunicHostedServiceDecision Apply(RunicHostedServiceRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new(true, request, null);
+    }
+
+    /// <summary>Refuses the request: the guest receives <see cref="PlatformFailureCode.PermissionDenied"/>.</summary>
+    /// <param name="message">Why, for the guest; at most 1,024 characters are sent.</param>
+    /// <returns>The decision.</returns>
+    public static RunicHostedServiceDecision Refuse(string? message = null) => new(false, null, message);
 }
 
 /// <summary>Which menus of a guest a <see cref="RunicHostedMenuRequest"/> is.</summary>
@@ -430,6 +702,13 @@ public sealed class RunicHostedWindowRequest
 
     /// <summary>The title the window shows until its page sets one, or <see langword="null"/>.</summary>
     public string? Title { get; }
+
+    /// <summary>
+    /// The guest Window's locale, a BCP 47 tag, or <see langword="null"/> when the guest named none. The host gives the
+    /// window the locale's direction (<see cref="DesktopWindowOptions.LayoutDirection"/> in <see cref="WindowOptions"/>)
+    /// unless its own window options fix one.
+    /// </summary>
+    public string? Locale { get; init; }
 
     /// <summary>The open window of the same guest that owns the new one, or <see langword="null"/>.</summary>
     public RunicHostedWindow? Owner { get; }

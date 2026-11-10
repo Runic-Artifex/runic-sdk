@@ -118,8 +118,9 @@ internal sealed class HostConformanceTests
         private void Start(JsonNode start)
         {
             var application = scenario["arrange"]!["application"]!.AsObject();
-            // Each scenario starts with a guard that allows at once.
+            // Each scenario starts with a guard that allows at once, and no drops.
             ConformanceGuardedWindow.Reset();
+            ConformanceDropModel.Reset();
             TimeSpan Limit(string name, TimeSpan fallback) =>
                 Limits[name] is { } value ? TimeSpan.FromMilliseconds(value.GetValue<int>()) : fallback;
             var guest = RunicGuestOptions.FromStreams(new AnonymousPipeClientStream(PipeDirection.In, _input.ClientSafePipeHandle), _output) with
@@ -141,6 +142,10 @@ internal sealed class HostConformanceTests
             services.AddScoped<OrderedCollectionModel>();
             services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
                 _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+            services.AddScoped<ConformanceDropModel>();
+            services.AddScoped<Func<IBridgeTransport, ConformanceDropModel, IDisposable>>(_ => (transport, model) => new ConformanceDropBridge(transport, model));
+            // The application's locale, which follows the host's.
+            services.AddRunicWindowService();
             _provider = services.BuildServiceProvider();
             var provider = _provider;
             _run = Task.Factory.StartNew(() => RunicDesktopHost.Run(provider, new DesktopHostOptions { WaitForConnection = false },
@@ -227,9 +232,12 @@ internal sealed class HostConformanceTests
                     };
                     var cancellation = new CancellationTokenSource();
                     _openCancellations[guest["window"]!.GetValue<string>()] = cancellation;
-                    Task<IRunicWindow> opening = guest["type"]!.GetValue<string>() == "Guarded"
-                        ? Open<ConformanceGuardedWindow>(host, options, cancellation.Token)
-                        : Open<ConformanceMainWindow>(host, options, cancellation.Token);
+                    Task<IRunicWindow> opening = guest["type"]!.GetValue<string>() switch
+                    {
+                        "Guarded" => Open<ConformanceGuardedWindow>(host, options, cancellation.Token),
+                        "Drop" => Open<ConformanceDropWindow>(host, options, cancellation.Token),
+                        _ => Open<ConformanceMainWindow>(host, options, cancellation.Token),
+                    };
                     _windows[guest["window"]!.GetValue<string>()] = opening;
                     result = Run(async () => (object?)await opening);
                     break;
@@ -313,6 +321,44 @@ internal sealed class HostConformanceTests
                 case "messageBox":
                     result = Dialog(async (services, token) => Normalize(await services.MessageBoxes.ShowAsync(ConformanceDialogs.MessageBox, token)));
                     break;
+                case "locale":
+                    result = Task.FromResult<object?>(host.Services.GetRequiredService<IRunicApplicationLocale>());
+                    break;
+                case "setLocale":
+                    var own = guest["value"]?.GetValue<string>();
+                    result = Run(async () => { await host.Services.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync(own); return null; });
+                    break;
+                case "appearance":
+                    result = Run(async () => (object?)((await Window()) switch
+                    {
+                        RunicWindow<OrderedCollectionModel> main => main.Content,
+                        RunicWindow<ConformanceDropModel> drop => drop.Content,
+                        _ => null,
+                    }));
+                    break;
+                case "readClipboard":
+                    result = Run(async () => (object?)Normalize(await (await Window()).Services.GetRequiredService<IWindowPlatformServices>().Clipboard.ReadTextAsync(1_024)));
+                    break;
+                case "writeClipboard":
+                    var copied = guest["value"]!.GetValue<string>();
+                    result = Present(async window => await window.Services.GetRequiredService<IWindowPlatformServices>().Clipboard.WriteTextAsync(copied));
+                    break;
+                case "monitors":
+                    result = Run(async () => (object?)Normalize(await (await Window()).Services.GetRequiredService<IWindowPlatformServices>().Monitors.ListAsync()));
+                    break;
+                case "launch":
+                    var target = Resolve(guest["value"])!.GetValue<string>();
+                    result = Present(async window =>
+                    {
+                        var launcher = window.Services.GetRequiredService<IWindowPlatformServices>().FileLauncher;
+                        return Path.IsPathFullyQualified(target)
+                            ? await launcher.LaunchAsync(target, DesktopFileOperation.Reveal)
+                            : await launcher.LaunchUriAsync(new Uri(target, UriKind.Absolute));
+                    });
+                    break;
+                case "drops":
+                    result = Task.FromResult<object?>(new ConformanceDropModel());
+                    break;
                 case "cancelDialog":
                     if (_dialogCancellations.Remove(guest["window"]!.GetValue<string>(), out var dialogCancellation))
                     {
@@ -348,6 +394,23 @@ internal sealed class HostConformanceTests
             PlatformResult<DesktopMenuItem?>.Success(var item) => new JsonObject { ["chosen"] = item?.CommandId },
             PlatformResult<DesktopMenuItem?>.Unavailable(var reason) => OutcomeOf("unavailable", HostProtocol.Kebab(reason.ToString())),
             PlatformResult<DesktopMenuItem?>.Failed(var code, _) => OutcomeOf("failed", HostProtocol.Kebab(code.ToString())),
+            _ => throw new InvalidOperationException($"Unknown result {result}."),
+        };
+
+        private static JsonObject Normalize(PlatformResult<string?> result) => result switch
+        {
+            PlatformResult<string?>.Success(var text) => new JsonObject { ["text"] = text },
+            PlatformResult<string?>.Unavailable(var reason) => OutcomeOf("unavailable", HostProtocol.Kebab(reason.ToString())),
+            PlatformResult<string?>.Failed(var code, _) => OutcomeOf("failed", HostProtocol.Kebab(code.ToString())),
+            _ => throw new InvalidOperationException($"Unknown result {result}."),
+        };
+
+        private static JsonObject Normalize(PlatformResult<ImmutableArray<DesktopMonitor>> result) => result switch
+        {
+            PlatformResult<ImmutableArray<DesktopMonitor>>.Success(var monitors) =>
+                new JsonObject { ["monitors"] = new JsonArray([.. monitors.Select(static monitor => (JsonNode)monitor.Id)]) },
+            PlatformResult<ImmutableArray<DesktopMonitor>>.Unavailable(var reason) => OutcomeOf("unavailable", HostProtocol.Kebab(reason.ToString())),
+            PlatformResult<ImmutableArray<DesktopMonitor>>.Failed(var code, _) => OutcomeOf("failed", HostProtocol.Kebab(code.ToString())),
             _ => throw new InvalidOperationException($"Unknown result {result}."),
         };
 
@@ -428,6 +491,30 @@ internal sealed class HostConformanceTests
                     var commands = invoked.Select(static command => command!.GetValue<string>()).ToArray();
                     Check(await TestTimeouts.UntilAsync(() => menus.Invoked.SequenceEqual(commands), StepTimeout),
                         $"The application ran [{string.Join(", ", menus.Invoked)}], not [{string.Join(", ", commands)}].");
+                    return;
+                }
+                if (expect.ContainsKey("locale"))
+                {
+                    var locale = (IRunicApplicationLocale)result!;
+                    var expected = expect["locale"]?.GetValue<string>();
+                    Check(await TestTimeouts.UntilAsync(() => locale.Locale == expected, StepTimeout),
+                        $"The application's locale is {locale.Locale ?? "null"}, not {expected ?? "null"}.");
+                    return;
+                }
+                if (expect.ContainsKey("appearance"))
+                {
+                    var content = (WindowContentSession)result!;
+                    var expected = expect["appearance"];
+                    JsonNode? Actual() => content.Appearance is { } appearance ? HostServices.WriteAppearance(appearance) : null;
+                    Check(await TestTimeouts.UntilAsync(() => JsonNode.DeepEquals(Actual(), expected), StepTimeout),
+                        $"The Window's pages show {Actual()?.ToJsonString() ?? "null"}, not {expected?.ToJsonString() ?? "null"}.");
+                    return;
+                }
+                if (expect["dropped"] is JsonArray dropped)
+                {
+                    var names = dropped.Select(static name => name!.GetValue<string>()).ToArray();
+                    Check(await TestTimeouts.UntilAsync(() => ConformanceDropModel.Dropped.SequenceEqual(names), StepTimeout),
+                        $"The Window received [{string.Join(", ", ConformanceDropModel.Dropped)}], not [{string.Join(", ", names)}].");
                     return;
                 }
                 if (expect["closed"] is { } closed)
@@ -1018,8 +1105,11 @@ internal sealed class ScenarioFiles : IDisposable
 {
     private string? _root;
 
-    public static bool IsPath(JsonObject placeholder) => placeholder.Count == 1 && (placeholder.ContainsKey("$file") || placeholder.ContainsKey("$directory"));
+    public static bool IsPath(JsonObject placeholder) =>
+        (placeholder.ContainsKey("$file") || placeholder.ContainsKey("$directory")) && placeholder.Count == (placeholder.ContainsKey("then") ? 2 : 1);
 
+    // The path of the file or directory, created on first use, followed by the segments of then, such as ".." and a name,
+    // as they are.
     public string Path(JsonObject placeholder)
     {
         _root ??= Directory.CreateTempSubdirectory("runic-host-conformance-").FullName;
@@ -1028,6 +1118,8 @@ internal sealed class ScenarioFiles : IDisposable
         var path = System.IO.Path.Combine(_root, name);
         if (directory) Directory.CreateDirectory(path);
         else if (!File.Exists(path)) File.WriteAllText(path, "Runic host conformance\n");
+        if (placeholder["then"] is JsonArray then)
+            path = string.Join(System.IO.Path.DirectorySeparatorChar, [path, .. then.Select(static segment => segment!.GetValue<string>())]);
         return path;
     }
 
@@ -1039,3 +1131,33 @@ internal sealed class ScenarioFiles : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 }
+
+// The corpus's Drop Window (README, Test application): its root ViewModel takes dropped files and records their names.
+sealed class ConformanceDropWindow : RunicWindow<ConformanceDropModel>;
+
+internal sealed class ConformanceDropModel : IRunicFileDropTarget, System.ComponentModel.INotifyPropertyChanged
+{
+    private static readonly List<string> s_dropped = [];
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+    // The names of the files dropped since the scenario started, in order.
+    public static IReadOnlyList<string> Dropped
+    {
+        get { lock (s_dropped) return [.. s_dropped]; }
+    }
+
+    public static void Reset()
+    {
+        lock (s_dropped) s_dropped.Clear();
+    }
+
+    public ValueTask OnFilesDroppedAsync(RunicFileDrop drop, CancellationToken cancellationToken)
+    {
+        lock (s_dropped) s_dropped.AddRange(drop.Files.Select(static file => Path.GetFileName(file.Path)));
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class ConformanceDropBridge(IBridgeTransport transport, ConformanceDropModel model)
+    : ViewModelBridge<ConformanceDropModel>(transport, model, "conformance-drop", [], [], [], []);

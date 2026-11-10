@@ -33,9 +33,14 @@ namespace Runic.Application.Testing;
 /// from standard output; the guest's other output and its standard error are captured for failure messages. It
 /// connects again when its connection closes before the <c>hello</c> reply, within the start timeout, answers only the
 /// base protocol's requests, the menus of <c>menus/1</c> (<see cref="RunicTestHostedWindow.MenuBar"/>,
-/// <see cref="RunicTestHostedWindow.InvokeMenuItemAsync"/>) and the dialogs of <c>dialogs/1</c>, which
+/// <see cref="RunicTestHostedWindow.InvokeMenuItemAsync"/>), the dialogs of <c>dialogs/1</c>, which
 /// <see cref="RunicTestHostOptions.FileDialog"/>, <see cref="RunicTestHostOptions.MessageBox"/> and
-/// <see cref="RunicTestHostOptions.ContextMenu"/> answer, and lists a window once it answered its <c>window-open</c>.
+/// <see cref="RunicTestHostOptions.ContextMenu"/> answer, and the window services of <c>window-services/1</c> with a
+/// simulated <see cref="Clipboard"/>, <see cref="Monitors"/>, recorded launches
+/// (<see cref="RunicTestHostedWindow.LaunchRequests"/>) and dropped files (<see cref="RunicTestHostedWindow.DropFilesAsync"/>),
+/// and lists a window once it answered its <c>window-open</c>. The guest starts with
+/// <see cref="RunicTestHostOptions.Locale"/> and <see cref="RunicTestHostOptions.Appearance"/>, which
+/// <see cref="SetLocaleAsync"/> and <see cref="SetAppearanceAsync"/> change.
 /// <see cref="StopAsync"/> sends <c>shutdown</c> and waits for the guest to exit; disposing closes standard input and the
 /// channel, as a host that went away does, and kills the guest's process tree when it has not exited in time. On
 /// Windows the guest runs in a job object that kills it when the test process ends.
@@ -201,12 +206,13 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         // The launch line and the handshake with the host's own rules (HostLaunch): the refusal, the channel line, the
         // retried connection, the guest proof first, then ok and the protocol.
         var channel = HostLaunch.Channel(line, _options.Protocols, ExitCodeText, Failure);
+        CheckLocale(_options.Locale, _options.Languages);
         var hello = await HostLaunch.HandshakeAsync(channel, nonce, _options.HostName, _options.HostVersion, new JsonObject
         {
             ["features"] = new JsonArray([.. _options.Features.Select(static name => (JsonNode)name)]),
-            ["locale"] = null,
-            ["languages"] = new JsonArray(),
-            ["appearance"] = null,
+            ["locale"] = _options.Locale,
+            ["languages"] = HostServices.WriteLanguages(_options.Languages),
+            ["appearance"] = _options.Appearance is null ? null : HostServices.WriteAppearance(_options.Appearance),
         }, Failure, () => _exited.Task.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
         var socket = hello.Socket;
         Guest = new RunicTestGuest(hello.Name, hello.Version, hello.ApplicationId);
@@ -265,8 +271,8 @@ public sealed partial class RunicTestHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Reports a change of the host's appearance to the guest, as the <c>appearance</c> push does. A guest of this release
-    /// does not follow it yet and keeps its own appearance.
+    /// Reports a change of the host's appearance to the guest, as the <c>appearance</c> push does: the guest's Windows show
+    /// it, in their pages' appearance (<c>appearance/1</c>), instead of the guest process's own desktop settings.
     /// </summary>
     /// <param name="appearance">The host's appearance; <see langword="null"/> reports every member unknown.</param>
     /// <param name="cancellationToken">Cancels sending.</param>
@@ -403,6 +409,7 @@ public sealed partial class RunicTestHost : IAsyncDisposable
             return;
         }
         if (await OnFeatureRequestAsync(request, id).ConfigureAwait(false)) return;
+        if (await OnServiceRequestAsync(request, id).ConfigureAwait(false)) return;
         if (!s_presentationRequests.TryGetValue(request.Kind, out var feature))
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of the base protocol.").ConfigureAwait(false);
@@ -457,7 +464,11 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         var window = new RunicTestHostedWindow(this, id!, HostProtocol.String(request.Message, "type") ?? "", url,
             (int?)HostProtocol.Integer(request.Message, "width"), (int?)HostProtocol.Integer(request.Message, "height"), owner,
             HostProtocol.String(request.Message, "modality") == "window", HostProtocol.Boolean(request.Message, "guardClose") == true,
-            _options.WindowFeatures);
+            _options.WindowFeatures)
+        {
+            Locale = HostProtocol.String(request.Message, "locale"),
+            AcceptsFileDrops = HostProtocol.Boolean(request.Message, "fileDrops") == true && Features.Contains(HostServices.Feature, StringComparer.Ordinal),
+        };
         var allowed = _options.OpenWindow?.Invoke(window) ?? true;
         window.Refused = !allowed;
         lock (_windows) _known[window.Id] = window;
@@ -634,10 +645,60 @@ public sealed record RunicTestHostOptions
     public Func<RunicTestPresentationRequest, PlatformResult<PlatformUnit>>? Presentation { get; init; }
 
     /// <summary>
-    /// The protocol features the host's <c>hello</c> lists: <c>menus/1</c> and <c>dialogs/1</c> by default. A guest's
-    /// menus and dialogs of a feature that is not listed report <c>OwnerUnavailable</c>, as in serve-only mode.
+    /// The protocol features the host's <c>hello</c> lists: <c>menus/1</c>, <c>dialogs/1</c> and <c>window-services/1</c>
+    /// by default. A guest's menus, dialogs and window services of a feature that is not listed report
+    /// <c>OwnerUnavailable</c>, as in serve-only mode.
     /// </summary>
-    public IReadOnlyList<string> Features { get; init; } = ["menus/1", "dialogs/1"];
+    public IReadOnlyList<string> Features { get; init; } = ["menus/1", "dialogs/1", "window-services/1"];
+
+    /// <summary>
+    /// The host's application locale in its <c>hello</c>, which the guest's <c>IRunicApplicationLocale</c> follows unless
+    /// the guest sets a locale of its own; <see langword="null"/>, the default, for none.
+    /// </summary>
+    public string? Locale { get; init; }
+
+    /// <summary>The languages the host's user prefers, in its <c>hello</c>; empty by default.</summary>
+    public IReadOnlyList<string> Languages { get; init; } = [];
+
+    /// <summary>
+    /// The host's appearance in its <c>hello</c>, which the guest's Windows show; <see langword="null"/>, the default, for an
+    /// unknown appearance.
+    /// </summary>
+    public DesktopAppearance? Appearance { get; init; }
+
+    /// <summary>
+    /// The host's monitors that the guest lists (<c>monitors</c>), the first one the window's: one primary 1920 × 1080
+    /// monitor, <c>test-monitor</c>, by default. <see cref="RunicTestHost.SetMonitorsAsync"/> changes them.
+    /// </summary>
+    public IReadOnlyList<DesktopMonitor> Monitors { get; init; } =
+    [
+        new DesktopMonitor("test-monitor", "Test monitor")
+        {
+            Bounds = new DesktopRect(0, 0, 1920, 1080),
+            WorkArea = new DesktopRect(0, 0, 1920, 1040),
+            IsPrimary = true,
+        },
+    ];
+
+    /// <summary>
+    /// Answers each file or link the guest asks the host to open (<c>launch</c>) with a platform outcome;
+    /// <see langword="null"/>, the default, answers success. Every request is recorded in
+    /// <see cref="RunicTestHostedWindow.LaunchRequests"/>; nothing is opened.
+    /// </summary>
+    public Func<RunicTestLaunchRequest, PlatformResult<PlatformUnit>>? Launch { get; init; }
+
+    /// <summary>
+    /// Whether a clipboard read for a window that is not active is refused, as Runic's host does by default;
+    /// <see langword="true"/> by default. Each window is active when it opens; <see cref="RunicTestHostedWindow.SetActivityAsync"/>
+    /// changes it.
+    /// </summary>
+    /// <remarks>
+    /// Runic's host is stricter: it also refuses clipboard writes and launches for a window the user is not working in,
+    /// and treats a window the guest opened or presented itself as not the user's until the user switches to it
+    /// (<c>RunicHostedServiceRequest.IsGuestActivated</c>). The test host does not
+    /// model the user's activation; test those rules against Runic's host.
+    /// </remarks>
+    public bool ClipboardReadsOnlyActiveWindow { get; init; } = true;
 
     /// <summary>
     /// Answers each file dialog (<c>file-dialog</c>): <see cref="RunicTestDialogAnswer.Select"/> with the absolute paths the
@@ -946,6 +1007,7 @@ public sealed partial class RunicTestHostedWindow
     public Task SetActivityAsync(Views.RunicWindowActivity activity, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(activity);
+        _active = activity.IsActive;
         return _host.PushAsync(new JsonObject
         {
             ["kind"] = "activity",

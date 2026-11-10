@@ -151,3 +151,41 @@ Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.init -> v
 [RUNICDESK103]static Runic.Application.Testing.RunicTestDialogAnswer.Refuse(string? message = null) -> Runic.Application.Testing.RunicTestDialogAnswer!
 [RUNICDESK103]static Runic.Application.Testing.RunicTestDialogAnswer.Select(System.Collections.Generic.IReadOnlyList<string!>! paths, int? filter = null) -> Runic.Application.Testing.RunicTestDialogAnswer!
 [RUNICDESK103]static Runic.Application.Testing.RunicTestDialogAnswer.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Application.Testing.RunicTestDialogAnswer!
+[RUNICDESK103]override Runic.Application.Testing.RunicTestLaunchRequest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Testing.RunicTestLaunchRequest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Testing.RunicTestLaunchRequest.ToString() -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.Clipboard.get -> Runic.Application.Testing.RunicTestClipboard!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.AcceptsFileDrops.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.DropFilesAsync(System.Collections.Generic.IReadOnlyList<string!>! paths, string? target = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.LaunchRequests.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestLaunchRequest!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Locale.get -> string?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.Monitors.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMonitor!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Appearance.get -> Runic.Platform.DesktopAppearance?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Appearance.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.ClipboardReadsOnlyActiveWindow.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.ClipboardReadsOnlyActiveWindow.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Languages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Languages.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Launch.get -> System.Func<Runic.Application.Testing.RunicTestLaunchRequest!, Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Launch.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Locale.get -> string?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Locale.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Monitors.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMonitor!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Monitors.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.SetLocaleAsync(string? locale, System.Collections.Generic.IReadOnlyList<string!>? languages = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.SetMonitorsAsync(System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMonitor!>! monitors, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.<Clone>$() -> Runic.Application.Testing.RunicTestLaunchRequest!
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Deconstruct(out string! WindowId, out System.Uri? Uri, out string? Path, out Runic.Platform.DesktopFileOperation Operation) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Equals(Runic.Application.Testing.RunicTestLaunchRequest? other) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Operation.get -> Runic.Platform.DesktopFileOperation
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Operation.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Path.get -> string?
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Path.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.RunicTestLaunchRequest(string! WindowId, System.Uri? Uri, string? Path, Runic.Platform.DesktopFileOperation Operation) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Uri.get -> System.Uri?
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.Uri.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.WindowId.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.WindowId.init -> void
+[RUNICDESK103]static Runic.Application.Testing.RunicTestLaunchRequest.operator !=(Runic.Application.Testing.RunicTestLaunchRequest? left, Runic.Application.Testing.RunicTestLaunchRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestLaunchRequest.operator ==(Runic.Application.Testing.RunicTestLaunchRequest? left, Runic.Application.Testing.RunicTestLaunchRequest? right) -> bool

@@ -6,7 +6,8 @@ namespace Runic.Application.Views.Desktop;
 
 // appearance/1: one watch of the desktop's settings (IDesktopSettings) for the open windows that share the feed, while
 // there are any. Each window's WindowContentSession.Appearance follows it, and the dispatcher pushes it to the window's
-// pages.
+// pages. A host of hosted applications follows it for each guest too, which shows its windows on this desktop
+// (host-protocol.md, Appearance and locale).
 // - The source is the application's IDesktopSettings, which the feed uses and never disposes, or, without one, the
 //   platform's own, which the feed creates for its first window and disposes once its last window closed.
 // - A read that does not succeed (Unavailable after a portal restart or a COM failure, Failed) keeps the last appearance
@@ -17,22 +18,33 @@ internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDe
 {
     private readonly Func<IDesktopSettings> _create = create ?? DesktopPlatformServices.CreateSettings;
     private readonly object _gate = new();
-    // Each open window's session and the logger of its services.
-    private readonly Dictionary<WindowContentSession, ILogger> _sessions = [];
+    // Each open window's session, or another follower, with what applies an appearance to it and the logger of its services.
+    private readonly Dictionary<object, (Action<DesktopAppearance> Apply, ILogger Logger)> _sessions = [];
     private Watch? _watch;
     private DesktopAppearance? _current;
 
     // Adds a window's session until the returned registration is disposed. The session gets the last appearance read at
     // once, and every later one.
-    internal IDisposable Add(WindowContentSession session, ILogger? logger = null)
+    internal IDisposable Add(WindowContentSession session, ILogger? logger = null) =>
+        Add(session, appearance => session.Appearance = appearance, logger);
+
+    // Adds a follower until the returned registration is disposed: apply gets the last appearance read at once, and every
+    // later one. Its exceptions other than ObjectDisposedException are logged.
+    internal IDisposable Add(object follower, Action<DesktopAppearance> apply, ILogger? logger = null)
     {
         lock (_gate)
         {
-            _sessions[session] = logger ?? NullLogger.Instance;
-            if (_current is not null) session.Appearance = _current;
+            _sessions[follower] = (apply, logger ?? NullLogger.Instance);
+            if (_current is not null) apply(_current);
             _watch ??= Start();
         }
-        return new Registration(this, session);
+        return new Registration(this, follower);
+    }
+
+    // The last appearance read, or null before a first read succeeded.
+    internal DesktopAppearance? Current
+    {
+        get { lock (_gate) return _current; }
     }
 
     // Caller holds the gate. Null when the platform's source could not be created; the next window tries again.
@@ -51,9 +63,9 @@ internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDe
     }
 
     // Caller holds the gate.
-    private ILogger Logger() => _sessions.Count > 0 ? _sessions.Values.Last() : NullLogger.Instance;
+    private ILogger Logger() => _sessions.Count > 0 ? _sessions.Values.Last().Logger : NullLogger.Instance;
 
-    private void Remove(WindowContentSession session)
+    private void Remove(object session)
     {
         Watch? stopped;
         lock (_gate)
@@ -72,7 +84,7 @@ internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDe
         {
             await foreach (var result in watch.Source.WatchAsync(token).ConfigureAwait(false))
             {
-                WindowContentSession[] targets;
+                Action<DesktopAppearance>[] targets;
                 DesktopAppearance appearance;
                 lock (_gate)
                 {
@@ -81,11 +93,11 @@ internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDe
                     // A read that failed keeps the last appearance.
                     if (result is not PlatformResult<DesktopAppearance>.Success success) continue;
                     _current = appearance = success.Value;
-                    targets = [.. _sessions.Keys];
+                    targets = [.. _sessions.Values.Select(static follower => follower.Apply)];
                 }
-                foreach (var session in targets)
+                foreach (var apply in targets)
                 {
-                    try { session.Appearance = appearance; }
+                    try { apply(appearance); }
                     catch (ObjectDisposedException) { }
                 }
             }
@@ -132,7 +144,7 @@ internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDe
         }
     }
 
-    private sealed class Registration(DesktopAppearanceFeed feed, WindowContentSession session) : IDisposable
+    private sealed class Registration(DesktopAppearanceFeed feed, object session) : IDisposable
     {
         private int _disposed;
 

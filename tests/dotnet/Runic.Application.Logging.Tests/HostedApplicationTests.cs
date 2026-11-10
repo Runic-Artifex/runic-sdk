@@ -87,7 +87,7 @@ internal sealed class HostedApplicationTests
                     ? RunicTestDialogAnswer.Choose(RunicTestHostedWindow.FindMenuItem(request.Message.GetProperty("menu"), "Copy"))
                     : RunicTestDialogAnswer.Unavailable(PlatformUnavailableReason.OwnerClosed)),
             });
-            Require(host.Features.SequenceEqual(["menus/1", "dialogs/1"]), $"The channel uses {string.Join(", ", host.Features)}.", host);
+            Require(host.Features.SequenceEqual(["menus/1", "dialogs/1", "window-services/1"]), $"The channel uses {string.Join(", ", host.Features)}.", host);
             var window = await host.WaitForWindowAsync(nameof(LoggingWindow), TestTimeouts.Scale(Timeout));
             var bar = await window.WaitForMenuBarAsync(bar => window.FindMenuItem("File", "Open…") is not null, TestTimeouts.Scale(Timeout));
             Require(bar[0].GetProperty("role").GetString() == "file" && bar[0].GetProperty("items")[1].GetProperty("enabled").GetBoolean() == false,

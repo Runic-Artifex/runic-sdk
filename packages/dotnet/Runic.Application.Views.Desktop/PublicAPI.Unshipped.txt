@@ -84,6 +84,8 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.FileName.get -> string!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.FileName.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.RunicGuestStartInfo(string! FileName, System.Collections.Generic.IReadOnlyList<string!>! Arguments) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.UserStarted.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.UserStarted.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.WorkingDirectory.get -> string?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.WorkingDirectory.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedApplication
@@ -282,3 +284,56 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedLimits.Default.get -> Runic.Application.Views.Desktop.RunicHostedLimits!
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedLimits.operator !=(Runic.Application.Views.Desktop.RunicHostedLimits? left, Runic.Application.Views.Desktop.RunicHostedLimits? right) -> bool
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedLimits.operator ==(Runic.Application.Views.Desktop.RunicHostedLimits? left, Runic.Application.Views.Desktop.RunicHostedLimits? right) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedWindowPolicy.ServiceAsync(Runic.Application.Views.Desktop.RunicHostedServiceRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.Desktop.RunicHostedServiceDecision!>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.Appearance.get -> Runic.Platform.DesktopAppearance?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.Languages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestSession.Locale.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.LaunchesPerTenSeconds.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.LaunchesPerTenSeconds.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.ServiceRequestsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.ServiceRequestsPerSecond.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceDecision
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceDecision.IsAllowed.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceDecision.Message.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceDecision.Request.get -> Runic.Application.Views.Desktop.RunicHostedServiceRequest?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceKind.ClipboardRead = 0 -> Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceKind.ClipboardWrite = 1 -> Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceKind.FileDrop = 4 -> Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceKind.Launch = 3 -> Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceKind.Monitors = 2 -> Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedServiceRequest!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.ClipboardFormats.get -> Runic.Platform.DesktopClipboardFormats
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.ClipboardFormats.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Equals(Runic.Application.Views.Desktop.RunicHostedServiceRequest? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.IsAllowedByDefault.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Kind.get -> Runic.Application.Views.Desktop.RunicHostedServiceKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Operation.get -> Runic.Platform.DesktopFileOperation
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Operation.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Path.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Path.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Paths.get -> System.Collections.Immutable.ImmutableArray<string!>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Paths.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Uri.get -> System.Uri?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Uri.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.Window.get -> Runic.Application.Views.Desktop.RunicHostedWindow!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.Locale.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.Locale.init -> void
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedServiceRequest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedServiceRequest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedServiceRequest.ToString() -> string!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceDecision.Allow() -> Runic.Application.Views.Desktop.RunicHostedServiceDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceDecision.Apply(Runic.Application.Views.Desktop.RunicHostedServiceRequest! request) -> Runic.Application.Views.Desktop.RunicHostedServiceDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceDecision.Refuse(string? message = null) -> Runic.Application.Views.Desktop.RunicHostedServiceDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceRequest.operator !=(Runic.Application.Views.Desktop.RunicHostedServiceRequest? left, Runic.Application.Views.Desktop.RunicHostedServiceRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedServiceRequest.operator ==(Runic.Application.Views.Desktop.RunicHostedServiceRequest? left, Runic.Application.Views.Desktop.RunicHostedServiceRequest? right) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementBurst.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementBurst.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.AnnouncementsPerSecond.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentBurst.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentBurst.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.PresentsPerSecond.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedServiceRequest.IsGuestActivated.get -> bool

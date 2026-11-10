@@ -1256,8 +1256,31 @@ public async Task ClosesWhenTheHostAsks()
   await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
   ```
 - `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
-  colour scheme to the application, and `RunicTestHost.SetAppearanceAsync` the
-  host's appearance (an application of this release keeps its own appearance).
+  colour scheme to the application. The host's locale, its user's languages
+  and its appearance start as `RunicTestHostOptions.Locale`, `Languages` and
+  `Appearance` (none by default) and change with `RunicTestHost.SetLocaleAsync`
+  and `SetAppearanceAsync`: the application's locale follows them unless it set
+  its own, each window's `Locale` is the one its `window-open` named, a
+  direction change shows in `PresentationRequests` (`set-layout-direction`),
+  and the Windows' pages receive the appearance.
+- Window services (`window-services/1`, listed by default): `RunicTestHost.Clipboard`
+  is the host's clipboard (a `RunicTestClipboard`: `SetText` what the user
+  copied, read `Writes` after the application wrote), read only for an active
+  window unless `ClipboardReadsOnlyActiveWindow` is `false`, as Runic's host does;
+  `Monitors` (`RunicTestHostOptions.Monitors`, one 1920 × 1080 monitor by
+  default) are the host's, and `SetMonitorsAsync` changes them, which the
+  application's monitor watch follows; each file or link the application opens is
+  recorded in the window's `LaunchRequests` and answered by `Launch` (success by
+  default); and `DropFilesAsync(paths)` drops files onto a window whose Window
+  takes them (`AcceptsFileDrops`).
+
+  ```csharp
+  await using var host = await RunicTestHost.StartGuestAsync(start, new RunicTestHostOptions { Locale = "de", Appearance = new(DesktopColorScheme.Dark) });
+  var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+  host.Clipboard.SetText("pasted");
+  await window.DropFilesAsync([Path.GetFullPath("data/notes.txt")]);
+  await host.SetLocaleAsync("fr");
+  ```
 - The application's `OpenWindowAsync` waits for the page to connect when its
   `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
   real host. Load `LaunchUrl` in the browser under test, or start the

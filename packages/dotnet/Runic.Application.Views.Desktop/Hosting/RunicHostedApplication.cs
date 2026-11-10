@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net.WebSockets;
@@ -111,13 +112,17 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             DesktopLog.HostedApplicationStartFailed(logger, startInfo.FileName, failure.Code, failure.Message);
             throw failure;
         }
-        var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName);
+        var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName)
+        {
+            _firstWindowUserStarted = startInfo.UserStarted ? 1 : 0,
+        };
         try
         {
             await application.HandshakeAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception error)
         {
+            application.StopFollowingEnvironment();
             process.KillTree();
             try { _ = await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None).ConfigureAwait(false); }
             catch (TimeoutException) { }
@@ -159,14 +164,11 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             throw Failure("guest-start-timeout", $"The guest wrote no {HostProtocol.ChannelPrefix} line within {_options.StartTimeout}.");
         }
         var channel = HostLaunch.Channel(line, [HostProtocol.Version], ExitCodeText, Failure);
-        // Appearance and locale follow in a later change; the guest keeps its own until then.
-        var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, new JsonObject
-        {
-            ["features"] = new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]),
-            ["locale"] = null,
-            ["languages"] = new JsonArray(),
-            ["appearance"] = null,
-        }, Failure, () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
+        // The guest starts with this application's locale and appearance (host-protocol.md, Appearance and locale).
+        var environment = await HelloEnvironmentAsync(new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]),
+            cancellationToken).ConfigureAwait(false);
+        var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, environment, Failure,
+            () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
         Guest = new RunicGuestInfo(hello.Name, hello.Version, hello.ApplicationId);
         Protocol = hello.Protocol;
         Features = hello.Features;
@@ -174,6 +176,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         _channel = new HostChannel(hello.Socket, firstRequestId: 2, OnRequestAsync, OnPush,
             error => DesktopLog.HostedApplicationChannelFailed(_logger, error, error.GetType().Name));
         _channel.Start();
+        FollowEnvironment();
     }
 
     private RunicHostedApplicationException Failure(string code, string message, Exception? inner = null, string? guestCode = null)
@@ -204,6 +207,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             open = [.. _open];
         }
         await _ending.CancelAsync().ConfigureAwait(false);
+        StopFollowingEnvironment();
         foreach (var window in open)
         {
             try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
@@ -327,8 +331,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         if (HostProtocol.String(push, "kind") != "window-closed") return;
         RunicHostedWindow? window;
         lock (_gate) window = HostProtocol.String(push, "window") is { } id ? _windows.GetValueOrDefault(id) : null;
-        // The push runs in the receive loop; the close does not hold it.
-        if (window is not null) _ = window.OnGuestClosedAsync();
+        // The push runs in the receive loop; the close does not hold it. Closing a window activates another one, such as
+        // its owner, at the guest's request (window-services/1).
+        if (window is not null) _ = CloseForGuestAsync(window);
+    }
+
+    private async Task CloseForGuestAsync(RunicHostedWindow window)
+    {
+        NoteGuestActivation();
+        try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
+        finally { NoteGuestActivation(); }
     }
 
     private async Task OnRequestAsync(HostRequest request)
@@ -339,6 +351,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             return;
         }
         if (await OnFeatureRequestAsync(request).ConfigureAwait(false)) return;
+        if (await OnServiceRequestAsync(request).ConfigureAwait(false)) return;
         if (PresentationKind(request.Kind) is not { } kind)
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of this host.").ConfigureAwait(false);
@@ -367,6 +380,18 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable))).ConfigureAwait(false);
             return;
         }
+        // The guest's requests that can activate a window, and its announcements, have rates of their own (Limits).
+        if ((CanActivate(presentation.Kind) && !PresentRate.TryTake()) || (kind == RunicHostedPresentationKind.Announce && !AnnouncementRate.TryTake()))
+        {
+            await request.FailAsync("rejected", "capacity", kind == RunicHostedPresentationKind.Announce
+                ? "The application's announcements are over the host's rate."
+                : "The application's requests that can activate its windows are over the host's rate.").ConfigureAwait(false);
+            return;
+        }
+        // An assertive announcement interrupts the user's screen reader, so it comes only from the window the user works
+        // in; another window's is polite.
+        if (presentation.Priority == DesktopAnnouncementPriority.Assertive && !window.IsUserActive)
+            presentation = presentation with { Priority = DesktopAnnouncementPriority.Polite };
         RunicHostedPresentationDecision decision;
         try { decision = Policy.Present(presentation); }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -388,9 +413,60 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.FailAsync("failed", null, "The host's window policy named a window of another application.").ConfigureAwait(false);
             return;
         }
-        var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
-        await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+        // An activation that follows is the guest's, not the user's (window-services/1): noted before the request, and
+        // again once it applied, since the platform reports the activation after the request.
+        var activates = CanActivate(presentation.Kind) || CanActivate(applied.Kind);
+        if (activates) NoteGuestActivation();
+        try
+        {
+            var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
+            await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (activates) NoteGuestActivation();
+            // A request to activate or show the window that the platform deferred makes its next activation the guest's.
+            if (KeysWindow(applied)) applied.Window.NoteGuestActivationRequested();
+        }
     }
+
+    // The presentation requests that ask to activate or show their own window, which the platform may do later, such as
+    // macOS once the host application is next activated.
+    private static bool KeysWindow(RunicHostedPresentationRequest request) => request.Kind is RunicHostedPresentationKind.Present
+        or RunicHostedPresentationKind.SetFullScreen or RunicHostedPresentationKind.ToggleMaximized ||
+        (request.Kind == RunicHostedPresentationKind.SetVisible && request.Value == true);
+
+    // The presentation requests that can activate one of the guest's windows, or another window when theirs loses the
+    // activation: present, minimize, set-visible either way, set-full-screen either way and toggle-maximized, which on
+    // Windows show the window with activation. Resizing, moving and the others never activate.
+    private static bool CanActivate(RunicHostedPresentationKind kind) => kind is RunicHostedPresentationKind.Present
+        or RunicHostedPresentationKind.Minimize or RunicHostedPresentationKind.SetVisible or RunicHostedPresentationKind.SetFullScreen
+        or RunicHostedPresentationKind.ToggleMaximized;
+
+    // window-services/1: a request of the guest that can activate one of its windows, or another window as one of its
+    // windows closes, hides or minimizes. Besides the requests above: window-open, the guest's close of a window
+    // (window-closed), and the end of its dialogs and context menus, after which the platform activates their owner, also
+    // when the user answered. Host-wide (RunicHostedApplications): another guest's request counts too.
+    internal void NoteGuestActivation() => _owner.NoteGuestActivation();
+
+    // 1 until the guest's first window opened, when the user started the guest (RunicGuestStartInfo.UserStarted).
+    private int _firstWindowUserStarted;
+
+    internal void BeginGuestPrompt() => _owner.BeginGuestPrompt();
+
+    internal void EndGuestPrompt() => _owner.EndGuestPrompt();
+
+    internal bool IsGuestActivationRecent => _owner.IsGuestActivationRecent;
+
+    // The guest's requests that can activate a window, and its announcements, across its windows (RunicHostedLimits).
+    private RequestRate? _presentRate;
+    private RequestRate? _announcementRate;
+
+    private RequestRate PresentRate => Volatile.Read(ref _presentRate) ?? Interlocked.CompareExchange(
+        ref _presentRate, new RequestRate(Limits.PresentsPerSecond, TimeSpan.FromSeconds(1), Limits.PresentBurst), null) ?? _presentRate!;
+
+    private RequestRate AnnouncementRate => Volatile.Read(ref _announcementRate) ?? Interlocked.CompareExchange(
+        ref _announcementRate, new RequestRate(Limits.AnnouncementsPerSecond, TimeSpan.FromSeconds(1), Limits.AnnouncementBurst), null) ?? _announcementRate!;
 
     private IRunicHostedWindowPolicy Policy => _options.Policy ?? AllowAllPolicy.Instance;
 
@@ -414,12 +490,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         var ownerId = HostProtocol.String(message, "owner");
         var modality = HostProtocol.String(message, "modality") ?? "none";
         var guardClose = HostProtocol.Boolean(message, "guardClose") ?? false;
+        var locale = HostProtocol.String(message, "locale");
+        var fileDrops = HostProtocol.Boolean(message, "fileDrops") ?? false;
         var valid = HostProtocol.IsIdentifier(id) && type.Length <= 512 && title is null or { Length: <= 1_024 } &&
             width is not -1 && height is not -1 && minimumWidth is not -1 && minimumHeight is not -1 &&
             modality is "none" or "window" && (modality == "none" || ownerId is not null) &&
             (message["owner"] is null || ownerId is not null) && (message["guardClose"] is null || HostProtocol.Boolean(message, "guardClose") is not null) &&
             LaunchUrl(HostProtocol.String(message, "url")) is not null &&
-            (message["permissions"] is null || message["permissions"] is JsonArray);
+            (message["permissions"] is null || message["permissions"] is JsonArray) &&
+            (message["locale"] is null || HostServices.IsLocale(locale)) &&
+            (message["fileDrops"] is null || HostProtocol.Boolean(message, "fileDrops") is not null);
         var url = LaunchUrl(HostProtocol.String(message, "url"));
         RunicHostedWindow? owner = null;
         lock (_gate)
@@ -453,8 +533,15 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             Modality = owner is not null && modality == "window" ? DesktopWindowModality.Window : DesktopWindowModality.None,
             AllowedPermissions = permissions & defaults.AllowedPermissions,
         };
+        // The guest Window's locale gives the window its direction, as a Window of the host's own gets it, unless the host's
+        // window options fix one. macOS takes it from the application bundle.
+        if (locale is not null && proposed.LayoutDirection == DesktopLayoutDirection.Default && !OperatingSystem.IsMacOS())
+            proposed = proposed with { LayoutDirection = Runic.Desktop.Internal.WindowLocaleDirection.Of(locale) };
         var window = new RunicHostedWindow(this, id!, type, owner, modality == "window" && owner is not null, guardClose);
-        var windowRequest = new RunicHostedWindowRequest(this, id!, type, title, owner, window.IsModal, guardClose, permissions, proposed);
+        var windowRequest = new RunicHostedWindowRequest(this, id!, type, title, owner, window.IsModal, guardClose, permissions, proposed)
+        {
+            Locale = locale,
+        };
         RunicHostedWindowDecision decision;
         try { decision = await Policy.OpenWindowAsync(windowRequest, _ending.Token).ConfigureAwait(false); }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -481,7 +568,10 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         try
         {
             surface = await _host.Desktop.CreateHostedSurfaceAsync(url!, _dataStore!, _ending.Token).ConfigureAwait(false);
+            // The window gets the focus at the guest's request (window-services/1, the guest's activation).
+            NoteGuestActivation();
             presentation = await surface.OpenWindowAsync(options, _ending.Token).ConfigureAwait(false);
+            NoteGuestActivation();
             if (!presentation.IsOpen) throw new InvalidOperationException("The window was closed while it opened.");
         }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -494,7 +584,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             return;
         }
         var adapter = new DesktopWindowPresentation(presentation, () => new DesktopNativeOwner(presentation));
-        window.Attach(presentation, adapter);
+        // The first window of a guest the user started counts as the user's (RunicGuestStartInfo.UserStarted).
+        window.Attach(presentation, adapter, userStarted: Interlocked.Exchange(ref _firstWindowUserStarted, 0) != 0);
         // menus/1: the guest's items in the window's bar, and their shortcuts, run the guest's commands.
         presentation.MenuCommands = new HostedMenuTarget(window);
         bool ended;
@@ -530,6 +621,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
                 window.Push("color-scheme", () => new JsonObject { ["kind"] = "color-scheme", ["window"] = window.Id, ["colorScheme"] = Token(adapter.ColorScheme) });
         };
         presentation.StateChanged += (_, e) => window.Push("placement", () => Placement(window.Id, e.State));
+        // window-services/1: the files the user drops onto the window, when the guest's Window takes them.
+        if (fileDrops && InUse(HostServices.Feature)) ForwardDrops(window, presentation);
         presentation.Closed += (_, _) => _ = OnWindowClosedAsync(window, hostedSurface);
         try
         {

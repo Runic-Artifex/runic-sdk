@@ -26,9 +26,14 @@ sealed class DesktopWireClient : IDisposable
     }
 
     // With cookies, the client is the page whose document set them: the bootstrap and the WebSocket carry its cookie.
-    public static async Task<DesktopWireClient> ConnectAsync(DesktopSurface surface, CancellationToken cancellationToken,
+    public static Task<DesktopWireClient> ConnectAsync(DesktopSurface surface, CancellationToken cancellationToken,
+        System.Net.CookieContainer? cookies = null) => ConnectAsync(surface.Url, cancellationToken, cookies);
+
+    // A surface by its address, such as another process's (a hosted guest's), whose page the cookies bound.
+    public static async Task<DesktopWireClient> ConnectAsync(Uri surfaceUrl, CancellationToken cancellationToken,
         System.Net.CookieContainer? cookies = null)
     {
+        var surface = new { Url = surfaceUrl };
         using var http = cookies is null ? new HttpClient() : new HttpClient(new HttpClientHandler { CookieContainer = cookies });
         var bootstrap = await http.GetStringAsync(new Uri(surface.Url, "webui.js"), cancellationToken);
         var token = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
@@ -78,10 +83,11 @@ sealed class DesktopWireClient : IDisposable
         CallAsync("__runicViews", cancellationToken, request);
 
     // Completes the connection's Views handshake.
-    public async Task HelloAsync(CancellationToken cancellationToken)
+    public async Task HelloAsync(CancellationToken cancellationToken, params string[] features)
     {
+        var featureList = features.Length == 0 ? "" : $",\"features\":[{string.Join(",", features.Select(static feature => $"\"{feature}\""))}]";
         var reply = await RequestAsync(
-            $"{{\"kind\":\"hello\",\"protocol\":4,\"session\":\"{Guid.NewGuid()}\",\"client\":{{\"name\":\"desktop-wire-client\",\"version\":\"0\"}}}}",
+            $"{{\"kind\":\"hello\",\"protocol\":4,\"session\":\"{Guid.NewGuid()}\",\"client\":{{\"name\":\"desktop-wire-client\",\"version\":\"0\"}}{featureList}}}",
             cancellationToken);
         if (!reply.StartsWith("{\"ok\":true", StringComparison.Ordinal))
             throw new InvalidOperationException($"The hello was answered {reply}.");

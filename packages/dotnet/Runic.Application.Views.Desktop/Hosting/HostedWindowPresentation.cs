@@ -186,6 +186,26 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
         return result;
     }
 
+    // announce: the host's window asks the screen reader to speak the text (at most 1,024 characters are sent).
+    internal ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(string text, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default) =>
+        RequestAsync(RunicWindowPresentationFeatures.None, "announce", new()
+        {
+            ["text"] = HostedWire.Shorten(text, 1_024),
+            ["priority"] = priority == DesktopAnnouncementPriority.Assertive ? "assertive" : "polite",
+        }, cancellationToken);
+
+    // set-layout-direction: the native direction of the host's window, which follows the Window's locale.
+    internal ValueTask<PlatformResult<PlatformUnit>> SetLayoutDirectionAsync(DesktopLayoutDirection direction, CancellationToken cancellationToken = default) =>
+        RequestAsync(RunicWindowPresentationFeatures.None, "set-layout-direction", new()
+        {
+            ["direction"] = direction switch
+            {
+                DesktopLayoutDirection.LeftToRight => "left-to-right",
+                DesktopLayoutDirection.RightToLeft => "right-to-left",
+                _ => "default",
+            },
+        }, cancellationToken);
+
     private async ValueTask<PlatformResult<PlatformUnit>> RequestAsync(RunicWindowPresentationFeatures feature, string kind,
         JsonObject? members, CancellationToken cancellationToken)
     {

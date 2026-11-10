@@ -213,7 +213,7 @@ internal sealed partial class LinuxWebKitGtkHost
                 {
                     if (!host.IsOpen) return;
                     host.RestoreToggles(widgets);
-                    if (entry.Enabled) host.RunMenuItem(item);
+                    if (entry.Enabled) HostMenuChoice.Run(() => host.RunMenuItem(item));
                 });
             }
         }

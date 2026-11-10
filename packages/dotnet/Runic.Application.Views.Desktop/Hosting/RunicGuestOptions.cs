@@ -190,4 +190,32 @@ public sealed class RunicGuestSession
 
     /// <summary>Cancelled when the host went away or asked the application to shut down.</summary>
     public CancellationToken HostGone { get; }
+
+    /// <summary>
+    /// The host's application locale, a BCP 47 tag such as <c>de-CH</c>, or <see langword="null"/> while the host sets
+    /// none. The application's <see cref="IRunicApplicationLocale"/> follows it unless the application sets a locale of
+    /// its own.
+    /// </summary>
+    /// <remarks>It changes when the host's locale does, before the application's locale follows.</remarks>
+    public string? Locale => Volatile.Read(ref _state).Locale;
+
+    /// <summary>
+    /// The languages the host's user prefers, most preferred first, at most 32: for an application that chooses its own
+    /// locale, such as <c>catalog.ResolveLocale(session.Languages)</c>, where it would read <c>DesktopLanguages.Preferred</c>.
+    /// </summary>
+    public IReadOnlyList<string> Languages => Volatile.Read(ref _state).Languages;
+
+    /// <summary>
+    /// The host's appearance, which the application's Windows show (their pages' appearance and their
+    /// <c>prefers-color-scheme</c>), instead of this process's own desktop settings; <see langword="null"/> while the host
+    /// reports none.
+    /// </summary>
+    public Runic.Platform.DesktopAppearance? Appearance => Volatile.Read(ref _state).Appearance;
+
+    private State _state = new(null, null, []);
+
+    private sealed record State(Runic.Platform.DesktopAppearance? Appearance, string? Locale, IReadOnlyList<string> Languages);
+
+    internal void Update(Runic.Platform.DesktopAppearance? appearance, string? locale, IReadOnlyList<string> languages) =>
+        Volatile.Write(ref _state, new State(appearance, locale, languages));
 }

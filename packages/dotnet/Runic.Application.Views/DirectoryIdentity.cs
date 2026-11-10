@@ -21,7 +21,7 @@ internal static partial class DirectoryIdentity
         }
         catch (Exception exception) when (exception is EntryPointNotFoundException or DllNotFoundException)
         {
-            // glibc before 2.33 exports only __xstat; such a system keeps the watch without the identity check.
+            // A C library with neither stat nor glibc's older __xstat: callers go without the identity check.
             _unsupported = true;
             return null;
         }
@@ -34,7 +34,7 @@ internal static partial class DirectoryIdentity
         var buffer = stackalloc byte[256];
         var result = OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.X64
             ? StatInode64(directory, buffer)
-            : Stat(directory, buffer);
+            : OperatingSystem.IsLinux() ? StatLinux(directory, buffer) : Stat(directory, buffer);
         if (result != 0) return null;
         var span = new ReadOnlySpan<byte>(buffer, 16);
         var device = OperatingSystem.IsMacOS()
@@ -44,6 +44,25 @@ internal static partial class DirectoryIdentity
         // time (statx on Linux) tells them apart; where a file system lacks one, .NET falls back to the change time,
         // which at worst restarts the watch after an entry changes.
         return $"{device}:{inode}:{Directory.GetCreationTimeUtc(directory).Ticks}";
+    }
+
+    private static volatile bool _xstat;
+
+    // glibc before 2.33 (such as RHEL 8 and Ubuntu 20.04) exports stat only as __xstat, which takes the structure's
+    // version: 1 on x64, 0 on arm64, with the same layout as stat's.
+    private static unsafe int StatLinux(string path, byte* buffer)
+    {
+        if (!_xstat)
+        {
+            try { return Stat(path, buffer); }
+            catch (EntryPointNotFoundException) { _xstat = true; }
+        }
+        return RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => XStat(1, path, buffer),
+            Architecture.Arm64 => XStat(0, path, buffer),
+            _ => throw new EntryPointNotFoundException("stat"),
+        };
     }
 
     private static unsafe string? ReadWindows(string directory)
@@ -70,6 +89,9 @@ internal static partial class DirectoryIdentity
 
     [LibraryImport("libc", EntryPoint = "stat", StringMarshalling = StringMarshalling.Utf8)]
     private static unsafe partial int Stat(string path, byte* buffer);
+
+    [LibraryImport("libc", EntryPoint = "__xstat", StringMarshalling = StringMarshalling.Utf8)]
+    private static unsafe partial int XStat(int version, string path, byte* buffer);
 
     [LibraryImport("libc", EntryPoint = "stat$INODE64", StringMarshalling = StringMarshalling.Utf8)]
     private static unsafe partial int StatInode64(string path, byte* buffer);

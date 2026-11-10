@@ -139,7 +139,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             _platformServices = _close is null ? _scope.ServiceProvider.GetService<DesktopWindowPlatformServices>() : null;
             if (_platformServices is not null)
             {
-                _platformServices.BindHosted(services);
+                _platformServices.BindHosted(services, services.AnnounceAsync);
                 return;
             }
         }
@@ -162,6 +162,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             return true;
         }
     }
+
+    // Hosted mode (window-services/1): a drop onto the host's window, which the host forwarded.
+    internal void DeliverHostedDrop(DesktopFileDropEventArgs drop) => OnFilesDropped(null, drop);
 
     private void OnFilesDropped(object? sender, DesktopFileDropEventArgs drop)
     {

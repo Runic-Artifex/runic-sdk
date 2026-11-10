@@ -291,6 +291,42 @@ experimental (`RUNICDESK103`). What Runic enforces:
   access to them. A guest's context menu shows only in the active window, inside it, and the host bounds the rate of a
   window's menu requests and the dialogs a guest shows at once (`RunicHostedLimits`: 20 menu requests a second per
   window, one dialog per guest, by default).
+- **Clipboard, links and files: the host's rights, the user's choices.** With `window-services/1` a guest uses the
+  host's clipboard, monitors and launcher, which act with the host's rights. The clipboard holds what the user copies in
+  every application, passwords included, so the host reads and writes it for a guest only while the user works in the
+  guest's window: it is active, and not within two seconds after any of the guest's requests that can activate one of
+  its windows, such as opening, presenting, maximizing or leaving full screen, closing an owned window, which activates
+  its owner, or the end of one of its dialogs. A guest that brings its window to the front cannot use that focus to read
+  what the user just copied, replace it or open links; the user's own later switch to the window, a choice in its native
+  menu bar or in a context menu shown while the user worked in it, or a drop onto it gives it back. A shortcut of its
+  menus does not, since a key the guest's page leaves unhandled runs it, and neither does an answer to the guest's own
+  dialog or context menu. An activation the desktop deferred, such as macOS activating a window the guest presented
+  only when the user next switches to the host, is the guest's too, however late it comes. The guest's windows,
+  its first one included, therefore start guest-activated: a link the user clicks in a guest's fresh window is
+  refused until the user switches to it. A host that started the guest at the user's request can set
+  `RunicGuestStartInfo.UserStarted`, which makes the first activation of the guest's first window the user's; leave it
+  off otherwise, since the guest chooses when it opens that window. Activations right after any guest's request count
+  as a guest's, also for another guest's window, so one guest cannot hand another, or a second instance of itself, the
+  user's activation; a host policy's own prompt counts as a guest's dialog. A write
+  is also allowed within a second after the user left the window, for a copy that closes it. The host never tells a
+  guest when the clipboard changes: a guest in the background cannot snoop on it or replace what the user copies
+  elsewhere (threat T14). A guest the user works in can read what the clipboard holds, as any focused application can;
+  a host that does not trust a guest refuses reads, or narrows writes to plain text, in
+  `IRunicHostedWindowPolicy.ServiceAsync`, which also sees `RunicHostedServiceRequest.IsGuestActivated`. The host opens
+  for a guest only `http`, `https` and `mailto` links and files the user gave it through the host (its open dialogs and
+  drops, not a save dialog's destination, whose content the guest wrote), only while it is still the same file and only
+  for the window the user works in, with the host launcher's own rules (no programs or scripts on Windows and macOS, no
+  `mailto` attachments), at most five per ten seconds by default: a guest cannot start a program, open a settings page
+  or flood the desktop with browser tabs unless the host's policy widens this (T15). The paths of a drop come from the
+  host's platform, never from a page; the drop's target label and effect are routing hints (T16). `RunicHostedLimits`
+  bounds a guest's clipboard and monitor requests (20 a second), its launches, its requests that can activate a window
+  (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5).
+- **Screen reader announcements.** A guest's announcements speak through the host's window, so assistive technology
+  attributes them to the host application. Only the window the user works in announces assertively, interrupting the
+  screen reader; another window's announcements are polite, and their rate is bounded (T17). A host that does not trust
+  a guest refuses or rewords them in `IRunicHostedWindowPolicy.Present`.
+- **Appearance and locale.** A guest's pages show the host's appearance (contrast, forced colours, reduced motion, text
+  scale) and follow its locale, which the host sends; they never read the guest process's own desktop settings.
 - **What a guest can still word.** The guest chooses the titles, messages, details and button labels of its dialogs
   and the titles of its menus and items, and nothing marks them as the guest's: a message box titled "HostApp —
   Update required" with a single Install button, or a File item "Quit HostApp", looks like the host's own. On macOS

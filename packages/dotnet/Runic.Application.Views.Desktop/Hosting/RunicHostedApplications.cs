@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -86,6 +87,32 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
     }
 
     private static InvalidOperationException ShuttingDown() => new("The Desktop host is shutting down.");
+
+    // ----- window-services/1: activations that are a guest's, not the user's (host-protocol.md, Window services).
+
+    // The last request of any guest that can activate one of its windows, or another window as one of its windows closes,
+    // hides or minimizes (a Stopwatch timestamp; 0 for none). Host-wide, across guests: an activation of any guest's
+    // window within RunicHostedWindow.GuestActivationWindow after it is a guest's, so another guest, such as a second
+    // instance of the same one, cannot hand a window over by minimizing, hiding or closing the active one.
+    private long _guestActivation;
+
+    // The guests' dialogs and context menus shown now, and the policy decisions still pending, such as a host's prompt:
+    // while one is, and within GuestActivationWindow after it ended, an activation is a guest's, since the platform
+    // activates the owner as the prompt closes, before the host learns why.
+    private int _guestPrompts;
+
+    internal void NoteGuestActivation() => Volatile.Write(ref _guestActivation, Stopwatch.GetTimestamp());
+
+    internal void BeginGuestPrompt() => Interlocked.Increment(ref _guestPrompts);
+
+    internal void EndGuestPrompt()
+    {
+        NoteGuestActivation();
+        Interlocked.Decrement(ref _guestPrompts);
+    }
+
+    internal bool IsGuestActivationRecent => Volatile.Read(ref _guestPrompts) > 0 ||
+        (Volatile.Read(ref _guestActivation) is var noted and not 0 && Stopwatch.GetElapsedTime(noted) <= RunicHostedWindow.GuestActivationWindow);
 
     public event EventHandler<RunicHostedWindowEventArgs>? WindowOpened;
 
