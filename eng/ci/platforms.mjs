@@ -73,6 +73,8 @@ export const platformRules = [
   { platforms: all, paths: ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Kestrel", "tests/dotnet/Runic.Desktop.Tests", "tests/fixtures/desktop",
     "tests/native/Runic.Desktop.ComparativeStressAdapter", "packages/dotnet/Runic.Platform", "packages/dotnet/Runic.Platform.Runtime",
     "tests/dotnet/Runic.Platform.Runtime.Tests", "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.AccessibilityProbe",
+    // runic-host/1 window mode in every built-in web view (Runic.Application.Views.Desktop's host).
+    "tests/native/Runic.Application.HostedWindows.Smoke",
     "eng/build/desktop.props", "eng/branding/desktop", "tools/Runic.Application.Templates/content/runic-app/packaging",
     "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs", "tools/Runic.Application.Templates/content/runic-app/icons",
     "tests/native/Runic.Packaging.Probe", "tools/dotnet-runic/Packaging"] },

@@ -19,6 +19,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly nint DelegateClass = CreateDelegateClass();
     // Hosts by their WKWebView, for the web content delegate, the drop override and the page's drop label.
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> WebViews = new();
+    // The non-persistent WKWebsiteDataStores of runic-host/1 hosted windows by data store key
+    // (WebUiEmbeddedHostOptions.EphemeralDataStore), on the main thread: one for each host session.
+    private static readonly EphemeralDataStoreCache<nint> EphemeralStores = new();
     private static readonly nint WebViewClass = CreateWebViewClass();
     private static readonly nint TitleObserverClass = CreateTitleObserverClass();
     private static readonly nint WebContentDelegateClass = CreateWebContentDelegateClass();
@@ -91,6 +94,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private nint _application;
     private nint _window;
     private nint _webView;
+    // runic-host/1 hosted windows: the key of the data store this window holds (EphemeralStores).
+    private string? _ephemeralDataStore;
     private nint _titleObserver;
     private nint _delegate;
     // The web view's navigation and UI delegate, which WebKit references weakly; released with the web view.
@@ -531,10 +536,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(minimumWidth, minimumHeight));
         }
 
+        nint dataStore = 0;
+        if (options.EphemeralDataStore is { } key)
+        {
+            dataStore = EphemeralStores.Acquire(key, static () => Api.NewNonPersistentDataStore());
+            _ephemeralDataStore = key;
+            // A hosted window shows its guest's menus, none until the guest sends them: never the host application's.
+            Volatile.Write(ref _hostedMenuBar, []);
+        }
         _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0,
-            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0);
+            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, dataStore);
         if (_webView == 0)
         {
+            ReleaseEphemeralDataStore();
             Api.SendVoid(_window, "close");
             throw new InvalidOperationException("WebKit could not create a WKWebView.");
         }
@@ -794,6 +808,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         try
         {
             if (Hosts.TryGetValue(Api.SendNint(notification, "object"), out var host) && host.IsOpen) host.UpdateActivity();
+            // A hosted window that becomes or stops being key brings its menus to the application menu bar or takes them away.
+            RefreshHostedMenuBar();
         }
         catch
         {
@@ -968,7 +984,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, standardFile)), standardFile,
                 Volatile.Read(ref HostSettings.Titles).File);
         }
-        var menus = Volatile.Read(ref s_menuBar);
+        var menus = EffectiveMenuBar(out var shown);
+        Volatile.Write(ref s_menuBarWindow, shown);
         var declared = ImmutableArray.CreateBuilder<DeclaredEntry>();
         foreach (var menu in menus)
         {
@@ -1000,6 +1017,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     }
                     break;
                 default:
+                    // A menu titled as the standard View or Window menu joins it instead of showing a second one: its
+                    // entries come first, with a separator before the standard items.
+                    if (menu.Role == DesktopMenuRole.None && StandardMenu(mainMenu, application, menu.Title) is var standard and not 0)
+                    {
+                        AddEntries(standard, menu.Items, insertAt: 0, separate: true, menu.IsEnabled, declared);
+                        break;
+                    }
                     var windowMenu = Api.SendNint(application, "windowsMenu");
                     var count = (int)Api.SendNint(mainMenu, "numberOfItems");
                     var index = DesktopMenuBar.InsertionIndex(menu.Role, count, windowMenu == 0 ? -1 : (int)Api.IndexOfSubmenu(mainMenu, windowMenu));
@@ -1010,6 +1034,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
         }
         s_menuEntries = declared.ToImmutable();
+    }
+
+    // The standard View or Window menu when the title is its title in the host's language, else 0.
+    private static nint StandardMenu(nint mainMenu, nint application, string title)
+    {
+        var titles = Volatile.Read(ref HostSettings.Titles);
+        if (string.Equals(title, titles.View, StringComparison.OrdinalIgnoreCase))
+            return Api.FindSubmenu(mainMenu, MacOsMainMenu.ViewIdentifier, MacOsMainMenu.ViewActions);
+        if (string.Equals(title, titles.Window, StringComparison.OrdinalIgnoreCase))
+            return Api.SendNint(application, "windowsMenu") is var windows and not 0
+                ? windows
+                : Api.FindSubmenu(mainMenu, MacOsMainMenu.WindowIdentifier, MacOsMainMenu.WindowActions);
+        return 0;
     }
 
     // A declared entry and whether it and every menu around it are enabled.
@@ -1086,6 +1123,58 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             Add(Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
         }
+    }
+
+    // runic-host/1 menus/1: the menus a hosted window shows (DesktopWindow.SetHostedMenuBarAsync). The process has one
+    // menu bar, so they join it while the window is key; every other window shares the application's (s_menuBar).
+    public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(menus);
+        if (Volatile.Read(ref _ephemeralDataStore) is null) return ValueTask.CompletedTask;
+        Volatile.Write(ref _hostedMenuBar, menus);
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable) return ValueTask.CompletedTask;
+        return InvokeOnMainAsync(() =>
+        {
+            // The bar shows this window's menus now: apply the new ones; otherwise a key change applies them later.
+            if (ReferenceEquals(Volatile.Read(ref s_menuBarWindow), this)) ApplyMenuBar(Api.SharedApplicationIfCreated());
+            else RefreshHostedMenuBar();
+        }, cancellationToken);
+    }
+
+    // A hosted window's own menus; null for every other window.
+    private IReadOnlyList<DesktopMenu>? _hostedMenuBar;
+
+    // The hosted window whose menus the application menu bar shows, or null for the application's own. Main thread only.
+    private static MacOsWkWebViewHost? s_menuBarWindow;
+
+    // The key window, or the main window while a panel is key.
+    private static MacOsWkWebViewHost? KeyWindowHost()
+    {
+        var application = Api.SharedApplicationIfCreated();
+        if (application == 0) return null;
+        foreach (var selector in (string[])["keyWindow", "mainWindow"])
+        {
+            if (Hosts.TryGetValue(Api.SendNint(application, selector), out var host) && host.IsOpen) return host;
+        }
+        return null;
+    }
+
+    // The menus the bar shows: the key window's when it is a hosted window, merged with the application's
+    // (DesktopMenuBar.MergeHosted), else the application's.
+    private static IReadOnlyList<DesktopMenu> EffectiveMenuBar(out MacOsWkWebViewHost? shown)
+    {
+        var application = Volatile.Read(ref s_menuBar);
+        shown = KeyWindowHost() is { } key && Volatile.Read(ref key._hostedMenuBar) is not null ? key : null;
+        return shown is null ? application : DesktopMenuBar.MergeHosted(application, Volatile.Read(ref shown._hostedMenuBar)!);
+    }
+
+    // Main thread only. Applies the bar again when another window's menus, or the application's, should show now.
+    private static void RefreshHostedMenuBar()
+    {
+        var application = Api.SharedApplicationIfCreated();
+        if (application == 0) return;
+        _ = EffectiveMenuBar(out var shown);
+        if (!ReferenceEquals(shown, Volatile.Read(ref s_menuBarWindow))) ApplyMenuBar(application);
     }
 
     // The command path of the key window, or of the main window while a panel is key: its target, then the
@@ -1363,12 +1452,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             nint view;
             if (options.X is { } x && options.Y is { } y)
             {
-                // CSS pixels of the viewport to the web view's points, measured from its top-left corner.
-                var zoom = Api.SendDouble(_webView, "pageZoom");
-                if (!double.IsFinite(zoom) || zoom <= 0) zoom = 1;
+                // CSS pixels of the viewport to the web view's points, measured from its top-left corner, inside the view.
                 var bounds = Api.SendRect(_webView, "bounds");
-                var top = y * zoom;
-                location = new CGPoint(x * zoom, Api.SendBool(_webView, "isFlipped") ? top : bounds.Height - top);
+                var (left, top) = ContextMenuPoints.InView(x, y, Api.SendDouble(_webView, "pageZoom"), bounds.Width, bounds.Height);
+                location = new CGPoint(left, Api.SendBool(_webView, "isFlipped") ? top : bounds.Height - top);
                 view = _webView;
             }
             else
@@ -1498,6 +1585,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DetachOwnedWindows();
         ReleaseParent();
         Hosts.TryRemove(_window, out _);
+        // A hosted window's menus leave the application menu bar with it.
+        if (ReferenceEquals(Volatile.Read(ref s_menuBarWindow), this))
+        {
+            if (IsMainThread) RefreshHostedMenuBar();
+            else _ = InvokeOnMainAsync(RefreshHostedMenuBar, CancellationToken.None).AsTask();
+        }
         WebViews.TryRemove(_webView, out _);
         EndDrags();
         lock (_promiseGate) _drops?.Dispose();
@@ -1550,6 +1643,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (windowDelegate != 0)
         {
             Api.SendVoid(windowDelegate, "release");
+        }
+        ReleaseEphemeralDataStore();
+    }
+
+    // The web view retains its configuration's data store; the cache's own reference goes with the key's last window.
+    private void ReleaseEphemeralDataStore()
+    {
+        if (Interlocked.Exchange(ref _ephemeralDataStore, null) is { } key)
+        {
+            EphemeralStores.Release(key, static store => Api.SendVoid(store, "release"));
         }
     }
 
@@ -2584,7 +2687,17 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         // The script runs at document start in every frame (WKUserScriptInjectionTimeAtDocumentStart = 0).
-        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler, nint windowChromeHandler)
+        // runic-host/1 hosted windows: a data store that keeps cookies, storage and caches in memory, retained for the
+        // caller (macOS 10.11 and later).
+        internal nint NewNonPersistentDataStore()
+        {
+            var store = SendNint(GetClass("WKWebsiteDataStore"), "nonPersistentDataStore");
+            if (store == 0) throw new InvalidOperationException("WebKit could not create a non-persistent data store.");
+            return SendNint(store, "retain");
+        }
+
+        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler, nint windowChromeHandler,
+            nint websiteDataStore = 0)
         {
             var configuration = SendNint(SendNint(GetClass("WKWebViewConfiguration"), "alloc"), "init");
             if (configuration == 0)
@@ -2594,6 +2707,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
             try
             {
+                if (websiteDataStore != 0)
+                {
+                    SendVoidNint(configuration, "setWebsiteDataStore:", websiteDataStore);
+                }
+
                 if (documentStartScript is not null)
                 {
                     var source = CreateString(documentStartScript);

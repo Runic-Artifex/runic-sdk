@@ -874,7 +874,9 @@ jobs:
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh
       - name: Build native window smoke
-        run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
+        run: |
+          dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
+          dotnet build tests/native/Runic.Application.HostedWindows.Smoke -c Release
       - name: Exercise native window close interception on Linux
         if: runner.os == 'Linux'
         # Real pointer drags through XTEST: a stuck drag must not hold the runner.
@@ -910,6 +912,13 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # S11 window mode (runic-host/1): Runic.Application.HostedWindows.Smoke hosts itself as guests; each guest page
+      # loads in a GTK 3 window of the host in an ephemeral web context, without the host's or another guest's cookies;
+      # close, crash and stop.
+      - name: Show hosted application windows in GTK 3
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -966,6 +975,8 @@ jobs:
           done
           # B6: an owned GTK 4 window is transient for its owner, and a window-modal one makes the owner insensitive.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --owner
+          # S11 window mode (runic-host/1): guest pages in GTK 4 windows of the host, each guest in an ephemeral network session.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll gtk4
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
@@ -1118,6 +1129,85 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # S11 window mode (runic-host/1): the smoke hosts itself as guests, started in a job object (Windows) or a process
+      # group of their own (macOS). Each guest page loads in a native window of the host with the session's own data store
+      # (a WebView2 InPrivate profile, a non-persistent WKWebsiteDataStore), without the host's or another guest's
+      # cookies; close, crash and stop. On Windows the guest's cookie and storage stay off the disk, and the session's
+      # folder is deleted, and a persistent profile's are found by the same scan. The runner's steps run elevated, which a
+      # guest refuses: the smoke restarts itself as the standard user created below (Unelevated.cs).
+      # A standard user of this runner runs the hosted smoke and host cases (Unelevated.cs); it reads the workspace and
+      # writes the test results. Only an ephemeral GitHub-hosted runner gets the account, and the step after the checks
+      # removes it. Its password is a masked output of this step, which only the two steps that start processes as the
+      # user receive.
+      - name: Refuse the hosted application checks on a self-hosted Windows runner
+        if: runner.os == 'Windows' && runner.environment != 'github-hosted'
+        shell: pwsh
+        run: |
+          Write-Output "::error::The hosted application checks create a local user account and need an ephemeral GitHub-hosted runner."
+          exit 1
+      - name: Create a standard user for the hosted application checks on Windows
+        id: hosted-user
+        if: runner.os == 'Windows' && runner.environment == 'github-hosted'
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'Aa1!'
+          Write-Output "::add-mask::$password"
+          $secure = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name runic-hosted -Password $secure -PasswordNeverExpires -AccountNeverExpires | Out-Null
+          Add-LocalGroupMember -Group Users -Member runic-hosted -ErrorAction SilentlyContinue
+          "user=runic-hosted" >> $env:GITHUB_OUTPUT
+          "password=$password" >> $env:GITHUB_OUTPUT
+          icacls $env:GITHUB_WORKSPACE /grant 'runic-hosted:(OI)(CI)RX' /C /Q | Out-Null
+          New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
+          icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
+          icacls $env:GITHUB_WORKSPACE
+      - name: Show hosted application windows on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 5
+        env:
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
+        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
+      # The host cases against real guest processes on the native platforms: the Windows job object (started suspended,
+      # kill-on-close, grandchildren), the macOS process group, the same-user check against the real parent (Windows
+      # token users), pending starts, windows that open after the guest ended, and the Windows guest's inherited handles.
+      # Unelevated on Windows, as above; an elevated run fails each case under CI.
+      - name: Run the hosted application host cases on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 8
+        shell: bash
+        env:
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
+        run: |
+          dotnet build tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release
+          tests=(dotnet tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll
+            --treenode-filter '/*/*/(HostedApplicationTests)|(HostProtocolChecks)/*' --output detailed)
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # The tests write their results beside the test assembly; the standard user may write there.
+            MSYS2_ARG_CONV_EXCL='*' icacls "$(cygpath -w tests/dotnet/Runic.Application.Views.Desktop.Tests/bin)" /grant 'runic-hosted:(OI)(CI)M' /T /C /Q
+            dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --run-unelevated "${tests[@]}"
+          else
+            "${tests[@]}"
+          fi
+      # Also after a failure or cancellation: the user's processes, its profile, its access to the workspace and the account.
+      - name: Remove the hosted application checks' standard user on Windows
+        if: always() && steps.hosted-user.outcome != 'skipped' && runner.os == 'Windows' && runner.environment == 'github-hosted'
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $account = Get-LocalUser -Name runic-hosted -ErrorAction SilentlyContinue
+          if (-not $account) { exit 0 }
+          Get-Process -IncludeUserName | Where-Object { $_.UserName -like '*\runic-hosted' } | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          Get-CimInstance Win32_UserProfile -Filter "SID = '$($account.SID.Value)'" | Remove-CimInstance
+          icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /remove runic-hosted /T /C /Q | Out-Null
+          icacls $env:GITHUB_WORKSPACE /remove runic-hosted /C /Q | Out-Null
+          Remove-LocalUser -Name runic-hosted
+          if (Get-LocalUser -Name runic-hosted -ErrorAction SilentlyContinue) { Write-Output "::warning::The runic-hosted account remains."; exit 1 }
       # B10 (I-021): the declared menu bar of the WebView2 window (Windows order, access keys, shortcut text, check,
       # radio and disabled states, availability on WM_INITMENUPOPUP, WM_COMMAND with parameters), shortcuts the page
       # leaves alone or cancels, Alt and Alt+access key, context menus (chosen, Escape, replaced, cancelled, at the page
@@ -1303,13 +1393,25 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativePresentation]" --output detailed
       # Task dialogs owned by a window on a thread of the test, answered with the messages Return, Esc, the close button and
       # a click send; the case also reports which Common Controls 6 activation sources work in each runtime.
+      # eng/ci/windows-native-run.mjs reports each test host's real exit code, and after a crash what Windows Error
+      # Reporting recorded and the faulting stack, with a full dump for the native-crash-dumps artifact; the timeout
+      # leaves the debugger its minutes.
       - name: Verify Windows message boxes with JIT and NativeAOT
         if: runner.os == 'Windows'
-        timeout-minutes: 3
+        timeout-minutes: 8
         shell: bash
         run: |
-          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
-          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+          node eng/ci/windows-native-run.mjs dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+          node eng/ci/windows-native-run.mjs ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeMessageBoxes]" --output detailed
+      - name: Retain Windows crash dumps
+        if: failure() && runner.os == 'Windows'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-crash-dumps-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/native-crash-dumps
+          if-no-files-found: ignore
+          retention-days: 14
       # Badges and progress on the taskbar button of a shown window through ITaskbarList3; what the taskbar draws stays a
       # manual check.
       - name: Verify the Windows taskbar badge and progress with JIT and NativeAOT

@@ -1,0 +1,38 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "menus.host-not-in-use.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "menus",
+  "roles": ["host"],
+  "description": "When the guest's hello reply lists no features, the requests of menus/1 and dialogs/1 are not requests of the channel and are rejected with invalid-request.",
+  "requires": ["menus/1","dialogs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "bar-1": {"kind":"request"},
+    "m1": {"kind":"request"},
+    "d1": {"kind":"request"},
+    "b1": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":[]},"connection":"c1","note":"The guest's hello reply lists no features: neither menus/1 nor dialogs/1 is in use."},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"send":{"id":{"$id":"bar-1"},"kind":"set-menu-bar","window":"w1","menu":[{"kind":"submenu","title":"File","role":"file","enabled":true,"items":[{"kind":"item","id":"i1","title":"Open","shortcut":"Primary+O","enabled":true,"checked":null},{"kind":"item","id":"i2","title":"Save","shortcut":"Primary+S","enabled":true,"checked":null},{"kind":"separator"},{"kind":"submenu","title":"Recent","role":null,"enabled":true,"items":[{"kind":"item","id":"i3","title":"notes.txt","shortcut":null,"enabled":true,"checked":null}]}]},{"kind":"submenu","title":"View","role":null,"enabled":true,"items":[{"kind":"item","id":"i4","title":"Grid","shortcut":null,"enabled":true,"checked":false}]}]},"connection":"c1"},
+    {"receive":{"id":{"$id":"bar-1"},"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"connection":"c1"},
+    {"send":{"id":{"$id":"m1"},"kind":"show-context-menu","window":"w1","menu":[{"kind":"item","id":"i1","title":"Cut","shortcut":null,"enabled":true,"checked":null},{"kind":"item","id":"i2","title":"Copy","shortcut":"Primary+C","enabled":true,"checked":null},{"kind":"separator"},{"kind":"item","id":"i3","title":"Paste","shortcut":null,"enabled":false,"checked":null}],"point":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"m1"},"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"connection":"c1"},
+    {"send":{"id":{"$id":"d1"},"kind":"file-dialog","window":"w1","dialog":"open"},"connection":"c1"},
+    {"receive":{"id":{"$id":"d1"},"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"connection":"c1"},
+    {"send":{"id":{"$id":"b1"},"kind":"message-box","window":"w1","message":"Save changes?"},"connection":"c1"},
+    {"receive":{"id":{"$id":"b1"},"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"connection":"c1"}
+  ]
+}

@@ -127,6 +127,63 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // desktop, so its application services, such as power events, stay its own; its recent documents are
         // unavailable, as in serve-only mode (D055.8).
         DesktopServeOnlyState.RecordFor(services, options.ServeOnly && options.Guest is null, hosted: options.Guest is not null);
+        // AddRunicHostedApplications resolves the host that runs with these services.
+        var container = ContainerOf(services);
+        lock (HostsGate)
+        {
+            Hosts.AddOrUpdate(services, this);
+            if (container is not null && !ReferenceEquals(container, services)) Hosts.AddOrUpdate(container, this);
+        }
+    }
+
+    private static readonly object HostsGate = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, RunicDesktopHost> Hosts = [];
+
+    // The host created with these services, or with another provider of the same container, such as its root scope,
+    // which resolves singletons. Only that host: an unknown provider finds none, also when other hosts run.
+    internal static RunicDesktopHost? ForServices(IServiceProvider services)
+    {
+        lock (HostsGate)
+        {
+            if (Hosts.TryGetValue(services, out var host)) return host;
+        }
+        var container = ContainerOf(services);
+        lock (HostsGate) return container is not null && Hosts.TryGetValue(container, out var host) ? host : null;
+    }
+
+    // The container's own identity: Microsoft.Extensions.DependencyInjection resolves IServiceScopeFactory to the root
+    // scope from the provider and from each of its scopes.
+    private static object? ContainerOf(IServiceProvider services)
+    {
+        try { return services.GetService(typeof(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory)); }
+        catch (ObjectDisposedException) { return null; }
+    }
+
+    private Hosting.RunicHostedApplications? _hostedApplications;
+
+    /// <summary>
+    /// Starts other Runic applications as guests and shows their Windows in native windows of this host (the Runic host
+    /// protocol, <c>runic-host/1</c>, in window mode).
+    /// </summary>
+    /// <remarks>
+    /// The guests still running are stopped when <see cref="Desktop"/> shuts down and when
+    /// <see cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// returns. A hosted or serve-only host cannot start guests. Experimental; see <c>docs/experimental.md</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public IRunicHostedApplications HostedApplications
+    {
+        get
+        {
+            if (Volatile.Read(ref _hostedApplications) is { } applications) return applications;
+            lock (HostsGate) return _hostedApplications ??= new Hosting.RunicHostedApplications(this);
+        }
+    }
+
+    // Run returned: the guests this host started stop before the Desktop host is disposed.
+    internal async Task StopHostedApplicationsAsync()
+    {
+        if (Volatile.Read(ref _hostedApplications) is { } applications) await applications.DisposeAsync().ConfigureAwait(false);
     }
 
     private readonly RunicGuestOptions? _guestOptions;
@@ -341,7 +398,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Func<RunicDesktopHost, Task<int>> application)
     {
         var host = new RunicDesktopHost(services, desktop, hostOptions, startsGuest: true);
-        if (host._guestOptions is null) return await application(host).ConfigureAwait(false);
+        if (host._guestOptions is null)
+        {
+            try { return await application(host).ConfigureAwait(false); }
+            finally { await host.StopHostedApplicationsAsync().ConfigureAwait(false); }
+        }
         // Hosted mode: the host's handshake first; a failure throws RunicHostedApplicationException without the body.
         await host.StartGuestAsync().ConfigureAwait(false);
         var guest = host._guest!;
@@ -631,6 +692,19 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
         guest.Track(window, hosted);
+        // menus/1 and dialogs/1: the Window's menu bar, context menus, file dialogs and message boxes go to the host's
+        // window; without the features they report OwnerUnavailable, as in serve-only mode.
+        var menus = guest.InUse(Hosting.HostFeatures.Menus);
+        owner.SetHosted(new Hosting.HostedWindowPlatformServices(hosted, menus, guest.InUse(Hosting.HostFeatures.Dialogs)));
+        if (menus)
+        {
+            var viewModel = opening.ViewModel;
+            var commands = MenuCommandBinding.Binds(viewModel)
+                ? await MenuCommandBinding.BindViewModelAsync(new DesktopMenuBarSource(Desktop), content.ModelContext, viewModel, GuestLogger, content)
+                    .ConfigureAwait(false)
+                : null;
+            hosted.UseMenus(new Hosting.HostedWindowMenus(guest, hosted.Id, Desktop, commands, GuestLogger));
+        }
         // window-closed follows the Window's close, however it starts; the presentation ends with it.
         _ = owner.WhenClosedAsync().ContinueWith(_ => hosted.OnClosedAsync(), CancellationToken.None,
             TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();

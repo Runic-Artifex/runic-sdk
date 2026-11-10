@@ -140,9 +140,13 @@ public sealed class DesktopSurface : IAsyncDisposable
 
             ValidateWindowOptions(configured);
             RequireCloseConfirmationSupport(configured);
+            var chain = PresentationChain(configured);
+            // A hosted application's page is shown only in an embedded window, with the host session's own data store:
+            // an installed browser would send it the user's cookies (host-protocol.md, Page admission).
+            if (_engine.HostedDataStore is not null && chain is not [BrowserKind.Embedded])
+                throw new ArgumentException("A hosted application's window opens only in an embedded window, without fallbacks.", nameof(options));
             ApplyWindowOptions(configured);
             var requestedBrowser = configured.Browser;
-            var chain = PresentationChain(configured);
             var actualBrowser = chain[0];
             var fellBack = false;
             List<DesktopPresentationAttempt>? attempts = chain.Count > 1 ? [] : null;
@@ -1371,6 +1375,15 @@ public sealed class DesktopWindow : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(items);
         ObjectDisposedException.ThrowIf(!IsOpen, this);
         return _engine.MenuItemStatesAsync(items, MenuCommands, cancellationToken);
+    }
+
+    // runic-host/1 menus/1 (Runic.Application.Views.Desktop): a hosted window's own menus, checked by the caller, which
+    // it shows instead of DesktopHost.MenuBar; on macOS they join the application menu bar while the window is key.
+    internal Task SetHostedMenuBarAsync(IReadOnlyList<DesktopMenu> menus)
+    {
+        ArgumentNullException.ThrowIfNull(menus);
+        if (!AcceptsState || !IsOpen) return Task.CompletedTask;
+        return _engine.SetHostedMenuBarAsync(menus);
     }
 
     // The in-page menu bar: a page that matches the items' shortcuts itself suspends the host's own matching.

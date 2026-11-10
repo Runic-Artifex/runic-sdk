@@ -724,10 +724,26 @@ if (args is ["hosted"])
   answered within 30 seconds reports `Failed` with `Unknown`, and an open that
   the host has not answered by then fails with `hosted-window-failed`; the
   application's own event handlers for the presentation run off the channel, so
-  a handler that waits cannot stall it. Platform services that need the native
-  window, such as file dialogs, report `OwnerUnavailable`, as in serve-only
-  mode, and recent documents (`IDesktopRecentDocuments`) report
-  `BackendUnavailable`.
+  a handler that waits cannot stall it. Recent documents
+  (`IDesktopRecentDocuments`) report `BackendUnavailable`.
+- **Menus and dialogs** (`menus/1`, `dialogs/1`, when the host lists them). The
+  application's menu bar (`DesktopHostOptions.MenuBar`, `DesktopHost.SetMenuBar`)
+  shows in each hosted window, with each item enabled and checked as the
+  Window's command path decides: the root ViewModel (`IRunicMenuCommandSource`,
+  `IRunicMenuCheckedSource`), then the application's commands
+  (`UseApplicationMenu`). A new bar, such as one with titles in another
+  language, and each change of an item's state reach the host; an item the user
+  chooses in the host's bar, or whose shortcut they press, runs through that
+  same path. With `services.AddRunicPlatformServices()`, the Window's
+  `IWindowPlatformServices` shows its context menus, file dialogs (`IFileDialogs`,
+  documents included) and message boxes (`IDesktopMessageBoxes`) as the host's,
+  owned by the host's window: the application gets the same leases and results
+  as from its own dialogs, opens the selected files itself, and one dialog at a
+  time (another reports `ResourceBusy`). A dialog the host's policy refuses
+  reports `PermissionDenied`; one whose window closes reports `OwnerClosed`;
+  cancelling the call closes the host's dialog. Clipboard, monitors, the file
+  launcher and drag and drop report `OwnerUnavailable`, as in serve-only mode,
+  and so does every menu or dialog when the host does not list its feature.
 - **End.** When the host asks the application to shut down, or goes away
   (standard input ends or the channel closes), the Windows close,
   `DesktopHost.ShutdownRequested` and `RunicDesktopHost.Guest.HostGone` are
@@ -744,7 +760,98 @@ if (args is ["hosted"])
   `Runic.Application.Testing`
   ([a hosted application](../Runic.Application.Testing/README.md#a-hosted-application)).
 
-The host side follows in a later 0.17 change.
+### Hosting another application
+
+The host side is `IRunicHostedApplications`, from `RunicDesktopHost.HostedApplications` or, after
+`services.AddRunicHostedApplications()`, from the services. It starts the guest's executable with the parameter
+that selects its hosted mode and shows each of the guest's Windows in a native window of the host (window mode):
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+var applications = host.HostedApplications;
+applications.WindowOpened += (_, e) => Console.WriteLine($"{e.Window.Application.Guest.Name} opened {e.Window.Type}");
+await using var tool = await applications.StartAsync(
+    new RunicGuestStartInfo("/opt/tool/Tool", ["hosted"]),
+    new RunicHostedApplicationOptions { Policy = new ToolWindowPolicy() });
+var exitCode = await tool.Exited;
+```
+
+- **Start.** `StartAsync` starts the executable directly, never through a shell, with standard input and output
+  piped, standard error and the other output lines in the log (events 2021 and 2022, `Debug`), and without
+  `RUNIC_APPLICATION_SERVE_ONLY` and `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. On Windows the guest starts suspended,
+  joins a kill-on-close job object and only then runs, so nothing it starts escapes the job, also when the host
+  crashes; a job that cannot be created or joined fails the start. A batch file (`.bat`, `.cmd`) is refused with
+  `ArgumentException`, since `cmd.exe` would parse its arguments. On Linux and macOS the guest leads a process group of
+  its own, which ends with it; on Linux it inherits no descriptor but its standard streams (glibc 2.34 and later). A
+  host that exits normally ends its guests' groups; a host that crashes or is killed cannot, and its guests exit when
+  their standard input ends, within 10 seconds, while what a guest started itself may outlive it. The start writes the
+  offer, reads the channel line, connects, without a proxy, and checks the guest's proof within `StartTimeout` (30
+  seconds); a failure ends the guest's process tree and throws `RunicHostedApplicationException`
+  (`guest-start-failed` for an executable that cannot be started, `guest-start-timeout`, `guest-exited`,
+  `guest-not-hostable`, `guest-refused`, `protocol-unsupported`; event 2016). A shutdown or disposal of the host
+  while a start is pending fails it with `InvalidOperationException` and ends the guest.
+- **Windows.** Each guest Window becomes a `RunicHostedWindow`, whose `Presentation` is a native `DesktopWindow` of
+  the host, embedded and without a browser fallback. It loads the guest's one-time launch address top-level from the
+  guest's loopback origin: the host injects none of its credentials, admits no other origin for top-level navigation
+  and gives each guest session a data store of its own that is not persisted. A user's close, and
+  `RequestCloseAsync`, ask the guest first; the window closes when the guest's Window has. The guest's presentation
+  requests (present, minimize, visibility, full screen, maximize, size, position, document edited, represented
+  file, colour scheme, layout direction, announcements) apply to that window, and its activity, placement and colour
+  scheme go back to the guest; a guest that reads slowly receives the latest placement and activity, not every
+  change. `IRunicHostedApplications.WindowOpened` and `WindowClosed` report the windows, one after the other and in
+  order: add the handlers before `StartAsync`. A window that finishes opening after its guest went away closes at
+  once and raises neither.
+- **Menus.** Each hosted window shows the guest's menu bar, never the host application's own
+  (`RunicHostedWindow.MenuBar` is what it shows). On Windows and Linux it is the window's own bar, in the window or
+  the desktop's global menu. On macOS the process has one menu bar: while a hosted window is key, it shows the host's
+  application menu, whose About, Settings and Quit and Application-role items stay the host's, then the guest's
+  menus: the guest's File menu in the File menu's place, its Help menu last, its others before the Window menu, and an
+  Application-role menu of the guest as an ordinary menu under its own title. The standard Edit, View and Window
+  menus stay in the host's language; the host's other menus give way until a window of the host is key again, and a
+  shortcut both use is the host's. Shortcuts are matched by the host's native menus, and an item the user chooses
+  runs the guest's command (`menu-invoke`); `DesktopWindow.TryExecuteMenuItemAsync` on `Presentation` chooses one
+  from code. A guest's View or Window menu, titled as the host's standard one, joins it on macOS. The guest's context
+  menus show as native context menus of its window, only while the window is active and inside its web view.
+- **Dialogs.** The guest's file dialogs (open, open several, save, folder, folders) and message boxes show as the
+  platform's own dialogs owned by the guest's window, one at a time; the guest receives the selected paths and opens
+  them itself, and the host keeps no access to them: a sandboxed host or guest (App Sandbox, Flatpak) can receive
+  paths it may not open, as the picker's grant stays with the process that showed it. Closing the window, the guest
+  giving the dialog up or the guest going away closes a dialog that is shown. The titles, texts and button labels are
+  the guest's; see [security](../../../docs/security.md#hosted-application-windows) for marking them.
+- **Limits.** `IRunicHostedWindowPolicy.Limits` (`RunicHostedLimits`) bounds a window's menu requests (20 a second by
+  default; Runic's guest sends its latest menus again when one is turned away) and the dialogs a guest shows at once,
+  across its windows (one by default; another reports `ResourceBusy` to a Runic guest). The host rebuilds a window's
+  native bar at most every 50 milliseconds, however many changes arrive.
+- **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
+  own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest
+  nothing. A policy can grant more through `RunicHostedWindowDecision.Allow(request.WindowOptions with { ... })`.
+- **Policy.** `IRunicHostedWindowPolicy` decides each window (`OpenWindowAsync`: refuse, or open with other
+  `DesktopWindowOptions` such as a saved placement keyed by `Guest.ApplicationId`) and each presentation request
+  (`Present`: apply, clamp or refuse; the request a policy returns applies as it is), each menu bar and context menu
+  (`Menu`: show, show changed entries, such as without an item or with an item of the host's own, whose command is
+  then the host application's, or refuse) and each dialog (`DialogAsync`: show, show with other options of the same
+  kind, such as another initial directory, or refuse). Without a policy, every window of the guest opens and every
+  request, menu and dialog applies.
+- **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
+  and completes `Exited` with its exit code (event 2017). `StopAsync` asks the guest to shut down and ends it after
+  `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests
+  still running stop when the host's Desktop shuts down and when `RunicDesktopHost.Run` returns. A hosted or
+  serve-only application cannot host.
+
+Each engine keeps a guest session's cookies, storage and caches apart from the host's and from other guests':
+
+| Engine | Data store of a guest session | Isolation |
+| --- | --- | --- |
+| WebView2 | An InPrivate profile named for the session, in a user data folder of its own in the temporary folder that is deleted after the session | Cookies, storage and caches in memory, in a browser process of its own. The folder holds only the browser's own files. |
+| WKWebView | `WKWebsiteDataStore.nonPersistentDataStore` | Cookies, storage and caches in memory, shared by the session's windows. |
+| WebKitGTK 4.1 (GTK 3) | An ephemeral `WebKitWebContext` | Cookies, storage and caches in memory, in a network process of its own. Spell checking and the page language are set when the session's first window opens. |
+| WebKitGTK 6 (`Runic.Desktop.Gtk4`) | An ephemeral `WebKitNetworkSession` | Cookies, storage and caches in memory. |
+
+On WKWebView and WebKitGTK the store lives only while a window of the session is open: a guest that opens a window
+after all its windows closed starts with an empty store, cookies, localStorage and IndexedDB included. On WebView2 the
+store lives for the whole session. HTTP authentication, client certificates and the system's proxy and
+trust settings are the engine's and the user's, not the store's. A custom `IDesktopWindowHostFactory` shows hosted
+windows only if its window host implements `IDesktopEphemeralDataStoreWindowHost`.
 
 ## Automation
 

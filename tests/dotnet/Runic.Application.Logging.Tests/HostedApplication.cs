@@ -8,15 +8,17 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
+using Runic.Platform;
 
 namespace Runic.Application.Logging.Tests;
 
 // This suite's application in hosted mode (runic-host/1), reached through its own parameter as a guest application
 // defines one: it opens its LoggingWindow in a window of the host that started it and ends when the Window closes.
-internal static class HostedApplication
+internal static partial class HostedApplication
 {
     internal const string Argument = "--run-hosted-application";
     internal const string FailedExitCode = "3";
+    internal const string MenusArgument = "--run-hosted-menus";
 
     public static int Run()
     {
@@ -45,6 +47,116 @@ internal static class HostedApplication
             Console.Error.WriteLine($"Hosted mode did not start ({error.Code}): {error.Message}");
             return int.Parse(FailedExitCode, System.Globalization.CultureInfo.InvariantCulture);
         }
+    }
+}
+
+// The same application with a menu bar (menus/1) and its window services (dialogs/1), for a guest's own tests under
+// RunicTestHost: File ▸ Open… runs the window services one after the other and makes Save available; each result is a
+// line on standard error.
+internal static partial class HostedApplication
+{
+    public static int RunMenus()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<LoggingViewModel>();
+        services.AddScoped<SecondLoggingViewModel>();
+        services.AddRunicViews();
+        services.AddRunicPlatformServices();
+        var provider = services.BuildServiceProvider();
+        try
+        {
+            return RunicDesktopHost.Run(provider, new DesktopHostOptions { WaitForConnection = false },
+                new RunicDesktopHostOptions { Guest = RunicGuestOptions.FromStandardInput() with { ApplicationId = "dev.runic.tests.logging" } },
+                async host =>
+                {
+                    IWindowPlatformServices? platform = null;
+                    var opened = false;
+                    var save = new MenuCommand(() => opened, () => Console.Error.WriteLine("RAN file.save"));
+                    var open = new MenuCommand(() => true, () =>
+                    {
+                        Console.Error.WriteLine("RAN file.open");
+                        opened = true;
+                        save.Changed();
+                        _ = Task.Run(() => ServicesAsync(platform!));
+                    });
+                    host.Desktop.SetMenuBar(
+                    [
+                        new DesktopMenu("File",
+                        [
+                            new DesktopMenuItem("Open…", "file.open") { Shortcut = new DesktopShortcut("O") },
+                            new DesktopMenuItem("Save", "file.save") { Shortcut = new DesktopShortcut("S") },
+                        ]) { Role = DesktopMenuRole.File },
+                    ]);
+                    using var commands = host.UseApplicationMenu(new Dictionary<string, System.Windows.Input.ICommand>
+                    {
+                        ["file.open"] = open,
+                        ["file.save"] = save,
+                    });
+                    await using var window = await host.OpenWindowAsync<LoggingWindow>();
+                    platform = ((IRunicWindow)window).Services.GetRequiredService<IWindowPlatformServices>();
+                    await window.WaitForCloseAsync();
+                    return 0;
+                });
+        }
+        catch (RunicHostedApplicationException error)
+        {
+            Console.Error.WriteLine($"Hosted mode did not start ({error.Code}): {error.Message}");
+            return int.Parse(FailedExitCode, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            provider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    private static async Task ServicesAsync(IWindowPlatformServices platform)
+    {
+        var import = new OpenFileOptions
+        {
+            Title = "Import",
+            Filters = [new FileDialogFilter("Text", ["txt"]), new FileDialogFilter("Data", ["csv"])],
+        };
+        switch (await platform.FileDialogs.OpenFileAsync(import))
+        {
+            case PickerResult<IReadFileLease>.Selected { Value: var lease } selected:
+                await using (lease)
+                {
+                    using var reader = new StreamReader(await lease.OpenReadAsync());
+                    Console.Error.WriteLine("OPEN " + lease.DisplayName + " " + await reader.ReadToEndAsync() + " " + (selected.SelectedFilter?.Name ?? "no-filter"));
+                }
+                break;
+            case PickerResult<IReadFileLease>.Failed failed:
+                Console.Error.WriteLine("OPEN failed " + failed.Code);
+                break;
+            case var other:
+                Console.Error.WriteLine("OPEN " + other.GetType().Name);
+                break;
+        }
+        var box = await platform.MessageBoxes.ShowAsync(new DesktopMessageBox("Keep the import?")
+        {
+            Buttons = [new DesktopMessageBoxButton("keep", "Keep") { Role = DesktopMessageBoxButtonRole.Default }, new DesktopMessageBoxButton("undo", "Undo")],
+        });
+        Console.Error.WriteLine("BOX " + box switch
+        {
+            PlatformResult<DesktopMessageBoxButton?>.Success(var button) => button?.Id ?? "none",
+            PlatformResult<DesktopMessageBoxButton?>.Failed(var code, _) => "failed " + code,
+            _ => box.GetType().Name,
+        });
+        var menu = await platform.ShowContextMenuAsync([new DesktopMenuItem("Cut", "edit.cut"), new DesktopMenuItem("Copy", "edit.copy")]);
+        Console.Error.WriteLine("CONTEXT " + menu switch
+        {
+            PlatformResult<DesktopMenuItem?>.Success(var item) => item?.CommandId ?? "none",
+            PlatformResult<DesktopMenuItem?>.Unavailable(var reason) => "unavailable " + reason,
+            _ => menu.GetType().Name,
+        });
+    }
+
+    private sealed class MenuCommand(Func<bool> canExecute, Action execute) : System.Windows.Input.ICommand
+    {
+        public event EventHandler? CanExecuteChanged;
+        public bool CanExecute(object? parameter) => canExecute();
+        public void Execute(object? parameter) => execute();
+        public void Changed() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }
 

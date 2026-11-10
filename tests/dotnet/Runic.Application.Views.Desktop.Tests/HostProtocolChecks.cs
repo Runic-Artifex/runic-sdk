@@ -93,6 +93,28 @@ internal sealed class HostProtocolChecks
             Check(GuestPrivileges.Check() is null || Environment.IsPrivilegedProcess, "this test process, started by its own user, passes");
     }
 
+    // host-protocol.md, Same user, on Windows: equal TokenUser SIDs, a parent created before this process (else its id
+    // was reused), and refusal on any failure (fail closed).
+    [Test]
+    public void TheWindowsSameUserCheckFailsClosed()
+    {
+        byte[] user = [1, 5, 0, 0, 0, 0, 0, 5, 21, 0, 0, 0, 1, 2, 3, 4];
+        byte[] other = [1, 5, 0, 0, 0, 0, 0, 5, 21, 0, 0, 0, 9, 9, 9, 9];
+        var self = new GuestPrivileges.WindowsProcessIdentity(1_000, user);
+        static Func<int, GuestPrivileges.WindowsProcessIdentity?> Parent(GuestPrivileges.WindowsProcessIdentity? identity) => id => id == 4242 ? identity : null;
+        Check(GuestPrivileges.SameUserOnWindows(() => self, () => 4242, Parent(new(900, [.. user]))), "the same user");
+        Check(GuestPrivileges.SameUserOnWindows(() => self, () => 4242, Parent(new(1_000, [.. user]))), "a parent created in the same tick");
+        Check(!GuestPrivileges.SameUserOnWindows(() => self, () => 4242, Parent(new(900, other))), "another user's parent");
+        Check(!GuestPrivileges.SameUserOnWindows(() => self, () => 4242, Parent(new(1_100, [.. user]))), "a process that reused the gone parent's id");
+        Check(!GuestPrivileges.SameUserOnWindows(() => self, () => 4242, Parent(null)), "a parent that is gone or whose token cannot be read");
+        Check(!GuestPrivileges.SameUserOnWindows(() => self, () => null, Parent(new(900, [.. user]))), "no parent id");
+        Check(!GuestPrivileges.SameUserOnWindows(() => self, () => 0, Parent(new(900, [.. user]))), "parent id 0");
+        Check(!GuestPrivileges.SameUserOnWindows(() => null, () => 4242, Parent(new(900, [.. user]))), "an unreadable own token");
+        Check(!GuestPrivileges.SameUserOnWindows(() => new(1_000, []), () => 4242, Parent(new(900, []))), "empty SIDs");
+        if (OperatingSystem.IsWindows())
+            Check(Runic.Application.Views.Desktop.Hosting.WindowsProcesses.Self() is { UserSid.Length: > 0 }, "this process's own token user");
+    }
+
     private static void Check(bool condition, string what)
     {
         if (!condition) throw new InvalidOperationException($"Failed: {what}.");

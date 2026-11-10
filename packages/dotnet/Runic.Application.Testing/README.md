@@ -1225,6 +1225,36 @@ public async Task ClosesWhenTheHostAsks()
   `WaitForNthWindowAsync("DocumentWindow", 1, …)` waits for the second window of
   a type, and `WaitForMatchingWindowAsync` for the first window a predicate
   accepts.
+- Menus and dialogs (`menus/1`, `dialogs/1`, listed by default in
+  `RunicTestHostOptions.Features`): a window's `MenuBar` is the application's
+  bar as it sent it, with its items' ids, titles, shortcuts and current
+  `enabled` and `checked` states; `WaitForMenuBarAsync` waits for a change,
+  `FindMenuItem("File", "Save")` finds an item's id and `InvokeMenuItemAsync`
+  chooses it as the host's user would, so the application runs its command.
+  `FileDialog`, `MessageBox` and `ContextMenu` answer the application's file
+  dialogs, message boxes and context menus with a `RunicTestDialogAnswer`:
+  `Select(paths, filter)` with absolute paths and the index of the chosen
+  filter, `Choose(id)` with a button's or an item's id
+  (`RunicTestHostedWindow.FindMenuItem(menu, "Copy")`), `Dismiss()`, or what a
+  host can answer instead: `Refuse()` (the application sees
+  `PermissionDenied`), `Fail(code)` and `Unavailable(reason)`, such as
+  `OwnerClosed`. By default every dialog and menu is dismissed. Each window's
+  `DialogRequests` lists what the application asked for, with typed members
+  (`DialogKind`, `Title`, `SuggestedName`, `FilterNames`, `Text`, `ButtonIds`),
+  and an answer's token is cancelled when the application gives the dialog up
+  or closes the window. An answer that throws or does not fit, such as a
+  relative path, fails the application's dialog, and the test host's next
+  `WaitFor…` or `StopAsync` throws with the reason.
+
+  ```csharp
+  await using var host = await RunicTestHost.StartGuestAsync(start, new RunicTestHostOptions
+  {
+      FileDialog = (request, _) => Task.FromResult(RunicTestDialogAnswer.Select([Path.GetFullPath("data/notes.txt")])),
+  });
+  var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+  await window.WaitForMenuBarAsync(_ => window.FindMenuItem("File", "Open…") is not null, TimeSpan.FromSeconds(10));
+  await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
+  ```
 - `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
   colour scheme to the application, and `RunicTestHost.SetAppearanceAsync` the
   host's appearance (an application of this release keeps its own appearance).

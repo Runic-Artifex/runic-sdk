@@ -538,10 +538,23 @@ public sealed class DesktopHost : IAsyncDisposable
         return CreateSurfaceCoreAsync(options, windowHostFactory, cancellationToken);
     }
 
+    // runic-host/1 window mode (host-protocol.md, Page admission): a surface whose window shows a hosted application's
+    // page, loaded top-level from the guest's one-time launch address. The window injects no credential, has the guest's
+    // origin as its only application origin and uses the host session's ephemeral data store (dataStore, from
+    // Internal.EphemeralDataStores.Begin). Only an embedded window presents it.
+    internal ValueTask<DesktopSurface> CreateHostedSurfaceAsync(Uri launchUrl, string dataStore, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(launchUrl);
+        ArgumentException.ThrowIfNullOrEmpty(dataStore);
+        return CreateSurfaceCoreAsync(new DesktopSurfaceOptions { Content = new DesktopContent.ExternalUrl(launchUrl) },
+            windowHostFactory: null, cancellationToken, dataStore);
+    }
+
     private async ValueTask<DesktopSurface> CreateSurfaceCoreAsync(
         DesktopSurfaceOptions? options,
         IDesktopWindowHostFactory? windowHostFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? hostedDataStore = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var configured = options ?? new DesktopSurfaceOptions();
@@ -586,7 +599,7 @@ public sealed class DesktopHost : IAsyncDisposable
             GlobalMenu = _options.Linux.GlobalMenu,
             TimeProvider = _options.TimeProvider,
         };
-        var engine = new WebUiWindow(core, path, security, runtime);
+        var engine = new WebUiWindow(core, path, security, runtime) { HostedDataStore = hostedDataStore };
         var surface = new DesktopSurface(this, id, engine, isolatedCore, windowHostFactory);
         if (!_surfaces.TryAdd(id, surface))
         {

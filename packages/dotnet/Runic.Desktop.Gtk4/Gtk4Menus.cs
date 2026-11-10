@@ -329,7 +329,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         // The menu starts at the point and opens towards the end of the line.
         popover.SetHalign(popover.GetDirection() == Gtk.TextDirection.Rtl ? Gtk.Align.End : Gtk.Align.Start);
         var (x, y) = options is { X: { } pageX, Y: { } pageY }
-            ? GtkMenus.PagePoint(pageX, pageY, webView.GetZoomLevel())
+            ? GtkMenus.PagePoint(pageX, pageY, webView.GetZoomLevel(), webView.GetWidth(), webView.GetHeight())
             : _pointer is { } pointer
                 ? ((int)Math.Round(pointer.X), (int)Math.Round(pointer.Y))
                 : (webView.GetWidth() / 2, webView.GetHeight() / 2);

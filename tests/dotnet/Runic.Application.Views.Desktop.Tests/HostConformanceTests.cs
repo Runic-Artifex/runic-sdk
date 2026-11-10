@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.IO.Pipes;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -7,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
@@ -17,8 +19,9 @@ using TUnit.Core;
 
 // The guest runner of the Runic host protocol corpus (specs/desktop/host-conformance): for every scenario of the guest
 // role it plays the host against RunicDesktopHost.Run in hosted mode, in this process, with the corpus's test
-// application (two Window types, ConformanceMainWindow and ConformanceGuardedWindow). The guest's standard input and
-// output are pipes of the runner; the host channel is a real loopback WebSocket.
+// application (two Window types, ConformanceMainWindow and ConformanceGuardedWindow, and the menus and commands of
+// ConformanceMenus). The guest's standard input and output are pipes of the runner; the host channel is a real loopback
+// WebSocket.
 internal sealed class HostConformanceTests
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(10);
@@ -54,6 +57,10 @@ internal sealed class HostConformanceTests
         private readonly Dictionary<string, Task<object?>> _actions = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Task<IRunicWindow>> _windows = new(StringComparer.Ordinal);
         private readonly Dictionary<string, CancellationTokenSource> _openCancellations = new(StringComparer.Ordinal);
+        // Each window's dialogs and context menus take this token until a cancelDialog step cancels it.
+        private readonly Dictionary<string, CancellationTokenSource> _dialogCancellations = new(StringComparer.Ordinal);
+        private readonly ConformanceMenus _menus = new();
+        private readonly ScenarioFiles _files = new();
         private readonly byte[] _nonce = RandomNumberGenerator.GetBytes(32);
         private readonly ConcurrentQueue<int> _exits = new();
         private readonly TaskCompletionSource<RunicDesktopHost> _host = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -129,6 +136,8 @@ internal sealed class HostConformanceTests
                 CheckPrivileges = static () => null,
             };
             var services = new ServiceCollection();
+            // The Windows' IWindowPlatformServices: their context menus, file dialogs and message boxes.
+            services.AddRunicPlatformServices();
             services.AddScoped<OrderedCollectionModel>();
             services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
                 _ => (transport, model) => new OrderedCollectionBridge(transport, model));
@@ -142,6 +151,9 @@ internal sealed class HostConformanceTests
                 },
                 async host =>
                 {
+                    // The test application's menu bar and its commands (README, Test application).
+                    host.Desktop.SetMenuBar(ConformanceMenus.Bar(german: false));
+                    using var menu = host.UseApplicationMenu(_menus.Commands);
                     _host.TrySetResult(host);
                     try { await Task.Delay(Timeout.Infinite, host.Desktop.ShutdownRequested); }
                     catch (OperationCanceledException) { }
@@ -256,12 +268,106 @@ internal sealed class HostConformanceTests
                 case "activity":
                     result = Run(async () => (object?)(await Window()).Presentation);
                     break;
+                case "setMenuBar":
+                    var menu = guest["menu"]!.GetValue<string>();
+                    host.Desktop.SetMenuBar(menu == "none" ? [] : ConformanceMenus.Bar(german: menu == "german"));
+                    result = Task.FromResult<object?>(null);
+                    break;
+                case "setCommandEnabled":
+                    _menus.Command(guest["command"]!.GetValue<string>()).SetEnabled(guest["value"]!.GetValue<bool>());
+                    result = Task.FromResult<object?>(null);
+                    break;
+                case "invoked":
+                    result = Task.FromResult<object?>(_menus);
+                    break;
+                case "contextMenu":
+                    var point = guest["point"] as JsonObject;
+                    result = Dialog(async (services, token) => Normalize(await services.ShowContextMenuAsync(ConformanceMenus.ContextMenu,
+                        point is null ? null : new DesktopContextMenuOptions { X = point["x"]!.GetValue<double>(), Y = point["y"]!.GetValue<double>() },
+                        token)));
+                    break;
+                case "openFile":
+                    result = Dialog(async (services, token) => await NormalizeAsync(await services.FileDialogs.OpenFileAsync(ConformanceDialogs.Open, token),
+                        static lease => [lease.DisplayName]));
+                    break;
+                case "openFiles":
+                    result = Dialog(async (services, token) => await NormalizeAsync(await services.FileDialogs.OpenFilesAsync(ConformanceDialogs.Open, token),
+                        static list => list.Select(static lease => lease.DisplayName)));
+                    break;
+                case "saveFile":
+                    result = Dialog(async (services, token) => await NormalizeAsync(await services.FileDialogs.SaveFileAsync(ConformanceDialogs.Save, token),
+                        static lease => [lease.DisplayName]));
+                    break;
+                case "openFolder":
+                    result = Dialog(async (services, token) => await NormalizeAsync(await services.FileDialogs.OpenDirectoryAsync(ConformanceDialogs.Folder, token),
+                        static lease => [lease.DisplayName]));
+                    break;
+                case "messageBox":
+                    result = Dialog(async (services, token) => Normalize(await services.MessageBoxes.ShowAsync(ConformanceDialogs.MessageBox, token)));
+                    break;
+                case "cancelDialog":
+                    if (_dialogCancellations.Remove(guest["window"]!.GetValue<string>(), out var dialogCancellation))
+                    {
+                        await dialogCancellation.CancelAsync();
+                        dialogCancellation.Dispose();
+                    }
+                    result = Task.FromResult<object?>(null);
+                    break;
                 default: throw new InvalidOperationException($"Unknown action {action}.");
             }
             if (name is not null) _actions[name] = result;
 
             Task<object?> Present(Func<IRunicWindow, Task<PlatformResult<PlatformUnit>>> call) =>
                 Run(async () => (object?)await call(await Window()));
+
+            // A dialog or context menu of the window's IWindowPlatformServices, with the window's dialog token as it is now.
+            Task<object?> Dialog(Func<IWindowPlatformServices, CancellationToken, Task<JsonObject>> call)
+            {
+                var windowName = guest["window"]!.GetValue<string>();
+                if (!_dialogCancellations.TryGetValue(windowName, out var cancellation))
+                    _dialogCancellations[windowName] = cancellation = new CancellationTokenSource();
+                var token = cancellation.Token;
+                return Run(async () => (object?)await call((await Window()).Services.GetRequiredService<IWindowPlatformServices>(), token));
+            }
+        }
+
+        // The results of the dialog and context menu actions as the README's expect members: selected, dismissed, chosen,
+        // button or outcome.
+        private static JsonObject OutcomeOf(string kind, string token) => new() { ["outcome"] = new JsonObject { [kind] = token } };
+
+        private static JsonObject Normalize(PlatformResult<DesktopMenuItem?> result) => result switch
+        {
+            PlatformResult<DesktopMenuItem?>.Success(var item) => new JsonObject { ["chosen"] = item?.CommandId },
+            PlatformResult<DesktopMenuItem?>.Unavailable(var reason) => OutcomeOf("unavailable", HostProtocol.Kebab(reason.ToString())),
+            PlatformResult<DesktopMenuItem?>.Failed(var code, _) => OutcomeOf("failed", HostProtocol.Kebab(code.ToString())),
+            _ => throw new InvalidOperationException($"Unknown result {result}."),
+        };
+
+        private static JsonObject Normalize(PlatformResult<DesktopMessageBoxButton?> result) => result switch
+        {
+            PlatformResult<DesktopMessageBoxButton?>.Success(var button) => new JsonObject { ["button"] = button?.Id },
+            PlatformResult<DesktopMessageBoxButton?>.Unavailable(var reason) => OutcomeOf("unavailable", HostProtocol.Kebab(reason.ToString())),
+            PlatformResult<DesktopMessageBoxButton?>.Failed(var code, _) => OutcomeOf("failed", HostProtocol.Kebab(code.ToString())),
+            _ => throw new InvalidOperationException($"Unknown result {result}."),
+        };
+
+        // A selection is reported by its leases' display names, and released.
+        private static async Task<JsonObject> NormalizeAsync<T>(PickerResult<T> result, Func<T, IEnumerable<string>> names) where T : IAsyncDisposable
+        {
+            switch (result)
+            {
+                case PickerResult<T>.Selected(var value):
+                    try { return new JsonObject { ["selected"] = new JsonArray([.. names(value).Select(static name => (JsonNode)name)]) }; }
+                    finally { await value.DisposeAsync(); }
+                case PickerResult<T>.Dismissed:
+                    return new JsonObject { ["dismissed"] = true };
+                case PickerResult<T>.Unavailable(var reason):
+                    return OutcomeOf("unavailable", HostProtocol.Kebab(reason.ToString()));
+                case PickerResult<T>.Failed(var code, _):
+                    return OutcomeOf("failed", HostProtocol.Kebab(code.ToString()));
+                default:
+                    throw new InvalidOperationException($"Unknown result {result}.");
+            }
         }
 
         private static Task<object?> Run(Func<Task<object?>> work) => Task.Run(work);
@@ -300,6 +406,22 @@ internal sealed class HostConformanceTests
                     return;
                 }
                 var result = await action.WaitScaledAsync(StepTimeout);
+                if (result is JsonObject normalized)
+                {
+                    // A dialog or context menu: its result is one of the members the README defines.
+                    var expected = expect.DeepClone().AsObject();
+                    expected.Remove("action");
+                    Check(JsonNode.DeepEquals(Resolve(expected), normalized), $"The result is {normalized.ToJsonString()}, not {expected.ToJsonString()}.");
+                    return;
+                }
+                if (expect["invoked"] is JsonArray invoked)
+                {
+                    var menus = (ConformanceMenus)result!;
+                    var commands = invoked.Select(static command => command!.GetValue<string>()).ToArray();
+                    Check(await TestTimeouts.UntilAsync(() => menus.Invoked.SequenceEqual(commands), StepTimeout),
+                        $"The application ran [{string.Join(", ", menus.Invoked)}], not [{string.Join(", ", commands)}].");
+                    return;
+                }
                 if (expect["closed"] is { } closed)
                     Check(result is bool value && value == closed.GetValue<bool>(), $"RequestCloseAsync returned {result}.");
                 if (expect["outcome"] is JsonObject outcome) CheckOutcome(outcome, (PlatformResult<PlatformUnit>)result!);
@@ -501,6 +623,8 @@ internal sealed class HostConformanceTests
                     throw new InvalidOperationException($"{id} is not bound yet.");
                 case JsonObject placeholder when placeholder.ContainsKey("$secret"):
                     return Secret(placeholder["$secret"]!.GetValue<string>());
+                case JsonObject placeholder when ScenarioFiles.IsPath(placeholder):
+                    return _files.Path(placeholder);
                 case JsonObject value:
                     var copy = new JsonObject();
                     foreach (var (member, child) in value) copy[member] = Resolve(child);
@@ -547,6 +671,10 @@ internal sealed class HostConformanceTests
                     Check(secret == "launch-url" ? text is not null && LaunchUrl.IsMatch(text) : text == Secret(secret),
                         $"{path}: {actual?.ToJsonString()} is not the {secret}.");
                     return;
+                case JsonObject placeholder when ScenarioFiles.IsPath(placeholder):
+                    var local = _files.Path(placeholder);
+                    Check(actual?.GetValueKind() == JsonValueKind.String && actual.GetValue<string>() == local, $"{path}: {actual?.ToJsonString()} is not {local}.");
+                    return;
                 case JsonObject value:
                     Check(actual is JsonObject, $"{path}: {actual?.ToJsonString()} is not an object.");
                     var members = actual!.AsObject();
@@ -591,6 +719,8 @@ internal sealed class HostConformanceTests
             }
             if (_provider is not null) await _provider.DisposeAsync();
             foreach (var cancellation in _openCancellations.Values) cancellation.Dispose();
+            foreach (var cancellation in _dialogCancellations.Values) cancellation.Dispose();
+            _files.Dispose();
             _output.Dispose();
         }
     }
@@ -741,5 +871,111 @@ sealed class ConformanceGuardedWindow : RunicWindow<OrderedCollectionModel>
     protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
     {
         lock (s_gate) return s_held is { } held ? new ValueTask<bool>(held.Task) : ValueTask.FromResult(s_answer);
+    }
+}
+
+// The corpus's test application's menus (specs/desktop/host-conformance/README.md, Test application): its menu bar in
+// English or German, the application's commands of its items, which record each command that runs, and its context menu.
+internal sealed class ConformanceMenus
+{
+    private readonly List<string> _invoked = [];
+
+    public ConformanceMenus()
+    {
+        foreach (var id in (string[])["file.open", "file.save", "file.recent", "view.grid"])
+            _commands[id] = new ConformanceCommand(() => { lock (_invoked) _invoked.Add(id); });
+    }
+
+    private readonly Dictionary<string, ConformanceCommand> _commands = new(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, ICommand> Commands => _commands.ToDictionary(static pair => pair.Key, static pair => (ICommand)pair.Value, StringComparer.Ordinal);
+
+    public ConformanceCommand Command(string id) => _commands[id];
+
+    // The commands that ran, in order.
+    public IReadOnlyList<string> Invoked
+    {
+        get { lock (_invoked) return [.. _invoked]; }
+    }
+
+    public static IReadOnlyList<DesktopMenu> Bar(bool german) =>
+    [
+        new DesktopMenu(german ? "Datei" : "File",
+        [
+            new DesktopMenuItem(german ? "Öffnen" : "Open", "file.open") { Shortcut = new DesktopShortcut("O") },
+            new DesktopMenuItem(german ? "Sichern" : "Save", "file.save") { Shortcut = new DesktopShortcut("S") },
+            new DesktopMenuSeparator(),
+            new DesktopMenu(german ? "Zuletzt geöffnet" : "Recent", [new DesktopMenuItem("notes.txt", "file.recent")]),
+        ]) { Role = DesktopMenuRole.File },
+        new DesktopMenu(german ? "Ansicht" : "View", [new DesktopMenuItem(german ? "Raster" : "Grid", "view.grid") { IsChecked = false }]),
+    ];
+
+    public static ImmutableArray<DesktopMenuEntry> ContextMenu => HostedContextMenu.Entries;
+}
+
+internal sealed class ConformanceCommand(Action execute) : ICommand
+{
+    private volatile bool _enabled = true;
+
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => _enabled;
+
+    public void Execute(object? parameter) => execute();
+
+    public void SetEnabled(bool enabled)
+    {
+        _enabled = enabled;
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    }
+}
+
+// The test application's dialogs (README, Test application).
+internal static class ConformanceDialogs
+{
+    public static OpenFileOptions Open => new() { Title = "Open", Filters = [new FileDialogFilter("Text", ["txt"])] };
+
+    public static SaveFileOptions Save => new("notes.txt") { Title = "Save" };
+
+    public static OpenDirectoryOptions Folder => new() { Title = "Choose a folder" };
+
+    public static DesktopMessageBox MessageBox => new("Save changes?")
+    {
+        Title = "Conformance",
+        Kind = DesktopMessageBoxKind.Warning,
+        Buttons =
+        [
+            new DesktopMessageBoxButton("save", "Save") { Role = DesktopMessageBoxButtonRole.Default },
+            new DesktopMessageBoxButton("discard", "Don't Save") { Role = DesktopMessageBoxButtonRole.Destructive },
+            new DesktopMessageBoxButton("cancel", "Cancel") { Role = DesktopMessageBoxButtonRole.Cancel },
+        ],
+    };
+}
+
+// The files of a scenario's {"$file": name} and {"$directory": name} (README, Values in messages): absolute paths in a
+// directory of the runner's own, created on first use and removed with it.
+internal sealed class ScenarioFiles : IDisposable
+{
+    private string? _root;
+
+    public static bool IsPath(JsonObject placeholder) => placeholder.Count == 1 && (placeholder.ContainsKey("$file") || placeholder.ContainsKey("$directory"));
+
+    public string Path(JsonObject placeholder)
+    {
+        _root ??= Directory.CreateTempSubdirectory("runic-host-conformance-").FullName;
+        var directory = placeholder["$directory"] is not null;
+        var name = (placeholder["$file"] ?? placeholder["$directory"])!.GetValue<string>();
+        var path = System.IO.Path.Combine(_root, name);
+        if (directory) Directory.CreateDirectory(path);
+        else if (!File.Exists(path)) File.WriteAllText(path, "Runic host conformance\n");
+        return path;
+    }
+
+    public void Dispose()
+    {
+        if (_root is null) return;
+        try { Directory.Delete(_root, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 }

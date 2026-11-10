@@ -130,6 +130,22 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         }
     }
 
+    // Hosted mode (runic-host/1): the scope's platform services follow the host's window for the Window, through the host
+    // channel; closing the window stops them.
+    internal void SetHosted(Hosting.HostedWindowPlatformServices services)
+    {
+        lock (_closeGate)
+        {
+            _platformServices = _close is null ? _scope.ServiceProvider.GetService<DesktopWindowPlatformServices>() : null;
+            if (_platformServices is not null)
+            {
+                _platformServices.BindHosted(services);
+                return;
+            }
+        }
+        _ = services.DisposeAsync().AsTask();
+    }
+
     // The root ViewModel runs the menu bar's commands while this window is key.
     // False when the window is already closing, which disposed the binding.
     internal bool SetMenuCommands(MenuCommandBinding menu)

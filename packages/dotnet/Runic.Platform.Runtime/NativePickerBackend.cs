@@ -110,6 +110,10 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
 {
     private readonly Guid _generation = owner.Generation;
 
+    // The picker itself, for a host of the Runic host protocol (runic-host/1 dialogs/1), which shows the owned dialog for
+    // a guest and hands the guest the paths instead of leases.
+    internal INativeFilePicker Picker => picker;
+
     /// <inheritdoc />
     public bool IsAvailable => owner.IsAvailable && owner.Generation == _generation;
 

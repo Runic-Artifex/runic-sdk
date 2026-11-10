@@ -957,18 +957,37 @@ public static partial class DesktopPlatformServices
                 : WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         }
         provider = CurrentProvider;
-        // Each provider is created in its own method, so the JIT loads only the selected provider's assembly:
-        // a GTK 4 process does not even load the GTK 3 provider. The -windows assembly references only the
-        // Windows provider, so elsewhere its providers report ProviderNotConfigured.
-        NativeServices? native = null;
-        if (provider == DesktopPlatformProvider.Windows && OperatingSystem.IsWindows()) native = CreateWindows(owner);
-#if RUNIC_PORTABLE_PLATFORMS
-        else if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS()) native = CreateMacOS(owner);
-        else if (provider == DesktopPlatformProvider.LinuxGtk3 && OperatingSystem.IsLinux()) native = CreateGtk3(owner, applicationId);
-        else if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux()) native = CreateGtk4(owner, applicationId);
-#endif
-        if (native is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        if (CreateNative(owner, provider, applicationId) is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         return new BoundWindowPlatformServices(owner, selected);
+    }
+
+    // Each provider is created in its own method, so the JIT loads only the selected provider's assembly: a GTK 4
+    // process does not even load the GTK 3 provider. The -windows assembly references only the Windows provider, so
+    // elsewhere its providers report ProviderNotConfigured (null).
+    private static NativeServices? CreateNative(DesktopNativeOwner owner, DesktopPlatformProvider provider, string? applicationId)
+    {
+        if (provider == DesktopPlatformProvider.Windows && OperatingSystem.IsWindows()) return CreateWindows(owner);
+#if RUNIC_PORTABLE_PLATFORMS
+        if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS()) return CreateMacOS(owner);
+        if (provider == DesktopPlatformProvider.LinuxGtk3 && OperatingSystem.IsLinux()) return CreateGtk3(owner, applicationId);
+        if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux()) return CreateGtk4(owner, applicationId);
+#endif
+        return null;
+    }
+
+    // runic-host/1 dialogs/1: the owned dialogs of a host's window that shows a guest's page. The host shows the
+    // provider's own file picker owned by the window and hands the guest the selected paths, and the window's message
+    // boxes; closing the services closes a box that is shown.
+    internal static Hosting.HostDialogServices CreateHostDialogs(DesktopWindow window)
+    {
+        var owner = new DesktopNativeOwner(window);
+        if (!owner.IsAvailable) return Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (CreateNative(owner, CurrentProvider, applicationId: null) is not { } native) return Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        var services = new BoundWindowPlatformServices(owner, native);
+        return new(services.MessageBoxes, (native.Dialogs as NativePickerBackend)?.Picker, null, services);
+
+        static Hosting.HostDialogServices Unavailable(PlatformUnavailableReason reason) =>
+            new(DesktopMessageBoxes.Unavailable(reason), null, reason);
     }
 
     // File dialogs without a parent window: the Windows application UI thread, the portal without a parent (which needs
@@ -1697,6 +1716,22 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         }
     }
 
+    // Hosted mode (runic-host/1): a Window whose host shows its window; the services ask the host over the host channel
+    // (Hosting.HostedWindowPlatformServices) and report the rest unavailable.
+    internal void BindHosted(IWindowPlatformServices hosted)
+    {
+        lock (_gate)
+        {
+            if (_bound is not null) throw new InvalidOperationException("The platform services are already bound to a window.");
+            if (_disposal is not null) return;
+            _bound = hosted;
+            _hosted = true;
+            Volatile.Write(ref _current, _bound);
+        }
+    }
+
+    private bool _hosted;
+
     /// <inheritdoc />
     /// <remarks>The menu capabilities follow the Desktop window, whose menus need no platform provider.</remarks>
     public CapabilitySnapshot GetSnapshot()
@@ -1706,6 +1741,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         bool dragging;
         lock (_gate)
         {
+            if (_hosted) return Current.GetSnapshot();
             current = Current;
             window = _disposal is null && _bound is not null ? _window : null;
             dragging = _disposal is null && _bound is not null && _dragger is not null;
@@ -1841,7 +1877,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions?, CancellationToken, ValueTask<PlatformResult<DesktopMenuItem?>>>? contextMenu;
         lock (_gate)
         {
-            if (_disposal is not null || _bound is null) return Current.ShowContextMenuAsync(items, options, cancellationToken);
+            if (_disposal is not null || _bound is null || _hosted) return Current.ShowContextMenuAsync(items, options, cancellationToken);
             window = _window;
             contextMenu = _contextMenu;
         }
@@ -1869,7 +1905,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
         Func<DesktopDragData, CancellationToken, ValueTask<PlatformResult<DesktopDragEffects>>>? dragger;
         lock (_gate)
         {
-            if (_disposal is not null || _bound is null) return Current.StartDragAsync(data, cancellationToken);
+            if (_disposal is not null || _bound is null || _hosted) return Current.StartDragAsync(data, cancellationToken);
             window = _window;
             dragger = _dragger;
         }

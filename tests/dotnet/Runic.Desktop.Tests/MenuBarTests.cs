@@ -162,6 +162,38 @@ public sealed class DesktopMenuBarTests
         Assert.Equal(5, DesktopMenuBar.InsertionIndex(DesktopMenuRole.None, 5, -1));
     }
 
+    // runic-host/1 menus/1 on macOS: while a hosted window is key, the host's application menu keeps About, Settings and
+    // Quit, and the guest's menus take the other places (host-protocol.md, The guest's menu bar).
+    [Test]
+    public void AHostedWindowsMenusJoinTheHostsApplicationMenu()
+    {
+        IReadOnlyList<DesktopMenu> host =
+        [
+            new("Host", [Item("Settings…", "host.settings", "Primary+,")]) { Role = DesktopMenuRole.Application },
+            new("File", [Item("New Tool", "host.new")]) { Role = DesktopMenuRole.File },
+            new("Tools", [Item("Run", "host.run")]),
+            new("Help", [Item("Host Help", "host.help")]) { Role = DesktopMenuRole.Help },
+        ];
+        IReadOnlyList<DesktopMenu> guest =
+        [
+            new("Guest", [Item("Preferences…", "guest.preferences")]) { Role = DesktopMenuRole.Application },
+            new("File", [Item("Open…", "guest.open", "Primary+O")]) { Role = DesktopMenuRole.File },
+            new("Edit More", [Item("Sort", "guest.sort")]),
+            new("Help", [Item("Guest Help", "guest.help")]) { Role = DesktopMenuRole.Help },
+        ];
+        var merged = DesktopMenuBar.MergeHosted(host, guest);
+        Assert.Equal(["Host", "Guest", "File", "Edit More", "Help"], merged.Select(static menu => menu.Title).ToArray());
+        Assert.Equal([DesktopMenuRole.Application, DesktopMenuRole.None, DesktopMenuRole.File, DesktopMenuRole.None, DesktopMenuRole.Help],
+            merged.Select(static menu => menu.Role).ToArray());
+        Assert.Same(guest[1], merged[2]);
+        Assert.Equal("Guest Help", ((DesktopMenuItem)merged[4].Items[0]).Title);
+        // The merged bar is a valid bar: one menu of each role.
+        _ = DesktopMenuBar.Check(merged, macOS: true);
+        // Without a guest bar the host's application menu stays alone; without its own, the guest's menus show.
+        Assert.Equal(["Host"], DesktopMenuBar.MergeHosted(host, []).Select(static menu => menu.Title).ToArray());
+        Assert.Equal(4, DesktopMenuBar.MergeHosted([], guest).Count);
+    }
+
     [Test]
     public async Task TheHostValidatesKeepsAndReplacesItsMenuBar()
     {

@@ -20,6 +20,7 @@ namespace Runic.Application.Views;
 /// <item><term><c>guest-elevated</c>, <c>guest-other-user</c></term><description>Guest: it runs elevated, or as another user than its parent.</description></item>
 /// <item><term><c>network-exposure</c></term><description>Guest: its Desktop host listens on other interfaces than loopback.</description></item>
 /// <item><term><c>handshake-timeout</c>, <c>handshake-invalid</c>, <c>host-gone</c></term><description>Guest: no valid authenticated <c>hello</c> arrived in time, or standard input ended first.</description></item>
+/// <item><term><c>guest-start-failed</c></term><description>Host: the guest's executable could not be started or contained (<see cref="Exception.InnerException"/>).</description></item>
 /// <item><term><c>guest-start-timeout</c>, <c>guest-exited</c>, <c>guest-not-hostable</c>, <c>guest-refused</c></term><description>Host: the guest wrote no channel line or answered no <c>hello</c> in time, exited first, could not be authenticated, or refused for another reason (<see cref="GuestCode"/>).</description></item>
 /// </list>
 /// <para>The protocol and this type are experimental; see <c>docs/experimental.md</c>.</para>

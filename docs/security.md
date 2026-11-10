@@ -275,8 +275,29 @@ experimental (`RUNICDESK103`). What Runic enforces:
   requests, menus and dialogs.
 - **No elevated guests, no orphans.** A guest refuses hosted mode when it runs elevated, or when it cannot show that
   it runs as the same user as its parent: it compares real and effective user ids on Linux and macOS and the token's
-  user on Windows, and refuses when it cannot read its parent's. It exits when its host goes away and never shows a
-  window of its own; the host ends the guest's process tree when it stops.
+  user on Windows, also checking that its parent is not a newer process that reused a gone parent's id, and refuses
+  when it cannot read its parent's. It exits when its host goes away and never shows a window of its own; the host
+  ends the guest's process tree when it stops. On Windows that tree is a job object that ends with the host, also when
+  the host crashes; on Linux and macOS a host that crashes leaves its guests to exit on the end of their standard
+  input.
+- **The guest gets no more than the host's own windows.** A guest's request for the camera and microphone is granted
+  only as far as the host grants its own windows, unless the host's policy grants more.
+- **Menus and dialogs: shown by the host, owned by the guest's window, with the guest's texts.** A guest's menus and
+  context menus carry ids of the guest's own, never command ids: choosing an item only tells the guest which one, and
+  an id names one item for the window's lifetime, so a click on a bar that the guest just replaced runs that item or
+  nothing. A hosted window never shows the host application's own menus, and on macOS the host's About, Settings and
+  Quit and its reserved shortcuts stay the host's. A guest's file dialogs and message boxes are the host's own
+  dialogs, owned by the guest's window and closed with it; the host hands the guest the selected paths and keeps no
+  access to them. A guest's context menu shows only in the active window, inside it, and the host bounds the rate of a
+  window's menu requests and the dialogs a guest shows at once (`RunicHostedLimits`: 20 menu requests a second per
+  window, one dialog per guest, by default).
+- **What a guest can still word.** The guest chooses the titles, messages, details and button labels of its dialogs
+  and the titles of its menus and items, and nothing marks them as the guest's: a message box titled "HostApp —
+  Update required" with a single Install button, or a File item "Quit HostApp", looks like the host's own. On macOS
+  (a sheet) and GTK 4 (no title) only the box's attachment to the guest's window tells. This is the residual spoofing
+  risk of threat T5: a host that does not trust a guest marks or refuses its texts in its policy, such as with the
+  guest's name before each dialog title (`IRunicHostedWindowPolicy.DialogAsync`, `Menu`), or refuses its message
+  boxes.
 
 What it means for the guest application: **any process of the same user** that knows the guest's parameter can host
 it, see its pages and answer its dialogs, as such a process can already read its memory
@@ -285,6 +306,12 @@ filters hosts by name and version for the product's sake; it is not a security b
 dialogs return and decide its windows' close, so a guest acts only on the files a dialog returned, as with its own
 dialogs. A host should treat a guest like any other program it starts: start only the executables it chose, and keep
 the policy's limits for guests it does not ship itself.
+
+File access is not handed over: a guest receives the paths the host's dialog returned, not the host's access to them,
+and opens them with its own rights. Where the operating system grants access through its picker, a sandboxed host or
+guest (an App Sandbox on macOS, a Flatpak or Snap on Linux) can receive paths it cannot open, or a host can return
+paths that only it could open; the guest then reports the error of the open. Run hosts and guests that use dialogs
+unsandboxed, or with the same file access.
 
 ## CS-WebUI windows
 

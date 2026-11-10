@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <RunicTestTimeouts>true</RunicTestTimeouts>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
+    <!-- The smoke checks the experimental runic-host/1 window mode. -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- This executable is the host and, with its guest argument, each guest application. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <!-- The pages are served by the managed presentation server. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
+    <!-- The gtk4 argument shows the guests in WebKitGTK 6 windows. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
+  </ItemGroup>
+</Project>
