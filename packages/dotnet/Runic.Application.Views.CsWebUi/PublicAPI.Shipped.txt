@@ -48,3 +48,6 @@ Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.init -> void
 const Runic.Application.Views.CsWebUi.RunicCsWebUiHost.OwnerUnsupportedCode = "window-owner-unsupported" -> string!
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.get -> long?
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.init -> void
+static Runic.Application.Views.CsWebUi.CsWebUiPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Runic.Platform.Runtime.IPickerBackend! unownedFileDialogs) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.get -> bool?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.FlowCultureFromLocale.init -> void
