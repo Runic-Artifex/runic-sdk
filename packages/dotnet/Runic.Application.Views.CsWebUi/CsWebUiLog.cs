@@ -20,6 +20,13 @@ internal static partial class CsWebUiLog
         Message = "CS-WebUI loads the WebUI library {Path}, whose version Runic cannot check. Runic needs WebUI commit efac0e24 or later: with an older WebUI, Bridge calls that arrive together can lose their replies or receive another call's arguments or reply. Runic is tested with WebUI commit 2b35db13f, which CsWebUi 2.5.0-beta.4.8 bundles.")]
     private static partial void NativeLibraryUnchecked(ILogger logger, string path);
 
+    // A process that holds one loopback address of localhost on the ports the blob endpoint tries pushes it off localhost:
+    // its URLs then name 127.0.0.1, whose loads the page makes cross-site and the endpoint refuses (or, on Windows, the
+    // window opens without blobs).
+    [LoggerMessage(EventId = 2103, EventName = "CsWebUiBlobEndpointPortsHeld", Level = LogLevel.Warning,
+        Message = "Another process holds {Address} on {Count} of the {Tried} ports the window's blob endpoint tried for {Host}, so it gave up {Host}.")]
+    internal static partial void BlobEndpointPortsHeld(ILogger logger, string address, int count, int tried, string host);
+
     internal const string NativeLibraryEnvironmentVariable = "CSWEBUI_NATIVE_LIBRARY";
 
     private static int s_nativeLibraryChecked;
