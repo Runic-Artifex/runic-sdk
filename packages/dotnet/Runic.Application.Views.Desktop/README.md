@@ -810,11 +810,18 @@ var exitCode = await tool.Exited;
   menus stay in the host's language; the host's other menus give way until a window of the host is key again, and a
   shortcut both use is the host's. Shortcuts are matched by the host's native menus, and an item the user chooses
   runs the guest's command (`menu-invoke`); `DesktopWindow.TryExecuteMenuItemAsync` on `Presentation` chooses one
-  from code. The guest's context menus show as native context menus of its window.
+  from code. A guest's View or Window menu, titled as the host's standard one, joins it on macOS. The guest's context
+  menus show as native context menus of its window, only while the window is active and inside its web view.
 - **Dialogs.** The guest's file dialogs (open, open several, save, folder, folders) and message boxes show as the
   platform's own dialogs owned by the guest's window, one at a time; the guest receives the selected paths and opens
-  them itself, and the host keeps no access to them. Closing the window, the guest giving the dialog up or the guest
-  going away closes a dialog that is shown.
+  them itself, and the host keeps no access to them: a sandboxed host or guest (App Sandbox, Flatpak) can receive
+  paths it may not open, as the picker's grant stays with the process that showed it. Closing the window, the guest
+  giving the dialog up or the guest going away closes a dialog that is shown. The titles, texts and button labels are
+  the guest's; see [security](../../../docs/security.md#hosted-application-windows) for marking them.
+- **Limits.** `IRunicHostedWindowPolicy.Limits` (`RunicHostedLimits`) bounds a window's menu requests (20 a second by
+  default; Runic's guest sends its latest menus again when one is turned away) and the dialogs a guest shows at once,
+  across its windows (one by default; another reports `ResourceBusy` to a Runic guest). The host rebuilds a window's
+  native bar at most every 50 milliseconds, however many changes arrive.
 - **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
   own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest
   nothing. A policy can grant more through `RunicHostedWindowDecision.Allow(request.WindowOptions with { ... })`.

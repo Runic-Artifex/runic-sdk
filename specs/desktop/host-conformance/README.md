@@ -29,7 +29,8 @@ uses, and `steps` what happens, in order.
 
 - `limits`: `startTimeout`, `stopTimeout`, `unauthenticatedTimeout` (the upgrade's limit), `helloTimeout` and
   `requestTimeout`, in milliseconds, and `waitingRequests`, a count, that the runner configures the implementation
-  under test with; the protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
+  under test with; for the `host` role also `menuRequests`, a window's menu requests per second, and `dialogs`, the
+  dialogs a guest shows at once, which are the host's defaults when absent; the protocol's own values are in its [limits](../host-protocol.md#limits). A scenario that waits for
   a limit names it in an [`advance`](#steps) step; a runner waits the configured time, so scenarios use small values.
 - `application`: for the `guest` role, the guest application's `name`, `version` and `applicationId`, which its
   successful `hello` reply carries.
@@ -162,12 +163,14 @@ for a `user` step that answers it, or until the host closes it.
 
 | Action | Members | What the user does |
 | --- | --- | --- |
-| `chooseMenuItem` | `window`, `titles`: the path of titles to an item of the window's menu bar | Chooses the item, as its native bar or its shortcut does; the step fails when the bar has no such enabled item |
+| `chooseMenuItem` | `window`, `titles`: the path of titles to an item of the window's menu bar; optional `bar: "previous"` | Chooses the item, as its native bar or its shortcut does; the step fails when the bar has no such enabled item. With `bar: "previous"`, an item of the bar the window showed before its current one, as a click on the native bar while the guest's new bar arrived: the host decides whether it runs |
 | `awaitContextMenu` | — | Waits until the host shows a context menu, and leaves it open |
 | `chooseContextItem` | `title`, or `dismiss: true` | Chooses the item of that title in the oldest open context menu, or dismisses it |
 | `awaitDialog` | optional `dialog` | Waits until the host shows a dialog (of that kind), and leaves it open |
 | `answerDialog` | optional `dialog`; `paths` (`$file` or `$directory` values), `button`, or `dismiss: true` | Answers the oldest open dialog (of that kind): selects the paths, presses the button, or closes the dialog without either |
+| `awaitDialogClosed` | optional `dialog` | Waits until the host closes the oldest dialog (of that kind) that an `awaitDialog` step left open |
 | `closeWindow` | `window` | Presses the window's close button, which asks the guest (`close-request`) |
+| `deactivateWindow`, `activateWindow` | `window` | Gives the keyboard focus to another window, or back to this one; each window is active when it opens |
 
 `dialog` is a kind of `file-dialog` (`open`, `open-multiple`, `save`, `folder`, `folder-multiple`) or `message-box`.
 `expect` with `window` checks the host's window: `menuBar`, the entries its native menu bar shows, as menu entries

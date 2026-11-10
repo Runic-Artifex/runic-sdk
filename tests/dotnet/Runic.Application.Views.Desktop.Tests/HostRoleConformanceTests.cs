@@ -128,6 +128,12 @@ internal sealed class HostRoleConformanceTests
                 StopTimeout = Limit("stopTimeout", HostProtocol.DefaultStopTimeout),
                 HostName = host["name"]!.GetValue<string>(),
                 HostVersion = host["version"]!.GetValue<string>(),
+                // The scenario's menu rate and dialogs per guest, or the protocol's defaults.
+                Policy = new ScenarioPolicy(new RunicHostedLimits
+                {
+                    MenuRequestsPerSecond = Limits["menuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.MenuRequestsPerSecond,
+                    MaximumDialogs = Limits["dialogs"]?.GetValue<int>() ?? RunicHostedLimits.Default.MaximumDialogs,
+                }),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);
             _puppet = await _control.AcceptTcpClientAsync(accept.Token);
@@ -238,7 +244,20 @@ internal sealed class HostRoleConformanceTests
                 case "chooseMenuItem":
                     var titles = user["titles"]!.AsArray().Select(static title => title!.GetValue<string>()).ToArray();
                     var native = Native(user["window"]!.GetValue<string>());
+                    if (user["bar"] is not null)
+                    {
+                        // The bar the window showed before its current one, which the user still clicks during a change.
+                        Check(native.ChoosePrevious(titles),
+                            $"The window's previous menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.PreviousMenuBar)}.");
+                        break;
+                    }
                     Check(native.Choose(titles), $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
+                    break;
+                case "deactivateWindow" or "activateWindow":
+                    Native(user["window"]!.GetValue<string>()).SetActive(action == "activateWindow");
+                    break;
+                case "awaitDialogClosed":
+                    await _user.AwaitClosedAsync(user["dialog"]?.GetValue<string>(), StepTimeout);
                     break;
                 case "closeWindow":
                     var closing = Native(user["window"]!.GetValue<string>());
@@ -465,6 +484,12 @@ internal sealed class HostRoleConformanceTests
         }
     }
 
+    // The host's policy of a scenario: it allows everything, within the scenario's limits.
+    private sealed class ScenarioPolicy(RunicHostedLimits limits) : IRunicHostedWindowPolicy
+    {
+        public RunicHostedLimits Limits => limits;
+    }
+
     // The host's user: each context menu and dialog the host shows waits until a user step answers it, or until the host
     // closes it (its token).
     private sealed class HostUser
@@ -498,6 +523,17 @@ internal sealed class HostRoleConformanceTests
             var shown = new Shown(dialog, kind, new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously), cancellationToken);
             await _dialogs.Writer.WriteAsync(shown, CancellationToken.None);
             return await shown.Answer.Task.WaitAsync(cancellationToken);
+        }
+
+        // Waits until the host closes the oldest dialog (of the kind, when given) that a step held open.
+        public async Task AwaitClosedAsync(string? kind, TimeSpan timeout)
+        {
+            var shown = _shownDialogs.FirstOrDefault(shown => kind is null || shown.Kind == kind)
+                ?? throw new InvalidOperationException($"No {kind ?? "dialog"} is held open.");
+            try { await Task.Delay(Timeout.Infinite, shown.Closed).WaitScaledAsync(timeout); }
+            catch (OperationCanceledException) when (shown.Closed.IsCancellationRequested) { }
+            catch (TimeoutException) { throw new InvalidOperationException($"The host did not close the {shown.Kind}."); }
+            _shownDialogs.Remove(shown);
         }
 
         // Waits until the host shows a context menu or dialog (of the kind, when given) that no step answered yet; it stays

@@ -76,25 +76,25 @@ public sealed partial class RunicTestHost
         }
         var recorded = new RunicTestDialogRequest(window.Id, request.Kind, JsonDocument.Parse(message.ToJsonString()).RootElement.Clone());
         window.RecordDialog(recorded);
-        JsonObject? reply = null;
+        RunicTestDialogAnswer? answer = null;
+        Exception? failure = null;
         var cancelled = false;
         using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(window.Closing))
         {
             _userRequests[request.Id] = cancel;
             try
             {
-                reply = request.Kind switch
+                var answers = request.Kind switch
                 {
-                    "file-dialog" => await FileDialogAsync(recorded, cancel.Token).ConfigureAwait(false),
-                    "message-box" => new JsonObject { ["outcome"] = "success", ["button"] = await MessageBoxAsync(recorded, cancel.Token).ConfigureAwait(false) },
-                    _ => new JsonObject
-                    {
-                        ["outcome"] = "success",
-                        ["itemId"] = _options.ContextMenu is { } choose ? await choose(recorded, cancel.Token).ConfigureAwait(false) : null,
-                    },
+                    "file-dialog" => _options.FileDialog,
+                    "message-box" => _options.MessageBox,
+                    _ => _options.ContextMenu,
                 };
+                answer = answers is null ? DefaultAnswer(recorded) : await answers(recorded, cancel.Token).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException("The answer is null.");
             }
             catch (OperationCanceledException) when (cancel.IsCancellationRequested) { cancelled = true; }
+            catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
             finally
             {
                 _userRequests.TryRemove(request.Id, out _);
@@ -106,38 +106,85 @@ public sealed partial class RunicTestHost
             await request.ReplyAsync(new JsonObject { ["outcome"] = "unavailable", ["reason"] = "owner-closed" }).ConfigureAwait(false);
         else if (cancelled)
             await request.FailAsync("cancelled", null, "The guest gave the request up.").ConfigureAwait(false);
+        else if (failure is null && Reply(recorded, answer!, out failure) is var (failKind, failReason, failText, reply) && failure is null)
+        {
+            if (reply is not null) await request.ReplyAsync(reply).ConfigureAwait(false);
+            else await request.FailAsync(failKind!, failReason, failText!).ConfigureAwait(false);
+        }
         else
-            await request.ReplyAsync(reply).ConfigureAwait(false);
+        {
+            // A callback that threw or answered what does not fit: the guest's dialog fails, and the test learns why.
+            var name = request.Kind switch { "file-dialog" => "FileDialog", "message-box" => "MessageBox", _ => "ContextMenu" };
+            RecordAnswerFailure(new InvalidOperationException($"RunicTestHostOptions.{name} failed for {recorded.DialogKind}: {failure!.Message}", failure));
+            await request.FailAsync("failed", null, $"The test host's {name} answer failed.").ConfigureAwait(false);
+        }
         return true;
     }
 
-    private async Task<JsonObject> FileDialogAsync(RunicTestDialogRequest request, CancellationToken cancellationToken)
+    // Without a callback: dismissed, or a message box's cancel button (an Esc).
+    private static RunicTestDialogAnswer DefaultAnswer(RunicTestDialogRequest request)
     {
-        var paths = _options.FileDialog is { } answer ? await answer(request, cancellationToken).ConfigureAwait(false) : null;
-        if (paths is null || paths.Count == 0) return new JsonObject { ["outcome"] = "failed", ["code"] = "user-dismissed" };
-        foreach (var path in paths)
-        {
-            if (!Path.IsPathFullyQualified(path)) throw new InvalidOperationException($"RunicTestHostOptions.FileDialog returned the relative path '{path}'.");
-        }
-        return new JsonObject
-        {
-            ["outcome"] = "success",
-            ["paths"] = new JsonArray([.. paths.Select(static path => (JsonNode)path)]),
-            ["filter"] = null,
-        };
-    }
-
-    // The answer, or the box's cancel button (an Esc) without one.
-    private async Task<string?> MessageBoxAsync(RunicTestDialogRequest request, CancellationToken cancellationToken)
-    {
-        if (_options.MessageBox is { } answer) return await answer(request, cancellationToken).ConfigureAwait(false);
-        if (!request.Message.TryGetProperty("buttons", out var buttons) || buttons.ValueKind != JsonValueKind.Array) return null;
+        if (request.DialogKind != RunicTestDialogKind.MessageBox) return RunicTestDialogAnswer.Dismiss();
+        if (!request.Message.TryGetProperty("buttons", out var buttons) || buttons.ValueKind != JsonValueKind.Array) return RunicTestDialogAnswer.Dismiss();
         foreach (var button in buttons.EnumerateArray())
         {
             if (button.TryGetProperty("role", out var role) && role.ValueKind == JsonValueKind.String && role.GetString() == "cancel")
-                return button.GetProperty("id").GetString();
+                return RunicTestDialogAnswer.Choose(button.GetProperty("id").GetString());
         }
-        return null;
+        return RunicTestDialogAnswer.Dismiss();
+    }
+
+    // The reply of an answer, or the failure that it is (kind, reason, message); an answer that does not fit the request
+    // sets failure.
+    private static (string? Kind, string? Reason, string? Message, JsonObject? Reply) Reply(RunicTestDialogRequest request, RunicTestDialogAnswer answer,
+        out Exception? failure)
+    {
+        failure = null;
+        if (answer.Failure is var (kind, reason, message)) return (kind, reason, message, null);
+        var file = request.DialogKind is not (RunicTestDialogKind.MessageBox or RunicTestDialogKind.ContextMenu);
+        if (answer.Paths is { } paths)
+        {
+            if (!file)
+            {
+                failure = new ArgumentException("Select answers a file dialog; a message box or context menu takes Choose or Dismiss.");
+                return default;
+            }
+            if (answer.Filter is { } index && index >= request.FilterNames.Count)
+            {
+                failure = new ArgumentOutOfRangeException(nameof(answer), $"The dialog has {request.FilterNames.Count} filters, not one of index {index}.");
+                return default;
+            }
+            var single = request.DialogKind is RunicTestDialogKind.OpenFile or RunicTestDialogKind.SaveFile or RunicTestDialogKind.OpenFolder;
+            return (null, null, null, new JsonObject
+            {
+                ["outcome"] = "success",
+                ["paths"] = new JsonArray([.. (single ? paths.Take(1) : paths).Select(static path => (JsonNode)path)]),
+                ["filter"] = answer.Filter,
+            });
+        }
+        var reply = (JsonObject)answer.Reply!.DeepClone();
+        switch (HostProtocol.String(reply, "outcome"))
+        {
+            case "dismissed":
+                return (null, null, null, request.DialogKind switch
+                {
+                    RunicTestDialogKind.MessageBox => new JsonObject { ["outcome"] = "success", ["button"] = null },
+                    RunicTestDialogKind.ContextMenu => new JsonObject { ["outcome"] = "success", ["itemId"] = null },
+                    _ => new JsonObject { ["outcome"] = "failed", ["code"] = "user-dismissed" },
+                });
+            case "success":
+                if (file)
+                {
+                    failure = new ArgumentException("Choose answers a message box or context menu; a file dialog takes Select or Dismiss.");
+                    return default;
+                }
+                var chosen = HostProtocol.String(reply, "chosen");
+                return (null, null, null, request.DialogKind == RunicTestDialogKind.MessageBox
+                    ? new JsonObject { ["outcome"] = "success", ["button"] = chosen }
+                    : new JsonObject { ["outcome"] = "success", ["itemId"] = chosen });
+            default:
+                return (null, null, null, reply);
+        }
     }
 }
 
@@ -213,10 +260,12 @@ public sealed partial class RunicTestHostedWindow
     /// <param name="cancellationToken">Cancels the wait.</param>
     /// <returns>The bar that matched.</returns>
     /// <exception cref="TimeoutException">No bar matched in time.</exception>
+    /// <exception cref="InvalidOperationException">An answer of <see cref="RunicTestHostOptions"/> failed before.</exception>
     public async Task<JsonElement> WaitForMenuBarAsync(Func<JsonElement, bool> match, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(match);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero, nameof(timeout));
+        _host.ThrowIfAnswerFailed();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
         while (true)

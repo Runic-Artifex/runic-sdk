@@ -138,6 +138,14 @@
             "waitingRequests": {
               "type": "integer",
               "minimum": 1
+            },
+            "menuRequests": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "dialogs": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },
@@ -869,7 +877,10 @@
                     "chooseContextItem",
                     "awaitDialog",
                     "answerDialog",
-                    "closeWindow"
+                    "awaitDialogClosed",
+                    "closeWindow",
+                    "deactivateWindow",
+                    "activateWindow"
                   ]
                 },
                 "window": {
@@ -882,6 +893,9 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "bar": {
+                  "const": "previous"
                 },
                 "title": {
                   "type": "string"
@@ -989,6 +1003,37 @@
                         ]
                       }
                     ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "deactivateWindow",
+                          "activateWindow"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "required": [
+                      "bar"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "action": {
+                        "const": "chooseMenuItem"
+                      }
+                    }
                   }
                 }
               ]

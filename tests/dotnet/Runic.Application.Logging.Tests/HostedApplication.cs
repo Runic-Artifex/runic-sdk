@@ -111,14 +111,22 @@ internal static partial class HostedApplication
 
     private static async Task ServicesAsync(IWindowPlatformServices platform)
     {
-        switch (await platform.FileDialogs.OpenFileAsync(new OpenFileOptions { Title = "Import" }))
+        var import = new OpenFileOptions
         {
-            case PickerResult<IReadFileLease>.Selected(var lease):
+            Title = "Import",
+            Filters = [new FileDialogFilter("Text", ["txt"]), new FileDialogFilter("Data", ["csv"])],
+        };
+        switch (await platform.FileDialogs.OpenFileAsync(import))
+        {
+            case PickerResult<IReadFileLease>.Selected { Value: var lease } selected:
                 await using (lease)
                 {
                     using var reader = new StreamReader(await lease.OpenReadAsync());
-                    Console.Error.WriteLine("OPEN " + lease.DisplayName + " " + await reader.ReadToEndAsync());
+                    Console.Error.WriteLine("OPEN " + lease.DisplayName + " " + await reader.ReadToEndAsync() + " " + (selected.SelectedFilter?.Name ?? "no-filter"));
                 }
+                break;
+            case PickerResult<IReadFileLease>.Failed failed:
+                Console.Error.WriteLine("OPEN failed " + failed.Code);
                 break;
             case var other:
                 Console.Error.WriteLine("OPEN " + other.GetType().Name);
@@ -128,9 +136,19 @@ internal static partial class HostedApplication
         {
             Buttons = [new DesktopMessageBoxButton("keep", "Keep") { Role = DesktopMessageBoxButtonRole.Default }, new DesktopMessageBoxButton("undo", "Undo")],
         });
-        Console.Error.WriteLine("BOX " + (box is PlatformResult<DesktopMessageBoxButton?>.Success(var button) ? button?.Id ?? "none" : box.GetType().Name));
+        Console.Error.WriteLine("BOX " + box switch
+        {
+            PlatformResult<DesktopMessageBoxButton?>.Success(var button) => button?.Id ?? "none",
+            PlatformResult<DesktopMessageBoxButton?>.Failed(var code, _) => "failed " + code,
+            _ => box.GetType().Name,
+        });
         var menu = await platform.ShowContextMenuAsync([new DesktopMenuItem("Cut", "edit.cut"), new DesktopMenuItem("Copy", "edit.copy")]);
-        Console.Error.WriteLine("CONTEXT " + (menu is PlatformResult<DesktopMenuItem?>.Success(var item) ? item?.CommandId ?? "none" : menu.GetType().Name));
+        Console.Error.WriteLine("CONTEXT " + menu switch
+        {
+            PlatformResult<DesktopMenuItem?>.Success(var item) => item?.CommandId ?? "none",
+            PlatformResult<DesktopMenuItem?>.Unavailable(var reason) => "unavailable " + reason,
+            _ => menu.GetType().Name,
+        });
     }
 
     private sealed class MenuCommand(Func<bool> canExecute, Action execute) : System.Windows.Input.ICommand

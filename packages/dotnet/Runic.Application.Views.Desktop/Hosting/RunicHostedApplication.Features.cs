@@ -266,9 +266,12 @@ public sealed partial class RunicHostedApplication
             await request.FailAsync("rejected", "busy", "The application already shows as many dialogs as the host allows.").ConfigureAwait(false);
             return;
         }
+        // A new context menu of the window dismisses the open one, on every platform (host-protocol.md, Context menus).
+        using var replaced = new CancellationTokenSource();
+        if (!dialog) window.ReplaceContextMenu(replaced);
         // The answer is sent after the window's dialog ended, so the guest's next dialog never finds it busy.
         Func<Task> answer;
-        using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(window.Closing, _ending.Token))
+        using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(window.Closing, _ending.Token, replaced.Token))
         {
             _userRequests[request.Id] = cancel;
             try
@@ -289,13 +292,17 @@ public sealed partial class RunicHostedApplication
             {
                 // The window closed, or the guest went away: the guest learns it as for any request of a closed window.
                 // The guest's own cancel: the request ends cancelled.
+                // A context menu that a new one replaced: dismissed.
                 answer = !window.IsOpen || window.Closing.IsCancellationRequested || _ending.IsCancellationRequested
                     ? () => request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)))
-                    : () => request.FailAsync("cancelled", null, "The guest gave the request up.");
+                    : replaced.IsCancellationRequested
+                        ? () => request.ReplyAsync(new JsonObject { ["outcome"] = "success", ["itemId"] = null })
+                        : () => request.FailAsync("cancelled", null, "The guest gave the request up.");
             }
             finally
             {
                 _userRequests.TryRemove(request.Id, out _);
+                if (!dialog) window.EndContextMenu(replaced);
                 if (dialog)
                 {
                     EndGuestDialog();

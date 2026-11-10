@@ -277,6 +277,7 @@ public sealed partial class RunicTestHost : IAsyncDisposable
     private async Task<RunicTestHostedWindow> WaitForWindowAsync(Func<List<RunicTestHostedWindow>, RunicTestHostedWindow?> find,
         string what, TimeSpan timeout, CancellationToken cancellationToken)
     {
+        ThrowIfAnswerFailed();
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero, nameof(timeout));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
@@ -304,7 +305,18 @@ public sealed partial class RunicTestHost : IAsyncDisposable
     /// <param name="cancellationToken">Cancels the wait; the guest is then killed.</param>
     /// <returns>The guest's exit code.</returns>
     /// <exception cref="TimeoutException">The guest did not exit in time and was killed.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// An answer of <see cref="RunicTestHostOptions"/> failed, such as a file dialog's that selected a relative path; the
+    /// guest was stopped first.
+    /// </exception>
     public async Task<int> StopAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        var code = await StopCoreAsync(timeout, cancellationToken).ConfigureAwait(false);
+        ThrowIfAnswerFailed();
+        return code;
+    }
+
+    private async Task<int> StopCoreAsync(TimeSpan? timeout, CancellationToken cancellationToken)
     {
         if (_channel is { IsOpen: true } channel)
         {
@@ -564,7 +576,19 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         catch (InvalidOperationException) { return "an unknown code"; }
     }
 
-    private string Describe(string message) => $"{message}\nStandard output:\n{StandardOutput}\nStandard error:\n{StandardError}";
+    private string Describe(string message) =>
+        $"{message}{(Volatile.Read(ref _answerFailure) is { } failure ? "\n" + failure.Message : "")}\nStandard output:\n{StandardOutput}\nStandard error:\n{StandardError}";
+
+    // The first answer of RunicTestHostOptions that failed, which the next wait reports, as the guest saw only a failed
+    // dialog.
+    private Exception? _answerFailure;
+
+    internal void RecordAnswerFailure(Exception failure) => Interlocked.CompareExchange(ref _answerFailure, failure, null);
+
+    internal void ThrowIfAnswerFailed()
+    {
+        if (Volatile.Read(ref _answerFailure) is { } failure) throw new InvalidOperationException(failure.Message, failure.InnerException);
+    }
 
     internal static string DefaultHostVersion =>
         typeof(RunicTestHost).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion is { } version
@@ -616,31 +640,60 @@ public sealed record RunicTestHostOptions
     public IReadOnlyList<string> Features { get; init; } = ["menus/1", "dialogs/1"];
 
     /// <summary>
-    /// Answers each file dialog (<c>file-dialog</c>) with the absolute paths the user selected, or <see langword="null"/>
-    /// when the user dismissed it. The token is cancelled when the guest gives the dialog up or closes the window.
-    /// <see langword="null"/>, the default, dismisses every dialog.
+    /// Answers each file dialog (<c>file-dialog</c>): <see cref="RunicTestDialogAnswer.Select"/> with the absolute paths the
+    /// user selected, and the filter they chose, or another answer, such as <see cref="RunicTestDialogAnswer.Dismiss"/>
+    /// or <see cref="RunicTestDialogAnswer.Refuse"/>. The token is cancelled when the guest gives the dialog up or closes
+    /// the window. <see langword="null"/>, the default, dismisses every dialog.
     /// </summary>
     /// <remarks>
-    /// The guest opens the paths itself, as with its own dialogs: an open dialog's files must exist. The request's
-    /// <see cref="RunicTestDialogRequest.Message"/> has the members <c>dialog</c> (<c>open</c>, <c>open-multiple</c>,
-    /// <c>save</c>, <c>folder</c>, <c>folder-multiple</c>), <c>title</c>, <c>initialDirectory</c>, <c>suggestedName</c> and
-    /// <c>filters</c>.
+    /// The guest opens the paths itself, as with its own dialogs: an open dialog's files must exist. The request's typed
+    /// members (<see cref="RunicTestDialogRequest.DialogKind"/>, <see cref="RunicTestDialogRequest.Title"/>,
+    /// <see cref="RunicTestDialogRequest.SuggestedName"/> and others) describe the dialog. An answer that does not fit the
+    /// request, or a callback that throws, fails the guest's dialog and the test host's next wait.
     /// </remarks>
-    public Func<RunicTestDialogRequest, CancellationToken, Task<IReadOnlyList<string>?>>? FileDialog { get; init; }
+    public Func<RunicTestDialogRequest, CancellationToken, Task<RunicTestDialogAnswer>>? FileDialog { get; init; }
 
     /// <summary>
-    /// Answers each message box (<c>message-box</c>) with the id of the button the user chose, or <see langword="null"/>
-    /// for none. The token is cancelled when the guest gives the box up or closes the window. <see langword="null"/>, the
-    /// default, chooses the box's cancel button, or none.
+    /// Answers each message box (<c>message-box</c>): <see cref="RunicTestDialogAnswer.Choose"/> with the id of the button
+    /// the user chose, <see cref="RunicTestDialogAnswer.Dismiss"/> for a box closed without one, or another answer. The
+    /// token is cancelled when the guest gives the box up or closes the window. <see langword="null"/>, the default,
+    /// chooses the box's cancel button, or none.
     /// </summary>
-    public Func<RunicTestDialogRequest, CancellationToken, Task<string?>>? MessageBox { get; init; }
+    public Func<RunicTestDialogRequest, CancellationToken, Task<RunicTestDialogAnswer>>? MessageBox { get; init; }
 
     /// <summary>
-    /// Answers each context menu (<c>show-context-menu</c>) with the id of the item the user chose, or
-    /// <see langword="null"/> when the user dismissed it; <see cref="RunicTestHostedWindow.FindMenuItem(JsonElement, string[])"/>
-    /// finds an item's id by its title. <see langword="null"/>, the default, dismisses every menu.
+    /// Answers each context menu (<c>show-context-menu</c>): <see cref="RunicTestDialogAnswer.Choose"/> with the id of the
+    /// item the user chose, which <see cref="RunicTestHostedWindow.FindMenuItem(JsonElement, string[])"/> finds by its
+    /// title, <see cref="RunicTestDialogAnswer.Dismiss"/>, or another answer. <see langword="null"/>, the default,
+    /// dismisses every menu.
     /// </summary>
-    public Func<RunicTestDialogRequest, CancellationToken, Task<string?>>? ContextMenu { get; init; }
+    public Func<RunicTestDialogRequest, CancellationToken, Task<RunicTestDialogAnswer>>? ContextMenu { get; init; }
+}
+
+/// <summary>What a <see cref="RunicTestDialogRequest"/> asks for.</summary>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public enum RunicTestDialogKind
+{
+    /// <summary>A file dialog that selects one existing file (<c>open</c>).</summary>
+    OpenFile,
+
+    /// <summary>A file dialog that selects one or more existing files (<c>open-multiple</c>).</summary>
+    OpenFiles,
+
+    /// <summary>A file dialog that selects a save destination (<c>save</c>).</summary>
+    SaveFile,
+
+    /// <summary>A dialog that selects one directory (<c>folder</c>).</summary>
+    OpenFolder,
+
+    /// <summary>A dialog that selects one or more directories (<c>folder-multiple</c>).</summary>
+    OpenFolders,
+
+    /// <summary>A message box (<c>message-box</c>).</summary>
+    MessageBox,
+
+    /// <summary>A context menu (<c>show-context-menu</c>).</summary>
+    ContextMenu,
 }
 
 /// <summary>
@@ -648,10 +701,121 @@ public sealed record RunicTestHostOptions
 /// <c>menus/1</c>).
 /// </summary>
 /// <param name="WindowId">The window's id.</param>
-/// <param name="Kind">The request's kind: <c>file-dialog</c>, <c>message-box</c> or <c>show-context-menu</c>.</param>
-/// <param name="Message">The whole request, with its members such as <c>dialog</c>, <c>buttons</c> or <c>menu</c>.</param>
+/// <param name="Kind">The request's kind on the wire: <c>file-dialog</c>, <c>message-box</c> or <c>show-context-menu</c>.</param>
+/// <param name="Message">The whole request as the guest sent it, with its members such as <c>dialog</c>, <c>buttons</c> or <c>menu</c>.</param>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-public sealed record RunicTestDialogRequest(string WindowId, string Kind, JsonElement Message);
+public sealed record RunicTestDialogRequest(string WindowId, string Kind, JsonElement Message)
+{
+    /// <summary>What the guest asks for.</summary>
+    public RunicTestDialogKind DialogKind => Kind switch
+    {
+        "message-box" => RunicTestDialogKind.MessageBox,
+        "show-context-menu" => RunicTestDialogKind.ContextMenu,
+        _ => Member("dialog") switch
+        {
+            "open-multiple" => RunicTestDialogKind.OpenFiles,
+            "save" => RunicTestDialogKind.SaveFile,
+            "folder" => RunicTestDialogKind.OpenFolder,
+            "folder-multiple" => RunicTestDialogKind.OpenFolders,
+            _ => RunicTestDialogKind.OpenFile,
+        },
+    };
+
+    /// <summary>A dialog's or message box's title, or <see langword="null"/> for the platform's own.</summary>
+    public string? Title => Member("title");
+
+    /// <summary>The directory a file dialog opens in, or <see langword="null"/>.</summary>
+    public string? InitialDirectory => Member("initialDirectory");
+
+    /// <summary>The file name a save dialog suggests, or <see langword="null"/> for another kind.</summary>
+    public string? SuggestedName => Member("suggestedName");
+
+    /// <summary>The names of a file dialog's filters, in order: the index of one is what <see cref="RunicTestDialogAnswer.Select"/> chooses.</summary>
+    public IReadOnlyList<string> FilterNames => Names("filters", "name");
+
+    /// <summary>A message box's message, or <see langword="null"/> for another kind.</summary>
+    public string? Text => Kind == "message-box" ? Member("message") : null;
+
+    /// <summary>A message box's detail, or <see langword="null"/>.</summary>
+    public string? Detail => Member("detail");
+
+    /// <summary>The ids of a message box's buttons, in the guest's order; empty for one OK button or another kind.</summary>
+    public IReadOnlyList<string> ButtonIds => Names("buttons", "id");
+
+    private string? Member(string name) =>
+        Message.ValueKind == JsonValueKind.Object && Message.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private string[] Names(string list, string name) =>
+        Message.ValueKind == JsonValueKind.Object && Message.TryGetProperty(list, out var items) && items.ValueKind == JsonValueKind.Array
+            ? [.. items.EnumerateArray().Select(item => item.ValueKind == JsonValueKind.Object && item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "")]
+            : [];
+}
+
+/// <summary>
+/// How the user of a <see cref="RunicTestHost"/> answers a dialog or context menu (<see cref="RunicTestHostOptions.FileDialog"/>,
+/// <see cref="RunicTestHostOptions.MessageBox"/>, <see cref="RunicTestHostOptions.ContextMenu"/>), or how the host's
+/// platform or policy turns it away.
+/// </summary>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed class RunicTestDialogAnswer
+{
+    private RunicTestDialogAnswer(JsonObject? reply, (string Kind, string? Reason, string Message)? failure, IReadOnlyList<string>? paths = null, int? filter = null)
+    {
+        Reply = reply;
+        Failure = failure;
+        Paths = paths;
+        Filter = filter;
+    }
+
+    internal JsonObject? Reply { get; }
+    internal (string Kind, string? Reason, string Message)? Failure { get; }
+    internal IReadOnlyList<string>? Paths { get; }
+    internal int? Filter { get; }
+
+    /// <summary>The user selected files or directories in a file dialog, and the filter of the index in <see cref="RunicTestDialogRequest.FilterNames"/>.</summary>
+    /// <param name="paths">The absolute paths, at least one.</param>
+    /// <param name="filter">The index of the filter the user chose, or <see langword="null"/>.</param>
+    /// <returns>The answer.</returns>
+    /// <exception cref="ArgumentException">A path is not absolute, or there is none.</exception>
+    public static RunicTestDialogAnswer Select(IReadOnlyList<string> paths, int? filter = null)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0) throw new ArgumentException("A file dialog answer selects at least one path; use Dismiss for none.", nameof(paths));
+        foreach (var path in paths)
+        {
+            if (path is null || !Path.IsPathFullyQualified(path))
+                throw new ArgumentException($"A file dialog answer selects absolute paths, not '{path}': the guest opens what the host's dialog returned.", nameof(paths));
+        }
+        if (filter < 0) throw new ArgumentOutOfRangeException(nameof(filter), filter, "A filter index is not negative.");
+        return new(null, null, [.. paths], filter);
+    }
+
+    /// <summary>The user chose a message box's button or a context menu's item, by its id; <see langword="null"/> for none.</summary>
+    /// <param name="id">The id, such as from <see cref="RunicTestHostedWindow.FindMenuItem(JsonElement, string[])"/>.</param>
+    /// <returns>The answer.</returns>
+    public static RunicTestDialogAnswer Choose(string? id) => new(new JsonObject { ["outcome"] = "success", ["chosen"] = id }, null);
+
+    /// <summary>The user closed the dialog or menu without a choice: a file dialog is dismissed, a box returns no button.</summary>
+    /// <returns>The answer.</returns>
+    public static RunicTestDialogAnswer Dismiss() => new(new JsonObject { ["outcome"] = "dismissed" }, null);
+
+    /// <summary>The host's policy refuses it (<c>rejected</c>, <c>refused</c>): the guest receives <see cref="PlatformFailureCode.PermissionDenied"/>.</summary>
+    /// <param name="message">Why, for the guest.</param>
+    /// <returns>The answer.</returns>
+    public static RunicTestDialogAnswer Refuse(string? message = null) => new(null, ("rejected", "refused", message ?? "The test host refused it."));
+
+    /// <summary>The host's platform failed to show it, with a failure code (a <c>failed</c> outcome).</summary>
+    /// <param name="code">The code.</param>
+    /// <returns>The answer.</returns>
+    public static RunicTestDialogAnswer Fail(PlatformFailureCode code) =>
+        new(new JsonObject { ["outcome"] = "failed", ["code"] = HostProtocol.Kebab(code.ToString()) }, null);
+
+    /// <summary>The host could not show it (an <c>unavailable</c> outcome), such as <see cref="PlatformUnavailableReason.OwnerClosed"/>.</summary>
+    /// <param name="reason">The reason.</param>
+    /// <returns>The answer.</returns>
+    public static RunicTestDialogAnswer Unavailable(PlatformUnavailableReason reason) =>
+        new(new JsonObject { ["outcome"] = "unavailable", ["reason"] = HostProtocol.Kebab(reason.ToString()) }, null);
+}
 
 /// <summary>The guest application as its <c>hello</c> reply names it.</summary>
 /// <param name="Name">The application's name.</param>

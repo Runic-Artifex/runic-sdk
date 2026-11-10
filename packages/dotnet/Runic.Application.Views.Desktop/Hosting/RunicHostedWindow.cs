@@ -123,6 +123,18 @@ public sealed class RunicHostedWindow
 
     internal bool TryBeginDialog() => Interlocked.CompareExchange(ref _dialog, 1, 0) == 0;
 
+    // menus/1: the open context menu's replacement signal; a new menu cancels the open one's (host-protocol.md, Context menus).
+    private CancellationTokenSource? _contextMenu;
+
+    internal void ReplaceContextMenu(CancellationTokenSource next)
+    {
+        if (Interlocked.Exchange(ref _contextMenu, next) is not { } open) return;
+        try { open.Cancel(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    internal void EndContextMenu(CancellationTokenSource menu) => Interlocked.CompareExchange(ref _contextMenu, null, menu);
+
     internal void EndDialog() => Volatile.Write(ref _dialog, 0);
 
     // The window's dialog services; once the window is closing, services that report the closed owner, so a request

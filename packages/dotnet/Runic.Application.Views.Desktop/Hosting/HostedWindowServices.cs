@@ -108,9 +108,10 @@ internal sealed class HostedWindowMenus : IDisposable
                     _sending = false;
                     return;
                 }
-                // A command binding can report a change of the new bar before MenuBarChanged reaches this window: the
-                // new bar goes first, never states of the old one.
-                bar = _barChanged || !ReferenceEquals(_desktop.MenuBar, _publishedBar);
+                // The bar changed when the application's bar is not the one the host has. A command binding can report a
+                // change of the new bar before MenuBarChanged reaches this window: the new bar goes first, never states
+                // of the old one, and goes once, whichever event woke the loop.
+                bar = !ReferenceEquals(_desktop.MenuBar, _publishedBar);
                 _barChanged = _statesChanged = false;
             }
             try
@@ -152,8 +153,9 @@ internal sealed class HostedWindowMenus : IDisposable
         await Task.Delay(RetryDelay).ConfigureAwait(false);
         lock (_gate)
         {
-            if (bar) _barChanged = true;
-            else _statesChanged = true;
+            // The host does not have the bar: it goes again.
+            if (bar) _publishedBar = null;
+            _statesChanged = true;
         }
     }
 

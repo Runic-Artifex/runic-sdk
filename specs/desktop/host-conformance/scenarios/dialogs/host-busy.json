@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "dialogs",
   "roles": ["host"],
-  "description": "A window shows one dialog at a time: a dialog request for a window whose dialog is open is rejected with busy, while another window of the guest can show a dialog of its own.",
+  "description": "A window shows one dialog at a time: a dialog request for a window whose dialog is open is rejected with busy, while another window of the guest can show a dialog of its own when the host allows the guest two dialogs at once.",
   "requires": ["dialogs/1"],
   "ids": {
     "c1": {"kind":"connection"},
@@ -15,7 +15,7 @@
     "b1": {"kind":"request"},
     "b2": {"kind":"request"}
   },
-  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000,"dialogs":2},"host":{"name":"Conformance Host","version":"1.0.0"}},
   "steps": [
     {"start":{"host":true}},
     {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},

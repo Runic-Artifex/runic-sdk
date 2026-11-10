@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Platform;
 using TUnit.Core;
 
 namespace Runic.Application.Logging.Tests;
@@ -67,12 +68,24 @@ internal sealed class HostedApplicationTests
         try
         {
             await File.WriteAllTextAsync(file, "rows");
+            // The first round answers as the user would, with the second filter; the second as a host that refuses the file
+            // dialog, fails the box and lost the window; the third with a relative path, which the test learns of.
+            var round = 0;
             await using var host = await RunicTestHost.StartGuestAsync(LoggingApplication.SelfStartInfo(HostedApplication.MenusArgument), new RunicTestHostOptions
             {
                 StartTimeout = TestTimeouts.Scale(Timeout),
-                FileDialog = (request, _) => Task.FromResult<IReadOnlyList<string>?>([file]),
-                MessageBox = (request, _) => Task.FromResult<string?>("undo"),
-                ContextMenu = (request, _) => Task.FromResult(RunicTestHostedWindow.FindMenuItem(request.Message.GetProperty("menu"), "Copy")),
+                FileDialog = (request, _) => Task.FromResult(Interlocked.Increment(ref round) switch
+                {
+                    1 => RunicTestDialogAnswer.Select([file], filter: 1),
+                    2 => RunicTestDialogAnswer.Refuse("Not in this test."),
+                    _ => RunicTestDialogAnswer.Select(["notes.txt"]),
+                }),
+                MessageBox = (request, _) => Task.FromResult(Volatile.Read(ref round) == 1
+                    ? RunicTestDialogAnswer.Choose("undo")
+                    : RunicTestDialogAnswer.Fail(PlatformFailureCode.IOError)),
+                ContextMenu = (request, _) => Task.FromResult(Volatile.Read(ref round) == 1
+                    ? RunicTestDialogAnswer.Choose(RunicTestHostedWindow.FindMenuItem(request.Message.GetProperty("menu"), "Copy"))
+                    : RunicTestDialogAnswer.Unavailable(PlatformUnavailableReason.OwnerClosed)),
             });
             Require(host.Features.SequenceEqual(["menus/1", "dialogs/1"]), $"The channel uses {string.Join(", ", host.Features)}.", host);
             var window = await host.WaitForWindowAsync(nameof(LoggingWindow), TestTimeouts.Scale(Timeout));
@@ -88,10 +101,30 @@ internal sealed class HostedApplicationTests
             Require(await TestTimeouts.UntilAsync(() => host.StandardError.Contains("CONTEXT edit.copy", StringComparison.Ordinal), Timeout),
                 "The guest did not finish its dialogs.", host);
             Require(host.StandardError.Contains("RAN file.open", StringComparison.Ordinal) &&
-                host.StandardError.Contains("OPEN " + Path.GetFileName(file) + " rows", StringComparison.Ordinal) &&
+                host.StandardError.Contains("OPEN " + Path.GetFileName(file) + " rows Data", StringComparison.Ordinal) &&
                 host.StandardError.Contains("BOX undo", StringComparison.Ordinal), "The guest's command or dialogs did not report.", host);
-            Require(window.DialogRequests.Select(static request => request.Kind).SequenceEqual(["file-dialog", "message-box", "show-context-menu"]) &&
-                window.DialogRequests[0].Message.GetProperty("title").GetString() == "Import", "The test host did not record the dialogs.", host);
+            Require(window.DialogRequests.Select(static request => request.DialogKind)
+                    .SequenceEqual([RunicTestDialogKind.OpenFile, RunicTestDialogKind.MessageBox, RunicTestDialogKind.ContextMenu]) &&
+                window.DialogRequests[0] is { Title: "Import", FilterNames: ["Text", "Data"], SuggestedName: null } &&
+                window.DialogRequests[1] is { Text: "Keep the import?", ButtonIds: ["keep", "undo"] }, "The test host did not record the dialogs.", host);
+
+            // A refusal, a failure and a closed owner reach the guest as its platform's outcomes.
+            await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
+            Require(await TestTimeouts.UntilAsync(() => host.StandardError.Contains("CONTEXT unavailable OwnerClosed", StringComparison.Ordinal), Timeout),
+                "The guest did not finish its second round.", host);
+            Require(host.StandardError.Contains("OPEN failed PermissionDenied", StringComparison.Ordinal) &&
+                host.StandardError.Contains("BOX failed IOError", StringComparison.Ordinal), "The refusal or the failure did not reach the guest.", host);
+
+            // A relative path is the test's mistake: the guest's dialog fails, and the test host's next wait says why.
+            await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
+            Require(await TestTimeouts.UntilAsync(() => host.StandardError.Split('\n').Count(static line => line.StartsWith("CONTEXT ", StringComparison.Ordinal)) == 3, Timeout),
+                "The guest did not finish its third round.", host);
+            try
+            {
+                _ = await window.WaitForMenuBarAsync(static _ => true, TestTimeouts.Scale(Timeout));
+                Require(false, "The test host did not report the relative path.", host);
+            }
+            catch (InvalidOperationException error) when (error.Message.Contains("notes.txt", StringComparison.Ordinal) && error.Message.Contains("FileDialog", StringComparison.Ordinal)) { }
 
             Require(await window.RequestCloseAsync(), "The guest refused the close.", host);
             Require(await host.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.", host);

@@ -521,7 +521,8 @@ it tells the guest which item the user chose.
 An entry is one of:
 
 - `{"kind":"item","id":"i3","title":"Save","shortcut":"Primary+S","enabled":true,"checked":null}`. `id` is an
-  [identifier](#windows), unique in the menu; `title` is 1 to 128 characters, not blank, without NUL, literal text in
+  [identifier](#windows), unique in the menu, and in a menu bar unique for the window's lifetime
+  ([item ids](#item-ids)); `title` is 1 to 128 characters, not blank, without NUL, literal text in
   the guest's language; `shortcut` is a [shortcut text](fixtures/shortcuts.json) such as `Primary+Shift+S`, or `null`
   for none; `enabled` is `true` (the default) or `false`; `checked` is `null` (the default) for a plain item, or
   `true` or `false` for a check item. Optional: `radioGroup`, the radio group's name (1 to 64 ASCII letters, digits,
@@ -535,8 +536,24 @@ An entry is one of:
 The bar's top level holds submenus only. A bar nests at most 8 levels of entry arrays and has at most 1,000 entries in
 all; a context menu nests at most 5 levels (four submenus) and has at most 256 entries. A larger menu is `rejected`
 with `capacity`; another entry that breaks these rules is `rejected` with `invalid-request`. The guest's command ids
-and command parameters do not cross the channel: the guest chooses the item ids, such as `i1`, `i2` in the order of the
-menu, and keeps the item of each.
+and command parameters do not cross the channel: the guest chooses the item ids and keeps the item of each.
+
+### Item ids
+
+The host shows a new bar some time after the guest sent it, and until then the user still chooses items of the bar
+the window shows, or presses their shortcuts. An item id of a window's menu bar therefore names one item for as long
+as the channel is open:
+
+- A guest MUST NOT give an id that an item of one of the window's bars had to another item of the same window while
+  the channel is open. An item of the new bar that was in the bar before MAY keep its id; any other item gets an id
+  no item of the window had. Runic's guest numbers the window's items `i1`, `i2` and on across its bars, and keeps the
+  id of an item, the same object, that stays.
+- The host pushes `menu-invoke` only for an id of the bar it applied last, and drops a choice or a shortcut that
+  carries another id, such as one of the bar the window showed while the guest's new bar arrived.
+- The guest ignores a `menu-invoke` whose `itemId` names no item of the bar it sent last.
+
+So a choice made during a change runs the item the user chose, when the new bar still has it, or nothing; never
+another item. A context menu's ids need to be unique in that menu only: its reply names the chosen item.
 
 ### The guest's menu bar
 
@@ -549,10 +566,14 @@ menu, and keeps the item of each.
   each time the application declares another bar, such as one with titles in another language; a bar that became empty
   is sent as `null`. When an item's state changes, the guest sends `update-menu-items` with the items that changed. A
   guest sends one window's menu requests one at a time, each after the reply to the one before, so the host applies
-  them in order; it MAY coalesce changes that happen meanwhile.
+  them in order; it MAY coalesce changes that happen meanwhile. A request the host's rate turned away
+  (`rejected` with `capacity`, [limits](#limits)) changed nothing: Runic's guest sends the bar, or the states, again a
+  little later, with what changed meanwhile.
 - **The host's bar.** The host shows the window's latest bar with its updates. An `update-menu-items` id that names no
   item of the current bar is ignored, since the bar may have changed meanwhile; `checked` applies to check and radio
-  items only. The host's policy decides each bar it would show (`IRunicHostedWindowPolicy.Menu`): it may show it, show
+  items only. A host MAY coalesce the bars and updates that arrive while it rebuilds the window's native bar, and
+  answer each request once a rebuild that shows it is done: Runic's host rebuilds a window's bar at most every 50
+  milliseconds, however many requests arrive. The host's policy decides each bar it would show (`IRunicHostedWindowPolicy.Menu`): it may show it, show
   a changed bar, such as one without an item or with an item of the host's own, or refuse it, which is answered
   `rejected` with `refused`, and the window then shows no menus of the guest. A hosted window never shows the host
   application's own menu bar. A request for a window the host closed is answered `unavailable` with `owner-closed`.
@@ -570,8 +591,9 @@ menu, and keeps the item of each.
 - **Choosing an item.** When the user chooses an enabled item of the guest's, or presses its shortcut, the host pushes
   `menu-invoke` with its id. The guest runs the item through the Window's command path, as its own menu bar would: the
   Window's root ViewModel first, then the application's commands, each asked whether it can run the item now. A
-  `menu-invoke` whose `itemId` names no item of the window's current bar, such as after the bar changed, is ignored.
-  An item a host policy added runs the host application's command (`DesktopHost.MenuCommands`) and is not pushed.
+  `menu-invoke` whose `itemId` names no item of the window's current bar, such as after the bar changed, is ignored
+  ([item ids](#item-ids)). An item a host policy added runs the host application's command (`DesktopHost.MenuCommands`)
+  and is not pushed.
 
 ### Context menus
 
@@ -582,6 +604,15 @@ they carry, shortcuts as hints only. The host's policy may show a changed menu o
 `refused`). An item a policy added runs the host application's command, and the guest receives `itemId: null`. A new
 context menu of the window dismisses the open one, which is answered `itemId: null`. When the window closes while its
 menu is open, the request is answered `unavailable` with `owner-closed`.
+
+- **The active window only.** A context menu takes the pointer and keyboard while it is open, so the host shows one
+  only for the window the user works in: a `show-context-menu` for a window that is not active (does not have the
+  keyboard focus) is `rejected` with `refused` and shows nothing. A page asks for its context menu from its
+  `contextmenu` event, which the user's click in the active window raises. Runic's host does not also require recent
+  input in the window, which its web views do not report on every platform. On macOS a right-click in a window that is
+  not key does not make it key, so such a menu is refused.
+- **Inside the window.** The host places the menu inside the window's page: a `point` outside the viewport opens the
+  menu at the viewport's nearest edge.
 
 ### Giving up a request
 
@@ -601,15 +632,21 @@ the same that its windows show for itself; a guest that is not Runic's chooses h
 
 | Request | Members | Reply |
 | --- | --- | --- |
-| `file-dialog` | `window`; `dialog`: `"open"`, `"open-multiple"`, `"save"`, `"folder"` or `"folder-multiple"`; optional: `title`, a string without NUL; `initialDirectory`, an absolute path; `suggestedName`, 1 to 255 characters, required for `"save"` and absent otherwise; `filters`, for the open and save dialogs, at most 64 of `{name, extensions, mimeTypes?}` (as `FileDialogFilter`: extensions without the dot, or `"*"`); `showFilterChoice`, a boolean | A [platform outcome](#platform-outcomes); with `success`, `paths`: absolute paths, one for `"open"`, `"save"` and `"folder"`, one or more otherwise; `filter`: the index in `filters` of the filter the user chose, or `null`. A dismissed dialog is `failed` with `user-dismissed`. |
-| `message-box` | `window`; `message`: 1 to 4,096 characters, not blank; optional: `title`, `detail`; `icon`: `"none"`, `"information"`, `"warning"` or `"error"` (an open set; an unknown one shows none); `buttons`: at most 6 `{id, label, role?, accessKey?}` with unique ids, `role` `"normal"` (the default), `"default"`, `"cancel"` or `"destructive"`, at most one default and one cancel button; none shows one OK button | A platform outcome; with `success`, `button`: the chosen button's `id`, or `null` when the box closed without one of its buttons |
+| `file-dialog` | `window`; `dialog`: `"open"`, `"open-multiple"`, `"save"`, `"folder"` or `"folder-multiple"`; optional: `title`, at most 1,024 characters without NUL; `initialDirectory`, an absolute path; `suggestedName`, a file name of 1 to 255 characters, not blank, without `/`, `\` or NUL and not `.` or `..`, required for `"save"` and absent otherwise; `filters`, for the open and save dialogs, at most 64 of `{name, extensions, mimeTypes?}` (as `FileDialogFilter`: extensions without the dot, or `"*"`); `showFilterChoice`, a boolean | A [platform outcome](#platform-outcomes); with `success`, `paths`: absolute paths, one for `"open"`, `"save"` and `"folder"`, one or more otherwise; `filter`: the index in `filters` of the filter the user chose, or `null`. A dismissed dialog is `failed` with `user-dismissed`. |
+| `message-box` | `window`; `message`: 1 to 4,096 characters, not blank; optional: `title`, at most 1,024 characters; `detail`, at most 4,096 characters; `icon`: `"none"`, `"information"`, `"warning"` or `"error"` (an open set; an unknown one shows none); `buttons`: at most 6 `{id, label, role?, accessKey?}` with unique ids, `role` `"normal"` (the default), `"default"`, `"cancel"` or `"destructive"`, at most one default and one cancel button; none shows one OK button | A platform outcome; with `success`, `button`: the chosen button's `id`, or `null` when the box closed without one of its buttons |
 
-- **One dialog per window.** A window shows one dialog at a time. A dialog request for a window that shows one is
-  `rejected` with `busy`; Runic's guest reports it as `PlatformFailureCode.ResourceBusy` without asking the host.
+- **Texts.** Titles, messages, details and labels are literal text without NUL. Runic's guest shortens a longer title,
+  message or detail to the limit, so its dialogs never fail for their length.
+- **One dialog per window, and few per guest.** A window shows one dialog at a time, and a guest at most as many at
+  once, across its windows, as the host allows (one by default, [limits](#limits)). A dialog request for a window that
+  shows one, or beyond the guest's dialogs, is `rejected` with `busy`; Runic's guest reports either as
+  `PlatformFailureCode.ResourceBusy`, the first without asking the host.
 - **The guest's own access.** The guest opens, reads and writes the paths itself, through the same leases as its own
   dialogs give it (`IFileDialogs`), and acts only on the paths a dialog returned. The host keeps no access to them. A
   host can return any path: a guest cannot tell a dialog the user answered from a forged reply
-  ([security](#security-requirements)).
+  ([security](#security-requirements)). Access the operating system grants through its picker is not handed over:
+  a sandboxed guest (an App Sandbox on macOS, a Flatpak or Snap on Linux) may receive paths it cannot open, and a
+  sandboxed host returns paths only it was granted. The guest then reports the error of its open.
 - **Policy.** The host's policy decides each dialog (`IRunicHostedWindowPolicy.DialogAsync`): show it, show it changed
   within its kind, such as with another initial directory, or refuse it, which is answered `rejected` with `refused`
   and which Runic's guest reports as `PermissionDenied`.
@@ -692,7 +729,12 @@ The hosted window's page connects to the guest's surface directly; the host neve
 | Send timeout | 10 seconds for one message | The sender closes the connection |
 | Open windows of a guest | The host's policy | `window-open` `rejected` with `refused` |
 | Requests per window | The host's policy, such as a rate | `rejected` with `capacity` |
+| Menu requests per window (`set-menu-bar`, `update-menu-items`, `show-context-menu`) | The host's policy; Runic's host: 20 a second after a burst of 20 (`RunicHostedLimits`) | `rejected` with `capacity` |
+| Native menu bar rebuilds per window | The host's choice; Runic's host: one per 50 milliseconds, coalescing the requests meanwhile | — |
 | Dialogs per window | 1 | `rejected` with `busy` |
+| Dialogs of a guest at once, across its windows | The host's policy; Runic's host: 1 (`RunicHostedLimits`) | `rejected` with `busy` |
+| Context menus | The active window's, inside its viewport | `rejected` with `refused`; the point is clamped |
+| Dialog title, message and detail | 1,024, 4,096 and 4,096 characters | `rejected` with `invalid-request` |
 | Menu bar depth and entries | 8 levels, 1,000 entries | `rejected` with `capacity` |
 | Context menu depth and entries | 5 levels, 256 entries | `rejected` with `capacity` |
 | Unauthenticated connections | 8 at once | The oldest is closed for a new one |
@@ -777,8 +819,8 @@ application is in the [security guide](../../docs/security.md#hosted-application
 | T2 | A web page in any browser targets the channel (DNS rebinding, cross-site WebSocket) | Upgrades with `Origin` and non-loopback `Host` refused |
 | T3 | Secrets leak through the command line or the environment | Nonce and key on pipes only; launch codes over the channel |
 | T4 | A malicious guest takes the host's credential or cookies | No credential injection; a data store per host session; the guest's origin is not one of the host's |
-| T5 | A malicious guest escapes its window (navigates away, opens pop-ups, spoofs other windows) | The host's web content policy; window ids per channel; the host's policy. A guest can still draw convincing UI in its own window, as any application can. |
-| T6 | A guest floods the host with windows, dialogs, menus or messages | Message size, waiting requests, menu size, one dialog per window, the host's window and rate limits |
+| T5 | A malicious guest escapes its window (navigates away, opens pop-ups, spoofs other windows) | The host's web content policy; window ids per channel; the host's policy; context menus only in the active window and inside it. A guest can still draw convincing UI in its own window, as any application can, and words its dialogs' and menus' texts, which nothing marks as the guest's: a host that does not trust a guest marks or refuses them in its policy. |
+| T6 | A guest floods the host with windows, dialogs, menus or messages | Message size, waiting requests, menu size, one dialog per window and the host's dialogs per guest, the host's menu request rate and coalesced menu rebuilds, context menus only in the active window, the host's window limits |
 | T7 | A malicious host forges dialog results or close decisions | Inherent to hosting: a guest trusts its host as it trusts its own native dialogs, so elevated guests refuse hosted mode and a guest acts only on what a dialog returned, as always |
 | T8 | Orphaned guests | Standard input end or channel loss shut the guest down, which exits within 10 seconds; job object or process group; the host's stop timeout |
 | T9 | Another process takes the port after the guest exited, and the host connects to it | The guest proof, which needs the nonce the host never sends |

@@ -297,7 +297,63 @@ internal sealed class HostedMenusAndDialogsTests
         Check(!HostFeatures.CheckMessageBox(new JsonObject { ["message"] = " " }), "A blank message is accepted.");
         var buttons = new JsonArray([.. Enumerable.Range(0, 7).Select(static index => (JsonNode)new JsonObject { ["id"] = $"b{index}", ["label"] = "B" })]);
         Check(!HostFeatures.CheckMessageBox(new JsonObject { ["message"] = "Hi", ["buttons"] = buttons }), "Seven buttons are accepted.");
+        // A save dialog's name is a file name, never a path (SaveFileOptions.SuggestedName).
+        foreach (var name in (string[])["../notes.txt", "a/b.txt", "C:\\Users\\u\\notes.txt", "..", ".", " ", "a\0b"])
+            Check(!HostFeatures.CheckFileDialog(new JsonObject { ["dialog"] = "save", ["suggestedName"] = name }), $"The suggested name '{name}' is accepted.");
+        Check(HostFeatures.CheckFileDialog(new JsonObject { ["dialog"] = "save", ["suggestedName"] = "..notes.txt" }), "A name that starts with dots is refused.");
+        // Titles up to 1,024 characters, a message and a detail up to 4,096.
+        Check(HostFeatures.CheckFileDialog(new JsonObject { ["dialog"] = "open", ["title"] = new string('t', 1_024) }), "A title of 1,024 characters is refused.");
+        Check(!HostFeatures.CheckFileDialog(new JsonObject { ["dialog"] = "open", ["title"] = new string('t', 1_025) }), "A title of 1,025 characters is accepted.");
+        Check(HostFeatures.CheckMessageBox(new JsonObject { ["message"] = new string('m', 4_096), ["title"] = new string('t', 1_024), ["detail"] = new string('d', 4_096) }),
+            "A box at the limits is refused.");
+        Check(!HostFeatures.CheckMessageBox(new JsonObject { ["message"] = "Hi", ["title"] = new string('t', 1_025) }), "A box title of 1,025 characters is accepted.");
+        Check(!HostFeatures.CheckMessageBox(new JsonObject { ["message"] = "Hi", ["detail"] = new string('d', 4_097) }), "A detail of 4,097 characters is accepted.");
+        Check(!HostFeatures.CheckMessageBox(new JsonObject
+        {
+            ["message"] = "Hi",
+            ["buttons"] = new JsonArray(new JsonObject { ["id"] = "a", ["label"] = "A", ["role"] = "default" }, new JsonObject { ["id"] = "b", ["label"] = "B", ["role"] = "default" }),
+        }), "Two default buttons are accepted.");
+        // Runic's guest shortens a longer text to the limit, never in the middle of a surrogate pair.
+        Check(HostedWire.Shorten("abc", 5) == "abc" && HostedWire.Shorten("abcdef", 4) == "abcd", "Shorten does not cut at the limit.");
+        Check(HostedWire.Shorten("ab\U0001F600", 3) == "ab", "Shorten split a surrogate pair.");
         await Task.CompletedTask;
+    }
+
+    // menus/1 limits on the host (host-protocol.md, Limits): a window's menu requests within its rate, after a burst of as
+    // many, and its native bar rebuilt at most once per interval however many changes arrive.
+    [Test]
+    public async Task MenuRequestsAreRateLimitedAndRebuildsCoalesced()
+    {
+        var rate = new MenuRequestRate(3);
+        Check(rate.TryTake() && rate.TryTake() && rate.TryTake(), "The burst of three was refused.");
+        Check(!rate.TryTake(), "A fourth request in the same moment is within the rate.");
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        Check(rate.TryTake(), "Half a second at three per second did not refill one request.");
+
+        var starts = new List<long>();
+        var interval = TimeSpan.FromMilliseconds(300);
+        var rebuild = new CoalescedRebuild<int>(interval, async () =>
+        {
+            int count;
+            lock (starts)
+            {
+                starts.Add(System.Diagnostics.Stopwatch.GetTimestamp());
+                count = starts.Count;
+            }
+            await Task.Delay(10);
+            return count;
+        });
+        // Fifty changes in a burst: the first starts a rebuild at once, the others share at most one more.
+        var answers = Enumerable.Range(0, 50).Select(_ => rebuild.RequestAsync()).ToArray();
+        await Task.WhenAll(answers).WaitScaledAsync(Timeout);
+        Check(starts.Count <= 2, $"Fifty changes rebuilt the bar {starts.Count} times.");
+        Check(answers[0].Result == 1 && answers[^1].Result == starts.Count, "A change was answered before the rebuild that shows it.");
+        // A change right after a rebuild waits for the interval.
+        var before = starts.Count;
+        var next = await rebuild.RequestAsync().WaitScaledAsync(Timeout);
+        Check(next == before + 1, "The next change did not get a rebuild of its own.");
+        var gap = System.Diagnostics.Stopwatch.GetElapsedTime(starts[^2], starts[^1]);
+        Check(gap >= interval - TimeSpan.FromMilliseconds(20), $"Two rebuilds started {gap.TotalMilliseconds} ms apart.");
     }
 
     private sealed class RecordingCommands : IDesktopMenuCommandTarget

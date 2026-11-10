@@ -727,12 +727,45 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
 
 // A headless embedded window host that honours the ephemeral data store of hosted windows and records how it opened.
 // UserClose is the title-bar close button.
-internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost
+internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move |
         DesktopWindowCapabilities.Visibility | DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.MenuBar |
         DesktopWindowCapabilities.ContextMenu;
+
+    // The window has the keyboard focus from its open until SetActive says otherwise or it closes. Runic Desktop reads it
+    // for the host's context menu rule; without the Activity capability the host pushes no activity, which the
+    // scenarios do not expect.
+    private volatile bool _active = true;
+
+    public DesktopWindowActivity? Activity => new() { IsActive = _active && !_closedOnce, IsVisible = !_closedOnce };
+
+    public event EventHandler? ActivityChanged;
+
+    // Another window takes the focus, or this one gets it back.
+    public void SetActive(bool active)
+    {
+        _active = active;
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private volatile bool _closedOnce;
+
+    // The bars the window showed, in order: the native bar it shows now is the last.
+    private readonly List<IReadOnlyList<DesktopMenu>> _bars = [];
+
+    // How many times Runic Desktop rebuilt the native bar.
+    public int MenuBarRebuilds
+    {
+        get { lock (_bars) return _bars.Count; }
+    }
+
+    // The bar the window showed before its current one, as a native bar that the user still uses during a change.
+    public IReadOnlyList<DesktopMenu> PreviousMenuBar
+    {
+        get { lock (_bars) return _bars.Count >= 2 ? _bars[^2] : []; }
+    }
 
     private IReadOnlyList<DesktopMenu> _menuBar = [];
     private TaskCompletionSource _menuBarChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -745,6 +778,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
 
     public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default)
     {
+        lock (_bars) _bars.Add(menus);
         Volatile.Write(ref _menuBar, menus);
         Interlocked.Exchange(ref _menuBarChanged, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
         return ValueTask.CompletedTask;
@@ -767,9 +801,11 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     }
 
     // The item of the bar at a path of titles, such as ("File", "Open…").
-    public DesktopMenuItem? Item(params string[] titles)
+    public DesktopMenuItem? Item(params string[] titles) => Item(MenuBar, titles);
+
+    public static DesktopMenuItem? Item(IReadOnlyList<DesktopMenu> bar, params string[] titles)
     {
-        IEnumerable<DesktopMenuEntry> entries = MenuBar;
+        IEnumerable<DesktopMenuEntry> entries = bar;
         DesktopMenuEntry? found = null;
         foreach (var title in titles)
         {
@@ -784,6 +820,16 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     public bool Choose(params string[] titles)
     {
         if (Item(titles) is not { } item || MenuCommands is not { } commands || !item.IsEnabled || !commands.CanExecute(item)) return false;
+        commands.Execute(item);
+        return true;
+    }
+
+    // Chooses an item of the bar the window showed before its current one, as a click on the native bar that the window
+    // still showed while the guest's change arrived: the native bar runs the item's command path without asking first.
+    // False when that bar had no such enabled item.
+    public bool ChoosePrevious(params string[] titles)
+    {
+        if (Item(PreviousMenuBar, titles) is not { IsEnabled: true } item || MenuCommands is not { } commands) return false;
         commands.Execute(item);
         return true;
     }
@@ -833,6 +879,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
         if (_open)
         {
             _open = false;
+            _closedOnce = true;
             Closed?.Invoke(this, EventArgs.Empty);
         }
         return ValueTask.CompletedTask;
