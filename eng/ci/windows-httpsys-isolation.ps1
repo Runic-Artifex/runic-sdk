@@ -20,19 +20,30 @@ function Free-Port {
     $probe.Start(); $port = $probe.LocalEndpoint.Port; $probe.Stop(); $port
 }
 
+# Each cleanup item runs on its own, so that one that fails does not skip the others; a failure is reported as a warning.
+function Invoke-Cleanup([string]$What, [scriptblock]$Action) {
+    try { & $Action } catch { Write-Warning "Cleanup could not ${What}: $_" }
+}
+
 function Remove-All {
-    foreach ($url in $script:reservations) { netsh http delete urlacl url=$url | Out-Null }
+    foreach ($url in $script:reservations) {
+        Invoke-Cleanup "delete the reservation $url" { netsh http delete urlacl url=$url | Out-Null }
+    }
     foreach ($name in $users) {
         $account = Get-LocalUser -Name $name -ErrorAction SilentlyContinue
         if (-not $account) { continue }
-        Get-Process -IncludeUserName | Where-Object { $_.UserName -like "*\$name" } | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
-        Get-CimInstance Win32_UserProfile -Filter "SID = '$($account.SID.Value)'" | Remove-CimInstance -ErrorAction SilentlyContinue
-        icacls $bin /remove $name /T /C /Q | Out-Null
-        icacls $env:GITHUB_WORKSPACE /remove $name /C /Q | Out-Null
-        Remove-LocalUser -Name $name
+        Invoke-Cleanup "stop the processes of $name" {
+            Get-Process -IncludeUserName | Where-Object { $_.UserName -like "*\$name" } | Stop-Process -Force -ErrorAction Continue
+            Start-Sleep -Seconds 1
+        }
+        Invoke-Cleanup "remove the profile of $name" {
+            Get-CimInstance Win32_UserProfile -Filter "SID = '$($account.SID.Value)'" | Remove-CimInstance -ErrorAction Continue
+        }
+        Invoke-Cleanup "remove the access of $name to $bin" { icacls $bin /remove $name /T /C /Q | Out-Null }
+        Invoke-Cleanup "remove the access of $name to the workspace" { icacls $env:GITHUB_WORKSPACE /remove $name /C /Q | Out-Null }
+        Invoke-Cleanup "remove the user $name" { Remove-LocalUser -Name $name -ErrorAction Continue }
     }
-    Remove-Item -Recurse -Force $temp, $agents -ErrorAction SilentlyContinue
+    Invoke-Cleanup "remove $temp and $agents" { Remove-Item -Recurse -Force $temp, $agents -ErrorAction Continue }
 }
 
 try {

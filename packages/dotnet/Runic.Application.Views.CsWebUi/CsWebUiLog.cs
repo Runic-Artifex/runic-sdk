@@ -27,6 +27,12 @@ internal static partial class CsWebUiLog
         Message = "Another process holds {Address} on {Count} of the {Tried} ports the window's blob endpoint tried for {Host}, so it gave up {Host}.")]
     internal static partial void BlobEndpointPortsHeld(ILogger logger, string address, int count, int tried, string host);
 
+    // On Windows, a URL reservation of http.sys that names a port the blob endpoint tries makes it give up the port, and
+    // when every port tried is given up the window opens without blobs.
+    [LoggerMessage(EventId = 2104, EventName = "CsWebUiBlobEndpointPortsReserved", Level = LogLevel.Warning,
+        Message = "URL reservations of http.sys ({Reservations}) name {Count} of the {Tried} ports the window's blob endpoint tried for {Host}, so it gave up {Host}.")]
+    internal static partial void BlobEndpointPortsReserved(ILogger logger, string reservations, int count, int tried, string host);
+
     internal const string NativeLibraryEnvironmentVariable = "CSWEBUI_NATIVE_LIBRARY";
 
     private static int s_nativeLibraryChecked;

@@ -91,6 +91,44 @@ internal sealed partial class CsWebUiBlobEndpointChecks
             $"The endpoint listens on port {endpoint.Port}, which a URL reservation names ({string.Join(", ", reserved)}).");
         using var late = await HttpSysProcess.StartAsync(sameUser: false, PrefixesUnder(endpoint.Port));
         Require(late.Registered.Count == 0, $"Another process registered {string.Join(", ", late.Registered)} under the endpoint's port.");
+
+        // Offered only reserved ports, the endpoint does not start and names the reservations, not another process.
+        var logger = new EventLogger();
+        var again = new Queue<int>(Enumerable.Range(0, 5).Select(i => reserved[i % 2]));
+        using var spare = work.Blobs();
+        using var none = BlobEndpoint.Start(spare, static () => PagePort, logger, () => again.Dequeue());
+        Require(none is null, $"The endpoint started on {none?.BaseUrl}.");
+        Require(logger.Events.Any(e => e.StartsWith("2104 CsWebUiBlobEndpointPortsReserved: URL reservations of http.sys (", StringComparison.Ordinal)
+                && e.EndsWith(") name 5 of the 5 ports the window's blob endpoint tried for localhost, so it gave up localhost.", StringComparison.Ordinal))
+            && !logger.Events.Any(e => e.StartsWith("2103 ", StringComparison.Ordinal)),
+            $"The endpoint logged {string.Join(" | ", logger.Events)}.");
+    }
+
+    // Where the reservations cannot be read, also because httpapi or one of its entry points does not load, the endpoint
+    // does not start (the window opens without blobs). The reader is a fake here, so this runs on every OS.
+    [Test]
+    [Arguments("win32")]
+    [Arguments("dll")]
+    [Arguments("entry-point")]
+    public async Task UnreadableUrlReservationsFailClosed(string failure)
+    {
+        Exception error = failure switch
+        {
+            "win32" => new System.ComponentModel.Win32Exception(5),
+            "dll" => new DllNotFoundException("httpapi"),
+            _ => new EntryPointNotFoundException("HttpQueryServiceConfiguration"),
+        };
+        try
+        {
+            BlobEndpoint.Reservations(61000, _ => throw error);
+            Require(false, "Reading the reservations did not fail.");
+        }
+        catch (PlatformNotSupportedException closed)
+        {
+            Require(ReferenceEquals(closed.InnerException, error), $"The failure wraps {closed.InnerException}.");
+        }
+        Require(BlobEndpoint.Reservations(61000, _ => ["http://+:61000/"]) is ["http://+:61000/"], "A readable list is passed on.");
+        await Task.CompletedTask;
     }
 
     [Test]

@@ -44,6 +44,9 @@ internal static partial class CsWebUiUrlReservations
         var buffer = new byte[1024];
         try
         {
+            // The list is read by index (Token), not as a snapshot: a reservation deleted between two queries shifts the
+            // later ones down, so one of them can be missed. Only an administrator can change the list, and one can
+            // reserve the port after this read anyway, so the endpoint's check does not cover an administrator.
             for (uint token = 0; ; token++)
             {
                 var query = new UrlAclQuery { QueryDesc = QueryNext, Token = token };
