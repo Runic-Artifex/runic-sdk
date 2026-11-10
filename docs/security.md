@@ -123,7 +123,11 @@ uploads"):
   `frame-ancestors` stays in force), so serving untrusted HTML or SVG as a blob
   does not run it as the application. Cross-site loads (`Sec-Fetch-Site:
   cross-site`) are refused. CS-WebUI's endpoint also serves loopback peers only,
-  which matters on Windows, where http.sys routes requests by their `Host`.
+  which matters on Windows, where http.sys routes requests by their `Host`. Its
+  URLs name `localhost`, and it holds both loopback addresses of `localhost` on
+  its port (`::1` and `127.0.0.1`): it does not use a port where another process
+  listens on either, and no process can listen there while it does, so a blob
+  load, an upload and the upload token never reach another process.
 - An upload needs the page's origin and a token that only the connection's
   `hello` received; it is limited per upload and per window, dropped after 30
   seconds without data, and decodes only for that connection, once. An upload

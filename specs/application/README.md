@@ -1850,7 +1850,7 @@ names another site. Beyond that:
 | Host | Blob URLs | Uploads |
 | --- | --- | --- |
 | Runic Desktop and WPF | served below the window's surface (`{surface}/_runic/blobs/{token}`, same origin as the page); only to the browser client that holds the window's client cookie, and in an installed browser only to the client bound to its launch code | `{surface}/_runic/upload`; also only from that client |
-| CS-WebUI | a loopback listener of the window (`http://localhost:{port}/_runic/blobs/{token}`), another origin than WebUI's page, which it grants with CORS; it serves loopback peers only and cannot see WebUI's clients, so a URL is bound to the window, not to a connection or browser | the listener's `/_runic/upload`, with CORS for the page's origin only |
+| CS-WebUI | a loopback listener of the window (`http://localhost:{port}/_runic/blobs/{token}`), another origin than WebUI's page, which it grants with CORS; it holds both loopback addresses that `localhost` names on its port (`::1` and `127.0.0.1`), so no other process can listen on either and receive a blob load, an upload or its token; it serves loopback peers only and cannot see WebUI's clients, so a URL is bound to the window, not to a connection or browser | the listener's `/_runic/upload`, with CORS for the page's origin only |
 | Tests (`Runic.Application.Testing`) | served in memory below `http://runic.test/` | simulated with `UploadAsync` |
 
 A blob URL cannot be bound to one connection, because one encoding of a state goes to every connection of the

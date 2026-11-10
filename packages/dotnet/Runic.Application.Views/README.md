@@ -3651,7 +3651,7 @@ await client.attach(ref);
 | Host | Where blobs and uploads are served | Bound to |
 | --- | --- | --- |
 | Runic Desktop (Kestrel or the native server), WPF `RunicViewHost` | the Window's surface, `/_runic/blobs/` and `/_runic/upload`, same origin as the page | the Window and its browser client (cookie, and the launch code of an installed browser); an upload also to its connection |
-| CS-WebUI | a loopback listener of each Window, `http://localhost:{port}/` (also bound on `127.0.0.1`; only `127.0.0.1` where `localhost` cannot be bound), with CORS for the page's origin, serving loopback peers only | the Window; an upload also to its connection. CS-WebUI's file dialogs are unavailable, so an upload is how a file gets in. A page `Content-Security-Policy` must allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
+| CS-WebUI | a loopback listener of each Window, `http://localhost:{port}/` (the Window holds both loopback addresses of `localhost` on that port, `::1` and `127.0.0.1`, so no other process can answer for it; only `127.0.0.1` where `localhost` cannot be held, such as when it resolves to neither), with CORS for the page's origin, serving loopback peers only | the Window; an upload also to its connection. CS-WebUI's file dialogs are unavailable, so an upload is how a file gets in. A page `Content-Security-Policy` must allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
 | `Runic.Application.Testing` | in memory, `http://runic.test/` | `RunicWindowTestHost.UploadAsync` and `ReadBlobAsync` |
 
 In tests, `RunicBlob.FromBytes` makes blobs, `RunicUpload.FromBytes` makes an
