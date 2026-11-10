@@ -1283,7 +1283,7 @@ jobs:
       # TEMPORARY (#flake127 diagnosis): repeated to reproduce the win-arm64 crash.
       - name: Verify Windows message boxes with JIT and NativeAOT
         if: runner.os == 'Windows'
-        timeout-minutes: 12
+        timeout-minutes: 20
         shell: bash
         run: |
           for attempt in 1 2 3 4 5 6 7 8 9 10; do

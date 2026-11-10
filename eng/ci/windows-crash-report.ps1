@@ -55,11 +55,26 @@ $debugger = @((Get-Command cdb.exe -ErrorAction SilentlyContinue).Source,
 $dump = $dumps | Where-Object Name -eq "$Image.$ProcessId.dmp" | Select-Object -First 1
 if (-not $dump) { $dump = $dumps | Select-Object -First 1 }
 if ($dump -and $debugger) {
-  Write-Output "::group::${debugger}: the exception and the faulting thread's stack in $($dump.Name)"
   $env:_NT_SYMBOL_PATH = "srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols"
-  $process = Start-Process $debugger -ArgumentList '-z', "`"$($dump.FullName)`"", '-c', '".lastevent; .exr -1; .ecxr; kn 60; ~*kn 25; q"' -NoNewWindow -PassThru
-  if (-not $process.WaitForExit(150000)) { $process.Kill(); Write-Output 'The debugger did not finish in 150 s.' }
-  Write-Output '::endgroup::'
+  # Each command on a line of its own in a script file, so that one the dump cannot answer leaves the others running.
+  function Invoke-Debugger([string] $Title, [string[]] $Commands, [int] $Seconds = 150) {
+    Write-Output "::group::${debugger}: $Title in $($dump.Name)"
+    $script = Join-Path $env:RUNNER_TEMP "cdb-$([Guid]::NewGuid()).txt"
+    Set-Content $script ($Commands + 'q')
+    $process = Start-Process $debugger -ArgumentList '-z', "`"$($dump.FullName)`"", '-cf', "`"$script`"" -NoNewWindow -PassThru
+    if (-not $process.WaitForExit($Seconds * 1000)) { $process.Kill(); Write-Output "The debugger did not finish in $Seconds s." }
+    Write-Output '::endgroup::'
+  }
+  Invoke-Debugger "the exception and the faulting thread's stack" '.lastevent', '.exr -1', '.ecxr', 'kn 60', '~*kn 25'
+  # TEMPORARY (#845): the oleacc critical section the faulting thread waits on, the heap block it lives in, and the code
+  # that reaches it and manages its lifetime.
+  Invoke-Debugger 'the critical section the faulting thread waits on' '.ecxr', 'r', 'dq @x19-0x80 L40', '!cs -s @x19',
+    '!address @x19', '!heap -x @x19', 'lmv m oleacc', 'lmv m explorerframe', 'x oleacc!*PropMgr*', 'x oleacc!g_*',
+    'x oleacc!CAccPropServices::*'
+  Invoke-Debugger 'oleacc and explorerframe code on the faulting path' 'uf oleacc!CPropMgr::ClearProps',
+    'uf oleacc!CPropMgr::ClearHwndProps', 'uf explorerframe!CNavBar::ClearHwndAccProperties', 'uf oleacc!CPropMgr::Release',
+    'uf oleacc!CPropMgr::AddRef', 'uf oleacc!CPropMgr::~CPropMgr', 'uf oleacc!CPropMgr::CPropMgr',
+    'uf oleacc!CAccPropServices::~CAccPropServices', 'uf oleacc!CAccPropServices::CAccPropServices' 300
 } elseif ($dump) {
   Write-Output 'No cdb.exe on this runner: the minidump is in the job artifact native-crash-dumps-<rid>-<run id>.'
 }

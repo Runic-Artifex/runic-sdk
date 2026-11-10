@@ -44,9 +44,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const windows = process.platform === "win32";
   if (windows) {
     mkdirSync(dumps, { recursive: true });
-    // WER writes a minidump of a crashed process with this image name (LocalDumps); the runner is a throwaway VM.
+    // WER writes a full dump of a crashed process with this image name (LocalDumps), so that the debugger can read the
+    // heap the crash touched; the runner is a throwaway VM.
     const key = `HKLM\\SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting\\LocalDumps\\${image}`;
-    for (const value of [["DumpFolder", "REG_EXPAND_SZ", dumps], ["DumpType", "REG_DWORD", "1"], ["DumpCount", "REG_DWORD", "5"]])
+    for (const value of [["DumpFolder", "REG_EXPAND_SZ", dumps], ["DumpType", "REG_DWORD", "2"], ["DumpCount", "REG_DWORD", "5"]])
       spawnSync("reg", ["add", key, "/v", value[0], "/t", value[1], "/d", value[2], "/f"], { stdio: "ignore" });
   }
   const started = new Date();
@@ -63,7 +64,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (windows) {
       const report = resolve(dirname(fileURLToPath(import.meta.url)), "windows-crash-report.ps1");
       spawnSync("pwsh", ["-NoProfile", "-File", report, "-Since", started.toISOString(), "-ProcessId", String(child.pid),
-        "-Image", image, "-DumpFolder", dumps], { stdio: "inherit", timeout: 240_000 });
+        "-Image", image, "-DumpFolder", dumps], { stdio: "inherit", timeout: 600_000 });
     }
     process.exit(1);
   }
