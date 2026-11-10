@@ -92,6 +92,7 @@ internal static class Program
         [Option("--desktop-server", Description = "Server Runic Desktop serves the page from: native or kestrel.")] string? desktopServer = null,
         [Option("--view-models", Description = "MVVM library for the C# ViewModels.")] string? viewModels = null,
         [Option("--tests", Description = "Add a TUnit test project for the Window.")] bool tests = false,
+        [Option("--translations", Description = "Translate the application with Runic Translations: one catalog in English and German for the page and C#, and a language switch.")] bool translations = false,
         [Option("--nix", Description = "Add a Nix flake that builds the application with the Runic SDK's builder.")] bool nix = false,
         [Option("--packaging", Description = "Add the packaging/ manifests that dotnet runic package fills, to edit them: MSIX, macOS bundle, desktop entry, AppStream metadata and Flatpak manifest.")] bool packaging = false,
         [Option("--restore", Description = "Restore the project's NuGet packages after creating it, for an IDE that opens it next.")] bool restore = false,
@@ -116,7 +117,7 @@ internal static class Program
             yes,
             dryRun,
             Optional(templateSource),
-            new Dictionary<string, bool>(StringComparer.Ordinal) { ["tests"] = tests, ["nix"] = nix, ["packaging"] = packaging, ["restore"] = restore })
+            new Dictionary<string, bool>(StringComparer.Ordinal) { ["tests"] = tests, ["translations"] = translations, ["nix"] = nix, ["packaging"] = packaging, ["restore"] = restore })
         {
             Texts = texts.Values,
             Force = force,
@@ -129,7 +130,7 @@ internal static class Program
     internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "linux-gtk", "desktop-server", "view-models"];
 
     /// <summary>The template's Boolean parameters the creator exposes as presence flags, by long name.</summary>
-    internal static IReadOnlyList<string> ToggleFlags { get; } = ["tests", "nix", "packaging", "restore"];
+    internal static IReadOnlyList<string> ToggleFlags { get; } = ["tests", "translations", "nix", "packaging", "restore"];
 
     private static string? Optional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

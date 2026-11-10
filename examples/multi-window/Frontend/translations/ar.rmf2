@@ -1,0 +1,13 @@
+ready = جاهز.
+renamed = تمت إعادة التسمية إلى {$title}.
+title_too_long = يجب ألا يزيد العنوان عن {$max :integer} حرفًا.
+
+page {
+  title_label = عنوان المشروع
+  rename = إعادة التسمية في كل النوافذ
+  language = اللغة
+}
+
+menu {
+  language = اللغة
+}

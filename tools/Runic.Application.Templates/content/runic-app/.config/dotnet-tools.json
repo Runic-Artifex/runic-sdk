@@ -5,6 +5,12 @@
     "dotnet-runic": {
       "version": "__RUNIC_NUGET_VERSION__",
       "commands": ["dotnet-runic"]
+//#if (translations)
+    },
+    "dotnet-runic-translations": {
+      "version": "0.9.1",
+      "commands": ["runic-translations"]
+//#endif
     }
   }
 }

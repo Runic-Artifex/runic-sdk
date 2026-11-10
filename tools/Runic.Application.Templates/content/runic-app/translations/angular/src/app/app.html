@@ -1,0 +1,21 @@
+<main>
+  <header>
+    <h1>{{ m.app_title() }}</h1><p>{{ m.app_subtitle({ frontend: "Angular" }) }}</p>
+    <label>{{ m.app_language() }} <select [value]="state()?.language ?? ''" [disabled]="!workspace.client()"
+      (change)="choose.run($any($event.target).value)">
+      @for (language of languages; track language.tag) { <option [value]="language.tag">{{ language.name }}</option> }
+    </select></label>
+  </header>
+  @if (connection() === "reconnecting") { <p role="status">{{ m.status_reconnecting() }}</p> }
+  @if (connection() === "lost") { <p role="alert">{{ m.status_lost() }}</p> }
+  <nav [attr.aria-label]="m.nav_label()">
+    <button [disabled]="!workspace.client()" (click)="navigate.run('showWelcome')">{{ m.nav_welcome() }}</button>
+    <button [disabled]="!workspace.client()" (click)="navigate.run('showCounter')">{{ m.nav_counter() }}</button>
+  </nav>
+  @if (state(); as current) {
+    <runic-view-outlet [content]="current.main" [registry]="pages"></runic-view-outlet>
+  } @else {
+    <p>{{ m.app_loading() }}</p>
+  }
+  <p role="status">{{ status() }}</p>
+</main>

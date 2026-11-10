@@ -58,6 +58,7 @@ commands in the browser.
 | `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from; asked for and printed only with `--host desktop` unless you pass it | `native` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
+| `--translations` | Translates the application with [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk) 0.9: one catalog in English and German for the page and C#, a language switch, the application's language for every window, `RUNIC_LOCALE` for test runs, and a test of the translated text | English text in the code |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
 | `--packaging` | Adds the `packaging/` manifests that `dotnet runic package` fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), as editable overrides of the command's defaults | The command's built-in manifests |
 | `--restore` | Restores the project's NuGet packages after creating it, for an IDE that opens it next | No restore |
@@ -74,7 +75,7 @@ the command output format.
 The creator has no subcommand to name: `dnx Runic.Create -- create` creates a
 project named `create`.
 
-The frontend, package manager, host, Linux GTK and ViewModel choices, `--tests`, `--nix`, `--packaging`, `--restore`
+The frontend, package manager, host, Linux GTK and ViewModel choices, `--tests`, `--translations`, `--nix`, `--packaging`, `--restore`
 and `--application-id` come from the template itself, so `dotnet new runic-app --help` lists the same options.
 The creator reads the template's text options, such as `--application-id`, from the template model, so a text option
 a later template adds is a creator option too. They are not asked: without a value the template computes its
@@ -99,7 +100,7 @@ with `"command": "create"` and the `runic.create/2` payload:
   "fullPath": "/work/apps/MyApp",
   "version": "<VERSION>",
   "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "linux-gtk": "3", "desktop-server": "native", "view-models": "reactiveui" },
-  "toggles": { "tests": true, "nix": false, "packaging": false, "restore": false },
+  "toggles": { "tests": true, "translations": false, "nix": false, "packaging": false, "restore": false },
   "textOptions": {},
   "commands": [
     "dotnet new install Runic.Application.Templates@<VERSION>",

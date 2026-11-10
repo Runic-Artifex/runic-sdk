@@ -4,9 +4,9 @@ using Runic.Platform;
 
 namespace MultiWindow;
 
-// The app's own settings. "system" follows the desktop's color scheme from IDesktopSettings. Language is the Windows'
-// language, "en" or "de".
-public sealed record AppSettings(string Theme = "system", string? LastFolder = null, string Language = "en")
+// The app's own settings. "system" follows the desktop's color scheme from IDesktopSettings. Language is the
+// application's language the user chose, "en", "de" or "ar"; null follows the operating system's languages.
+public sealed record AppSettings(string Theme = "system", string? LastFolder = null, string? Language = null)
 {
     // The scheme the application's windows show for Theme; NoPreference follows the desktop.
     [JsonIgnore]
