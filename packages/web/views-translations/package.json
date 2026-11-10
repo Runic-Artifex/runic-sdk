@@ -1,0 +1,69 @@
+{
+  "name": "@runic-artifex/views-translations",
+  "version": "0.16.0",
+  "description": "Optional English and German text for Runic's own page messages (field errors, validation texts) as a Runic Translations library catalog",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "sideEffects": false,
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "dist/catalog",
+    "dist/translations",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./runic-translations": "./dist/translations/runic-views.esm-v5/web-module-manifest-v3.json",
+    "./package.json": "./package.json"
+  },
+  "runicTranslations": {
+    "catalog": "runic-views",
+    "project": "./dist/catalog/runic.json"
+  },
+  "scripts": {
+    "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
+    "build": "bun run --bun clean && bun scripts/catalog.mjs",
+    "check": "bun scripts/catalog.mjs --if-missing && tsc -p tsconfig.json --noEmit",
+    "test": "bun scripts/catalog.mjs --if-missing && tsc -p tsconfig.json --noEmit && vitest run",
+    "pack:check": "bun pm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@runic-artifex/views": "0.16.0"
+  },
+  "devDependencies": {
+    "@runic-artifex/views": "workspace:*",
+    "happy-dom": "21.0.4",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Runic-Artifex/runic-sdk.git",
+    "directory": "packages/web/views-translations"
+  },
+  "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views-translations#readme",
+  "bugs": {
+    "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
+  },
+  "keywords": [
+    "runic-artifex",
+    "runic",
+    "views",
+    "i18n",
+    "translations",
+    "localization"
+  ]
+}

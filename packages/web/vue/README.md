@@ -289,7 +289,11 @@ const { state } = useView({ connect: connectWorkspace });
 ```
 
 `satisfies ViewRegistry<…>` checks that every kind has a component whose `page`
-prop accepts that reference.
+prop accepts that reference. A component whose `page` is a shared page
+reference, such as `ResultPagePageReference` of a .NET
+[`[RunicSharedClient]`](../../dotnet/Runic.Application.Views/README.md#shared-clients)
+interface, registers for each of its kinds:
+`{ ...registryEntries(resultPageKinds, ResultPage), settings: Settings }`.
 
 The `missing` slot replaces the English alert, for example with localized text.
 It receives `{ content }`, the reference whose kind has no component, and its

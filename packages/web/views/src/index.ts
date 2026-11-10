@@ -206,6 +206,39 @@ export interface PageReference<TClient = unknown> {
   readonly kind: string;
   connect(): Promise<TClient>;
 }
+
+/**
+ * The type-only key under which a generated `{Name}PageReference` names the shared page references it extends, such as
+ * `ResultPagePageReference` for a ViewModel that implements a .NET `[RunicSharedClient]` interface `IResultPage`. The
+ * frameworks' `ViewRegistry` types read it, so a shared component registers for each kind without a cast. It exists
+ * only in the types: import it with `import type`; no reference has the property and the package has no such value at
+ * run time.
+ */
+declare const sharedPageReferences: unique symbol;
+export type { sharedPageReferences };
+
+/** The shared page references (`[RunicSharedClient]`) that a generated page reference extends; `never` when it has none. */
+export type SharedPageReferences<R> = R extends unknown
+  ? typeof sharedPageReferences extends keyof R ? Exclude<R[typeof sharedPageReferences], undefined> : never
+  : never;
+
+/**
+ * The page types that a `ViewRegistry` entry for kind `K` of `R` may accept: the kind's own reference and each shared
+ * page reference it extends. The frameworks map each to a component type, so a component whose `page` is a shared
+ * reference registers for every kind of that reference.
+ */
+export type ViewRegistryPage<R extends PageReference | null | undefined, K> =
+  | Extract<NonNullable<R>, { readonly kind: K }>
+  | SharedPageReferences<Extract<NonNullable<R>, { readonly kind: K }>>;
+
+/**
+ * One entry per kind with the same component, to spread into a `ViewRegistry`, such as
+ * `{ ...registryEntries(resultPageKinds, ResultPageView), settings: SettingsView } satisfies ViewRegistry<State["main"]>`
+ * for a generated shared client's kinds.
+ */
+export function registryEntries<const K extends string, C>(kinds: readonly K[], component: C): { readonly [P in K]: C } {
+  return Object.fromEntries(kinds.map(kind => [kind, component])) as { readonly [P in K]: C };
+}
 export {
   formatShortcut,
   isApplePlatform,

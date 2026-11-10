@@ -134,6 +134,10 @@ internal static partial class TypeScriptNamedTypes
         }
     }
 
+    /// <summary>Replaces placeholders with their C# type names, for a diagnostic written before names are assigned.</summary>
+    internal static string Display(string text) => Placeholder().Replace(text, match =>
+        Entries[int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)].Type.Name.Split('`')[0]);
+
     /// <summary>Replaces placeholders with the assigned names.</summary>
     internal static string Resolve(string text) => Placeholder().Replace(text, match =>
         Entries[int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)].Name

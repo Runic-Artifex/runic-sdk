@@ -180,6 +180,14 @@ public sealed class TranslatedCatalogViewModel : INotifyPropertyChanged, INotify
     {
         ["step"] = new(Reference("steps_build", new() { ["name"] = new(TextArgumentType.String, "gimp") }, "Building gimp")),
     }, "Building gimp failed");
+    // A reference of a component library's catalog (fixtures/translations/library), which the page resolves with
+    // createReferenceResolver beside the application's catalog.
+    internal const string LibraryFingerprint = "sha256:219265d947946917dde263c7303051b302a161550e6d3d379fdff07ea6e7b753";
+    public TranslationReference Selection { get; } = new("acme.grid", LibraryFingerprint, "rows_selected", new Dictionary<string, TranslationReferenceArgument>
+    {
+        ["count"] = new(TextArgumentType.Int, "3"),
+        ["table"] = new(TextArgumentType.String, "Orders"),
+    }, "3 rows selected in Orders");
     // A later transport version than the page's runtime reads: the page shows its fallback text.
     public RunicTextReference Future { get; } = RunicTextReference.Parse(
         """{"version":3,"catalog":"notes","contractFingerprint":"sha256:7f0e763ef590d9331b0b2b6650705885fcb0409e0e28dd70805ca74df2c1fb93","key":"saved","arguments":{"title":{"type":"string","value":"Atlas"},"tone":{"type":"emphasis","value":"strong"}},"fallbackText":"Saved Atlas (v3)."}""");

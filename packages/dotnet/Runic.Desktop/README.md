@@ -424,8 +424,9 @@ disk: 13 to 78 seconds on new `windows-2025` runners with WebView2 156, where la
 starts with fresh profiles took under a second and the page connected within 2
 seconds of the window appearing. So the window does not wait for WebView2 longer than
 1.5 seconds: it then appears with a loading surface, which has the window's
-placement, size, maximized or full-screen state, title (`Loading…`, until the page
-sets one) and icon, the background of its `ColorScheme` (or of the Windows app
+placement, size, maximized or full-screen state, title
+(`DesktopPlatformTexts.LoadingTitle`, `Loading…` by default, until the page sets
+one; it is also the surface's accessible name) and icon, the background of its `ColorScheme` (or of the Windows app
 theme, or the high-contrast colors) and an indeterminate progress bar, and the
 WebView takes its place once it exists. A start within 1.5 seconds shows the window
 once WebView2 is ready, as before; a `Hidden` window stays hidden, and a
@@ -1790,8 +1791,10 @@ completes AppKit's empty default menu instead of adding a second one:
 - Window: Minimize (Command and M), Zoom and Bring All to Front.
 
 The titles are English unless `DesktopHostOptions.StandardMenuTitles` supplies
-them. Runic ships no translations: take them from the application's own, such
-as its Runic Translations catalog, for the user's language when the host starts.
+them. Take them from the application's own translations, such as its Runic
+Translations catalog, for the user's language when the host starts, or from the
+optional [Runic.Application.Views.Translations](../Runic.Application.Views.Translations/README.md#standard-macos-menus)
+package, which has them in English and German.
 `DesktopHost.SetStandardMenuTitles(titles)` replaces them while the application
 runs, for example after a language switch, together with `SetMenuBar`; `null`
 returns to English.
