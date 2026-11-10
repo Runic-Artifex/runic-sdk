@@ -2,7 +2,7 @@ import { configureTranslatedText, resolveText, subscribeText, syncDocumentLocale
 import { connectProject } from "./generated/project";
 // The catalog's ESM, which the .NET build generates from Frontend/translations (MultiWindow.csproj).
 import { m } from "../.runic/translations/messages.js";
-import { configureSharedLocaleResolver, createLocaleSource, localeDirection } from "../.runic/translations/runtime.js";
+import { configureSharedLocaleResolver, createLocaleSource, localeDirection, locales } from "../.runic/translations/runtime.js";
 import { resolveTextReference } from "../.runic/translations/transport.js";
 
 // The Window's language comes from the application (IRunicApplicationLocale); until it arrives, the page uses the
@@ -30,6 +30,9 @@ const language = document.querySelector<HTMLSelectElement>("#language")!;
 const titleLabel = document.querySelector<HTMLSpanElement>("#title-label")!;
 const renameButton = document.querySelector<HTMLButtonElement>("#rename-button")!;
 const languageLabel = document.querySelector<HTMLSpanElement>("#language-label")!;
+// The catalog's languages (runic.json "locales"), each named in its own language.
+language.replaceChildren(...locales.map(tag =>
+  new Option(new Intl.DisplayNames([tag], { type: "language" }).of(tag) ?? tag, tag)));
 
 const render = () => {
   const state = project.snapshot;

@@ -116,6 +116,34 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task A_regional_or_unknown_language_starts_in_one_of_the_catalogs_and_only_those_are_saved()
+    {
+        var translations = _services.GetRequiredService<TranslationContext>();
+        // RUNIC_LOCALE=de-CH: the catalog's German, which the page's language list and the menu bar show. Starting again
+        // registers no second follower: the catalog follows from its creation.
+        await _services.StartLanguageAsync("de-CH");
+        await _services.StartLanguageAsync("de-CH");
+        await Assert.That(_first.Content.Locale).IsEqualTo("de");
+        await Assert.That(translations.RequestedLocale).IsEqualTo("de");
+        await Assert.That(_first.Root.Snapshot().Read(vm => vm.Language)).IsEqualTo("de");
+
+        // An invalid RUNIC_LOCALE and an invalid saved language are skipped; the start goes on.
+        new SettingsStore(_settingsPath).Save(new AppSettings(Language: "xx_1"));
+        await _services.StartLanguageAsync("not a tag");
+        await Assert.That(translations.SupportedLocales).Contains(_first.Content.Locale!);
+
+        // The page asks for a language the catalog does not have: nothing switches, nothing is saved.
+        await _services.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync("de");
+        (await _first.Root.ExecuteAsync(vm => vm.ChooseLanguageCommand, "\"xx_1\"")).ThrowIfFailed();
+        await Assert.That(_first.Content.Locale).IsEqualTo("de");
+        await Assert.That(new SettingsStore(_settingsPath).Load().Language).IsEqualTo("xx_1");
+        // A regional one switches to the catalog's language and saves that.
+        (await _first.Root.ExecuteAsync(vm => vm.ChooseLanguageCommand, "\"ar-EG\"")).ThrowIfFailed();
+        await Assert.That(_first.Content.Locale).IsEqualTo("ar");
+        await Assert.That(new SettingsStore(_settingsPath).Load().Language).IsEqualTo("ar");
+    }
+
+    [Test]
     public async Task The_status_and_the_validation_message_read_in_the_users_language()
     {
         // What a user sees: the ViewModel's references, resolved with the application's catalog in its language.

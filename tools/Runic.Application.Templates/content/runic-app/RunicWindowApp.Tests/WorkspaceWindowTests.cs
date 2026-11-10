@@ -48,6 +48,21 @@ public sealed class WorkspaceWindowTests : IAsyncDisposable
         await Assert.That(_services.GetRequiredService<TranslationContext>().Resolve(greeting).Text)
             .IsEqualTo("Deine erste Runic View ist bereit.");
     }
+
+    [Test]
+    public async Task A_regional_or_unknown_language_starts_in_one_of_the_catalogs()
+    {
+        // RUNIC_LOCALE=de-CH: the catalog's German, so the page's language list shows it.
+        await _services.StartLanguageAsync("de-CH");
+        await Assert.That(_window.Content.Locale).IsEqualTo("de");
+        await Assert.That(_window.ViewModel.Language).IsEqualTo("de");
+
+        // A tag the catalog has no language for, or no tag at all, does not stop the start or a switch.
+        await _services.StartLanguageAsync("xx_1");
+        await Assert.That(_services.GetRequiredService<TranslationContext>().SupportedLocales).Contains(_window.Content.Locale!);
+        (await _window.Root.ExecuteAsync(vm => vm.ChooseLanguageCommand, "\"not a tag\"")).ThrowIfFailed();
+        await Assert.That(_services.GetRequiredService<TranslationContext>().SupportedLocales).Contains(_window.Content.Locale!);
+    }
 #else
     [Test]
     public async Task The_window_opens_on_the_welcome_page()

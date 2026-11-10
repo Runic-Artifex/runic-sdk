@@ -388,10 +388,10 @@ Assert.Equal("تم حفظ Atlas.", BidiText.RemoveIsolates(translations.Resolve(
 ```
 
 **End-to-end tests in a language.** Applications created with
-`dotnet new runic-app --translations` start in the locale that the
-`RUNIC_LOCALE` environment variable names, before the user's saved choice and
-the operating system's languages. With serve-only, a browser test runs
-the unchanged application in that language:
+`dotnet new runic-app --translations` start in the catalog's language for the
+`RUNIC_LOCALE` environment variable (`de-CH` starts in `de`), else in the
+operating system's language; the template saves no choice of the user's. With
+serve-only, a browser test runs the unchanged application in that language:
 
 ```sh
 RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de dotnet run --project src/App

@@ -34,7 +34,7 @@ public sealed class ProjectViewModel : ReactiveObject, INotifyDataErrorInfo, IRu
 
     public ProjectViewModel(ProjectService project, SettingsStore settings, IDesktopSettings desktop,
         IRunicWindowService windows, IRunicWindowContext window, IRunicModelContext context,
-        IRunicApplicationLocale application, IRunicWindowLocale locale)
+        IRunicApplicationLocale application, IRunicWindowLocale locale, TranslationContext translations)
     {
         _project = project;
         _context = context;
@@ -50,12 +50,14 @@ public sealed class ProjectViewModel : ReactiveObject, INotifyDataErrorInfo, IRu
             Status = ProjectText.References.renamed(title: title);
             Draft = "";
         });
-        // Switches the application's language and saves it for the next start. The page and the menu bar ask for it;
-        // the application owns it. The C# catalog switches first, then every Window, then the menu bar (Program.cs).
+        // Switches the application's language to one of the catalog's and saves it for the next start, once the switch
+        // succeeded. The page and the menu bar ask for it; the application owns it. The C# catalog switches first, then
+        // every Window, then the menu bar (Program.cs). A language the catalog does not have is ignored.
         ChooseLanguageCommand = ReactiveCommand.CreateFromTask<string>(async (language, token) =>
         {
-            settings.Save(settings.Load() with { Language = language });
-            await application.SetLocaleAsync(language, token);
+            if (ProjectServices.SupportedLanguage(translations, language) is not { } supported) return;
+            await application.SetLocaleAsync(supported, token);
+            settings.Save(settings.Load() with { Language = supported });
         });
         // Opens another Window on the same project, in its own scope. The service releases it when it closes.
         NewWindowCommand = ReactiveCommand.CreateFromTask(async token =>
@@ -101,7 +103,7 @@ public sealed class ProjectViewModel : ReactiveObject, INotifyDataErrorInfo, IRu
     // The desktop's preference, which "system" follows: NoPreference, Light or Dark.
     public string DesktopScheme { get => _desktopScheme; private set => this.RaiseAndSetIfChanged(ref _desktopScheme, value); }
 
-    // The language every Window shows: "en", "de" or "ar".
+    // The language every Window shows, one of the catalog's: "ar", "de" or "en".
     public string Language { get => _language; private set => this.RaiseAndSetIfChanged(ref _language, value); }
 
     // What the last command did, in the Window's language.

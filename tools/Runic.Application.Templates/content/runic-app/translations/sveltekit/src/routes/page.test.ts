@@ -42,10 +42,17 @@ test("the page connects, follows the window's language, increments the Counter a
   await vi.waitFor(() => expect(text()).toContain("Connected to the .NET Window."));
 
   // The application switches the window's language: the ViewModel's text reference and the page's own text follow.
+  // The language list shows every language of the catalog, each in its own language.
+  expect([...document.querySelectorAll("option")].map(option => [option.value, option.textContent])).toEqual([["de", "Deutsch"], ["en", "English"]]);
   bridge.setWindowLocale("de");
   await vi.waitFor(() => expect(text()).toContain("Deine erste Runic View ist bereit."));
   await vi.waitFor(() => expect(text()).toContain("Sprache"));
+  expect(text()).toContain("Mit dem .NET-Fenster verbunden.");
   expect(document.documentElement.lang).toBe("de");
+  button("Zähler").click();
+  await vi.waitFor(() => expect(text()).toContain("Zähler-View"));
+  expect(button("Erhöhen")).toBeDefined();
+  button("Willkommen").click();
   bridge.setWindowLocale("en");
   await vi.waitFor(() => expect(text()).toContain("Your first Runic View is ready."));
 

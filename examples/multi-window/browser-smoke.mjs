@@ -6,14 +6,14 @@ import { fileURLToPath } from "node:url";
 import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 
 // The translated example end to end: the .NET build generated the catalog's C# API and the page's ESM from one
-// runic.json. RUNIC_LOCALE starts the application in German; a switch on the page moves it to Arabic, right to left.
+// runic.json. RUNIC_LOCALE=de-CH starts the application in the catalog's German; a switch on the page moves it to Arabic, right to left.
 const dll = process.env.RUNIC_MULTI_WINDOW_DLL
   ?? fileURLToPath(new URL("./bin/Release/net10.0/MultiWindow.dll", import.meta.url));
 // The settings file goes to a fresh folder, so a saved language of an earlier run does not apply.
 const settings = mkdtempSync(join(tmpdir(), "runic-multi-window-smoke-"));
 const host = spawn("dotnet", [dll], {
   stdio: ["pipe", "pipe", "pipe"],
-  env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1", RUNIC_LOCALE: "de", XDG_CONFIG_HOME: settings, APPDATA: settings },
+  env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1", RUNIC_LOCALE: "de-CH", XDG_CONFIG_HOME: settings, APPDATA: settings },
 });
 let output = "", errors = "", browser;
 host.stdout.on("data", chunk => { output += chunk; });
@@ -22,7 +22,7 @@ const detail = async () => `${browser ? await browser.diagnostics() : "browser: 
   `host stdout:\n${tail(output)}\nhost stderr:\n${tail(errors)}`;
 const retry = (condition, label) => waitFor(condition, { label, detail });
 // Placeholders of a catalog with a right-to-left locale are isolated with FSI/LRI/RLI … PDI.
-const isolates = /[⁦-⁩]/g;
+const isolates = /[\u2066-\u2069]/g;
 try {
   const url = await retry(() => {
     if (host.exitCode !== null) throw new Error(`Host exited: ${errors}`);
@@ -33,12 +33,15 @@ try {
   const page = () => evaluate(`JSON.stringify({
     lang: document.documentElement.lang, dir: document.documentElement.dir,
     status: document.querySelector("#status")?.value, label: document.querySelector("#title-label")?.textContent,
-    error: document.querySelector("#title-error")?.textContent })`).then(JSON.parse);
+    error: document.querySelector("#title-error")?.textContent,
+    languages: [...document.querySelectorAll("#language option")].map(option => option.value).join(),
+    language: document.querySelector("#language")?.value })`).then(JSON.parse);
   const until = (predicate, label) => retry(async () => { const state = await page(); return predicate(state) ? state : undefined; }, label);
 
-  // RUNIC_LOCALE=de: the ViewModel's status reference and the page's own text, in German.
-  await until(state => state.lang === "de" && state.dir === "ltr" && state.status === "Bereit." && state.label === "Projekttitel",
-    "German from RUNIC_LOCALE");
+  // RUNIC_LOCALE=de-CH, matched to the catalog's de: the ViewModel's status reference and the page's own text, in German.
+  // The language list is the catalog's, and shows the application's language.
+  await until(state => state.lang === "de" && state.dir === "ltr" && state.status === "Bereit." && state.label === "Projekttitel"
+    && state.languages === "ar,de,en" && state.language === "de", "German from RUNIC_LOCALE");
   // A validation message as a text reference, in the window's language.
   await evaluate(`(() => { const input = document.querySelector("#new-title"); input.value = "${"x".repeat(41)}";
     input.dispatchEvent(new Event("input", { bubbles: true })); })()`);

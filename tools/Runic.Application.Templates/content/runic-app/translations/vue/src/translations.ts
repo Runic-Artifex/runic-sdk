@@ -2,10 +2,13 @@ import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/view
 import { useTextLocale } from "@runic-artifex/vue";
 // The catalog's ESM, which `dotnet build` generates from Frontend/translations (see the .csproj).
 import { m } from "../.runic/translations/messages.js";
-import { configureSharedLocaleResolver, createLocaleSource, localeDirection } from "../.runic/translations/runtime.js";
+import { configureSharedLocaleResolver, createLocaleSource, localeDirection, locales } from "../.runic/translations/runtime.js";
 import { resolveTextReference } from "../.runic/translations/transport.js";
 
 export { m };
+
+/** The catalog's languages (runic.json "locales") for the language list, each named in its own language. */
+export const languages = locales.map(tag => ({ tag, name: new Intl.DisplayNames([tag], { type: "language" }).of(tag) ?? tag }));
 
 /**
  * Connects the catalog's runtime to the window's language, which the application sets (IRunicApplicationLocale):

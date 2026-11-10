@@ -241,11 +241,11 @@ test("--translations scaffolds a translated application for every frontend", () 
         .map(path => [path.slice(join(directory, output).length + 1).replaceAll("\\", "/"), readFileSync(path, "utf8")]));
     };
     const overlays = {
-      react: ["src/translations.ts", "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/App.test.tsx"],
-      vue: ["src/translations.ts", "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/App.test.ts"],
-      svelte: ["src/translations.ts", "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/App.test.ts"],
-      sveltekit: ["src/lib/translations.ts", "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/routes/page.test.ts"],
-      angular: ["src/translations.ts", "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/app.spec.ts"],
+      react: ["src/translations.ts", "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx"],
+      vue: ["src/translations.ts", "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts"],
+      svelte: ["src/translations.ts", "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts"],
+      sveltekit: ["src/lib/translations.ts", "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts"],
+      angular: ["src/translations.ts", "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts"],
     };
     for (const [frontend, files] of Object.entries(overlays)) {
       for (const viewModels of ["reactiveui", "toolkit"]) {
@@ -265,6 +265,9 @@ test("--translations scaffolds a translated application for every frontend", () 
         }
         assert.match(translated[`Frontend/${files[0]}`], /configureSharedLocaleResolver/);
         assert.match(translated[`Frontend/${files.at(-1)}`], /setWindowLocale\("de"\)/);
+        // The language list comes from the catalog's locales, and the starter's own text from the catalog.
+        assert.match(translated[`Frontend/${files[0]}`], /export const languages = locales\.map/);
+        for (const file of files.slice(1, -1)) assert.doesNotMatch(translated[`Frontend/${file}`], /"English"|>Counter<|Connecting to the/, `${label}: ${file}`);
         // The C# side: the packages, the catalog and the generated API.
         assert.match(translated["Translated.csproj"], /<PackageReference Include="Runic\.Translations" Version="0\.9\.1" \/>/);
         assert.match(translated["Translated.csproj"], /<RunicTranslationProject Include="Frontend\/translations\/runic\.json" \/>/);

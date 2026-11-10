@@ -2,11 +2,12 @@
 import { useText, useView } from "@runic-artifex/vue";
 import { describeBridgeError } from "@runic-artifex/views";
 import type { WelcomePageReference } from "../generated/welcome.js";
+import { m } from "../translations";
 
 const props = defineProps<{ page: WelcomePageReference }>();
 const { state, error } = useView(() => props.page);
 // A text reference of the catalog, shown in the window's language.
-const greeting = useText(() => state.value?.greeting, () => "Connecting…");
+const greeting = useText(() => state.value?.greeting, () => m.welcome_loading());
 </script>
 
 <template>

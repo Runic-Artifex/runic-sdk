@@ -30,7 +30,7 @@ public sealed class WorkspaceViewModel : ReactiveObject
     // observes an object that outlives this ViewModel, so these need neither.
 #if (translations)
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter,
-        IRunicApplicationLocale application, IRunicWindowLocale locale)
+        IRunicApplicationLocale application, IRunicWindowLocale locale, TranslationContext translations)
 #else
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)
 #endif
@@ -43,9 +43,13 @@ public sealed class WorkspaceViewModel : ReactiveObject
         _locale = locale;
         _language = locale.Locale ?? AppTextCatalog.DefaultLocale;
         _locale.PropertyChanged += OnLocaleChanged;
-        // The page asks for a language; the application owns it. The C# catalog switches first, then every Window.
-        ChooseLanguageCommand = ReactiveCommand.CreateFromTask<string>((language, token) =>
-            application.SetLocaleAsync(language, token).AsTask());
+        // The page asks for one of the catalog's languages; the application owns it. The C# catalog switches first, then
+        // every Window. A language the catalog does not have is ignored.
+        ChooseLanguageCommand = ReactiveCommand.CreateFromTask<string>(async (language, token) =>
+        {
+            if (WorkspaceServices.SupportedLanguage(translations, language) is { } supported)
+                await application.SetLocaleAsync(supported, token);
+        });
 #endif
     }
 
@@ -146,9 +150,10 @@ public sealed partial class WorkspaceViewModel : ObservableObject
 #if (translations)
     private readonly IRunicApplicationLocale _application;
     private readonly IRunicWindowLocale _locale;
+    private readonly TranslationContext _translations;
 
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter,
-        IRunicApplicationLocale application, IRunicWindowLocale locale)
+        IRunicApplicationLocale application, IRunicWindowLocale locale, TranslationContext translations)
     {
         _welcome = welcome;
         _counter = counter;
@@ -156,6 +161,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject
         // The Window follows the application's language; Language shows it to the page's language list.
         _application = application;
         _locale = locale;
+        _translations = translations;
         Language = locale.Locale ?? AppTextCatalog.DefaultLocale;
         _locale.PropertyChanged += OnLocaleChanged;
     }
@@ -186,10 +192,14 @@ public sealed partial class WorkspaceViewModel : ObservableObject
     [ObservableProperty]
     public partial string Language { get; private set; }
 
-    // The page asks for a language; the application owns it. The C# catalog switches first, then every Window.
+    // The page asks for one of the catalog's languages; the application owns it. The C# catalog switches first, then
+    // every Window. A language the catalog does not have is ignored.
     [RelayCommand]
-    private Task ChooseLanguageAsync(string language, CancellationToken cancellationToken) =>
-        _application.SetLocaleAsync(language, cancellationToken).AsTask();
+    private async Task ChooseLanguageAsync(string language, CancellationToken cancellationToken)
+    {
+        if (WorkspaceServices.SupportedLanguage(_translations, language) is { } supported)
+            await _application.SetLocaleAsync(supported, cancellationToken);
+    }
 
     // Raised in a turn of this Window's model context when the application's language reaches it.
     private void OnLocaleChanged(object? sender, PropertyChangedEventArgs e)

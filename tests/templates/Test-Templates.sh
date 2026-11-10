@@ -691,11 +691,13 @@ verify_template() {
     run_desktop_smoke "$output" "$project_name" "$host_label" "$linux_gtk"
   fi
   if [[ "$tests" == tests ]]; then
-    # --translations replaces the welcome test with two that resolve the greeting in English and German.
-    if [[ "$translations" == translations ]]; then run_generated_tests "$output" "$project_name" 4
+    # --translations replaces the welcome test with three: the greeting in English and German, and a regional or
+    # unknown language.
+    if [[ "$translations" == translations ]]; then run_generated_tests "$output" "$project_name" 5
     else run_generated_tests "$output" "$project_name" 3; fi
   fi
-  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" "${restore:+|restore}"
+  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" \
+    "${restore:+|restore}" "${translations:+|translations}"
 }
 
 # Runs the generated test project as its README documents. The tests build the

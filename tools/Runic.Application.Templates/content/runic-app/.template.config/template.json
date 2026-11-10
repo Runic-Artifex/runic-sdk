@@ -43,7 +43,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'react')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/App.test.tsx" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -54,7 +54,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'vue')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/App.test.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -65,7 +65,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'svelte')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/App.test.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -76,7 +76,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'sveltekit')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/routes/page.test.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -87,7 +87,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'angular')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/app.spec.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml", "pnpm-workspace.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }

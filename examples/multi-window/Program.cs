@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using MultiWindow;
 using Runic.Application.Views;
@@ -21,10 +22,19 @@ return RunicDesktopHost.Run(provider, async host =>
     // The language: RUNIC_LOCALE, else the saved choice, else the operating system's. The menu bar is set again after
     // each switch, once the C# catalog has switched; its Language items run the focused Window's ChooseLanguageCommand.
     var locale = provider.GetRequiredService<IRunicApplicationLocale>();
-    var text = new ProjectText(provider.GetRequiredService<TranslationContext>());
+    var translations = provider.GetRequiredService<TranslationContext>();
+    var text = new ProjectText(translations);
+    // The catalog's languages (runic.json "locales"), each in its own name, as language menus show them; the tag
+    // without culture data (invariant globalization).
+    static string NativeName(string tag)
+    {
+        try { return CultureInfo.GetCultureInfo(tag).NativeName; }
+        catch (CultureNotFoundException) { return tag; }
+    }
+    var languages = translations.SupportedLocales.Select(tag => (Tag: tag, Name: NativeName(tag))).ToArray();
     void SetMenuBar() => host.Desktop.SetMenuBar([
         new DesktopMenu(text.Messages.menu_language, [
-            .. Languages.Select(language => new DesktopMenuItem(language.Name, "language")
+            .. languages.Select(language => new DesktopMenuItem(language.Name, "language")
             {
                 RadioGroup = "language",
                 CommandParameter = language.Tag,
@@ -40,9 +50,3 @@ return RunicDesktopHost.Run(provider, async host =>
     await window.WaitForCloseAsync();
     return 0;
 });
-
-internal static partial class Program
-{
-    // Each language in its own name, as language menus show them.
-    private static readonly (string Tag, string Name)[] Languages = [("en", "English"), ("de", "Deutsch"), ("ar", "العربية")];
-}

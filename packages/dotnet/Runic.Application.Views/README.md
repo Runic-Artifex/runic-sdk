@@ -3042,9 +3042,8 @@ an application with all of it, and the
 [multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
 shows it in English, German and Arabic.
 
-**One catalog.** Keep the catalog with the frontend, where the Translations
-Vite plugin compiles it for the page, and name the same `runic.json` in the
-.NET project, which then gets the generated C# API for every message
+**One catalog.** Keep the catalog with the frontend and name its `runic.json`
+in the .NET project, which then gets the generated C# API for every message
 ([Strings outside the Views](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-desktop.md#strings-outside-the-views)):
 
 ```xml
@@ -3052,6 +3051,27 @@ Vite plugin compiles it for the page, and name the same `runic.json` in the
 <PackageReference Include="Runic.Translations.Build" Version="0.9.1" PrivateAssets="all" />
 <RunicTranslationProject Include="Frontend/translations/runic.json" />
 ```
+
+The page gets the same catalog's ESM one of two ways:
+
+- **From the .NET build**, as `dotnet new runic-app --translations` and the
+  multi-window example do. The build writes the ESM with the
+  `dotnet-runic-translations` tool of `.config/dotnet-tools.json`, and
+  `RunicApplicationFrontendTranslations` copies it to
+  `Frontend/.runic/translations` (gitignored) before the frontend builds; the
+  page imports `../.runic/translations/messages.js`, `runtime.js` and
+  `transport.js`. It works with every bundler, Angular's included, and needs no
+  npm package, but `vite dev` does not reload an edited message: build again.
+
+  ```xml
+  <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+  <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
+  ```
+
+- **From the Translations Vite plugin**, which compiles the catalog for a Vite
+  page, reloads messages in `vite dev`, and serves the modules as
+  `virtual:runic-translations/<catalog>`, as in the examples below. Leave
+  `RunicApplicationFrontendTranslations` off then.
 
 **Values.** A member, DTO member, command input or result of type
 `Runic.Translations.TranslationReference` crosses the Bridge as the reference's
@@ -3248,18 +3268,23 @@ var locale = services.GetRequiredService<IRunicApplicationLocale>();
 locale.Follow(translations.SetLocaleAsync);        // every catalog of the context switches first
 locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
 // RUNIC_LOCALE (a test or screenshot run), else the user's choice, else the best match for the
-// operating system's languages.
-var requested = Environment.GetEnvironmentVariable("RUNIC_LOCALE");
-await locale.SetLocaleAsync(!string.IsNullOrWhiteSpace(requested) ? requested.Trim()
-    : settings.Language ?? LocaleNegotiation.Negotiate(
-        DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
+// operating system's languages, each matched to the catalog's languages (de-CH starts in de). A tag
+// that matches none, such as a mistyped RUNIC_LOCALE or an old setting, is skipped, so it never
+// stops the start.
+string? Supported(string? tag) =>
+    string.IsNullOrWhiteSpace(tag) ? null : LocaleNegotiation.Match(tag.Trim(), translations.SupportedLocales);
+await locale.SetLocaleAsync(Supported(Environment.GetEnvironmentVariable("RUNIC_LOCALE"))
+    ?? Supported(settings.Language)
+    ?? LocaleNegotiation.Negotiate(DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
 
-// A language switch, from any ViewModel or menu command:
+// A language switch, from any ViewModel or menu command. It saves the catalog's language, and only
+// after the switch succeeded:
 [RelayCommand]
 private async Task SwitchLanguageAsync(string language)
 {
-    await _locale.SetLocaleAsync(language);
-    _settings.Language = language;
+    if (LocaleNegotiation.Match(language, _translations.SupportedLocales) is not { } supported) return;
+    await _locale.SetLocaleAsync(supported);
+    _settings.Language = supported;
 }
 ```
 
@@ -3281,8 +3306,9 @@ during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
 handler may, and that switch's event follows the current handlers.
 
 **`RUNIC_LOCALE`.** Start the application in the locale that the
-`RUNIC_LOCALE` environment variable names, before the user's saved choice, as
-above and as `dotnet new runic-app --translations` does. Browser tests of a
+`RUNIC_LOCALE` environment variable names, matched to the catalog's languages
+and before the user's saved choice, as above; `dotnet new runic-app
+--translations` does the same, and saves no choice. Browser tests of a
 serve-only application (`RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de`),
 screenshots and translators' checks then run the unchanged application in any
 language. The Runic packages do not read it: it is a convention of the
@@ -3345,7 +3371,9 @@ await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFro
 
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
-Runic Translations and its Vite plugin:
+Runic Translations and its Vite plugin (a page that gets the ESM from the .NET
+build imports `../.runic/translations/messages.js`, `runtime.js` and
+`transport.js` instead):
 
 ```ts
 import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
@@ -3386,9 +3414,11 @@ again on a switch only when it reads a reactive text locale:
 `resolve`, and a later call replaces an earlier one. When ViewModels send
 references of a library's catalog too, such as a component library's
 validation text, resolve them by catalog with the generated transport's
-`createReferenceResolver`. Each reference is formatted by its own catalog; one
-of a catalog the page does not list shows its fallback text, and one written
-against another release of a catalog is checked key by key:
+`createReferenceResolver`. Each reference is formatted by its own catalog, and
+one of a catalog the page does not list shows its fallback text. One written
+against another release of a catalog is checked key by key: it translates while
+its key and arguments still match, and shows its fallback text otherwise
+([Runic Translations' rules](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/transport.md)):
 
 ```ts
 import * as appTransport from "virtual:runic-translations/app/transport";

@@ -23,17 +23,21 @@ language, and Arabic lays the page out right to left.
 | [`SettingsStore.cs`](SettingsStore.cs) | The app's own settings, in a JSON file in the per-user application data folder, written atomically, with an event after each save. |
 | [`Program.cs`](Program.cs) | Starts the language (`ProjectServices.StartLanguageAsync`: `RUNIC_LOCALE`, else the saved choice, else the operating system's languages), sets the translated menu bar again after each switch, applies the saved theme with `DesktopHost.SetColorSchemeAsync`, and each new choice as it is saved, then opens the first Window; the application ends when it closes. |
 | [`Tests/ProjectWindowTests.cs`](Tests/ProjectWindowTests.cs) | Drives two Windows without a browser, with a fake window service, a temporary settings file and fixed desktop preferences, and checks the text a user sees by resolving the ViewModel's references with the application's `TranslationContext` in German and Arabic. |
-| [`browser-smoke.mjs`](browser-smoke.mjs) | Runs the built application serve-only with `RUNIC_LOCALE=de` in Chromium, checks the German text, switches to Arabic on the page and checks the right-to-left layout. CI runs it. |
+| [`browser-smoke.mjs`](browser-smoke.mjs) | Runs the built application serve-only with `RUNIC_LOCALE=de-CH` in Chromium, checks the German text and the catalog's language list, switches to Arabic on the page and checks the right-to-left layout. CI runs it. |
 | [`Tests/DocumentAndAccountWindowTests.cs`](Tests/DocumentAndAccountWindowTests.cs) | Opens the project Window with `RunicWindowTestHost.CreateWindowAsync`, so the real window service opens the document and account Windows headless: one Window per document, and a dialog that blocks the project and returns its choice. |
 
 Each Window opens in its own DI scope, so it has its own ViewModel and model
 context. Two Windows can run commands at the same moment on two threads, so
 the singletons guard their state, and each ViewModel commits changes that come
 from other Windows, or from the desktop, in a turn of its own context.
-The language is the application's (`IRunicApplicationLocale`): `StartLanguageAsync`
-makes the C# catalog's `TranslationContext` follow it and sets it at start, and
-`ChooseLanguageCommand`, which the page's language list and the menu bar's
-Language items run, switches it and saves the choice. A switch reaches the C#
+The language is the application's (`IRunicApplicationLocale`), and the C#
+catalog's `TranslationContext` follows it from its registration on.
+`StartLanguageAsync` sets it at start, and `ChooseLanguageCommand`, which the
+page's language list and the menu bar's Language items run, switches it and
+then saves the choice. Both match a tag to the catalog's languages (`de-CH`
+is `de`) and skip one that matches none, so only the catalog's languages are
+saved and a mistyped `RUNIC_LOCALE` or setting never stops the start. The
+page's list and the menu show the catalog's languages, from `runic.json`. A switch reaches the C#
 catalog first, then every Window, then `LocaleChanged`, where `Program.cs` sets
 the menu bar again in the new language. The page follows its Window: `resolveText`
 shows the `status` member and the `text` of the title's validation error, `m.*()`
