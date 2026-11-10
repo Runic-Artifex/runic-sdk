@@ -12,9 +12,15 @@ test("is the appearance now, then the appearance after each push", async () => {
   await connectView({ contract: "Tests.Shell:fp-1", route: "shell", members: {} });
   await bridge.flush();
   const seen: (number | null)[] = [];
-  const fiber = Effect.runFork(Stream.runForEach(Stream.take(appearances(), 2), look => Effect.sync(() => { seen.push(look.textScale); })));
-  await Effect.runPromise(Effect.yieldNow);
-  await new Promise(resolve => setTimeout(resolve, 0));
+  let firstSeen!: () => void;
+  const first = new Promise<void>(resolve => { firstSeen = resolve; });
+  const fiber = Effect.runFork(Stream.runForEach(Stream.take(appearances(), 2), look => Effect.sync(() => {
+    seen.push(look.textScale);
+    if (seen.length === 1) firstSeen();
+  })));
+  // Push only after the consumer has the first appearance: a push before that replaces it (a slow consumer skips to the
+  // latest), and take(2) would wait forever.
+  await first;
   bridge.setAppearance({ textScale: 2 });
   await bridge.flush();
   await Effect.runPromise(Fiber.join(fiber));
