@@ -68,11 +68,12 @@ internal sealed class CsWebUiBlobEndpointChecks
 
     // A foreign server on [::1]:A (127.0.0.1:A free) and one on 127.0.0.1:B ([::1]:B free), each answering like the
     // server the CI runs met, 200 without a CORS grant; and two that pass connections on to the other address, where the
-    // window's listener will be. The endpoint is offered A to D first and uses none of them. Without the relay, the
-    // listener holds one address only, as http.sys might beside a socket bound before it, and the ownership check alone
-    // must give up the port: a foreign server answers it, or a proxy passes it on from another client. Outside Windows,
-    // HttpListener without the relay cannot hold localhost's other address, so every port fails and the URLs fall back
-    // to 127.0.0.1.
+    // window's listener will be. The endpoint is offered A to D first and uses none of them, on every OS: it moves on to
+    // a port no other process holds. Without the relay, each of A to D is given up either because the listener cannot
+    // start there (on Windows, http.sys refuses a port that another socket holds on either address) or because it holds
+    // one address only and the ownership check gives the port up: a foreign server answers it, or a proxy passes it on
+    // from another client. Outside Windows, HttpListener without the relay cannot hold localhost's other address, so
+    // every port fails and the URLs fall back to 127.0.0.1.
     [Test]
     [Arguments(true)]
     [Arguments(false)]
@@ -95,9 +96,20 @@ internal sealed class CsWebUiBlobEndpointChecks
         var host = relay || OperatingSystem.IsWindows() ? "localhost" : "127.0.0.1";
         Require(endpoint.BaseUrl.Host == host, $"The endpoint's URLs name {endpoint.BaseUrl.Host}, not {host}.");
         if (relay) Require(logger.Events.Count == 0, $"The endpoint logged {string.Join(", ", logger.Events)}.");
-        // Without the relay, the listener's own address cannot be taken: the ports A to D failed the ownership check.
-        else Require(foreign.Count(server => server.Received.Contains("/_runic/owner/", StringComparison.Ordinal)) >= 2,
-            $"The ownership check reached {foreign.Count(server => server.Received.Length > 0)} foreign servers: {string.Concat(foreign.Select(server => server.Received))}");
+        else
+        {
+            // Without the relay: every port A to D was refused to the listener or failed the ownership check.
+            var refused = foreign.Where(server => !HttpListenerStarts(server.Port)).ToList();
+            var checkedPorts = foreign.Where(server => server.Received.Contains("/_runic/owner/", StringComparison.Ordinal)).ToList();
+            Console.WriteLine($"Ports held by foreign servers ({Environment.OSVersion}): {foreign.Length - refused.Count} let a listener start; " +
+                $"{checkedPorts.Count} received the ownership check.");
+            Require(foreign.All(server => refused.Contains(server) || checkedPorts.Contains(server)),
+                $"Ports A to D: {string.Join("; ", foreign.Select(server => $"{server.Port} {(refused.Contains(server) ? "refused the listener" : "let a listener start")}, received {server.Received.Length} bytes"))}.");
+            // Outside Windows, the listener's own address cannot be taken: the ports held on the other one failed the check.
+            if (!OperatingSystem.IsWindows())
+                Require(checkedPorts.Count >= 2,
+                    $"The ownership check reached {foreign.Count(server => server.Received.Length > 0)} foreign servers: {string.Concat(foreign.Select(server => server.Received))}");
+        }
         var grant = blobs.Grant(ConnectionKey) ?? throw new InvalidOperationException("The hello granted no upload.");
 
         // A client as a browser or Node is one: localhost on ::1 first, then on 127.0.0.1 when ::1 refuses.
@@ -131,7 +143,8 @@ internal sealed class CsWebUiBlobEndpointChecks
         await Task.CompletedTask;
     }
 
-    // A process that holds ::1 on every port the endpoint tries pushes it off localhost; the warning names the cause.
+    // A process that holds ::1 on every port the endpoint tries pushes it off localhost; the warning names the cause, on
+    // every OS: on Windows, where http.sys refuses each port, as where the relay or the ownership check gives it up.
     [Test]
     public async Task AnAddressThatAnotherProcessHoldsOnEveryPortTriedIsLogged()
     {
@@ -324,6 +337,26 @@ internal sealed class CsWebUiBlobEndpointChecks
         using var probe = new TcpListener(IPAddress.Loopback, 0);
         probe.Start();
         return ((IPEndPoint)probe.LocalEndpoint).Port;
+    }
+
+    // Whether an HttpListener for localhost starts on port, as the endpoint's does without the relay.
+    private static bool HttpListenerStarts(int port)
+    {
+        var listener = new HttpListener();
+        listener.Prefixes.Add($"http://localhost:{port}/");
+        try
+        {
+            listener.Start();
+            return true;
+        }
+        catch (HttpListenerException)
+        {
+            return false;
+        }
+        finally
+        {
+            listener.Close();
+        }
     }
 
     [Flags]
@@ -611,7 +644,13 @@ internal sealed class CsWebUiBlobEndpointChecks
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            lock (_events) _events.Add($"{eventId.Id} {eventId.Name}: {formatter(state, exception)}");
+            var error = exception switch
+            {
+                null => "",
+                HttpListenerException listener => $" ({listener.GetType().Name} {listener.ErrorCode}: {listener.Message})",
+                _ => $" ({exception.GetType().Name}: {exception.Message})",
+            };
+            lock (_events) _events.Add($"{eventId.Id} {eventId.Name}: {formatter(state, exception)}{error}");
         }
     }
 

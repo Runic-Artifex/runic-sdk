@@ -20,7 +20,9 @@ namespace Runic.Application.Views.CsWebUi;
 // - Every loopback address that localhost names on the port is the window's: a client that resolves localhost to ::1
 //   and one that resolves it to 127.0.0.1 both reach this listener, never another process's (see Listen). After it
 //   starts, the endpoint connects to each address and gives up the port unless its own listener answers that very
-//   connection (ConfirmOwnership), on every OS.
+//   connection (ConfirmOwnership), on every OS. A port where the listener cannot start because another process holds
+//   it, as http.sys refuses one where another socket holds either address, is given up the same way: the endpoint
+//   tries another port and, when every port tried is held, says so (event 2103).
 // - An upload also needs its connection's token, which only the page's own hello received. WebUI's connections are
 //   not visible to this listener, so a blob URL is bound to the window, not to a connection.
 // - On Windows, HttpListener is http.sys, which lets a user without administrator rights listen on localhost only.
@@ -69,14 +71,14 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         Start(blobs, () => (int)window.Port, logger, FreePort);
 
     // As above, with the page's port and the ports to try; for tests. Without the relay, the listener holds one address
-    // of localhost only, as http.sys may, which leaves the other to the ownership check.
+    // of localhost only outside Windows, which leaves the other to the ownership check.
     internal static CsWebUiBlobEndpoint? Start(BridgeBlobs blobs, Func<int> pagePort, ILogger logger, Func<int> nextPort, bool relay = true)
     {
         Exception? last = null;
         foreach (var host in HostChoices())
         {
             // The ports given up because another process held or answered one of their loopback addresses, per address.
-            var held = new Dictionary<IPAddress, int>();
+            var held = new Dictionary<string, int>();
             var attempts = 0;
             for (; attempts < 5; attempts++)
             {
@@ -92,8 +94,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
                 {
                     endpoint?.Close();
                     last = error;
-                    if (error is PortHeldException { Address: var address })
-                        held[address] = held.GetValueOrDefault(address) + 1;
+                    if (error is PortHeldException { Addresses: var addresses })
+                        foreach (var address in addresses)
+                            held[address] = held.GetValueOrDefault(address) + 1;
                     // Another process holds the port, on one of localhost's addresses, or took it between the probe and
                     // the start: try another port. A host name that cannot be held whole: try the next one.
                     if (error is PlatformNotSupportedException) break;
@@ -104,17 +107,20 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
             }
             // A process that holds one address on many ports can push the endpoint off localhost: say so.
             foreach (var (address, count) in held)
-                CsWebUiLog.BlobEndpointPortsHeld(logger, address.ToString(), count, attempts, host);
+                CsWebUiLog.BlobEndpointPortsHeld(logger, address, count, attempts, host);
         }
         BlobsLog.EndpointFailed(logger, last!, last!.GetType().Name);
         return null;
     }
 
-    // Another process holds or answers address on the port.
-    private sealed class PortHeldException(IPAddress address, int port, string detail)
-        : SocketException((int)SocketError.AddressAlreadyInUse, $"Another process holds {address} on port {port}: {detail}.")
+    // Another process holds or answers the port on addresses: loopback addresses, or the host name where the port is
+    // known to be held but no address shows by whom.
+    private sealed class PortHeldException(IReadOnlyList<string> addresses, int port, string detail)
+        : SocketException((int)SocketError.AddressAlreadyInUse, $"Another process holds {string.Join(" and ", addresses)} on port {port}: {detail}.")
     {
-        internal IPAddress Address { get; } = address;
+        internal PortHeldException(IPAddress address, int port, string detail) : this([address.ToString()], port, detail) { }
+
+        internal IReadOnlyList<string> Addresses { get; } = addresses;
     }
 
     // Listens on host:port. For localhost outside Windows, the managed HttpListener binds only the first address that
@@ -129,7 +135,12 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         listener.Prefixes.Add(string.Create(CultureInfo.InvariantCulture, $"http://{host}:{port}/"));
         if (OperatingSystem.IsWindows() || host != "localhost")
         {
-            Start(listener);
+            // http.sys listens on every address of localhost, and refuses a port where another socket holds either.
+            try { Start(listener); }
+            catch (HttpListenerException error) when (HeldBy(host, port, error) is { } held)
+            {
+                throw new PortHeldException(held, port, $"the listener could not listen there (error {error.ErrorCode})");
+            }
             return (listener, null);
         }
         var bound = ResolveLocalhost();
@@ -181,19 +192,39 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
             $"localhost resolves to {(addresses.Length == 0 ? "nothing" : addresses[0].ToString())}, not to 127.0.0.1 or ::1.");
     }
 
-    // Whether a listening socket holds address:port. .NET sets SO_REUSEADDR on this bind outside Windows, which Linux and
-    // macOS still refuse while another socket listens on the address.
+    // What held host:port when the listener could not start there: the loopback addresses of host that a bind probe finds
+    // held, or else host itself when the error says the port is in use, as for a socket on a wildcard address that a
+    // probe of one address may not meet or another http.sys registration of the prefix; null when nothing says so.
+    // http.sys reports a port in use as ERROR_SHARING_VIOLATION (32) or, for a registration, ERROR_ALREADY_EXISTS (183);
+    // the managed HttpListener passes on the socket's error.
+    private static string[]? HeldBy(string host, int port, HttpListenerException error)
+    {
+        IPAddress[] addresses = host == "localhost" ? [IPAddress.Loopback, IPAddress.IPv6Loopback] : [IPAddress.Parse(host)];
+        var held = addresses.Where(address => IsHeld(address, port)).Select(address => address.ToString()).ToArray();
+        if (held.Length > 0) return held;
+        var inUse = error.ErrorCode is 32 or 183 or (int)SocketError.AddressAlreadyInUse
+            || error.InnerException is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse };
+        return inUse ? [host] : null;
+    }
+
+    // Whether a listening socket holds address:port; false where the machine has no such address. .NET sets SO_REUSEADDR
+    // on this bind outside Windows, which Linux and macOS still refuse while another socket listens on the address; on
+    // Windows, a bind without it is refused while another socket holds the address.
     internal static bool IsHeld(IPAddress address, int port)
     {
-        using var probe = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
         {
+            using var probe = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
             probe.Bind(new IPEndPoint(address, port));
             return false;
         }
         catch (SocketException error) when (error.SocketErrorCode == SocketError.AddressAlreadyInUse)
         {
             return true;
+        }
+        catch (SocketException error) when (CsWebUiLoopbackRelay.IsMissing(error))
+        {
+            return false;
         }
     }
 
@@ -207,8 +238,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
     // Connects to every loopback address the URLs can reach and requires this listener to answer a one-off path over that
     // very connection: the listener must see the connection's own client, directly or through the relay. A connection
     // that another process accepts, or proxies to this listener, fails the check, and so does an address that refuses,
-    // where another process could listen later. Covers what the binds cannot show, such as http.sys on Windows, which
-    // listens beside a socket another process bound to [::1] on the port before.
+    // where another process could listen later. Covers what the binds cannot show: a listener that holds one address
+    // only, as http.sys would on a Windows that let it listen beside a socket another process bound before. (Windows
+    // Server 2025 refuses to start the listener there, which the endpoint treats as a held port.)
     private void ConfirmOwnership(string host)
     {
         IPAddress[] addresses = host == "localhost" ? [IPAddress.Loopback, IPAddress.IPv6Loopback] : [IPAddress.Parse(host)];
