@@ -2,8 +2,8 @@
 
 Optional English and German text for Runic's own messages: validation messages of
 the built-in DataAnnotations attributes, field errors, Linux dialog titles, the
-suggested "Untitled" file name, shortcut key names, a browser window's error pages
-and the standard macOS menus. It is a
+suggested "Untitled" file name, shortcut key names, the error pages of a Runic
+Desktop browser window and the standard macOS menus. It is a
 [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk)
 library catalog, `runic-views`, so it follows the application's locale and an
 application changes single messages, or adds a language, in its own `runic.json`.
@@ -69,7 +69,10 @@ await locale.SetLocaleAsync("de");
   window's language;
 - keeps `DesktopPlatformTexts.Current` in the context's locale from the first window
   on (dialog titles, "Untitled", the keyring label, Ctrl/Shift/Alt in shortcut
-  labels, a browser window's error pages). A switch changes them before
+  labels, the error pages of a Runic Desktop browser window; CS-WebUI's own
+  pages stay English, see
+  [Runic's own text](../Runic.Application.Views.CsWebUi/README.md#runics-own-text)).
+  A switch changes them before
   `IRunicApplicationLocale.LocaleChanged` is raised. A text the platform refuses,
   such as an overridden file name with `/`, is logged as event 1260
   `PlatformTextsRejected` (category `Runic.Application.Views.Translations`) and the
