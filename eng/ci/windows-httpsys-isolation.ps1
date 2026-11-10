@@ -1,8 +1,9 @@
 # The http.sys URL isolation checks of the CS-WebUI blob endpoint (CsWebUiBlobEndpointChecks.HttpSys.cs), on an
 # ephemeral GitHub-hosted Windows runner whose steps run elevated. Creates two standard users, reserves two ports for
-# every user, and runs the checks as the first user with the second one's credentials; then removes the reservations,
-# the users, their profiles and their access to the workspace, also when the checks fail. The test assembly must be
-# built (Release).
+# every user, starts another process as each user (windows-httpsys-agent.ps1) and runs the checks as the first user; then
+# removes the processes, reservations, users, their profiles and their access to the workspace, also when the checks
+# fail. The test assembly must be built (Release). A standard user cannot start a process as another user here
+# (CreateProcessWithLogonW refuses a nested logon), so this script starts both other processes.
 param([Parameter(Mandatory)][string]$TestAssembly)
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'These checks create local accounts and need an ephemeral GitHub-hosted runner.' }
@@ -11,6 +12,7 @@ $users = 'runic-httpsys-a', 'runic-httpsys-b'
 $assembly = (Resolve-Path $TestAssembly).Path
 $bin = Split-Path $assembly
 $temp = 'C:\runic-httpsys-temp'
+$agents = 'C:\runic-httpsys-agents'
 $reservations = @()
 
 function Free-Port {
@@ -30,7 +32,7 @@ function Remove-All {
         icacls $env:GITHUB_WORKSPACE /remove $name /C /Q | Out-Null
         Remove-LocalUser -Name $name
     }
-    Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $temp, $agents -ErrorAction SilentlyContinue
 }
 
 try {
@@ -47,6 +49,19 @@ try {
     icacls $bin /grant "$($users[0]):(OI)(CI)M" /T /C /Q | Out-Null
     New-Item -ItemType Directory -Force $temp | Out-Null
     icacls $temp /grant "$($users[0]):(OI)(CI)M" /C /Q | Out-Null
+
+    # The other processes: one of the first user, one of the second; each reads the requests of the checks from a
+    # folder that both the check and it may write.
+    New-Item -ItemType Directory -Force "$agents\same", "$agents\other" | Out-Null
+    Copy-Item "$PSScriptRoot\windows-httpsys-agent.ps1" "$agents\agent.ps1"
+    icacls $agents /grant 'BUILTIN\Users:(OI)(CI)RX' /C /Q | Out-Null
+    icacls "$agents\same" /grant "$($users[0]):(OI)(CI)M" /C /Q | Out-Null
+    icacls "$agents\other" /grant "$($users[0]):(OI)(CI)M" "$($users[1]):(OI)(CI)M" /C /Q | Out-Null
+    foreach ($agent in @{ Folder = 'same'; User = $users[0] }, @{ Folder = 'other'; User = $users[1] }) {
+        $credential = [pscredential]::new($agent.User, (ConvertTo-SecureString $passwords[$agent.User] -AsPlainText -Force))
+        Start-Process (Get-Command pwsh).Source -Credential $credential -LoadUserProfile -WindowStyle Hidden -WorkingDirectory $agents `
+            -ArgumentList '-NoProfile', '-NonInteractive', '-File', "$agents\agent.ps1", '-Directory', "$agents\$($agent.Folder)" | Out-Null
+    }
 
     # A reservation of a whole port and one of a path under a port, for every user.
     $whole = Free-Port
@@ -73,8 +88,7 @@ try {
     $start.Environment['DOTNET_CLI_HOME'] = $temp
     foreach ($name in 'GITHUB_STEP_SUMMARY', 'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH', 'GITHUB_STATE') { $start.Environment.Remove($name) | Out-Null }
     $start.Environment['RUNIC_TEST_HTTPSYS'] = '1'
-    $start.Environment['RUNIC_TEST_HTTPSYS_OTHER_USER'] = $users[1]
-    $start.Environment['RUNIC_TEST_HTTPSYS_OTHER_PASSWORD'] = $passwords[$users[1]]
+    $start.Environment['RUNIC_TEST_HTTPSYS_AGENTS'] = $agents
     $start.Environment['RUNIC_TEST_HTTPSYS_RESERVED_PORTS'] = "$whole,$under"
     Write-Output "Running the http.sys checks as $($users[0]) (reserved: $($script:reservations -join ', '))"
     $process = [Diagnostics.Process]::Start($start)
@@ -84,6 +98,7 @@ try {
     $process.WaitForExit()
     Write-Output $output.Result
     if ($errors.Result) { Write-Output $errors.Result }
+    Get-ChildItem $agents -Recurse -Filter '*.log' | ForEach-Object { Write-Output "--- $($_.Directory.Name)/$($_.Name)"; Get-Content $_.FullName }
     if ($process.ExitCode -ne 0) { throw "The http.sys checks failed ($($process.ExitCode))." }
 }
 finally {

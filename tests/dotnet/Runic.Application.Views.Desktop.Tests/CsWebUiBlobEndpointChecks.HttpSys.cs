@@ -1,6 +1,4 @@
 extern alias cswebui;
-using System.Diagnostics;
-using System.Security;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,7 +8,7 @@ using UrlReservations = cswebui::Runic.Application.Views.CsWebUi.CsWebUiUrlReser
 
 // On Windows the endpoint is an http.sys registration of http://localhost:{port}/, and http.sys routes a request to the
 // longest registered URL that matches it, whichever process registered it. These checks start the endpoint as a standard
-// user and have another process, of the same user and of a second standard user, register URLs under it, which http.sys
+// user and have another process, of the same user and of a second standard user (eng/ci/windows-httpsys-agent.ps1), register URLs under it, which http.sys
 // must refuse; and they offer the endpoint ports that a URL reservation names, which it must not use.
 //
 // They need accounts and reservations that only an ephemeral CI runner may get: the CI step "Check http.sys URL isolation
@@ -47,7 +45,7 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, FreePort)
             ?? throw new InvalidOperationException("The endpoint did not start.");
         var grant = blobs.Grant(ConnectionKey) ?? throw new InvalidOperationException("The hello granted no upload.");
-        using var other = await HttpSysProcess.StartAsync(sameUser ? null : OtherUser(), PrefixesUnder(endpoint.Port));
+        using var other = await HttpSysProcess.StartAsync(sameUser, PrefixesUnder(endpoint.Port));
         Console.WriteLine($"Port {endpoint.Port}, {(sameUser ? "the same user" : "another standard user")}: {other.Outcome}");
         var answers = new List<string>();
         foreach (var address in Loopbacks())
@@ -79,7 +77,7 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         {
             listener.Prefixes.Add($"http://localhost:{reserved[0]}/");
             listener.Start();
-            using var other = await HttpSysProcess.StartAsync(OtherUser(), [$"http://localhost:{reserved[0]}/_runic/"]);
+            using var other = await HttpSysProcess.StartAsync(sameUser: false, [$"http://localhost:{reserved[0]}/_runic/"]);
             Console.WriteLine($"Reserved port {reserved[0]}, another standard user: {other.Outcome}");
             Require(other.Registered.Count == 1, $"Under a reservation, another user could not register a URL under a listener: {other.Outcome}");
         }
@@ -91,7 +89,7 @@ internal sealed partial class CsWebUiBlobEndpointChecks
             () => offered.Count > 0 ? offered.Dequeue() : FreePort()) ?? throw new InvalidOperationException("The endpoint did not start.");
         Require(offered.Count == 0 && !reserved.Contains(endpoint.Port),
             $"The endpoint listens on port {endpoint.Port}, which a URL reservation names ({string.Join(", ", reserved)}).");
-        using var late = await HttpSysProcess.StartAsync(OtherUser(), PrefixesUnder(endpoint.Port));
+        using var late = await HttpSysProcess.StartAsync(sameUser: false, PrefixesUnder(endpoint.Port));
         Require(late.Registered.Count == 0, $"Another process registered {string.Join(", ", late.Registered)} under the endpoint's port.");
     }
 
@@ -119,110 +117,62 @@ internal sealed partial class CsWebUiBlobEndpointChecks
             $"The http.sys checks run as {identity.Name}, which is elevated; run them as a standard user.");
     }
 
-    private static (string User, string Password) OtherUser()
-    {
-        var user = Environment.GetEnvironmentVariable("RUNIC_TEST_HTTPSYS_OTHER_USER");
-        var password = Environment.GetEnvironmentVariable("RUNIC_TEST_HTTPSYS_OTHER_PASSWORD");
-        Require(!string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(password),
-            "Set RUNIC_TEST_HTTPSYS_OTHER_USER and RUNIC_TEST_HTTPSYS_OTHER_PASSWORD to a second standard user.");
-        return (user!, password!);
-    }
-
-    // Another process (PowerShell) that tries to register each URL with a listener of its own, reports which it holds, and
-    // records each request it receives.
+    // Another process, of the same user or of the second standard user, that windows-httpsys-agent.ps1 runs: it tries to
+    // register each URL with a listener of its own, reports which it holds, and records each request it receives.
     private sealed class HttpSysProcess : IDisposable
     {
-        private const string Script = """
-            $ErrorActionPreference = 'Stop'
-            $listeners = @()
-            foreach ($prefix in $args) {
-                $listener = [Net.HttpListener]::new()
-                $listener.Prefixes.Add($prefix)
-                try { $listener.Start(); $listeners += $listener; [Console]::WriteLine("registered $prefix") }
-                catch {
-                    $e = $_.Exception; while ($e -and $e -isnot [Net.HttpListenerException]) { $e = $e.InnerException }
-                    [Console]::WriteLine("refused $prefix $($e.ErrorCode)")
-                }
-            }
-            [Console]::WriteLine("user $([Security.Principal.WindowsIdentity]::GetCurrent().Name)")
-            [Console]::WriteLine('ready')
-            $pending = @($listeners | ForEach-Object { $_.GetContextAsync() })
-            while ($true) {
-                for ($i = 0; $i -lt $listeners.Count; $i++) {
-                    if (-not $pending[$i].IsCompleted) { continue }
-                    $context = $pending[$i].Result
-                    $pending[$i] = $listeners[$i].GetContextAsync()
-                    [Console]::WriteLine("request $($context.Request.HttpMethod) $($context.Request.Url.AbsolutePath)")
-                    $context.Response.StatusCode = 200
-                    $context.Response.Close()
-                }
-                Start-Sleep -Milliseconds 20
-            }
-            """;
+        private readonly string _log;
+        private readonly string _stop;
 
-        private readonly Process _process;
-        private readonly List<string> _lines = [];
-
-        private HttpSysProcess(Process process) => _process = process;
+        private HttpSysProcess(string log, string stop)
+        {
+            _log = log;
+            _stop = stop;
+        }
 
         internal List<string> Registered => Lines("registered ");
         internal List<string> Requests => Lines("request ");
         internal string Outcome => string.Join("; ", Lines(""));
 
-        internal static async Task<HttpSysProcess> StartAsync((string User, string Password)? user, IReadOnlyList<string> prefixes)
+        internal static async Task<HttpSysProcess> StartAsync(bool sameUser, IReadOnlyList<string> prefixes)
         {
-            var start = new ProcessStartInfo("pwsh")
+            var agents = Environment.GetEnvironmentVariable("RUNIC_TEST_HTTPSYS_AGENTS");
+            Require(!string.IsNullOrEmpty(agents), "Set RUNIC_TEST_HTTPSYS_AGENTS to the folder of the other processes.");
+            var folder = Path.Combine(agents!, sameUser ? "same" : "other");
+            var id = Guid.NewGuid().ToString("N");
+            var other = new HttpSysProcess(Path.Combine(folder, id + ".log"), Path.Combine(folder, id + ".stop"));
+            var pending = Path.Combine(folder, id + ".pending");
+            await File.WriteAllLinesAsync(pending, prefixes);
+            File.Move(pending, Path.Combine(folder, id + ".prefixes"));
+            var until = DateTime.UtcNow.AddSeconds(60);
+            while (other.Lines("ready").Count == 0)
             {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = Environment.SystemDirectory,
-            };
-            foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(Script)), "-args" })
-                start.ArgumentList.Add(argument);
-            foreach (var prefix in prefixes) start.ArgumentList.Add(prefix);
-            if (user is var (name, password) && OperatingSystem.IsWindows())
-            {
-                start.UserName = name;
-                start.Domain = ".";
-                start.LoadUserProfile = true;
-                var secure = new SecureString();
-                foreach (var character in password) secure.AppendChar(character);
-                secure.MakeReadOnly();
-                start.Password = secure;
+                if (DateTime.UtcNow > until) throw new InvalidOperationException($"The other process did not answer in {folder}: {other.Outcome}");
+                await Task.Delay(50);
             }
-            var process = Process.Start(start) ?? throw new InvalidOperationException("PowerShell did not start.");
-            var other = new HttpSysProcess(process);
-            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            process.OutputDataReceived += (_, line) =>
-            {
-                if (line.Data is null) { ready.TrySetResult(); return; }
-                lock (other._lines) other._lines.Add(line.Data);
-                if (line.Data == "ready") ready.TrySetResult();
-            };
-            process.ErrorDataReceived += (_, line) =>
-            {
-                if (line.Data is not null) lock (other._lines) other._lines.Add("stderr " + line.Data);
-            };
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            try { await ready.Task.WaitAsync(TimeSpan.FromSeconds(60)); }
-            catch (TimeoutException) { other.Dispose(); throw new InvalidOperationException($"The other process did not get ready: {other.Outcome}"); }
-            Require(other.Lines("ready").Count == 1, $"The other process ended: {other.Outcome}");
             return other;
         }
 
         private List<string> Lines(string prefix)
         {
-            lock (_lines) return _lines.Where(line => line.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+            string[] lines;
+            try
+            {
+                using var stream = new FileStream(_log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream);
+                lines = reader.ReadToEnd().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            }
+            catch (Exception error) when (error is FileNotFoundException or IOException) { lines = []; }
+            return lines.Where(line => line.StartsWith(prefix, StringComparison.Ordinal)).ToList();
         }
 
+        // Closes the other process's listeners, and waits until they are closed.
         public void Dispose()
         {
-            try { _process.Kill(); }
-            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            _process.WaitForExit(5000);
-            _process.Dispose();
+            try { File.WriteAllText(_stop, ""); }
+            catch (IOException) { return; }
+            var until = DateTime.UtcNow.AddSeconds(10);
+            while (Lines("stopped").Count == 0 && DateTime.UtcNow < until) Thread.Sleep(50);
         }
     }
 }
