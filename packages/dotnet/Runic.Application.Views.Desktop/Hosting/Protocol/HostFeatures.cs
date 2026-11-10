@@ -88,6 +88,40 @@ internal static class HostFeatures
         return true;
     }
 
+    // update-menu-items applied to the wire entries the host keeps: an id that names no item is ignored (the bar may have
+    // changed since). Returns whether an item changed.
+    internal static bool ApplyUpdates(JsonArray entries, JsonArray updates)
+    {
+        var byId = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        Index(entries, byId);
+        var changed = false;
+        foreach (var node in updates)
+        {
+            var update = (JsonObject)node!;
+            if (!byId.TryGetValue(HostProtocol.String(update, "id")!, out var item)) continue;
+            foreach (var name in (string[])["title", "enabled", "checked"])
+            {
+                if (update[name] is not { } value) continue;
+                // A plain item stays one: checked applies to a check or radio item only.
+                if (name == "checked" && HostProtocol.Boolean(item, "checked") is null) continue;
+                if (JsonNode.DeepEquals(item[name], value)) continue;
+                item[name] = value.DeepClone();
+                changed = true;
+            }
+        }
+        return changed;
+
+        static void Index(JsonArray list, Dictionary<string, JsonObject> byId)
+        {
+            foreach (var node in list)
+            {
+                if (node is not JsonObject entry) continue;
+                if (HostProtocol.String(entry, "kind") == "item") byId[HostProtocol.String(entry, "id")!] = entry;
+                else if (entry["items"] is JsonArray items) Index(items, byId);
+            }
+        }
+    }
+
     // A point {x, y} of finite numbers, or null for the pointer.
     internal static bool CheckPoint(JsonNode? point) =>
         point is null || point is JsonObject members && Coordinate(members["x"]) && Coordinate(members["y"]);

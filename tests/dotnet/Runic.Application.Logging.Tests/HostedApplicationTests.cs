@@ -53,6 +53,55 @@ internal sealed class HostedApplicationTests
         Require(await host.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its window closed.", host);
     }
 
+    // menus/1 and dialogs/1 under RunicTestHost: a guest tests its menu bar, its commands and its dialogs without a native
+    // host.
+    [Test]
+    public async Task TestsTheGuestsMenusAndDialogs()
+    {
+        if (Elevated)
+        {
+            await RefusedAsElevatedAsync();
+            return;
+        }
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, "rows");
+            await using var host = await RunicTestHost.StartGuestAsync(LoggingApplication.SelfStartInfo(HostedApplication.MenusArgument), new RunicTestHostOptions
+            {
+                StartTimeout = TestTimeouts.Scale(Timeout),
+                FileDialog = (request, _) => Task.FromResult<IReadOnlyList<string>?>([file]),
+                MessageBox = (request, _) => Task.FromResult<string?>("undo"),
+                ContextMenu = (request, _) => Task.FromResult(RunicTestHostedWindow.FindMenuItem(request.Message.GetProperty("menu"), "Copy")),
+            });
+            Require(host.Features.SequenceEqual(["menus/1", "dialogs/1"]), $"The channel uses {string.Join(", ", host.Features)}.", host);
+            var window = await host.WaitForWindowAsync(nameof(LoggingWindow), TestTimeouts.Scale(Timeout));
+            var bar = await window.WaitForMenuBarAsync(bar => window.FindMenuItem("File", "Open…") is not null, TestTimeouts.Scale(Timeout));
+            Require(bar[0].GetProperty("role").GetString() == "file" && bar[0].GetProperty("items")[1].GetProperty("enabled").GetBoolean() == false,
+                $"The bar is not the guest's, with Save unavailable: {bar.GetRawText()}", host);
+            Require(bar[0].GetProperty("items")[0].GetProperty("shortcut").GetString() == "Primary+O", "Open… lost its shortcut.", host);
+
+            // The user chooses File ▸ Open…: the guest runs its command, Save becomes available, and the command shows a
+            // file dialog, a message box and a context menu, which the test host answers.
+            await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
+            await window.WaitForMenuBarAsync(bar => bar[0].GetProperty("items")[1].GetProperty("enabled").GetBoolean(), TestTimeouts.Scale(Timeout));
+            Require(await TestTimeouts.UntilAsync(() => host.StandardError.Contains("CONTEXT edit.copy", StringComparison.Ordinal), Timeout),
+                "The guest did not finish its dialogs.", host);
+            Require(host.StandardError.Contains("RAN file.open", StringComparison.Ordinal) &&
+                host.StandardError.Contains("OPEN " + Path.GetFileName(file) + " rows", StringComparison.Ordinal) &&
+                host.StandardError.Contains("BOX undo", StringComparison.Ordinal), "The guest's command or dialogs did not report.", host);
+            Require(window.DialogRequests.Select(static request => request.Kind).SequenceEqual(["file-dialog", "message-box", "show-context-menu"]) &&
+                window.DialogRequests[0].Message.GetProperty("title").GetString() == "Import", "The test host did not record the dialogs.", host);
+
+            Require(await window.RequestCloseAsync(), "The guest refused the close.", host);
+            Require(await host.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly.", host);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
     [Test]
     public async Task StopsWithShutdown()
     {

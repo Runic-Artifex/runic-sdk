@@ -32,14 +32,17 @@ namespace Runic.Application.Testing;
 /// writes the offer to the guest's standard input, keeps standard input open while it runs and reads the channel line
 /// from standard output; the guest's other output and its standard error are captured for failure messages. It
 /// connects again when its connection closes before the <c>hello</c> reply, within the start timeout, answers only the
-/// base protocol's requests, and lists a window once it answered its <c>window-open</c>.
+/// base protocol's requests, the menus of <c>menus/1</c> (<see cref="RunicTestHostedWindow.MenuBar"/>,
+/// <see cref="RunicTestHostedWindow.InvokeMenuItemAsync"/>) and the dialogs of <c>dialogs/1</c>, which
+/// <see cref="RunicTestHostOptions.FileDialog"/>, <see cref="RunicTestHostOptions.MessageBox"/> and
+/// <see cref="RunicTestHostOptions.ContextMenu"/> answer, and lists a window once it answered its <c>window-open</c>.
 /// <see cref="StopAsync"/> sends <c>shutdown</c> and waits for the guest to exit; disposing closes standard input and the
 /// channel, as a host that went away does, and kills the guest's process tree when it has not exited in time. On
 /// Windows the guest runs in a job object that kills it when the test process ends.
 /// The protocol and this type are experimental; see <c>docs/experimental.md</c>.
 /// </remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-public sealed class RunicTestHost : IAsyncDisposable
+public sealed partial class RunicTestHost : IAsyncDisposable
 {
     private static readonly TimeSpan s_killTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan s_outputDrainTimeout = TimeSpan.FromSeconds(2);
@@ -72,7 +75,10 @@ public sealed class RunicTestHost : IAsyncDisposable
     /// <summary>The guest application as its <c>hello</c> reply named it.</summary>
     public RunicTestGuest Guest { get; private set; } = null!;
 
-    /// <summary>The protocol features in use on the channel; the base protocol has none.</summary>
+    /// <summary>
+    /// The protocol features in use on the channel: those of <see cref="RunicTestHostOptions.Features"/> that the guest's
+    /// <c>hello</c> reply lists too, such as <c>menus/1</c> and <c>dialogs/1</c>.
+    /// </summary>
     public IReadOnlyList<string> Features { get; private set; } = [];
 
     /// <summary>The guest's process id.</summary>
@@ -197,14 +203,14 @@ public sealed class RunicTestHost : IAsyncDisposable
         var channel = HostLaunch.Channel(line, _options.Protocols, ExitCodeText, Failure);
         var hello = await HostLaunch.HandshakeAsync(channel, nonce, _options.HostName, _options.HostVersion, new JsonObject
         {
-            ["features"] = new JsonArray(),
+            ["features"] = new JsonArray([.. _options.Features.Select(static name => (JsonNode)name)]),
             ["locale"] = null,
             ["languages"] = new JsonArray(),
             ["appearance"] = null,
         }, Failure, () => _exited.Task.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
         var socket = hello.Socket;
         Guest = new RunicTestGuest(hello.Name, hello.Version, hello.ApplicationId);
-        Features = [];
+        Features = hello.Features;
         _channel = new HostChannel(socket, firstRequestId: 2, OnRequestAsync, OnPush);
         _channel.Start();
     }
@@ -384,6 +390,7 @@ public sealed class RunicTestHost : IAsyncDisposable
             await OpenAsync(request, id).ConfigureAwait(false);
             return;
         }
+        if (await OnFeatureRequestAsync(request, id).ConfigureAwait(false)) return;
         if (!s_presentationRequests.TryGetValue(request.Kind, out var feature))
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of the base protocol.").ConfigureAwait(false);
@@ -472,6 +479,11 @@ public sealed class RunicTestHost : IAsyncDisposable
 
     private void OnPush(JsonObject push)
     {
+        if (HostProtocol.String(push, "kind") == "cancel")
+        {
+            OnCancel(push);
+            return;
+        }
         if (HostProtocol.String(push, "kind") == "window-closed" && FindWindow(HostProtocol.String(push, "window")) is { } window)
             window.MarkClosed();
     }
@@ -596,7 +608,50 @@ public sealed record RunicTestHostOptions
     /// Answers each presentation request with a platform outcome; <see langword="null"/>, the default, answers success.
     /// </summary>
     public Func<RunicTestPresentationRequest, PlatformResult<PlatformUnit>>? Presentation { get; init; }
+
+    /// <summary>
+    /// The protocol features the host's <c>hello</c> lists: <c>menus/1</c> and <c>dialogs/1</c> by default. A guest's
+    /// menus and dialogs of a feature that is not listed report <c>OwnerUnavailable</c>, as in serve-only mode.
+    /// </summary>
+    public IReadOnlyList<string> Features { get; init; } = ["menus/1", "dialogs/1"];
+
+    /// <summary>
+    /// Answers each file dialog (<c>file-dialog</c>) with the absolute paths the user selected, or <see langword="null"/>
+    /// when the user dismissed it. The token is cancelled when the guest gives the dialog up or closes the window.
+    /// <see langword="null"/>, the default, dismisses every dialog.
+    /// </summary>
+    /// <remarks>
+    /// The guest opens the paths itself, as with its own dialogs: an open dialog's files must exist. The request's
+    /// <see cref="RunicTestDialogRequest.Message"/> has the members <c>dialog</c> (<c>open</c>, <c>open-multiple</c>,
+    /// <c>save</c>, <c>folder</c>, <c>folder-multiple</c>), <c>title</c>, <c>initialDirectory</c>, <c>suggestedName</c> and
+    /// <c>filters</c>.
+    /// </remarks>
+    public Func<RunicTestDialogRequest, CancellationToken, Task<IReadOnlyList<string>?>>? FileDialog { get; init; }
+
+    /// <summary>
+    /// Answers each message box (<c>message-box</c>) with the id of the button the user chose, or <see langword="null"/>
+    /// for none. The token is cancelled when the guest gives the box up or closes the window. <see langword="null"/>, the
+    /// default, chooses the box's cancel button, or none.
+    /// </summary>
+    public Func<RunicTestDialogRequest, CancellationToken, Task<string?>>? MessageBox { get; init; }
+
+    /// <summary>
+    /// Answers each context menu (<c>show-context-menu</c>) with the id of the item the user chose, or
+    /// <see langword="null"/> when the user dismissed it; <see cref="RunicTestHostedWindow.FindMenuItem(JsonElement, string[])"/>
+    /// finds an item's id by its title. <see langword="null"/>, the default, dismisses every menu.
+    /// </summary>
+    public Func<RunicTestDialogRequest, CancellationToken, Task<string?>>? ContextMenu { get; init; }
 }
+
+/// <summary>
+/// A dialog or context menu a guest asked a <see cref="RunicTestHost"/> to show for one of its windows (<c>dialogs/1</c>,
+/// <c>menus/1</c>).
+/// </summary>
+/// <param name="WindowId">The window's id.</param>
+/// <param name="Kind">The request's kind: <c>file-dialog</c>, <c>message-box</c> or <c>show-context-menu</c>.</param>
+/// <param name="Message">The whole request, with its members such as <c>dialog</c>, <c>buttons</c> or <c>menu</c>.</param>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed record RunicTestDialogRequest(string WindowId, string Kind, JsonElement Message);
 
 /// <summary>The guest application as its <c>hello</c> reply names it.</summary>
 /// <param name="Name">The application's name.</param>
@@ -614,7 +669,9 @@ public sealed record RunicTestPresentationRequest(string WindowId, string Kind, 
 
 /// <summary>A window a guest asked a <see cref="RunicTestHost"/> for.</summary>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-public sealed class RunicTestHostedWindow
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "The cancellation source has no timer; it holds nothing to release.")]
+public sealed partial class RunicTestHostedWindow
 {
     private readonly RunicTestHost _host;
     private readonly List<RunicTestPresentationRequest> _requests = [];
@@ -696,7 +753,11 @@ public sealed class RunicTestHostedWindow
         lock (_requests) _requests.Add(request);
     }
 
-    internal void MarkClosed() => _closed.TrySetResult();
+    internal void MarkClosed()
+    {
+        _closed.TrySetResult();
+        EndUserRequests();
+    }
 
     internal void MarkOpened() => _opened.TrySetResult();
 

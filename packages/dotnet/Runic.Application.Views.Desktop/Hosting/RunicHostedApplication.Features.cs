@@ -109,7 +109,7 @@ public sealed partial class RunicHostedApplication
         try
         {
             // Ids that name no item of the bar are ignored: the bar may have changed since (host-protocol.md, Menus).
-            if (window.GuestMenuBar is not { } bar || !HostedWire.ApplyUpdates(bar, (JsonArray)request.Message["items"]!))
+            if (window.GuestMenuBar is not { } bar || !HostFeatures.ApplyUpdates(bar, (JsonArray)request.Message["items"]!))
             {
                 await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()))).ConfigureAwait(false);
                 return;
@@ -207,36 +207,40 @@ public sealed partial class RunicHostedApplication
             await request.FailAsync("rejected", "busy", "The window already shows a dialog.").ConfigureAwait(false);
             return;
         }
-        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(window.Closing, _ending.Token);
-        _userRequests[request.Id] = cancel;
-        try
+        // The answer is sent after the window's dialog ended, so the guest's next dialog never finds it busy.
+        Func<Task> answer;
+        using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(window.Closing, _ending.Token))
         {
-            var reply = request.Kind switch
+            _userRequests[request.Id] = cancel;
+            try
             {
-                "show-context-menu" => await ContextMenuAsync(request.Message, window, cancel.Token).ConfigureAwait(false),
-                "file-dialog" => await FileDialogAsync(request.Message, window, cancel.Token).ConfigureAwait(false),
-                _ => await MessageBoxAsync(request.Message, window, cancel.Token).ConfigureAwait(false),
-            };
-            await request.ReplyAsync(reply).ConfigureAwait(false);
+                var reply = request.Kind switch
+                {
+                    "show-context-menu" => await ContextMenuAsync(request.Message, window, cancel.Token).ConfigureAwait(false),
+                    "file-dialog" => await FileDialogAsync(request.Message, window, cancel.Token).ConfigureAwait(false),
+                    _ => await MessageBoxAsync(request.Message, window, cancel.Token).ConfigureAwait(false),
+                };
+                answer = () => request.ReplyAsync(reply);
+            }
+            catch (RejectedException rejected)
+            {
+                answer = () => request.FailAsync(rejected.Kind, rejected.Reason, Limit(rejected.Message));
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                // The window closed, or the guest went away: the guest learns it as for any request of a closed window.
+                // The guest's own cancel: the request ends cancelled.
+                answer = !window.IsOpen || window.Closing.IsCancellationRequested || _ending.IsCancellationRequested
+                    ? () => request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)))
+                    : () => request.FailAsync("cancelled", null, "The guest gave the request up.");
+            }
+            finally
+            {
+                _userRequests.TryRemove(request.Id, out _);
+                if (dialog) window.EndDialog();
+            }
         }
-        catch (RejectedException rejected)
-        {
-            await request.FailAsync(rejected.Kind, rejected.Reason, Limit(rejected.Message)).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
-        {
-            // The window closed, or the guest went away: the guest learns it as for any request of a closed window. The
-            // guest's own cancel: the request ends cancelled.
-            if (!window.IsOpen || window.Closing.IsCancellationRequested || _ending.IsCancellationRequested)
-                await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed))).ConfigureAwait(false);
-            else
-                await request.FailAsync("cancelled", null, "The guest gave the request up.").ConfigureAwait(false);
-        }
-        finally
-        {
-            _userRequests.TryRemove(request.Id, out _);
-            if (dialog) window.EndDialog();
-        }
+        await answer().ConfigureAwait(false);
     }
 
     // A failed reply of a request that waits for the user.

@@ -1162,6 +1162,28 @@ public async Task ClosesWhenTheHostAsks()
   `WaitForNthWindowAsync("DocumentWindow", 1, …)` waits for the second window of
   a type, and `WaitForMatchingWindowAsync` for the first window a predicate
   accepts.
+- Menus and dialogs (`menus/1`, `dialogs/1`, listed by default in
+  `RunicTestHostOptions.Features`): a window's `MenuBar` is the application's
+  bar as it sent it, with its items' ids, titles, shortcuts and current
+  `enabled` and `checked` states; `WaitForMenuBarAsync` waits for a change,
+  `FindMenuItem("File", "Save")` finds an item's id and `InvokeMenuItemAsync`
+  chooses it as the host's user would, so the application runs its command.
+  `FileDialog`, `MessageBox` and `ContextMenu` answer the application's file
+  dialogs (the selected paths, or `null` for dismissed), message boxes (a button
+  id) and context menus (an item id, `RunicTestHostedWindow.FindMenuItem(menu,
+  "Copy")`); by default every dialog and menu is dismissed. Each window's
+  `DialogRequests` lists what the application asked for, and an answer's token
+  is cancelled when the application gives the dialog up or closes the window.
+
+  ```csharp
+  await using var host = await RunicTestHost.StartGuestAsync(start, new RunicTestHostOptions
+  {
+      FileDialog = (request, _) => Task.FromResult<IReadOnlyList<string>?>([Path.GetFullPath("data/notes.txt")]),
+  });
+  var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+  await window.WaitForMenuBarAsync(_ => window.FindMenuItem("File", "Open…") is not null, TimeSpan.FromSeconds(10));
+  await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
+  ```
 - `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
   colour scheme to the application, and `RunicTestHost.SetAppearanceAsync` the
   host's appearance (an application of this release keeps its own appearance).

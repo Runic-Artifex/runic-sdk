@@ -6,6 +6,7 @@ using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Generated;
 using Runic.Desktop;
+using Runic.Platform;
 
 #pragma warning disable RUNICDESK103 // The smoke checks the experimental runic-host/1 window mode.
 
@@ -100,6 +101,20 @@ internal static class HostedSmoke
             Check(scanned > 0, "No file of guest a's user data folder could be read.");
             Console.WriteLine($"PASS hosted {toolkit}: none of the {scanned} files in guest a's user data folder holds its cookie or storage.");
         }
+
+        // menus/1: guest a's bar shows in its native window, and the window's menu command path (the native bar and its
+        // shortcuts) runs the guest's command.
+        using (var menuWait = new CancellationTokenSource(TestTimeouts.Scale(Wait)))
+        {
+            while (windowA.MenuBar.Count == 0) await Task.Delay(50, menuWait.Token);
+        }
+        var openItem = windowA.MenuBar.Single(static menu => menu.Title == "Smoke File").Items.OfType<DesktopMenuItem>().Single();
+        Check(windowA.MenuBar.Single().Role == DesktopMenuRole.File && openItem.Title == "Open…" && openItem.Shortcut == new DesktopShortcut("O"),
+            "Guest a's menu bar did not reach its window.");
+        Check(await windowA.Presentation.TryExecuteMenuItemAsync(openItem), "The window's menu command path did not run guest a's item.");
+        var ran = await logs.ReportAsync("a-menu");
+        Check(ran["command"]!.GetValue<string>() == "file.open", $"Guest a ran {ran}.");
+        Console.WriteLine($"PASS hosted {toolkit}: guest a's menu bar is in its window, and choosing its item ran the guest's command.");
 
         // A close through the guest: its Window closes, then the host's window, then the guest exits.
         Check(await windowA.RequestCloseAsync(), "Guest a refused the close.");
@@ -209,6 +224,19 @@ internal static class HostedSmoke
                 },
                 async host =>
                 {
+                    // menus/1: the application's bar, whose command reports that it ran.
+                    host.Desktop.SetMenuBar([new DesktopMenu("Smoke File", [new DesktopMenuItem("Open…", "file.open") { Shortcut = new DesktopShortcut("O") }])
+                    {
+                        Role = DesktopMenuRole.File,
+                    }]);
+                    using var commands = host.UseApplicationMenu(new Dictionary<string, System.Windows.Input.ICommand>
+                    {
+                        ["file.open"] = new ReportCommand(() =>
+                        {
+                            Console.Out.Write(Report + name + "-menu {\"command\":\"file.open\"}\n");
+                            Console.Out.Flush();
+                        }),
+                    });
                     await using var window = await host.OpenWindowAsync<HostedSmokeWindow>();
                     var surface = RunicDesktopHost.GetSurface(window) ?? throw new InvalidOperationException("The Window has no surface.");
                     var seen = await surface.ExecuteJavaScriptAsync($$"""
@@ -302,3 +330,10 @@ internal sealed class HostedSmokeModel : INotifyPropertyChanged
 
 internal sealed class HostedSmokeBridge(IBridgeTransport transport, HostedSmokeModel model)
     : ViewModelBridge<HostedSmokeModel>(transport, model, "hosted-smoke", [], [], [], []);
+
+internal sealed class ReportCommand(Action execute) : System.Windows.Input.ICommand
+{
+    public event EventHandler? CanExecuteChanged { add { } remove { } }
+    public bool CanExecute(object? parameter) => true;
+    public void Execute(object? parameter) => execute();
+}

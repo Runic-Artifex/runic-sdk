@@ -266,6 +266,11 @@ experimental (`RUNICDESK103`). What Runic enforces:
   input.
 - **The guest gets no more than the host's own windows.** A guest's request for the camera and microphone is granted
   only as far as the host grants its own windows, unless the host's policy grants more.
+- **Menus and dialogs stay the host's UI.** A guest's menu items and context menus carry titles, shortcuts and ids of
+  the guest's own, never its command ids, and choosing one only tells the guest which item; a hosted window never
+  shows the host application's own menus, and on macOS the host's About, Settings and Quit stay the host's. A guest's
+  file dialogs and message boxes are the host's own dialogs, owned by the guest's window, one at a time, and closed
+  with it; the host hands the guest the selected paths and keeps no access to them.
 
 What it means for the guest application: **any process of the same user** that knows the guest's parameter can host
 it, see its pages and answer its dialogs, as such a process can already read its memory

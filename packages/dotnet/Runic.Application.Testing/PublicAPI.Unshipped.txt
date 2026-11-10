@@ -94,3 +94,33 @@ Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.init 
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Features.get -> Runic.Application.Views.RunicWindowPresentationFeatures
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Opened.get -> System.Threading.Tasks.Task!
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]override Runic.Application.Testing.RunicTestDialogRequest.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Testing.RunicTestDialogRequest.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Testing.RunicTestDialogRequest.ToString() -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.<Clone>$() -> Runic.Application.Testing.RunicTestDialogRequest!
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Deconstruct(out string! WindowId, out string! Kind, out System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Equals(Runic.Application.Testing.RunicTestDialogRequest? other) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Kind.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Kind.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Message.get -> System.Text.Json.JsonElement
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.Message.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.RunicTestDialogRequest(string! WindowId, string! Kind, System.Text.Json.JsonElement Message) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.WindowId.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestDialogRequest.WindowId.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.DialogRequests.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestDialogRequest!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.FindMenuItem(params string![]! titles) -> string?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.InvokeMenuItemAsync(string! itemId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.MenuBar.get -> System.Text.Json.JsonElement?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.WaitForMenuBarAsync(System.Func<System.Text.Json.JsonElement, bool>! match, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Text.Json.JsonElement>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.ContextMenu.get -> System.Func<Runic.Application.Testing.RunicTestDialogRequest!, System.Threading.CancellationToken, System.Threading.Tasks.Task<string?>!>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.ContextMenu.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Features.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.Features.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.FileDialog.get -> System.Func<Runic.Application.Testing.RunicTestDialogRequest!, System.Threading.CancellationToken, System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<string!>?>!>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.FileDialog.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.MessageBox.get -> System.Func<Runic.Application.Testing.RunicTestDialogRequest!, System.Threading.CancellationToken, System.Threading.Tasks.Task<string?>!>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.MessageBox.init -> void
+[RUNICDESK103]static Runic.Application.Testing.RunicTestDialogRequest.operator !=(Runic.Application.Testing.RunicTestDialogRequest? left, Runic.Application.Testing.RunicTestDialogRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestDialogRequest.operator ==(Runic.Application.Testing.RunicTestDialogRequest? left, Runic.Application.Testing.RunicTestDialogRequest? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestHostedWindow.FindMenuItem(System.Text.Json.JsonElement menu, params string![]! titles) -> string?

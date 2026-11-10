@@ -445,8 +445,9 @@ internal sealed class HostedGuest : IAsyncDisposable
 
     internal bool InUse(string feature) => Session.Features.Contains(feature, StringComparer.Ordinal);
 
-    // A request for a window that waits for the user (host-protocol.md, Dialogs): no request timeout; giving it up sends
-    // the cancel push, and the host's later reply is ignored. Null when the channel closed.
+    // A request for a window that waits for the user (host-protocol.md, Giving up a request): no request timeout; giving
+    // it up sends the cancel push and waits for the host's reply, which closes the dialog, before it throws. Null when the
+    // channel closed.
     internal async Task<JsonObject?> UserRequestAsync(string window, JsonObject request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -460,6 +461,9 @@ internal sealed class HostedGuest : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             await PushAsync(new JsonObject { ["kind"] = "cancel", ["request"] = HostProtocol.Integer(request, "id") }).ConfigureAwait(false);
+            // The host answers once its dialog closed; until then the window's next dialog would find it busy.
+            try { _ = await replied.WaitAsync(_options.RequestTimeout, CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception error) when (error is HostChannelClosedException or TimeoutException) { }
             throw;
         }
     }
