@@ -32,6 +32,13 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         : this(viewModel, attach, options?.RootRoute ?? RunicMembers.RouteOf(typeof(TViewModel)), Create(viewModel, options),
             options?.PublicationTimeout ?? TimeSpan.FromSeconds(5), options?.Locale)
     {
+        // A host of its own: its application's locale is its own too (RunicWindowTestHost.Create passes no
+        // ApplicationLocale here, and sets the registered one itself).
+        if (options?.ApplicationLocale is { } applicationLocale)
+        {
+            try { StartOwnApplicationLocale(applicationLocale); }
+            catch { Dispose(); throw; }
+        }
     }
 
     /// <summary>
@@ -141,16 +148,35 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                if (_applicationLocale is { } created) return created;
-                var own = new RunicApplicationLocale();
-                // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's.
-                _ownLocale = new RunicWindowContext(own);
-                _ownLocale.AttachContent(Content);
-                Volatile.Write(ref _applicationLocale, own);
-                return own;
+                return _applicationLocale ?? AttachOwnApplicationLocale(new RunicApplicationLocale());
             }
         }
     }
+
+    // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's. Under _gate.
+    private RunicApplicationLocale AttachOwnApplicationLocale(RunicApplicationLocale own)
+    {
+        _ownLocale = new RunicWindowContext(own);
+        _ownLocale.AttachContent(Content);
+        Volatile.Write(ref _applicationLocale, own);
+        return own;
+    }
+
+    // RunicWindowTestHostOptions.ApplicationLocale of a host whose services register no application locale.
+    internal void StartOwnApplicationLocale(string locale)
+    {
+        var own = new RunicApplicationLocale();
+        // No Window follows it yet, so the switch has no one to wait for.
+        RunicWindowTestHost.Wait(own.SetLocaleAsync(locale));
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            AttachOwnApplicationLocale(own);
+        }
+    }
+
+    // RunicWindowTestHostOptions.ApplicationLocale of a Create host: the registered locale and the one Dispose sets back.
+    internal (IRunicApplicationLocale Locale, string? Previous)? RestoreApplicationLocale { get; init; }
 
     private IRunicApplicationLocale? _applicationLocale;
     private RunicWindowContext? _ownLocale;
@@ -374,7 +400,14 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             finally
             {
                 try { Transport.Dispose(); }
-                finally { Platform?.Close(); }
+                finally
+                {
+                    try { Platform?.Close(); }
+                    finally
+                    {
+                        if (RestoreApplicationLocale is { } restore) RunicWindowTestHost.Wait(RunicWindowTestHost.RestoreApplicationLocaleAsync(restore));
+                    }
+                }
             }
         }
     }

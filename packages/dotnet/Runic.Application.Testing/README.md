@@ -341,16 +341,36 @@ The window follows in a turn of its model context, as in the application, and
 reading `host.ApplicationLocale` after the host was disposed throws
 `ObjectDisposedException`.
 
-`RunicWindowTestHostOptions.Locale` (since 0.17) starts the window in a locale,
-as its own, the way a ViewModel that sets `IRunicWindowLocale.Locale` before
-its Window opens does; that ViewModel's choice still wins. With
-`FlowCultureFromLocale = true`, the window's requests also run in the locale's
-culture. `CreateWindowAsync` has no single window, so there it sets the
-application's locale before the first Window opens:
+Two options (since 0.17) start a test in a language:
+
+- `RunicWindowTestHostOptions.Locale` is the window's own locale from the
+  start, the way a ViewModel that sets `IRunicWindowLocale.Locale` before its
+  Window opens does; that ViewModel's choice still wins. The window keeps it
+  when the application switches. It means the same on every host: the
+  constructors, `Create`, and each Window that `CreateWindowAsync` opens.
+- `RunicWindowTestHostOptions.ApplicationLocale` starts the application in a
+  locale, as the application's startup code does before its first Window opens.
+  Windows without a locale of their own follow it, and follow a later switch.
+  `Create` and `CreateWindowAsync` set the `IRunicApplicationLocale` the
+  services register (with its followers, such as a Translations context), and
+  disposing the host, or the Window that `CreateWindowAsync` returned, sets it
+  back to what it was, so tests that share one provider do not inherit the
+  language. A host built with a constructor, or whose services register none,
+  starts its own `host.ApplicationLocale` in it. `CreateWindowAsync` requires
+  `AddRunicWindowService()` for it.
+
+With `FlowCultureFromLocale = true`, the window's requests also run in the
+locale's culture.
 
 ```csharp
+// The application starts in German and can switch, as a user would.
 using var host = RunicWindowTestHost.Create<EditorViewModel>(services,
-    new RunicWindowTestHostOptions { Locale = "de", FlowCultureFromLocale = true });
+    new RunicWindowTestHostOptions { ApplicationLocale = "de", FlowCultureFromLocale = true });
+await host.ApplicationLocale.SetLocaleAsync("en");   // the window follows
+
+// This window stays in Arabic whatever the application shows.
+using var arabic = RunicWindowTestHost.Create<EditorViewModel>(services,
+    new RunicWindowTestHostOptions { Locale = "ar" });
 ```
 
 **Translated text.** The Testing package does not reference Runic

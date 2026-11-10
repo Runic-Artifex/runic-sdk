@@ -112,7 +112,12 @@ public static class RunicWindowTestHost
     /// </remarks>
     /// <param name="services">The application's root services.</param>
     /// <param name="options">The Window's options, as for <c>OpenWindowAsync</c>.</param>
-    /// <param name="hostOptions">The clock, id source, View locator, model context and logger factory of every Window.</param>
+    /// <param name="hostOptions">
+    /// The clock, id source, View locator, model context and logger factory of every Window, and each Window's own
+    /// <see cref="RunicWindowTestHostOptions.Locale"/>. <see cref="RunicWindowTestHostOptions.ApplicationLocale"/> sets the
+    /// registered <see cref="IRunicApplicationLocale"/> of <paramref name="services"/>, a singleton that outlives the
+    /// Windows; disposing the returned Window sets it back.
+    /// </param>
     /// <param name="cancellationToken">Cancels opening.</param>
     /// <returns>The open Window.</returns>
     /// <exception cref="RunicWindowConfigurationException">The Window's ViewModel or Bridge is not registered.</exception>
@@ -121,18 +126,12 @@ public static class RunicWindowTestHost
         where TWindow : class, IRunicWindow, new()
     {
         ArgumentNullException.ThrowIfNull(services);
-        // The application's language at start, as the application sets it before its first Window opens. Every Window
-        // follows it unless its ViewModel sets one of its own.
-        if (hostOptions?.Locale is { } locale)
-        {
-            var applicationLocale = services.GetService<IRunicApplicationLocale>() ?? throw new InvalidOperationException(
-                "RunicWindowTestHostOptions.Locale sets the application's IRunicApplicationLocale, which the services do not " +
-                "register. Call AddRunicWindowService() on them.");
-            await applicationLocale.SetLocaleAsync(locale, cancellationToken).ConfigureAwait(false);
-        }
         var application = new RunicTestWindowApplication(services, hostOptions ?? new RunicWindowTestHostOptions());
         try
         {
+            // The application's language at start, as the application sets it before its first Window opens.
+            if (hostOptions?.ApplicationLocale is { } applicationLocale)
+                await application.StartApplicationLocaleAsync(applicationLocale, cancellationToken).ConfigureAwait(false);
             var window = await RunicWindowHostExtensions.OpenWindowAsync<TWindow>(application, options, cancellationToken)
                 .ConfigureAwait(false);
             return application.Find(window);
@@ -151,24 +150,46 @@ public static class RunicWindowTestHost
             ?? throw new InvalidOperationException(
                 $"No generated Bridge is registered for {typeof(TViewModel).FullName}. Call the application's " +
                 "generated AddRunicViews() on the services, and declare a Runic Window for the ViewModel.");
-        var host = new RunicWindowTestHost<TViewModel>(viewModel, attach, new RunicWindowTestHostOptions
+        // RunicWindowTestHostOptions.ApplicationLocale: the registered application locale before the window opens, as the
+        // application sets it at start; Dispose sets it back. Without one, the host's own starts in it.
+        (IRunicApplicationLocale Locale, string? Previous)? restore = null;
+        if (options.ApplicationLocale is { } applicationLocale && services.GetService<IRunicApplicationLocale>() is { } registered)
         {
-            RootRoute = options.RootRoute,
-            ViewLocator = options.ViewLocator ?? services.GetService<IRunicViewLocator>(),
-            OperationShutdown = options.OperationShutdown,
-            ModelContext = options.ModelContext ?? services.GetService<IRunicModelContext>(),
-            LoggerFactory = loggerFactory,
-            TimeProvider = options.TimeProvider,
-            CreateId = options.CreateId,
-            IncludeFailureDetail = options.IncludeFailureDetail,
-            Validation = options.Validation ?? services.GetService<RunicValidationOptions>(),
-            FlowCultureFromLocale = options.FlowCultureFromLocale,
-            Locale = options.Locale,
-            MaximumInputBytes = options.MaximumInputBytes,
-            MaximumUploadBytes = options.MaximumUploadBytes,
-            PublicationTimeout = options.PublicationTimeout,
-        })
-        { Services = services, Platform = services.GetService<RunicTestPlatform>() };
+            restore = (registered, registered.Locale);
+            try { Wait(registered.SetLocaleAsync(applicationLocale)); }
+            catch { Wait(RestoreApplicationLocaleAsync(restore.Value)); throw; }
+        }
+        RunicWindowTestHost<TViewModel> host;
+        try
+        {
+            host = new RunicWindowTestHost<TViewModel>(viewModel, attach, new RunicWindowTestHostOptions
+            {
+                RootRoute = options.RootRoute,
+                ViewLocator = options.ViewLocator ?? services.GetService<IRunicViewLocator>(),
+                OperationShutdown = options.OperationShutdown,
+                ModelContext = options.ModelContext ?? services.GetService<IRunicModelContext>(),
+                LoggerFactory = loggerFactory,
+                TimeProvider = options.TimeProvider,
+                CreateId = options.CreateId,
+                IncludeFailureDetail = options.IncludeFailureDetail,
+                Validation = options.Validation ?? services.GetService<RunicValidationOptions>(),
+                FlowCultureFromLocale = options.FlowCultureFromLocale,
+                Locale = options.Locale,
+                MaximumInputBytes = options.MaximumInputBytes,
+                MaximumUploadBytes = options.MaximumUploadBytes,
+                PublicationTimeout = options.PublicationTimeout,
+            }) { Services = services, Platform = services.GetService<RunicTestPlatform>(), RestoreApplicationLocale = restore };
+        }
+        catch
+        {
+            if (restore is { } failed) Wait(RestoreApplicationLocaleAsync(failed));
+            throw;
+        }
+        if (restore is null && options.ApplicationLocale is { } ownLocale)
+        {
+            try { host.StartOwnApplicationLocale(ownLocale); }
+            catch { host.Dispose(); throw; }
+        }
         // IRunicConnections of these services follows the test window, as OpenWindowAsync binds a Window scope's.
         // A root provider that validates scopes refuses the scoped service; such services have no window scope to bind.
         try { (services.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(host.Content); }
@@ -176,6 +197,21 @@ public static class RunicWindowTestHost
         // IRunicWindowLocale of the window's scope sets the window's locale, as in a Window that OpenWindowAsync opened.
         WindowLocale(services)?.AttachContent(host.Content);
         return host;
+    }
+
+    // Waits for a locale switch in the synchronous hosts.
+    internal static void Wait(ValueTask switching)
+    {
+        if (switching.IsCompletedSuccessfully) return;
+        switching.AsTask().GetAwaiter().GetResult();
+    }
+
+    // Sets the application's locale back after a test host or test application set it. The locale changes even when a
+    // Window or LocaleChanged handler fails (AggregateException), and the test that set it is over.
+    internal static async ValueTask RestoreApplicationLocaleAsync((IRunicApplicationLocale Locale, string? Previous) restore)
+    {
+        try { await restore.Locale.SetLocaleAsync(restore.Previous).ConfigureAwait(false); }
+        catch (AggregateException) { }
     }
 
     // The scope's window context, when the services register it. A root provider that validates scopes refuses it.

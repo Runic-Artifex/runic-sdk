@@ -193,7 +193,7 @@ public sealed class ApplicationLocaleTests
     [Test]
     public async Task TheHostOptionsLocaleOfACreatedHostAndAViewModelsOwnLocaleAsync()
     {
-        // RunicWindowTestHost.Create passes it on.
+        // RunicWindowTestHost.Create passes it on, as the window's own: an application switch does not move it.
         await using var provider = Services();
         await using (var scope = provider.CreateAsyncScope())
         {
@@ -201,7 +201,10 @@ public sealed class ApplicationLocaleTests
                 new RunicWindowTestHostOptions { Locale = "fr" });
             Require(created.Content.Locale == "fr" && scope.ServiceProvider.GetRequiredService<IRunicWindowLocale>().OwnLocale == "fr",
                 "A created host did not start in the options' locale as the window's own.");
+            await created.ApplicationLocale.SetLocaleAsync("en");
+            Require(created.Content.Locale == "fr", "A created host's own locale followed the application.");
         }
+        await provider.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync(null);
 
         // A locale the ViewModel sets before the window opens wins, as in the application.
         await using var setting = Services(windowSetsLocale: true);
@@ -212,16 +215,94 @@ public sealed class ApplicationLocaleTests
     }
 
     [Test]
-    public async Task CreateWindowAsyncStartsTheApplicationInTheOptionsLocaleAsync()
+    public async Task CreateWindowAsyncGivesEveryWindowTheOptionsLocaleAsItsOwnAsync()
     {
         await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
         await using var window = await RunicWindowTestHost.CreateWindowAsync<TranslatedTextWindow>(provider,
             hostOptions: new RunicWindowTestHostOptions { Locale = "de" });
-        Require(provider.GetRequiredService<IRunicApplicationLocale>().Locale == "de", "The application did not start in the options' locale.");
         var host = window.Host<TranslatedTextViewModel>();
-        Require(host.Content.Locale == "de", "The Window did not follow the application's starting locale.");
-        await provider.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync("en");
-        await WaitUntilAsync(() => host.Content.Locale == "en");
+        Require(host.Content.Locale == "de" && application.Locale is null,
+            "CreateWindowAsync's Locale was not the Window's own, or it set the application's.");
+        // A Window its ViewModel opens later gets it too.
+        await provider.GetRequiredService<IRunicWindowService>().OpenWindowAsync<TranslatedTextWindow>();
+        var opened = await window.WaitForOpenedWindowAsync<TranslatedTextWindow>();
+        Require(opened.Host<TranslatedTextViewModel>().Content.Locale == "de", "A later Window did not start in the options' locale.");
+        await application.SetLocaleAsync("en");
+        Require(host.Content.Locale == "de" && opened.Host<TranslatedTextViewModel>().Content.Locale == "de",
+            "A Window with the options' locale followed the application.");
+    }
+
+    [Test]
+    public async Task ApplicationLocaleStartsTheApplicationAndIsSetBackOnDisposeAsync()
+    {
+        await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
+        await application.SetLocaleAsync("it");
+        var followed = new List<string>();
+        using var follower = application.Follow((locale, _) => { followed.Add(locale); return ValueTask.CompletedTask; });
+
+        // CreateWindowAsync: the application starts in it, every Window follows it and a later switch, and disposing the
+        // Window sets it back, also after the test switched it.
+        await using (var window = await RunicWindowTestHost.CreateWindowAsync<TranslatedTextWindow>(provider,
+            hostOptions: new RunicWindowTestHostOptions { ApplicationLocale = "de" }))
+        {
+            var host = window.Host<TranslatedTextViewModel>();
+            Require(application.Locale == "de" && host.Content.Locale == "de" && followed.SequenceEqual(["de"]),
+                "The application did not start in the options' application locale.");
+            await application.SetLocaleAsync("en");
+            await WaitUntilAsync(() => host.Content.Locale == "en");
+        }
+        Require(application.Locale == "it" && followed.SequenceEqual(["de", "en", "it"]),
+            $"Disposing the Window did not set the application's locale back: {application.Locale}.");
+
+        // A second test on the same provider does not inherit it.
+        await using (var next = await RunicWindowTestHost.CreateWindowAsync<TranslatedTextWindow>(provider))
+            Require(next.Host<TranslatedTextViewModel>().Content.Locale == "it", "A later test inherited the language.");
+
+        // Create sets the registered locale too, and Dispose sets it back.
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            using (var created = RunicWindowTestHost.Create<TranslatedTextViewModel>(scope.ServiceProvider,
+                new RunicWindowTestHostOptions { ApplicationLocale = "fr" }))
+            {
+                Require(application.Locale == "fr" && created.Content.Locale == "fr" && ReferenceEquals(created.ApplicationLocale, application),
+                    "Create did not start the registered application locale.");
+                // Both options: the window keeps its own, the application has the other.
+            }
+            Require(application.Locale == "it", "Disposing a created host did not set the application's locale back.");
+        }
+        await using (var scope = provider.CreateAsyncScope())
+        using (var both = RunicWindowTestHost.Create<TranslatedTextViewModel>(scope.ServiceProvider,
+            new RunicWindowTestHostOptions { ApplicationLocale = "fr", Locale = "ar" }))
+            Require(application.Locale == "fr" && both.Content.Locale == "ar", "Locale and ApplicationLocale did not combine.");
+        Require(application.Locale == "it", "The application's locale was not set back.");
+
+        // An invalid tag throws and leaves the application's locale as it was.
+        var thrown = false;
+        try { await RunicWindowTestHost.CreateWindowAsync<TranslatedTextWindow>(provider, hostOptions: new() { ApplicationLocale = "not a tag" }); }
+        catch (ArgumentException) { thrown = true; }
+        Require(thrown && application.Locale == "it", "An invalid application locale was accepted or changed the locale.");
+
+        // CreateWindowAsync requires a registered application locale for it.
+        var services = new ServiceCollection();
+        services.AddRunicReactiveModelContext();
+        await using var bare = services.BuildServiceProvider();
+        var missing = false;
+        try { await RunicWindowTestHost.CreateWindowAsync<TranslatedTextWindow>(bare, hostOptions: new() { ApplicationLocale = "de" }); }
+        catch (InvalidOperationException error) when (error.Message.Contains("AddRunicWindowService", StringComparison.Ordinal)) { missing = true; }
+        Require(missing, "CreateWindowAsync without a registered application locale did not say what to register.");
+    }
+
+    [Test]
+    public void ApplicationLocaleOfAHostOfItsOwn()
+    {
+        using var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),
+            (transport, content, vm) => new TranslatedTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedText", ApplicationLocale = "de" });
+        Require(host.ApplicationLocale.Locale == "de" && host.Content.Locale == "de", "A constructor's host did not start its own application locale.");
+        host.ApplicationLocale.SetLocaleAsync("en").AsTask().GetAwaiter().GetResult();
+        Require(host.Content.Locale == "en", "The window did not follow its host's application locale.");
     }
 
     [Test]

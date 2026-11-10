@@ -8,3 +8,5 @@ Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.get -
 Runic.Application.Testing.RunicWindowTestHostOptions.FlowCultureFromLocale.init -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.Locale.get -> string?
 Runic.Application.Testing.RunicWindowTestHostOptions.Locale.init -> void
+Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.get -> string?
+Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.init -> void
