@@ -1288,10 +1288,11 @@ public async Task ClosesWhenTheHostAsks()
   [hosted windows example](../../../examples/hosted-windows/Counter/Tests/HostedCounterTests.cs)
   does the latter: it checks a guest's menu bar in the host's language, a
   language switch, a message box and a link without a browser, choosing menu
-  items with `InvokeMenuItemAsync`. That call returns once the push is sent, and
-  the application runs each chosen item on its own, so two items chosen back to
-  back can run in either order. A test that needs an order waits for the first
-  item's effect, such as its dialog request.
+  items with `InvokeMenuItemAsync`. That call returns once the push is sent; the
+  application runs chosen items one at a time in the order sent, each once the
+  one before has returned, and ignores an item whose command cannot run when its
+  turn comes, such as an asynchronous command still running. A test that needs
+  an item's effect waits for it, such as its dialog request.
 - A start that fails throws `RunicHostedApplicationException` with its `Code`
   (`guest-start-timeout`, `guest-exited`, `guest-not-hostable`, `guest-refused`
   with the application's `GuestCode`, `protocol-unsupported`) and kills the
