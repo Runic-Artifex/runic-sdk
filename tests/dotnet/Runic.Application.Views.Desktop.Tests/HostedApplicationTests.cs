@@ -755,6 +755,36 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
         }
     }
 
+    // Whether the user works in another application. As on macOS 15 and later, the host's requests then do not activate
+    // a window: the one asked for last becomes the key window, which is activated once the user switches back to the
+    // host application.
+    private volatile bool _hostInactive;
+    private HostedWindowHost? _keyOnActivation;
+
+    internal bool IsHostInactive => _hostInactive;
+
+    // The user switches to another application; the windows are made inactive by the caller.
+    internal void DeactivateHost() => _hostInactive = true;
+
+    // A request to activate the window while the host is not active: it becomes active when the user switches back.
+    internal void Defer(HostedWindowHost host)
+    {
+        lock (_activations) _keyOnActivation = host;
+    }
+
+    // The user switches back to the host application: the window to activate, the one asked for last, or else the one
+    // active last.
+    internal HostedWindowHost? ActivateHost()
+    {
+        _hostInactive = false;
+        lock (_activations)
+        {
+            var key = _keyOnActivation is { IsOpen: true } deferred ? deferred : _activations.LastOrDefault(static host => host.IsOpen);
+            _keyOnActivation = null;
+            return key;
+        }
+    }
+
     internal void ActivateNext(HostedWindowHost leaving)
     {
         HostedWindowHost? next;
@@ -923,7 +953,21 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
         Options = options;
         if (_factory?.OpenGate is { } gate) await gate();
         _open = true;
-        _factory?.Activated(this);
+        if (_factory is { IsHostInactive: true } factory)
+        {
+            _active = false;
+            factory.Defer(this);
+        }
+        else _factory?.Activated(this);
+    }
+
+    // The platform activates the window at the host's request, or, while the user works in another application, makes
+    // it the window activated when the user switches back.
+    private void ActivateForRequest()
+    {
+        if (_active) return;
+        if (_factory is { IsHostInactive: true } factory) factory.Defer(this);
+        else SetActive(true);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
@@ -945,7 +989,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     public ValueTask FocusAsync(CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _focused);
-        if (!_active) SetActive(true);
+        ActivateForRequest();
         return ValueTask.CompletedTask;
     }
 
@@ -954,7 +998,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     // As on Windows, where ShowWindow with SW_MAXIMIZE or SW_RESTORE activates the window.
     public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default)
     {
-        if (!_active) SetActive(true);
+        ActivateForRequest();
         return ValueTask.CompletedTask;
     }
 
@@ -966,7 +1010,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     {
         var leaving = _fullScreen && !fullScreen;
         _fullScreen = fullScreen;
-        if (leaving && !_active) SetActive(true);
+        if (leaving) ActivateForRequest();
         return ValueTask.CompletedTask;
     }
 

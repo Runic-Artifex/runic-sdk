@@ -112,7 +112,10 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             DesktopLog.HostedApplicationStartFailed(logger, startInfo.FileName, failure.Code, failure.Message);
             throw failure;
         }
-        var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName);
+        var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName)
+        {
+            _firstWindowUserStarted = startInfo.UserStarted ? 1 : 0,
+        };
         try
         {
             await application.HandshakeAsync(cancellationToken).ConfigureAwait(false);
@@ -422,8 +425,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         finally
         {
             if (activates) NoteGuestActivation();
+            // A request to activate or show the window that the platform deferred makes its next activation the guest's.
+            if (KeysWindow(applied)) applied.Window.NoteGuestActivationRequested();
         }
     }
+
+    // The presentation requests that ask to activate or show their own window, which the platform may do later, such as
+    // macOS once the host application is next activated.
+    private static bool KeysWindow(RunicHostedPresentationRequest request) => request.Kind is RunicHostedPresentationKind.Present
+        or RunicHostedPresentationKind.SetFullScreen or RunicHostedPresentationKind.ToggleMaximized ||
+        (request.Kind == RunicHostedPresentationKind.SetVisible && request.Value == true);
 
     // The presentation requests that can activate one of the guest's windows, or another window when theirs loses the
     // activation: present, minimize, set-visible either way, set-full-screen either way and toggle-maximized, which on
@@ -432,28 +443,20 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         or RunicHostedPresentationKind.Minimize or RunicHostedPresentationKind.SetVisible or RunicHostedPresentationKind.SetFullScreen
         or RunicHostedPresentationKind.ToggleMaximized;
 
-    // window-services/1: the guest's last request that can activate one of its windows (a Stopwatch timestamp; 0 for
-    // none), across its windows: an activation of any of them within RunicHostedWindow.GuestActivationWindow after it is
-    // the guest's. Besides the requests above: window-open, the guest's close of a window (window-closed), and the end of
-    // its dialogs and context menus, after which the platform activates their owner, also when the user answered.
-    private long _guestActivation;
+    // window-services/1: a request of the guest that can activate one of its windows, or another window as one of its
+    // windows closes, hides or minimizes. Besides the requests above: window-open, the guest's close of a window
+    // (window-closed), and the end of its dialogs and context menus, after which the platform activates their owner, also
+    // when the user answered. Host-wide (RunicHostedApplications): another guest's request counts too.
+    internal void NoteGuestActivation() => _owner.NoteGuestActivation();
 
-    // The guest's dialogs and context menus shown now: while one is, and within GuestActivationWindow after it ended,
-    // an activation is the guest's, since the platform activates the owner as it closes, before the host learns why.
-    private int _guestPrompts;
+    // 1 until the guest's first window opened, when the user started the guest (RunicGuestStartInfo.UserStarted).
+    private int _firstWindowUserStarted;
 
-    internal void NoteGuestActivation() => Volatile.Write(ref _guestActivation, Stopwatch.GetTimestamp());
+    internal void BeginGuestPrompt() => _owner.BeginGuestPrompt();
 
-    internal void BeginGuestPrompt() => Interlocked.Increment(ref _guestPrompts);
+    internal void EndGuestPrompt() => _owner.EndGuestPrompt();
 
-    internal void EndGuestPrompt()
-    {
-        NoteGuestActivation();
-        Interlocked.Decrement(ref _guestPrompts);
-    }
-
-    internal bool IsGuestActivationRecent => Volatile.Read(ref _guestPrompts) > 0 ||
-        (Volatile.Read(ref _guestActivation) is var noted and not 0 && Stopwatch.GetElapsedTime(noted) <= RunicHostedWindow.GuestActivationWindow);
+    internal bool IsGuestActivationRecent => _owner.IsGuestActivationRecent;
 
     // The guest's requests that can activate a window, and its announcements, across its windows (RunicHostedLimits).
     private RequestRate? _presentRate;
@@ -581,7 +584,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             return;
         }
         var adapter = new DesktopWindowPresentation(presentation, () => new DesktopNativeOwner(presentation));
-        window.Attach(presentation, adapter);
+        // The first window of a guest the user started counts as the user's (RunicGuestStartInfo.UserStarted).
+        window.Attach(presentation, adapter, userStarted: Interlocked.Exchange(ref _firstWindowUserStarted, 0) != 0);
         // menus/1: the guest's items in the window's bar, and their shortcuts, run the guest's commands.
         presentation.MenuCommands = new HostedMenuTarget(window);
         bool ended;

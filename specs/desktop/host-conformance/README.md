@@ -43,7 +43,10 @@ uses, and `steps` what happens, in order.
 - `application`: for the `guest` role, the guest application's `name`, `version` and `applicationId`, which its
   successful `hello` reply carries.
 - `host`: for the `host` role, the host's `name` and `version`, which its offer carries, and optionally its `policy`:
-  `"fails-services"`, a window policy that fails (in .NET, throws) for every window service request.
+  `"fails-services"`, a window policy that fails (in .NET, throws) for every window service request, or
+  `"prompts-launches"`, a policy that asks the user in a prompt of its own (dialog kind `host-prompt`) before each
+  launch, and follows the defaults when the user presses `allow`. With `userStarted: true`, the host starts the guest
+  as one the user started directly (in .NET, `RunicGuestStartInfo.UserStarted`).
 
 ### Steps
 
@@ -91,8 +94,8 @@ Messages are compared by JSON value, never by bytes or member order.
 - **`{"$file": name}`** and **`{"$directory": name}`** are the absolute path of a file or directory `name` (a plain name,
   no separators) in a temporary directory of the runner, which creates it on first use with some content and removes
   it after the scenario: the paths a dialog returns (`dialogs/1`) are real and absolute on every platform. With `then`,
-  a list of path segments (`.`, `..` or a plain name), the path continues with them, joined by the platform's
-  separator and not normalized, such as `{"$file": "a.txt", "then": ["..", "b.txt"]}`.
+  a list of path segments (`.`, `..`, a plain name, or `""` for a doubled separator), the path continues with them,
+  joined by the platform's separator and not normalized, such as `{"$file": "a.txt", "then": ["..", "b.txt"]}`.
 - **`{"$secret": name}`** is a secret of the launch, which the runner computes:
 
 | `name` | Value |
@@ -197,6 +200,7 @@ for a `user` step that answers it, or until the host closes it.
 | `awaitDialogClosed` | optional `dialog` | Waits until the host closes the oldest dialog (of that kind) that an `awaitDialog` step left open |
 | `closeWindow` | `window` | Presses the window's close button, which asks the guest (`close-request`) |
 | `deactivateWindow`, `activateWindow` | `window` | Gives the keyboard focus to another window, or back to this one, as the user switching windows does; each window is active when it opens, and a window gets the focus when the host presents it |
+| `deactivateHost`, `activateHost` | — | Switches to another application, which makes the host's active window inactive, or back to the host application, which activates the window the host asked to activate meanwhile, else the one active before. While the host application is not active, a request to activate a window, also a new window, does not activate it, as on macOS: it becomes the window activated when the user switches back |
 | `copyText` | `text`, optional `repeat` | Copies the text, repeated that many times, in another application: the host's clipboard has it |
 | `changeMonitors` | — | Changes the host's monitors, such as a monitor unplugged |
 | `dropFiles` | `window`, `paths` (`$file` or `$directory` values) | Drops the files onto the window |
@@ -207,7 +211,8 @@ The host starts with no application locale and the appearance `{"colorScheme":"l
 "reducedMotion":false,"textScale":1,"accentColor":null,"systemColors":null}`, and its windows' monitors are the host
 runner's: their ids are not part of a scenario.
 
-`dialog` is a kind of `file-dialog` (`open`, `open-multiple`, `save`, `folder`, `folder-multiple`) or `message-box`.
+`dialog` is a kind of `file-dialog` (`open`, `open-multiple`, `save`, `folder`, `folder-multiple`), `message-box`, or
+`host-prompt`, the prompt of the `prompts-launches` policy.
 `expect` with `window` checks the host's window: `menuBar`, the entries its native menu bar shows, as menu entries
 without their `id` members (the host's own items are part of it), waiting until they match; or `closed: true`, that the
 window closed. `expect` with `clipboard` checks the text on the host's clipboard, and with `launched` the links and

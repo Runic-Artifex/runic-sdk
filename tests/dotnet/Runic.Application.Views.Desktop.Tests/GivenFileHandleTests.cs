@@ -34,6 +34,11 @@ internal sealed class GivenFileHandleTests
                 }
                 else
                 {
+                    // Without fstat (glibc before 2.33), the device and inode read through /proc/self/fd are the opened
+                    // file's, so the check never falls back to the path alone.
+                    var throughProc = GivenFileHandle.ReadIdentityThroughProc((int)opened.Handle.DangerousGetHandle());
+                    Check(throughProc is not null && throughProc == opened.Identity && givenIdentity!.StartsWith(throughProc + ":", StringComparison.Ordinal),
+                        $"The identity through /proc/self/fd, {throughProc}, is not the given file's {givenIdentity}.");
                     // The descriptor stays on the checked file, which the portal receives instead of the path.
                     File.Move(other, given, overwrite: true);
                     Check(opened.IsFile(givenIdentity) && !opened.IsFile(Runic.Application.Views.DirectoryIdentity.Read(given)),
@@ -48,6 +53,24 @@ internal sealed class GivenFileHandleTests
                 using var opened = GivenFileHandle.Open(given, out var inUse);
                 Check(opened is not null && !inUse, "A file another process writes did not open.");
             }
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task AnUnknownIdentityIsNotTheGivenFile()
+    {
+        if (!GivenFileHandle.IsSupported) Skip.Test("macOS launches by path: the host checks the given file's identity right before the launch.");
+        var directory = Directory.CreateTempSubdirectory("runic-given-file-");
+        try
+        {
+            var given = Path.Combine(directory.FullName, "report.txt");
+            await File.WriteAllTextAsync(given, "report");
+            using var opened = GivenFileHandle.Open(given, out _);
+            Check(opened is not null && !opened.IsFile(null), "A file whose given identity is unknown passed the check.");
         }
         finally
         {

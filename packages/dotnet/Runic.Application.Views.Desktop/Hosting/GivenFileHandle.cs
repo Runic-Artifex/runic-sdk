@@ -8,7 +8,8 @@ namespace Runic.Application.Views.Desktop.Hosting;
 // for its launch, so the host checks and launches one file rather than a path twice. The identity read through the
 // handle is the start of DirectoryIdentity's, the given file's: device and inode on Linux (the birth time, which tells a
 // reused inode apart, is checked by path right after), volume and file index on Windows.
-//   - Linux: a descriptor, which the portal's OpenURI.OpenFile receives instead of the path.
+//   - Linux: a descriptor, which the portal's OpenURI.OpenFile receives instead of the path. Its identity comes from
+//     fstat, or on glibc before 2.33 from stat of its /proc/self/fd entry; without either, the launch is refused.
 //   - Windows: a handle that shares neither delete nor, unless another process writes the file, write access, held
 //     across ShellExecute: while the host launches, the path cannot be renamed, replaced or deleted.
 //   - macOS: none. LaunchServices takes a URL, not a descriptor, so the host checks the identity by path right before
@@ -23,12 +24,13 @@ internal sealed partial class GivenFileHandle : IDisposable
 
     internal SafeFileHandle Handle { get; }
 
-    // The opened file's identity; null where it is unknown.
+    // The opened file's identity, its device and inode on Linux and volume and file index on Windows; null where it is
+    // unknown.
     internal string? Identity { get; }
 
-    // Whether the opened file is the given one, whose identity is given (DirectoryIdentity). Where the handle's identity
-    // is unknown, as on a C library without fstat, the check by path alone decides.
-    internal bool IsFile(string? given) => Identity is null || given is not null &&
+    // Whether the opened file is the given one, whose identity is given (DirectoryIdentity). Where either identity is
+    // unknown, it is not: the host does not fall back to the check by path alone.
+    internal bool IsFile(string? given) => Identity is not null && given is not null &&
         (given == Identity || given.StartsWith(Identity + ":", StringComparison.Ordinal));
 
     public void Dispose() => Handle.Dispose();
@@ -58,18 +60,34 @@ internal sealed partial class GivenFileHandle : IDisposable
         return new GivenFileHandle(handle, ReadUnixIdentity(handle));
     }
 
+    private static volatile bool _noFileStatus;
+
     // struct stat starts with st_dev (8 bytes) and st_ino (8 bytes) on Linux x64 and arm64, as DirectoryIdentity reads it.
+    // glibc before 2.33 exports no fstat: the device and inode are then read through the descriptor's /proc/self/fd
+    // entry, which stat follows to the opened file whatever its path is now, as DirectoryIdentity reads the given file's.
+    // Its birth time is the entry's own, so it is left out.
     private static unsafe string? ReadUnixIdentity(SafeFileHandle handle)
     {
-        var buffer = stackalloc byte[256];
-        try
+        var descriptor = (int)handle.DangerousGetHandle();
+        if (!_noFileStatus)
         {
-            if (FileStatus((int)handle.DangerousGetHandle(), buffer) != 0) return null;
+            var buffer = stackalloc byte[256];
+            try
+            {
+                if (FileStatus(descriptor, buffer) != 0) return null;
+                var span = new ReadOnlySpan<byte>(buffer, 16);
+                return $"{BinaryPrimitives.ReadUInt64LittleEndian(span)}:{BinaryPrimitives.ReadUInt64LittleEndian(span[8..])}";
+            }
+            catch (EntryPointNotFoundException) { _noFileStatus = true; }
         }
-        catch (EntryPointNotFoundException) { return null; }
-        var span = new ReadOnlySpan<byte>(buffer, 16);
-        return $"{BinaryPrimitives.ReadUInt64LittleEndian(span)}:{BinaryPrimitives.ReadUInt64LittleEndian(span[8..])}";
+        return ReadIdentityThroughProc(descriptor);
     }
+
+    internal static string? ReadIdentityThroughProc(int descriptor) =>
+        Views.DirectoryIdentity.Read($"/proc/self/fd/{descriptor.ToString(System.Globalization.CultureInfo.InvariantCulture)}") is { } identity &&
+            identity.Split(':') is [var device, var inode, ..]
+            ? $"{device}:{inode}"
+            : null;
 
     private const uint FileReadData = 0x1, FileReadAttributes = 0x80, Synchronize = 0x100000;
     private const uint FileShareRead = 0x1, FileShareWrite = 0x2;

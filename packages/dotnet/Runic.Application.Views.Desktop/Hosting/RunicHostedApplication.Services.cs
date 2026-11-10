@@ -290,7 +290,20 @@ public sealed partial class RunicHostedApplication
     private async Task<RunicHostedServiceRequest> DecideServiceAsync(RunicHostedServiceRequest proposed, CancellationToken cancellationToken)
     {
         RunicHostedServiceDecision decision;
-        try { decision = await Policy.ServiceAsync(proposed, cancellationToken).ConfigureAwait(false); }
+        try
+        {
+            var deciding = Policy.ServiceAsync(proposed, cancellationToken);
+            if (deciding.IsCompleted) decision = deciding.Result;
+            else
+            {
+                // A decision that does not complete at once may show the host's own prompt, such as "Allow … to open …?".
+                // As for the guest's dialogs, the platform activates the guest's window as it closes, before the host
+                // learns of the answer: activations during it and right after it are a guest's.
+                BeginGuestPrompt();
+                try { decision = await deciding.ConfigureAwait(false); }
+                finally { EndGuestPrompt(); }
+            }
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
@@ -508,6 +521,11 @@ public sealed partial class RunicHostedApplication
     private async Task<PlatformResult<PlatformUnit>> LaunchGivenAsync(IDesktopFileLauncher launcher, string file, DesktopFileOperation operation,
         CancellationToken cancellationToken)
     {
+        // One spelling for the open, the check and the launch: the launcher normalizes the path too, and the portal's
+        // launcher hands over the checked descriptor only for exactly the path it was opened for.
+        if (FullPath(file) is not { } full)
+            throw new RejectedException("rejected", "refused", "The host opens only files the user gave the application.");
+        file = full;
         using var opened = GivenFileHandle.Open(file, out var inUse);
         if (inUse) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.Conflict);
         if ((GivenFileHandle.IsSupported && opened is null) || !IsGiven(file, opened))

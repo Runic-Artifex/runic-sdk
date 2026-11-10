@@ -1,0 +1,35 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "services.host-launch-spellings.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "services",
+  "roles": ["host"],
+  "description": "A given file spelled otherwise, with a doubled separator or . and .. segments, is the given file: the host checks and launches it by its full path.",
+  "requires": ["window-services/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "l1": {"kind":"request"},
+    "l2": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000,"guestActivation":2000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1","window-services/1"]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[],"fileDrops":true},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"user":{"action":"dropFiles","window":"w1","paths":[{"$file":"a.txt"}]},"note":"The user drops a file onto the window, and works in it."},
+    {"receive":{"kind":"files-dropped","window":"w1","paths":[{"$file":"a.txt"}],"effect":"copy"},"connection":"c1"},
+    {"send":{"id":{"$id":"l1"},"kind":"launch","window":"w1","path":{"$file":"a.txt","then":["","..","a.txt"]},"operation":"open"},"connection":"c1"},
+    {"receive":{"id":{"$id":"l1"},"ok":true,"outcome":"success"},"connection":"c1","note":"The given file, spelled with a doubled separator."},
+    {"send":{"id":{"$id":"l2"},"kind":"launch","window":"w1","path":{"$file":"a.txt","then":["..",".","a.txt"]},"operation":"open"},"connection":"c1"},
+    {"receive":{"id":{"$id":"l2"},"ok":true,"outcome":"success"},"connection":"c1","note":"The given file, spelled with . and .. segments."},
+    {"expect":{"launched":[{"$file":"a.txt"},{"$file":"a.txt"}]},"note":"The host launches the file it checked, by its one full path."}
+  ]
+}

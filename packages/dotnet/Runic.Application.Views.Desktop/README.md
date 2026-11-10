@@ -768,7 +768,16 @@ if (args is ["hosted"])
   links and the files the user gave the application through its open dialogs or
   a drop, each for that window, and bounds the rate; a refusal reports
   `PermissionDenied`, a turned-away rate `ResourceBusy`. A page's own copy and
-  paste (Ctrl+C, Ctrl+V) use the host's web view and are not affected. The clipboard's
+  paste (Ctrl+C, Ctrl+V) use the host's web view and are not affected.
+  **Your first window starts as the application's, not the user's:** the
+  application opened it, so a button in it that copies, pastes or opens a link
+  through these services gets `PermissionDenied` until the user switches away
+  and back, clicks its native menu bar (not on GTK 4 yet) or drops files onto
+  it. The same holds after the application presents, shows, maximizes or opens
+  a window, also when the desktop activates it only later, such as macOS when
+  the user next switches to the host. A host that started the application at
+  the user's request can mark its first window as the user's
+  (`RunicGuestStartInfo.UserStarted`). The clipboard's
   watch reports `BackendUnavailable`: a hosted application is not told when the
   user copies. Drags out of the window (`StartDragAsync`), the taskbar badge and
   progress report `OwnerUnavailable`, as in serve-only mode; notifications, the
@@ -858,14 +867,20 @@ var exitCode = await tool.Exited;
   the host's rights, and receives the files the user drops onto a window whose Window takes them; dropped files
   without a path, such as macOS file promises, are not forwarded. `IRunicHostedWindowPolicy.ServiceAsync` decides each
   request (`RunicHostedServiceRequest`); by default (`IsAllowedByDefault`) the host reads and writes the clipboard only
-  for the window the user works in (active, and not within two seconds after any of the guest's requests that can
-  activate one of its windows, such as opening, presenting, maximizing or closing one: `IsGuestActivated`; writes also
+  for the window the user works in (active, and not within two seconds after any guest's request that can
+  activate one of its windows, such as opening, presenting, maximizing or closing one, nor the first activation of a
+  window the guest asked to activate while the desktop deferred it: `IsGuestActivated`; writes also
   within a second after the user left it), lists monitors for any window, and opens
   only `http`, `https` and `mailto` links and the files the user gave the guest through the host's open dialogs or
   drops, while each is still the same file, only for the window the user works in. A
   policy can widen or narrow this, change a launch (such as reveal instead of open) or forward only some dropped
   paths; see [security](../../../docs/security.md#hosted-application-windows) before widening it. The guest is never
-  told when the clipboard changes, and cannot drag files out of its windows.
+  told when the clipboard changes, and cannot drag files out of its windows. A guest's windows start guest-activated,
+  its first one included, so a link the user clicks in a fresh window is refused until the user switches to it. When
+  the user started the guest directly, such as from the host's own menu, `RunicGuestStartInfo.UserStarted` makes the
+  first activation of its first window the user's. It is off by default: the guest chooses when it opens that window,
+  so with it set the guest can open it later, while the user works elsewhere, and still have it counted as the
+  user's.
 - **Limits.** `IRunicHostedWindowPolicy.Limits` (`RunicHostedLimits`) bounds a window's menu requests (20 a second by
   default; Runic's guest sends its latest menus again when one is turned away), the dialogs a guest shows at once,
   across its windows (one by default; another reports `ResourceBusy` to a Runic guest), its clipboard and monitor

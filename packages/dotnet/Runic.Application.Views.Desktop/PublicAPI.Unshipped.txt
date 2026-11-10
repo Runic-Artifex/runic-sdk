@@ -84,6 +84,8 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.FileName.get -> string!
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.FileName.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.RunicGuestStartInfo(string! FileName, System.Collections.Generic.IReadOnlyList<string!>! Arguments) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.UserStarted.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.UserStarted.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.WorkingDirectory.get -> string?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.WorkingDirectory.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedApplication

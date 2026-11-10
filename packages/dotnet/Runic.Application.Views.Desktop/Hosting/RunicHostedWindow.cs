@@ -198,16 +198,21 @@ public sealed class RunicHostedWindow
         return allow;
     }
 
-    internal void Attach(DesktopWindow presentation, DesktopWindowPresentation adapter)
+    internal void Attach(DesktopWindow presentation, DesktopWindowPresentation adapter, bool userStarted = false)
     {
         _presentation = presentation;
         Adapter = adapter;
         Features = adapter.Features;
-        // The window opened at the guest's request (window-open): when it has the focus now, the guest gave it.
+        // The window opened at the guest's request (window-open): when it has the focus now, the guest gave it, and when
+        // the platform deferred the activation, its next activation is the guest's. A guest's first window that the host
+        // marked as started by the user (RunicGuestStartInfo.UserStarted) is the user's instead, until the guest asks to
+        // activate it again.
         lock (_activationGate)
         {
             _active = presentation.Activity is { IsActive: true };
-            _guestActivated = _active;
+            _firstActivationIsUsers = userStarted && !_active;
+            _guestActivated = _active && !userStarted;
+            _guestActivationPending = !_active && !userStarted;
         }
         presentation.ActivityChanged += (_, _) => Observe();
     }
@@ -225,6 +230,13 @@ public sealed class RunicHostedWindow
     private long _userActivationEnded;
     private bool _active;
     private bool _guestActivated;
+    // The guest asked to activate the window, and the platform did not activate it right away, such as macOS while the
+    // host application is not active, or a desktop's focus-stealing prevention: its next activation, however late, is the
+    // guest's, and consumes this.
+    private bool _guestActivationPending;
+    // The window is the first of a guest the user started (RunicGuestStartInfo.UserStarted): its first activation is the
+    // user's, unless the guest asked again meanwhile.
+    private bool _firstActivationIsUsers;
 
     // The user worked in the window through the host's own UI: chose an item of its native menu bar, or of a context
     // menu shown while the user worked in the window, or dropped files onto it. Never for the page's input, a shortcut
@@ -232,6 +244,18 @@ public sealed class RunicHostedWindow
     internal void NoteUserInteraction()
     {
         lock (_activationGate) _guestActivated = false;
+    }
+
+    // The guest asked to activate or show this window (present, set-visible true, set-full-screen, toggle-maximized),
+    // and the request applied: when the window is not active now, the platform deferred the activation, and the next one
+    // is the guest's.
+    internal void NoteGuestActivationRequested()
+    {
+        lock (_activationGate)
+        {
+            _firstActivationIsUsers = false;
+            if (!Observe().Active) _guestActivationPending = true;
+        }
     }
 
     // The window's activation, read once for one decision.
@@ -249,9 +273,12 @@ public sealed class RunicHostedWindow
             var active = _presentation?.Activity is { IsActive: true };
             if (active && !_active)
             {
-                // Any request of the guest that can activate one of its windows, also another one's, such as the close
-                // of an owned window that activates its owner, makes the activations that follow it the guest's.
-                _guestActivated = Application.IsGuestActivationRecent;
+                // Any guest's request that can activate one of its windows, also another window's, such as the close of
+                // an owned window that activates its owner, makes the activations that follow it a guest's. So does an
+                // activation of this window that the guest asked for and the platform deferred, however late it comes.
+                _guestActivated = _guestActivationPending || (!_firstActivationIsUsers && Application.IsGuestActivationRecent);
+                _guestActivationPending = false;
+                _firstActivationIsUsers = false;
             }
             else if (!active && _active)
             {

@@ -296,7 +296,14 @@ experimental (`RUNICDESK103`). What Runic enforces:
   what the user just copied, replace it or open links; the user's own later switch to the window, a choice in its native
   menu bar or in a context menu shown while the user worked in it, or a drop onto it gives it back. A shortcut of its
   menus does not, since a key the guest's page leaves unhandled runs it, and neither does an answer to the guest's own
-  dialog or context menu. A write
+  dialog or context menu. An activation the desktop deferred, such as macOS activating a window the guest presented
+  only when the user next switches to the host, is the guest's too, however late it comes. The guest's windows,
+  its first one included, therefore start guest-activated: a link the user clicks in a guest's fresh window is
+  refused until the user switches to it. A host that started the guest at the user's request can set
+  `RunicGuestStartInfo.UserStarted`, which makes the first activation of the guest's first window the user's; leave it
+  off otherwise, since the guest chooses when it opens that window. Activations right after any guest's request count
+  as a guest's, also for another guest's window, so one guest cannot hand another, or a second instance of itself, the
+  user's activation; a host policy's own prompt counts as a guest's dialog. A write
   is also allowed within a second after the user left the window, for a copy that closes it. The host never tells a
   guest when the clipboard changes: a guest in the background cannot snoop on it or replace what the user copies
   elsewhere (threat T14). A guest the user works in can read what the clipboard holds, as any focused application can;

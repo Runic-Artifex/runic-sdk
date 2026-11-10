@@ -196,8 +196,12 @@
             },
             "policy": {
               "enum": [
-                "fails-services"
+                "fails-services",
+                "prompts-launches"
               ]
+            },
+            "userStarted": {
+              "type": "boolean"
             }
           }
         }
@@ -1015,6 +1019,8 @@
                     "closeWindow",
                     "deactivateWindow",
                     "activateWindow",
+                    "deactivateHost",
+                    "activateHost",
                     "copyText",
                     "setLocale",
                     "setAppearance",
@@ -1055,7 +1061,8 @@
                     "save",
                     "folder",
                     "folder-multiple",
-                    "message-box"
+                    "message-box",
+                    "host-prompt"
                   ]
                 },
                 "paths": {
@@ -1589,6 +1596,7 @@
         "anyOf": [
           {
             "enum": [
+              "",
               ".",
               ".."
             ]
