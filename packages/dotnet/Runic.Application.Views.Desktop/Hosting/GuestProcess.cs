@@ -63,8 +63,9 @@ internal abstract class GuestProcess : IDisposable
 }
 
 // CreateProcessW: the guest starts suspended, joins a job object whose processes end when its last handle closes, also
-// when the host crashes, and only then runs, so nothing it starts escapes the job. It inherits only its three pipe ends
-// (PROC_THREAD_ATTRIBUTE_HANDLE_LIST). A job that cannot be created or joined fails the start.
+// when the host crashes, and only then runs, so nothing it starts escapes the job. A job that cannot be created or joined
+// fails the start. Its three pipe ends are its only inheritable handles from this class: the pipes are created and the
+// guest started under one lock, as System.Diagnostics.Process does for its own, so one guest's ends never reach another.
 [SupportedOSPlatform("windows")]
 internal sealed partial class WindowsGuestProcess : GuestProcess
 {
@@ -103,42 +104,61 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
         var commandLine = CommandLine(path, startInfo.Arguments);
 
         using var job = CreateJob();
-        CreatePipe(out var inputRead, out var inputWrite, childReads: true);
-        CreatePipe(out var outputRead, out var outputWrite, childReads: false);
-        CreatePipe(out var errorsRead, out var errorsWrite, childReads: false);
-        var parentEnds = new SafeFileHandle[] { inputWrite, outputRead, errorsRead };
+        SafeFileHandle? inputRead = null, inputWrite = null, outputRead = null, outputWrite = null, errorsRead = null, errorsWrite = null;
+        ProcessInformation information;
+        lock (StartGate)
+        {
+            try
+            {
+                CreatePipe(out inputWrite, out inputRead, childReads: true);
+                CreatePipe(out outputRead, out outputWrite, childReads: false);
+                CreatePipe(out errorsRead, out errorsWrite, childReads: false);
+                information = Spawn(path, commandLine, directory, Block(environment), inputRead, outputWrite, errorsWrite, startInfo.FileName);
+            }
+            catch
+            {
+                inputWrite?.Dispose();
+                outputRead?.Dispose();
+                errorsRead?.Dispose();
+                throw;
+            }
+            finally
+            {
+                // The child's ends are the child's now; closed under the lock, no later start inherits them.
+                inputRead?.Dispose();
+                outputWrite?.Dispose();
+                errorsWrite?.Dispose();
+            }
+        }
+        var process = new SafeProcessHandle(information.Process, ownsHandle: true);
+        using var thread = new SafeProcessHandle(information.Thread, ownsHandle: true);
         try
         {
-            var information = Spawn(path, commandLine, directory, Block(environment), inputRead, outputWrite, errorsWrite, startInfo.FileName);
-            var process = new SafeProcessHandle(information.Process, ownsHandle: true);
-            using var thread = new SafeProcessHandle(information.Thread, ownsHandle: true);
             if (!AssignProcessToJobObject(job, process))
             {
                 var error = Marshal.GetLastPInvokeError();
                 _ = TerminateProcess(process, 1);
-                process.Dispose();
                 throw new Win32Exception(error, $"The guest '{startInfo.FileName}' could not join its job object.");
             }
             if (ResumeThread(thread) == uint.MaxValue)
             {
                 var error = Marshal.GetLastPInvokeError();
                 _ = TerminateJobObject(job, 1);
-                process.Dispose();
                 throw new Win32Exception(error, $"The guest '{startInfo.FileName}' could not be resumed.");
             }
-            var guest = new WindowsGuestProcess(process, information.ProcessId, job.Transfer(), inputWrite, outputRead, errorsRead);
-            parentEnds = [];
-            return guest;
+            return new WindowsGuestProcess(process, information.ProcessId, job.Transfer(), inputWrite, outputRead, errorsRead);
         }
-        finally
+        catch
         {
-            // The child's ends are the child's now; the parent's are closed only when the start failed.
-            inputRead.Dispose();
-            outputWrite.Dispose();
-            errorsWrite.Dispose();
-            foreach (var end in parentEnds) end.Dispose();
+            process.Dispose();
+            inputWrite.Dispose();
+            outputRead.Dispose();
+            errorsRead.Dispose();
+            throw;
         }
     }
+
+    private static readonly object StartGate = new();
 
     // As System.Diagnostics.Process resolves a file name: a path is relative to the current directory; a name without
     // a directory is looked up in the host's directory, the current directory, the system directories and PATH. A name
@@ -259,64 +279,38 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
     private static unsafe ProcessInformation Spawn(string path, string commandLine, string? directory, string environment,
         SafeFileHandle input, SafeFileHandle output, SafeFileHandle errors, string fileName)
     {
-        var handles = new nint[] { input.DangerousGetHandle(), output.DangerousGetHandle(), errors.DangerousGetHandle() };
-        nuint size = 0;
-        _ = InitializeProcThreadAttributeList(0, 1, 0, ref size);
-        var list = Marshal.AllocHGlobal((nint)size);
-        var listReady = false;
+        bool addedInput = false, addedOutput = false, addedErrors = false;
         try
         {
-            if (!InitializeProcThreadAttributeList(list, 1, 0, ref size))
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's start attributes could not be prepared.");
-            listReady = true;
-            fixed (nint* handleList = handles)
+            input.DangerousAddRef(ref addedInput);
+            output.DangerousAddRef(ref addedOutput);
+            errors.DangerousAddRef(ref addedErrors);
+            var startup = new StartupInformation
+            {
+                Size = (uint)sizeof(StartupInformation),
+                Flags = StartfUseStdHandles,
+                StandardInput = input.DangerousGetHandle(),
+                StandardOutput = output.DangerousGetHandle(),
+                StandardError = errors.DangerousGetHandle(),
+            };
+            // CreateProcessW may write to the command line.
+            var line = (commandLine + "\0").ToCharArray();
             fixed (char* applicationName = path)
+            fixed (char* commandLineBuffer = line)
             fixed (char* environmentBlock = environment)
             fixed (char* currentDirectory = directory)
             {
-                if (!UpdateProcThreadAttribute(list, 0, ProcThreadAttributeHandleList, (nint)handleList, (nuint)(handles.Length * sizeof(nint)), 0, 0))
-                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "The guest's inherited handles could not be set.");
-                var startup = new StartupInformationEx
-                {
-                    StartupInfo = new StartupInformation
-                    {
-                        Size = (uint)sizeof(StartupInformationEx),
-                        Flags = StartfUseStdHandles,
-                        StandardInput = handles[0],
-                        StandardOutput = handles[1],
-                        StandardError = handles[2],
-                    },
-                    AttributeList = list,
-                };
-                // CreateProcessW may write to the command line.
-                var line = (commandLine + "\0").ToCharArray();
-                fixed (char* commandLineBuffer = line)
-                {
-                    bool added = false, addedOutput = false, addedErrors = false;
-                    try
-                    {
-                        input.DangerousAddRef(ref added);
-                        output.DangerousAddRef(ref addedOutput);
-                        errors.DangerousAddRef(ref addedErrors);
-                        if (!CreateProcessW(applicationName, commandLineBuffer, 0, 0, true,
-                                CreateSuspended | CreateNoWindow | CreateUnicodeEnvironment | ExtendedStartupInfoPresent,
-                                environmentBlock, currentDirectory, &startup, out var information))
-                            throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The guest '{fileName}' could not be started.");
-                        return information;
-                    }
-                    finally
-                    {
-                        if (added) input.DangerousRelease();
-                        if (addedOutput) output.DangerousRelease();
-                        if (addedErrors) errors.DangerousRelease();
-                    }
-                }
+                if (!CreateProcessW(applicationName, commandLineBuffer, 0, 0, true, CreateSuspended | CreateNoWindow | CreateUnicodeEnvironment,
+                        environmentBlock, currentDirectory, &startup, out var information))
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The guest '{fileName}' could not be started.");
+                return information;
             }
         }
         finally
         {
-            if (listReady) DeleteProcThreadAttributeList(list);
-            Marshal.FreeHGlobal(list);
+            if (addedInput) input.DangerousRelease();
+            if (addedOutput) output.DangerousRelease();
+            if (addedErrors) errors.DangerousRelease();
         }
     }
 
@@ -408,8 +402,6 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
     private const uint CreateSuspended = 0x4;
     private const uint CreateNoWindow = 0x08000000;
     private const uint CreateUnicodeEnvironment = 0x400;
-    private const uint ExtendedStartupInfoPresent = 0x80000;
-    private const nuint ProcThreadAttributeHandleList = 0x20002;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SecurityAttributes
@@ -440,13 +432,6 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
         public nint StandardInput;
         public nint StandardOutput;
         public nint StandardError;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct StartupInformationEx
-    {
-        public StartupInformation StartupInfo;
-        public nint AttributeList;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -531,20 +516,9 @@ internal sealed partial class WindowsGuestProcess : GuestProcess
 
     [LibraryImport("kernel32", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool InitializeProcThreadAttributeList(nint list, int count, int flags, ref nuint size);
-
-    [LibraryImport("kernel32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool UpdateProcThreadAttribute(nint list, uint flags, nuint attribute, nint value, nuint size, nint previous, nint returnSize);
-
-    [LibraryImport("kernel32")]
-    private static partial void DeleteProcThreadAttributeList(nint list);
-
-    [LibraryImport("kernel32", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
     private static unsafe partial bool CreateProcessW(char* applicationName, char* commandLine, nint processAttributes, nint threadAttributes,
         [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, uint creationFlags, char* environment, char* currentDirectory,
-        StartupInformationEx* startupInfo, out ProcessInformation processInformation);
+        StartupInformation* startupInfo, out ProcessInformation processInformation);
 
     [LibraryImport("kernel32")]
     [return: MarshalAs(UnmanagedType.Bool)]
