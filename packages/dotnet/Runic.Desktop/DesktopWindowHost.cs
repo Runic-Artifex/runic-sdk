@@ -545,6 +545,21 @@ public sealed record DesktopWindowHostOptions
 
     // The connection deadline's startup signals (WebUiEmbeddedHostOptions.StartupSignal), for Runic's own hosts.
     internal Action<Internal.WebViewStartupSignal>? StartupSignal { get; init; }
+
+    /// <summary>
+    /// Gets the key of the data store that is not persisted this window uses, or <see langword="null"/>, the default, for
+    /// the host's usual data store.
+    /// </summary>
+    /// <remarks>
+    /// Runic Desktop sets it for the windows of a hosted application (the Runic host protocol, <c>runic-host/1</c>): their
+    /// cookies, storage and caches must stay in memory, shared by the windows of the same key and by no other window, so
+    /// the hosted application's server never receives the host application's cookies and two hosted applications never
+    /// share storage. Runic Desktop gives a key only to a host that implements
+    /// <see cref="IDesktopEphemeralDataStoreWindowHost"/>; a hosted window fails to open on any other. Experimental with the
+    /// rest of the protocol; see <c>docs/experimental.md</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public string? EphemeralDataStore { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -558,6 +573,21 @@ internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory 
 // keyboard focus (I-203): RunicWebView in WPF, where WpfPlatformServices announces for the WPF window. Runic Desktop
 // gives it the window's in-page announcer (WebUiWindow.AnnounceInPageAsync), which reports false when no page is
 // connected, and prepares the page's live regions when a page connects.
+/// <summary>
+/// A window host that honours <see cref="DesktopWindowHostOptions.EphemeralDataStore"/>: it opens a window with a key in a
+/// data store that is not persisted, which only the windows of the same key share.
+/// </summary>
+/// <remarks>
+/// Runic Desktop shows a hosted application's window (the Runic host protocol, <c>runic-host/1</c>) only in a window host
+/// that implements it, since the window's page would otherwise share the host application's cookies and storage.
+/// Runic.Desktop.Gtk4 implements it with an ephemeral WebKitNetworkSession for each key. Experimental with the rest of the
+/// protocol; see <c>docs/experimental.md</c>.
+/// </remarks>
+[System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+#pragma warning disable CA1040 // The interface is the host's declaration that it honours the option.
+public interface IDesktopEphemeralDataStoreWindowHost : IDesktopWindowHost;
+#pragma warning restore CA1040
+
 internal interface IDesktopPageAnnouncementHost : IDesktopWindowHost
 {
     Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? AnnounceInPage { set; }
@@ -568,6 +598,8 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     private readonly IDesktopWindowHost _host;
 
     internal bool AnnouncesInPage => _host is IDesktopPageAnnouncementHost;
+
+    internal const string EphemeralDataStoreUnavailableCode = "hosted-data-store-unavailable";
 
     internal void AttachPageAnnouncer(Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>> announce)
     {
@@ -674,7 +706,10 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         Uri url,
         WebUiEmbeddedHostOptions options,
         CancellationToken cancellationToken = default) =>
-        _host.OpenAsync(url, new DesktopWindowHostOptions
+        options.EphemeralDataStore is not null && _host is not IDesktopEphemeralDataStoreWindowHost
+            ? ValueTask.FromException(new DesktopException(DesktopErrorCategory.Unavailable, EphemeralDataStoreUnavailableCode,
+                "The custom window host cannot give a hosted application's window a data store of its own, so it cannot show it."))
+            : _host.OpenAsync(url, new DesktopWindowHostOptions
         {
             CloseRequested = options.CloseRequested,
             Width = (int)options.Width,
@@ -701,6 +736,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             DiagnosticSink = options.ReportDiagnostic,
             StartupProgress = options.StartupProgress,
             StartupSignal = options.StartupSignal,
+            EphemeralDataStore = options.EphemeralDataStore,
             MenuBarPresentation = options.MenuBarPresentation,
             ColorScheme = options.ColorScheme,
             GlobalMenu = options.GlobalMenu,

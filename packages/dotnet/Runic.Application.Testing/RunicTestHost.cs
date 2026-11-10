@@ -192,103 +192,18 @@ public sealed class RunicTestHost : IAsyncDisposable
         {
             throw Failure("guest-start-timeout", $"The guest wrote no {HostProtocol.ChannelPrefix} line within {_options.StartTimeout}.");
         }
-        if (line is null)
-            throw Failure("guest-exited", $"The guest exited with {ExitCodeText()} before it wrote a {HostProtocol.ChannelPrefix} line.");
-        if (line.StartsWith(HostProtocol.RefusedPrefix, StringComparison.Ordinal))
+        // The launch line and the handshake with the host's own rules (HostLaunch): the refusal, the channel line, the
+        // retried connection, the guest proof first, then ok and the protocol.
+        var channel = HostLaunch.Channel(line, _options.Protocols, ExitCodeText, Failure);
+        var hello = await HostLaunch.HandshakeAsync(channel, nonce, _options.HostName, _options.HostVersion, new JsonObject
         {
-            var refusal = HostProtocol.ParseLine(line, HostProtocol.RefusedPrefix);
-            var code = refusal is null ? null : HostProtocol.String(refusal, "code");
-            var message = refusal is null ? null : HostProtocol.String(refusal, "message");
-            throw Failure(code == "protocol-unsupported" ? "protocol-unsupported" : "guest-refused",
-                $"The guest refused to be hosted ({code ?? "unknown"}): {message}", guestCode: code);
-        }
-        if (HostProtocol.ParseLine(line, HostProtocol.ChannelPrefix) is not { } channelLine ||
-            HostProtocol.ReadChannel(channelLine) is not { } channel || !_options.Protocols.Contains(channel.Protocol))
-            throw Failure("guest-not-hostable", "The guest wrote an invalid channel line.");
-
-        var hello = new JsonObject
-        {
-            ["id"] = 1,
-            ["kind"] = "hello",
-            ["protocol"] = channel.Protocol,
-            ["key"] = channel.Key,
-            ["proof"] = HostProtocol.Proof(nonce, HostProtocol.HostProofLabel, channel.Key),
-            ["host"] = HostProtocol.ProductNode(_options.HostName, _options.HostVersion),
             ["features"] = new JsonArray(),
             ["locale"] = null,
             ["languages"] = new JsonArray(),
             ["appearance"] = null,
-        };
-        // A connection that closes before the reply, as when the guest's listener closed it to make room for a newer
-        // one, is retried within the start timeout (host-protocol.md, Host rules).
-        var pause = TimeSpan.FromMilliseconds(100);
-        ClientWebSocket socket;
-        JsonObject reply;
-        while (true)
-        {
-            socket = new ClientWebSocket();
-            socket.Options.KeepAliveInterval = TimeSpan.Zero;
-            JsonObject? received = null;
-            Exception? lost = null;
-            try
-            {
-                await socket.ConnectAsync(channel.Url, deadline.Token).ConfigureAwait(false);
-                await HostChannel.SendAsync(socket, hello.DeepClone().AsObject(), deadline.Token).ConfigureAwait(false);
-                received = await HostChannel.ReceiveAsync(socket, deadline.Token, HostProtocol.MaximumHelloBytes).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException error)
-            {
-                socket.Dispose();
-                if (cancellationToken.IsCancellationRequested) throw;
-                throw Failure("guest-start-timeout", $"The guest did not answer the hello within {_options.StartTimeout}.", error);
-            }
-            catch (HostProtocolViolationException error)
-            {
-                socket.Dispose();
-                throw Failure("guest-not-hostable", "The guest's hello reply is not a message of the protocol.", error);
-            }
-            catch (Exception error) when (error is WebSocketException or IOException) { lost = error; }
-            if (received is not null)
-            {
-                reply = received;
-                break;
-            }
-            socket.Dispose();
-            if (_exited.Task.IsCompleted)
-                throw Failure("guest-exited", $"The guest exited with {ExitCodeText()} before it answered the hello.", lost);
-            try { await Task.Delay(pause, deadline.Token).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw Failure("guest-start-timeout", $"The guest's channel did not take the hello within {_options.StartTimeout}.", lost);
-            }
-            pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, TimeSpan.TicksPerSecond));
-        }
-        // The guest proof first, before ok or error: a process that took a gone guest's port cannot compute it (T9), so
-        // it cannot make the start fail with a code of its choice either.
-        if (!HostProtocol.FixedTimeEquals(HostProtocol.String(reply, "proof"),
-                HostProtocol.Proof(nonce, HostProtocol.GuestProofLabel, channel.Key)))
-        {
-            await HostChannel.CloseAsync(socket, WebSocketCloseStatus.PolicyViolation, "").ConfigureAwait(false);
-            throw Failure("guest-not-hostable", "The guest's hello reply did not prove that it knows the offer's nonce.");
-        }
-        if (HostProtocol.Boolean(reply, "ok") != true)
-        {
-            await HostChannel.CloseAsync(socket, WebSocketCloseStatus.NormalClosure, "").ConfigureAwait(false);
-            var reason = reply["error"] is JsonObject error ? HostProtocol.String(error, "reason") : null;
-            throw reason == "protocol-mismatch"
-                ? Failure("protocol-unsupported", "The guest answered the hello with protocol-mismatch.")
-                : Failure("guest-not-hostable", $"The guest refused the hello ({reason ?? "no reason"}).");
-        }
-        if (HostProtocol.Integer(reply, "protocol") != channel.Protocol)
-        {
-            await HostChannel.CloseAsync(socket, WebSocketCloseStatus.ProtocolError, "").ConfigureAwait(false);
-            throw Failure("guest-not-hostable", "The guest's hello reply names another protocol version.");
-        }
-        var guest = reply["guest"] as JsonObject;
-        Guest = new RunicTestGuest(
-            guest is null ? "" : HostProtocol.String(guest, "name") ?? "",
-            guest is null ? "" : HostProtocol.String(guest, "version") ?? "",
-            guest is null ? null : HostProtocol.String(guest, "applicationId"));
+        }, Failure, () => _exited.Task.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
+        var socket = hello.Socket;
+        Guest = new RunicTestGuest(hello.Name, hello.Version, hello.ApplicationId);
         Features = [];
         _channel = new HostChannel(socket, firstRequestId: 2, OnRequestAsync, OnPush);
         _channel.Start();

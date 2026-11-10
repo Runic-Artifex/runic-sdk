@@ -419,8 +419,16 @@ internal static class Gtk4Runtime
 
 [SupportedOSPlatform("linux")]
 internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost,
-    IDesktopPlacementWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost
+    IDesktopPlacementWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost,
+    IDesktopEphemeralDataStoreWindowHost
 {
+    // The ephemeral network sessions of runic-host/1 hosted windows by data store key
+    // (DesktopWindowHostOptions.EphemeralDataStore), on the GTK thread: one for each host session, which keeps cookies,
+    // storage and caches in memory and shares them with no other window.
+    private static readonly EphemeralDataStoreCache<NetworkSession> EphemeralSessions = new();
+    // The key of the network session this window holds.
+    private string? _ephemeralDataStore;
+
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
@@ -821,8 +829,19 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             if (options.Language is { } language) webContext.SetPreferredLanguages([language]);
             ApplySpellChecking(webContext, options.SpellCheckingLanguages);
             using var contextValue = new GObject.Value(webContext);
-            webView = WebView.NewWithProperties(
-                [new GObject.ConstructArgument("web-context", contextValue)]);
+            if (options.EphemeralDataStore is { } dataStore)
+            {
+                var session = EphemeralSessions.Acquire(dataStore, static () => NetworkSession.NewEphemeral());
+                _ephemeralDataStore = dataStore;
+                using var sessionValue = new GObject.Value(session);
+                webView = WebView.NewWithProperties(
+                    [new GObject.ConstructArgument("web-context", contextValue), new GObject.ConstructArgument("network-session", sessionValue)]);
+            }
+            else
+            {
+                webView = WebView.NewWithProperties(
+                    [new GObject.ConstructArgument("web-context", contextValue)]);
+            }
             window.Title = "Runic Desktop";
             var width = options.Width;
             var height = options.Height;
@@ -1019,6 +1038,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             }
             webView?.Dispose();
             window?.Dispose();
+            ReleaseEphemeralDataStore();
             _window = null;
             _webView = null;
             _keys = null;
@@ -2045,6 +2065,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         CleanupNative(window, webView);
     }
 
+    // The view holds its network session; the cache's reference goes with the key's last window.
+    private void ReleaseEphemeralDataStore()
+    {
+        if (Interlocked.Exchange(ref _ephemeralDataStore, null) is { } dataStore)
+            EphemeralSessions.Release(dataStore, static session => session.Dispose());
+    }
+
     private void QueueCleanupAfterDestroy()
     {
         if (Interlocked.Exchange(ref _cleanupQueued, 1) != 0)
@@ -2083,6 +2110,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         webView.TryClose();
         webView.Dispose();
         window.Dispose();
+        ReleaseEphemeralDataStore();
         _window = null;
         _webView = null;
         var finalization = Interlocked.Exchange(ref _finalization, null);

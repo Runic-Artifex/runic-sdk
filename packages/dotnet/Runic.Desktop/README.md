@@ -1856,6 +1856,13 @@ option (`Warning`) from `ValidateOptions`, and every missing prerequisite from
 remediations of your own. `Create()` returns a new, closed host for each window
 that opens.
 
+**Hosted application windows.** A window of a hosted application (the experimental
+[Runic host protocol](../../../specs/desktop/host-protocol.md), `RUNICDESK103`) opens with
+`DesktopWindowHostOptions.EphemeralDataStore`, a key: the window's cookies, storage and caches must stay in memory,
+shared only by windows of the same key. Runic Desktop gives such a window only to a host that implements
+`IDesktopEphemeralDataStoreWindowHost`, as `Runic.Desktop.Gtk4` does with an ephemeral `WebKitNetworkSession`; on any
+other the window does not open (`hosted-data-store-unavailable`).
+
 **Threading.** Runic Desktop calls a host's members from any thread, often the
 thread pool. Marshal native work to the thread that owns the window, as the GTK 4
 host does through its GTK main-loop dispatcher and `RunicWebView` through the WPF
