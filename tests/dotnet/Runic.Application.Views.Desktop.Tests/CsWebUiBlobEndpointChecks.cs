@@ -81,10 +81,10 @@ internal sealed class CsWebUiBlobEndpointChecks
         if (Loopbacks().Count < 2) return; // Without IPv6 loopback, no process can listen on ::1.
         using var work = new Work();
         using var blobs = work.Blobs();
-        using var onIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, proxy: false);
-        using var onIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, proxy: false);
-        using var proxyOnIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, proxy: true);
-        using var proxyOnIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, proxy: true);
+        using var onIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Answer);
+        using var onIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, Kind.Answer);
+        using var proxyOnIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Proxy);
+        using var proxyOnIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, Kind.Proxy);
         Foreign[] foreign = [onIPv6, onIPv4, proxyOnIPv6, proxyOnIPv4];
         var offered = new Queue<int>(foreign.Select(server => server.Port));
         var logger = new EventLogger();
@@ -108,6 +108,29 @@ internal sealed class CsWebUiBlobEndpointChecks
             $"A foreign server received the upload: {string.Concat(foreign.Select(server => server.Received))}");
     }
 
+    // Foreign servers that accept the ownership check and then send a byte now and then without ever answering, on
+    // [::1]:A and 127.0.0.1:B: each check is bounded (2 s to connect, 2 s for the request), so they cannot stall the
+    // window's start, and the endpoint uses neither port.
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task AForeignServerThatNeverAnswersCannotStallTheEndpoint(bool relay)
+    {
+        if (Loopbacks().Count < 2) return;
+        using var work = new Work();
+        using var blobs = work.Blobs();
+        using var onIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Stall);
+        using var onIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, Kind.Stall);
+        var offered = new Queue<int>([onIPv6.Port, onIPv4.Port]);
+        var started = Stopwatch.StartNew();
+        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance,
+            () => offered.Count > 0 ? offered.Dequeue() : FreePort(), relay) ?? throw new InvalidOperationException("The endpoint did not start.");
+        Require(started.Elapsed < TimeSpan.FromSeconds(30), $"The endpoint took {started.Elapsed} to start.");
+        Require(offered.Count == 0 && endpoint.Port != onIPv6.Port && endpoint.Port != onIPv4.Port,
+            $"The endpoint listens on port {endpoint.Port}, which a foreign server holds ({onIPv6.Port}, {onIPv4.Port}).");
+        await Task.CompletedTask;
+    }
+
     // A process that holds ::1 on every port the endpoint tries pushes it off localhost; the warning names the cause.
     [Test]
     public async Task AnAddressThatAnotherProcessHoldsOnEveryPortTriedIsLogged()
@@ -115,7 +138,7 @@ internal sealed class CsWebUiBlobEndpointChecks
         if (Loopbacks().Count < 2) return;
         using var work = new Work();
         using var blobs = work.Blobs();
-        var squatted = Enumerable.Range(0, 5).Select(_ => Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, proxy: false)).ToList();
+        var squatted = Enumerable.Range(0, 5).Select(_ => Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Answer)).ToList();
         try
         {
             var offered = new Queue<int>(squatted.Select(server => server.Port));
@@ -435,18 +458,24 @@ internal sealed class CsWebUiBlobEndpointChecks
         return new Answer((int)response.StatusCode, body, id);
     }
 
-    // A server of another process on one loopback address: answers every request with 200 and no CORS grant, or, as a
-    // proxy, passes each connection on to the same port of the other loopback address. Records what it received.
+    private enum Kind { Answer, Proxy, Stall }
+
+    // A server of another process on one loopback address: answers every request with 200 and no CORS grant; as a proxy,
+    // passes each connection on to the same port of the other loopback address; or stalls, sending a byte now and then
+    // and never an answer. Records what it received.
     private sealed class Foreign : IDisposable
     {
         private readonly Socket _socket;
-        private readonly IPEndPoint? _upstream;
+        private readonly Kind _kind;
+        private readonly IPEndPoint _other;
+        private readonly CancellationTokenSource _stop = new();
         private readonly StringBuilder _received = new();
 
-        private Foreign(Socket socket, IPEndPoint? upstream)
+        private Foreign(Socket socket, Kind kind, IPEndPoint other)
         {
             _socket = socket;
-            _upstream = upstream;
+            _kind = kind;
+            _other = other;
             _ = Task.Run(AcceptAsync);
         }
 
@@ -457,7 +486,7 @@ internal sealed class CsWebUiBlobEndpointChecks
         }
 
         // Listens on address, on a port that is free on the other address too.
-        internal static Foreign Start(IPAddress address, IPAddress free, bool proxy)
+        internal static Foreign Start(IPAddress address, IPAddress free, Kind kind)
         {
             for (var attempt = 0; attempt < 50; attempt++)
             {
@@ -465,7 +494,7 @@ internal sealed class CsWebUiBlobEndpointChecks
                 socket.Bind(new IPEndPoint(address, 0));
                 socket.Listen();
                 var port = ((IPEndPoint)socket.LocalEndPoint!).Port;
-                if (!BlobEndpoint.IsHeld(free, port)) return new Foreign(socket, proxy ? new IPEndPoint(free, port) : null);
+                if (!BlobEndpoint.IsHeld(free, port)) return new Foreign(socket, kind, new IPEndPoint(free, port));
                 socket.Dispose();
             }
             throw new InvalidOperationException($"No port of {address} is free on {free}.");
@@ -478,7 +507,12 @@ internal sealed class CsWebUiBlobEndpointChecks
                 Socket client;
                 try { client = await _socket.AcceptAsync(); }
                 catch (Exception error) when (error is SocketException or ObjectDisposedException) { return; }
-                _ = Task.Run(() => _upstream is null ? AnswerAsync(client) : ProxyAsync(client, _upstream));
+                _ = Task.Run(() => _kind switch
+                {
+                    Kind.Proxy => ProxyAsync(client, _other),
+                    Kind.Stall => StallAsync(client),
+                    _ => AnswerAsync(client),
+                });
             }
         }
 
@@ -494,6 +528,26 @@ internal sealed class CsWebUiBlobEndpointChecks
                     await client.SendAsync("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(), SocketFlags.None);
                 }
                 catch (Exception error) when (error is SocketException or TimeoutException) { }
+            }
+        }
+
+        private async Task StallAsync(Socket client)
+        {
+            using (client)
+            {
+                var buffer = new byte[8192];
+                try
+                {
+                    var read = await client.ReceiveAsync(buffer, SocketFlags.None, _stop.Token);
+                    Record(buffer, read);
+                    await client.SendAsync("HTTP/1.1 200 OK\r\n"u8.ToArray(), SocketFlags.None, _stop.Token);
+                    while (true)
+                    {
+                        await Task.Delay(200, _stop.Token);
+                        await client.SendAsync("X"u8.ToArray(), SocketFlags.None, _stop.Token);
+                    }
+                }
+                catch (Exception error) when (error is SocketException or OperationCanceledException or ObjectDisposedException) { }
             }
         }
 
@@ -535,7 +589,11 @@ internal sealed class CsWebUiBlobEndpointChecks
             lock (_received) _received.Append(Encoding.ASCII.GetString(buffer, 0, count));
         }
 
-        public void Dispose() => _socket.Dispose();
+        public void Dispose()
+        {
+            _stop.Cancel();
+            _socket.Dispose();
+        }
     }
 
     // Records each event as "{id} {name}: {message}".

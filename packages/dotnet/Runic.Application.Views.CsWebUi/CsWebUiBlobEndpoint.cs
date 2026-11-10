@@ -217,7 +217,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
                 throw new PortHeldException(address, Port, failure);
     }
 
-    // Null when this listener answered a connection to address; otherwise what happened instead.
+    // Null when this listener answered a connection to address; otherwise what happened instead. Bounded by 2 s for the
+    // connect and 2 s for the request, whatever the other side does; the answer is not read, as its content proves
+    // nothing: what counts is the client this listener saw.
     private string? Answers(IPAddress address, string host)
     {
         Socket socket;
@@ -229,21 +231,21 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
             _check = check;
             try
             {
-                socket.SendTimeout = socket.ReceiveTimeout = 2000;
-                try { socket.Connect(new IPEndPoint(address, Port)); }
-                // No such address on this machine (no IPv6 loopback): no other process can listen there either.
-                catch (SocketException error) when (CsWebUiLoopbackRelay.IsMissing(error) || error.SocketErrorCode == SocketError.NetworkUnreachable)
+                using (var connecting = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
                 {
-                    return null;
+                    try { socket.ConnectAsync(new IPEndPoint(address, Port), connecting.Token).AsTask().GetAwaiter().GetResult(); }
+                    // No such address on this machine (no IPv6 loopback): no other process can listen there either.
+                    catch (SocketException error) when (CsWebUiLoopbackRelay.IsMissing(error) || error.SocketErrorCode == SocketError.NetworkUnreachable)
+                    {
+                        return null;
+                    }
+                    catch (SocketException error) { return $"connecting failed ({error.SocketErrorCode})"; }
+                    catch (OperationCanceledException) { return "connecting timed out"; }
                 }
-                catch (SocketException error) { return $"connecting failed ({error.SocketErrorCode})"; }
                 var client = (IPEndPoint)socket.LocalEndPoint!;
+                socket.SendTimeout = 2000;
                 socket.Send(Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
                     $"GET {check.Path} HTTP/1.1\r\nHost: {host}:{Port}\r\nConnection: close\r\n\r\n")));
-                // The answer is read to the end, so the listener has handled the request; its content proves nothing.
-                var buffer = new byte[1024];
-                try { while (socket.Receive(buffer) > 0) { } }
-                catch (SocketException error) when (error.SocketErrorCode is SocketError.TimedOut or SocketError.ConnectionReset) { }
                 if (!check.Seen.Wait(TimeSpan.FromSeconds(2)))
                     return "the window's listener did not receive the check";
                 return check.Seen.Result.Equals(client) ? null : "the window's listener received the check from another client";
