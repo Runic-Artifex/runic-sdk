@@ -200,7 +200,10 @@ await watching.TriggerAsync("/run/current-system");
 `host.Root` drives the root ViewModel. `View<T>(vm => vm.Content)` and
 `Views<T>(vm => vm.Items)` follow the content references in the current snapshot
 and check that they present `T`; `host.View<T>(reference)` drives a reference you
-already have. A `RunicViewDriver<T>` has:
+already have. `T` may be an interface or abstract class that the presented
+ViewModel implements, such as a
+[`[RunicSharedClient]`](../Runic.Application.Views/README.md#shared-clients)
+interface, so one test drives every ViewModel that publishes it (since 0.17). A `RunicViewDriver<T>` has:
 
 - `Snapshot()`: a `RunicViewState<T>` with `Read(vm => vm.Title)` for scalars
   (a string, Boolean, Int32, Int64, double, decimal, GUID or enum), `Get` for the

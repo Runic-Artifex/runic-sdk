@@ -719,7 +719,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             _window = Native.CreateWindowEx(
                 extendedStyle,
                 WindowClassName,
-                WindowsLoadingSurface.Title,
+                // The title until the page has a title, also the loading surface's accessible name.
+                Runic.Platform.DesktopPlatformTexts.Current.LoadingTitle,
                 style,
                 x,
                 y,

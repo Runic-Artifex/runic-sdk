@@ -12,10 +12,6 @@ internal static class WindowsLoadingSurface
     // something before a user who waits longer starts to wonder whether the application started.
     internal static readonly TimeSpan GracePeriod = TimeSpan.FromMilliseconds(1500);
 
-    // The window title until the page has a title, which is also the surface's accessible name. Runic.Desktop ships no
-    // translations; the window took this title before the loading surface too.
-    internal const string Title = "Loading…";
-
     // One sweep of the bar's moving segment across the track.
     internal const double CycleMilliseconds = 1600;
 

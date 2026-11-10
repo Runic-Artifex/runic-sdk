@@ -56,7 +56,7 @@ internal static partial class WindowsLoadingSurfaceSmoke
             Expect(!opening.IsCompleted, "the window opened before the loading surface showed");
             await Task.Delay(300);
             Expect(IsWindowVisible(loadingWindow), "the loading window is not visible");
-            Expect(Title(loadingWindow) == WindowsLoadingSurface.Title, $"the loading window is titled '{Title(loadingWindow)}'");
+            Expect(Title(loadingWindow) == Runic.Platform.DesktopPlatformTexts.Current.LoadingTitle, $"the loading window is titled '{Title(loadingWindow)}'");
             var loading = Measure(loadingWindow);
             Expect(loading == reference, $"the loading window has {loading}, the window shown when ready {reference}");
             var background = ClientPixel(loadingWindow);

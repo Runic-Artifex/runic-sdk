@@ -8,7 +8,8 @@ namespace Runic.Desktop;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Supply them in the user's language from the application's translations; Runic ships none. <c>{0}</c> in
+/// Supply them in the user's language from the application's translations, or from the optional
+/// <c>Runic.Application.Views.Translations</c> package (English and German). <c>{0}</c> in
 /// <see cref="About"/>, <see cref="Hide"/> and <see cref="Quit"/> is replaced by the application's name, as in the
 /// English titles; a translation can leave it out or place it elsewhere.
 /// </para>

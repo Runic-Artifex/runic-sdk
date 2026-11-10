@@ -1,0 +1,36 @@
+#nullable enable
+const Runic.Application.Views.Translations.RunicViewsTranslations.CatalogId = "runic-views" -> string!
+Microsoft.Extensions.DependencyInjection.RunicViewsTranslationsServiceCollectionExtensions
+Runic.Application.Views.Translations.RunicViewsMenuTitles
+Runic.Application.Views.Translations.RunicViewsMenuTitles.About.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Hide.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.HideOthers.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.ShowAll.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Quit.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.File.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Close.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.OpenRecent.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.ClearMenu.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Edit.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Undo.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Redo.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Cut.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Copy.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Paste.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.SelectAll.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.View.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.ActualSize.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.ZoomIn.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.ZoomOut.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Window.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Minimize.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.Zoom.get -> string!
+Runic.Application.Views.Translations.RunicViewsMenuTitles.BringAllToFront.get -> string!
+Runic.Application.Views.Translations.RunicViewsTranslations
+static Microsoft.Extensions.DependencyInjection.RunicViewsTranslationsServiceCollectionExtensions.AddRunicViewsTranslations(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Views.Translations.RunicViewsTranslations.CatalogRegistration.get -> Runic.Translations.TranslationCatalogRegistration!
+static Runic.Application.Views.Translations.RunicViewsTranslations.FollowPlatformTexts(Runic.Translations.ITranslationContext! context, System.Action<System.ArgumentException!>? onError = null) -> System.IDisposable!
+static Runic.Application.Views.Translations.RunicViewsTranslations.MenuTitles(Runic.Translations.ITranslationContext! context) -> Runic.Application.Views.Translations.RunicViewsMenuTitles!
+static Runic.Application.Views.Translations.RunicViewsTranslations.PlatformTexts(Runic.Translations.ITranslationContext! context) -> Runic.Platform.DesktopPlatformTexts!
+static Runic.Application.Views.Translations.RunicViewsTranslations.ValidationReference(System.ComponentModel.DataAnnotations.ValidationAttribute! attribute, Runic.Application.Views.RunicValidationMember! member) -> Runic.Translations.TranslationReference?
+static Runic.Application.Views.Translations.RunicViewsTranslations.ValidationText(System.ComponentModel.DataAnnotations.ValidationAttribute! attribute, Runic.Application.Views.RunicValidationMember! member) -> Runic.Application.Views.RunicTextReference?

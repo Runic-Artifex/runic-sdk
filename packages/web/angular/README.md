@@ -378,7 +378,11 @@ it outside its own signal tracking. A component's `page` input receives that
 reference; `injectView(this.page)` owns its connection and cleanup. Declare
 `page` as a required signal input, `input.required<DocumentReference>()`: a
 decorator `@Input() page` or an optional `input<DocumentReference>()` does not
-satisfy `ViewRegistry`. Missing kinds render an English `<p role="alert">` in a
+satisfy `ViewRegistry`. A component whose `page` input is a shared page
+reference, `input.required<ResultPagePageReference>()` for a .NET
+[`[RunicSharedClient]`](../../dotnet/Runic.Application.Views/README.md#shared-clients)
+interface, registers for each of its kinds without a cast:
+`{ ...registryEntries(resultPageKinds, ResultPage), settings: Settings }`. Missing kinds render an English `<p role="alert">` in a
 development build (`isDevMode()`); a production build renders nothing and
 reports the kind once through the page's error reporting
 (`installErrorReporting`, `onBridgeDiagnostic`). The generated TypeScript client
