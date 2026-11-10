@@ -68,17 +68,8 @@ internal static class HostedSmoke
         // Guest a: its page connects to its own surface, sees no cookie of the host and sets its own.
         var a = await applications.StartAsync(Guest("a", "stay"));
         var reportA = await logs.ReportAsync("a");
-        if (OperatingSystem.IsWindows())
-        {
-            // The page set a persistent cookie and localStorage; InPrivate writes neither to the folder.
-            var folders = HostedFolders().Except(foldersBefore).ToArray();
-            Check(folders.Length == 1, $"Guest a's session has {folders.Length} user data folders.");
-            var written = Directory.EnumerateFileSystemEntries(folders[0], "*", SearchOption.AllDirectories)
-                .Where(static entry => Path.GetFileName(entry) is "Cookies" or "Local Storage" or "IndexedDB")
-                .ToArray();
-            Check(written.Length == 0, $"Guest a's data is on disk: {string.Join(", ", written)}.");
-            Console.WriteLine($"PASS hosted {toolkit}: guest a's cookies and storage are not in its user data folder.");
-        }
+        var reportedA = DateTime.UtcNow;
+        var foldersA = HostedFolders().Except(foldersBefore).ToArray();
         var windowA = await WindowOf(a);
         CheckPage(reportA, "a", host.Desktop.Port, mustNotSee: ["runic_host_probe"]);
         Check(windowA.IsOpen && windowA.Presentation.Browser == BrowserKind.Embedded && windowA.Presentation.NativeHandle != 0,
@@ -95,6 +86,20 @@ internal static class HostedSmoke
         await windowB.Closed.WaitAsync(TestTimeouts.Scale(Wait));
         Check(!windowB.Presentation.IsOpen && windowA.IsOpen, "The crashed guest's window is open, or guest a's closed.");
         Console.WriteLine($"PASS hosted {toolkit}: the host closed the crashed guest's window and reported its exit code.");
+
+        if (OperatingSystem.IsWindows())
+        {
+            // Guest a's page set a persistent cookie and localStorage. WebView2 writes a profile's cookies within about 30
+            // seconds and its storage sooner; an InPrivate profile writes neither. Its folder holds the files of the
+            // profile an InPrivate one derives from, without the guest's data.
+            Check(foldersA.Length == 1, $"Guest a's session has {foldersA.Length} user data folders.");
+            var wait = TimeSpan.FromSeconds(40) - (DateTime.UtcNow - reportedA);
+            if (wait > TimeSpan.Zero) await Task.Delay(wait);
+            var (scanned, found) = FindOnDisk(foldersA[0], "runic_guest_a");
+            Check(found.Length == 0, $"Guest a's data is on disk, in {string.Join(", ", found)}.");
+            Check(scanned > 0, "No file of guest a's user data folder could be read.");
+            Console.WriteLine($"PASS hosted {toolkit}: none of the {scanned} files in guest a's user data folder holds its cookie or storage.");
+        }
 
         // A close through the guest: its Window closes, then the host's window, then the guest exits.
         Check(await windowA.RequestCloseAsync(), "Guest a refused the close.");
@@ -127,6 +132,31 @@ internal static class HostedSmoke
 
         await hostWindow.CloseAsync();
         return 0;
+    }
+
+    // The files under the folder that contain the text in ASCII or UTF-16, and how many files could be read; a file the
+    // browser holds without sharing is skipped.
+    private static (int Scanned, string[] Found) FindOnDisk(string folder, string text)
+    {
+        var ascii = System.Text.Encoding.ASCII.GetBytes(text);
+        var utf16 = System.Text.Encoding.Unicode.GetBytes(text);
+        var scanned = 0;
+        var found = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+        {
+            byte[] content;
+            try
+            {
+                using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (stream.Length > 64 * 1024 * 1024) continue;
+                content = new byte[stream.Length];
+                stream.ReadExactly(content);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { continue; }
+            scanned++;
+            if (content.AsSpan().IndexOf(ascii) >= 0 || content.AsSpan().IndexOf(utf16) >= 0) found.Add(Path.GetRelativePath(folder, file));
+        }
+        return (scanned, [.. found]);
     }
 
     private static string[] HostedFolders() =>
