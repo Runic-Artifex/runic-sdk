@@ -95,6 +95,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     // The window's session and root Bridge, recorded when the host attaches it.
     private WindowContentSession? _content;
     private IDisposable? _bridge;
+
+    // The window's session once the host attached it, such as for a test that reads what its pages receive.
+    internal WindowContentSession? Content => Volatile.Read(ref _content);
+
     // RequestCloseAsync: the host's own close request, if it has one, else one shared decision at a time, cancelled
     // when the application closes the window without asking.
     private Func<CancellationToken, ValueTask<bool>>? _hostCloseRequest;

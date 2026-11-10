@@ -118,6 +118,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         }
         catch (Exception error)
         {
+            application.StopFollowingEnvironment();
             process.KillTree();
             try { _ = await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None).ConfigureAwait(false); }
             catch (TimeoutException) { }
@@ -159,14 +160,11 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             throw Failure("guest-start-timeout", $"The guest wrote no {HostProtocol.ChannelPrefix} line within {_options.StartTimeout}.");
         }
         var channel = HostLaunch.Channel(line, [HostProtocol.Version], ExitCodeText, Failure);
-        // Appearance and locale follow in a later change; the guest keeps its own until then.
-        var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, new JsonObject
-        {
-            ["features"] = new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]),
-            ["locale"] = null,
-            ["languages"] = new JsonArray(),
-            ["appearance"] = null,
-        }, Failure, () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
+        // The guest starts with this application's locale and appearance (host-protocol.md, Appearance and locale).
+        var environment = await HelloEnvironmentAsync(new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]),
+            cancellationToken).ConfigureAwait(false);
+        var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, environment, Failure,
+            () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
         Guest = new RunicGuestInfo(hello.Name, hello.Version, hello.ApplicationId);
         Protocol = hello.Protocol;
         Features = hello.Features;
@@ -174,6 +172,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         _channel = new HostChannel(hello.Socket, firstRequestId: 2, OnRequestAsync, OnPush,
             error => DesktopLog.HostedApplicationChannelFailed(_logger, error, error.GetType().Name));
         _channel.Start();
+        FollowEnvironment();
     }
 
     private RunicHostedApplicationException Failure(string code, string message, Exception? inner = null, string? guestCode = null)
@@ -204,6 +203,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             open = [.. _open];
         }
         await _ending.CancelAsync().ConfigureAwait(false);
+        StopFollowingEnvironment();
         foreach (var window in open)
         {
             try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
@@ -339,6 +339,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             return;
         }
         if (await OnFeatureRequestAsync(request).ConfigureAwait(false)) return;
+        if (await OnServiceRequestAsync(request).ConfigureAwait(false)) return;
         if (PresentationKind(request.Kind) is not { } kind)
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of this host.").ConfigureAwait(false);
@@ -414,12 +415,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         var ownerId = HostProtocol.String(message, "owner");
         var modality = HostProtocol.String(message, "modality") ?? "none";
         var guardClose = HostProtocol.Boolean(message, "guardClose") ?? false;
+        var locale = HostProtocol.String(message, "locale");
+        var fileDrops = HostProtocol.Boolean(message, "fileDrops") ?? false;
         var valid = HostProtocol.IsIdentifier(id) && type.Length <= 512 && title is null or { Length: <= 1_024 } &&
             width is not -1 && height is not -1 && minimumWidth is not -1 && minimumHeight is not -1 &&
             modality is "none" or "window" && (modality == "none" || ownerId is not null) &&
             (message["owner"] is null || ownerId is not null) && (message["guardClose"] is null || HostProtocol.Boolean(message, "guardClose") is not null) &&
             LaunchUrl(HostProtocol.String(message, "url")) is not null &&
-            (message["permissions"] is null || message["permissions"] is JsonArray);
+            (message["permissions"] is null || message["permissions"] is JsonArray) &&
+            (message["locale"] is null || HostServices.IsLocale(locale)) &&
+            (message["fileDrops"] is null || HostProtocol.Boolean(message, "fileDrops") is not null);
         var url = LaunchUrl(HostProtocol.String(message, "url"));
         RunicHostedWindow? owner = null;
         lock (_gate)
@@ -453,8 +458,15 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             Modality = owner is not null && modality == "window" ? DesktopWindowModality.Window : DesktopWindowModality.None,
             AllowedPermissions = permissions & defaults.AllowedPermissions,
         };
+        // The guest Window's locale gives the window its direction, as a Window of the host's own gets it, unless the host's
+        // window options fix one. macOS takes it from the application bundle.
+        if (locale is not null && proposed.LayoutDirection == DesktopLayoutDirection.Default && !OperatingSystem.IsMacOS())
+            proposed = proposed with { LayoutDirection = Runic.Desktop.Internal.WindowLocaleDirection.Of(locale) };
         var window = new RunicHostedWindow(this, id!, type, owner, modality == "window" && owner is not null, guardClose);
-        var windowRequest = new RunicHostedWindowRequest(this, id!, type, title, owner, window.IsModal, guardClose, permissions, proposed);
+        var windowRequest = new RunicHostedWindowRequest(this, id!, type, title, owner, window.IsModal, guardClose, permissions, proposed)
+        {
+            Locale = locale,
+        };
         RunicHostedWindowDecision decision;
         try { decision = await Policy.OpenWindowAsync(windowRequest, _ending.Token).ConfigureAwait(false); }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -530,6 +542,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
                 window.Push("color-scheme", () => new JsonObject { ["kind"] = "color-scheme", ["window"] = window.Id, ["colorScheme"] = Token(adapter.ColorScheme) });
         };
         presentation.StateChanged += (_, e) => window.Push("placement", () => Placement(window.Id, e.State));
+        // window-services/1: the files the user drops onto the window, when the guest's Window takes them.
+        if (fileDrops && InUse(HostServices.Feature)) ForwardDrops(window, presentation);
         presentation.Closed += (_, _) => _ = OnWindowClosedAsync(window, hostedSurface);
         try
         {

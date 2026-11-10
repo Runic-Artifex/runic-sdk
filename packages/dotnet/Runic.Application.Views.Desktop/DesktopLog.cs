@@ -106,4 +106,12 @@ internal static partial class DesktopLog
     [LoggerMessage(EventId = 2022, EventName = "DesktopHostedGuestError", Level = LogLevel.Debug,
         Message = "{FileName} (standard error): {Line}")]
     internal static partial void HostedGuestError(ILogger logger, string fileName, string line);
+
+    [LoggerMessage(EventId = 2023, EventName = "DesktopHostedLocaleFailed", Level = LogLevel.Warning,
+        Message = "The application's locale could not follow the host's locale: {ErrorType}.")]
+    internal static partial void HostedLocaleFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 2024, EventName = "DesktopHostedServiceFailed", Level = LogLevel.Warning,
+        Message = "A window service of a hosted application failed with {ErrorType}.")]
+    internal static partial void HostedServiceFailed(ILogger logger, Exception? exception, string errorType);
 }

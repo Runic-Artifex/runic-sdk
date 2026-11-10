@@ -9,7 +9,15 @@ namespace Runic.Application.Views.Desktop.Hosting;
 
 // The window-open request of one Window (host-protocol.md, window-open).
 internal sealed record HostedWindowRequest(string Type, Uri Url, int Width, int Height, int? MinWidth, int? MinHeight,
-    string? Owner, bool Modal, bool GuardClose, bool MediaCapture);
+    string? Owner, bool Modal, bool GuardClose, bool MediaCapture)
+{
+    // The Window's locale, for the web view's language and the window's direction; null for none.
+    internal string? Locale { get; init; }
+
+    // Where the Window's dropped files go (window-services/1, files-dropped); null when it takes none. Set before the
+    // request goes, so a drop right after the reply is not lost.
+    internal Action<DesktopFileDropEventArgs>? Drop { get; init; }
+}
 
 // One Window of the guest on the channel.
 internal sealed class HostedWindow
@@ -72,6 +80,21 @@ internal sealed class HostedWindow
 
     internal void OpenFailed() => _opened.TrySetResult(false);
 
+    // window-services/1: the Window's drops, which the host forwards (files-dropped); null when its root ViewModel takes
+    // none.
+    internal Action<Runic.Desktop.DesktopFileDropEventArgs>? DropTarget { get; set; }
+
+    // window-services/1: completes at the host's next monitors-changed for the window, or when it closes.
+    private TaskCompletionSource _monitorsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal Task MonitorsChanged() => Volatile.Read(ref _monitorsChanged).Task;
+
+    internal void OnMonitorsChanged()
+    {
+        var next = IsClosed ? _monitorsChanged : new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Interlocked.Exchange(ref _monitorsChanged, next).TrySetResult();
+    }
+
     // close-request: the guard decides unless the host forces the close. One decision at a time; a closing window allows.
     internal Task<bool> DecideCloseAsync(bool force)
     {
@@ -91,6 +114,8 @@ internal sealed class HostedWindow
     internal async Task OnClosedAsync()
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0) return;
+        DropTarget = null;
+        OnMonitorsChanged();
         HostedWindowMenus? menus;
         lock (_gate) (menus, Menus) = (Menus, null);
         menus?.Dispose();
@@ -124,16 +149,26 @@ internal sealed class HostedGuest : IAsyncDisposable
     private readonly ConcurrentDictionary<Task, byte> _abandonedOpens = new();
     private readonly CancellationTokenSource _ended = new();
     private readonly CancellationTokenSource _hostGone = new();
+    // The application's locale, which follows the host's (host-protocol.md, Appearance and locale); null without one.
+    private readonly IRunicApplicationLocale? _locale;
+    // The host's appearance, which the Windows' pages show, and their content sessions.
+    private readonly object _appearanceGate = new();
+    private readonly HashSet<WindowContentSession> _appearanceSessions = [];
+    private DesktopAppearance? _appearance;
+    // One locale switch at a time, in the order the host's pushes arrived; the last locale this guest followed.
+    private readonly SemaphoreSlim _localeSwitch = new(1, 1);
+    private string? _followedLocale;
     private HostChannel? _channel;
     private HostChannelListener? _listener;
     private int _nextWindow;
     private int _shutdown;
 
-    private HostedGuest(RunicGuestOptions options, DesktopHost desktop, ILogger logger)
+    private HostedGuest(RunicGuestOptions options, DesktopHost desktop, ILogger logger, IRunicApplicationLocale? locale)
     {
         _options = options;
         _desktop = desktop;
         _logger = logger;
+        _locale = locale;
         _input = new HostInput(options.OpenInput());
     }
 
@@ -142,13 +177,13 @@ internal sealed class HostedGuest : IAsyncDisposable
     internal bool IsHostGone => _shutdown != 0;
 
     // Runs the launch contract and the handshake; throws RunicHostedApplicationException when the host cannot host it.
-    internal static async Task<HostedGuest> StartAsync(RunicGuestOptions options, DesktopHost desktop, ILogger logger)
+    internal static async Task<HostedGuest> StartAsync(RunicGuestOptions options, DesktopHost desktop, ILogger logger,
+        IRunicApplicationLocale? locale = null)
     {
-        var guest = new HostedGuest(options, desktop, logger);
+        var guest = new HostedGuest(options, desktop, logger, locale);
         try
         {
             await guest.HandshakeAsync().ConfigureAwait(false);
-            return guest;
         }
         catch (Exception error)
         {
@@ -156,6 +191,11 @@ internal sealed class HostedGuest : IAsyncDisposable
             if (error is RunicHostedApplicationException failure) DesktopLog.HostedStartFailed(logger, failure.Code, failure.Message);
             throw;
         }
+        // The application starts in the host's locale, before its body opens a Window; an application that gives its own
+        // locale up follows the host's again.
+        await guest.FollowLocaleAsync().ConfigureAwait(false);
+        if (locale is not null) locale.LocaleChanged += guest.OnApplicationLocaleChanged;
+        return guest;
     }
 
     private async Task HandshakeAsync()
@@ -214,6 +254,10 @@ internal sealed class HostedGuest : IAsyncDisposable
             ? list.Select(static item => item is JsonValue value && value.TryGetValue<string>(out var name) ? name : null).ToHashSet(StringComparer.Ordinal)
             : [];
         Session = new RunicGuestSession(host, HostProtocol.Version, [.. HostFeatures.Implemented.Where(offered.Contains)], _hostGone.Token);
+        // The host's appearance and locale (host-protocol.md, Handshake); members that are not valid read as unknown.
+        _appearance = HostServices.ReadAppearance(hello["appearance"]);
+        var (hostLocale, languages) = HostServices.ReadLocale(hello);
+        Session.Update(_appearance, hostLocale, languages);
         try
         {
             await HostChannel.SendAsync(socket, new JsonObject
@@ -337,6 +381,7 @@ internal sealed class HostedGuest : IAsyncDisposable
         if (IsHostGone || _channel is not { IsOpen: true } channel) throw HostGone();
         var id = "w" + Interlocked.Increment(ref _nextWindow).ToString(System.Globalization.CultureInfo.InvariantCulture);
         var window = new HostedWindow(this, id, guard, close);
+        if (InUse(HostServices.Feature)) window.DropTarget = request.Drop;
         _windows[id] = window;
         var message = new JsonObject
         {
@@ -354,6 +399,8 @@ internal sealed class HostedGuest : IAsyncDisposable
         message["modality"] = request.Modal ? "window" : "none";
         message["guardClose"] = request.GuardClose;
         message["permissions"] = request.MediaCapture ? new JsonArray("media-capture") : new JsonArray();
+        if (request.Locale is { } windowLocale && HostServices.IsLocale(windowLocale)) message["locale"] = windowLocale;
+        if (window.DropTarget is not null) message["fileDrops"] = true;
         Task<JsonObject> replied;
         try { replied = await channel.BeginRequestAsync(message, CancellationToken.None).ConfigureAwait(false); }
         catch (HostChannelClosedException)
@@ -534,7 +581,105 @@ internal sealed class HostedGuest : IAsyncDisposable
             case "menu-invoke":
                 if (FindWindow(push)?.Menus is { } menus && HostProtocol.String(push, "itemId") is { } itemId) menus.Invoke(itemId);
                 return;
-            // placement, appearance, locale and unknown pushes: not followed yet, ignored.
+            case "appearance":
+                OnAppearance(HostServices.ReadAppearance(push));
+                return;
+            case "locale":
+                var (locale, languages) = HostServices.ReadLocale(push);
+                Session.Update(Session.Appearance, locale, languages);
+                _ = FollowLocaleAsync();
+                return;
+            case "files-dropped" when InUse(HostServices.Feature):
+                if (FindWindow(push) is { DropTarget: { } drop } && HostServices.CheckDrop(push))
+                {
+                    var paths = ((JsonArray)push["paths"]!).Select(static path => path!.GetValue<string>()).ToArray();
+                    var target = HostProtocol.String(push, "target");
+                    // Off the receive loop, as the drop reaches the root ViewModel.
+                    _ = Task.Run(() => drop(new DesktopFileDropEventArgs(paths, target) { Effect = HostServices.Effect(HostProtocol.String(push, "effect")) }));
+                }
+                return;
+            case "monitors-changed" when InUse(HostServices.Feature):
+                FindWindow(push)?.OnMonitorsChanged();
+                return;
+            // placement and unknown pushes: ignored.
+        }
+    }
+
+    // ----- Appearance and locale (host-protocol.md, Appearance and locale)
+
+    // The host's appearance reaches the Window's pages (appearance/1) while it is open, instead of this process's own
+    // desktop settings: the hosted windows show on the host's desktop.
+    internal IDisposable FollowAppearance(WindowContentSession session)
+    {
+        lock (_appearanceGate)
+        {
+            _appearanceSessions.Add(session);
+            session.Appearance = _appearance;
+        }
+        return new AppearanceRegistration(this, session);
+    }
+
+    private void OnAppearance(DesktopAppearance? appearance)
+    {
+        WindowContentSession[] sessions;
+        lock (_appearanceGate)
+        {
+            _appearance = appearance;
+            sessions = [.. _appearanceSessions];
+        }
+        Session.Update(appearance, Session.Locale, Session.Languages);
+        foreach (var session in sessions)
+        {
+            try { session.Appearance = appearance; }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    private sealed class AppearanceRegistration(HostedGuest guest, WindowContentSession session) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (guest._appearanceGate) guest._appearanceSessions.Remove(session);
+        }
+    }
+
+    // The application gave its own locale up: it follows the host's again.
+    private void OnApplicationLocaleChanged(object? sender, RunicApplicationLocaleChangedEventArgs e)
+    {
+        if (e.Locale is null && Session.Locale is not null) _ = FollowLocaleAsync();
+    }
+
+    // The application's locale follows the host's, unless the application set its own (D055.8). Switches run one at a
+    // time, each with the host's latest locale; a host without a locale changes nothing.
+    private async Task FollowLocaleAsync()
+    {
+        if (_locale is null) return;
+        try
+        {
+            await _localeSwitch.WaitAsync(_ended.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        try
+        {
+            var locale = Session.Locale;
+            if (locale is null && _followedLocale is null) return;
+            if (_locale is RunicApplicationLocale own)
+            {
+                if (await own.FollowHostAsync(locale, _ended.Token).ConfigureAwait(false)) _followedLocale = locale;
+                return;
+            }
+            // Another implementation: the application set its own locale when it is not the one this guest followed.
+            var current = _locale.Locale;
+            if (current is not null && !string.Equals(current, _followedLocale, StringComparison.Ordinal)) return;
+            await _locale.SetLocaleAsync(locale, _ended.Token).ConfigureAwait(false);
+            _followedLocale = locale;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedLocaleFailed(_logger, error, error.GetType().Name); }
+        finally
+        {
+            try { _localeSwitch.Release(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -568,6 +713,7 @@ internal sealed class HostedGuest : IAsyncDisposable
     // The body returned: no exit watchdog; the channel closes normally.
     public async ValueTask DisposeAsync()
     {
+        if (_locale is not null) _locale.LocaleChanged -= OnApplicationLocaleChanged;
         await _ended.CancelAsync().ConfigureAwait(false);
         // The Windows that are closing, such as after the host's shutdown, push window-closed before the channel closes,
         // and so do the windows whose open the guest gave up when their reply arrives.

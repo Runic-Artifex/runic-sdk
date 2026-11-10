@@ -105,6 +105,11 @@ runner checks the protocol, not the page. A guest application under test opens n
 | --- | --- |
 | `Main` | no |
 | `Guarded` | yes: its guard answers what the last `answerGuard` action said, `true` before any; after `holdGuard` it waits for the next `answerGuard` |
+| `Drop` | no; its root ViewModel takes dropped files (`IRunicFileDropTarget`) and records their file names |
+
+The test application has an application locale (`IRunicApplicationLocale`), which follows the host's
+([appearance and locale](../host-protocol.md#appearance-and-locale)); it sets none of its own until a `setLocale`
+action.
 
 | Action | Members | Result for `expect` |
 | --- | --- | --- |
@@ -125,6 +130,14 @@ runner checks the protocol, not the page. A guest application under test opens n
 | `openFile`, `openFiles`, `saveFile`, `openFolder` | `window` | The Window's file dialog (`IFileDialogs`: `OpenFileAsync`, `OpenFilesAsync`, `SaveFileAsync`, `OpenDirectoryAsync`): `selected`, the file or directory names of the selection, in order; `dismissed: true`; or an `outcome` |
 | `messageBox` | `window` | The Window's message box (`IDesktopMessageBoxes`): `button`, the id of the button the user chose or `null`, or an `outcome` |
 | `cancelDialog` | `window` | — (it cancels the window's pending `contextMenu` and dialog actions through their cancellation token) |
+| `locale` | — | `locale`: the application's locale, a tag or `null`; the runner waits until it is the expected one |
+| `setLocale` | `value`: a tag, or `null` | — (the application sets a locale of its own, or gives it up) |
+| `appearance` | `window` | `appearance`: the appearance the Window's pages receive, as the members of the [`appearance` push](../host-protocol.md#appearance-and-locale), or `null`; the runner waits until it is the expected one |
+| `readClipboard` | `window` | The Window's clipboard's text, read with a bound of 1,024 characters (`ITextClipboard.ReadTextAsync`): `text`, a string or `null`, or an `outcome` |
+| `writeClipboard` | `window`, `value`: the text | A platform outcome (`ITextClipboard.WriteTextAsync`) |
+| `monitors` | `window` | The Window's monitors (`IDesktopMonitors.ListAsync`): `monitors`, their ids in order, or an `outcome` |
+| `launch` | `window`, `value`: an absolute URI, or a `$file` path | A platform outcome: `IDesktopFileLauncher.LaunchUriAsync` for a URI, `LaunchAsync` with `reveal` for a path |
+| `drops` | `window` | `dropped`: the file names of the files dropped onto the application's `Drop` Windows, in order; the runner waits until they are the expected ones |
 
 `expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start, or the host's start
 of the guest, failed with a code), `exited` (the guest process exited; a code when given), `running` (the guest still
@@ -172,8 +185,17 @@ for a `user` step that answers it, or until the host closes it.
 | `awaitDialogClosed` | optional `dialog` | Waits until the host closes the oldest dialog (of that kind) that an `awaitDialog` step left open |
 | `closeWindow` | `window` | Presses the window's close button, which asks the guest (`close-request`) |
 | `deactivateWindow`, `activateWindow` | `window` | Gives the keyboard focus to another window, or back to this one; each window is active when it opens |
+| `copyText` | `text` | Copies the text in another application: the host's clipboard has it |
+| `dropFiles` | `window`, `paths` (`$file` or `$directory` values) | Drops the files onto the window |
+| `setLocale` | `locale`: a tag or `null` | Changes the host application's locale (`IRunicApplicationLocale`) |
+| `setAppearance` | `appearance`: `{colorScheme, contrast}`, `colorScheme` `light` or `dark`, `contrast` `no-preference`, `more` or `forced-colors` | Changes the host's desktop appearance, with no reduced motion, a text scale of 1 and no accent colour |
+
+The host starts with no application locale and the appearance `{"colorScheme":"light","contrast":"no-preference",
+"reducedMotion":false,"textScale":1,"accentColor":null,"systemColors":null}`, and its windows' monitors are the host
+runner's: their ids are not part of a scenario.
 
 `dialog` is a kind of `file-dialog` (`open`, `open-multiple`, `save`, `folder`, `folder-multiple`) or `message-box`.
 `expect` with `window` checks the host's window: `menuBar`, the entries its native menu bar shows, as menu entries
 without their `id` members (the host's own items are part of it), waiting until they match; or `closed: true`, that the
-window closed.
+window closed. `expect` with `clipboard` checks the text on the host's clipboard, and with `launched` the links and
+files the host opened for the guest, in order (a link's absolute URI, a file's path), each waiting until they match.

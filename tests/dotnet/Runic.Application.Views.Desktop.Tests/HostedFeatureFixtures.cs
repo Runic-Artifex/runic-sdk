@@ -1,6 +1,9 @@
 using System.Collections.Immutable;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using System.Windows.Input;
+using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Desktop.Hosting;
@@ -35,11 +38,12 @@ internal sealed class FakeHostDialogs : INativeFilePicker, INativeDirectoryPicke
     public bool SupportsMultipleSelection => true;
     public bool SupportsMultipleDirectorySelection => true;
 
-    // Installs the dialogs for every hosted window until the result is disposed.
-    public IDisposable Install()
+    // Installs the dialogs for every hosted window until the result is disposed; services, when given, is the windows'
+    // clipboard and launcher (window-services/1).
+    public IDisposable Install(RunicTestPlatform? services = null)
     {
         var previous = RunicHostedApplication.CreateDialogs;
-        RunicHostedApplication.CreateDialogs = _ => new HostDialogServices(this, this, null);
+        RunicHostedApplication.CreateDialogs = _ => new HostDialogServices(this, this, null, clipboard: services?.Clipboard, launcher: services);
         return new Restore(() => RunicHostedApplication.CreateDialogs = previous);
     }
 
@@ -197,4 +201,94 @@ internal static class HostedContextMenu
         new DesktopMenuSeparator(),
         new DesktopMenuItem("Paste", "edit.paste") { IsEnabled = false },
     ];
+}
+
+// The host's desktop appearance for HostFixture (IDesktopSettings): a fixed appearance that Set changes, reported to every
+// watch, so the host's hello and appearance pushes do not depend on the machine.
+internal sealed class HostAppearanceSettings : IDesktopSettings
+{
+    private readonly object _gate = new();
+    private readonly List<Channel<DesktopAppearance>> _watches = [];
+    private DesktopAppearance _appearance = new(DesktopColorScheme.Light, ReducedMotion: false) { Contrast = DesktopContrast.NoPreference, TextScale = 1 };
+
+    public DesktopAppearance Appearance
+    {
+        get { lock (_gate) return _appearance; }
+    }
+
+    public void Set(DesktopAppearance appearance)
+    {
+        lock (_gate)
+        {
+            _appearance = appearance;
+            foreach (var watch in _watches) watch.Writer.TryWrite(appearance);
+        }
+    }
+
+    public ValueTask<PlatformResult<DesktopAppearance>> ReadAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<PlatformResult<DesktopAppearance>>(new PlatformResult<DesktopAppearance>.Success(Appearance));
+
+    public async IAsyncEnumerable<PlatformResult<DesktopAppearance>> WatchAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var channel = Channel.CreateUnbounded<DesktopAppearance>();
+        lock (_gate)
+        {
+            _watches.Add(channel);
+            channel.Writer.TryWrite(_appearance);
+        }
+        try
+        {
+            while (true) yield return new PlatformResult<DesktopAppearance>.Success(await channel.Reader.ReadAsync(cancellationToken));
+        }
+        finally
+        {
+            lock (_gate) _watches.Remove(channel);
+        }
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+// The monitors of HostedWindowFactory's headless windows: two by default, which Set changes, reported to every watch.
+internal sealed class FakeMonitors : IDesktopMonitors
+{
+    private readonly object _gate = new();
+    private readonly List<Channel<ImmutableArray<DesktopMonitor>>> _watches = [];
+    private ImmutableArray<DesktopMonitor> _monitors =
+    [
+        new DesktopMonitor("primary", "Primary") { Bounds = new(0, 0, 1920, 1080), WorkArea = new(0, 0, 1920, 1040), IsPrimary = true },
+        new DesktopMonitor("side", "Side") { Bounds = new(1920, 0, 1280, 1024), WorkArea = new(1920, 0, 1280, 1024), Scale = 1.25 },
+    ];
+
+    public void Set(ImmutableArray<DesktopMonitor> monitors)
+    {
+        lock (_gate)
+        {
+            _monitors = monitors;
+            foreach (var watch in _watches) watch.Writer.TryWrite(monitors);
+        }
+    }
+
+    public ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_gate) return ValueTask.FromResult<PlatformResult<ImmutableArray<DesktopMonitor>>>(new PlatformResult<ImmutableArray<DesktopMonitor>>.Success(_monitors));
+    }
+
+    public async IAsyncEnumerable<PlatformResult<ImmutableArray<DesktopMonitor>>> WatchAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var channel = Channel.CreateUnbounded<ImmutableArray<DesktopMonitor>>();
+        lock (_gate)
+        {
+            _watches.Add(channel);
+            channel.Writer.TryWrite(_monitors);
+        }
+        try
+        {
+            while (true) yield return new PlatformResult<ImmutableArray<DesktopMonitor>>.Success(await channel.Reader.ReadAsync(cancellationToken));
+        }
+        finally
+        {
+            lock (_gate) _watches.Remove(channel);
+        }
+    }
 }

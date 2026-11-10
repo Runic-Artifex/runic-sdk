@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -56,6 +57,10 @@ internal static class HostedGuestProgram
             _ => (transport, model) => new OrderedCollectionBridge(transport, model));
         services.AddScoped<HostedMenuModel>();
         services.AddScoped<Func<IBridgeTransport, HostedMenuModel, IDisposable>>(_ => (transport, model) => new HostedMenuBridge(transport, model));
+        services.AddScoped<HostedDropModel>();
+        services.AddScoped<Func<IBridgeTransport, HostedDropModel, IDisposable>>(_ => (transport, model) => new HostedDropBridge(transport, model));
+        // The application's locale, which follows the host's (host-protocol.md, Appearance and locale).
+        services.AddRunicWindowService();
         // The Windows' IWindowPlatformServices, which hosted mode proxies to the host (dialogs/1, menus/1).
         services.AddRunicPlatformServices();
         // The platform services include ones that are only asynchronously disposable.
@@ -187,6 +192,34 @@ internal static class HostedGuestProgram
                 // reported as a line the host's case waits for.
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
                 await HostedServicesScript.RunAsync(((IRunicWindow)window).Services.GetRequiredService<IWindowPlatformServices>());
+                await window.WaitForCloseAsync();
+                return 0;
+            }
+            case "window-services":
+            {
+                // window-services/1 and the host's locale: each result is a line on standard error (HostedWindowServicesTests).
+                var locale = host.Services.GetRequiredService<IRunicApplicationLocale>();
+                Console.Error.WriteLine("LOCALE " + (locale.Locale ?? "none"));
+                Console.Error.WriteLine("LANGUAGES " + string.Join(",", host.Guest!.Languages));
+                Console.Error.WriteLine("APPEARANCE " + HostedWindowServicesScript.Describe(host.Guest.Appearance));
+                locale.LocaleChanged += (_, e) => Console.Error.WriteLine("LOCALE " + (e.Locale ?? "none"));
+                // Each later appearance of the host, as the application reads it.
+                var session = host.Guest;
+                _ = Task.Run(async () =>
+                {
+                    var last = session.Appearance;
+                    while (!session.HostGone.IsCancellationRequested)
+                    {
+                        await Task.Delay(50);
+                        if (Equals(session.Appearance, last)) continue;
+                        last = session.Appearance;
+                        Console.Error.WriteLine("APPEARANCE " + HostedWindowServicesScript.Describe(last));
+                    }
+                });
+                await using var window = await host.OpenWindowAsync<HostedDropWindow>();
+                // The script waits for the host's steps; the window may close before it ends.
+                var services = ((IRunicWindow)window).Services.GetRequiredService<IWindowPlatformServices>();
+                _ = Task.Run(() => HostedWindowServicesScript.RunAsync(host, locale, services));
                 await window.WaitForCloseAsync();
                 return 0;
             }
@@ -372,3 +405,78 @@ internal sealed class AsyncDisposal(IAsyncDisposable disposable) : IDisposable
 {
     public void Dispose() => disposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
 }
+
+// window-services/1 from a hosted Window (HostedGuestProgram "window-services"): after the first drop onto the window, the
+// clipboard, monitors and launcher, then, once the host's locale is fr, a clipboard read and a locale of its own. Each
+// result is a line on standard error, which the host's case waits for.
+internal static class HostedWindowServicesScript
+{
+    public static async Task RunAsync(RunicDesktopHost host, IRunicApplicationLocale locale, IWindowPlatformServices services)
+    {
+        var dropped = await HostedDropModel.FirstDrop.Task;
+        var clipboard = (IDesktopClipboard)services.Clipboard;
+        Report("READ", Describe(await clipboard.ReadTextAsync(1_000)));
+        Report("WRITE", Describe(await clipboard.WriteAsync(new DesktopClipboardContent { Text = "from guest", Html = "<b>from guest</b>" })));
+        Report("FORMATS", Describe(await clipboard.GetFormatsAsync()));
+        await foreach (var watch in clipboard.WatchAsync()) Report("CLIPBOARD-WATCH", Describe(watch));
+        Report("MONITORS", Describe(await services.Monitors.ListAsync()));
+        _ = Task.Run(async () =>
+        {
+            await foreach (var monitors in services.Monitors.WatchAsync()) Report("WATCH", Describe(monitors));
+        });
+        Report("LAUNCH-URI", Describe(await services.FileLauncher.LaunchUriAsync(new Uri("https://runic.dev/docs"))));
+        Report("LAUNCH-SETTINGS", Describe(await services.FileLauncher.LaunchUriAsync(new Uri("ms-settings:display"))));
+        Report("LAUNCH-GIVEN", Describe(await services.FileLauncher.LaunchAsync(dropped, DesktopFileOperation.Reveal)));
+        Report("LAUNCH-OTHER", Describe(await services.FileLauncher.LaunchAsync(dropped + ".other")));
+        Report("DRAG", Describe(await services.StartDragAsync(new DesktopDragData { Paths = [dropped] })));
+        Report("ANNOUNCE", Describe(await services.AnnounceAsync("Ready")));
+        Report("PHASE", "1");
+        // The host's locale changes to fr: the application followed it; the window is no longer active.
+        while (locale.Locale != "fr") await Task.Delay(50);
+        Report("READ-INACTIVE", Describe(await clipboard.ReadTextAsync(1_000)));
+        await locale.SetLocaleAsync("en");
+        Report("OWN", locale.Locale ?? "none");
+        Report("PHASE", "2");
+    }
+
+    private static void Report(string name, string result) => Console.Error.WriteLine((name + " " + result).TrimEnd());
+
+    internal static string Describe(DesktopAppearance? appearance) =>
+        appearance is null ? "none" : $"{appearance.ColorScheme} {appearance.Contrast?.ToString() ?? "unknown"}";
+
+    internal static string Describe<T>(PlatformResult<T> result) => result switch
+    {
+        PlatformResult<T>.Success(var value) => value switch
+        {
+            null => "none",
+            string text => text,
+            DesktopClipboardFormats formats => formats.ToString(),
+            ImmutableArray<DesktopMonitor> monitors => string.Join(",", monitors.Select(static monitor => monitor.Id)),
+            DesktopDragEffects effect => effect.ToString(),
+            _ => "success",
+        },
+        PlatformResult<T>.Unavailable(var reason) => "unavailable " + reason,
+        PlatformResult<T>.Failed(var code, _) => "failed " + code,
+        _ => "unknown",
+    };
+}
+
+// A Window whose root ViewModel takes dropped files: each drop is reported as DROP <paths>, and the first completes FirstDrop.
+internal sealed class HostedDropWindow : RunicWindow<HostedDropModel>;
+
+internal sealed class HostedDropModel : IRunicFileDropTarget, System.ComponentModel.INotifyPropertyChanged
+{
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+    public static TaskCompletionSource<string> FirstDrop { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public ValueTask OnFilesDroppedAsync(RunicFileDrop drop, CancellationToken cancellationToken)
+    {
+        Console.Error.WriteLine("DROP " + string.Join(",", drop.Files.Select(static file => file.Path)) + (drop.Target is null ? "" : " " + drop.Target));
+        FirstDrop.TrySetResult(drop.Files[0].Path);
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class HostedDropBridge(IBridgeTransport transport, HostedDropModel model)
+    : ViewModelBridge<HostedDropModel>(transport, model, "hosted-drop", [], [], [], []);

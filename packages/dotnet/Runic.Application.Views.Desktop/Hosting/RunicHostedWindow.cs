@@ -137,6 +137,11 @@ public sealed class RunicHostedWindow
 
     internal void EndDialog() => Volatile.Write(ref _dialog, 0);
 
+    // window-services/1: whether the host watches its monitors for the window's monitors-changed; the first caller starts.
+    private int _monitorWatch;
+
+    internal bool BeginMonitorWatch() => Interlocked.Exchange(ref _monitorWatch, 1) == 0;
+
     // The window's dialog services; once the window is closing, services that report the closed owner, so a request
     // that raced the close creates none that nothing would dispose.
     internal HostDialogServices Dialogs(Func<DesktopWindow, HostDialogServices> create)

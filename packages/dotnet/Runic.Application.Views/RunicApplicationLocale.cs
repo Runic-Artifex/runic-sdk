@@ -33,6 +33,11 @@ namespace Runic.Application.Views;
 /// switch when there was none.
 /// </para>
 /// <para>
+/// In hosted mode (another Runic application shows this application's Windows, <c>RunicDesktopHostOptions.Guest</c>), the
+/// locale follows the host application's until this application sets one of its own with <see cref="SetLocaleAsync"/>;
+/// setting <see langword="null"/> follows the host's again.
+/// </para>
+/// <para>
 /// Applications and tests may implement this interface. A minor release adds members to it only with a default
 /// implementation.
 /// </para>
@@ -168,7 +173,22 @@ internal sealed class RunicApplicationLocale : IRunicApplicationLocale, IDisposa
         }
     }
 
-    public async ValueTask SetLocaleAsync(string? locale, CancellationToken cancellationToken = default)
+    public async ValueTask SetLocaleAsync(string? locale, CancellationToken cancellationToken = default) =>
+        _ = await SwitchAsync(locale, fromHost: false, cancellationToken).ConfigureAwait(false);
+
+    // Hosted mode (runic-host/1, host-protocol.md, Appearance and locale): the host's locale, which the application follows
+    // unless it set a locale of its own with SetLocaleAsync; setting null gives its own locale up. Returns whether the
+    // locale followed the host's.
+    internal ValueTask<bool> FollowHostAsync(string? locale, CancellationToken cancellationToken = default) =>
+        SwitchAsync(locale, fromHost: true, cancellationToken);
+
+    // Whether the application set a locale of its own (SetLocaleAsync with a locale). Under _switching.
+    private bool _ownLocale;
+
+    // Whether the application set a locale of its own, which a host's locale does not replace.
+    internal bool HasOwnLocale => Volatile.Read(ref _ownLocale);
+
+    private async ValueTask<bool> SwitchAsync(string? locale, bool fromHost, CancellationToken cancellationToken)
     {
         if (locale is not null && !BridgeDispatcher.IsLocale(locale))
             throw new ArgumentException($"'{locale}' is not a locale tag, such as \"de\" or \"pt-BR\".", nameof(locale));
@@ -184,6 +204,8 @@ internal sealed class RunicApplicationLocale : IRunicApplicationLocale, IDisposa
         List<Exception>? errors = null;
         try
         {
+            if (fromHost && _ownLocale) return false;
+            if (!fromHost) Volatile.Write(ref _ownLocale, locale is not null);
             var old = Volatile.Read(ref _locale);
             if (string.Equals(old, locale, StringComparison.Ordinal))
             {
@@ -215,6 +237,7 @@ internal sealed class RunicApplicationLocale : IRunicApplicationLocale, IDisposa
             (errors ??= []).AddRange(handlerErrors);
         if (errors is not null) throw new AggregateException(
             "The application's locale changed, but a Window or a LocaleChanged handler failed: " + errors[0].Message, errors);
+        return true;
     }
 
     private async ValueTask RunFollowersAsync(string locale, CancellationToken cancellationToken)

@@ -254,9 +254,10 @@ internal sealed class HostedWindowMenus : IDisposable
     }
 }
 
-// The window services of a hosted Window (host-protocol.md, Menus and Dialogs): context menus with menus/1, file dialogs
-// and message boxes with dialogs/1, each owned by the host's window; the other services, and those of a feature not in
-// use, report OwnerUnavailable, as in serve-only mode. The Window's DesktopWindowPlatformServices binds to them when the
+// The window services of a hosted Window (host-protocol.md, Menus, Dialogs and Window services): context menus with
+// menus/1, file dialogs and message boxes with dialogs/1, each owned by the host's window, and the clipboard, monitors
+// and file launcher with window-services/1; drags out of the window, and the services of a feature not in use, report
+// OwnerUnavailable, as in serve-only mode. The Window's DesktopWindowPlatformServices binds to them when the
 // window opened (DesktopBridgeWindow.SetHosted), and closing the window stops them: their requests end as OwnerClosed.
 internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
 {
@@ -264,17 +265,28 @@ internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IA
     private readonly HostedWindow _window;
     private readonly bool _menus;
     private readonly bool _dialogs;
+    private readonly bool _services;
     private readonly PresentationLifetime _lifetime;
+    private readonly HostedClipboard? _clipboard;
+    private readonly HostedMonitors? _monitors;
+    private readonly HostedFileLauncher? _launcher;
     private readonly PresentationFiles? _files;
     private readonly PresentationMessageBoxes? _messageBoxes;
     // One dialog at a time (host-protocol.md, Dialogs): a second one fails as busy without asking the host.
     private int _dialog;
 
-    internal HostedWindowPlatformServices(HostedWindow window, bool menus, bool dialogs)
+    internal HostedWindowPlatformServices(HostedWindow window, bool menus, bool dialogs, bool services)
     {
         _window = window;
         _menus = menus;
         _dialogs = dialogs;
+        _services = services;
+        if (services)
+        {
+            _clipboard = new HostedClipboard(window);
+            _monitors = new HostedMonitors(window);
+            _launcher = new HostedFileLauncher(window);
+        }
         var owner = new HostedWindowOwner(window);
         _lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
         if (dialogs)
@@ -285,9 +297,9 @@ internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IA
     }
 
     public IFileDialogs FileDialogs => (IFileDialogs?)_files ?? NoOwner.FileDialogs;
-    public ITextClipboard Clipboard => NoOwner.Clipboard;
-    public IDesktopFileLauncher FileLauncher => NoOwner.FileLauncher;
-    public IDesktopMonitors Monitors => NoOwner.Monitors;
+    public ITextClipboard Clipboard => (ITextClipboard?)_clipboard ?? NoOwner.Clipboard;
+    public IDesktopFileLauncher FileLauncher => (IDesktopFileLauncher?)_launcher ?? NoOwner.FileLauncher;
+    public IDesktopMonitors Monitors => (IDesktopMonitors?)_monitors ?? NoOwner.Monitors;
     public IDesktopMessageBoxes MessageBoxes => (IDesktopMessageBoxes?)_messageBoxes ?? NoOwner.MessageBoxes;
 
     public CapabilitySnapshot GetSnapshot()
@@ -301,6 +313,20 @@ internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IA
                 ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed)
                 : new CapabilityStatus.Available();
         statuses = statuses.SetItem(PlatformCapabilityIds.ContextMenu, menus).SetItem(PlatformCapabilityIds.MenuBar, menus);
+        if (_services)
+        {
+            // The host's policy decides each request; the watch of the host's clipboard is not proxied.
+            CapabilityStatus available = _window.IsClosed
+                ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed)
+                : new CapabilityStatus.Available();
+            foreach (var id in (string[])[PlatformCapabilityIds.ClipboardReadText, PlatformCapabilityIds.ClipboardWriteText,
+                PlatformCapabilityIds.ClipboardReadData, PlatformCapabilityIds.ClipboardWriteData, PlatformCapabilityIds.FilesLaunch,
+                PlatformCapabilityIds.UrisLaunch, PlatformCapabilityIds.Monitors])
+                statuses = statuses.SetItem(id, available);
+            statuses = statuses.SetItem(PlatformCapabilityIds.ClipboardWatch, _window.IsClosed
+                ? available
+                : new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+        }
         return new CapabilitySnapshot(_lifetime.Generation, statuses);
     }
 
@@ -329,6 +355,13 @@ internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IA
             _ => new PlatformResult<DesktopMenuItem?>.Failed(PlatformFailureCode.Unknown),
         };
     }
+
+    // The base protocol's announce (host-protocol.md, Presentation): the host's window raises it for the screen reader.
+    internal ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(string message, DesktopAnnouncementPriority priority,
+        CancellationToken cancellationToken) =>
+        _window.Presentation is { } presentation
+            ? presentation.AnnounceAsync(message, priority, cancellationToken)
+            : ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed));
 
     // A reply of a request that waits for the user: null for success, else its outcome; a closed channel is OwnerClosed.
     internal static PlatformResult<PlatformUnit>? Outcome(JsonObject? reply) =>

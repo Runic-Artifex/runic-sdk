@@ -984,7 +984,7 @@ public static partial class DesktopPlatformServices
         if (!owner.IsAvailable) return Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         if (CreateNative(owner, CurrentProvider, applicationId: null) is not { } native) return Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         var services = new BoundWindowPlatformServices(owner, native);
-        return new(services.MessageBoxes, (native.Dialogs as NativePickerBackend)?.Picker, null, services);
+        return new(services.MessageBoxes, (native.Dialogs as NativePickerBackend)?.Picker, null, services, services.Clipboard, services.FileLauncher);
 
         static Hosting.HostDialogServices Unavailable(PlatformUnavailableReason reason) =>
             new(DesktopMessageBoxes.Unavailable(reason), null, reason);
@@ -1718,7 +1718,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
 
     // Hosted mode (runic-host/1): a Window whose host shows its window; the services ask the host over the host channel
     // (Hosting.HostedWindowPlatformServices) and report the rest unavailable.
-    internal void BindHosted(IWindowPlatformServices hosted)
+    internal void BindHosted(IWindowPlatformServices hosted,
+        Func<string, DesktopAnnouncementPriority, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>>? announcer = null)
     {
         lock (_gate)
         {
@@ -1726,6 +1727,8 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             if (_disposal is not null) return;
             _bound = hosted;
             _hosted = true;
+            // The base protocol's announce: the host's window raises it for the screen reader.
+            _announcer = announcer;
             Volatile.Write(ref _current, _bound);
         }
     }

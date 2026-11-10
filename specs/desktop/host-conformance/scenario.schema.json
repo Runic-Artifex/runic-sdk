@@ -693,7 +693,15 @@
                     "saveFile",
                     "openFolder",
                     "messageBox",
-                    "cancelDialog"
+                    "cancelDialog",
+                    "locale",
+                    "setLocale",
+                    "appearance",
+                    "readClipboard",
+                    "writeClipboard",
+                    "monitors",
+                    "launch",
+                    "drops"
                   ]
                 },
                 "window": {
@@ -702,7 +710,8 @@
                 "type": {
                   "enum": [
                     "Main",
-                    "Guarded"
+                    "Guarded",
+                    "Drop"
                   ]
                 },
                 "owner": {
@@ -715,9 +724,17 @@
                   ]
                 },
                 "value": {
-                  "type": [
-                    "boolean",
-                    "string"
+                  "oneOf": [
+                    {
+                      "type": [
+                        "boolean",
+                        "string",
+                        "null"
+                      ]
+                    },
+                    {
+                      "$ref": "#/$defs/path"
+                    }
                   ]
                 },
                 "allow": {
@@ -795,7 +812,11 @@
                           "saveFile",
                           "openFolder",
                           "messageBox",
-                          "cancelDialog"
+                          "cancelDialog",
+                          "appearance",
+                          "readClipboard",
+                          "monitors",
+                          "drops"
                         ]
                       }
                     }
@@ -853,6 +874,46 @@
                       }
                     }
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "writeClipboard",
+                          "launch"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "value"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setLocale"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "value"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
                 }
               ]
             },
@@ -888,7 +949,11 @@
                     "awaitDialogClosed",
                     "closeWindow",
                     "deactivateWindow",
-                    "activateWindow"
+                    "activateWindow",
+                    "copyText",
+                    "setLocale",
+                    "setAppearance",
+                    "dropFiles"
                   ]
                 },
                 "window": {
@@ -930,6 +995,38 @@
                 },
                 "button": {
                   "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "appearance": {
+                  "type": "object",
+                  "required": [
+                    "colorScheme",
+                    "contrast"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "colorScheme": {
+                      "enum": [
+                        "light",
+                        "dark"
+                      ]
+                    },
+                    "contrast": {
+                      "enum": [
+                        "no-preference",
+                        "more",
+                        "forced-colors"
+                      ]
+                    }
+                  }
                 }
               },
               "allOf": [
@@ -1043,6 +1140,63 @@
                       }
                     }
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "copyText"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "text"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setLocale"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "locale"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setAppearance"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "appearance"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "dropFiles"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "paths"
+                    ]
+                  }
                 }
               ]
             },
@@ -1132,6 +1286,36 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "locale": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "appearance": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "monitors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dropped": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   }
                 },
@@ -1221,6 +1405,40 @@
                     },
                     "closed": {
                       "const": true
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "clipboard"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "clipboard": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "launched"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "launched": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/$defs/path"
+                          }
+                        ]
+                      }
                     }
                   }
                 }

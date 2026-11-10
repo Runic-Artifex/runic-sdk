@@ -483,7 +483,9 @@ public sealed partial class RunicHostedApplication
             if (selected is null || selected.Length == 0) return Outcome(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed));
             // The guest opens the paths itself, with its own access: the host keeps no grant (host-protocol.md, Dialogs).
             var single = kind is RunicHostedDialogKind.OpenFile or RunicHostedDialogKind.SaveFile or RunicHostedDialogKind.OpenFolder;
-            var paths = single ? selected.Take(1) : selected;
+            var paths = (single ? selected.Take(1) : selected).ToArray();
+            // The user gave the guest these paths: it may open them through the host (window-services/1).
+            GivePaths(paths.Select(static selection => selection.Path));
             var filter = selected[0].Filter is { } chosen && native.Filters.IndexOf(chosen) is >= 0 and var index ? index : (int?)null;
             return new JsonObject
             {

@@ -741,9 +741,36 @@ if (args is ["hosted"])
   as from its own dialogs, opens the selected files itself, and one dialog at a
   time (another reports `ResourceBusy`). A dialog the host's policy refuses
   reports `PermissionDenied`; one whose window closes reports `OwnerClosed`;
-  cancelling the call closes the host's dialog. Clipboard, monitors, the file
-  launcher and drag and drop report `OwnerUnavailable`, as in serve-only mode,
-  and so does every menu or dialog when the host does not list its feature.
+  cancelling the call closes the host's dialog. Every menu or dialog reports
+  `OwnerUnavailable`, as in serve-only mode, when the host does not list its
+  feature.
+- **Appearance and locale.** The Windows' pages show the host's appearance
+  (colour scheme, contrast, forced colours and their palette, reduced motion,
+  text scale, accent colour), never this process's own desktop settings: the
+  windows show on the host's desktop. With `AddRunicWindowService`, the
+  application's locale (`IRunicApplicationLocale`) follows the host's, already
+  when the body starts, until the application sets one of its own with
+  `SetLocaleAsync`; setting `null` follows the host's again. Each Window that
+  follows the application follows it too, and the host's window takes its
+  locale's direction. `RunicDesktopHost.Guest` has the host's `Locale`, its
+  user's `Languages` (to negotiate against the application's catalogs instead
+  of `DesktopLanguages.Preferred`) and its `Appearance`. A follow that fails is
+  logged (event 2023).
+- **Window services** (`window-services/1`, when the host lists it). The
+  Window's clipboard (`IDesktopClipboard`: text, HTML, RTF, PNG images and file
+  lists), monitors (`IDesktopMonitors`, with a watch that follows the host's
+  changes) and file launcher (`IDesktopFileLauncher`) are the host's, and the
+  files the user drops onto the host's window reach a root ViewModel that is an
+  `IRunicFileDropTarget`. The host decides each request: by default it reads
+  the clipboard only for the active window, opens only `http`, `https` and
+  `mailto` links and the files the user gave the application through its
+  dialogs or a drop, each for the active window, and bounds the rate; a refusal
+  reports `PermissionDenied`, a turned-away rate `ResourceBusy`. The clipboard's
+  watch reports `BackendUnavailable`: a hosted application is not told when the
+  user copies. Drags out of the window (`StartDragAsync`), the taskbar badge and
+  progress report `OwnerUnavailable`, as in serve-only mode; notifications, the
+  status icon, global shortcuts, settings and the secret store stay the
+  application's own. Announcements (`AnnounceAsync`) go to the host's window.
 - **End.** When the host asks the application to shut down, or goes away
   (standard input ends or the channel closes), the Windows close,
   `DesktopHost.ShutdownRequested` and `RunicDesktopHost.Guest.HostGone` are
@@ -818,10 +845,24 @@ var exitCode = await tool.Exited;
   paths it may not open, as the picker's grant stays with the process that showed it. Closing the window, the guest
   giving the dialog up or the guest going away closes a dialog that is shown. The titles, texts and button labels are
   the guest's; see [security](../../../docs/security.md#hosted-application-windows) for marking them.
+- **Appearance and locale.** The guest starts with the host's application locale (`IRunicApplicationLocale`, after
+  `AddRunicWindowService`), its user's languages (`DesktopLanguages.Preferred`) and the appearance its own windows
+  show (from `IDesktopSettings`), and the host sends each change. A guest Window's locale gives its window the
+  locale's direction, unless the host's window options fix one (`RunicHostedWindowRequest.Locale`).
+- **Window services.** With `window-services/1` a guest uses the host window's clipboard, monitors and launcher, with
+  the host's rights, and receives the files the user drops onto a window whose Window takes them; dropped files
+  without a path, such as macOS file promises, are not forwarded. `IRunicHostedWindowPolicy.ServiceAsync` decides each
+  request (`RunicHostedServiceRequest`); by default (`IsAllowedByDefault`) the host reads the clipboard only for the
+  active window, writes it and lists monitors for any window, and opens only `http`, `https` and `mailto` links and
+  the files the user gave the guest through the host's file dialogs or drops, each only for the active window. A
+  policy can widen or narrow this, change a launch (such as reveal instead of open) or forward only some dropped
+  paths; see [security](../../../docs/security.md#hosted-application-windows) before widening it. The guest is never
+  told when the clipboard changes, and cannot drag files out of its windows.
 - **Limits.** `IRunicHostedWindowPolicy.Limits` (`RunicHostedLimits`) bounds a window's menu requests (20 a second by
-  default; Runic's guest sends its latest menus again when one is turned away) and the dialogs a guest shows at once,
-  across its windows (one by default; another reports `ResourceBusy` to a Runic guest). The host rebuilds a window's
-  native bar at most every 50 milliseconds, however many changes arrive.
+  default; Runic's guest sends its latest menus again when one is turned away), the dialogs a guest shows at once,
+  across its windows (one by default; another reports `ResourceBusy` to a Runic guest), its clipboard and monitor
+  requests (20 a second) and the files and links it opens (5 per ten seconds). The host rebuilds a window's native bar
+  at most every 50 milliseconds, however many changes arrive.
 - **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
   own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest
   nothing. A policy can grant more through `RunicHostedWindowDecision.Allow(request.WindowOptions with { ... })`.
@@ -829,9 +870,10 @@ var exitCode = await tool.Exited;
   `DesktopWindowOptions` such as a saved placement keyed by `Guest.ApplicationId`) and each presentation request
   (`Present`: apply, clamp or refuse; the request a policy returns applies as it is), each menu bar and context menu
   (`Menu`: show, show changed entries, such as without an item or with an item of the host's own, whose command is
-  then the host application's, or refuse) and each dialog (`DialogAsync`: show, show with other options of the same
-  kind, such as another initial directory, or refuse). Without a policy, every window of the guest opens and every
-  request, menu and dialog applies.
+  then the host application's, or refuse), each dialog (`DialogAsync`: show, show with other options of the same
+  kind, such as another initial directory, or refuse) and each window service (`ServiceAsync`). Without a policy,
+  every window of the guest opens, every request, menu and dialog applies, and window services follow the defaults
+  above.
 - **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
   and completes `Exited` with its exit code (event 2017). `StopAsync` asks the guest to shut down and ends it after
   `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests

@@ -206,7 +206,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // Hosted mode's launch contract and handshake, before the application's body runs.
     private async Task StartGuestAsync()
     {
-        _guest = await Hosting.HostedGuest.StartAsync(_guestOptions!, Desktop, GuestLogger).ConfigureAwait(false);
+        _guest = await Hosting.HostedGuest.StartAsync(_guestOptions!, Desktop, GuestLogger, Services.GetService<IRunicApplicationLocale>())
+            .ConfigureAwait(false);
     }
 
     private ILogger GuestLogger => (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
@@ -577,7 +578,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // appearance/1: the window's appearance follows the desktop's settings while it is open, when only this
             // computer can reach its pages (DesktopWindowLocality): a serve-only window or a host on every interface may
             // be shown on another machine, which must not learn this desktop's accessibility settings.
-            if (DesktopWindowLocality.IsLocal(Desktop, surface, ServeOnly))
+            // In hosted mode the window shows on the host's desktop, so its pages show the host's appearance instead
+            // (host-protocol.md, Appearance and locale).
+            if (_guest is { } hostedGuest)
+                connections = new Bindings(connections, hostedGuest.FollowAppearance(content));
+            else if (DesktopWindowLocality.IsLocal(Desktop, surface, ServeOnly))
                 connections = new Bindings(connections, AppearanceFeed.Add(content, loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")));
             // The window releases its live development content when it closes, with its connection events.
             connectionBinding = development is null ? connections : new Bindings(connections, development);
@@ -683,7 +688,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             windowOptions.Width, windowOptions.Height, windowOptions.MinimumWidth, windowOptions.MinimumHeight, ownerId,
             Modal: ownerId is not null && opening.Options.Modality == RunicWindowModality.Window,
             GuardClose: opening.CloseGuard is not null,
-            MediaCapture: windowOptions.AllowedPermissions.HasFlag(DesktopPermissionGrant.MediaCapture));
+            MediaCapture: windowOptions.AllowedPermissions.HasFlag(DesktopPermissionGrant.MediaCapture))
+        {
+            Locale = content.Locale,
+            Drop = content.AcceptsFileDrops ? owner.DeliverHostedDrop : null,
+        };
         // The host can close the window as soon as it answered window-open, before the Window finished opening here: the
         // close then waits until it has (IRunicWindow.CloseWhenOpen), as a result completed during the open does.
         var hosted = await guest.OpenWindowAsync(request, opening.CloseGuard, () =>
@@ -695,7 +704,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // menus/1 and dialogs/1: the Window's menu bar, context menus, file dialogs and message boxes go to the host's
         // window; without the features they report OwnerUnavailable, as in serve-only mode.
         var menus = guest.InUse(Hosting.HostFeatures.Menus);
-        owner.SetHosted(new Hosting.HostedWindowPlatformServices(hosted, menus, guest.InUse(Hosting.HostFeatures.Dialogs)));
+        var services = guest.InUse(Hosting.HostServices.Feature);
+        owner.SetHosted(new Hosting.HostedWindowPlatformServices(hosted, menus, guest.InUse(Hosting.HostFeatures.Dialogs), services));
+        var direction = FollowHostedDirection(content, hosted.Presentation!, request.Locale);
         if (menus)
         {
             var viewModel = opening.ViewModel;
@@ -706,12 +717,57 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             hosted.UseMenus(new Hosting.HostedWindowMenus(guest, hosted.Id, Desktop, commands, GuestLogger));
         }
         // window-closed follows the Window's close, however it starts; the presentation ends with it.
-        _ = owner.WhenClosedAsync().ContinueWith(_ => hosted.OnClosedAsync(), CancellationToken.None,
-            TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+        _ = owner.WhenClosedAsync().ContinueWith(_ =>
+        {
+            direction?.Dispose();
+            return hosted.OnClosedAsync();
+        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
         opening.UsePresentation(hosted.Presentation!);
         // As a shown window does, the open waits for the page when the Desktop options say so.
         if (Desktop.Options.WaitForConnection && surface.ConnectionCount == 0)
             await WaitForPageAsync(surface, Desktop.Options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+    }
+
+    // A hosted window's native direction (set-layout-direction): WindowOptions' direction when it fixes one, else the
+    // direction of the Window's locale, which the host's window follows when it changes. The window-open request named
+    // the locale the window opened with. Returns what stops following it, or null.
+    private Unsubscribe? FollowHostedDirection(WindowContentSession content, Hosting.HostedWindowPresentation presentation, string? openedLocale)
+    {
+        if (WindowOptions.LayoutDirection != DesktopLayoutDirection.Default)
+        {
+            _ = SendAsync(WindowOptions.LayoutDirection);
+            return null;
+        }
+        var gate = new SemaphoreSlim(1, 1);
+        var sent = openedLocale is { } opened ? Runic.Desktop.Internal.WindowLocaleDirection.Of(opened) : DesktopLayoutDirection.Default;
+        void OnLocaleChanged(object? sender, EventArgs args) => _ = ApplyAsync();
+        async Task ApplyAsync()
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // Each change sends the direction of the locale it finds, so the window ends with the last locale's.
+                var direction = content.Locale is { } locale ? Runic.Desktop.Internal.WindowLocaleDirection.Of(locale) : DesktopLayoutDirection.Default;
+                if (direction == sent) return;
+                sent = direction;
+                await SendAsync(direction).ConfigureAwait(false);
+            }
+            finally { gate.Release(); }
+        }
+        async Task SendAsync(DesktopLayoutDirection direction)
+        {
+            var result = await presentation.SetLayoutDirectionAsync(direction).ConfigureAwait(false);
+            if (result is PlatformResult<PlatformUnit>.Failed failed) DesktopLog.LayoutDirectionFailed(GuestLogger, null, failed.Code.ToString());
+        }
+        content.LocaleChanged += OnLocaleChanged;
+        // A change between window-open and now.
+        _ = ApplyAsync();
+        return new Unsubscribe(() => content.LocaleChanged -= OnLocaleChanged);
+    }
+
+    private sealed class Unsubscribe(Action unsubscribe) : IDisposable
+    {
+        public void Dispose() => unsubscribe();
     }
 
     private static async Task WaitForPageAsync(DesktopSurface surface, TimeSpan timeout, CancellationToken cancellationToken)
@@ -736,7 +792,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // appearance/1: the application's IDesktopSettings when it registered one (AddRunicPlatformServices), or the
     // platform's own, which the feed creates while a window is open and disposes after the last closed.
     private DesktopAppearanceFeed? _appearanceFeed;
-    private DesktopAppearanceFeed AppearanceFeed
+    internal DesktopAppearanceFeed AppearanceFeed
     {
         get
         {

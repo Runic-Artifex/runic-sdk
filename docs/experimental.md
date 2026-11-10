@@ -56,7 +56,7 @@ guest application, the host application and their tests.
 | `Runic.Application.Views` | `RunicHostedApplicationException` |
 | `Runic.Application.Views.Desktop` | The guest: `RunicGuestOptions`, `RunicHostInfo`, `RunicGuestSession`, `RunicDesktopHostOptions.Guest`, `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` ([hosted mode](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-mode)). The host: `IRunicHostedApplications`, `RunicDesktopHost.HostedApplications`, `AddRunicHostedApplications`, `RunicGuestStartInfo`, `RunicHostedApplicationOptions`, `RunicHostedApplication`, `RunicHostedWindow`, `RunicGuestInfo`, `RunicHostedWindowEventArgs`, `IRunicHostedWindowPolicy` and its request and decision types ([hosting another application](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosting-another-application)) |
 | `Runic.Desktop` | `DesktopWindowHostOptions.EphemeralDataStore` and `IDesktopEphemeralDataStoreWindowHost`, which a custom window host implements to show hosted windows |
-| `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest` and `RunicTestPresentationRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)) |
+| `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest`, `RunicTestPresentationRequest` and `RunicTestLaunchRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)) |
 
 
 <a id="experimental-packages"></a>

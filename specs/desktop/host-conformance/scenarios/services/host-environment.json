@@ -1,0 +1,27 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "services.host-environment.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "services",
+  "roles": ["host"],
+  "description": "The host's hello carries its locale, its user's languages and its appearance; the host pushes each change of its application's locale (locale) and of its desktop's appearance (appearance), with every member.",
+  "requires": [],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":null,"languages":{"$any":"array"},"appearance":{"colorScheme":"light","contrast":"no-preference","reducedMotion":false,"textScale":1,"accentColor":null,"systemColors":null}},"connection":"c1","note":"The host runner's host starts with no locale and a light appearance (README, The host's user)."},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":[]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"user":{"action":"setLocale","locale":"de"}},
+    {"receive":{"kind":"locale","locale":"de","languages":{"$any":"array"}},"connection":"c1"},
+    {"user":{"action":"setAppearance","appearance":{"colorScheme":"dark","contrast":"more"}}},
+    {"receive":{"kind":"appearance","colorScheme":"dark","contrast":"more","reducedMotion":false,"textScale":1,"accentColor":null,"systemColors":null},"connection":"c1"}
+  ]
+}

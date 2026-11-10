@@ -59,6 +59,8 @@ internal sealed class HostRoleConformanceTests
         private readonly HostUser _user = new();
         private readonly ScenarioFiles _files = new();
         private IDisposable? _dialogsInstalled;
+        // The host windows' clipboard and launcher (window-services/1).
+        private readonly Runic.Application.Testing.RunicTestPlatform _platform = new();
         private RunicHostedApplication? _application;
         private long _nextRequest = 1000;
         private byte[]? _nonce;
@@ -112,7 +114,7 @@ internal sealed class HostRoleConformanceTests
             _fixture.Applications.WindowOpened += (_, e) => { lock (_opened) _opened.Add(e.Window); };
             _fixture.Factory.ContextMenu = _user.ContextMenuAsync;
             _dialogs.Answer = _user.DialogAsync;
-            _dialogsInstalled = _dialogs.Install();
+            _dialogsInstalled = _dialogs.Install(_platform);
             var host = scenario["arrange"]!["host"]!;
             var start = HostedGuestProgram.StartInfo(HostedGuestProgram.PuppetArgument) with
             {
@@ -258,6 +260,29 @@ internal sealed class HostRoleConformanceTests
                 case "deactivateWindow" or "activateWindow":
                     Native(user["window"]!.GetValue<string>()).SetActive(action == "activateWindow");
                     break;
+                case "copyText":
+                    _platform.Clipboard.SetText(user["text"]!.GetValue<string>());
+                    break;
+                case "setLocale":
+                    await _fixture!.Locale.SetLocaleAsync(user["locale"]?.GetValue<string>());
+                    break;
+                case "setAppearance":
+                    var appearance = user["appearance"]!.AsObject();
+                    _fixture!.Settings.Set(new DesktopAppearance(appearance["colorScheme"]!.GetValue<string>() == "dark" ? DesktopColorScheme.Dark : DesktopColorScheme.Light,
+                        ReducedMotion: false)
+                    {
+                        Contrast = appearance["contrast"]!.GetValue<string>() switch
+                        {
+                            "more" => DesktopContrast.More,
+                            "forced-colors" => DesktopContrast.ForcedColors,
+                            _ => DesktopContrast.NoPreference,
+                        },
+                        TextScale = 1,
+                    });
+                    break;
+                case "dropFiles":
+                    Native(user["window"]!.GetValue<string>()).Drop([.. user["paths"]!.AsArray().Select(path => Resolve(path)!.GetValue<string>())]);
+                    break;
                 case "awaitDialogClosed":
                     await _user.AwaitClosedAsync(user["dialog"]?.GetValue<string>(), StepTimeout);
                     break;
@@ -348,6 +373,21 @@ internal sealed class HostRoleConformanceTests
             if (expect["closed"] is not null)
             {
                 await Window(expect["window"]!.GetValue<string>()).Closed.WaitScaledAsync(StepTimeout);
+                return;
+            }
+            if (expect["clipboard"] is { } clipboard)
+            {
+                var text = clipboard.GetValue<string>();
+                Check(await TestTimeouts.UntilAsync(() => _platform.Clipboard.Content?.Text == text, StepTimeout),
+                    $"The host's clipboard has {_platform.Clipboard.Content?.Text ?? "no text"}, not {text}.");
+                return;
+            }
+            if (expect["launched"] is JsonArray launched)
+            {
+                var expected = launched.Select(item => Resolve(item)!.GetValue<string>()).ToArray();
+                string[] Actual() => [.. _platform.Launches.Select(static launch => launch.Uri?.AbsoluteUri ?? launch.Path ?? "")];
+                Check(await TestTimeouts.UntilAsync(() => Actual().SequenceEqual(expected), StepTimeout),
+                    $"The host opened [{string.Join(", ", Actual())}], not [{string.Join(", ", expected)}].");
                 return;
             }
             if (expect["started"] is not null)
@@ -482,6 +522,7 @@ internal sealed class HostRoleConformanceTests
             _control.Stop();
             if (_fixture is not null) await _fixture.DisposeAsync();
             _dialogsInstalled?.Dispose();
+            await _platform.DisposeAsync();
             _files.Dispose();
         }
     }

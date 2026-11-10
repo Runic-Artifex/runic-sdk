@@ -275,6 +275,21 @@ experimental (`RUNICDESK103`). What Runic enforces:
   access to them. A guest's context menu shows only in the active window, inside it, and the host bounds the rate of a
   window's menu requests and the dialogs a guest shows at once (`RunicHostedLimits`: 20 menu requests a second per
   window, one dialog per guest, by default).
+- **Clipboard, links and files: the host's rights, the user's choices.** With `window-services/1` a guest uses the
+  host's clipboard, monitors and launcher, which act with the host's rights. The clipboard holds what the user copies in
+  every application, passwords included, so the host reads it for a guest only while the guest's window is active, and
+  never tells a guest when the clipboard changes: a guest in the background cannot snoop on it (threat T14). A guest the
+  user works in can read what the clipboard holds, as any focused application can, and a guest can write the clipboard
+  from any window by default; a host that does not trust a guest refuses reads, or writes from inactive windows, in
+  `IRunicHostedWindowPolicy.ServiceAsync`. The host opens for a guest only `http`, `https` and `mailto` links and files
+  the user gave it through the host (its file dialogs and drops), only for the active window, with the host launcher's
+  own rules (no programs or scripts on Windows and macOS, no `mailto` attachments), at most five per ten seconds by
+  default: a guest cannot start a program, open a settings page or flood the desktop with browser tabs unless the
+  host's policy widens this (T15). The paths of a drop come from the host's platform, never from a page; the drop's
+  target label and effect are routing hints (T16). `RunicHostedLimits` bounds a guest's clipboard and monitor requests
+  (20 a second) and its launches.
+- **Appearance and locale.** A guest's pages show the host's appearance (contrast, forced colours, reduced motion, text
+  scale) and follow its locale, which the host sends; they never read the guest process's own desktop settings.
 - **What a guest can still word.** The guest chooses the titles, messages, details and button labels of its dialogs
   and the titles of its menus and items, and nothing marks them as the guest's: a message box titled "HostApp —
   Update required" with a single Install button, or a File item "Quit HostApp", looks like the host's own. On macOS

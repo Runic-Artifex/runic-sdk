@@ -30,7 +30,7 @@ internal sealed class HostedApplicationTests
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
         Check(application.Guest == new RunicGuestInfo("Hosted guest", "1.0.0", HostedGuestProgram.ApplicationId),
             $"The guest named itself {application.Guest}.");
-        Check(application.Protocol == 1 && application.Features.SequenceEqual(["menus/1", "dialogs/1"]), $"The channel uses protocol {application.Protocol} with the features {string.Join(", ", application.Features)}.");
+        Check(application.Protocol == 1 && application.Features.SequenceEqual(["menus/1", "dialogs/1", "window-services/1"]), $"The channel uses protocol {application.Protocol} with the features {string.Join(", ", application.Features)}.");
         Check(fixture.Applications.Applications.Contains(application), "The running guest is not listed.");
 
         var window = await opened.WaitScaledAsync(Timeout);
@@ -623,8 +623,10 @@ internal sealed class HostedApplicationTests
 // A host application on a headless Desktop host.
 internal sealed class HostFixture : IAsyncDisposable
 {
-    private HostFixture(ServiceProvider provider, DesktopHost desktop, RunicDesktopHost host, HostedWindowFactory factory, RecordingLoggerFactory logs)
+    private HostFixture(ServiceProvider provider, DesktopHost desktop, RunicDesktopHost host, HostedWindowFactory factory, RecordingLoggerFactory logs,
+        HostAppearanceSettings settings)
     {
+        Settings = settings;
         Provider = provider;
         Desktop = desktop;
         Host = host;
@@ -639,6 +641,12 @@ internal sealed class HostFixture : IAsyncDisposable
     public RecordingLoggerFactory Logs { get; }
     public IRunicHostedApplications Applications => Host.HostedApplications;
 
+    // The host's desktop appearance, which its guests follow (host-protocol.md, Appearance and locale).
+    public HostAppearanceSettings Settings { get; }
+
+    // The host application's locale, which its guests follow.
+    public IRunicApplicationLocale Locale => Provider.GetRequiredService<IRunicApplicationLocale>();
+
     // What the guests wrote to standard error, which the host logs (event 2022).
     public string GuestErrors => string.Join('\n', Logs.Entries.Where(static entry => entry.EventId == 2022).Select(static entry => entry.Message));
 
@@ -648,6 +656,10 @@ internal sealed class HostFixture : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(logs);
         services.AddRunicHostedApplications();
+        // A fixed desktop appearance, so the host's hello and pushes do not depend on the machine's settings.
+        var settings = new HostAppearanceSettings();
+        services.AddSingleton<IDesktopSettings>(settings);
+        services.AddRunicWindowService();
         var provider = services.BuildServiceProvider();
         var factory = new HostedWindowFactory();
         var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
@@ -656,7 +668,7 @@ internal sealed class HostFixture : IAsyncDisposable
             ServeOnly = serveOnly,
             WindowOptions = windowOptions ?? RunicDesktopHost.DefaultWindowOptions,
         });
-        return new HostFixture(provider, desktop, host, factory, logs);
+        return new HostFixture(provider, desktop, host, factory, logs, settings);
     }
 
     // The next window that opens or closes.
@@ -711,6 +723,10 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
     public bool IsSupported => true;
     public DesktopWindowCapabilities Capabilities => HostedWindowHost.SupportedCapabilities;
 
+    // The monitors the host's windows report (window-services/1).
+    public FakeMonitors FakeMonitors { get; } = new();
+    public IDesktopMonitors Monitors => FakeMonitors;
+
     // Holds each window's open until it completes, such as while the test ends the guest.
     public Func<Task>? OpenGate { get; set; }
 
@@ -727,8 +743,14 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
 
 // A headless embedded window host that honours the ephemeral data store of hosted windows and records how it opened.
 // UserClose is the title-bar close button.
-internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost
+internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost,
+    IDesktopFileDropWindowHost
 {
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
+
+    // The user drops files onto the window.
+    public void Drop(IReadOnlyList<string> paths, string? target = null) => FilesDropped?.Invoke(this, new DesktopFileDropEventArgs(paths, target));
+
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move |
         DesktopWindowCapabilities.Visibility | DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.MenuBar |

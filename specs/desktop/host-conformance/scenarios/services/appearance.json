@@ -1,0 +1,35 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "services.appearance.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "services",
+  "roles": ["guest"],
+  "description": "A hosted Window's pages show the host's appearance from hello, not the guest process's desktop settings, and each appearance push; every member is carried, null for unknown.",
+  "requires": [],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "a1": {"kind":"action"},
+    "a2": {"kind":"action"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.5,"accentColor":"#3366cc","systemColors":null}},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"guest":{"action":"appearance","window":"w1"},"as":"a1"},
+    {"expect":{"action":"a1","appearance":{"colorScheme":"dark","contrast":"more","reducedMotion":true,"textScale":1.5,"accentColor":"#3366cc","systemColors":null}}},
+    {"send":{"kind":"appearance","colorScheme":"dark","contrast":"forced-colors","reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3fff00","highlight":"#1ae6ff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}},"connection":"c1"},
+    {"guest":{"action":"appearance","window":"w1"},"as":"a2"},
+    {"expect":{"action":"a2","appearance":{"colorScheme":"dark","contrast":"forced-colors","reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":{"canvas":"#000000","canvasText":"#ffffff","linkText":"#ffff00","grayText":"#3fff00","highlight":"#1ae6ff","highlightText":"#000000","buttonFace":"#000000","buttonText":"#ffffff"}}}}
+  ]
+}
