@@ -84,7 +84,8 @@
                   "connection",
                   "request",
                   "window",
-                  "action"
+                  "action",
+                  "item"
                 ]
               }
             }
@@ -666,7 +667,17 @@
                     "answerGuard",
                     "activity",
                     "holdGuard",
-                    "cancelOpen"
+                    "cancelOpen",
+                    "setMenuBar",
+                    "setCommandEnabled",
+                    "invoked",
+                    "contextMenu",
+                    "openFile",
+                    "openFiles",
+                    "saveFile",
+                    "openFolder",
+                    "messageBox",
+                    "cancelDialog"
                   ]
                 },
                 "window": {
@@ -695,6 +706,24 @@
                 },
                 "allow": {
                   "type": "boolean"
+                },
+                "menu": {
+                  "enum": [
+                    "test",
+                    "german",
+                    "none"
+                  ]
+                },
+                "command": {
+                  "enum": [
+                    "file.open",
+                    "file.save",
+                    "file.recent",
+                    "view.grid"
+                  ]
+                },
+                "point": {
+                  "$ref": "#/$defs/point"
                 }
               },
               "allOf": [
@@ -743,7 +772,14 @@
                           "present",
                           "minimize",
                           "activity",
-                          "cancelOpen"
+                          "cancelOpen",
+                          "contextMenu",
+                          "openFile",
+                          "openFiles",
+                          "saveFile",
+                          "openFolder",
+                          "messageBox",
+                          "cancelDialog"
                         ]
                       }
                     }
@@ -767,11 +803,195 @@
                       "allow"
                     ]
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setMenuBar"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "menu"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setCommandEnabled"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "command",
+                      "value"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
                 }
               ]
             },
             "as": {
               "$ref": "#/$defs/name"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "user"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "user": {
+              "type": "object",
+              "required": [
+                "action"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "enum": [
+                    "chooseMenuItem",
+                    "awaitContextMenu",
+                    "chooseContextItem",
+                    "awaitDialog",
+                    "answerDialog",
+                    "closeWindow"
+                  ]
+                },
+                "window": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "titles": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "title": {
+                  "type": "string"
+                },
+                "dismiss": {
+                  "const": true
+                },
+                "dialog": {
+                  "enum": [
+                    "open",
+                    "open-multiple",
+                    "save",
+                    "folder",
+                    "folder-multiple",
+                    "message-box"
+                  ]
+                },
+                "paths": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "#/$defs/path"
+                  }
+                },
+                "button": {
+                  "type": "string"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "chooseMenuItem"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "titles"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "closeWindow"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "chooseContextItem"
+                      }
+                    }
+                  },
+                  "then": {
+                    "oneOf": [
+                      {
+                        "required": [
+                          "title"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "dismiss"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "answerDialog"
+                      }
+                    }
+                  },
+                  "then": {
+                    "oneOf": [
+                      {
+                        "required": [
+                          "paths"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "button"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "dismiss"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
             },
             "note": {
               "type": "string"
@@ -831,6 +1051,34 @@
                     },
                     "cancelled": {
                       "const": true
+                    },
+                    "invoked": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "selected": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "dismissed": {
+                      "const": true
+                    },
+                    "chosen": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "button": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   }
                 },
@@ -888,6 +1136,40 @@
                       "const": true
                     }
                   }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "window",
+                    "menuBar"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "window": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "menuBar": {
+                      "$ref": "#/$defs/menuEntries"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "window",
+                    "closed"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "window": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "closed": {
+                      "const": true
+                    }
+                  }
                 }
               ]
             },
@@ -897,6 +1179,138 @@
           }
         }
       ]
+    },
+    "point": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    },
+    "fileName": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "path": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "$file"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "$file": {
+              "$ref": "#/$defs/fileName"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "$directory"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "$directory": {
+              "$ref": "#/$defs/fileName"
+            }
+          }
+        }
+      ]
+    },
+    "menuEntries": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "title",
+              "shortcut",
+              "enabled",
+              "checked"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "item"
+              },
+              "title": {
+                "type": "string"
+              },
+              "shortcut": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "checked": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "separator"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "title",
+              "role",
+              "enabled",
+              "items"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "submenu"
+              },
+              "title": {
+                "type": "string"
+              },
+              "role": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "items": {
+                "$ref": "#/$defs/menuEntries"
+              }
+            }
+          }
+        ]
+      }
     }
   }
 }

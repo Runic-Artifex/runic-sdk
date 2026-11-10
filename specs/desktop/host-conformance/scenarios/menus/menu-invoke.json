@@ -1,0 +1,42 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "menus.menu-invoke.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "menus",
+  "roles": ["guest"],
+  "description": "menu-invoke runs the command of the bar's item it names through the window's command path; an itemId that names no item of the window's current bar is ignored.",
+  "requires": ["menus/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "bar-1": {"kind":"request"},
+    "item-open": {"kind":"item"},
+    "item-recent": {"kind":"item"},
+    "run-1": {"kind":"action"},
+    "run-2": {"kind":"action"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["menus/1"],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"receive":{"id":{"$id":"bar-1"},"kind":"set-menu-bar","window":{"$id":"w1"},"menu":[{"kind":"submenu","title":"File","role":"file","enabled":true,"items":[{"kind":"item","id":{"$id":"item-open"},"title":"Open","shortcut":"Primary+O","enabled":true,"checked":null},{"kind":"item","id":{"$any":"string"},"title":"Save","shortcut":"Primary+S","enabled":true,"checked":null},{"kind":"separator"},{"kind":"submenu","title":"Recent","role":null,"enabled":true,"items":[{"kind":"item","id":{"$id":"item-recent"},"title":"notes.txt","shortcut":null,"enabled":true,"checked":null}]}]},{"kind":"submenu","title":"View","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"Grid","shortcut":null,"enabled":true,"checked":false}]}]},"connection":"c1"},
+    {"send":{"id":{"$id":"bar-1"},"ok":true,"outcome":"success"},"connection":"c1"},
+    {"send":{"kind":"menu-invoke","window":{"$id":"w1"},"itemId":{"$id":"item-open"}},"connection":"c1"},
+    {"guest":{"action":"invoked"},"as":"run-1"},
+    {"expect":{"action":"run-1","invoked":["file.open"]}},
+    {"send":{"kind":"menu-invoke","window":{"$id":"w1"},"itemId":"no-such-item"},"connection":"c1","note":"no-such-item names no item of the bar: the guest ignores it."},
+    {"send":{"kind":"menu-invoke","window":{"$id":"w1"},"itemId":{"$id":"item-recent"}},"connection":"c1"},
+    {"guest":{"action":"invoked"},"as":"run-2"},
+    {"expect":{"action":"run-2","invoked":["file.open","file.recent"]}}
+  ]
+}

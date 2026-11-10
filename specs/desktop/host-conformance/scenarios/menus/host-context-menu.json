@@ -1,0 +1,39 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "menus.host-context-menu.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "menus",
+  "roles": ["host"],
+  "description": "show-context-menu shows the entries as a native context menu of the window and answers the chosen item's id, or itemId null when the user dismissed it; the guest's cancel push closes the open menu and the request is answered with an error of kind cancelled.",
+  "requires": ["menus/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "m1": {"kind":"request"},
+    "m2": {"kind":"request"},
+    "m3": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1"]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"send":{"id":{"$id":"m1"},"kind":"show-context-menu","window":"w1","menu":[{"kind":"item","id":"i1","title":"Cut","shortcut":null,"enabled":true,"checked":null},{"kind":"item","id":"i2","title":"Copy","shortcut":"Primary+C","enabled":true,"checked":null},{"kind":"separator"},{"kind":"item","id":"i3","title":"Paste","shortcut":null,"enabled":false,"checked":null}],"point":{"x":10,"y":20}},"connection":"c1"},
+    {"user":{"action":"chooseContextItem","title":"Copy"}},
+    {"receive":{"id":{"$id":"m1"},"ok":true,"outcome":"success","itemId":"i2"},"connection":"c1"},
+    {"send":{"id":{"$id":"m2"},"kind":"show-context-menu","window":"w1","menu":[{"kind":"item","id":"i1","title":"Cut","shortcut":null,"enabled":true,"checked":null},{"kind":"item","id":"i2","title":"Copy","shortcut":"Primary+C","enabled":true,"checked":null},{"kind":"separator"},{"kind":"item","id":"i3","title":"Paste","shortcut":null,"enabled":false,"checked":null}],"point":null},"connection":"c1"},
+    {"user":{"action":"chooseContextItem","dismiss":true}},
+    {"receive":{"id":{"$id":"m2"},"ok":true,"outcome":"success","itemId":null},"connection":"c1"},
+    {"send":{"id":{"$id":"m3"},"kind":"show-context-menu","window":"w1","menu":[{"kind":"item","id":"i1","title":"Cut","shortcut":null,"enabled":true,"checked":null},{"kind":"item","id":"i2","title":"Copy","shortcut":"Primary+C","enabled":true,"checked":null},{"kind":"separator"},{"kind":"item","id":"i3","title":"Paste","shortcut":null,"enabled":false,"checked":null}],"point":null},"connection":"c1"},
+    {"user":{"action":"awaitContextMenu"}},
+    {"send":{"kind":"cancel","request":{"$id":"m3"}},"connection":"c1"},
+    {"receive":{"id":{"$id":"m3"},"ok":false,"error":{"kind":"cancelled","message":{"$any":"string"}}},"connection":"c1"}
+  ]
+}

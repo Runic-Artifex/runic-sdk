@@ -1,0 +1,37 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "dialogs.host-message-box.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "dialogs",
+  "roles": ["host"],
+  "description": "message-box shows the host's message box owned by the window and answers success with the id of the button the user chose, or button null when the box closed without one of its buttons.",
+  "requires": ["dialogs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "open-w2": {"kind":"request"},
+    "b1": {"kind":"request"},
+    "b2": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1"]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w2"},"kind":"window-open","window":"w2","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w2"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"send":{"id":{"$id":"b1"},"kind":"message-box","window":"w1","icon":"warning","message":"Save changes?","title":"Conformance","buttons":[{"id":"save","label":"Save","role":"default"},{"id":"discard","label":"Don't Save","role":"destructive"},{"id":"cancel","label":"Cancel","role":"cancel"}]},"connection":"c1"},
+    {"user":{"action":"answerDialog","dialog":"message-box","button":"discard"}},
+    {"receive":{"id":{"$id":"b1"},"ok":true,"outcome":"success","button":"discard"},"connection":"c1"},
+    {"send":{"id":{"$id":"b2"},"kind":"message-box","window":"w2","message":"Saved."},"connection":"c1"},
+    {"user":{"action":"answerDialog","dialog":"message-box","dismiss":true}},
+    {"receive":{"id":{"$id":"b2"},"ok":true,"outcome":"success","button":null},"connection":"c1"}
+  ]
+}
