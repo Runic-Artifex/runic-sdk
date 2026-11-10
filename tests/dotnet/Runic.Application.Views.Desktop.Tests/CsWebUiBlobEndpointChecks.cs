@@ -33,7 +33,7 @@ internal sealed class CsWebUiBlobEndpointChecks
     {
         using var work = new Work();
         using var blobs = work.Blobs();
-        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, FreePort)
+        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, new Ports().Next)
             ?? throw new InvalidOperationException("The endpoint did not start.");
         Require(endpoint.BaseUrl.Host == "localhost", $"The endpoint's URLs name {endpoint.BaseUrl.Host}, not localhost.");
         var loopbacks = Loopbacks();
@@ -87,11 +87,11 @@ internal sealed class CsWebUiBlobEndpointChecks
         using var proxyOnIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Proxy);
         using var proxyOnIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, Kind.Proxy);
         Foreign[] foreign = [onIPv6, onIPv4, proxyOnIPv6, proxyOnIPv4];
-        var offered = new Queue<int>(foreign.Select(server => server.Port));
+        var ports = new Ports([.. foreign.Select(server => server.Port)]);
         var logger = new EventLogger();
-        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, logger,
-            () => offered.Count > 0 ? offered.Dequeue() : FreePort(), relay) ?? throw new InvalidOperationException("The endpoint did not start.");
-        Require(offered.Count == 0 && foreign.All(server => server.Port != endpoint.Port),
+        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, logger, ports.Next, relay)
+            ?? throw new InvalidOperationException("The endpoint did not start.");
+        Require(ports.FirstAllOffered && foreign.All(server => server.Port != endpoint.Port),
             $"The endpoint listens on port {endpoint.Port}, which a foreign server holds ({string.Join(", ", foreign.Select(server => server.Port))}).");
         var host = relay || OperatingSystem.IsWindows() ? "localhost" : "127.0.0.1";
         Require(endpoint.BaseUrl.Host == host, $"The endpoint's URLs name {endpoint.BaseUrl.Host}, not {host}.");
@@ -133,12 +133,12 @@ internal sealed class CsWebUiBlobEndpointChecks
         using var blobs = work.Blobs();
         using var onIPv6 = Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Stall);
         using var onIPv4 = Foreign.Start(IPAddress.Loopback, free: IPAddress.IPv6Loopback, Kind.Stall);
-        var offered = new Queue<int>([onIPv6.Port, onIPv4.Port]);
+        var ports = new Ports(onIPv6.Port, onIPv4.Port);
         var started = Stopwatch.StartNew();
-        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance,
-            () => offered.Count > 0 ? offered.Dequeue() : FreePort(), relay) ?? throw new InvalidOperationException("The endpoint did not start.");
+        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, ports.Next, relay)
+            ?? throw new InvalidOperationException("The endpoint did not start.");
         Require(started.Elapsed < TimeSpan.FromSeconds(30), $"The endpoint took {started.Elapsed} to start.");
-        Require(offered.Count == 0 && endpoint.Port != onIPv6.Port && endpoint.Port != onIPv4.Port,
+        Require(ports.FirstAllOffered && endpoint.Port != onIPv6.Port && endpoint.Port != onIPv4.Port,
             $"The endpoint listens on port {endpoint.Port}, which a foreign server holds ({onIPv6.Port}, {onIPv4.Port}).");
         await Task.CompletedTask;
     }
@@ -154,16 +154,17 @@ internal sealed class CsWebUiBlobEndpointChecks
         var squatted = Enumerable.Range(0, 5).Select(_ => Foreign.Start(IPAddress.IPv6Loopback, free: IPAddress.Loopback, Kind.Answer)).ToList();
         try
         {
-            var offered = new Queue<int>(squatted.Select(server => server.Port));
+            var ports = new Ports([.. squatted.Select(server => server.Port)]);
             var logger = new EventLogger();
-            using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, logger,
-                () => offered.Count > 0 ? offered.Dequeue() : FreePort());
+            using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, logger, ports.Next);
             Require(logger.Events.Contains("2103 CsWebUiBlobEndpointPortsHeld: Another process holds ::1 on 5 of the 5 ports the window's blob endpoint tried for localhost, so it gave up localhost."),
                 $"The endpoint logged {string.Join(" | ", logger.Events)}.");
-            // Windows has no fallback host; elsewhere the URLs name 127.0.0.1, on a port no foreign server holds.
+            // Windows has no fallback host; elsewhere the URLs name 127.0.0.1, on a port offered after the squatted ones.
+            Require(ports.FirstAllOffered, $"The endpoint tried {ports.Offered.Count} ports.");
             if (OperatingSystem.IsWindows()) Require(endpoint is null, $"The endpoint started on {endpoint?.BaseUrl}.");
-            else Require(endpoint is { BaseUrl.Host: "127.0.0.1" } && squatted.All(server => server.Port != endpoint.Port),
-                $"The endpoint started on {endpoint?.BaseUrl.ToString() ?? "nothing"}.");
+            else Require(endpoint is { BaseUrl.Host: "127.0.0.1" } && ports.Offered.Skip(squatted.Count).Contains(endpoint.Port)
+                    && squatted.All(server => server.Port != endpoint.Port),
+                $"The endpoint started on {endpoint?.BaseUrl.ToString() ?? "nothing"} (offered {string.Join(", ", ports.Offered)}).");
         }
         finally
         {
@@ -177,23 +178,19 @@ internal sealed class CsWebUiBlobEndpointChecks
     {
         using var work = new Work();
         using var blobs = work.Blobs();
-        var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, FreePort)
+        var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, new Ports().Next)
             ?? throw new InvalidOperationException("The endpoint did not start.");
         var relay = endpoint.RelayEndPoint;
         endpoint.Dispose();
         Require(blobs.Grant(ConnectionKey) is null, "The window still grants uploads after its endpoint closed.");
         foreach (var address in Loopbacks())
         {
-            for (var attempt = 0; ; attempt++)
+            var freed = await TestTimeouts.UntilAsync(() =>
             {
-                if (Listen(address, endpoint.Port, Reuse.None) is { } socket)
-                {
-                    socket.Dispose();
-                    break;
-                }
-                if (attempt == 50) throw new InvalidOperationException($"{address}:{endpoint.Port} (relay {relay}) is still held after the endpoint closed.");
-                await Task.Delay(100);
-            }
+                using var socket = Listen(address, endpoint.Port, Reuse.None);
+                return socket is not null;
+            }, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(100));
+            Require(freed, $"{address}:{endpoint.Port} (relay {relay}) is still held after the endpoint closed.");
         }
     }
 
@@ -207,10 +204,13 @@ internal sealed class CsWebUiBlobEndpointChecks
         var port = ((IPEndPoint)target.LocalEndPoint!).Port;
         using var relay = LoopbackRelay.Start(IPAddress.IPv6Loopback, 0, new IPEndPoint(IPAddress.Loopback, port))
             ?? throw new InvalidOperationException("The relay did not start.");
-        Require(await ReadFromRelayAsync(relay) == 0, "The client read bytes from a relay without a listener.");
+        var kept = await RelayResetsAsync(relay);
+        Require(kept is null, $"A relay without a listener did not reset its client: {kept}");
     }
 
-    // HttpListener sees the relay as the peer of a relayed connection, so the relay serves loopback clients only.
+    // HttpListener sees the relay as the peer of a relayed connection, so the relay serves loopback clients only. The
+    // listener behind both relays accepts in order, so once it has accepted the control's connection, it has accepted any
+    // that the relay of another machine's client made before: none may come before the control's.
     [Test]
     public async Task TheRelayResetsAClientOfAnotherMachine()
     {
@@ -219,36 +219,45 @@ internal sealed class CsWebUiBlobEndpointChecks
         target.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         target.Listen();
         var port = ((IPEndPoint)target.LocalEndPoint!).Port;
-        var accepted = 0;
-        _ = Task.Run(async () =>
+        // The peers the listener accepted, in order; the connections stay open until the end.
+        var accepted = new List<Socket>();
+        var accepting = Task.Run(async () =>
         {
             while (true)
             {
-                try { (await target.AcceptAsync()).Dispose(); }
+                Socket connection;
+                try { connection = await target.AcceptAsync(); }
                 catch (Exception error) when (error is SocketException or ObjectDisposedException) { return; }
-                Interlocked.Increment(ref accepted);
+                lock (accepted) accepted.Add(connection);
             }
         });
-        // A relay that reads every client's address as one of another machine, as when the system routes such packets
-        // to a loopback address (route_localnet on Linux).
-        using (var remote = LoopbackRelay.Start(IPAddress.IPv6Loopback, 0, new IPEndPoint(IPAddress.Loopback, port),
-            static _ => new IPEndPoint(IPAddress.Parse("10.9.0.2"), 40_000)) ?? throw new InvalidOperationException("The relay did not start."))
+        try
         {
-            Require(await ReadFromRelayAsync(remote) == 0, "A client of another machine read bytes from the relay.");
-            await Task.Delay(200);
-            Require(Volatile.Read(ref accepted) == 0, "The relay passed a client of another machine on to its listener.");
-        }
-        // The control: the same relay with the client's real address passes it on.
-        using (var local = LoopbackRelay.Start(IPAddress.IPv6Loopback, 0, new IPEndPoint(IPAddress.Loopback, port))
-            ?? throw new InvalidOperationException("The relay did not start."))
-        {
+            // A relay that reads every client's address as one of another machine, as when the system routes such
+            // packets to a loopback address (route_localnet on Linux).
+            using (var remote = LoopbackRelay.Start(IPAddress.IPv6Loopback, 0, new IPEndPoint(IPAddress.Loopback, port),
+                static _ => new IPEndPoint(IPAddress.Parse("10.9.0.2"), 40_000)) ?? throw new InvalidOperationException("The relay did not start."))
+            {
+                var kept = await RelayResetsAsync(remote);
+                Require(kept is null, $"The relay did not reset a client of another machine: {kept}");
+            }
+            // The control: the same relay with the client's real address passes it on.
+            using var local = LoopbackRelay.Start(IPAddress.IPv6Loopback, 0, new IPEndPoint(IPAddress.Loopback, port))
+                ?? throw new InvalidOperationException("The relay did not start.");
             using var client = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
             await client.ConnectAsync(local.LocalEndPoint);
-            for (var attempt = 0; Volatile.Read(ref accepted) == 0; attempt++)
-            {
-                if (attempt == 100) throw new InvalidOperationException("The relay did not pass a loopback client on.");
-                await Task.Delay(50);
-            }
+            var control = (IPEndPoint)client.LocalEndPoint!;
+            bool IsControl(Socket connection) => local.ClientOf((IPEndPoint)connection.RemoteEndPoint!) is { } relayed && relayed.Equals(control);
+            Require(await TestTimeouts.UntilAsync(() => { lock (accepted) return accepted.Any(IsControl); }, TimeSpan.FromSeconds(5)),
+                "The relay did not pass a loopback client on.");
+            lock (accepted)
+                Require(accepted.Count == 1, $"The relay passed {accepted.Count - 1} client(s) of another machine on to its listener.");
+        }
+        finally
+        {
+            target.Dispose();
+            await accepting;
+            lock (accepted) foreach (var connection in accepted) connection.Dispose();
         }
     }
 
@@ -303,13 +312,26 @@ internal sealed class CsWebUiBlobEndpointChecks
         Require(child.ExitCode == 0, $"The checks failed with DOTNET_SYSTEM_NET_DISABLEIPV6=1 (exit {child.ExitCode}):\n{await output}{await errors}");
     }
 
-    private static async Task<int> ReadFromRelayAsync(LoopbackRelay relay)
+    // Null when the relay ends a client's connection without sending it a byte; otherwise what it did instead. The relay
+    // accepts and then resets the connection, which the client may meet in its connect already: the kernel completes the
+    // handshake before the relay accepts, and the reset can arrive before the client's connect returns.
+    private static async Task<string?> RelayResetsAsync(LoopbackRelay relay)
     {
         using var client = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
-        await client.ConnectAsync(relay.LocalEndPoint);
-        var buffer = new byte[16];
-        try { return await client.ReceiveAsync(buffer, SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(10)); }
-        catch (SocketException) { return 0; }
+        try
+        {
+            await client.ConnectAsync(relay.LocalEndPoint);
+            var read = await client.ReceiveAsync(new byte[16], SocketFlags.None).WaitScaledAsync(TimeSpan.FromSeconds(10));
+            return read == 0 ? null : $"the client read {read} bytes";
+        }
+        catch (SocketException error) when (error.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionAborted)
+        {
+            return null;
+        }
+        catch (TimeoutException error)
+        {
+            return $"the connection stayed open ({error.Message})";
+        }
     }
 
     // The loopback addresses of this machine: 127.0.0.1, and ::1 where it has IPv6 loopback.
@@ -332,11 +354,36 @@ internal sealed class CsWebUiBlobEndpointChecks
         return addresses;
     }
 
-    private static int FreePort()
+    // The ports the endpoint is offered: the given ones first, then ports that no socket holds on either loopback address.
+    // A port that the kernel hands out for 127.0.0.1 may be one that a foreign server of the test holds on ::1 only, so
+    // each later port is checked on ::1 too, and none is one of the given ones.
+    private sealed class Ports(params int[] first)
     {
-        using var probe = new TcpListener(IPAddress.Loopback, 0);
-        probe.Start();
-        return ((IPEndPoint)probe.LocalEndpoint).Port;
+        private readonly Queue<int> _first = new(first);
+        private readonly HashSet<int> _given = [.. first];
+        private readonly List<int> _offered = [];
+
+        internal List<int> Offered => [.. _offered];
+        internal bool FirstAllOffered => _first.Count == 0;
+
+        internal int Next()
+        {
+            var port = _first.Count > 0 ? _first.Dequeue() : FreeOnBoth();
+            _offered.Add(port);
+            return port;
+        }
+
+        private int FreeOnBoth()
+        {
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                using var probe = new TcpListener(IPAddress.Loopback, 0);
+                probe.Start();
+                var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+                if (!_given.Contains(port) && !BlobEndpoint.IsHeld(IPAddress.IPv6Loopback, port)) return port;
+            }
+            throw new InvalidOperationException("No port of 127.0.0.1 is free on ::1.");
+        }
     }
 
     // Whether an HttpListener for localhost starts on port, as the endpoint's does without the relay.
