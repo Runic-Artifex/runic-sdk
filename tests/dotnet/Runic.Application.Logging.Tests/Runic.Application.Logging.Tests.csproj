@@ -11,6 +11,8 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- The hosted-mode cases use the experimental runic-host/1 API. -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <!-- Program.cs is hand-written: the case starts this executable as the application it checks. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- The application's Bridges and AddRunicViews() are generated as in an application; the page is www/index.html. -->

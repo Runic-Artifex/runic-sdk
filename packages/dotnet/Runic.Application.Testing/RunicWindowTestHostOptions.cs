@@ -49,7 +49,8 @@ public sealed class RunicWindowTestHostOptions
     /// <summary>
     /// How the window's Bridges write validation (<see cref="WindowContentSessionOptions.Validation"/>), such as
     /// <see cref="RunicValidationOptions.TextFor"/>. <c>RunicWindowTestHost.Create(services)</c> takes the services'
-    /// <see cref="RunicValidationOptions"/> when this is <see langword="null"/>.
+    /// <see cref="RunicValidationOptions"/> when this is <see langword="null"/>, and each Window that
+    /// <c>RunicWindowTestHost.CreateWindowAsync</c> opens takes its scope's, as on Runic Desktop and CS-WebUI.
     /// </summary>
     public RunicValidationOptions? Validation { get; init; }
 

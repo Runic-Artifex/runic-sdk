@@ -8,7 +8,16 @@ query fails. GitHub queries use the existing `gh` authentication. Review `latest
 `rc`, `beta` and `next` separately; the command never selects or installs a candidate.
 The weekly [dependency audit workflow](../../.github/workflows/dependency-audit.yml)
 retains this output and fails when `bun audit` or NuGet reports a known
-vulnerability; it never changes dependencies.
+vulnerability; it never changes dependencies. NuGet's vulnerability data does not
+cover every .NET runtime advisory for the SDK-implied packages: it reported nothing
+for `Microsoft.DotNet.ILCompiler` 10.0.12 under CVE-2026-111497. Independent fixtures
+also restore from their own lock files, which `bun run lock:nuget` does not rewrite.
+The engineering test `tests/engineering/runtime-pack-locks.test.mjs` fails when a committed lock file pins
+an SDK-implied runtime package (ILCompiler, ILLink, runtime and host packs) at a
+version other than the SDK runtime in `package-downloads.json`, or in the range of a
+known advisory that the test lists. After an SDK move, restore such a fixture again,
+for example `dotnet restore -p:PublishAot=true --force-evaluate` in
+`tests/fixtures/flathub/App`.
 
 Workflows pin every remote action to a full commit SHA followed by its release tag
 (`uses: owner/action@<sha> # vX.Y.Z`). The audit reads the tag from that comment,

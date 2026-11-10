@@ -21,6 +21,10 @@ Runic.Application.Views.RunicValidationOptions
 Runic.Application.Views.RunicValidationOptions.RunicValidationOptions() -> void
 Runic.Application.Views.RunicValidationOptions.TextFor.get -> System.Func<System.ComponentModel.DataAnnotations.ValidationAttribute!, Runic.Application.Views.RunicValidationMember!, Runic.Application.Views.RunicTextReference?>?
 Runic.Application.Views.RunicValidationOptions.TextFor.init -> void
+Runic.Application.Views.RunicSharedClientAttribute
+Runic.Application.Views.RunicSharedClientAttribute.Name.get -> string?
+Runic.Application.Views.RunicSharedClientAttribute.Name.set -> void
+Runic.Application.Views.RunicSharedClientAttribute.RunicSharedClientAttribute() -> void
 Runic.Application.Views.WindowContentSessionOptions.Validation.get -> Runic.Application.Views.RunicValidationOptions?
 Runic.Application.Views.WindowContentSessionOptions.Validation.init -> void
 static Runic.Application.Views.RunicValidationMember.operator !=(Runic.Application.Views.RunicValidationMember? left, Runic.Application.Views.RunicValidationMember? right) -> bool
@@ -43,3 +47,9 @@ Runic.Application.Views.WindowContentSession.Appearance.get -> Runic.Platform.De
 Runic.Application.Views.WindowContentSession.Appearance.set -> void
 Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.get -> bool
 Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.init -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.Code.get -> string!
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.GuestCode.get -> string?
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.GuestCode.init -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.RunicHostedApplicationException(string! code, string! message, System.Exception? innerException) -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.RunicHostedApplicationException(string! code, string! message) -> void

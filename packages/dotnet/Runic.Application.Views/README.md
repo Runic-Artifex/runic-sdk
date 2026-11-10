@@ -1730,6 +1730,124 @@ class with only read-only or computed properties is fine as state or a result. A
 page sends needs a public constructor whose parameters map to its properties,
 or a public parameterless constructor with public setters (`RUNICBRIDGE003`).
 
+## Shared clients
+
+Since 0.17, ViewModels that publish the same members can share one generated
+client, so one web component renders all of them, for example read-only result
+pages with a table and a button each. Declare the members on an interface,
+mark it `[RunicSharedClient]`, and implement it in each ViewModel:
+
+```csharp
+/// <summary>A read-only result page with one action per element.</summary>
+[RunicSharedClient]
+public interface IResultPage
+{
+    /// <summary>The table the page shows.</summary>
+    ResultTable Page { get; }
+
+    /// <summary>Runs the action of the element with the id.</summary>
+    IAsyncRelayCommand<string> RunActionCommand { get; }
+}
+
+public sealed partial class OrdersViewModel : ObservableObject, IResultPage
+{
+    public ResultTable Page => _orders.ToTable();
+
+    [RelayCommand]
+    private Task RunActionAsync(string elementId) => _orders.RunAsync(elementId);
+}
+```
+
+Besides each ViewModel's own module, the generator writes `resultPage.ts`, named
+after the interface without its leading `I` (or `[RunicSharedClient(Name = "…")]`):
+
+```ts
+export interface ResultPageState {
+  readonly page: ResultTable;
+  readonly isRunActionExecuting: boolean;
+}
+export interface ResultPageClient extends ViewClient<ResultPageState> {
+  runAction(elementId: string): Promise<ResultPageState>;
+  canRunAction(elementId: string): Promise<boolean>;
+  startRunAction(elementId: string, options?: BridgeOperationStartOptions): Promise<ResultPageRunActionOperation>;
+  recoverRunAction(requestId: string): Promise<ResultPageRunActionOperation>;
+}
+/** The page reference of any View whose ViewModel implements `IResultPage`. */
+export interface ResultPagePageReference {
+  readonly kind: "invoices" | "orders" | "quotes";
+  connect(): Promise<ResultPageClient>;
+}
+export const resultPageKinds: readonly ResultPagePageReference["kind"][] = ["invoices", "orders", "quotes"];
+```
+
+Every implementing ViewModel's `{Name}PageReference` extends
+`ResultPagePageReference`, and its client has the shared client's members, so a
+component written against the shared types takes any of them without a cast.
+The frameworks' `ViewRegistry` types accept it for each kind of the shared
+reference, and `registryEntries` from `@runic-artifex/views` registers it for
+all of them:
+
+```tsx
+import { registryEntries } from "@runic-artifex/views";
+import { useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
+import { resultPageKinds, type ResultPagePageReference } from "./generated/resultPage.js";
+
+function ResultPage({ page }: { readonly page: ResultPagePageReference }) {
+  const { state, client } = useView(page); // a ResultPageClient
+  return <ResultTableView table={state?.page} onAction={id => void client?.runAction(id)} />;
+}
+
+const pages = { ...registryEntries(resultPageKinds, ResultPage), settings: SettingsPage }
+  satisfies ViewRegistry<MainState["main"]>;
+```
+
+A content slot or `NavigationRegion` typed as the interface presents any of the
+implementing ViewModels, and `RunicWindowTestHost`'s `View<IResultPage>(vm => vm.Main)`
+drives whichever one it presents. A web test mocks one implementing ViewModel
+with its own typed mock, such as `mockOrders`, and passes its reference to the
+shared component.
+
+**What the shared client contains.** The interface's properties, including those
+of the interfaces it extends, in declaration order: state, a setter for each
+property the interface declares settable, commands with their availability,
+execution state and operations, query collections and region collections. A
+member's validation errors (`{name}Errors`) are shared when every implementing
+ViewModel has them. Methods and events of the interface, the ViewModels' other
+members, checked writes, field descriptors, interactions and view requests are
+not. The shared client changes only the TypeScript types: the wire contract and
+the contract fingerprint stay the same, and a ViewModel that implements no
+`[RunicSharedClient]` interface generates exactly what it did before.
+
+**Matching.** Every ViewModel with a View that implements the interface must
+publish each of its properties alike, or the build fails with
+[`RUNICBRIDGE036`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge036):
+
+- through a public property that the ViewModel class declares, which the Bridge
+  publishes: not an explicit implementation, an inherited property or a
+  `[RunicIgnore]` one;
+- with the interface's nullability, including type arguments;
+- with the same generated TypeScript as the other implementing ViewModels: the
+  same wire name, value type, command input, key and declared failure. Only
+  parameter names may differ; the most common one names the shared parameter.
+  The error names the ViewModel that differs from the others and shows both
+  declarations.
+
+A ViewModel may be settable where the interface is get-only; the shared client
+then has no setter. C# already requires each property and its type; the
+generator checks what C# does not see, such as `[JsonPropertyName]`,
+`[RunicCommandInput]` or `[RunicFailure]` on one ViewModel only. Renaming a
+member in the interface renames it in the shared client, so a component that
+still reads the old name no longer compiles.
+
+**Several interfaces.** A ViewModel may implement several `[RunicSharedClient]`
+interfaces. Each gets its own module, the ViewModel's page reference extends
+all of their references, and a registry accepts any of their components for its
+kind. An interface that no ViewModel with a View implements generates nothing.
+A generic interface is an error, and so is a name that collides with a
+ViewModel's module or whose `{Name}PageReference` is a presentation kind's page
+reference ([`RUNICBRIDGE004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge004));
+give the interface another name with `[RunicSharedClient(Name = "…")]`.
+
 ## Generator diagnostics
 
 The generator reports every ViewModel's first problem in one build. An error
@@ -4364,6 +4482,11 @@ trace id; correlate them with the host's spans by time and route.
 | 2007 | `DesktopDevelopmentReloadFailed` | Debug | A window did not reload after the directory changed, for example because it closed meanwhile. | |
 | 2008 | `DesktopLayoutDirectionFailed` | Warning | An embedded window did not change its native direction after its window locale (`IRunicWindowLocale`) changed. | `ErrorType` |
 | 2009 | `DesktopAppearanceWatchFailed` | Warning | Watching the desktop's appearance settings (`IDesktopSettings`) for the Windows' pages (`appearance/1`) failed; the pages keep the last appearance read, and the next Window that opens watches again. | `ErrorType` |
+| 2010 | `DesktopHostedStartFailed` | Error | Hosted mode (`RunicGuestOptions`, Runic host protocol) did not start; `RunicDesktopHost.Run` throws `RunicHostedApplicationException` with the same code. | `Code`, `Reason` |
+| 2011 | `DesktopHostedShutdown` | Information | A hosted application's host went away or asked it to shut down; its Windows close. | `Reason` |
+| 2012 | `DesktopHostedExit` | Warning | A hosted application's body did not return within 10 seconds after its host went away, so the process exits. | `Seconds` |
+| 2013 | `DesktopHostedChannelFailed` | Warning | Handling a message of the host channel, closing a hosted Window, or an event handler of a hosted Window's presentation failed. | `ErrorType` |
+| 2014 | `DesktopHostedBodyEnded` | Information | A hosted application's body ended with a Window open that its host's going away ended (`hosted-host-gone`) or with a cancellation, after the host went away; `Run` returns 0. | `ErrorType` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `2b35db13f` (CsWebUi 2.5.0-beta.4.8). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |

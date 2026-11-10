@@ -85,7 +85,17 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// <param name="desktop">The Desktop host that presents the windows.</param>
     /// <param name="options">The window, surface, resource and placement options of this host's Windows.</param>
     /// <inheritdoc cref="RunicDesktopHost(IServiceProvider, DesktopHost)" path="/remarks"/>
+    /// <exception cref="ArgumentException">
+    /// <see cref="RunicDesktopHostOptions.Guest"/> is set: only
+    /// <see cref="Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// starts hosted mode.
+    /// </exception>
     public RunicDesktopHost(IServiceProvider services, DesktopHost desktop, RunicDesktopHostOptions options)
+        : this(services, desktop, options, startsGuest: false)
+    {
+    }
+
+    private RunicDesktopHost(IServiceProvider services, DesktopHost desktop, RunicDesktopHostOptions options, bool startsGuest)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(desktop);
@@ -109,10 +119,50 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         if (options.MaximumUploadBytes is < 1_024)
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
         _maximumUploadBytes = options.MaximumUploadBytes;
+        if (options.Guest is not null && !startsGuest)
+            throw new ArgumentException("Hosted mode starts with RunicDesktopHost.Run; RunicDesktopHostOptions.Guest is not supported here.", nameof(options));
+        _guestOptions = options.Guest;
         _serveOnly = options.ServeOnly;
-        // Serve-only services decide on first use (DesktopServeOnlyState).
-        DesktopServeOnlyState.RecordFor(services, options.ServeOnly);
+        // Serve-only services decide on first use (DesktopServeOnlyState). A hosted application runs on the host's
+        // desktop, so its application services, such as power events, stay its own; its recent documents are
+        // unavailable, as in serve-only mode (D055.8).
+        DesktopServeOnlyState.RecordFor(services, options.ServeOnly && options.Guest is null, hosted: options.Guest is not null);
     }
+
+    private readonly RunicGuestOptions? _guestOptions;
+    private Hosting.HostedGuest? _guest;
+
+    /// <summary>
+    /// Whether this host runs in hosted mode (<see cref="RunicDesktopHostOptions.Guest"/>): another Runic application
+    /// started it and shows its Windows in its own windows.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public bool IsHosted => _guestOptions is not null;
+
+    /// <summary>
+    /// The host channel in hosted mode, with the host's name and version; <see langword="null"/> when the application
+    /// shows its own windows.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public RunicGuestSession? Guest => _guest?.Session;
+
+    // Hosted mode's launch contract and handshake, before the application's body runs.
+    private async Task StartGuestAsync()
+    {
+        _guest = await Hosting.HostedGuest.StartAsync(_guestOptions!, Desktop, GuestLogger).ConfigureAwait(false);
+    }
+
+    private ILogger GuestLogger => (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
+        ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+    // The host going away is the normal end of a hosted application (host-protocol.md, Host gone): a Window whose open it
+    // ended, or a body cancelled through ShutdownRequested, does not make Run throw.
+    private static bool EndedByHostGone(Exception error) => error switch
+    {
+        RunicWindowConfigurationException configuration => configuration.Diagnostics.Any(static diagnostic => diagnostic.Code == "hosted-host-gone"),
+        OperationCanceledException => true,
+        _ => false,
+    };
 
     private readonly bool _serveOnly;
 
@@ -120,7 +170,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// Whether this host serves its Windows to a browser instead of showing them:
     /// <see cref="RunicDesktopHostOptions.ServeOnly"/>, or <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, read when a Window opens.
     /// </summary>
-    public bool ServeOnly => _serveOnly || ServeOnlyRequested;
+    /// <remarks>Hosted mode (<see cref="RunicDesktopHostOptions.Guest"/>) is not serve-only.</remarks>
+    public bool ServeOnly => _guestOptions is null && (_serveOnly || ServeOnlyRequested);
 
     private readonly bool? _includeFailureDetail;
     private readonly bool? _flowCultureFromLocale;
@@ -278,10 +329,30 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // The factory is lent for the run: later messages go to Trace, since the caller then disposes services.
         var lent = options.LoggerFactory is null ? LentLoggerFactory.From(services.GetService<ILoggerFactory>()) : null;
         if (lent is not null) options = options with { LoggerFactory = lent };
-        // A serve-only application shows no window, so the window toolkit's loop, and its display check, do not run.
-        var presentsWindows = !(hostOptions.ServeOnly || ServeOnlyRequested);
-        try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop, hostOptions)), presentsWindows); }
+        // A serve-only or hosted application shows no window, so the window toolkit's loop, and its display check, do
+        // not run.
+        var hosted = hostOptions.Guest is not null;
+        var presentsWindows = !(hosted || hostOptions.ServeOnly || ServeOnlyRequested);
+        try { return DesktopEventLoop.Run(options, desktop => RunAsync(services, desktop, hostOptions, application), presentsWindows); }
         finally { lent?.Return(); }
+    }
+
+    private static async Task<int> RunAsync(IServiceProvider services, DesktopHost desktop, RunicDesktopHostOptions hostOptions,
+        Func<RunicDesktopHost, Task<int>> application)
+    {
+        var host = new RunicDesktopHost(services, desktop, hostOptions, startsGuest: true);
+        if (host._guestOptions is null) return await application(host).ConfigureAwait(false);
+        // Hosted mode: the host's handshake first; a failure throws RunicHostedApplicationException without the body.
+        await host.StartGuestAsync().ConfigureAwait(false);
+        var guest = host._guest!;
+        try { return await application(host).ConfigureAwait(false); }
+        catch (Exception error) when (guest.IsHostGone && EndedByHostGone(error))
+        {
+            var errorType = error.GetType().Name;
+            DesktopLog.HostedBodyEnded(host.GuestLogger, error, errorType);
+            return 0;
+        }
+        finally { await guest.DisposeAsync().ConfigureAwait(false); }
     }
 
     /// <summary>
@@ -330,7 +401,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
     {
         var windowOptions = WindowOptionsFor(options);
-        if (!ServeOnly) return [.. Desktop.Validate(windowOptions).Diagnostics.Select(ToWindowDiagnostic)];
+        if (!ServeOnly && _guestOptions is null) return [.. Desktop.Validate(windowOptions).Diagnostics.Select(ToWindowDiagnostic)];
         // Validation makes the serve-only decision of OpenAsync (#238): a serve-only window has no presentation, so
         // what this machine lacks to present one does not apply. The configuration is still checked, since it fails
         // on every launch that presents a window. The preflight runs DesktopHost.Validate's checks without logging the
@@ -392,6 +463,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         IDisposable? connectionBinding = null;
         DesktopBridgeWindow<TViewModel>? owner = null;
         DevelopmentAssets.Window? development = null;
+        // A hosted application never opens a window after its host went away (host-protocol.md, Host gone), also when
+        // Run has returned meanwhile.
+        if (_guest is { IsHostGone: true }) throw Hosting.HostedGuest.HostGone();
         try
         {
             var viewModel = opening.ViewModel;
@@ -456,6 +530,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var pageContent = content;
             pageSurface.PageLanguage = pageContent.Locale;
             pageContent.LocaleChanged += (_, _) => pageSurface.PageLanguage = pageContent.Locale;
+            if (_guestOptions is not null)
+            {
+                await OpenHostedAsync(opening, owner, surface, content, cancellationToken).ConfigureAwait(false);
+                return owner;
+            }
             if (ServeOnly)
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
@@ -521,6 +600,60 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (error is DesktopConfigurationException configuration)
                 throw new RunicWindowConfigurationException([.. configuration.Diagnostics.Select(ToWindowDiagnostic)], configuration);
             throw;
+        }
+    }
+
+    // Hosted mode (host-protocol.md, Windows): the host opens a window of its own that loads the surface through a
+    // one-time launch address; the Window's presentation and close go through the host channel.
+    private async Task OpenHostedAsync<TViewModel>(RunicWindowOpening<TViewModel> opening, DesktopBridgeWindow<TViewModel> owner,
+        DesktopSurface surface, WindowContentSession content, CancellationToken cancellationToken) where TViewModel : class
+    {
+        var guest = _guest ?? throw new InvalidOperationException("Hosted mode has not started; it starts with RunicDesktopHost.Run.");
+        var windowOptions = WindowOptionsFor(opening.Options, content.Locale);
+        string? ownerId = null;
+        if (opening.Options.Owner is { } ownerWindow)
+        {
+            ownerId = guest.WindowId(ownerWindow);
+            if (ownerId is null) opening.ReportOwnerIgnored("the owner is not an open hosted window of this application");
+        }
+        var window = opening.Window;
+        var request = new Hosting.HostedWindowRequest(
+            ServeOnlyAnnouncement.WindowTypeName(window.GetType()), surface.BeginHostedLaunch(),
+            windowOptions.Width, windowOptions.Height, windowOptions.MinimumWidth, windowOptions.MinimumHeight, ownerId,
+            Modal: ownerId is not null && opening.Options.Modality == RunicWindowModality.Window,
+            GuardClose: opening.CloseGuard is not null,
+            MediaCapture: windowOptions.AllowedPermissions.HasFlag(DesktopPermissionGrant.MediaCapture));
+        // The host can close the window as soon as it answered window-open, before the Window finished opening here: the
+        // close then waits until it has (IRunicWindow.CloseWhenOpen), as a result completed during the open does.
+        var hosted = await guest.OpenWindowAsync(request, opening.CloseGuard, () =>
+        {
+            ((IRunicWindow)window).CloseWhenOpen(TimeSpan.Zero);
+            return Task.CompletedTask;
+        }, cancellationToken).ConfigureAwait(false);
+        guest.Track(window, hosted);
+        // window-closed follows the Window's close, however it starts; the presentation ends with it.
+        _ = owner.WhenClosedAsync().ContinueWith(_ => hosted.OnClosedAsync(), CancellationToken.None,
+            TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+        opening.UsePresentation(hosted.Presentation!);
+        // As a shown window does, the open waits for the page when the Desktop options say so.
+        if (Desktop.Options.WaitForConnection && surface.ConnectionCount == 0)
+            await WaitForPageAsync(surface, Desktop.Options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WaitForPageAsync(DesktopSurface surface, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = surface.SubscribeConnectionEvents(connection =>
+        {
+            if (connection.Kind == DesktopConnectionEventKind.Connected) connected.TrySetResult();
+        });
+        if (surface.ConnectionCount > 0) return;
+        try { await connected.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false); }
+        catch (TimeoutException error)
+        {
+            throw new RunicWindowConfigurationException([new RunicWindowDiagnostic("hosted-window-not-connected",
+                "The host opened the window, but its page did not connect to the surface before the connection timeout.",
+                "Check the host's window and its web view; DesktopHostOptions.ConnectionTimeout sets the wait.")], error);
         }
     }
 

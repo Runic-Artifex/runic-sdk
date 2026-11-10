@@ -10,10 +10,16 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- The hosted-mode checks use the experimental runic-host/1 API. -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- The tests construct generated-code support types directly. -->
     <Using Include="Runic.Application.Views.Generated" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The Runic host protocol's conformance scenarios, which HostConformanceTests runs against the guest. -->
+    <None Include="../../../specs/desktop/host-conformance/scenarios/**/*.json" LinkBase="host-conformance" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TUnit.Core" />

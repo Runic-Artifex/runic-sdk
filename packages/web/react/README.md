@@ -314,7 +314,11 @@ const { state } = useSuspenseView(page, { releaseTimeout: 30_000 });
 `<ViewOutlet content={reference} registry={pages} fallback={…} />` renders the
 component registered for `reference.kind` with the reference as its `page`
 prop. Declare the registry with `satisfies ViewRegistry<State["main"]>` so each
-kind has a component whose `page` prop matches. A different reference
+kind has a component whose `page` prop matches. A component whose `page` is a
+shared page reference, such as `ResultPagePageReference` of a .NET
+[`[RunicSharedClient]`](../../dotnet/Runic.Application.Views/README.md#shared-clients)
+interface, registers for each of its kinds:
+`{ ...registryEntries(resultPageKinds, ResultPage), settings: Settings }`. A different reference
 remounts the component, and `fallback` renders while `content` is empty. A kind
 without a component renders an English `<p role="alert">` in a development build
 (`process.env.NODE_ENV` is not `production`); a production build renders nothing

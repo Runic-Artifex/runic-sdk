@@ -171,4 +171,17 @@ public sealed record RunicDesktopHostOptions
     /// </code>
     /// </remarks>
     public bool ServeOnly { get; init; }
+
+    /// <summary>
+    /// Runs the application in hosted mode, shown in the windows of a host application that started it, or
+    /// <see langword="null"/>, the default, to show its own windows. See <see cref="RunicGuestOptions"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="RunicDesktopHost.Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// starts hosted mode: before the body runs, it completes the host's handshake or throws
+    /// <see cref="RunicHostedApplicationException"/>. Hosted mode takes precedence over <see cref="ServeOnly"/>,
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY</c> and <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public RunicGuestOptions? Guest { get; init; }
 }
