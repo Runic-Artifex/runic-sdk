@@ -692,6 +692,19 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
         guest.Track(window, hosted);
+        // menus/1 and dialogs/1: the Window's menu bar, context menus, file dialogs and message boxes go to the host's
+        // window; without the features they report OwnerUnavailable, as in serve-only mode.
+        var menus = guest.InUse(Hosting.HostFeatures.Menus);
+        owner.SetHosted(new Hosting.HostedWindowPlatformServices(hosted, menus, guest.InUse(Hosting.HostFeatures.Dialogs)));
+        if (menus)
+        {
+            var viewModel = opening.ViewModel;
+            var commands = MenuCommandBinding.Binds(viewModel)
+                ? await MenuCommandBinding.BindViewModelAsync(new DesktopMenuBarSource(Desktop), content.ModelContext, viewModel, GuestLogger, content)
+                    .ConfigureAwait(false)
+                : null;
+            hosted.UseMenus(new Hosting.HostedWindowMenus(guest, hosted.Id, Desktop, commands, GuestLogger));
+        }
         // window-closed follows the Window's close, however it starts; the presentation ends with it.
         _ = owner.WhenClosedAsync().ContinueWith(_ => hosted.OnClosedAsync(), CancellationToken.None,
             TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();

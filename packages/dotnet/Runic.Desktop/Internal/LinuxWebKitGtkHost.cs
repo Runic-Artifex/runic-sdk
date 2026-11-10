@@ -2355,6 +2355,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal void EnableResizeEvents(nint widget) =>
             ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWidgetAddEventsPointer)(widget, 256);
 
+        internal int WidgetAllocatedWidth(nint widget) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWidgetGetAllocatedWidthPointer)(widget);
+
+        internal int WidgetAllocatedHeight(nint widget) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWidgetGetAllocatedHeightPointer)(widget);
+
         internal bool BeginResize(nint window, nint widget, nint webEvent)
         {
             var value = (GdkEventButton*)webEvent;

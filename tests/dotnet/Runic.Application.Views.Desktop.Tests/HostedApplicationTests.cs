@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.ComponentModel;
 using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 using System.Diagnostics;
@@ -29,7 +30,7 @@ internal sealed class HostedApplicationTests
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
         Check(application.Guest == new RunicGuestInfo("Hosted guest", "1.0.0", HostedGuestProgram.ApplicationId),
             $"The guest named itself {application.Guest}.");
-        Check(application.Protocol == 1 && application.Features.Count == 0, "The channel's protocol or features are not the base protocol's.");
+        Check(application.Protocol == 1 && application.Features.SequenceEqual(["menus/1", "dialogs/1"]), $"The channel uses protocol {application.Protocol} with the features {string.Join(", ", application.Features)}.");
         Check(fixture.Applications.Applications.Contains(application), "The running guest is not listed.");
 
         var window = await opened.WaitScaledAsync(Timeout);
@@ -713,6 +714,9 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
     // Holds each window's open until it completes, such as while the test ends the guest.
     public Func<Task>? OpenGate { get; set; }
 
+    // Answers each native context menu with the item to choose, or null to dismiss it; null dismisses every menu.
+    public Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions, CancellationToken, Task<DesktopMenuItem?>>? ContextMenu { get; set; }
+
     public IDesktopWindowHost Create()
     {
         var host = new HostedWindowHost(this);
@@ -723,11 +727,123 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
 
 // A headless embedded window host that honours the ephemeral data store of hosted windows and records how it opened.
 // UserClose is the title-bar close button.
-internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost
+internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move |
-        DesktopWindowCapabilities.Visibility | DesktopWindowCapabilities.CloseConfirmation;
+        DesktopWindowCapabilities.Visibility | DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.MenuBar |
+        DesktopWindowCapabilities.ContextMenu;
+
+    // The window has the keyboard focus from its open until SetActive says otherwise or it closes. Runic Desktop reads it
+    // for the host's context menu rule; without the Activity capability the host pushes no activity, which the
+    // scenarios do not expect.
+    private volatile bool _active = true;
+
+    public DesktopWindowActivity? Activity => new() { IsActive = _active && !_closedOnce, IsVisible = !_closedOnce };
+
+    public event EventHandler? ActivityChanged;
+
+    // Another window takes the focus, or this one gets it back.
+    public void SetActive(bool active)
+    {
+        _active = active;
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private volatile bool _closedOnce;
+
+    // The bars the window showed, in order: the native bar it shows now is the last.
+    private readonly List<IReadOnlyList<DesktopMenu>> _bars = [];
+
+    // How many times Runic Desktop rebuilt the native bar.
+    public int MenuBarRebuilds
+    {
+        get { lock (_bars) return _bars.Count; }
+    }
+
+    // The bar the window showed before its current one, as a native bar that the user still uses during a change.
+    public IReadOnlyList<DesktopMenu> PreviousMenuBar
+    {
+        get { lock (_bars) return _bars.Count >= 2 ? _bars[^2] : []; }
+    }
+
+    private IReadOnlyList<DesktopMenu> _menuBar = [];
+    private TaskCompletionSource _menuBarChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // The native menu bar: the menus Runic Desktop gave the window last, and the command path of their items.
+    public IReadOnlyList<DesktopMenu> MenuBar => Volatile.Read(ref _menuBar);
+    public IDesktopMenuCommandTarget? MenuCommands { get; set; }
+    public DesktopMenuBarPlacement MenuBarPlacement => _open ? DesktopMenuBarPlacement.Window : DesktopMenuBarPlacement.None;
+    public event EventHandler? MenuBarPlacementChanged { add { } remove { } }
+
+    public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default)
+    {
+        lock (_bars) _bars.Add(menus);
+        Volatile.Write(ref _menuBar, menus);
+        Interlocked.Exchange(ref _menuBarChanged, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+        return ValueTask.CompletedTask;
+    }
+
+    // Waits until the bar matches.
+    public async Task<IReadOnlyList<DesktopMenu>> WaitForMenuBarAsync(Func<IReadOnlyList<DesktopMenu>, bool> match, TimeSpan timeout)
+    {
+        using var deadline = new CancellationTokenSource(TestTimeouts.Scale(timeout));
+        while (true)
+        {
+            var changed = Volatile.Read(ref _menuBarChanged).Task;
+            if (match(MenuBar)) return MenuBar;
+            try { await changed.WaitAsync(deadline.Token); }
+            catch (OperationCanceledException)
+            {
+                throw new TimeoutException($"The menu bar is {Describe(MenuBar)}.");
+            }
+        }
+    }
+
+    // The item of the bar at a path of titles, such as ("File", "Open…").
+    public DesktopMenuItem? Item(params string[] titles) => Item(MenuBar, titles);
+
+    public static DesktopMenuItem? Item(IReadOnlyList<DesktopMenu> bar, params string[] titles)
+    {
+        IEnumerable<DesktopMenuEntry> entries = bar;
+        DesktopMenuEntry? found = null;
+        foreach (var title in titles)
+        {
+            found = entries.FirstOrDefault(entry => entry is DesktopMenu menu && menu.Title == title || entry is DesktopMenuItem item && item.Title == title);
+            if (found is DesktopMenu menu) entries = menu.Items;
+            else entries = [];
+        }
+        return found as DesktopMenuItem;
+    }
+
+    // Chooses an item as the native bar or its shortcut does: whether its command could run.
+    public bool Choose(params string[] titles)
+    {
+        if (Item(titles) is not { } item || MenuCommands is not { } commands || !item.IsEnabled || !commands.CanExecute(item)) return false;
+        commands.Execute(item);
+        return true;
+    }
+
+    // Chooses an item of the bar the window showed before its current one, as a click on the native bar that the window
+    // still showed while the guest's change arrived: the native bar runs the item's command path without asking first.
+    // False when that bar had no such enabled item.
+    public bool ChoosePrevious(params string[] titles)
+    {
+        if (Item(PreviousMenuBar, titles) is not { IsEnabled: true } item || MenuCommands is not { } commands) return false;
+        commands.Execute(item);
+        return true;
+    }
+
+    internal static string Describe(IEnumerable<DesktopMenuEntry> entries) => "[" + string.Join(", ", entries.Select(static entry => entry switch
+    {
+        DesktopMenu menu => $"{menu.Title}{(menu.Role == DesktopMenuRole.None ? "" : $"<{menu.Role}>")}{Describe(menu.Items)}",
+        DesktopMenuItem item => $"{item.Title}{(item.IsEnabled ? "" : " (disabled)")}{(item.IsChecked is { } isChecked ? isChecked ? " [x]" : " [ ]" : "")}{(item.Shortcut is { } shortcut ? " " + shortcut : "")}",
+        _ => "-",
+    })) + "]";
+
+    public ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
+        CancellationToken cancellationToken = default) =>
+        _factory?.ContextMenu is { } choose ? new(choose(items, options, cancellationToken)) : ValueTask.FromResult<DesktopMenuItem?>(null);
 
     private readonly HostedWindowFactory? _factory;
     private volatile bool _open;
@@ -763,6 +879,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
         if (_open)
         {
             _open = false;
+            _closedOnce = true;
             Closed?.Invoke(this, EventArgs.Empty);
         }
         return ValueTask.CompletedTask;

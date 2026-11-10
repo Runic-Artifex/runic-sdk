@@ -47,11 +47,26 @@ public sealed class GtkMenusTests
     [Test]
     public void PagePointsFollowTheZoomLevel()
     {
-        Assert.Equal((40, 60), GtkMenus.PagePoint(40, 60, 1));
-        Assert.Equal((60, 90), GtkMenus.PagePoint(40, 60, 1.5));
-        Assert.Equal((13, 1), GtkMenus.PagePoint(12.5, 0.5, 1));
-        Assert.Equal((40, 60), GtkMenus.PagePoint(40, 60, double.NaN));
-        Assert.Equal((40, 60), GtkMenus.PagePoint(40, 60, 0));
+        Assert.Equal((40, 60), GtkMenus.PagePoint(40, 60, 1, 800, 600));
+        Assert.Equal((60, 90), GtkMenus.PagePoint(40, 60, 1.5, 800, 600));
+        Assert.Equal((13, 1), GtkMenus.PagePoint(12.5, 0.5, 1, 800, 600));
+        Assert.Equal((40, 60), GtkMenus.PagePoint(40, 60, double.NaN, 800, 600));
+        Assert.Equal((40, 60), GtkMenus.PagePoint(40, 60, 0, 800, 600));
+    }
+
+    // A page's point outside its viewport opens the menu at the web view's nearest edge, never outside the window, on
+    // GTK 3, GTK 4 and macOS (ContextMenuPoints), as WebView2's client-area clamp on Windows.
+    [Test]
+    public void PagePointsStayInsideTheWebView()
+    {
+        Assert.Equal((0, 120), GtkMenus.PagePoint(-2400, 120, 1, 800, 600));
+        Assert.Equal((800, 600), GtkMenus.PagePoint(5000, 9000, 1, 800, 600));
+        // The zoom applies before the clamp: 500 CSS pixels at 2x are past an 800-pixel view.
+        Assert.Equal((800, 0), GtkMenus.PagePoint(500, -1, 2, 800, 600));
+        Assert.Equal((0.0, 0.0), ContextMenuPoints.InView(double.NaN, double.PositiveInfinity, 1, 800, 600));
+        // A view without a size yet keeps the menu at its origin.
+        Assert.Equal((0.0, 0.0), ContextMenuPoints.InView(10, 10, 1, 0, double.NaN));
+        Assert.Equal((300.0, 100.0), ContextMenuPoints.InView(300, 100, 1, 800, 600));
     }
 
     [Test]

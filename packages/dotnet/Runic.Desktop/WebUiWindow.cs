@@ -1637,12 +1637,31 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             if (sender is DesktopHost menuHost) menuHost.MenuBarChanged -= OnMenuBarChanged;
             return;
         }
+        // A hosted window shows the guest's menus; the macOS application menu bar follows the host's on its own.
+        if (HostedDataStore is not null) return;
         if (Volatile.Read(ref _embeddedHost) is { IsOpen: true } host) PushMenuBar(host);
     }
 
-    // Hands the host's current menus to the window; a failure is the window's diagnostic, never the caller's.
+    // runic-host/1 menus/1: the guest's menus, which a hosted window shows instead of DesktopHost.MenuBar; none until the
+    // guest sets them, so a hosted window never shows the host application's own menus.
+    private IReadOnlyList<Runic.Platform.DesktopMenu> _hostedMenuBar = [];
+
+    // Replaces a hosted window's menus (DesktopWindow.SetHostedMenuBarAsync); checked by the caller.
+    internal Task SetHostedMenuBarAsync(IReadOnlyList<Runic.Platform.DesktopMenu> menus)
+    {
+        Volatile.Write(ref _hostedMenuBar, menus);
+        return Volatile.Read(ref _embeddedHost) is { IsOpen: true } host ? PushMenuBarAsync(host, menus) : Task.CompletedTask;
+    }
+
+    // Hands the host's current menus to the window, or a hosted window's own; a failure is the window's diagnostic,
+    // never the caller's.
     private void PushMenuBar(IWebUiEmbeddedHost host)
     {
+        if (HostedDataStore is not null)
+        {
+            _ = PushMenuBarAsync(host, Volatile.Read(ref _hostedMenuBar));
+            return;
+        }
         if (MenuHost is not { } menuHost) return;
         _ = PushMenuBarAsync(host, menuHost.MenuBar);
     }

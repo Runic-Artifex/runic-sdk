@@ -1,0 +1,42 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "dialogs.cancel.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "dialogs",
+  "roles": ["guest"],
+  "description": "When the application cancels a pending dialog, the guest pushes cancel with the request's id, the dialog ends cancelled and the host's later reply is ignored; the window can show its next dialog, and a message box closed without a button returns none.",
+  "requires": ["dialogs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "d1": {"kind":"action"},
+    "d1-request": {"kind":"request"},
+    "d2": {"kind":"action"},
+    "d2-request": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["dialogs/1"],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"guest":{"action":"openFile","window":"w1"},"as":"d1"},
+    {"receive":{"id":{"$id":"d1-request"},"kind":"file-dialog","window":{"$id":"w1"},"dialog":"open","title":"Open","filters":[{"name":"Text","extensions":["txt"],"mimeTypes":[]}]},"connection":"c1"},
+    {"guest":{"action":"cancelDialog","window":"w1"}},
+    {"receive":{"kind":"cancel","request":{"$id":"d1-request"}},"connection":"c1"},
+    {"send":{"id":{"$id":"d1-request"},"ok":false,"error":{"kind":"cancelled","message":"The guest gave the request up."}},"connection":"c1"},
+    {"expect":{"action":"d1","cancelled":true}},
+    {"guest":{"action":"messageBox","window":"w1"},"as":"d2","note":"The window shows no dialog any more."},
+    {"receive":{"id":{"$id":"d2-request"},"kind":"message-box","window":{"$id":"w1"},"icon":"warning","message":"Save changes?","title":"Conformance","buttons":[{"id":"save","label":"Save","role":"default"},{"id":"discard","label":"Don't Save","role":"destructive"},{"id":"cancel","label":"Cancel","role":"cancel"}]},"connection":"c1"},
+    {"send":{"id":{"$id":"d2-request"},"ok":true,"outcome":"success","button":null},"connection":"c1"},
+    {"expect":{"action":"d2","button":null}}
+  ]
+}

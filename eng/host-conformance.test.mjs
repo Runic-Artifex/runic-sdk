@@ -1,7 +1,8 @@
 // Checks the Runic host protocol conformance corpus (specs/desktop/host-conformance):
 // - every scenario against its JSON Schema, and its id against its path;
 // - that every scenario is self-contained: it declares exactly the identifiers it uses, creates each connection,
-//   window and action before a step names it, waits only for limits it arranges, and uses only the steps of its role.
+//   window and action before a step names it, sends a guest's item id only after a received message carried it, waits
+//   only for limits it arranges, and uses only the steps of its role.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -24,7 +25,7 @@ const roleSteps = {
   guest: new Set(["start", "line", "connect", "send", "sendRaw", "receive", "receiveAll", "closed", "disconnect", "closeInput",
     "advance", "guest", "expect"]),
   host: new Set(["start", "offer", "line", "accept", "send", "sendRaw", "receive", "receiveAll", "closed", "disconnect", "exit",
-    "advance", "expect"]),
+    "advance", "user", "expect"]),
 };
 
 // The problems of one scenario that its schema cannot express. Empty when it is self-contained.
@@ -47,13 +48,18 @@ export function scenarioProblems(scenario) {
     use(name, kind, where);
     if (!created.has(name)) problems.push(`${where}: ${name} is used before a step creates it`);
   };
-  // $id, $secret and $any inside a message.
-  const walk = (value, where) => {
-    if (Array.isArray(value)) { value.forEach((item, index) => walk(item, `${where}/${index}`)); return; }
+  // $id, $secret, $any, $file and $directory inside a message; received is whether the runner receives it.
+  const walk = (value, where, received = false) => {
+    if (Array.isArray(value)) { value.forEach((item, index) => walk(item, `${where}/${index}`, received)); return; }
     if (value === null || typeof value !== "object") return;
     if ("$id" in value) {
       const kind = declared.get(value.$id);
       use(value.$id, undefined, where);
+      // A guest's item id is bound from a message the runner received; a message it sends repeats a bound one.
+      if (kind === "item") {
+        if (received) items.add(value.$id);
+        else if (!items.has(value.$id)) problems.push(`${where}: item ${value.$id} is sent before a received message carried it`);
+      }
       if (kind === "window" || kind === "connection" || kind === "action") {
         if (kind !== "window") problems.push(`${where}: ${value.$id} is a ${kind}, which a message cannot carry`);
         // A guest chooses window ids; a guest runner binds them from window-open, so a message names a window it opened.
@@ -65,14 +71,19 @@ export function scenarioProblems(scenario) {
       if (!secrets.has(value.$secret)) problems.push(`${where}: unknown secret ${value.$secret}`);
       return;
     }
+    if ("$file" in value || "$directory" in value) {
+      if (Object.keys(value).length !== 1) problems.push(`${where}: $file or $directory has other members`);
+      return;
+    }
     if ("$any" in value) {
       const types = [value.$any].flat();
       if (!types.every(type => jsonTypes.has(type))) problems.push(`${where}: unknown $any type ${JSON.stringify(value.$any)}`);
       return;
     }
-    for (const [key, member] of Object.entries(value)) walk(member, `${where}/${key}`);
+    for (const [key, member] of Object.entries(value)) walk(member, `${where}/${key}`, received);
   };
   const opening = new Set();
+  const items = new Set();
   const limits = new Set(Object.keys(scenario.arrange?.limits ?? {}));
   let started = false;
   scenario.steps.forEach((step, index) => {
@@ -99,14 +110,14 @@ export function scenarioProblems(scenario) {
       case "send": case "receive":
         exists(step.connection, "connection", where);
         // A window-open that a guest sends names the window its open action created.
-        walk(step[action], `${where}/${action}`);
+        walk(step[action], `${where}/${action}`, action === "receive");
         break;
       case "sendRaw": exists(step.connection, "connection", where); break;
       case "receiveAll":
         exists(step.connection, "connection", where);
-        step.receiveAll.forEach((message, item) => walk(message, `${where}/receiveAll/${item}`));
+        step.receiveAll.forEach((message, item) => walk(message, `${where}/receiveAll/${item}`, true));
         break;
-      case "offer": walk(step.offer, `${where}/offer`); break;
+      case "offer": walk(step.offer, `${where}/offer`, true); break;
       case "line": if (typeof step.line === "object") walk(step.line, `${where}/line`); break;
       case "advance":
         if (!limits.has(step.advance)) problems.push(`${where}: advance names ${step.advance}, which arrange.limits does not set`);
@@ -177,6 +188,14 @@ test("the self-containment check finds what it is for", () => {
   assert.match(scenarioProblems({ ...base, steps: [start, { accept: "c1" }] }).join(), /not a step of the guest role/);
   assert.match(scenarioProblems({ ...base, steps: [start, { connect: "c1" }, { send: { key: { $secret: "password" } }, connection: "c1" }] }).join(), /unknown secret/);
   assert.match(scenarioProblems({ ...base, steps: [start] }).join(), /never used/);
+  const items = { ...base, ids: { ...base.ids, i1: { kind: "item" } } };
+  const menu = { receive: { menu: [{ id: { $id: "i1" } }] }, connection: "c1" };
+  const invoke = { send: { kind: "menu-invoke", itemId: { $id: "i1" } }, connection: "c1" };
+  assert.deepEqual(scenarioProblems({ ...items, steps: [start, { connect: "c1" }, open, menu, invoke, { expect: { action: "o", opened: true } }] }), []);
+  assert.match(scenarioProblems({ ...items, steps: [start, { connect: "c1" }, open, invoke, menu, { expect: { action: "o", opened: true } }] }).join(), /sent before a received message/);
+  const host = { roles: ["host"], ids: {}, arrange: { host: { name: "h", version: "1" } } };
+  assert.deepEqual(scenarioProblems({ ...host, steps: [{ start: { host: true } }, { user: { action: "closeWindow", window: "w1" } }] }), []);
+  assert.match(scenarioProblems({ ...base, steps: [start, { user: { action: "closeWindow", window: "w1" } }] }).join(), /not a step of the guest role/);
 });
 
 test("the proof example in the specification is HMAC-SHA256 of its nonce and key", async () => {

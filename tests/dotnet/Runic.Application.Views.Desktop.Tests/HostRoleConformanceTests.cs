@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -8,12 +9,15 @@ using System.Text.Json.Nodes;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Desktop.Hosting;
+using Runic.Platform;
 using TUnit.Core;
 
 // The host runner of the Runic host protocol corpus (specs/desktop/host-conformance): for every scenario of the host role
 // it plays the guest against IRunicHostedApplications. The host starts this suite's executable as a puppet
 // (HostedGuestProgram.RunPuppet), which relays its standard input and output to the runner; the runner reads the offer,
-// writes the launch lines, listens on its own channel and answers the host's connection.
+// writes the launch lines, listens on its own channel and answers the host's connection. The host's windows are headless
+// (HostedWindowHost); the runner's HostUser plays the host's user, who chooses menu items and answers context menus and
+// dialogs (FakeHostDialogs).
 internal sealed class HostRoleConformanceTests
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(10);
@@ -49,6 +53,12 @@ internal sealed class HostRoleConformanceTests
         private StreamWriter? _commands;
         private TcpListener? _listener;
         private readonly List<TcpClient> _clients = [];
+        // The host's windows in the order they opened, which is the order of the factory's native windows.
+        private readonly List<RunicHostedWindow> _opened = [];
+        private readonly FakeHostDialogs _dialogs = new();
+        private readonly HostUser _user = new();
+        private readonly ScenarioFiles _files = new();
+        private IDisposable? _dialogsInstalled;
         private RunicHostedApplication? _application;
         private long _nextRequest = 1000;
         private byte[]? _nonce;
@@ -90,6 +100,7 @@ internal sealed class HostRoleConformanceTests
                 case "exit": await ExitAsync(value!.GetValue<int>()); break;
                 case "advance": await Task.Delay(Limit(value!.GetValue<string>(), StepTimeout)); break;
                 case "expect": await ExpectAsync(value!.AsObject()); break;
+                case "user": await UserAsync(value!.AsObject()); break;
                 default: throw new InvalidOperationException($"The host runner does not implement the step '{action}'.");
             }
         }
@@ -98,6 +109,10 @@ internal sealed class HostRoleConformanceTests
         {
             _control.Start();
             _fixture = await HostFixture.StartAsync();
+            _fixture.Applications.WindowOpened += (_, e) => { lock (_opened) _opened.Add(e.Window); };
+            _fixture.Factory.ContextMenu = _user.ContextMenuAsync;
+            _dialogs.Answer = _user.DialogAsync;
+            _dialogsInstalled = _dialogs.Install();
             var host = scenario["arrange"]!["host"]!;
             var start = HostedGuestProgram.StartInfo(HostedGuestProgram.PuppetArgument) with
             {
@@ -113,6 +128,14 @@ internal sealed class HostRoleConformanceTests
                 StopTimeout = Limit("stopTimeout", HostProtocol.DefaultStopTimeout),
                 HostName = host["name"]!.GetValue<string>(),
                 HostVersion = host["version"]!.GetValue<string>(),
+                // The scenario's menu rates, dialogs per guest and dialog rate, or the protocol's defaults.
+                Policy = new ScenarioPolicy(new RunicHostedLimits
+                {
+                    MenuRequestsPerSecond = Limits["menuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.MenuRequestsPerSecond,
+                    MaximumDialogs = Limits["dialogs"]?.GetValue<int>() ?? RunicHostedLimits.Default.MaximumDialogs,
+                    GuestMenuRequestsPerSecond = Limits["guestMenuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.GuestMenuRequestsPerSecond,
+                    DialogsPerTenSeconds = Limits["dialogRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.DialogsPerTenSeconds,
+                }),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);
             _puppet = await _control.AcceptTcpClientAsync(accept.Token);
@@ -201,8 +224,132 @@ internal sealed class HostRoleConformanceTests
             Check(message is null, $"The host sent {message?.ToJsonString()} instead of closing the connection.");
         }
 
+        // ----- The host's user
+        private RunicHostedWindow Window(string id)
+        {
+            lock (_opened) return _opened.LastOrDefault(window => window.Id == id) ?? throw new InvalidOperationException($"The host opened no window {id}.");
+        }
+
+        private HostedWindowHost Native(string id)
+        {
+            int index;
+            lock (_opened) index = _opened.FindLastIndex(window => window.Id == id);
+            if (index < 0) throw new InvalidOperationException($"The host opened no window {id}.");
+            return _fixture!.Factory.Hosts[index];
+        }
+
+        private async Task UserAsync(JsonObject user)
+        {
+            var action = user["action"]!.GetValue<string>();
+            switch (action)
+            {
+                case "chooseMenuItem":
+                    var titles = user["titles"]!.AsArray().Select(static title => title!.GetValue<string>()).ToArray();
+                    var native = Native(user["window"]!.GetValue<string>());
+                    if (user["bar"] is not null)
+                    {
+                        // The bar the window showed before its current one, which the user still clicks during a change.
+                        Check(native.ChoosePrevious(titles),
+                            $"The window's previous menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.PreviousMenuBar)}.");
+                        break;
+                    }
+                    Check(native.Choose(titles), $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
+                    break;
+                case "deactivateWindow" or "activateWindow":
+                    Native(user["window"]!.GetValue<string>()).SetActive(action == "activateWindow");
+                    break;
+                case "awaitDialogClosed":
+                    await _user.AwaitClosedAsync(user["dialog"]?.GetValue<string>(), StepTimeout);
+                    break;
+                case "closeWindow":
+                    var closing = Native(user["window"]!.GetValue<string>());
+                    _ = Task.Run(closing.UserClose);
+                    break;
+                case "awaitContextMenu":
+                    await _user.HoldAsync(menu: true, null, StepTimeout);
+                    break;
+                case "awaitDialog":
+                    await _user.HoldAsync(menu: false, user["dialog"]?.GetValue<string>(), StepTimeout);
+                    break;
+                case "chooseContextItem":
+                    var shown = await _user.TakeAsync(menu: true, null, StepTimeout);
+                    if (user["dismiss"] is not null)
+                    {
+                        shown.Answer.TrySetResult(null);
+                        break;
+                    }
+                    var title = user["title"]!.GetValue<string>();
+                    var item = HostUser.Find((ImmutableArray<DesktopMenuEntry>)shown.What, title)
+                        ?? throw new InvalidOperationException($"The context menu has no item {title}: {HostedWindowHost.Describe((ImmutableArray<DesktopMenuEntry>)shown.What)}.");
+                    shown.Answer.TrySetResult(item);
+                    break;
+                case "answerDialog":
+                    var dialog = await _user.TakeAsync(menu: false, user["dialog"]?.GetValue<string>(), StepTimeout);
+                    if (user["paths"] is JsonArray paths)
+                        dialog.Answer.TrySetResult((IReadOnlyList<string>)[.. paths.Select(path => Resolve(path)!.GetValue<string>())]);
+                    else if (user["button"] is { } button) dialog.Answer.TrySetResult(button.GetValue<string>());
+                    else dialog.Answer.TrySetResult(null);
+                    break;
+                default: throw new InvalidOperationException($"The host runner does not implement the user action '{action}'.");
+            }
+        }
+
+        // The native menu bar of a window as entries of the wire format without their ids (README, Steps).
+        private static JsonArray Entries(IEnumerable<DesktopMenuEntry> entries) => new([.. entries.Select(static entry => (JsonNode)(entry switch
+        {
+            DesktopMenu menu => new JsonObject
+            {
+                ["kind"] = "submenu",
+                ["title"] = menu.Title,
+                ["role"] = menu.Role switch
+                {
+                    DesktopMenuRole.Application => "application",
+                    DesktopMenuRole.File => "file",
+                    DesktopMenuRole.Help => "help",
+                    _ => null,
+                },
+                ["enabled"] = menu.IsEnabled,
+                ["items"] = Entries(menu.Items),
+            },
+            DesktopMenuItem item => new JsonObject
+            {
+                ["kind"] = "item",
+                ["title"] = item.Title,
+                ["shortcut"] = item.Shortcut?.ToString(),
+                ["enabled"] = item.IsEnabled,
+                ["checked"] = item.IsChecked,
+            },
+            _ => new JsonObject { ["kind"] = "separator" },
+        }))]);
+
         private async Task ExpectAsync(JsonObject expect)
         {
+            if (expect["menuBar"] is JsonArray menuBar)
+            {
+                var native = Native(expect["window"]!.GetValue<string>());
+                try
+                {
+                    _ = await native.WaitForMenuBarAsync(bar =>
+                    {
+                        try
+                        {
+                            Match(menuBar, Entries(bar), "menuBar");
+                            return true;
+                        }
+                        catch (InvalidOperationException) { return false; }
+                    }, StepTimeout);
+                }
+                catch (TimeoutException)
+                {
+                    throw new InvalidOperationException($"The window's menu bar is {Entries(native.MenuBar).ToJsonString()}, not {menuBar.ToJsonString()}.");
+                }
+                return;
+            }
+            if (expect["closed"] is not null)
+            {
+                await Window(expect["window"]!.GetValue<string>()).Closed.WaitScaledAsync(StepTimeout);
+                return;
+            }
             if (expect["started"] is not null)
             {
                 _application = await _start!.WaitScaledAsync(StepTimeout);
@@ -236,6 +383,8 @@ internal sealed class HostRoleConformanceTests
             {
                 case JsonObject { Count: 1 } single when single["$secret"] is { } secret:
                     return Secret(secret.GetValue<string>());
+                case JsonObject placeholder when ScenarioFiles.IsPath(placeholder):
+                    return _files.Path(placeholder);
                 case JsonObject { Count: 1 } single when single["$id"] is { } id:
                     // A request the runner sends gets a new id, which the host's reply then carries.
                     if (!_bindings.TryGetValue(id.GetValue<string>(), out var bound))
@@ -276,6 +425,10 @@ internal sealed class HostRoleConformanceTests
                     if (_bindings.TryGetValue(name.GetValue<string>(), out var bound))
                         Check(JsonNode.DeepEquals(bound, actual), $"{path}: {actual?.ToJsonString()} is not {name}'s {bound?.ToJsonString()}.");
                     else _bindings[name.GetValue<string>()] = actual?.DeepClone();
+                    return;
+                case JsonObject placeholder when ScenarioFiles.IsPath(placeholder):
+                    var local = _files.Path(placeholder);
+                    Check(actual?.GetValueKind() == JsonValueKind.String && actual.GetValue<string>() == local, $"{path}: {actual?.ToJsonString()} is not {local}.");
                     return;
                 case JsonObject { Count: 1 } secret when secret["$secret"] is { } secretName:
                     Check(actual?.GetValueKind() == JsonValueKind.String && actual.GetValue<string>() == Secret(secretName.GetValue<string>()),
@@ -328,6 +481,100 @@ internal sealed class HostRoleConformanceTests
             _puppet?.Dispose();
             _control.Stop();
             if (_fixture is not null) await _fixture.DisposeAsync();
+            _dialogsInstalled?.Dispose();
+            _files.Dispose();
+        }
+    }
+
+    // The host's policy of a scenario: it allows everything, within the scenario's limits.
+    private sealed class ScenarioPolicy(RunicHostedLimits limits) : IRunicHostedWindowPolicy
+    {
+        public RunicHostedLimits Limits => limits;
+    }
+
+    // The host's user: each context menu and dialog the host shows waits until a user step answers it, or until the host
+    // closes it (its token).
+    private sealed class HostUser
+    {
+        internal sealed record Shown(object What, string Kind, TaskCompletionSource<object?> Answer, CancellationToken Closed);
+
+        private readonly System.Threading.Channels.Channel<Shown> _menus = System.Threading.Channels.Channel.CreateUnbounded<Shown>();
+        private readonly System.Threading.Channels.Channel<Shown> _dialogs = System.Threading.Channels.Channel.CreateUnbounded<Shown>();
+        // What the host shows that no user step answered yet, in the order it showed them.
+        private readonly List<Shown> _shownMenus = [];
+        private readonly List<Shown> _shownDialogs = [];
+
+        public async Task<DesktopMenuItem?> ContextMenuAsync(ImmutableArray<DesktopMenuEntry> entries, DesktopContextMenuOptions options, CancellationToken cancellationToken)
+        {
+            var shown = new Shown(entries, "context-menu", new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously), cancellationToken);
+            await _menus.Writer.WriteAsync(shown, CancellationToken.None);
+            return (DesktopMenuItem?)await shown.Answer.Task.WaitAsync(cancellationToken);
+        }
+
+        public async Task<object?> DialogAsync(FakeHostDialog dialog, CancellationToken cancellationToken)
+        {
+            var kind = dialog.Kind switch
+            {
+                RunicHostedDialogKind.OpenFile => "open",
+                RunicHostedDialogKind.OpenFiles => "open-multiple",
+                RunicHostedDialogKind.SaveFile => "save",
+                RunicHostedDialogKind.OpenFolder => "folder",
+                RunicHostedDialogKind.OpenFolders => "folder-multiple",
+                _ => "message-box",
+            };
+            var shown = new Shown(dialog, kind, new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously), cancellationToken);
+            await _dialogs.Writer.WriteAsync(shown, CancellationToken.None);
+            return await shown.Answer.Task.WaitAsync(cancellationToken);
+        }
+
+        // Waits until the host closes the oldest dialog (of the kind, when given) that a step held open.
+        public async Task AwaitClosedAsync(string? kind, TimeSpan timeout)
+        {
+            var shown = _shownDialogs.FirstOrDefault(shown => kind is null || shown.Kind == kind)
+                ?? throw new InvalidOperationException($"No {kind ?? "dialog"} is held open.");
+            try { await Task.Delay(Timeout.Infinite, shown.Closed).WaitScaledAsync(timeout); }
+            catch (OperationCanceledException) when (shown.Closed.IsCancellationRequested) { }
+            catch (TimeoutException) { throw new InvalidOperationException($"The host did not close the {shown.Kind}."); }
+            _shownDialogs.Remove(shown);
+        }
+
+        // Waits until the host shows a context menu or dialog (of the kind, when given) that no step answered yet; it stays
+        // open for a later answer.
+        public async Task HoldAsync(bool menu, string? kind, TimeSpan timeout) => _ = await FindAsync(menu, kind, timeout);
+
+        // The oldest context menu or dialog (of the kind, when given) that the host shows and no step answered yet.
+        public async Task<Shown> TakeAsync(bool menu, string? kind, TimeSpan timeout)
+        {
+            var shown = await FindAsync(menu, kind, timeout);
+            (menu ? _shownMenus : _shownDialogs).Remove(shown);
+            return shown;
+        }
+
+        private async Task<Shown> FindAsync(bool menu, string? kind, TimeSpan timeout)
+        {
+            var list = menu ? _shownMenus : _shownDialogs;
+            using var deadline = TestTimeouts.Cancellation(timeout);
+            while (true)
+            {
+                // One the host already closed is gone.
+                list.RemoveAll(static shown => shown.Closed.IsCancellationRequested);
+                if (list.FirstOrDefault(shown => kind is null || shown.Kind == kind) is { } found) return found;
+                try { list.Add(await (menu ? _menus : _dialogs).Reader.ReadAsync(deadline.Token)); }
+                catch (OperationCanceledException)
+                {
+                    throw new InvalidOperationException($"The host showed no {(menu ? "context menu" : kind ?? "dialog")}; it shows [{string.Join(", ", list.Select(static shown => shown.Kind))}].");
+                }
+            }
+        }
+
+        public static DesktopMenuItem? Find(IEnumerable<DesktopMenuEntry> entries, string title)
+        {
+            foreach (var entry in entries)
+            {
+                if (entry is DesktopMenuItem item && item.Title == title) return item;
+                if (entry is DesktopMenu menu && Find(menu.Items, title) is { } found) return found;
+            }
+            return null;
         }
     }
 }

@@ -1,0 +1,42 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "menus.superseded-bar.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "menus",
+  "roles": ["guest"],
+  "description": "A guest never gives an item's id to another item of the same window: the items of a new bar get ids that no item of an earlier bar had, unless they are the same item, so a menu-invoke that the host sent for the bar before the change runs that bar's item or nothing, never another item of the new bar.",
+  "requires": ["menus/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "bar-1": {"kind":"request"},
+    "bar-2": {"kind":"request"},
+    "item-open": {"kind":"item"},
+    "item-open-2": {"kind":"item"},
+    "run-1": {"kind":"action"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["menus/1"],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"receive":{"id":{"$id":"bar-1"},"kind":"set-menu-bar","window":{"$id":"w1"},"menu":[{"kind":"submenu","title":"File","role":"file","enabled":true,"items":[{"kind":"item","id":{"$id":"item-open"},"title":"Open","shortcut":"Primary+O","enabled":true,"checked":null},{"kind":"item","id":{"$any":"string"},"title":"Save","shortcut":"Primary+S","enabled":true,"checked":null},{"kind":"separator"},{"kind":"submenu","title":"Recent","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"notes.txt","shortcut":null,"enabled":true,"checked":null}]}]},{"kind":"submenu","title":"View","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"Grid","shortcut":null,"enabled":true,"checked":false}]}]},"connection":"c1"},
+    {"send":{"id":{"$id":"bar-1"},"ok":true,"outcome":"success"},"connection":"c1"},
+    {"guest":{"action":"setMenuBar","menu":"german"},"note":"Another bar of the same structure: under ids given by position, its Öffnen would have Open's id."},
+    {"receive":{"id":{"$id":"bar-2"},"kind":"set-menu-bar","window":{"$id":"w1"},"menu":[{"kind":"submenu","title":"Datei","role":"file","enabled":true,"items":[{"kind":"item","id":{"$id":"item-open-2"},"title":"Öffnen","shortcut":"Primary+O","enabled":true,"checked":null},{"kind":"item","id":{"$any":"string"},"title":"Sichern","shortcut":"Primary+S","enabled":true,"checked":null},{"kind":"separator"},{"kind":"submenu","title":"Zuletzt geöffnet","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"notes.txt","shortcut":null,"enabled":true,"checked":null}]}]},{"kind":"submenu","title":"Ansicht","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"Raster","shortcut":null,"enabled":true,"checked":false}]}]},"connection":"c1"},
+    {"send":{"id":{"$id":"bar-2"},"ok":true,"outcome":"success"},"connection":"c1"},
+    {"send":{"kind":"menu-invoke","window":{"$id":"w1"},"itemId":{"$id":"item-open"}},"connection":"c1","note":"A click on the English bar that the host still showed: Open's id names no item of the German bar, so nothing runs."},
+    {"send":{"kind":"menu-invoke","window":{"$id":"w1"},"itemId":{"$id":"item-open-2"}},"connection":"c1"},
+    {"guest":{"action":"invoked"},"as":"run-1"},
+    {"expect":{"action":"run-1","invoked":["file.open"]}}
+  ]
+}

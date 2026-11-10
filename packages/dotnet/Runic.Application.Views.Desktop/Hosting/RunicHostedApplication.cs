@@ -32,7 +32,7 @@ namespace Runic.Application.Views.Desktop;
 /// <para>Experimental; see <c>docs/experimental.md</c>.</para>
 /// </remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-public sealed class RunicHostedApplication : IAsyncDisposable
+public sealed partial class RunicHostedApplication : IAsyncDisposable
 {
     private const int MaximumKeptErrorLines = 20;
 
@@ -162,7 +162,7 @@ public sealed class RunicHostedApplication : IAsyncDisposable
         // Appearance and locale follow in a later change; the guest keeps its own until then.
         var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, new JsonObject
         {
-            ["features"] = new JsonArray(),
+            ["features"] = new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]),
             ["locale"] = null,
             ["languages"] = new JsonArray(),
             ["appearance"] = null,
@@ -319,6 +319,11 @@ public sealed class RunicHostedApplication : IAsyncDisposable
 
     private void OnPush(JsonObject push)
     {
+        if (HostProtocol.String(push, "kind") == "cancel")
+        {
+            OnCancel(push);
+            return;
+        }
         if (HostProtocol.String(push, "kind") != "window-closed") return;
         RunicHostedWindow? window;
         lock (_gate) window = HostProtocol.String(push, "window") is { } id ? _windows.GetValueOrDefault(id) : null;
@@ -333,6 +338,7 @@ public sealed class RunicHostedApplication : IAsyncDisposable
             await OpenWindowAsync(request).ConfigureAwait(false);
             return;
         }
+        if (await OnFeatureRequestAsync(request).ConfigureAwait(false)) return;
         if (PresentationKind(request.Kind) is not { } kind)
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of this host.").ConfigureAwait(false);
@@ -489,6 +495,8 @@ public sealed class RunicHostedApplication : IAsyncDisposable
         }
         var adapter = new DesktopWindowPresentation(presentation, () => new DesktopNativeOwner(presentation));
         window.Attach(presentation, adapter);
+        // menus/1: the guest's items in the window's bar, and their shortcuts, run the guest's commands.
+        presentation.MenuCommands = new HostedMenuTarget(window);
         bool ended;
         lock (_gate)
         {
@@ -544,6 +552,7 @@ public sealed class RunicHostedApplication : IAsyncDisposable
     // host application.
     private async Task CloseUnlistedAsync(RunicHostedWindow window, DesktopSurface surface)
     {
+        await window.EndUserRequestsAsync().ConfigureAwait(false);
         try { await window.OnGuestClosedAsync().ConfigureAwait(false); }
         catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
         try { await surface.DisposeAsync().ConfigureAwait(false); }
@@ -565,6 +574,8 @@ public sealed class RunicHostedApplication : IAsyncDisposable
         {
             if (!_open.Remove(window)) return;
         }
+        // Its dialogs and context menus end with it (host-protocol.md, Dialogs).
+        await window.EndUserRequestsAsync().ConfigureAwait(false);
         if (!window.IsClosedByGuest)
         {
             try { _ = await CloseRequestAsync(window, force: true, CancellationToken.None).ConfigureAwait(false); }
