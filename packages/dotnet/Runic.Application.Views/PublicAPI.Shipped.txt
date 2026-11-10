@@ -1158,3 +1158,57 @@ static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this 
 Runic.Application.Views.RunicWindowsChangedEventArgs.RunicWindowsChangedEventArgs(Runic.Application.Views.IRunicWindow! window, bool opened, System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>! windows) -> void
 Runic.Application.Views.RunicWindowsChangedEventArgs.Windows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!
 static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this Runic.Application.Views.IRunicWindowService! windows, Runic.Navigation.IRunicModelContext! context) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!>!
+override Runic.Application.Views.RunicValidationMember.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicValidationMember.GetHashCode() -> int
+override Runic.Application.Views.RunicValidationMember.ToString() -> string!
+Runic.Application.Views.Generated.BridgeDataSubscriptionMember.ValidationProperty.get -> System.Func<System.Reflection.PropertyInfo?>?
+Runic.Application.Views.Generated.BridgeDataSubscriptionMember.ValidationProperty.init -> void
+Runic.Application.Views.RunicValidationMember
+Runic.Application.Views.RunicValidationMember.<Clone>$() -> Runic.Application.Views.RunicValidationMember!
+Runic.Application.Views.RunicValidationMember.Deconstruct(out System.Type! ModelType, out string! Name, out string! DisplayName, out string! Message) -> void
+Runic.Application.Views.RunicValidationMember.DisplayName.get -> string!
+Runic.Application.Views.RunicValidationMember.DisplayName.init -> void
+Runic.Application.Views.RunicValidationMember.Equals(Runic.Application.Views.RunicValidationMember? other) -> bool
+Runic.Application.Views.RunicValidationMember.Message.get -> string!
+Runic.Application.Views.RunicValidationMember.Message.init -> void
+Runic.Application.Views.RunicValidationMember.ModelType.get -> System.Type!
+Runic.Application.Views.RunicValidationMember.ModelType.init -> void
+Runic.Application.Views.RunicValidationMember.Name.get -> string!
+Runic.Application.Views.RunicValidationMember.Name.init -> void
+Runic.Application.Views.RunicValidationMember.RunicValidationMember(System.Type! ModelType, string! Name, string! DisplayName, string! Message) -> void
+Runic.Application.Views.RunicValidationOptions
+Runic.Application.Views.RunicValidationOptions.RunicValidationOptions() -> void
+Runic.Application.Views.RunicValidationOptions.TextFor.get -> System.Func<System.ComponentModel.DataAnnotations.ValidationAttribute!, Runic.Application.Views.RunicValidationMember!, Runic.Application.Views.RunicTextReference?>?
+Runic.Application.Views.RunicValidationOptions.TextFor.init -> void
+Runic.Application.Views.RunicSharedClientAttribute
+Runic.Application.Views.RunicSharedClientAttribute.Name.get -> string?
+Runic.Application.Views.RunicSharedClientAttribute.Name.set -> void
+Runic.Application.Views.RunicSharedClientAttribute.RunicSharedClientAttribute() -> void
+Runic.Application.Views.WindowContentSessionOptions.Validation.get -> Runic.Application.Views.RunicValidationOptions?
+Runic.Application.Views.WindowContentSessionOptions.Validation.init -> void
+static Runic.Application.Views.RunicValidationMember.operator !=(Runic.Application.Views.RunicValidationMember? left, Runic.Application.Views.RunicValidationMember? right) -> bool
+static Runic.Application.Views.RunicValidationMember.operator ==(Runic.Application.Views.RunicValidationMember? left, Runic.Application.Views.RunicValidationMember? right) -> bool
+Runic.Application.Views.IRunicApplicationLocale
+Runic.Application.Views.IRunicApplicationLocale.Follow(System.Func<string!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>! follower) -> System.IDisposable!
+Runic.Application.Views.IRunicApplicationLocale.Locale.get -> string?
+Runic.Application.Views.IRunicApplicationLocale.LocaleChanged -> System.EventHandler<Runic.Application.Views.RunicApplicationLocaleChangedEventArgs!>?
+Runic.Application.Views.IRunicApplicationLocale.SetLocaleAsync(string? locale, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.Locale.get -> string?
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.OldLocale.get -> string?
+Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.RunicApplicationLocaleChangedEventArgs(string? oldLocale, string? locale) -> void
+Runic.Application.Views.IRunicWindowLocale.OwnLocale.get -> string?
+Runic.Application.Views.RunicConnection.Languages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Views.RunicConnection.Languages.init -> void
+Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.get -> bool?
+Runic.Application.Views.RunicWindowOptions.FlowCultureFromLocale.init -> void
+Runic.Application.Views.WindowContentSession.Appearance.get -> Runic.Platform.DesktopAppearance?
+Runic.Application.Views.WindowContentSession.Appearance.set -> void
+Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.get -> bool
+Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.init -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.Code.get -> string!
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.GuestCode.get -> string?
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.GuestCode.init -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.RunicHostedApplicationException(string! code, string! message, System.Exception? innerException) -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.RunicHostedApplicationException(string! code, string! message) -> void

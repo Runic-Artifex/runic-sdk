@@ -1,10 +1,1 @@
 #nullable enable
-Runic.Desktop.DesktopWindow.LayoutDirection.get -> Runic.Platform.DesktopLayoutDirection
-Runic.Desktop.DesktopWindow.SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection layoutDirection, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopWindowCapabilities.LayoutDirection = 1048576 -> Runic.Desktop.DesktopWindowCapabilities
-Runic.Desktop.IDesktopLayoutDirectionWindowHost
-Runic.Desktop.IDesktopLayoutDirectionWindowHost.SetLayoutDirectionAsync(Runic.Platform.DesktopLayoutDirection layoutDirection, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopHost.SetStandardMenuTitles(Runic.Desktop.DesktopStandardMenuTitles? titles) -> void
-[RUNICDESK103]Runic.Desktop.DesktopWindowHostOptions.EphemeralDataStore.get -> string?
-[RUNICDESK103]Runic.Desktop.DesktopWindowHostOptions.EphemeralDataStore.init -> void
-[RUNICDESK103]Runic.Desktop.IDesktopEphemeralDataStoreWindowHost
