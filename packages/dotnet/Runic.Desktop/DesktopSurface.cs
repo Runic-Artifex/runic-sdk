@@ -38,6 +38,14 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// <summary>Gets the surface URL.</summary>
     public Uri Url => _engine.Url ?? throw new ObjectDisposedException(nameof(DesktopSurface));
 
+    // The one-time address a host application's window opens this surface with in runic-host/1 hosted mode
+    // (WebUiWindow.BeginHostedLaunch).
+    internal Uri BeginHostedLaunch()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.BeginHostedLaunch();
+    }
+
     /// <summary>Registers or replaces a named presentation capability.</summary>
     /// <remarks>
     /// Each browser connection admits one invocation or connection event at a time, but only until the
@@ -132,9 +140,13 @@ public sealed class DesktopSurface : IAsyncDisposable
 
             ValidateWindowOptions(configured);
             RequireCloseConfirmationSupport(configured);
+            var chain = PresentationChain(configured);
+            // A hosted application's page is shown only in an embedded window, with the host session's own data store:
+            // an installed browser would send it the user's cookies (host-protocol.md, Page admission).
+            if (_engine.HostedDataStore is not null && chain is not [BrowserKind.Embedded])
+                throw new ArgumentException("A hosted application's window opens only in an embedded window, without fallbacks.", nameof(options));
             ApplyWindowOptions(configured);
             var requestedBrowser = configured.Browser;
-            var chain = PresentationChain(configured);
             var actualBrowser = chain[0];
             var fellBack = false;
             List<DesktopPresentationAttempt>? attempts = chain.Count > 1 ? [] : null;

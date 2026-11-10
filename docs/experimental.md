@@ -6,8 +6,8 @@ type or member as an error with that ID, and the message links to the entry on
 this page for the release you use. Suppressing the ID is the opt-in: it says
 your project accepts changes to that API before it is supported.
 
-No .NET API is experimental. When one is, it is listed here with its ID, API
-family and packages.
+One .NET API family is experimental: [`RUNICDESK103`](#RUNICDESK103), hosted
+application windows. Each family is listed here with its ID, API and packages.
 
 An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
 that names no other diagnostics numbers its experimental families from `001`,
@@ -16,7 +16,8 @@ diagnostics numbers them from `100`, so the two never share a number: the D-Bus
 source generator reports `RUNICDBUS001` to `RUNICDBUS013`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
 Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
-experimental Desktop families number from `RUNICDESK100`. The Navigation
+experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
+`RUNICDESK102` are retired, so the next is `RUNICDESK103`. The Navigation
 ReactiveUI build targets report `RUNICNAV002`, after the retired `RUNICNAV001`,
 so an experimental Navigation family would be `RUNICNAV100`.
 
@@ -39,6 +40,24 @@ Or suppress it where you use the API, for a file or a region of one:
 // The code that uses the experimental API.
 #pragma warning restore RUNICDBUS100
 ```
+
+<a id="RUNICDESK103"></a>
+
+## RUNICDESK103
+
+Hosted application windows (0.17): one Runic Desktop application shows another
+one's windows over the [Runic host protocol](../specs/desktop/host-protocol.md),
+`runic-host/1`. The protocol and its API stay experimental through 1.0, so they
+can change in a minor release, also after 1.0 (D055.8). Suppress the ID in the
+guest application, the host application and their tests.
+
+| Package | API |
+| --- | --- |
+| `Runic.Application.Views` | `RunicHostedApplicationException` |
+| `Runic.Application.Views.Desktop` | The guest: `RunicGuestOptions`, `RunicHostInfo`, `RunicGuestSession`, `RunicDesktopHostOptions.Guest`, `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` ([hosted mode](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-mode)). The host: `IRunicHostedApplications`, `RunicDesktopHost.HostedApplications`, `AddRunicHostedApplications`, `RunicGuestStartInfo`, `RunicHostedApplicationOptions`, `RunicHostedApplication`, `RunicHostedWindow`, `RunicGuestInfo`, `RunicHostedWindowEventArgs`, `IRunicHostedWindowPolicy` and its request and decision types ([hosting another application](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosting-another-application)) |
+| `Runic.Desktop` | `DesktopWindowHostOptions.EphemeralDataStore` and `IDesktopEphemeralDataStoreWindowHost`, which a custom window host implements to show hosted windows |
+| `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest` and `RunicTestPresentationRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)) |
+
 
 <a id="experimental-packages"></a>
 

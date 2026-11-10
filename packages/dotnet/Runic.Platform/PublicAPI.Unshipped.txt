@@ -49,6 +49,8 @@ Runic.Platform.DesktopPlatformTexts.ControlKeyName.init -> void
 Runic.Platform.DesktopPlatformTexts.DesktopPlatformTexts() -> void
 Runic.Platform.DesktopPlatformTexts.LaunchLinkInvalidMessage.get -> string!
 Runic.Platform.DesktopPlatformTexts.LaunchLinkInvalidMessage.init -> void
+Runic.Platform.DesktopPlatformTexts.LoadingTitle.get -> string!
+Runic.Platform.DesktopPlatformTexts.LoadingTitle.init -> void
 Runic.Platform.DesktopPlatformTexts.ResourceUnavailableMessage.get -> string!
 Runic.Platform.DesktopPlatformTexts.ResourceUnavailableMessage.init -> void
 Runic.Platform.DesktopPlatformTexts.ResourceUnavailableTitle.get -> string!

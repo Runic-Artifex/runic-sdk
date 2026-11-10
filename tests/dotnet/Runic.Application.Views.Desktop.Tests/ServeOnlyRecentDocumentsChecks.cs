@@ -33,6 +33,21 @@ internal sealed class ServeOnlyRecentDocumentsChecks
         }
     }
 
+    // Hosted mode (runic-host/1, D055.8): recent documents are unavailable, as in serve-only mode. RunicDesktopHost.Run
+    // records hosted mode; the record is checked directly here.
+    [Test, NotInParallel(Order = 47)]
+    public async Task HostedModeMakesRecentDocumentsUnavailable()
+    {
+        if (RunicDesktopHost.ServeOnlyRequested) throw new InvalidOperationException("Run the case without RUNIC_APPLICATION_SERVE_ONLY.");
+        await using var provider = new ServiceCollection().AddRunicPlatformServices().BuildServiceProvider();
+        provider.GetRequiredService<DesktopServeOnlyState>().Record(serveOnly: false, hosted: true);
+        var recent = provider.GetRequiredService<IDesktopRecentDocuments>();
+        var status = DesktopServiceStatus.Get(recent);
+        Require(status is CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"A hosted application's recent documents report {status}.");
+        var added = await recent.AddAsync(Path.GetFullPath("/tmp/runic-hosted.txt"));
+        Require(added is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"A hosted application noted a document: {added}.");
+    }
+
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);

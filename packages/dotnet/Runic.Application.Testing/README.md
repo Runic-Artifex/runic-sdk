@@ -200,7 +200,10 @@ await watching.TriggerAsync("/run/current-system");
 `host.Root` drives the root ViewModel. `View<T>(vm => vm.Content)` and
 `Views<T>(vm => vm.Items)` follow the content references in the current snapshot
 and check that they present `T`; `host.View<T>(reference)` drives a reference you
-already have. A `RunicViewDriver<T>` has:
+already have. `T` may be an interface or abstract class that the presented
+ViewModel implements, such as a
+[`[RunicSharedClient]`](../Runic.Application.Views/README.md#shared-clients)
+interface, so one test drives every ViewModel that publishes it (since 0.17). A `RunicViewDriver<T>` has:
 
 - `Snapshot()`: a `RunicViewState<T>` with `Read(vm => vm.Title)` for scalars
   (a string, Boolean, Int32, Int64, double, decimal, GUID or enum), `Get` for the
@@ -340,6 +343,66 @@ Assert.Equal("de", host.Content.Locale);              // pushed to pages with tr
 The window follows in a turn of its model context, as in the application, and
 reading `host.ApplicationLocale` after the host was disposed throws
 `ObjectDisposedException`.
+
+Two options (since 0.17) start a test in a language:
+
+- `RunicWindowTestHostOptions.Locale` is the window's own locale from the
+  start, the way a ViewModel that sets `IRunicWindowLocale.Locale` before its
+  Window opens does; that ViewModel's choice still wins. The window keeps it
+  when the application switches. It means the same on every host: the
+  constructors, `Create`, and each Window that `CreateWindowAsync` opens.
+- `RunicWindowTestHostOptions.ApplicationLocale` starts the application in a
+  locale, as the application's startup code does before its first Window opens.
+  Windows without a locale of their own follow it, and follow a later switch.
+  `Create` and `CreateWindowAsync` set the `IRunicApplicationLocale` the
+  services register (with its followers, such as a Translations context), and
+  disposing the host, or the Window that `CreateWindowAsync` returned, sets it
+  back to what it was, so tests that share one provider do not inherit the
+  language. A host built with a constructor, or whose services register none,
+  starts its own `host.ApplicationLocale` in it. `CreateWindowAsync` requires
+  `AddRunicWindowService()` for it.
+
+With `FlowCultureFromLocale = true`, the window's requests also run in the
+locale's culture.
+
+```csharp
+// The application starts in German and can switch, as a user would.
+using var host = RunicWindowTestHost.Create<EditorViewModel>(services,
+    new RunicWindowTestHostOptions { ApplicationLocale = "de", FlowCultureFromLocale = true });
+await host.ApplicationLocale.SetLocaleAsync("en");   // the window follows
+
+// This window stays in Arabic whatever the application shows.
+using var arabic = RunicWindowTestHost.Create<EditorViewModel>(services,
+    new RunicWindowTestHostOptions { Locale = "ar" });
+```
+
+**Translated text.** The Testing package does not reference Runic
+Translations. To check the text a user sees, read a `TranslationReference`
+member and resolve it with the application's `TranslationContext` in the same
+locale. A catalog with a right-to-left locale isolates placeholders with
+invisible characters; compare after `BidiText.RemoveIsolates`:
+
+```csharp
+TranslationReference status = host.Root.Snapshot().Read(vm => vm.Status);
+await translations.SetLocaleAsync("de");   // de.rmf2: saved = {$title} gespeichert.
+Assert.Equal("Atlas gespeichert.", translations.Resolve(status).Text);
+await translations.SetLocaleAsync("ar");
+Assert.Equal("تم حفظ Atlas.", BidiText.RemoveIsolates(translations.Resolve(status).Text!));
+```
+
+**End-to-end tests in a language.** Applications created with
+`dotnet new runic-app --translations` start in the catalog's language for the
+`RUNIC_LOCALE` environment variable (`de-CH` starts in `de`), else in the
+operating system's language; the template saves no choice of the user's. With
+serve-only, a browser test runs the unchanged application in that language:
+
+```sh
+RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de dotnet run --project src/App
+```
+
+`RUNIC_LOCALE` is a convention of the application's startup code, not read by
+the Runic packages; see
+[the application's language](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text).
 
 ### Navigation
 
@@ -1118,3 +1181,61 @@ A scripted line that the application cannot apply, such as malformed JSON or an
 unknown service, does not fail the application's call: it is recorded as a
 `script.error` event with the `message`, and `WaitForEventAsync` then throws
 `InvalidOperationException` with that message.
+
+### A hosted application
+
+An application that can be hosted in another Runic application's windows
+([hosted mode](../Runic.Application.Views.Desktop/README.md#hosted-mode)) is
+tested without a native host: `RunicTestHost` plays the host of the
+[Runic host protocol](../../../specs/desktop/host-protocol.md). It starts the
+application with the parameter that selects its hosted mode, completes the
+handshake, answers each Window's `window-open` and exposes the Window's one-time
+launch address, which the browser under test opens once, as the host's window
+would. The API is experimental: suppress
+[`RUNICDESK103`](../../../docs/experimental.md#RUNICDESK103).
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+[Test]
+public async Task ClosesWhenTheHostAsks()
+{
+    var start = RunicServeOnlyApplication.CreateStartInfo("../../../../Tool/bin/Debug/net10.0/Tool.dll");
+    start.ArgumentList.Add("hosted");            // The parameter the application defines for hosted mode.
+    await using var host = await RunicTestHost.StartGuestAsync(start);
+    var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+    await page.GotoAsync(window.LaunchUrl.ToString());
+
+    Assert.True(await window.RequestCloseAsync());   // close-request: the Window's guard decides.
+    await window.Closed;
+    Assert.Equal(0, await host.StopAsync());          // shutdown, then the exit code.
+}
+```
+
+- `RunicTestHostOptions` sets the offer (`HostName`, `HostVersion`,
+  `Protocols`), the `StartTimeout`, the presentation features each window
+  reports (`WindowFeatures`), a policy that refuses windows (`OpenWindow`) and
+  the outcome of each presentation request (`Presentation`). Each window's
+  `PresentationRequests` lists what the application asked, such as `present`
+  or `set-full-screen`. A request whose feature the window did not report is
+  answered unavailable, and a kind outside the base protocol is rejected with
+  `invalid-request`, as a real host does.
+- A window is listed in `Windows`, and found by `WaitForWindowAsync`, once the
+  test host answered its `window-open`; its `Opened` task has then completed
+  (or is cancelled for a refused window), so a test may stop the host at once.
+  `WaitForNthWindowAsync("DocumentWindow", 1, …)` waits for the second window of
+  a type, and `WaitForMatchingWindowAsync` for the first window a predicate
+  accepts.
+- `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
+  colour scheme to the application, and `RunicTestHost.SetAppearanceAsync` the
+  host's appearance (an application of this release keeps its own appearance).
+- The application's `OpenWindowAsync` waits for the page to connect when its
+  `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
+  real host. Load `LaunchUrl` in the browser under test, or start the
+  application without that wait for a test without a browser.
+- A start that fails throws `RunicHostedApplicationException` with its `Code`
+  (`guest-start-timeout`, `guest-exited`, `guest-not-hostable`, `guest-refused`
+  with the application's `GuestCode`, `protocol-unsupported`) and kills the
+  application.
+- Disposing goes away as a host that exits does: it closes the application's
+  standard input and the channel, so the application closes its windows and
+  exits, and kills its process tree after 15 seconds.

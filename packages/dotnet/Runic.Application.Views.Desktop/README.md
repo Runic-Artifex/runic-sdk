@@ -665,6 +665,154 @@ Test such a command with `CommandAppTester.Run` from
 thread, or start the application in serve-only mode with
 `RunicServeOnlyApplication` from `Runic.Application.Testing`.
 
+## Hosted mode
+
+Another Runic Desktop application, the host, can show this application's
+Windows in native windows of its own: a launcher, a suite shell or an IDE-like
+application that hosts tools as separate processes. The two talk over the
+[Runic host protocol](../../../specs/desktop/host-protocol.md), `runic-host/1`;
+the [security guide](../../../docs/security.md#hosted-application-windows)
+explains what it protects. Hosted mode is experimental: suppress
+[`RUNICDESK103`](../../../docs/experimental.md#RUNICDESK103).
+
+The application opts in on a code path of its own, reached by a parameter it
+defines, such as a hidden `hosted` command. Runic defines no flag or environment
+variable for it. That path runs `RunicDesktopHost.Run` with
+`RunicDesktopHostOptions.Guest`:
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+if (args is ["hosted"])
+{
+    try
+    {
+        return RunicDesktopHost.Run(provider, new DesktopHostOptions(),
+            new RunicDesktopHostOptions { Guest = RunicGuestOptions.FromStandardInput() },
+            async host =>
+            {
+                // When the host goes away while the Window opens, the open throws; Run then returns 0.
+                await using var window = await host.OpenWindowAsync<MainWindow>();
+                await window.WaitForCloseAsync();
+                return 0;
+            });
+    }
+    catch (RunicHostedApplicationException error)
+    {
+        Console.Error.WriteLine($"Not hosted ({error.Code}): {error.Message}");
+        return 1;
+    }
+}
+```
+
+- **Start.** Before the body runs, `Run` reads the host's offer from standard
+  input, opens the host channel on a loopback listener of its own, writes its
+  address and a random key to standard output and waits for the host to connect
+  and prove that it started this process. A failure, such as no offer or a host
+  that `RunicGuestOptions.AcceptHost` declines, throws
+  `RunicHostedApplicationException` with its `Code` and logs event 2010. Hosted
+  mode refuses to start elevated, with `DesktopHostOptions.NetworkExposure`
+  other than loopback, or, on Linux and macOS, when its real or effective user
+  is not its parent's or it cannot read its parent's (`guest-other-user`).
+- **Windows.** No window toolkit loop starts, and the application never shows a
+  window of its own. Each Window's page is served as in serve-only mode, and the
+  host opens a window that loads it with a one-time launch address; the host's
+  window policy may refuse it (`RunicWindowConfigurationException` with
+  `hosted-window-refused`). The Window's `IRunicWindowPresentation` (present,
+  minimize, visibility, full screen, document edited, colour scheme, activity)
+  goes through the host. A user close of the host's window asks the Window's
+  guard (`GuardClose`) first. A presentation request that the host has not
+  answered within 30 seconds reports `Failed` with `Unknown`, and an open that
+  the host has not answered by then fails with `hosted-window-failed`; the
+  application's own event handlers for the presentation run off the channel, so
+  a handler that waits cannot stall it. Platform services that need the native
+  window, such as file dialogs, report `OwnerUnavailable`, as in serve-only
+  mode, and recent documents (`IDesktopRecentDocuments`) report
+  `BackendUnavailable`.
+- **End.** When the host asks the application to shut down, or goes away
+  (standard input ends or the channel closes), the Windows close,
+  `DesktopHost.ShutdownRequested` and `RunicDesktopHost.Guest.HostGone` are
+  cancelled and `Run` returns when the body does (event 2011). A Window that is
+  opening or opens after that fails with `hosted-host-gone`; when the body ends
+  with that failure, or with an `OperationCanceledException`, `Run` returns 0
+  (event 2014): the host going away is the normal end of a hosted application,
+  so the body need not catch it. A body that has not returned 10 seconds later
+  ends the process (event 2012).
+- `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` (the host's name and
+  version) tell the mode. A hosted application does not claim
+  `ApplicationInstance`: each host session starts a process of its own.
+- Test it without a host application with `RunicTestHost` from
+  `Runic.Application.Testing`
+  ([a hosted application](../Runic.Application.Testing/README.md#a-hosted-application)).
+
+### Hosting another application
+
+The host side is `IRunicHostedApplications`, from `RunicDesktopHost.HostedApplications` or, after
+`services.AddRunicHostedApplications()`, from the services. It starts the guest's executable with the parameter
+that selects its hosted mode and shows each of the guest's Windows in a native window of the host (window mode):
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+var applications = host.HostedApplications;
+applications.WindowOpened += (_, e) => Console.WriteLine($"{e.Window.Application.Guest.Name} opened {e.Window.Type}");
+await using var tool = await applications.StartAsync(
+    new RunicGuestStartInfo("/opt/tool/Tool", ["hosted"]),
+    new RunicHostedApplicationOptions { Policy = new ToolWindowPolicy() });
+var exitCode = await tool.Exited;
+```
+
+- **Start.** `StartAsync` starts the executable directly, never through a shell, with standard input and output
+  piped, standard error and the other output lines in the log (events 2021 and 2022, `Debug`), and without
+  `RUNIC_APPLICATION_SERVE_ONLY` and `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. On Windows the guest starts suspended,
+  joins a kill-on-close job object and only then runs, so nothing it starts escapes the job, also when the host
+  crashes; a job that cannot be created or joined fails the start. A batch file (`.bat`, `.cmd`) is refused with
+  `ArgumentException`, since `cmd.exe` would parse its arguments. On Linux and macOS the guest leads a process group of
+  its own, which ends with it; on Linux it inherits no descriptor but its standard streams (glibc 2.34 and later). A
+  host that exits normally ends its guests' groups; a host that crashes or is killed cannot, and its guests exit when
+  their standard input ends, within 10 seconds, while what a guest started itself may outlive it. The start writes the
+  offer, reads the channel line, connects, without a proxy, and checks the guest's proof within `StartTimeout` (30
+  seconds); a failure ends the guest's process tree and throws `RunicHostedApplicationException`
+  (`guest-start-failed` for an executable that cannot be started, `guest-start-timeout`, `guest-exited`,
+  `guest-not-hostable`, `guest-refused`, `protocol-unsupported`; event 2016). A shutdown or disposal of the host
+  while a start is pending fails it with `InvalidOperationException` and ends the guest.
+- **Windows.** Each guest Window becomes a `RunicHostedWindow`, whose `Presentation` is a native `DesktopWindow` of
+  the host, embedded and without a browser fallback. It loads the guest's one-time launch address top-level from the
+  guest's loopback origin: the host injects none of its credentials, admits no other origin for top-level navigation
+  and gives each guest session a data store of its own that is not persisted. A user's close, and
+  `RequestCloseAsync`, ask the guest first; the window closes when the guest's Window has. The guest's presentation
+  requests (present, minimize, visibility, full screen, maximize, size, position, document edited, represented
+  file, colour scheme, layout direction, announcements) apply to that window, and its activity, placement and colour
+  scheme go back to the guest; a guest that reads slowly receives the latest placement and activity, not every
+  change. `IRunicHostedApplications.WindowOpened` and `WindowClosed` report the windows, one after the other and in
+  order: add the handlers before `StartAsync`. A window that finishes opening after its guest went away closes at
+  once and raises neither.
+- **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
+  own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest
+  nothing. A policy can grant more through `RunicHostedWindowDecision.Allow(request.WindowOptions with { ... })`.
+- **Policy.** `IRunicHostedWindowPolicy` decides each window (`OpenWindowAsync`: refuse, or open with other
+  `DesktopWindowOptions` such as a saved placement keyed by `Guest.ApplicationId`) and each presentation request
+  (`Present`: apply, clamp or refuse; the request a policy returns applies as it is). Without a policy, every window
+  of the guest opens and every request applies.
+- **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
+  and completes `Exited` with its exit code (event 2017). `StopAsync` asks the guest to shut down and ends it after
+  `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests
+  still running stop when the host's Desktop shuts down and when `RunicDesktopHost.Run` returns. A hosted or
+  serve-only application cannot host.
+
+Each engine keeps a guest session's cookies, storage and caches apart from the host's and from other guests':
+
+| Engine | Data store of a guest session | Isolation |
+| --- | --- | --- |
+| WebView2 | An InPrivate profile named for the session, in a user data folder of its own in the temporary folder that is deleted after the session | Cookies, storage and caches in memory, in a browser process of its own. The folder holds only the browser's own files. |
+| WKWebView | `WKWebsiteDataStore.nonPersistentDataStore` | Cookies, storage and caches in memory, shared by the session's windows. |
+| WebKitGTK 4.1 (GTK 3) | An ephemeral `WebKitWebContext` | Cookies, storage and caches in memory, in a network process of its own. Spell checking and the page language are set when the session's first window opens. |
+| WebKitGTK 6 (`Runic.Desktop.Gtk4`) | An ephemeral `WebKitNetworkSession` | Cookies, storage and caches in memory. |
+
+On WKWebView and WebKitGTK the store lives only while a window of the session is open: a guest that opens a window
+after all its windows closed starts with an empty store, cookies, localStorage and IndexedDB included. On WebView2 the
+store lives for the whole session. HTTP authentication, client certificates and the system's proxy and
+trust settings are the engine's and the user's, not the store's. A custom `IDesktopWindowHostFactory` shows hosted
+windows only if its window host implements `IDesktopEphemeralDataStoreWindowHost`.
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

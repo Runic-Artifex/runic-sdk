@@ -33,6 +33,8 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendCopyEnabled` | property | `true` | Mirror the frontend output to the web root. |
 | `RunicApplicationFrontendOutputDirectory` | property | `dist` | The frontend build's output, relative to the frontend directory. |
 | `RunicApplicationFrontendWebRoot` | property | `www` | The web root below the build and publish output. |
+| `RunicApplicationFrontendTranslations` | property | `false` | `true` mirrors the Runic Translations ESM of the project's catalog into the frontend before it builds, for a page that imports it without the Translations Vite plugin. Needs `RunicTranslationsEmitEsm=true`. |
+| `RunicApplicationFrontendTranslationsDirectory` | property | `<frontend>/.runic/translations` | Where `RunicApplicationFrontendTranslations` mirrors the ESM. |
 | `RunicApplicationFrontendDelivery` | property | `Files` | `Files` or `Embedded`. |
 | `RunicApplicationHost` | property | the only host adapter referenced | `desktop` or `cswebui`, when a project references both. |
 | `RunicApplicationFrontendCompositionType` | property | `<RootNamespace>.RunicViewsComposition` | The generated composition class. |

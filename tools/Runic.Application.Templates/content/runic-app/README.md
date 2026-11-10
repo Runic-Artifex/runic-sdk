@@ -169,6 +169,9 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#else -->
 | `ApplicationIdentity.cs` | The application ID and name from the project file. |
 <!--#endif -->
+<!--#if (translations) -->
+| `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The build generates `AppText` for C# and the page's ESM in `Frontend/.runic/translations`. See [Translate it](#translate-it). |
+<!--#endif -->
 | `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
 <!--#if (packaging) -->
 | `packaging/` | The manifests `dotnet runic package` fills, which replace its built-in ones: MSIX on Windows, `.app` on macOS, the desktop entry, AppStream metadata and Flatpak manifest on Linux. See [Package it](#package-it). |
@@ -214,13 +217,54 @@ The generated clients are not committed: `.gitignore` excludes
 `Frontend/src/generated`, and `dotnet build` or `dotnet runic dev` writes
 them again. Until the first build, your editor and
 `__PACKAGE_MANAGER_NAME__ run typecheck` report the missing modules.
-<!--#if (frontend != "angular") -->
+<!--#if (translations) -->
+The page's Runic Translations modules are not committed either: `.gitignore`
+excludes `Frontend/.runic`, and `dotnet build` writes them from the catalog, so
+build once before the type check or the frontend test.
+<!--#elif (frontend != "angular") -->
 The frontend's `build` script runs `vite build` before the type check, so
-modules that a Vite plugin generates, such as the Runic Translations
-`virtual:runic-translations/...` declarations, exist when the check runs on a
-clean checkout.
+modules that a Vite plugin generates exist when the check runs on a clean
+checkout.
 <!--#endif -->
 
+<!--#if (translations) -->
+## Translate it
+
+The application shows one language in every window, English or German. Its
+text lives in one Runic Translations catalog, `Frontend/translations`, which
+the page and C# share; `dotnet build` checks every translation on both sides.
+
+- **ViewModels** produce text references, not sentences:
+  `WelcomeViewModel.Greeting` is `AppText.References.welcome_greeting()`, and
+  the page shows it in the window's language with `useText` (Angular: the
+  `runicText` pipe).
+- **The page's own text** calls the generated messages, such as
+  `m.app_title()` and `m.nav_counter()`: the header, the navigation, the
+  connection status and the Counter page. `Frontend/src/translations.ts`
+  connects them to the window's language, sets `<html lang dir>` and lists the
+  catalog's languages for the page's language list.
+- **The language** is the application's (`IRunicApplicationLocale`). At start,
+  `StartLanguageAsync` in `WorkspaceServices.cs` picks the `RUNIC_LOCALE`
+  environment variable, else the best match for the operating system's
+  languages. It matches either to one of the catalog's languages (`de-CH`
+  starts in `de`), and a tag the catalog has none for is ignored with a
+  warning. The C# catalog follows every switch. The page's language list runs
+  `ChooseLanguageCommand`. This starter saves no choice: to keep the user's
+  across starts, save it and pass it to `StartLanguageAsync`.
+- **Try a language** without changing your system: `RUNIC_LOCALE=de dotnet runic dev`.
+
+To add a language, add it to `locales` in `runic.json`, then copy `en.rmf2`
+to `<locale>.rmf2` and translate it; the page's language list shows it after
+the next build. The page imports the catalog from `Frontend/.runic/translations`,
+which the .NET build writes with the `dotnet-runic-translations` tool of
+`.config/dotnet-tools.json` (`dotnet tool restore` installs it), rather than
+through the Translations Vite plugin: after you edit a message, build again
+(`dotnet build`, or restart `dotnet runic dev`) to update the page; `vite dev`
+does not reload messages. Native text such as menus, a tray icon and dialogs
+formats from the same catalog in C#: `new AppText(translations).Messages`.
+See [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md).
+
+<!--#endif -->
 ## Test it
 
 The frontend test runs the page in a simulated DOM (happy-dom) against the

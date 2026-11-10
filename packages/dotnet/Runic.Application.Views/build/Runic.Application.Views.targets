@@ -788,6 +788,63 @@
     <Copy SourceFiles="@(_RunicViewsEmbeddedFile)" DestinationFiles="@(_RunicViewsEmbeddedDestination)" SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- Runic Translations' ESM for a page that imports the generated files itself instead of through the Translations
+       Vite plugin: a Bun-bundled or Angular page, or the runic-app template's translations option. With
+       RunicApplicationFrontendTranslations=true and Runic.Translations.Build's RunicTranslationsEmitEsm=true, the build
+       mirrors the catalog's ESM folder into RunicApplicationFrontendTranslationsDirectory (by default .runic/translations
+       in the frontend directory) before the frontend builds: it copies the files that changed and deletes the ones the
+       catalog no longer has, such as the module of a removed or renamed message. The folder is the one that holds the
+       web-module manifest among @(RunicTranslationsGeneratedFile), so a renamed catalog or a later ESM version
+       ({catalog}.esm-v<N>) needs no change here. The mirrored files are frontend inputs, so a changed catalog rebuilds
+       the page.
+
+       No ESM to mirror is RUNICBRIDGE037, and so is a directory that holds other files: the mirror would delete them.
+       After a catalog with errors (the Translations tool's exit code 2) the mirror waits: CoreCompile reports those
+       errors. -->
+  <Target Name="RunicViewsMirrorFrontendTranslations"
+          AfterTargets="RunicTranslationsCollectTranslationArtifacts" BeforeTargets="RunicViewsGenerateBridge"
+          Condition="'$(RunicApplicationFrontendTranslations)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <PropertyGroup>
+      <RunicApplicationFrontendTranslationsDirectory Condition="'$(RunicApplicationFrontendTranslationsDirectory)' == ''">$(RunicApplicationFrontendDirectory)/.runic/translations</RunicApplicationFrontendTranslationsDirectory>
+      <_RunicFrontendTranslationsRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(RunicApplicationFrontendTranslationsDirectory)'))</_RunicFrontendTranslationsRoot>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicFrontendTranslationsManifest Include="@(RunicTranslationsGeneratedFile)"
+          Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(RunicTranslationsGeneratedFile.Filename)%(RunicTranslationsGeneratedFile.Extension)', '^web-module-manifest-v[0-9]+\.json$'))" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicFrontendTranslationsWaits Condition="'@(_RunicFrontendTranslationsManifest)' == '' and '$(_TranslationsToolExitCode)' == '2'">true</_RunicFrontendTranslationsWaits>
+      <_RunicFrontendTranslationsSource Condition="'@(_RunicFrontendTranslationsManifest->Count())' == '1'">@(_RunicFrontendTranslationsManifest->'%(RootDir)%(Directory)')</_RunicFrontendTranslationsSource>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE037" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge037"
+           Condition="'@(_RunicFrontendTranslationsManifest)' == '' and '$(_RunicFrontendTranslationsWaits)' != 'true'"
+           Text="RunicApplicationFrontendTranslations is true, but the build wrote no Runic Translations ESM to copy to $(_RunicFrontendTranslationsRoot), so the page would import a missing or older catalog. Reference Runic.Translations.Build, declare one RunicTranslationProject and set RunicTranslationsEmitEsm=true; or remove RunicApplicationFrontendTranslations when the Translations Vite plugin serves the catalog." />
+    <Error Code="RUNICBRIDGE037" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge037"
+           Condition="'@(_RunicFrontendTranslationsManifest->Count())' &gt; '1'"
+           Text="RunicApplicationFrontendTranslations copies one catalog's ESM, but the Runic Translations build wrote several: @(_RunicFrontendTranslationsManifest->'%(RootDir)%(Directory)', ', ')." />
+    <ItemGroup Condition="'$(_RunicFrontendTranslationsSource)' != ''">
+      <_RunicFrontendTranslationsFile Include="@(RunicTranslationsGeneratedFile->'%(FullPath)')"
+          Condition="$([System.String]::Copy('%(RunicTranslationsGeneratedFile.FullPath)').StartsWith('$(_RunicFrontendTranslationsSource)'))" />
+      <_RunicFrontendTranslationsFile Update="@(_RunicFrontendTranslationsFile)">
+        <_RunicDestination>$([System.IO.Path]::GetFullPath('$(_RunicFrontendTranslationsRoot)$([MSBuild]::MakeRelative('$(_RunicFrontendTranslationsSource)', '%(FullPath)'))'))</_RunicDestination>
+      </_RunicFrontendTranslationsFile>
+      <_RunicFrontendTranslationsExisting Include="$(_RunicFrontendTranslationsRoot)**/*" />
+      <_RunicFrontendTranslationsMirrored Include="$(_RunicFrontendTranslationsRoot)web-module-manifest-v*.json" />
+      <_RunicFrontendTranslationsStale Include="@(_RunicFrontendTranslationsExisting->'%(FullPath)')" />
+      <_RunicFrontendTranslationsStale Remove="@(_RunicFrontendTranslationsFile->'%(_RunicDestination)')" />
+    </ItemGroup>
+    <Error Code="RUNICBRIDGE037" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge037"
+           Condition="'$(_RunicFrontendTranslationsSource)' != '' and '@(_RunicFrontendTranslationsExisting)' != '' and '@(_RunicFrontendTranslationsMirrored)' == ''"
+           Text="RunicApplicationFrontendTranslationsDirectory $(_RunicFrontendTranslationsRoot) holds files but no Runic Translations ESM. The build keeps that directory equal to the catalog's ESM and would delete them; point RunicApplicationFrontendTranslationsDirectory at a directory of its own." />
+    <Delete Files="@(_RunicFrontendTranslationsStale)" Condition="'$(_RunicFrontendTranslationsSource)' != ''" />
+    <Copy SourceFiles="@(_RunicFrontendTranslationsFile)" DestinationFiles="@(_RunicFrontendTranslationsFile->'%(_RunicDestination)')"
+          SkipUnchangedFiles="true" Condition="'$(_RunicFrontendTranslationsSource)' != ''" />
+    <ItemGroup Condition="'$(_RunicFrontendTranslationsSource)' != ''">
+      <!-- .runic/ is a dot directory, which the frontend inputs leave out. -->
+      <RunicApplicationFrontendInput Include="@(_RunicFrontendTranslationsFile->'%(_RunicDestination)')" />
+    </ItemGroup>
+  </Target>
+
   <!-- The frontend build runs when one of its inputs is newer than the stamp,
        when a file it left in dist/ is missing, or when its build state differs
        from the one that last built dist/. Inputs are the files under the

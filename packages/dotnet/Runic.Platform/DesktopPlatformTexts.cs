@@ -7,8 +7,10 @@ namespace Runic.Platform;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Runic ships no translations: take the texts from the application's own, for example its Runic Translations catalog,
-/// and set <see cref="Current"/> again after a language switch, as for <c>DesktopHost.SetMenuBar</c>. Dialogs and pages
+/// Take the texts from the application's own translations, for example its Runic Translations catalog, and set
+/// <see cref="Current"/> again after a language switch, as for <c>DesktopHost.SetMenuBar</c>. The optional
+/// <c>Runic.Application.Views.Translations</c> package has them in English and German and keeps them in the application's
+/// locale. Dialogs and pages
 /// that open later use the new texts; open ones keep theirs.
 /// </para>
 /// <para>
@@ -97,7 +99,10 @@ public sealed record DesktopPlatformTexts
     /// <summary>Gets the name of the Alt key in shortcut labels, as for <see cref="ControlKeyName"/>; else <c>Alt</c>.</summary>
     public string? AltKeyName { get; init; }
 
-    /// <summary>Gets the title of the page a browser window shows when it may not connect; <c>Access Denied</c>.</summary>
+    /// <summary>
+    /// Gets the title of the page a Runic Desktop browser window shows when it may not connect; <c>Access Denied</c>.
+    /// CS-WebUI windows show WebUI's own English page, which these texts do not reach.
+    /// </summary>
     public string AccessDeniedTitle { get; init; } = "Access Denied";
 
     /// <summary>
@@ -112,11 +117,20 @@ public sealed record DesktopPlatformTexts
     public string LaunchLinkInvalidMessage { get; init; } =
         "This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.";
 
-    /// <summary>Gets the title of the page for a resource the window does not serve; <c>Resource Not Available</c>.</summary>
+    /// <summary>
+    /// Gets the title of the page for a resource a Runic Desktop browser window does not serve;
+    /// <c>Resource Not Available</c>. CS-WebUI windows show WebUI's own English page.
+    /// </summary>
     public string ResourceUnavailableTitle { get; init; } = "Resource Not Available";
 
     /// <summary>Gets the message of that page; <c>The requested resource is not available.</c></summary>
     public string ResourceUnavailableMessage { get; init; } = "The requested resource is not available.";
+
+    /// <summary>
+    /// Gets the title of a Windows window while WebView2 is still starting, until the page has a title; it is also the
+    /// loading surface's accessible name, which a screen reader reads. <c>Loading…</c>.
+    /// </summary>
+    public string LoadingTitle { get; init; } = "Loading…";
 
     private void Validate()
     {
@@ -138,6 +152,7 @@ public sealed record DesktopPlatformTexts
         Check(LaunchLinkInvalidMessage, nameof(LaunchLinkInvalidMessage));
         Check(ResourceUnavailableTitle, nameof(ResourceUnavailableTitle));
         Check(ResourceUnavailableMessage, nameof(ResourceUnavailableMessage));
+        Check(LoadingTitle, nameof(LoadingTitle));
     }
 
     private static void Check(string? text, string name)

@@ -10,32 +10,71 @@ export const sourceHash = "sha256:2465228c89d2a71f7922a8a4cdae4ac8a9afa9988b0d9d
 export const baseLocale = "en";
 export const locales = Object.freeze(["de","en"]);
 const unsupportedLocalePolicy = "ParentsThenDefault";
-const generatedLocaleData = {"relativeTime":{"de":{"autoDay":["gestern","heute","morgen"],"past":"vor {0} {unit}","future":"in {0} {unit}","units":{"second":["Sekunde","Sekunden"],"minute":["Minute","Minuten"],"hour":["Stunde","Stunden"],"day":["Tag","Tagen"],"week":["Woche","Wochen"],"month":["Monat","Monaten"],"year":["Jahr","Jahren"]}},"en":{"autoDay":["yesterday","today","tomorrow"],"past":"{0} {unit} ago","future":"in {0} {unit}","units":{"second":["second","seconds"],"minute":["minute","minutes"],"hour":["hour","hours"],"day":["day","days"],"week":["week","weeks"],"month":["month","months"],"year":["year","years"]}},"es":{"autoDay":["ayer","hoy","mañana"],"past":"hace {0} {unit}","future":"dentro de {0} {unit}","units":{"second":["segundo","segundos"],"minute":["minuto","minutos"],"hour":["hora","horas"],"day":["día","días"],"week":["semana","semanas"],"month":["mes","meses"],"year":["año","años"]}},"fr":{"autoDay":["hier","aujourd’hui","demain"],"past":"il y a {0} {unit}","future":"dans {0} {unit}","units":{"second":["seconde","secondes"],"minute":["minute","minutes"],"hour":["heure","heures"],"day":["jour","jours"],"week":["semaine","semaines"],"month":["mois","mois"],"year":["an","ans"]}},"it":{"autoDay":["ieri","oggi","domani"],"past":"{0} {unit} fa","future":"tra {0} {unit}","units":{"second":["secondo","secondi"],"minute":["minuto","minuti"],"hour":["ora","ore"],"day":["giorno","giorni"],"week":["settimana","settimane"],"month":["mese","mesi"],"year":["anno","anni"]}}},"list":{"cs":[", ",", "," a "," a ",", ",", "," a "," a ",", ",", ",", ",", ",", ",", "," nebo "," nebo ",", ",", "," nebo "," nebo ",", ",", "," nebo "," nebo ",", ",", "," a "," a ",", ",", "," a ",", "," "," "," "," "],"da":[", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," eller "," eller ",", ",", "," el. "," el. ",", ",", "," el. "," el. ",", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," og "," og "],"de":[", ",", "," und "," und ",", ",", "," und "," und ",", ",", "," und "," und ",", ",", "," oder "," oder ",", ",", "," oder "," oder ",", ",", "," oder "," oder ",", ",", "," und ",", ",", ",", "," und ",", ",", ",", "," und ",", "],"en":[", ",", ",", and "," and ",", ",", ",", & "," & ",", ",", ",", ",", ",", ",", ",", or "," or ",", ",", ",", or "," or ",", ",", ",", or "," or ",", ",", ",", ",", ",", ",", ",", ",", "," "," "," "," "],"es":[", ",", "," y "," y ",", ",", "," y "," y ",", ",", "," y "," y ",", ",", "," o "," o ",", ",", "," o "," o ",", ",", "," o "," o ",", ",", "," y "," y ",", ",", ",", "," y "," "," "," "," "],"fr":[", ",", "," et "," et ",", ",", "," et "," et ",", ",", ",", ",", ",", ",", "," ou "," ou ",", ",", "," ou "," ou ",", ",", "," ou "," ou ",", ",", "," et "," et ",", ",", "," et "," et "," "," "," "," "],"it":[", ",", "," e "," e ",", ",", "," e "," e ",", ",", "," e "," e ",", ",", "," o "," o ",", ",", "," o "," o ",", ",", "," o "," o ",", ",", "," e "," e ",", ",", "," e "," e "," "," "," "," "],"ja":["、","、","、","、","、","、","、","、","、","、","、","、","、","、","、または","または","、","、","、または","または","、","、","、または","または"," "," "," "," "," "," "," "," ","","","",""],"nb":[", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", "," og "," og ",", ",", ",", ",", ",", ",", ",", ",", "],"nl":[", ",", "," en "," en ",", ",", "," & "," & ",", ",", ",", ",", ",", ",", "," of "," of ",", ",", "," of "," of ",", ",", "," of "," of ",", ",", "," en "," en ",", ",", ",", ",", ",", ",", ",", ",", "],"nn":[", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", ",", ",", ",", ",", ",", ",", "," "," "," "," "],"no":[", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," og "," og ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", "," og "," og ",", ",", ",", ",", ",", ",", ",", ",", "],"sv":[", ",", "," och "," och ",", ",", "," och "," och ",", ",", ",", ",", ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", "," eller "," eller ",", ",", ",", ",", ",", ",", ",", ",", "," "," "," "," "]},"minimumGroupingDigits":{"es":2,"it":2},"rightToLeftScripts":["Adlm","Arab","Armi","Avst","Chrs","Cprt","Elym","Gara","Hatr","Hebr","Hung","Khar","Lydi","Mand","Mani","Mend","Merc","Mero","Narb","Nbat","Nkoo","Orkh","Ougr","Palm","Phli","Phlp","Phnx","Prti","Rohg","Samr","Sarb","Sidt","Sogd","Sogo","Syrc","Thaa","Yezi"]};
+const generatedLocaleData = {"bidiIsolation":"default","rightToLeftScripts":["Adlm","Arab","Armi","Avst","Chrs","Cprt","Elym","Gara","Hatr","Hebr","Hung","Khar","Lydi","Mand","Mani","Mend","Merc","Mero","Narb","Nbat","Nkoo","Orkh","Ougr","Palm","Phli","Phlp","Phnx","Prti","Rohg","Samr","Sarb","Sidt","Sogd","Sogo","Syrc","Thaa","Yezi"],"likely":{"de":"de-Latn-DE","en":"en-Latn-US","en-Shaw":"en-Shaw-GB"},"parents":{"en-150":"en-001","en-AG":"en-001","en-AI":"en-001","en-AT":"en-150","en-AU":"en-001","en-BB":"en-001","en-BE":"en-150","en-BM":"en-001","en-BS":"en-001","en-BW":"en-001","en-BZ":"en-001","en-CC":"en-001","en-CH":"en-150","en-CK":"en-001","en-CM":"en-001","en-CX":"en-001","en-CY":"en-001","en-CZ":"en-150","en-DE":"en-150","en-DG":"en-001","en-DK":"en-150","en-DM":"en-001","en-EE":"en-150","en-ER":"en-001","en-ES":"en-150","en-FI":"en-150","en-FJ":"en-001","en-FK":"en-001","en-FM":"en-001","en-FR":"en-150","en-GB":"en-001","en-GD":"en-001","en-GE":"en-150","en-GG":"en-001","en-GH":"en-001","en-GI":"en-001","en-GM":"en-001","en-GS":"en-001","en-GY":"en-001","en-HK":"en-001","en-HU":"en-150","en-ID":"en-001","en-IE":"en-001","en-IL":"en-001","en-IM":"en-001","en-IN":"en-001","en-IO":"en-001","en-IT":"en-150","en-JE":"en-001","en-JM":"en-001","en-KE":"en-001","en-KI":"en-001","en-KN":"en-001","en-KY":"en-001","en-LC":"en-001","en-LR":"en-001","en-LS":"en-001","en-LT":"en-150","en-LV":"en-150","en-MG":"en-001","en-MO":"en-001","en-MS":"en-001","en-MT":"en-001","en-MU":"en-001","en-MV":"en-001","en-MW":"en-001","en-MY":"en-001","en-NA":"en-001","en-NF":"en-001","en-NG":"en-001","en-NL":"en-150","en-NO":"en-150","en-NR":"en-001","en-NU":"en-001","en-NZ":"en-001","en-PG":"en-001","en-PK":"en-001","en-PL":"en-150","en-PN":"en-001","en-PT":"en-150","en-PW":"en-001","en-RO":"en-150","en-RW":"en-001","en-SB":"en-001","en-SC":"en-001","en-SD":"en-001","en-SE":"en-150","en-SG":"en-001","en-SH":"en-001","en-SI":"en-150","en-SK":"en-150","en-SL":"en-001","en-SS":"en-001","en-SX":"en-001","en-SZ":"en-001","en-TC":"en-001","en-TK":"en-001","en-TO":"en-001","en-TT":"en-001","en-TV":"en-001","en-TZ":"en-001","en-UA":"en-150","en-UG":"en-001","en-VC":"en-001","en-VG":"en-001","en-VU":"en-001","en-WS":"en-001","en-ZA":"en-001","en-ZM":"en-001","en-ZW":"en-001"},"aliases":{},"cardinal":{"de":5,"en":5},"ordinal":{"de":0,"en":46},"grouping":{},"numbers":{"de":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"de-AT":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"de-CH":["latn","0123456789",".","'","-","3","3","3","3","","%","-","%"],"de-LI":["latn","0123456789",".","'","-","3","3","3","3","","%","-","%"],"en":["latn","0123456789",".",",","-","3","3","3","3","","%","-","%"],"en-AT":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"en-BE":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-CH":["latn","0123456789",".","'","-","3","3","3","3","","%","-","%"],"en-CZ":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-DE":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"en-DK":["latn","0123456789",",",".","-","3","3","3","3",""," %","-"," %"],"en-Dsrt":["latn","0123456789",".",",","-","3","3","3","3","","%","-","%"],"en-EE":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-ES":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-FI":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"en-FR":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-GE":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-HU":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-ID":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-IN":["latn","0123456789",".",",","-","3","2","3","2","","%","-","%"],"en-IT":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-LT":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-LV":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-NL":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-NO":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"en-PL":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-PT":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-RO":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-SE":["latn","0123456789",","," ","-","3","3","3","3",""," %","-"," %"],"en-SI":["latn","0123456789",",",".","-","3","3","3","3","","%","-","%"],"en-SK":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-Shaw":["latn","0123456789",".",",","-","3","3","3","3","","%","-","%"],"en-UA":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"],"en-ZA":["latn","0123456789",","," ","-","3","3","3","3","","%","-","%"]},"list":{"de":["{0}, {1}","{0}, {1}","{0} und {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0} oder {1}","{0} oder {1}","{0}, {1}","{0}, {1}","{0} oder {1}","{0} oder {1}","{0}, {1}","{0}, {1}","{0} oder {1}","{0} oder {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} und {1}","{0}, {1}"],"en":["{0}, {1}","{0}, {1}","{0}, and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, & {1}","{0} & {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-001":["{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-CA":["{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-Dsrt":["{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}"],"en-IN":["{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0} and {1}","{0} and {1}","{0}, {1}","{0}, {1}","{0}, and {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0} or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0} {1}","{0} {1}","{0} {1}","{0} {1}"],"en-Shaw":["{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, or {1}","{0} or {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}","{0}, {1}"]},"relativeTime":{"de":[null,"vor {0} Sekunde",null,null,null,"vor {0} Sekunden",null,"in {0} Sekunde",null,null,null,"in {0} Sekunden",null,null,"jetzt",null,null,null,"vor {0} Minute",null,null,null,"vor {0} Minuten",null,"in {0} Minute",null,null,null,"in {0} Minuten",null,null,"in dieser Minute",null,null,null,"vor {0} Stunde",null,null,null,"vor {0} Stunden",null,"in {0} Stunde",null,null,null,"in {0} Stunden",null,null,"in dieser Stunde",null,null,null,"vor {0} Tag",null,null,null,"vor {0} Tagen",null,"in {0} Tag",null,null,null,"in {0} Tagen","vorgestern","gestern","heute","morgen","übermorgen",null,"vor {0} Woche",null,null,null,"vor {0} Wochen",null,"in {0} Woche",null,null,null,"in {0} Wochen",null,"letzte Woche","diese Woche","nächste Woche",null,null,"vor {0} Monat",null,null,null,"vor {0} Monaten",null,"in {0} Monat",null,null,null,"in {0} Monaten",null,"letzten Monat","diesen Monat","nächsten Monat",null,null,"vor {0} Jahr",null,null,null,"vor {0} Jahren",null,"in {0} Jahr",null,null,null,"in {0} Jahren",null,"letztes Jahr","dieses Jahr","nächstes Jahr",null],"en":[null,"{0} second ago",null,null,null,"{0} seconds ago",null,"in {0} second",null,null,null,"in {0} seconds",null,null,"now",null,null,null,"{0} minute ago",null,null,null,"{0} minutes ago",null,"in {0} minute",null,null,null,"in {0} minutes",null,null,"this minute",null,null,null,"{0} hour ago",null,null,null,"{0} hours ago",null,"in {0} hour",null,null,null,"in {0} hours",null,null,"this hour",null,null,null,"{0} day ago",null,null,null,"{0} days ago",null,"in {0} day",null,null,null,"in {0} days",null,"yesterday","today","tomorrow",null,null,"{0} week ago",null,null,null,"{0} weeks ago",null,"in {0} week",null,null,null,"in {0} weeks",null,"last week","this week","next week",null,null,"{0} month ago",null,null,null,"{0} months ago",null,"in {0} month",null,null,null,"in {0} months",null,"last month","this month","next month",null,null,"{0} year ago",null,null,null,"{0} years ago",null,"in {0} year",null,null,null,"in {0} years",null,"last year","this year","next year",null],"en-Dsrt":[null,null,null,null,null,"-{0} s",null,null,null,null,null,"+{0} s",null,null,"now",null,null,null,null,null,null,null,"-{0} min",null,null,null,null,null,"+{0} min",null,null,"this minute",null,null,null,null,null,null,null,"-{0} h",null,null,null,null,null,"+{0} h",null,null,"this hour",null,null,null,null,null,null,null,"-{0} d",null,null,null,null,null,"+{0} d","𐐜 𐐼𐐩 𐐺𐐲𐑁𐐬𐑉 𐐷𐐯𐑅𐐻𐐲𐑉𐐼𐐩","𐐏𐐯𐑅𐐻𐐲𐑉𐐼𐐩","𐐓𐐲𐐼𐐩","𐐓𐐲𐑋𐐱𐑉𐐬","𐐜 𐐼𐐩 𐐰𐑁𐐻𐐲𐑉 𐐻𐐲𐑋𐐱𐑉𐐬",null,null,null,null,null,"-{0} w",null,null,null,null,null,"+{0} w",null,"last week","this week","next week",null,null,null,null,null,null,"-{0} m",null,null,null,null,null,"+{0} m",null,"last month","this month","next month",null,null,null,null,null,null,"-{0} y",null,null,null,null,null,"+{0} y",null,"last year","this year","next year",null],"en-Shaw":[null,null,null,null,null,"-{0} s",null,null,null,null,null,"+{0} s",null,null,"now",null,null,null,null,null,null,null,"-{0} min",null,null,null,null,null,"+{0} min",null,null,"this minute",null,null,null,null,null,null,null,"-{0} h",null,null,null,null,null,"+{0} h",null,null,"this hour",null,null,null,null,null,null,null,"-{0} d",null,null,null,null,null,"+{0} d",null,"yesterday","today","tomorrow",null,null,null,null,null,null,"-{0} w",null,null,null,null,null,"+{0} w",null,"last week","this week","next week",null,null,null,null,null,null,"-{0} m",null,null,null,null,null,"+{0} m",null,"last month","this month","next month",null,null,null,null,null,null,"-{0} y",null,null,null,null,null,"+{0} y",null,"last year","this year","next year",null]}};
 // CLDR plural rules over BigInt operands { i, v, w, f, t, e } of the visible decimal.
-const pluralRule0 = (o) => { if (o.i === 1n && o.v === 0n) return "one"; if (o.i >= 2n && o.i <= 4n && o.v === 0n) return "few"; if (o.v !== 0n) return "many"; return "other"; };
-const pluralRule1 = (o) => { return "other"; };
-const pluralRule2 = (o) => { if ((o.t === 0n && o.i === 1n) || (o.t !== 0n && (o.i === 0n || o.i === 1n))) return "one"; return "other"; };
-const pluralRule3 = (o) => { if (o.i === 1n && o.v === 0n) return "one"; return "other"; };
-const pluralRule4 = (o) => { if (o.t === 0n && (o.i % 10n) === 1n && !(o.t === 0n && (o.i % 100n) === 11n)) return "one"; if (o.t === 0n && (o.i % 10n) === 2n && !(o.t === 0n && (o.i % 100n) === 12n)) return "two"; if (o.t === 0n && (o.i % 10n) === 3n && !(o.t === 0n && (o.i % 100n) === 13n)) return "few"; return "other"; };
-const pluralRule5 = (o) => { if (o.t === 0n && o.i === 1n) return "one"; if ((o.e === 0n && o.i !== 0n && (o.i % 1000000n) === 0n && o.v === 0n) || (!(o.e >= 0n && o.e <= 5n))) return "many"; return "other"; };
-const pluralRule6 = (o) => { if ((o.i === 0n || o.i === 1n)) return "one"; if ((o.e === 0n && o.i !== 0n && (o.i % 1000000n) === 0n && o.v === 0n) || (!(o.e >= 0n && o.e <= 5n))) return "many"; return "other"; };
-const pluralRule7 = (o) => { if (o.t === 0n && o.i === 1n) return "one"; return "other"; };
-const pluralRule8 = (o) => { if (o.i === 1n && o.v === 0n) return "one"; if ((o.e === 0n && o.i !== 0n && (o.i % 1000000n) === 0n && o.v === 0n) || (!(o.e >= 0n && o.e <= 5n))) return "many"; return "other"; };
-const pluralRule9 = (o) => { if (o.t === 0n && (o.i === 11n || o.i === 8n || o.i === 80n || o.i === 800n)) return "many"; return "other"; };
-const pluralRule10 = (o) => { if (o.t === 0n && o.i === 1n) return "one"; return "other"; };
-const pluralRule11 = (o) => { if (o.t === 0n && ((o.i % 10n) === 1n || (o.i % 10n) === 2n) && !(o.t === 0n && ((o.i % 100n) === 11n || (o.i % 100n) === 12n))) return "one"; return "other"; };
-const generatedPluralRules = Object.freeze({ "cs": Object.freeze([pluralRule0, pluralRule1]), "da": Object.freeze([pluralRule2, pluralRule1]), "de": Object.freeze([pluralRule3, pluralRule1]), "en": Object.freeze([pluralRule3, pluralRule4]), "es": Object.freeze([pluralRule5, pluralRule1]), "fr": Object.freeze([pluralRule6, pluralRule7]), "it": Object.freeze([pluralRule8, pluralRule9]), "ja": Object.freeze([pluralRule1, pluralRule1]), "nb": Object.freeze([pluralRule10, pluralRule1]), "nl": Object.freeze([pluralRule3, pluralRule1]), "nn": Object.freeze([pluralRule10, pluralRule1]), "no": Object.freeze([pluralRule10, pluralRule1]), "sv": Object.freeze([pluralRule3, pluralRule11]) });
-export const rmf2Contract = freezeTrusted(JSON.parse("{\"version\":2,\"contracts\":{},\"messages\":{\"changed\":{\"slots\":{},\"structured\":false,\"contentLocales\":{\"de\":\"de\",\"en\":\"en\"},\"content\":\"inline\",\"skeletons\":[]},\"failed\":{\"slots\":{},\"structured\":false,\"contentLocales\":{\"de\":\"de\",\"en\":\"en\"},\"content\":\"inline\",\"skeletons\":[]},\"saved\":{\"slots\":{},\"structured\":false,\"contentLocales\":{\"de\":\"de\",\"en\":\"en\"},\"content\":\"inline\",\"skeletons\":[]},\"steps_build\":{\"slots\":{},\"structured\":false,\"contentLocales\":{\"de\":\"de\",\"en\":\"en\"},\"content\":\"inline\",\"skeletons\":[]},\"title_too_long\":{\"slots\":{},\"structured\":false,\"contentLocales\":{\"de\":\"de\",\"en\":\"en\"},\"content\":\"inline\",\"skeletons\":[]}}}"));
-export const messageContracts = freezeTrusted(JSON.parse("{\"changed\":{\"structured\":false,\"inputs\":[{\"name\":\"packages\",\"type\":\"list\"}]},\"failed\":{\"structured\":false,\"inputs\":[{\"name\":\"step\",\"type\":\"string\"}]},\"saved\":{\"structured\":false,\"inputs\":[{\"name\":\"title\",\"type\":\"string\"}]},\"steps_build\":{\"structured\":false,\"inputs\":[{\"name\":\"name\",\"type\":\"string\"}]},\"title_too_long\":{\"structured\":false,\"inputs\":[{\"name\":\"max\",\"type\":\"int64\"}]}}"));
+const pluralRule0 = (o) => { return "other"; };
+const pluralRule5 = (o) => { if (o.i === 1n && o.v === 0n) return "one"; return "other"; };
+const pluralRule46 = (o) => { if (o.t === 0n && (o.i % 10n) === 1n && !(o.t === 0n && (o.i % 100n) === 11n)) return "one"; if (o.t === 0n && (o.i % 10n) === 2n && !(o.t === 0n && (o.i % 100n) === 12n)) return "two"; if (o.t === 0n && (o.i % 10n) === 3n && !(o.t === 0n && (o.i % 100n) === 13n)) return "few"; return "other"; };
+const generatedPluralRules = Object.freeze({ 0: pluralRule0, 5: pluralRule5, 46: pluralRule46 });
+const markupContracts = freezeTrusted(JSON.parse("{}"));
+function structuredMessageTable() { return JSON.parse("{}"); }
+function messageLocaleTable() { return JSON.parse("{\"changed\":{},\"failed\":{},\"saved\":{},\"steps_build\":{},\"title_too_long\":{}}"); }
 // RMF2 execution-v2 ESM runtime. Configuration constants are emitted above.
 const maximumCoefficient = 79228162514264337593543950335n;
 const minimumInt64 = -9223372036854775808n;
 const maximumInt64 = 9223372036854775807n;
 const localeSet = new Set(locales);
 const limits = Object.freeze({ maximumDocumentBytes: 8388608, maximumDepth: 64, maximumMessages: 50000, maximumPatternBytes: 65536, maximumArgumentsPerMessage: 32 });
-const validatedMessages = new WeakSet();
+// A validated message wrapper maps to its message contract (see contractOf).
+const validatedMessages = new WeakMap();
+const contractCopies = new WeakMap();
+let structuredMessages;
+const dynamicContracts = new WeakMap();
 const decodedArtifacts = new WeakSet();
-let localeResolver = () => typeof document === "undefined" ? baseLocale : (document.documentElement.lang || baseLocale);
+// The overlays that dynamic.js installs (installOverlay, installLocalePack), or null before the first one. Message functions,
+// resolveLocale and getMessageLocale only test it, so a page that never installs an overlay bundles none of the overlay code.
+let overlays = null;
+// The shared locale channel: one locale for every generated catalog on a page or in a server process, and for every copy of
+// this runtime, so an application and its libraries switch together. Its shape is a protocol between runtimes of different
+// compiler releases and the Svelte adapter, so members are only ever added: { version: 1, resolver, storage, resolvers }.
+// resolver is the page's locale resolver (configureSharedLocaleResolver, useMessageLocale(locale)): the last of resolvers,
+// the installed ones in installation order, each removed by identity, so removals in any order leave the latest remaining
+// one. storage is the AsyncLocalStorage that the first server.js creates, whose store { requested, timeZone } is the
+// locale of the request runWithLocale runs.
+const localeChannelKey = Symbol.for("runic.translations.locale");
+function localeChannel() {
+  let channel = globalThis[localeChannelKey];
+  if (channel === undefined || channel === null || typeof channel !== "object") globalThis[localeChannelKey] = channel = { version: 1, resolver: null, storage: null, resolvers: [] };
+  if (!Array.isArray(channel.resolvers)) channel.resolvers = typeof channel.resolver === "function" ? [channel.resolver] : [];
+  return channel;
+}
+// Installs a resolver on top of an ordered list and returns its removal, which takes out exactly this installation
+// (a resolver installed twice is two entries) and makes the latest remaining one current.
+function installResolver(list, resolver, apply) {
+  const entry = () => resolver(); list.push(entry); apply(entry); let active = true;
+  return () => {
+    if (!active) return; active = false;
+    const index = list.indexOf(entry); if (index >= 0) list.splice(index, 1);
+    apply(list.length === 0 ? null : list[list.length - 1]);
+  };
+}
+function requestStore() {
+  const store = globalThis[localeChannelKey]?.storage?.getStore?.();
+  return store !== null && typeof store === "object" && typeof store.requested === "string" ? store : undefined;
+}
+// The resolver configureLocaleResolver installs for this catalog only (the latest of localeResolvers); null when it has
+// none and the channel applies.
+let localeResolver = null;
+const localeResolvers = [];
+// The tag the catalog formats in when a call names none: its own resolver, else the request's locale (runWithLocale of any
+// catalog), else the shared resolver, else the document's lang, else the base locale.
+function currentLocaleTag() {
+  if (localeResolver !== null) return localeResolver();
+  const store = requestStore(); if (store !== undefined) return store.requested;
+  const shared = globalThis[localeChannelKey]?.resolver;
+  if (typeof shared === "function") return shared();
+  return typeof document === "undefined" ? baseLocale : (document.documentElement.lang || baseLocale);
+}
 
 export function freezeTrusted(value) {
   if (Array.isArray(value)) return Object.freeze(value.map(freezeTrusted));
@@ -51,47 +90,247 @@ export function freezeOwnRecord(entries) {
 
 export function configureLocaleResolver(resolver) {
   if (typeof resolver !== "function") throw new TypeError("The locale resolver must be a function.");
-  const previous = localeResolver; localeResolver = resolver;
-  return () => { if (localeResolver === resolver) localeResolver = previous; };
+  return installResolver(localeResolvers, resolver, current => { localeResolver = current; });
 }
 
-export function getLocale() { return resolveLocale(localeResolver()); }
+// Sets the locale of every generated catalog on the page (or in the process) that has no resolver of its own: the shared
+// channel above. The resolver returns a tag that each catalog resolves under its own locales and policy, normally the
+// requested tag of the application's locale source (de-CH), so a library that declares de-CH shows it. The resolver is
+// process-wide: on a server, set the request's locale with runWithLocale instead, which every catalog reads first.
+export function configureSharedLocaleResolver(resolver) {
+  if (typeof resolver !== "function") throw new TypeError("The locale resolver must be a function.");
+  const channel = localeChannel();
+  return installResolver(channel.resolvers, resolver, current => { channel.resolver = current; });
+}
 
+// server.js: the process's one request-locale storage, created by the first catalog that needs it.
+export function requestLocaleStorage(create) { const channel = localeChannel(); return channel.storage ??= create(); }
+
+export function getLocale() { return resolveLocale(currentLocaleTag()); }
+
+// The canonical tag the locale resolver asks for, before it resolves to a catalog locale: "de-CH" where getLocale()
+// gives "de". Numbers, percentages, dates and times format in it when its language matches a message's content locale.
+export function getRequestedLocale() { return requestedTag(currentLocaleTag()); }
+function requestedTag(requested) {
+  if (typeof requested !== "string") throw new RangeError("A locale string is required.");
+  if (requested === "") return resolveLocale(requested);
+  const canonical = canonicalLocale(requested); if (canonical === null) throw new RangeError(`Invalid locale '${requested}'.`);
+  return canonical;
+}
+
+// The locale numbers, percentages, dates and times format in: the requested tag, without its extensions and private-use
+// subtags, when it has the content locale's language and the same implied script, else the content locale. So de-CH
+// over de text formats Swiss numbers, while sr-Latn over Cyrillic sr text, or zh-TW (Traditional) over zh (Simplified)
+// text, keeps the content locale's. The script of a language CLDR writes in one script is dropped when it is the likely
+// one (de-Latn-CH formats as de-CH), and -u-nu-latn is kept where the locale's CLDR default numbering system is not
+// Latin (ar-EG-u-nu-latn). Plural, ordinal, list and relative-time data stay on the content locale. The .NET runtime
+// applies the same rule (Rmf2LocalizedFormats.FormattingLocale). The content locale is a catalog locale, so its
+// language's CLDR tables are embedded.
+function formattingLocale(requested, content) {
+  if (typeof requested !== "string" || requested === "" || requested.toLowerCase() === content.toLowerCase()) return content;
+  const canonical = canonicalLocale(requested); if (canonical === null) return content;
+  const latin = latinDigits(canonical), tag = withoutExtensions(canonical), left = cldrParse(tag), right = cldrParse(content);
+  if (left.language.toLowerCase() !== right.language.toLowerCase() || (impliedScript(left) ?? "").toLowerCase() !== (impliedScript(right) ?? "").toLowerCase()) return content;
+  const result = tag.toLowerCase() === content.toLowerCase() ? content : withoutDefaultScript(tag, left);
+  return latin && numberFormat(result).system !== "latn" ? `${result}-u-nu-latn` : result;
+}
+// A canonical tag without its extensions and private-use subtags: en-US-u-ca-buddhist formats as en-US.
+function withoutExtensions(canonical) { const match = /-[0-9a-z]-/i.exec(canonical); return match === null ? canonical : canonical.slice(0, match.index); }
+// Whether a canonical tag's Unicode extension asks for Latin digits (-u-nu-latn).
+function latinDigits(canonical) {
+  const parts = canonical.toLowerCase().split("-"); let index = 1;
+  while (index < parts.length && !(parts[index] === "u" || parts[index] === "x")) index++;
+  if (index >= parts.length || parts[index] === "x") return false;
+  for (index++; index + 1 < parts.length && parts[index].length > 1; index++) if (parts[index] === "nu") return parts[index + 1] === "latn";
+  return false;
+}
+// The explicit script, else the CLDR likely script of the language and region (sr → Cyrl, sr-ME → Latn, zh-TW → Hant),
+// else undefined for a language without CLDR likely subtags.
+function impliedScript(tag) { return tag.script ?? cldrMaximize(tag).script; }
+// The tag without its script when the script adds nothing: it is the likely script of the language and region, and CLDR
+// writes the language in one script only (de-Latn-CH → de-CH; sr-Cyrl-BA and zh-Hans-HK stay).
+function withoutDefaultScript(tag, parts) {
+  if (parts.script === undefined || multiScript(parts.language)) return tag;
+  return parts.script.toLowerCase() === (cldrMaximize({ ...parts, script: undefined }).script ?? "").toLowerCase() ? cldrFormat({ ...parts, script: undefined }) : tag;
+}
+// Whether the CLDR likely subtags for a language and its regions name more than one script (sr, zh, pa, uz, …): the
+// values of the language-only and language-region keys. A language-script key names its own script (en-Shaw), so en is
+// written in one script and en-Latn-US formats as en-US.
+let multiScriptLanguages;
+function multiScript(language) {
+  if (multiScriptLanguages === undefined) {
+    const scripts = new Map(); multiScriptLanguages = new Set();
+    for (const [key, value] of Object.entries(generatedLocaleData.likely)) {
+      const keyParts = cldrParse(key), parts = cldrParse(value);
+      if (keyParts.script !== undefined || keyParts.language !== parts.language) continue;
+      if (!scripts.has(parts.language)) scripts.set(parts.language, parts.script); else if (scripts.get(parts.language) !== parts.script) multiScriptLanguages.add(parts.language);
+    }
+  }
+  return multiScriptLanguages.has(language.toLowerCase());
+}
+
+// Listeners for messages that show the text of a fallback locale, for development overlays and telemetry. A listener
+// receives the message key, the catalog locale it was requested in and the locale whose text it shows; a listener
+// that throws never affects formatting.
+const fallbackListeners = new Set();
+export function onFallback(listener) {
+  if (typeof listener !== "function") throw new TypeError("A fallback listener must be a function.");
+  const entry = { listener }; fallbackListeners.add(entry);
+  return () => { fallbackListeners.delete(entry); };
+}
+function reportFallback(key, locale, content) {
+  if (fallbackListeners.size === 0 || content === locale) return;
+  for (const { listener } of [...fallbackListeners]) { try { listener(key, locale, content); } catch { /* Formatting is complete. */ } }
+}
+
+// The locales of a message for a request: the locale whose text it shows (for the lang attribute of a string message)
+// and the locale its numbers and dates format in.
+// The catalog's table (messageLocaleTable above) is parsed on first use, so a bundle that never calls this drops it.
+let messageLocales;
+export function getMessageLocale(key, options) {
+  messageLocales ??= freezeTrusted(messageLocaleTable());
+  const entry = typeof key === "string" && Object.hasOwn(messageLocales, key) ? messageLocales[key] : undefined; if (!entry) throw new RangeError(`Unknown message '${key}'.`);
+  const requested = options?.locale === undefined ? getRequestedLocale() : requestedTag(options.locale), locale = resolveLocale(requested);
+  let contentLocale = Object.hasOwn(entry, locale) ? entry[locale] : locale;
+  if (overlays !== null) {
+    // The catalog has its own text at a locale whose content the table does not redirect.
+    const found = overlays.find(key, locale, step => !Object.hasOwn(entry, step));
+    contentLocale = typeof found === "string" ? (Object.hasOwn(entry, found) ? entry[found] : found) : found.contentLocale;
+  }
+  return Object.freeze({ key, locale: contentLocale, formatLocale: formattingLocale(requested, contentLocale) });
+}
+
+// A mutable locale for an application: getLocale() is the catalog locale, getRequestedLocale() the canonical tag that
+// was set (de-CH where getLocale() gives de). Setting the current catalog locale itself keeps a regional requested tag,
+// so a navigation to a /de route keeps de-CH formatting. Listeners run when either changes and receive the catalog locale.
 export function createLocaleSource(options = {}) {
   if (!isRecord(options)) throw new TypeError("Locale source options must be an object.");
-  let current = resolveLocale(options.initialLocale ?? baseLocale); const listeners = new Set();
+  let requested = requestedTag(options.initialLocale ?? baseLocale), current = resolveLocale(requested); const listeners = new Set();
   return Object.freeze({
     getLocale: () => current,
+    getRequestedLocale: () => requested,
+    localeDirection,
     subscribe(listener) { if (typeof listener !== "function") throw new TypeError("A locale listener must be a function."); listeners.add(listener); let active = true; return () => { if (active) { active = false; listeners.delete(listener); } }; },
-    setLocale(locale) { const next = resolveLocale(locale); if (next === current) return; current = next; for (const listener of [...listeners]) listener(next); },
+    setLocale(locale) {
+      const nextRequested = requestedTag(locale), next = resolveLocale(nextRequested);
+      if (next === current && (nextRequested === requested || nextRequested === next)) return;
+      current = next; requested = nextRequested; for (const listener of [...listeners]) listener(next);
+    },
   });
 }
+
+// A locale the catalog declares or an installed overlay adds.
+function supportsLocale(tag) { return localeSet.has(tag) || overlays !== null && overlays.added.has(tag); }
 
 export function resolveLocale(requested) {
   if (typeof requested !== "string") throw new RangeError("A locale string is required.");
   // An empty tag (the invariant culture, an unset lang) names no locale, so the unsupported-locale policy applies to it.
   const canonical = requested === "" ? "" : canonicalLocale(requested); if (canonical === null) throw new RangeError(`Invalid locale '${requested}'.`);
-  if (localeSet.has(canonical)) return canonical;
-  if (unsupportedLocalePolicy === "ParentsThenDefault") {
-    let parent = canonical; while (parent.includes("-")) { parent = parent.slice(0, parent.lastIndexOf("-")); if (localeSet.has(parent)) return parent; }
-    return baseLocale;
-  }
+  if (supportsLocale(canonical)) return canonical;
+  if (unsupportedLocalePolicy === "ParentsThenDefault") return (canonical === "" ? undefined : matchLocale(canonical)) ?? baseLocale;
   if (unsupportedLocalePolicy === "Default") return baseLocale;
   throw new RangeError(`Unsupported locale '${requested}'.`);
 }
 
-// The direction of a locale's script: the explicit script subtag, else the likely script CLDR gives Intl.Locale's
-// maximize(), so "ar", "pa-PK" and "ku-Arab" are right-to-left and "ku", "he-Latn" and "sd-Deva" left-to-right. Any
-// valid tag is accepted, not only the catalog's locales; without Intl.Locale only an explicit script counts.
+// The best declared locale for a list of preferences, such as navigator.languages, Accept-Language or LANGUAGE:
+// the first preference that matches a declared locale wins, else the base locale. Invalid and empty entries are
+// skipped, and so are und tags that are not declared; POSIX forms (de_DE.UTF-8) are accepted. The
+// unsupported-locale policy does not apply.
+export function negotiateLocale(preferences) {
+  if (typeof preferences === "string") preferences = [preferences];
+  if (preferences === null || typeof preferences !== "object" || typeof preferences[Symbol.iterator] !== "function") throw new TypeError("Locale preferences must be an iterable of strings.");
+  for (const preference of preferences) {
+    if (typeof preference !== "string") continue;
+    const canonical = canonicalLocale(preference.replace(/[.@].*$/s, ""));
+    if (canonical === null) continue;
+    const match = supportsLocale(canonical) ? canonical : matchLocale(canonical);
+    if (match !== undefined) return match;
+  }
+  return baseLocale;
+}
+
+// A declared (or overlay-added) locale for a canonical tag that is not one: CLDR likely-subtag matching, else the
+// nearest truncation with the same likely script (tlh-x-a → tlh, but never sr-Latn-RS → sr or zh-Hant → zh), else
+// undefined. The undetermined language (und, und-DE) matches nothing. LocaleNegotiation.Match in .NET.
+function matchLocale(canonical, available = overlays === null ? locales : overlays.supported) {
+  return cldrMatch(canonical, available) ?? truncateLocale(canonical, available);
+}
+// The nearest locale of available (canonical tags in ordinal order) left by removing subtags, with the same likely script.
+function truncateLocale(canonical, available) {
+  const wanted = cldrMaximize(cldrParse(canonical));
+  if (wanted.language === "und") return undefined;
+  let parent = canonical;
+  while (parent.includes("-")) {
+    parent = parent.slice(0, parent.lastIndexOf("-"));
+    if (available.includes(parent) && cldrMaximize(cldrParse(parent)).script === wanted.script) return parent;
+  }
+  return undefined;
+}
+
+// The direction of a locale's script: the explicit script subtag, else its likely script from the pinned CLDR
+// likelySubtags (as .NET's LocaleDirection), so "ar", "pa-PK" and "ku-Arab" are right-to-left and "ku", "he-Latn" and
+// "sd-Deva" left-to-right. The catalog carries likely subtags only for its own languages; for another language the likely
+// script comes from Intl.Locale's maximize(), and without Intl.Locale only an explicit script counts.
 const rightToLeftScripts = new Set(generatedLocaleData.rightToLeftScripts);
 export function localeDirection(locale) {
   if (typeof locale !== "string") throw new RangeError("A locale string is required.");
   const canonical = canonicalLocale(locale); if (canonical === null) throw new RangeError(`Invalid locale '${locale}'.`);
-  let script = canonical.split("-").find((part) => part.length === 4 && /^[A-Z][a-z]{3}$/.test(part));
+  return rightToLeft(canonical) ? "rtl" : "ltr";
+}
+const directionCache = new Map();
+function rightToLeft(canonical) {
+  let cached = directionCache.get(canonical); if (cached !== undefined) return cached;
+  const tag = cldrCanonicalize(cldrParse(canonical));
+  let script = tag.script ?? cldrMaximize(tag).script;
   if (script === undefined && typeof Intl === "object" && typeof Intl.Locale === "function") {
     try { script = new Intl.Locale(canonical).maximize().script; } catch { script = undefined; }
   }
-  return script !== undefined && rightToLeftScripts.has(script) ? "rtl" : "ltr";
+  cached = script !== undefined && rightToLeftScripts.has(script);
+  if (directionCache.size < 64) directionCache.set(canonical, cached);
+  return cached;
+}
+
+// Whether any locale tag (requested, catalog or content) is right to left; an empty or invalid tag is not.
+function rightToLeftTag(tag) {
+  if (typeof tag !== "string" || tag === "") return false;
+  const canonical = canonicalLocale(tag); return canonical !== null && rightToLeft(canonical);
+}
+
+// Whether a format call isolates its placeholders: the catalog's runtime.bidiIsolation "on" always, "off" never, and
+// "default" when the requested locale, the catalog locale it resolved to or the message's content locale is right to left,
+// decided per call, as .NET's Rmf2RuntimeEvaluator does. A right-to-left overlay of a left-to-right catalog is isolated too.
+function bidiIsolationFor(requestedLocale, resolvedLocale, contentLocale) {
+  const mode = generatedLocaleData.bidiIsolation;
+  if (mode === "on") return true;
+  if (mode !== "default") return false;
+  return rightToLeftTag(requestedLocale) || rightToLeftTag(resolvedLocale) || rightToLeftTag(contentLocale);
+}
+
+/** Removes the bidi isolation controls U+2066–U+2069 that formatting puts around placeholders, for plain-text sinks such as terminals, logs and tests. */
+export function removeBidiIsolates(text) {
+  if (typeof text !== "string") throw new TypeError("Text must be a string.");
+  return text.replace(/[\u2066-\u2069]/g, "");
+}
+
+// Unicode MessageFormat 2's default bidi strategy (LDML 48 "Handling Bidirectional Text"), as .NET's Rmf2Bidi: a
+// placeholder of left-to-right direction stays bare in a left-to-right message unless its u:dir asks for isolation, and
+// is otherwise wrapped in LRI…PDI; a right-to-left one in RLI…PDI; one of unknown direction in FSI…PDI. Without isolation
+// for the call only an explicit u:dir of ltr, rtl or auto isolates. Numbers, dates and times have the direction of their
+// formatting locale; relative times and lists (CLDR separators, each item isolated) of the content locale; UUIDs and
+// booleans are left to right, and text from the caller has none.
+function isolate(text, value, messageRtl, formatLocale, isolation) {
+  const option = value.format.options["u:dir"];
+  if (!isolation && (option === undefined || option === "inherit")) return text;
+  const fn = value.format.function;
+  const direction = option === "ltr" ? "ltr" : option === "rtl" ? "rtl" : option === "auto" ? "unknown"
+    : option === "inherit" ? (messageRtl ? "rtl" : "ltr")
+    : ["integer", "number", "date", "time", "datetime"].includes(fn) ? (rightToLeftTag(formatLocale) ? "rtl" : "ltr")
+    : fn === "runic:relative-time" || fn === "runic:list" ? (messageRtl ? "rtl" : "ltr")
+    : ["runic:uuid", "runic:boolean"].includes(fn) ? "ltr" : "unknown";
+  const explicit = option === "ltr" || option === "rtl" || option === "auto";
+  if (direction === "ltr") return !messageRtl && !explicit ? text : `\u2066${text}\u2069`;
+  if (direction === "rtl") return `\u2067${text}\u2069`;
+  return `\u2068${text}\u2069`;
 }
 
 export function decimal(value) { return parseDecimal(value); }
@@ -156,12 +395,32 @@ function coerceInput(value, type, name) {
     case "decimal": return exactDecimal(value);
     case "date": if (typeof value === "string" && validDate(value)) return value; break;
     case "time": if (typeof value === "string" && validTime(value)) return value; break;
-    case "datetime": if (typeof value === "string" && validDateTime(value)) return value; break;
+    case "datetime": { const instant = coerceInstant(value); if (instant !== null) return instant; break; }
     case "guid": if (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return value.toLowerCase(); break;
     // A frozen snapshot, so later changes to the caller's array cannot affect formatting.
     case "list": if (Array.isArray(value)) { const items = Array.from(value); if (items.every(item => typeof item === "string")) return Object.freeze(items); } break;
   }
   throw new TypeError(`Input '${name}' does not contain its declared ${type} carrier.`);
+}
+
+// A date-time input: a valid Date, or an ISO 8601 string with seconds, an optional fraction and Z or an offset of at
+// most 14 hours. The carrier is the canonical UTC yyyy-MM-ddTHH:mm:ssZ of the transport form, so sub-second digits
+// are dropped.
+function coerceInstant(value) {
+  let milliseconds;
+  if (value instanceof Date) milliseconds = value.getTime();
+  else if (typeof value !== "string") return null;
+  else if (validDateTime(value)) return value;
+  else {
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d{1,9})?(?:Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+    if (!match || !validDate(match[1]) || !validTime(match[2])) return null;
+    const hours = Number(match[4] ?? 0), minutes = Number(match[5] ?? 0);
+    if (minutes > 59 || hours * 60 + minutes > 14 * 60) return null;
+    milliseconds = Date.parse(`${match[1]}T${match[2]}Z`) - (match[3] === "-" ? -1 : 1) * (hours * 60 + minutes) * 60000;
+  }
+  if (!Number.isFinite(milliseconds)) return null;
+  const text = new Date(Math.floor(milliseconds / 1000) * 1000).toISOString().replace(/\.000Z$/, "Z");
+  return validDateTime(text) ? text : null;
 }
 
 function validateInputs(inputs, contract) {
@@ -174,9 +433,12 @@ function validateInputs(inputs, contract) {
 function defaultFunction(type) { return ({ string: "string", int64: "integer", decimal: "number", boolean: "runic:boolean", date: "date", time: "time", datetime: "datetime", guid: "runic:uuid", list: "runic:list" })[type]; }
 function functionType(name) { return ({ string: "string", integer: "int64", number: "decimal", "runic:boolean": "boolean", date: "date", time: "time", datetime: "datetime", "runic:uuid": "guid", "runic:relative-time": "decimal", "runic:list": "list" })[name]; }
 function optionType(fn, name) {
+  if (name === "u:dir" && functionType(fn) !== undefined) return "string";
   if (["string", "runic:boolean", "integer", "number"].includes(fn) && name === "select") return "string";
   if ((fn === "integer" || fn === "number") && name === "useGrouping") return "string";
+  
   if (["number", "date", "time", "datetime", "runic:uuid"].includes(fn) && name === "style") return "string";
+  if (fn === "datetime" && name === "timeZone") return "string";
   if (fn === "number" && ["minimumFractionDigits", "maximumFractionDigits"].includes(name)) return "int64";
   if (fn === "runic:relative-time" && ["unit", "numeric"].includes(name)) return "string";
   if (fn === "runic:list" && ["type", "style"].includes(name)) return "string";
@@ -229,15 +491,20 @@ function contextFor(wrapper, inputs, contract) {
 function validateResolvedOptions(fn, options) {
   const allowed = {
     string: { select: ["exact"] }, "runic:boolean": { select: ["exact"] }, integer: { select: ["plural", "ordinal", "exact"], useGrouping: ["auto", "always", "never", "min2"] },
-    number: { select: ["plural", "ordinal", "exact"], style: ["decimal", "percent"], useGrouping: ["auto", "always", "never", "min2"] }, date: { style: ["iso", "short", "long"] },
-    time: { style: ["iso", "short", "long"] }, datetime: { style: ["iso", "short", "long"] }, "runic:uuid": { style: ["d", "n", "b", "p"] },
+    number: { select: ["plural", "ordinal", "exact"], style: ["decimal", "percent"], useGrouping: ["auto", "always", "never", "min2"] },
+    date: { style: ["iso", "short", "medium", "long", "full"] },
+    time: { style: ["iso", "short", "medium", "long", "full"] }, datetime: { style: ["iso", "short", "medium", "long", "full"], timeZone: null }, "runic:uuid": { style: ["d", "n", "b", "p"] },
     "runic:relative-time": { unit: ["second", "minute", "hour", "day", "week", "month", "year"], numeric: ["always", "auto"] },
     "runic:list": { type: ["conjunction", "disjunction", "unit"], style: ["long", "short", "narrow"] },
   }[fn];
   if (!allowed) throw new TypeError("Unknown formatter.");
+  const digitOption = name => ((fn === "number") && ["minimumFractionDigits", "maximumFractionDigits"].includes(name));
   for (const name of Object.keys(options)) {
-    if (!Object.hasOwn(allowed, name) && !(fn === "number" && ["minimumFractionDigits", "maximumFractionDigits"].includes(name))) throw new TypeError("Unknown formatter option.");
-    if (fn === "number" && ["minimumFractionDigits", "maximumFractionDigits"].includes(name)) { if (typeof options[name] !== "bigint" || options[name] < 0n || options[name] > 6n) throw new RangeError("Fraction digits are outside 0..6."); }
+    if (name === "u:dir") { if (!["ltr", "rtl", "auto", "inherit"].includes(options[name])) throw new RangeError("Invalid formatter option value."); continue; }
+    if (!Object.hasOwn(allowed, name) && !digitOption(name)) throw new TypeError("Unknown formatter option.");
+    if (digitOption(name)) { if (typeof options[name] !== "bigint" || options[name] < 0n || options[name] > 6n) throw new RangeError("Fraction digits are outside 0..6."); }
+    else if (allowed[name] === null) { if (!validTimeZone(options[name])) throw new RangeError("Invalid time zone."); }
+    else if (allowed[name] instanceof RegExp) { if (typeof options[name] !== "string" || !allowed[name].test(options[name])) throw new RangeError("Invalid formatter option value."); }
     else if (!allowed[name].includes(options[name])) throw new RangeError("Invalid formatter option value.");
   }
   if (fn === "number") {
@@ -246,19 +513,24 @@ function validateResolvedOptions(fn, options) {
   }
 }
 
-function formatResolved(value, locale) {
+// locale is the formatting locale of numbers (the number in relative time included), percentages, dates and times;
+// contentLocale gives lists and the relative-time patterns.
+function formatResolved(value, locale, contentLocale = locale, isolateItems = false) {
   const fn = value.format.function, options = value.format.options;
   switch (fn) {
     case "string": return value.carrier;
     case "runic:boolean": return value.carrier ? "true" : "false";
     case "integer": return formatInteger(value.carrier, locale, options.useGrouping ?? "auto");
-    case "number": return formatDecimal(value.type === "int64" ? decimalFromInteger(value.carrier) : value.carrier, locale, options);
-    case "date": return formatTemporal(value.carrier, fn, options.style ?? "iso", locale);
-    case "time": return formatTemporal(value.carrier, fn, options.style ?? "iso", locale);
-    case "datetime": return formatTemporal(value.carrier, fn, options.style ?? "iso", locale);
+    case "number": {
+      const number = value.type === "int64" ? decimalFromInteger(value.carrier) : value.carrier;
+      return formatDecimal(number, locale, options);
+    }
+        case "date": return formatTemporal(value.carrier, fn, options.style ?? "iso", locale, "local");
+    case "time": return formatTemporal(value.carrier, fn, options.style ?? "iso", locale, "local");
+    case "datetime": return formatTemporal(value.carrier, fn, options.style ?? "iso", locale, options.timeZone ?? "local");
     case "runic:uuid": { const canonical = value.carrier; const style = options.style ?? "d"; if (style === "d") return canonical; if (style === "n") return canonical.replaceAll("-", ""); if (style === "b") return `{${canonical}}`; return `(${canonical})`; }
-    case "runic:relative-time": return formatRelative(value.type === "int64" ? decimalFromInteger(value.carrier) : value.carrier, options.unit ?? "day", options.numeric ?? "always", locale);
-    case "runic:list": return formatList(value.carrier, options.type ?? "conjunction", options.style ?? "long", locale);
+    case "runic:relative-time": return formatRelative(value.type === "int64" ? decimalFromInteger(value.carrier) : value.carrier, options.unit ?? "day", options.numeric ?? "always", contentLocale, locale);
+    case "runic:list": return formatList(value.carrier, options.type ?? "conjunction", options.style ?? "long", contentLocale, isolateItems);
     default: throw new TypeError("Unknown formatter.");
   }
 }
@@ -279,53 +551,120 @@ function visibleNumber(value, options) {
   return Object.freeze({ coefficient, scale, negative: value.negative && coefficient !== 0n });
 }
 
+// :number, :integer and percent output from the pinned CLDR number formats, as .NET's Rmf2NumberFormats: the visible
+// decimal's digits, grouped by the pattern's group sizes and the pinned minimumGroupingDigits, with the locale's
+// decimal, group and minus symbols and its digits.
 function formatDecimal(value, locale, options) {
-  const visible = visibleNumber(value, options), percent = (options.style ?? "decimal") === "percent";
+  const visible = visibleNumber(value, options), percent = (options.style ?? "decimal") === "percent", format = numberFormat(locale);
+  const digitText = numberDigits(visible, options.useGrouping ?? "auto", locale, format, percent);
+  if (!percent) return `${visible.negative ? format.minus : ""}${digitText}`;
+  return visible.negative ? format.negativePercentPrefix + digitText + format.negativePercentSuffix : format.percentPrefix + digitText + format.percentSuffix;
+}
+
+// An integer as :number writes it without fraction digits, for every useGrouping value (useGrouping=never included):
+// the locale's minus sign, symbols, group sizes and digits.
+function formatInteger(value, locale, grouping) {
+  const format = numberFormat(locale), visible = decimalFromInteger(value);
+  return `${visible.negative ? format.minus : ""}${numberDigits(visible, grouping, locale, format, false)}`;
+}
+
+// The unsigned digits with the decimal separator and, where useGrouping groups, the group separator.
+function numberDigits(visible, grouping, locale, format, percent) {
   const digits = visible.coefficient.toString().padStart(visible.scale + 1, "0");
   const whole = digits.slice(0, digits.length - visible.scale), fraction = digits.slice(digits.length - visible.scale);
-  const symbols = numberSymbols(locale);
-  return `${visible.negative ? symbols.minus : ""}${groupDigits(whole, options.useGrouping ?? "auto", symbols, locale)}${fraction ? symbols.decimal + fraction : ""}${percent ? "%" : ""}`;
+  const primary = percent ? format.percentPrimary : format.primary, secondary = percent ? format.percentSecondary : format.secondary;
+  return localizeDigits(`${groupDigits(whole, grouping, format.group, primary, secondary, locale, format)}${fraction ? format.decimal + fraction : ""}`, format);
 }
 
-// Ungrouped integers stay invariant; the grouping strategies use the locale's sign, separator and group sizes.
-function formatInteger(value, locale, grouping) {
-  if (grouping === "never") return value.toString();
-  const symbols = numberSymbols(locale);
-  return `${value < 0n ? symbols.minus : ""}${groupDigits((value < 0n ? -value : value).toString(), grouping, symbols, locale)}`;
+// The pinned CLDR number formats of a formatting locale: its default numbering system, or Latin digits for
+// -u-nu-latn; CLDR root formats without data. Each record holds the default system, its 12 fields and, when it is not
+// latn, latn's 12 (see eng/generate-cldr.mjs numberFields).
+const rootNumberFormat = Object.freeze({ system: "latn", digits: null, decimal: ".", group: ",", minus: "-", primary: 3, secondary: 3, percentPrimary: 3, percentSecondary: 3, percentPrefix: "", percentSuffix: "%", negativePercentPrefix: "-", negativePercentSuffix: "%" });
+// Cached by CLDR data ID, in the default system and in latn, so the caches are bounded by the embedded data whatever
+// tags callers request; the requested tags seen last map to them, emptied when full. The number records of the message's
+// own data (a locale artifact's formatData.numbers, which the artifact decoders install) come first.
+const numberFormatCache = new Map(), latinNumberFormatCache = new Map(), localeNumberFormatCache = new Map();
+let ownNumbers;
+function numberFormat(locale) {
+  const own = activeFormatData?.numbers === undefined ? undefined : ownNumbers?.(locale, activeFormatData.numbers);
+  if (own !== undefined) return own;
+  let format = localeNumberFormatCache.get(locale);
+  if (format) return format;
+  if (localeNumberFormatCache.size >= 256) localeNumberFormatCache.clear();
+  format = dataNumberFormat(locale);
+  localeNumberFormatCache.set(locale, format);
+  return format;
 }
-
-// The host's decimal, group and minus symbols and its primary and secondary group sizes, read once per locale.
-const numberSymbolCache = new Map();
-function numberSymbols(locale) {
-  let symbols = numberSymbolCache.get(locale);
-  if (symbols) return symbols;
-  const parts = new Intl.NumberFormat(locale, { useGrouping: true, minimumFractionDigits: 1, maximumFractionDigits: 1 }).formatToParts(-1234567890.1);
-  const value = type => parts.find(part => part.type === type)?.value;
-  const groups = parts.filter(part => part.type === "integer").map(part => part.value.length);
-  const primary = groups.length > 1 ? groups[groups.length - 1] : 0;
-  symbols = Object.freeze({ decimal: value("decimal") ?? ".", group: value("group") ?? "", minus: value("minusSign") ?? "-", primary, secondary: groups.length > 2 ? groups[groups.length - 2] : primary });
-  if (numberSymbolCache.size < 64) numberSymbolCache.set(locale, symbols);
-  return symbols;
+function dataNumberFormat(locale) {
+  const id = cldrLocale(locale).numbers;
+  if (id === undefined) return rootNumberFormat;
+  const latin = latinDigits(locale), cache = latin ? latinNumberFormatCache : numberFormatCache;
+  let format = cache.get(id);
+  if (format) return format;
+  format = numberRecordFormat(generatedLocaleData.numbers[id], latin);
+  cache.set(id, format);
+  return format;
 }
+// A number record: the default system and its 12 fields, then latn's 12 when it is not latn. minimumGrouping is set for
+// a message's own records (Rmf2NumberFormat.FromRecord); the catalog's comes from the locale's grouping entry.
+function numberRecordFormat(record, latin, minimumGrouping) {
+  const offset = record.length > 13 && latin ? 13 : 1, system = offset === 1 ? record[0] : "latn", field = index => record[offset + index];
+  return Object.freeze({
+    system, digits: system === "latn" ? null : Array.from(field(0)), decimal: field(1), group: field(2), minus: field(3),
+    primary: Number(field(4)), secondary: Number(field(5)), percentPrimary: Number(field(6)), percentSecondary: Number(field(7)),
+    percentPrefix: field(8), percentSuffix: field(9), negativePercentPrefix: field(10), negativePercentSuffix: field(11), minimumGrouping,
+  });
+}
+// A locale artifact's number records: an overlay that adds a language formats with that language's symbols, digits and
+// grouping on a catalog without them. Its CLDR likely subtags, parents and aliases resolve the tag. Cached per records
+// object, for the requested tags seen last and by record, so the caches go away with the artifact.
+const ownNumberCaches = new WeakMap();
+function artifactNumberFormat(locale, numbers) {
+  let cache = ownNumberCaches.get(numbers);
+  if (!cache) ownNumberCaches.set(numbers, cache = { tables: formatDataTables(numbers), locales: new Map(), formats: new Map() });
+  if (cache.locales.has(locale)) return cache.locales.get(locale);
+  let format;
+  const canonical = canonicalLocale(locale), records = numbers.locales ?? {}, grouping = numbers.grouping ?? {};
+  if (canonical !== null) {
+    const id = cldrDataId(withoutExtensions(canonical), cache.tables), recordId = cldrFindFrom(id, records, false, cache.tables);
+    if (recordId !== undefined) {
+      const groupingId = cldrFindFrom(id, grouping, false, cache.tables), latin = latinDigits(canonical), minimum = groupingId === undefined ? 1 : grouping[groupingId];
+      const key = `${recordId}|${latin}|${minimum}`;
+      format = cache.formats.get(key) ?? numberRecordFormat(records[recordId], latin, minimum);
+      cache.formats.set(key, format);
+    }
+  }
+  if (cache.locales.size >= 256) cache.locales.clear();
+  cache.locales.set(locale, format);
+  return format;
+}
+// The catalog's CLDR resolution tables with a locale artifact's for its languages.
+function formatDataTables(numbers) {
+  const merge = name => Object.assign(Object.create(null), generatedLocaleData[name], numbers[name] ?? {});
+  return { likely: merge("likely"), parents: merge("parents"), aliases: merge("aliases") };
+}
+// Writes the ASCII digits of a text in the numbering system's digits.
+function localizeDigits(text, format) { return format.digits === null ? text : text.replace(/[0-9]/g, digit => format.digits[digit.charCodeAt(0) - 48]); }
 
 // useGrouping as ICU and Intl.NumberFormat apply it: auto groups once the digits above the primary group
-// reach the pinned CLDR minimumGroupingDigits of the content locale, min2 requires at least two, always one.
-function groupDigits(digits, grouping, symbols, locale) {
-  if (grouping === "never" || symbols.primary <= 0 || !symbols.group) return digits;
-  const language = locale.toLowerCase().split(/[-_]/)[0];
-  const pinned = Object.hasOwn(generatedLocaleData.minimumGroupingDigits, language) ? generatedLocaleData.minimumGroupingDigits[language] : 1;
+// reach the pinned CLDR minimumGroupingDigits of the locale, min2 requires at least two, always one.
+function groupDigits(digits, grouping, separator, primary, secondary, locale, format) {
+  if (grouping === "never" || primary <= 0 || !separator) return digits;
+  const pinned = format.minimumGrouping ?? cldrLocale(locale).grouping;
   const minimum = grouping === "always" ? 1 : grouping === "min2" ? Math.max(2, pinned) : pinned;
-  if (digits.length - symbols.primary < minimum) return digits;
-  let end = digits.length - symbols.primary; const groups = [digits.slice(end)];
-  while (end > 0) { const start = Math.max(0, end - symbols.secondary); groups.unshift(digits.slice(start, end)); end = start; }
-  return groups.join(symbols.group);
+  if (digits.length - primary < minimum) return digits;
+  let end = digits.length - primary; const groups = [digits.slice(end)];
+  while (end > 0) { const start = Math.max(0, end - secondary); groups.unshift(digits.slice(start, end)); end = start; }
+  return groups.join(separator);
 }
 
 // The number selection compares: :number uses its displayed digits; :integer and
-// relative time use the canonical typed value. The carrier itself never changes.
-function selectionOperand(resolved) {
+// relative time use the canonical typed value. The carrier itself never changes. A compact :number selects on its
+// compact-rounded value at full scale (1.2K as 1200), rounded as it displays in formatLocale, with the compact exponent
+// as CLDR's e operand.
+function selectionOperand(resolved, formatLocale) {
   const value = resolved.type === "int64" ? decimalFromInteger(resolved.carrier) : resolved.carrier;
-  return resolved.format.function === "number" ? visibleNumber(value, resolved.format.options) : value;
+  return { visible: resolved.format.function === "number" ? visibleNumber(value, resolved.format.options) : value, exponent: 0 };
 }
 
 function visibleCanonical(value) {
@@ -334,69 +673,407 @@ function visibleCanonical(value) {
   return decimalCanonical({ coefficient, scale, negative: value.negative && coefficient !== 0n });
 }
 
-// Applies the pinned CLDR rules to the operands of a visible decimal (sign ignored).
-function selectPlural(value, locale, ordinal) {
-  const language = locale.toLowerCase().split(/[-_]/)[0]; const rules = Object.hasOwn(generatedPluralRules, language) ? generatedPluralRules[language] : undefined;
-  if (!rules) throw new RangeError(`Plural selection is not supported for locale '${locale}'.`);
+// Applies the pinned CLDR rules of a locale to the operands of a visible decimal (sign ignored).
+function selectPlural(value, locale, ordinal, exponent = 0) {
+  const entry = cldrLocale(locale), rule = ordinal ? entry.ordinal : entry.cardinal;
+  if (rule < 0) throw new RangeError(`Plural selection is not supported for locale '${locale}'.`);
   const divisor = 10n ** BigInt(value.scale), f = value.coefficient % divisor;
   let t = f, w = BigInt(value.scale);
   while (w > 0n && t % 10n === 0n) { t /= 10n; w--; }
-  return rules[ordinal ? 1 : 0](Object.freeze({ i: value.coefficient / divisor, v: BigInt(value.scale), w, f, t, e: 0n }));
+  return generatedPluralRules[rule](Object.freeze({ i: value.coefficient / divisor, v: BigInt(value.scale), w, f, t, e: BigInt(exponent) }));
 }
 
-function formatRelative(value, unit, numeric, locale) {
-  const language = locale.toLowerCase().split(/[-_]/)[0], data = generatedLocaleData.relativeTime[language];
+// CLDR relative time: the number is formatted as :number formats it by default, in numberLocale's digits and symbols
+// (the formatting locale), and picks locale's past or future pattern of its plural category; numeric=auto uses the
+// relative-type text for whole values from -2 to 2.
+// Each unit has 17 slots: past patterns (zero … other), future patterns likewise, then relative-type -2 … 2.
+const relativeUnits = ["second", "minute", "hour", "day", "week", "month", "year"];
+const pluralCategoryOrder = ["zero", "one", "two", "few", "many", "other"];
+function formatRelative(value, unit, numeric, locale, numberLocale = locale) {
+  const entry = cldrLocale(locale), data = entry.cardinal < 0 || entry.relativeTime === undefined ? undefined : generatedLocaleData.relativeTime[entry.relativeTime];
   if (!data) throw new RangeError(`Relative-time formatting is not supported for locale '${locale}'.`);
-  const signed = value.negative ? -value.coefficient : value.coefficient;
-  if (numeric === "auto" && unit === "day" && value.scale === 0 && signed >= -1n && signed <= 1n) return data.autoDay[Number(signed + 1n)];
-  const absolute = decimalAbsolute(value), forms = data.units[unit], noun = forms[selectPlural(absolute, locale, false) === "one" ? 0 : 1];
-  return (value.negative ? data.past : data.future).replace("{0}", decimalCanonical(absolute)).replace("{unit}", noun);
+  const offset = relativeUnits.indexOf(unit) * 17, divisor = 10n ** BigInt(value.scale);
+  if (numeric === "auto" && value.coefficient % divisor === 0n && value.coefficient / divisor <= 2n) {
+    const whole = Number(value.coefficient / divisor) * (value.negative ? -1 : 1), text = data[offset + 14 + whole];
+    if (text !== null) return text;
+  }
+  const absolute = decimalAbsolute(value), visible = visibleNumber(absolute, {});
+  const patterns = offset + (value.negative ? 0 : 6), pattern = data[patterns + pluralCategoryOrder.indexOf(selectPlural(visible, locale, false))] ?? data[patterns + 5];
+  return pattern.replace("{0}", formatDecimal(absolute, numberLocale, {}));
 }
 
-// Joins the items with the pinned CLDR list patterns, as Intl.ListFormat does.
-// The .NET runtime applies the same generated separators and Spanish rule.
-function formatList(items, type, style, locale) {
-  const language = locale.toLowerCase().split(/[-_]/)[0], data = Object.hasOwn(generatedLocaleData.list, language) ? generatedLocaleData.list[language] : undefined;
+// A locale artifact's formatData (a dynamic artifact's, an overlay's) applies while its messages format
+// (formatCompiledMessage): its number records first, and its currency, unit and compact data, else the catalog's.
+let activeFormatData;
+const messageFormatData = new WeakMap();
+
+// The rules of embedded format data, as .NET's Rmf2FormatData.Parse checks them (rmf2-execution-v2.md, "Embedded format
+// data"), so a crafted pack fails as RTR0023/malformed in both runtimes and never while it formats: closed members,
+// bounded tables, records whose first and last values are present, and patterns with exactly their placeholders.
+const formatObject = (value, maximum) => isRecord(value) && Object.keys(value).length <= maximum;
+const formatArray = (value, minimum, maximum) => Array.isArray(value) && value.length >= minimum && value.length <= maximum;
+const formatText = value => typeof value === "string" && value.length > 0 && value.length <= 128;
+const formatRecord = (value, minimum, maximum) => formatArray(value, minimum, maximum) && value.every(item => item === null || formatText(item)) && value[0] !== null && value[value.length - 1] !== null;
+const formatCode = value => /^[A-Z]{3}$/.test(value);
+const formatUnitId = value => value.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+const formatSystem = value => typeof value === "string" && /^[a-z]{4,8}$/.test(value);
+const formatDataId = value => value.length <= 64 && /^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-[a-z0-9]{4,8})*$/.test(value);
+const formatTag = value => value.length >= 2 && value.length <= 64 && /^[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*$/.test(value);
+const formatPlaceholders = (pattern, zero, one) => pattern.split("{0}").length - 1 === zero && pattern.split("{1}").length - 1 === one;
+// An artifact's formatData, checked and frozen; undefined without one, null when it breaks the rules. Its number records
+// apply from now on (numberFormat).
+function artifactFormatData(snapshot) {
+  if (!Object.hasOwn(snapshot, "formatData")) return undefined;
+  if (!validFormatData(snapshot.formatData)) return null;
+  ownNumbers = artifactNumberFormat;
+  return freezeTrusted(snapshot.formatData);
+}
+function validFormatData(value) {
+  const formatters = ["currencies", "dynamicCurrencies", "dynamicUnits", "locales"];
+  if (!formatObject(value, 5) || Object.keys(value).some(name => name !== "numbers" && !formatters.includes(name))) return false;
+  if (Object.hasOwn(value, "numbers") && !validFormatNumbers(value.numbers)) return false;
+  return !formatters.some(name => Object.hasOwn(value, name)) || validFormatters(value);
+}
+// numbers: the number records and minimumGroupingDigits of the artifact's languages, and the likely subtags, parents and
+// aliases that resolve their tags.
+function validFormatNumbers(numbers) {
+  if (!formatObject(numbers, 5)) return false;
+  for (const [name, table] of Object.entries(numbers)) {
+    const entries = name === "locales" || name === "grouping" ? formatObject(table, 2048) && Object.entries(table) : ["likely", "parents", "aliases"].includes(name) ? formatObject(table, 4096) && Object.entries(table) : false;
+    if (!entries) return false;
+    for (const [key, item] of entries) {
+      const valid = name === "locales" ? formatDataId(key) && validNumberRecord(item)
+        : name === "grouping" ? formatDataId(key) && Number.isInteger(item) && item >= 1 && item <= 4
+        : formatTag(key) && formatText(item) && formatTag(item);
+      if (!valid) return false;
+    }
+  }
+  return true;
+}
+// [system, then 12 fields for it and, when it is not latn, 12 for latn]: digits, decimal, group, minus, four group sizes
+// and the four percent affixes.
+function validNumberRecord(record) {
+  if (!Array.isArray(record) || (record.length !== 13 && record.length !== 25) || !record.every(item => typeof item === "string")) return false;
+  if (!formatSystem(record[0]) || (record[0] === "latn") !== (record.length === 13)) return false;
+  for (let block = 1; block < record.length; block += 12) {
+    const digits = record[block];
+    // Ten digits of one width: all in the Basic Multilingual Plane, or all surrogate pairs (Adlam, Chakma).
+    if (block === 13 || record[0] === "latn" ? digits !== "0123456789" : !(digits.length === 10 && !/[\uD800-\uDFFF]/.test(digits) || /^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]){10}$/.test(digits))) return false;
+    for (let field = 1; field <= 3; field++) if (record[block + field].length < 1 || record[block + field].length > 8) return false;
+    for (let field = 4; field <= 7; field++) if (!/^[1-9]$/.test(record[block + field])) return false;
+    for (let field = 8; field <= 11; field++) if (record[block + field].length > 16) return false;
+  }
+  return true;
+}
+function validFormatters() { return true; }
+function formatterFeature(fn, option) { return option === undefined ? fn === "currency" || fn === "unit" : fn === "number" && (option === "runic:notation" || option === "runic:compactDisplay"); }
+
+// Joins the items with the pinned CLDR list patterns, as Intl.ListFormat does: end(n-2, n-1), then
+// middle(i, rest) and start(0, rest). The .NET runtime applies the same generated patterns and Spanish rule.
+// isolateItems wraps each item in FSI…PDI (bidi isolation); the Spanish and Hebrew rules still look at the raw item.
+function formatList(items, type, style, locale, isolateItems = false) {
+  const entry = cldrLocale(locale), data = entry.list === undefined ? undefined : generatedLocaleData.list[entry.list];
   if (!data) throw new RangeError(`List formatting is not supported for locale '${locale}'.`);
   const offset = (["conjunction", "disjunction", "unit"].indexOf(type) * 3 + ["long", "short", "narrow"].indexOf(style)) * 4;
-  const [start, middle, end, two] = data.slice(offset, offset + 4);
+  const [start, middle, end, two] = data.slice(offset, offset + 4), language = entry.language;
+  const item = index => isolateItems ? `\u2068${items[index]}\u2069` : items[index];
   if (items.length === 0) return "";
-  if (items.length === 1) return items[0];
+  if (items.length === 1) return item(0);
   const last = items[items.length - 1];
-  if (items.length === 2) return items[0] + contextualListSeparator(language, two, end, two, last) + last;
-  let text = items[0] + start + items[1];
-  for (let index = 2; index < items.length - 1; index++) text += middle + items[index];
-  return text + contextualListSeparator(language, two, end, end, last) + last;
+  if (items.length === 2) return applyListPattern(contextualListPattern(language, two, end, two, last), item(0), item(1));
+  let text = applyListPattern(contextualListPattern(language, two, end, end, last), item(items.length - 2), item(items.length - 1));
+  for (let index = items.length - 3; index >= 1; index--) text = applyListPattern(middle, item(index), text);
+  return applyListPattern(start, item(0), text);
+}
+
+// Every pinned pattern has {0} before {1}.
+function applyListPattern(pattern, first, second) {
+  const zero = pattern.indexOf("{0}"), one = pattern.indexOf("{1}");
+  return pattern.slice(0, zero) + first + pattern.slice(zero + 3, one) + second + pattern.slice(one + 3);
 }
 
 // ICU, and therefore Intl.ListFormat, changes Spanish "y" to "e" before an /i/ sound
 // and "o" to "u" before an /o/ sound. The rule applies to the two-item and end
-// separators of a pattern set that uses " y " (or else " o "), and tests the last item.
-function contextualListSeparator(language, two, end, separator, last) {
-  if (language !== "es") return separator;
-  if (two === " y " || end === " y ") return separator === " y " && /^(?:[iI]|[hH][iI](?![aAeE]))/.test(last) ? " e " : separator;
-  if (two === " o " || end === " o ") return separator === " o " && /^(?:[oO8]|[hH][oO]|11(?: |$))/.test(last) ? " u " : separator;
-  return separator;
+// patterns of a pattern set that uses "{0} y {1}" (or else "{0} o {1}"), and tests the last item.
+// Hebrew "ו" takes a hyphen ("ו-") before an item that does not start with a Hebrew character.
+function contextualListPattern(language, two, end, pattern, last) {
+  if (language === "he" || language === "iw") return pattern === "{0} \u05d5{1}" && last.length > 0 && !/^[\u0591-\u05f4\ufb1d-\ufb4f]/.test(last) ? "{0} \u05d5-{1}" : pattern;
+  if (language !== "es") return pattern;
+  if (two === "{0} y {1}" || end === "{0} y {1}") return pattern === "{0} y {1}" && /^(?:[iI]|[hH][iI](?![aAeE]))/.test(last) ? "{0} e {1}" : pattern;
+  if (two === "{0} o {1}" || end === "{0} o {1}") return pattern === "{0} o {1}" && /^(?:[oO8]|[hH][oO]|11(?: |$))/.test(last) ? "{0} u {1}" : pattern;
+  return pattern;
 }
 
-function formatTemporal(value, type, style, locale) {
+// Locale identity over the pinned CLDR tables, exactly as CldrLocales.cs does in .NET: likely subtags, the
+// CLDR data ID of a tag, its parent chains and likely-subtag matching. Only the tables of the catalog's
+// languages are embedded; matching and lookup never need others.
+// The requested tags seen last, emptied when full so that any tags callers send leave room for the next ones; the data
+// entries are cached by their CLDR anchors (cldrAnchors), which the embedded data bounds, so a tag outside the first
+// cache costs its canonicalization and anchors, never the full lookups.
+const cldrLocaleCache = new Map(), cldrEntryCache = new Map();
+const noLocaleData = Object.freeze({ language: "", cardinal: -1, ordinal: -1, grouping: 1, numbers: undefined, list: undefined, relativeTime: undefined });
+function cldrLocale(locale) {
+  let entry = cldrLocaleCache.get(locale);
+  if (entry) return entry;
+  const canonical = canonicalLocale(locale);
+  if (canonical === null) entry = noLocaleData;
+  else {
+    const [data, truncated] = cldrAnchors(canonical), key = `${data ?? ""}|${truncated ?? ""}`;
+    let found = cldrEntryCache.get(key);
+    if (found === undefined) {
+      const cardinalId = cldrFindFrom(truncated, generatedLocaleData.cardinal, true), ordinalId = cldrFindFrom(truncated, generatedLocaleData.ordinal, true), groupingId = cldrFindFrom(data, generatedLocaleData.grouping, false);
+      const list = cldrFindFrom(data, generatedLocaleData.list, false), relativeTime = cldrFindFrom(data, generatedLocaleData.relativeTime, false);
+      // A locale with CLDR data but no plural rules of its own (agq, rw) uses CLDR's root rule (0, other only).
+      const rootRule = list !== undefined || relativeTime !== undefined ? 0 : -1;
+      found = Object.freeze({
+        cardinal: cardinalId === undefined ? rootRule : generatedLocaleData.cardinal[cardinalId],
+        ordinal: cardinalId === undefined ? rootRule : ordinalId === undefined ? 0 : generatedLocaleData.ordinal[ordinalId],
+        grouping: groupingId === undefined ? 1 : generatedLocaleData.grouping[groupingId],
+        numbers: cldrFindFrom(data, generatedLocaleData.numbers, false),
+        list,
+        relativeTime,
+      });
+      cldrEntryCache.set(key, found);
+    }
+    entry = Object.freeze({ language: cldrParse(canonical).language, ...found });
+  }
+  if (cldrLocaleCache.size >= 256) cldrLocaleCache.clear();
+  cldrLocaleCache.set(locale, entry);
+  return entry;
+}
+function cldrParse(canonical) {
+  const parts = canonical.split("-"); let index = 1, script, region, variants = "";
+  if (parts[0].length <= 3) for (let count = 0; count < 3 && index < parts.length && parts[index].length === 3 && /^[a-z]/i.test(parts[index]); count++) index++;
+  if (index < parts.length && parts[index].length === 4 && /^[a-z]/i.test(parts[index])) script = parts[index++];
+  if (index < parts.length && (parts[index].length === 2 || (parts[index].length === 3 && /^\d/.test(parts[index])))) region = parts[index++];
+  while (index < parts.length && (parts[index].length >= 5 || (parts[index].length === 4 && /^\d/.test(parts[index])))) variants += "-" + parts[index++];
+  return { language: parts[0], script, region, variants };
+}
+function cldrFormat(tag) { return tag.language + (tag.script === undefined ? "" : "-" + tag.script) + (tag.region === undefined ? "" : "-" + tag.region) + tag.variants; }
+function cldrTable(table, key) { return Object.hasOwn(table, key) ? table[key] : undefined; }
+// A deprecated or legacy language code becomes its replacement, whose script and region fill those the tag lacks:
+// iw → he, tl → fil, sh → sr-Latn, cnr → sr-ME.
+// tables: the catalog's CLDR resolution tables, or those with a locale artifact's (formatDataTables).
+function cldrCanonicalize(tag, tables = generatedLocaleData) {
+  const replacement = cldrTable(tables.aliases, tag.language);
+  if (replacement === undefined) return tag;
+  const found = cldrParse(replacement);
+  return { ...tag, language: found.language, script: tag.script ?? found.script, region: tag.region ?? found.region };
+}
+function cldrMaximize(tag, tables = generatedLocaleData) {
+  tag = cldrCanonicalize(tag, tables);
+  const likely = tables.likely;
+  let value;
+  if (tag.script !== undefined && tag.region !== undefined) value = cldrTable(likely, `${tag.language}-${tag.script}-${tag.region}`);
+  if (value === undefined && tag.region !== undefined) value = cldrTable(likely, `${tag.language}-${tag.region}`);
+  if (value === undefined && tag.script !== undefined) value = cldrTable(likely, `${tag.language}-${tag.script}`);
+  value ??= cldrTable(likely, tag.language);
+  if (value === undefined) return tag;
+  const found = cldrParse(value);
+  return { ...tag, script: tag.script ?? found.script, region: tag.region ?? found.region };
+}
+function cldrDataId(canonical, tables = generatedLocaleData) {
+  const tag = cldrCanonicalize(cldrParse(canonical), tables);
+  const script = tag.script ?? cldrMaximize(tag, tables).script, likely = cldrTable(tables.likely, tag.language);
+  const defaultScript = likely === undefined ? undefined : cldrParse(likely).script;
+  return cldrFormat({ ...tag, script: script !== undefined && script === defaultScript ? undefined : script });
+}
+function cldrParent(id, truncate, tables = generatedLocaleData) {
+  const explicit = truncate ? undefined : cldrTable(tables.parents, id);
+  if (explicit !== undefined) return explicit === "root" ? undefined : explicit;
+  const tag = cldrParse(id);
+  if (tag.variants) return cldrFormat({ ...tag, variants: tag.variants.slice(0, tag.variants.lastIndexOf("-")) });
+  if (tag.region !== undefined) return cldrFormat({ ...tag, region: undefined });
+  if (tag.script !== undefined && truncate) return tag.language;
+  return undefined;
+}
+function cldrFindFrom(id, table, truncate, tables = generatedLocaleData) {
+  for (let depth = 0; id !== undefined && depth < 16; id = cldrParent(id, truncate, tables), depth++) if (Object.hasOwn(table, id)) return id;
+  return undefined;
+}
+// Where the data lookups of a tag start, as CldrLocales.Anchors in .NET: the first ID of its data ID's parent chain, and
+// of its truncation chain, that an embedded table or the parent table has. de-AA, de-AB, … and de share de's.
+let cldrKnownIds;
+function cldrAnchors(canonical) {
+  if (cldrKnownIds === undefined) {
+    cldrKnownIds = {};
+    for (const table of [generatedLocaleData.parents, generatedLocaleData.cardinal, generatedLocaleData.ordinal, generatedLocaleData.grouping, generatedLocaleData.numbers, generatedLocaleData.list, generatedLocaleData.relativeTime])
+      for (const id of Object.keys(table)) cldrKnownIds[id] = true;
+  }
+  const id = cldrDataId(canonical);
+  return [cldrFindFrom(id, cldrKnownIds, false), cldrFindFrom(id, cldrKnownIds, true)];
+}
+function cldrChain(id) { const result = []; for (let current = id; current !== undefined && result.length < 16; current = cldrParent(current, false)) result.push(current); return result; }
+// A language and its bare-language CLDR parent (nb, nn → no) match after every same-language candidate (1000); two
+// languages with the same parent, nb and nn, after those (2000); -1: not related.
+function cldrRelatedPenalty(first, second) {
+  const firstParent = cldrParent(first, false), secondParent = cldrParent(second, false);
+  if (firstParent === second || secondParent === first) return 1000;
+  return firstParent !== undefined && firstParent === secondParent ? 2000 : -1;
+}
+// Both sides maximized must share language and script. Equal maximized tags match best (the one nearest in the
+// desired tag's CLDR chain first), then the nearest CLDR
+// ancestor of the desired tag that a locale shares (the ancestor itself first), then a sibling region (the likely
+// region first), then a related language (cldrRelatedPenalty). The undetermined language only matches itself.
+// Ties keep the ordinal order of the declared locales.
+function cldrMatch(desired, available) {
+  if (available.includes(desired)) return desired;
+  const wanted = cldrMaximize(cldrParse(desired));
+  if (wanted.language === "und") return undefined;
+  const chain = cldrChain(cldrDataId(desired));
+  let best, bestScore = Infinity;
+  for (const locale of available) {
+    const candidate = cldrMaximize(cldrParse(locale));
+    const penalty = candidate.language === wanted.language ? 0 : cldrRelatedPenalty(wanted.language, candidate.language);
+    if (penalty < 0) continue;
+    if (candidate.script !== wanted.script) continue;
+    let score;
+    if (candidate.region === wanted.region) {
+      // Equal maximized tags: the nearest in the desired tag's CLDR chain first (en-US-posix → en-US before en).
+      const step = chain.indexOf(cldrDataId(locale));
+      score = step < 0 ? 16 : step;
+    } else {
+      // The nearest ancestor of the desired tag that the candidate shares; the ancestor itself before its other descendants.
+      score = -1; const candidateId = cldrDataId(locale), candidateChain = cldrChain(candidateId);
+      for (let step = 1; step < chain.length && score < 0; step++) {
+        if (!candidateChain.includes(chain[step])) continue;
+        const ancestor = cldrMaximize(cldrParse(chain[step]));
+        const itself = candidateId === chain[step] || (ancestor.language === candidate.language && ancestor.script === candidate.script && ancestor.region === candidate.region);
+        score = 20 + 2 * step + (itself ? 0 : 1);
+      }
+      if (score < 0) score = candidate.region === cldrMaximize({ language: wanted.language, script: wanted.script, region: undefined, variants: "" }).region ? 100 : 101;
+    }
+    score += penalty;
+    if (score < bestScore) { best = locale; bestScore = score; }
+  }
+  return best;
+}
+
+// Localized dates and times from Intl, by the rules the .NET runtime applies to platform data: a date in its CLDR
+// length with a Gregorian year of at least four digits (so short dates show the full year); a wall-clock time in the
+// short or else the medium CLDR length, which has no zone name; a date-time as its date and time in the time zone,
+// joined by a space. Intl writes Latin digits, which are then written in the locale's pinned CLDR numbering system, as
+// numbers are, and U+202F is written as a space, as V8 writes it.
+function formatTemporal(value, type, style, locale, timeZone) {
   if (style === "iso") return value;
-  const date = type === "date" ? new Date(`${value}T00:00:00Z`) : type === "time" ? new Date(`1970-01-01T${value}Z`) : new Date(value);
-  if (type === "date") return new Intl.DateTimeFormat(locale, { dateStyle: style, timeZone: "UTC" }).format(date);
-  if (type === "time") return new Intl.DateTimeFormat(locale, { timeStyle: style, timeZone: "UTC" }).format(date);
-  return new Intl.DateTimeFormat(locale, { dateStyle: style, timeStyle: style, timeZone: "UTC" }).format(date);
+  if (type === "date") return formatWallDate(Number(value.slice(0, 4)), Number(value.slice(5, 7)), Number(value.slice(8, 10)), style, locale);
+  if (type === "time") return formatWallTime(Number(value.slice(0, 2)), Number(value.slice(3, 5)), Number(value.slice(6, 8)), style, locale);
+  const wall = wallClock(new Date(value), timeZone);
+  return `${formatWallDate(wall.year, wall.month, wall.day, style, locale)} ${formatWallTime(wall.hour, wall.minute, wall.second, style, locale)}`;
 }
 
-export function formatCompiledMessage(key, wrapper, inputs, requestedLocale) {
-  const contract = messageContracts[key]; if (!contract || !wrapper) throw new RangeError(`Unknown message '${key}'.`);
-  if (!validatedMessages.has(wrapper)) throw new TypeError("A validated v5 message is required.");
-  const context = contextFor(wrapper, inputs, contract), locale = wrapper.contentLocale;
+const temporalFormatCache = new Map();
+function temporalFormat(locale, kind, style, timeZone) {
+  const cacheKey = `${locale}\u0000${kind}\u0000${style}\u0000${timeZone ?? ""}`;
+  let format = temporalFormatCache.get(cacheKey);
+  if (format) return format;
+  const options = kind === "year" ? { year: "numeric", calendar: style, timeZone: "UTC", numberingSystem: "latn" }
+    : kind === "date" ? { dateStyle: style, timeZone: "UTC", numberingSystem: "latn" }
+    : kind === "time" ? { timeStyle: style, timeZone: "UTC", numberingSystem: "latn" }
+    : { calendar: "gregory", numberingSystem: "latn", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", ...(timeZone === undefined ? {} : { timeZone }) };
+  format = new Intl.DateTimeFormat(kind === "zone" ? "en-US" : intlLocales(locale), options);
+  // Emptied when full, so that the tags callers send never leave the cache full of others.
+  if (temporalFormatCache.size >= 256) temporalFormatCache.clear();
+  temporalFormatCache.set(cacheKey, format);
+  return format;
+}
+
+// The locale, then its CLDR parents, then en-US: an engine without data for the locale (Intl data covers fewer locales
+// than CLDR) uses the nearest parent it has (ht → fr-HT) and else en-US, never the host's default locale, so server and
+// browser agree.
+function intlLocales(locale) {
+  const canonical = canonicalLocale(locale); if (canonical === null) return [locale, "en-US"];
+  return [canonical, ...cldrChain(cldrDataId(canonical)).slice(1), "en-US"];
+}
+
+function utcDate(year, month, day, hour = 0, minute = 0, second = 0) { const date = new Date(0); date.setUTCFullYear(year, month - 1, day); date.setUTCHours(hour, minute, second, 0); return date; }
+
+// A shorter year field is replaced by the full year: a Gregorian year padded to four digits, as .NET's yyyy, or the
+// full year of the locale's calendar (Thai Buddhist 2569 rather than 69).
+function formatWallDate(year, month, day, style, locale) {
+  const format = temporalFormat(locale, "date", style), calendar = format.resolvedOptions().calendar, date = utcDate(year, month, day);
+  return localizeDigits(temporalText(format.formatToParts(date).map(part => part.type !== "year" || !/^\d{1,3}$/.test(part.value) ? part.value
+    : calendar === "gregory" ? String(year).padStart(4, "0") : fullYear(locale, calendar, date, part.value)).join("")), numberFormat(locale));
+}
+function fullYear(locale, calendar, date, short) {
+  const parts = temporalFormat(locale, "year", calendar).formatToParts(date), year = parts.find(part => part.type === "year")?.value;
+  return year !== undefined && year.length > short.length && /^\d+$/.test(year) ? year : short;
+}
+
+function formatWallTime(hour, minute, second, style, locale) {
+  return localizeDigits(temporalText(temporalFormat(locale, "time", style === "short" ? "short" : "medium").format(utcDate(1970, 1, 1, hour, minute, second))), numberFormat(locale));
+}
+
+// U+202F is written as a space, as V8 writes it, and a run of one bidirectional mark (U+200E, U+200F, U+061C) once.
+function temporalText(value) { return value.replaceAll("\u202F", " ").replace(/([\u200E\u200F\u061C])\1+/g, "$1"); }
+
+// The wall-clock fields of an instant in "local", "utc" or an IANA zone. "local" is the zone the time-zone resolver
+// returns (configureTimeZoneResolver; the server entry's runWithLocale installs one for each request), else the host's
+// zone, read on every call so a changed TZ or browser zone applies at once. A zone the resolver returns that Intl does
+// not know is ignored, as resolvers read untrusted cookies and headers. An unknown timeZone option throws a RangeError
+// naming the zone, as .NET throws a TranslationFormatException, and so does a wall-clock year outside 1..9999.
+function wallClock(instant, timeZone) {
+  const zone = timeZone === "local" ? localTimeZone() : timeZone === "utc" ? "UTC" : timeZone;
+  let format;
+  try { format = temporalFormat("en-US", "zone", "", zone); }
+  catch (error) { if (error instanceof RangeError) throw new RangeError(`The time zone '${timeZone}' is not available. It is unknown to this JavaScript engine's time zone data.`); throw error; }
+  const fields = Object.create(null);
+  for (const part of format.formatToParts(instant)) if (part.type !== "literal") fields[part.type] = part.value;
+  const year = fields.era === "BC" ? 1 - Number(fields.year) : Number(fields.year);
+  if (!(year >= 1 && year <= 9999)) throw new RangeError("The date-time is outside the supported range in its time zone.");
+  return { year, month: Number(fields.month), day: Number(fields.day), hour: Number(fields.hour) % 24, minute: Number(fields.minute), second: Number(fields.second) };
+}
+
+let timeZoneResolver = null;
+export function configureTimeZoneResolver(resolver) {
+  if (typeof resolver !== "function") throw new TypeError("The time zone resolver must be a function.");
+  const previous = timeZoneResolver; timeZoneResolver = resolver;
+  return () => { if (timeZoneResolver === resolver) timeZoneResolver = previous; };
+}
+// The zone "local" means now: the resolver's zone when it names one Intl knows, else the host's (undefined when the
+// engine does not report it).
+function localTimeZone() {
+  // This catalog's resolver, else the zone of the request that runWithLocale (of any catalog) runs.
+  const resolved = timeZoneResolver === null ? requestStore()?.timeZone : timeZoneResolver();
+  if (resolved !== undefined && resolved !== null) {
+    if (resolved === "utc" || resolved === "UTC") return "UTC";
+    if (validTimeZone(resolved)) { try { temporalFormat("en-US", "zone", "", resolved); return resolved; } catch { /* Unknown: use the host's zone. */ } }
+  }
+  try { return new Intl.DateTimeFormat().resolvedOptions().timeZone ?? undefined; } catch { return undefined; }
+}
+
+function validTimeZone(value) { return typeof value === "string" && value.length > 0 && value.length <= 64 && /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+)*$/.test(value); }
+
+// A generated message function: messages holds the message's compiled text by catalog locale. The requested tag (de-CH)
+// chooses the formatting locale of numbers and dates, the catalog locale (de) the text. With overlays installed, the text is
+// the first of each chain locale's overlay text and the catalog's own text (locale-first).
+export function formatMessage(key, messages, inputs, options) {
+  const requested = options?.locale ?? getRequestedLocale(), locale = resolveLocale(requested);
+  let wrapper = messages[locale];
+  if (overlays !== null) { const found = overlays.find(key, locale, step => messages[step]?.contentLocale === step); wrapper = typeof found === "string" ? messages[found] : found; }
+  return formatCompiledMessage(key, wrapper, inputs, requested, locale);
+}
+
+// requestedLocale is the tag the caller asked for (de-CH), resolvedLocale the catalog locale it resolved to (de),
+// which defaults to the requested one; the wrapper's content locale differs from it after a fallback.
+export function formatCompiledMessage(key, wrapper, inputs, requestedLocale, resolvedLocale = requestedLocale) {
+  const data = wrapper ? messageFormatData.get(wrapper) : undefined;
+  if (data === undefined) return formatWrapper(key, wrapper, inputs, requestedLocale, resolvedLocale);
+  const previous = activeFormatData; activeFormatData = data;
+  try { return formatWrapper(key, wrapper, inputs, requestedLocale, resolvedLocale); }
+  finally { activeFormatData = previous; }
+}
+
+function formatWrapper(key, wrapper, inputs, requestedLocale, resolvedLocale) {
+  if (!wrapper) throw new RangeError(`Unknown message '${key}'.`);
+  const contract = validatedMessages.get(wrapper); if (!contract || contract.key !== key) throw new TypeError("A validated v5 message is required.");
+  const context = contextFor(wrapper, inputs, contract), locale = wrapper.contentLocale, formatLocale = formattingLocale(requestedLocale, locale);
   const selections = wrapper.ast.selectors.map(selector => {
     const resolved = context.resolve(selector.value, selector.type);
     if (!["int64", "decimal"].includes(selector.type)) return { resolved, canonical: canonicalCarrier(resolved.carrier, selector.type), category: null };
     // Exact keys and CLDR categories compare the same visible decimal.
-    const operand = selectionOperand(resolved);
-    return { resolved, canonical: visibleCanonical(operand), category: selector.function === "exact" ? null : selectPlural(operand, locale, selector.function === "ordinal") };
+    const { visible, exponent } = selectionOperand(resolved, formatLocale);
+    return { resolved, canonical: visibleCanonical(visible), category: selector.function === "exact" ? null : selectPlural(visible, locale, selector.function === "ordinal", exponent) };
   });
   let selected = null, selectedRanks = null, selectedIndex = -1;
   for (let variantIndex = 0; variantIndex < wrapper.ast.variants.length; variantIndex++) {
@@ -411,18 +1088,20 @@ export function formatCompiledMessage(key, wrapper, inputs, requestedLocale) {
     if (matches && (selectedRanks === null || compareRanks(ranks, selectedRanks) > 0)) { selected = variant; selectedRanks = ranks; selectedIndex = variantIndex; }
   }
   if (!selected) throw new RangeError("Message has no matching variant.");
-  const built = buildNodes(selected.nodes, context, locale, `v${selectedIndex}.`);
+  const built = buildNodes(selected.nodes, context, formatLocale, locale, `v${selectedIndex}.`, bidiIsolationFor(requestedLocale, resolvedLocale, locale));
+  if (typeof resolvedLocale === "string") reportFallback(key, resolvedLocale, locale);
   if (!contract.structured) { if (built.some(node => node.kind !== "text")) throw new TypeError("Structured content cannot be formatted as text."); return built.map(node => node.value).join(""); }
-  const kind = rmf2Contract.messages?.[key]?.content === "document" ? "localized-document" : "localized-content";
-  return Object.freeze({ kind, key, locale, nodes: Object.freeze(built) });
+  const kind = contract.content === "document" ? "localized-document" : "localized-content";
+  return Object.freeze({ kind, key, locale, formatLocale, nodes: Object.freeze(built) });
 }
 
-function buildNodes(nodes, context, locale, path) {
+function buildNodes(nodes, context, locale, contentLocale, path, isolation = false) {
+  const messageRtl = rightToLeftTag(contentLocale);
   const roots = [], stack = [{ children: roots }];
   for (let index = 0; index < nodes.length; index++) {
     const node = nodes[index], parent = stack.at(-1).children;
     if (node.kind === "text") parent.push({ kind: "text", value: node.value, annotations: [] });
-    else if (node.kind === "expression") parent.push({ kind: "text", value: formatResolved(context.expression(node.expression), locale), annotations: annotations(node.expression.annotations) });
+    else if (node.kind === "expression") { const value = context.expression(node.expression); parent.push({ kind: "text", value: isolate(formatResolved(value, locale, contentLocale, isolation), value, messageRtl, locale, isolation), annotations: annotations(node.expression.annotations) }); }
     else if (node.markupKind === "open") { const element = { kind: "element", name: node.name, attributes: markupOptions(node.options, context), annotations: annotations(node.annotations), closingAnnotations: [], standalone: false, occurrence: path + index, children: [] }; parent.push(element); stack.push(element); }
     else if (node.markupKind === "standalone") parent.push({ kind: "element", name: node.name, attributes: markupOptions(node.options, context), annotations: annotations(node.annotations), closingAnnotations: [], standalone: true, occurrence: path + index, children: [] });
     else { if (stack.length === 1 || stack.at(-1).name !== node.name) throw new TypeError("Unbalanced markup."); stack.at(-1).closingAnnotations = annotations(node.annotations); stack.pop(); }
@@ -437,58 +1116,292 @@ function freezeContentNode(node) { node.annotations = Object.freeze(node.annotat
 function compareRanks(left, right) { for (let index = 0; index < left.length; index++) if (left[index] !== right[index]) return left[index] - right[index]; return 0; }
 function canonicalCarrier(value, type) { if (type === "decimal") return decimalCanonical(value); if (type === "int64") return value.toString(); if (type === "boolean") return value ? "true" : "false"; return value; }
 
+// A message's contract: its key, inputs and whether it is structured, plus the content profile, slots and document
+// skeletons that validation needs. Each generated message module passes its own contract's data to the freeze functions,
+// so a bundle holds only the contracts of the messages it calls; dynamic.js carries the catalog's whole table. The
+// runtime keeps one frozen copy per data object and registers nothing by key: renderers check content against the
+// catalog's own table (structuredMessage), so no contract made at run time changes how other content renders.
+function contractOf(value) {
+  let contract = isRecord(value) ? contractCopies.get(value) : undefined; if (contract) return contract;
+  if (!isRecord(value) || typeof value.key !== "string" || value.inputs !== undefined && !Array.isArray(value.inputs)) throw new TypeError("A generated v5 message contract is required.");
+  contract = Object.freeze({ key: value.key, structured: value.structured === true, inputs: freezeTrusted(value.inputs ?? []),
+    content: value.content ?? "inline", slots: freezeTrusted(value.slots ?? {}), skeletons: freezeTrusted(value.skeletons ?? []),
+    contentLocales: value.contentLocales === undefined ? undefined : freezeTrusted(value.contentLocales) });
+  contractCopies.set(value, contract); return contract;
+}
+// The content kind and slots of each structured message, from the catalog's table above (structuredMessageTable), parsed
+// on first use. Renderers read only this, so content formatted in another process (server load data, postMessage,
+// stored content) renders without its message module, and a bundle that never renders content drops the table.
+function structuredMessage(key) {
+  structuredMessages ??= freezeTrusted(structuredMessageTable());
+  return typeof key === "string" && Object.hasOwn(structuredMessages, key) ? structuredMessages[key] : undefined;
+}
+
 // Compact generated messages. A message of text and plain input placeholders is written as its parts, text strings and
 // [inputName] for {$inputName}; these rebuild the same normalized AST, which freezeGeneratedMessage validates as before.
-export function freezeGeneratedText(key, contentLocale, text) { return freezeGeneratedPattern(key, contentLocale, text === "" ? [] : [text]); }
-export function freezeGeneratedPattern(key, contentLocale, parts) {
-  const inputs = messageContracts[key]?.inputs ?? [];
+export function freezeGeneratedText(contract, contentLocale, text) { return freezeGeneratedPattern(contract, contentLocale, text === "" ? [] : [text]); }
+export function freezeGeneratedPattern(value, contentLocale, parts) {
+  const contract = contractOf(value), key = contract.key, inputs = contract.inputs;
   const nodes = parts.map(part => {
     if (typeof part === "string") return { kind: "text", value: part };
     const input = inputs.find(item => item.name === part[0]);
     if (!input) throw new TypeError(`Invalid generated RMF2 v5 message: ${key} has no input ${part[0]}.`);
     return { kind: "expression", expression: { operand: { kind: "input", value: input.name }, valueType: input.type, options: [], annotations: [] } };
   });
-  return freezeGeneratedMessage(key, { contentLocale, ast: { astVersion: 5, profile: "rmf2-execution-v2",
+  return freezeGeneratedMessage(contract, { contentLocale, ast: { astVersion: 5, profile: "rmf2-execution-v2",
     inputs: inputs.map(item => ({ name: item.name, type: item.type })), declarations: [], selectors: [], variants: [{ keys: [], nodes }] } });
 }
 
-export function freezeGeneratedMessage(key, value) {
-  const contract = messageContracts[key]; const error = validateMessageWrapper(value, contract, null, key);
+export function freezeGeneratedMessage(data, value) {
+  const contract = contractOf(data), error = validateMessageWrapper(value, contract, null, contract.key);
   if (error) throw new TypeError(`Invalid generated RMF2 v5 message: ${error}.`);
-  const result=cloneFreeze(value);validatedMessages.add(result);return result;
+  const result=cloneFreeze(value);validatedMessages.set(result,contract);return result;
 }
 
-export function decodeLocaleArtifactV5(value) {
+// The catalog's whole contract tables come from dynamic.js, so only applications that decode artifacts carry them.
+function dynamicContract(tables, key) {
+  let contracts = dynamicContracts.get(tables); if (!contracts) dynamicContracts.set(tables, contracts = new Map());
+  let contract = contracts.get(key);
+  if (!contract) { const markup = tables.rmf2Contract.messages?.[key]; contract = contractOf({ ...markup, key, structured: tables.messageContracts[key].structured, inputs: tables.messageContracts[key].inputs, contentLocales: markup?.contentLocales ?? {} }); contracts.set(key, contract); }
+  return contract;
+}
+
+export function decodeLocaleArtifactV5(value, tables) {
+  if (!isRecord(tables?.rmf2Contract) || !isRecord(tables.messageContracts)) throw new TypeError("The catalog's contract tables are required; import decodeLocaleArtifact from dynamic.js.");
   const captured = snapshotJson(value, limits.maximumDepth, limits.maximumDocumentBytes);
   if (!captured.ok) return failure(`RTR0023/${captured.reason}`);
   const snapshot = captured.value;
-  const envelope = validateEnvelope(snapshot); if (envelope) return failure(envelope);
+  const envelope = validateEnvelope(snapshot, tables.rmf2Contract); if (envelope) return failure(envelope);
   const entries = [];
   for (const [key, message] of Object.entries(snapshot.messages)) {
-    if (!Object.hasOwn(messageContracts, key)) return failure("RTR0023/unknown-key");
-    const error = validateMessageWrapper(message, messageContracts[key], snapshot.locale, key); if (error) return failure(`RTR0023/${error}`);
-    validatedMessages.add(message); entries.push([key,message]);
+    if (!Object.hasOwn(tables.messageContracts, key)) return failure("RTR0023/unknown-key");
+    const contract = dynamicContract(tables, key);
+    const error = validateMessageWrapper(message, contract, snapshot.locale, key); if (error) return failure(`RTR0023/${error}`);
+    validatedMessages.set(message, contract); entries.push([key,message]);
   }
-  const artifact=Object.freeze({ artifactVersion: 5, messageGrammarVersion: 5, profile, catalog, locale: snapshot.locale, contractFingerprint, messages: freezeOwnRecord(entries), markupContract: rmf2Contract });decodedArtifacts.add(artifact);
+  // formatData: the CLDR data of the artifact's messages: number records when they format numbers, and currency, unit and
+  // compact data when they use those functions.
+  const formats = artifactFormatData(snapshot); if (formats === null) return failure("RTR0023/malformed");
+  const artifact=Object.freeze({ artifactVersion: 5, messageGrammarVersion: 5, profile, catalog, locale: snapshot.locale, contractFingerprint, messages: freezeOwnRecord(entries), markupContract: tables.rmf2Contract,
+    ...(formats === undefined ? {} : { formatData: formats }) });decodedArtifacts.add(artifact);
+  if (formats !== undefined) for (const message of Object.values(artifact.messages)) messageFormatData.set(message, formats);
   return Object.freeze({ ok: true, value: artifact });
 }
 
-export async function decodeLocalePackV5(content, expectedLocale, integrityVerifier) {
+export async function decodeLocalePackV5(content, expectedLocale, integrityVerifier, tables) {
+  if (!isRecord(tables?.rmf2Contract) || !isRecord(tables.messageContracts)) throw new TypeError("The catalog's contract tables are required; import decodeLocalePack from dynamic.js.");
+  const read = await readLocalePack(content, integrityVerifier); if (!read.ok) return read;
+  const result = decodeLocaleArtifactV5(read.value, tables); if (!result.ok) return result;
+  return result.value.locale === expectedLocale ? result : failure("RTR0023/locale-mismatch");
+}
+
+// Untrusted pack bytes to a JSON value: size, the integrity callback on its own copy, depth, UTF-8 and duplicate members.
+async function readLocalePack(content, integrityVerifier) {
   if (!(content instanceof Uint8Array) || content.byteLength === 0) return failure("RTR0023/malformed");
   if (content.byteLength > limits.maximumDocumentBytes) return failure("RTR0023/limit-exceeded");
   const snapshot = new Uint8Array(content);
   if (integrityVerifier) { try { if (!await integrityVerifier(new Uint8Array(snapshot))) return failure("RTR0023/integrity-rejected"); } catch { return failure("RTR0023/integrity-rejected"); } }
   if (!withinJsonDepth(snapshot, limits.maximumDepth)) return failure("RTR0023/limit-exceeded");
-  let value; try { const text = new TextDecoder("utf-8", { fatal: true }).decode(snapshot); if (hasDuplicateJsonProperties(text)) return failure("RTR0023/malformed"); value = JSON.parse(text); } catch { return failure("RTR0023/malformed"); }
-  const result = decodeLocaleArtifactV5(value); if (!result.ok) return result;
-  return result.value.locale === expectedLocale ? result : failure("RTR0023/locale-mismatch");
+  try { const text = new TextDecoder("utf-8", { fatal: true }).decode(snapshot); if (hasDuplicateJsonProperties(text)) return failure("RTR0023/malformed"); return success(JSON.parse(text)); } catch { return failure("RTR0023/malformed"); }
 }
 
 export function formatDynamicMessageV5(artifact, key, inputs = Object.create(null), options) {
   if (!artifact || !decodedArtifacts.has(artifact)) throw new TypeError("A validated v5 locale artifact is required.");
   if (!Object.hasOwn(artifact.messages, key)) throw new RangeError(`Locale artifact has no message '${key}'.`);
-  const requested = resolveLocale(options?.locale ?? artifact.locale); if (requested !== artifact.locale) throw new RangeError("A dynamic locale artifact can only format its own locale.");
-  return formatCompiledMessage(key, artifact.messages[key], inputs, requested);
+  const requested = options?.locale === undefined ? artifact.locale : requestedTag(options.locale);
+  if (resolveLocale(requested) !== artifact.locale) throw new RangeError("A dynamic locale artifact can only format its own locale.");
+  return formatCompiledMessage(key, artifact.messages[key], inputs, requested, artifact.locale);
+}
+
+// Overlays: application-owned messages for this catalog, such as an application's text for a library's keys, a locale the
+// library lacks, or a pack downloaded at run time (dynamic.js installOverlay and installLocalePack). As in .NET's
+// TranslationOverlay, an artifact is checked key by key against the catalog's contract and not by its fingerprint, so a pack
+// built for another release of the catalog keeps the keys both releases share. A key the catalog no longer has, or whose
+// inputs, content kind or markup differ, is skipped with a diagnostic and the catalog's text applies. Precedence is .NET's
+// OverlayTranslationProvider's, with each install as one overlay: for each locale of the requested locale's chain, the
+// installs in installation order (the first that has the key wins), then the catalog, and only then the next locale. An
+// install's fallback copies (messages whose content locale is not its locale) count at their content locale, only for a
+// locale an overlay adds and only from an install whose locale is on the chain. A locale the catalog lacks is added; it falls
+// back to the locale its install names, else to its nearest CLDR parent that the catalog declares or an overlay adds, else
+// to the catalog locale CLDR likely subtags match, else to the base locale, and from the first catalog locale on the
+// catalog's chain applies.
+function overlayState(tables) {
+  if (overlays !== null) return overlays;
+  const entries = [], listeners = new Set(), cache = new Map(), added = new Map(), fallbacks = tables.localeFallbacks;
+  // The requested locale, its added parents and the catalog locale they fall back to, then the catalog's chain.
+  const chain = locale => {
+    const steps = []; let current = locale;
+    while (added.has(current)) { steps.push(current); current = added.get(current); if (steps.includes(current)) { current = baseLocale; break; } }
+    for (; typeof current === "string" && !steps.includes(current); current = Object.hasOwn(fallbacks, current) ? fallbacks[current] : null) steps.push(current);
+    return steps;
+  };
+  overlays = {
+    entries, listeners, added,
+    // The catalog's locales and the added ones, in ordinal order.
+    supported: locales,
+    // The overlay message for key at locale, or the catalog locale whose own text applies; owns(step) tells whether the
+    // catalog has its own text for the key at a catalog locale.
+    find(key, locale, owns) {
+      const id = locale + "\u0000" + key; if (cache.has(id)) return cache.get(id);
+      const steps = chain(locale); let found = baseLocale;
+      search: for (const step of steps) {
+        const declared = localeSet.has(step);
+        for (const entry of entries) {
+          const message = entry.locale === step ? entry.own.get(key) : declared || !steps.includes(entry.locale) ? undefined : entry.copies.get(step)?.get(key);
+          if (message !== undefined) { found = message; break search; }
+        }
+        if (declared && owns(step)) { found = step; break; }
+      }
+      cache.set(id, found); return found;
+    },
+    changed() {
+      added.clear(); cache.clear();
+      // The first explicit fallback of an added locale applies; installs that name none accept it.
+      const explicit = new Map();
+      for (const entry of entries) if (!localeSet.has(entry.locale) && (explicit.get(entry.locale) ?? null) === null) explicit.set(entry.locale, entry.fallback);
+      const supported = this.supported = Object.freeze([...locales, ...explicit.keys()].sort((left, right) => left < right ? -1 : left > right ? 1 : 0));
+      for (const [locale, fallback] of explicit)
+        added.set(locale, fallback ?? nearestParent(locale, supported) ?? matchLocale(locale, locales) ?? baseLocale);
+      for (const listener of [...listeners]) { try { listener(); } catch { /* The overlays are installed. */ } }
+    },
+  };
+  return overlays;
+}
+
+// The nearest parent of a canonical tag among candidates (canonical tags in ordinal order): the nearest of its CLDR parent
+// locales (es-419 for es-MX, de for de-CH), else the nearest truncation with its likely script. Every result is a strict
+// ancestor, so a chain of nearest parents ends. LocaleRequestResolver.NearestParent in .NET.
+function nearestParent(canonical, candidates) {
+  const steps = cldrChain(cldrDataId(canonical)); let best, bestStep = Infinity;
+  for (const candidate of candidates) {
+    if (candidate === canonical) continue;
+    const step = steps.indexOf(cldrDataId(candidate), 1);
+    if (step > 0 && step < bestStep) { best = candidate; bestStep = step; }
+  }
+  return best ?? truncateLocale(canonical, candidates);
+}
+
+export function installOverlayV5(value, tables, options) {
+  if (!isRecord(tables?.rmf2Contract) || !isRecord(tables.messageContracts) || !isRecord(tables.localeFallbacks)) throw new TypeError("The catalog's contract tables are required; import installOverlay from dynamic.js.");
+  if (options !== undefined && !isRecord(options)) throw new TypeError("Overlay options must be an object.");
+  const fallback = options?.fallbackLocale ?? null;
+  if (fallback !== null && (typeof fallback !== "string" || !localeSet.has(fallback))) throw new RangeError(`An added locale must fall back to a locale the catalog declares, not '${fallback}'.`);
+  const captured = snapshotJson(value, limits.maximumDepth, limits.maximumDocumentBytes);
+  if (!captured.ok) return failure(`RTR0023/${captured.reason}`);
+  const snapshot = captured.value, envelope = validateOverlayEnvelope(snapshot); if (envelope) return failure(envelope);
+  // formatData: the CLDR data of the overlay's messages (number records, currency, unit and compact data).
+  const formats = artifactFormatData(snapshot); if (formats === null) return failure("RTR0023/malformed");
+  const locale = snapshot.locale, declared = localeSet.has(locale);
+  if (!declared && fallback === locale) throw new RangeError("A locale cannot fall back to itself.");
+  const state = overlayState(tables);
+  // A locale the catalog declares keeps the catalog's chain, so a library release that adds the locale keeps the overlay working.
+  if (!declared && fallback !== null) for (const entry of state.entries)
+    if (entry.locale === locale && entry.fallback !== null && entry.fallback !== fallback) throw new RangeError(`Locale '${locale}' is already added with fallback '${entry.fallback}'.`);
+  const own = new Map(), copies = new Map(), diagnostics = [], markup = snapshot.markupContract.messages;
+  for (const key of Object.keys(snapshot.messages)) {
+    const message = snapshot.messages[key];
+    if (!isRecord(message) || typeof message.contentLocale !== "string" || canonicalLocale(message.contentLocale) !== message.contentLocale || !isRecord(message.ast)) return failure("RTR0023/malformed-pattern");
+    // The artifact's own contract states each message's content locale and kind.
+    const linked = isRecord(markup) && Object.hasOwn(markup, key) && isRecord(markup[key]) ? markup[key] : undefined;
+    if (!linked || !isRecord(linked.contentLocales) || linked.contentLocales[locale] !== message.contentLocale) return failure("RTR0023/argument-contract-mismatch");
+    const copy = message.contentLocale !== locale;
+    // A fallback copy (a build with relaxed completeness) is not application text for a locale the catalog declares.
+    if (copy && localeSet.has(message.contentLocale)) continue;
+    const report = reason => { diagnostics.push(Object.freeze({ catalog, locale: message.contentLocale, key, reason })); };
+    if (!Object.hasOwn(tables.messageContracts, key)) { report("unknown-key"); continue; }
+    const contract = dynamicContract(tables, key), inputs = orderedInputs(message.ast.inputs, contract.inputs);
+    if (inputs === null) { report("incompatible-inputs"); continue; }
+    if ((linked.content ?? "inline") !== contract.content) { report("content-kind-changed"); continue; }
+    const wrapper = { contentLocale: message.contentLocale, ast: { ...message.ast, inputs } };
+    const error = validateMessageWrapper(wrapper, contract, null, key, tag => tag === message.contentLocale);
+    if (error === "argument-contract-mismatch" || error === "document-structure-mismatch") { report("incompatible-markup"); continue; }
+    // A function or option this catalog was built without (:currency, :unit, compact notation).
+    if (error === "unsupported-function") { report("unsupported-function"); continue; }
+    if (error) return failure(`RTR0023/${error}`);
+    // Generated functions format a message without markup as a string, so an overlay cannot add markup to it.
+    if (!contract.structured && wrapper.ast.variants.some(variant => variant.nodes.some(node => node.kind === "markup"))) { report("incompatible-markup"); continue; }
+    // This runtime embeds the plural, list, relative-time and number data of the catalog's languages only; the overlay's
+    // formatData brings the number records of its own.
+    if (!localeSet.has(message.contentLocale) && !hasLocaleData(message.contentLocale, wrapper.ast, formats)) { report("unsupported-locale-data"); continue; }
+    const result = cloneFreeze(wrapper); validatedMessages.set(result, contract);
+    if (formats !== undefined) messageFormatData.set(result, formats);
+    if (!copy) own.set(key, result);
+    else { let table = copies.get(message.contentLocale); if (!table) copies.set(message.contentLocale, table = new Map()); table.set(key, result); }
+  }
+  const entry = Object.freeze({ locale, fallback: declared ? null : fallback, own, copies });
+  state.entries.push(entry); state.changed();
+  let installed = true;
+  const remove = () => { if (!installed) return; installed = false; state.entries.splice(state.entries.indexOf(entry), 1); state.changed(); };
+  return success(Object.freeze({ catalog, locale, contractFingerprint: snapshot.contractFingerprint, messages: own.size, diagnostics: Object.freeze(diagnostics), remove }));
+}
+
+export async function installLocalePackV5(content, tables, options) {
+  if (options !== undefined && !isRecord(options)) throw new TypeError("Pack options must be an object.");
+  const { locale, integrityVerifier, fallbackLocale } = options ?? {};
+  // The locale the pack was requested for, as decodeLocalePack's expected locale: a pack from a misrouted or replaced URL
+  // can then neither replace another locale's text nor add a locale.
+  if (typeof locale !== "string" || canonicalLocale(locale) !== locale) throw new TypeError("installLocalePack needs options.locale, the canonical locale the pack was requested for.");
+  if (integrityVerifier !== undefined && typeof integrityVerifier !== "function") throw new TypeError("The integrity verifier must be a function.");
+  const read = await readLocalePack(content, integrityVerifier); if (!read.ok) return read;
+  if (!isRecord(read.value) || read.value.locale !== locale) return failure("RTR0023/locale-mismatch");
+  return installOverlayV5(read.value, tables, fallbackLocale === undefined ? undefined : { fallbackLocale });
+}
+
+export function onOverlayChangeV5(listener, tables) {
+  if (typeof listener !== "function") throw new TypeError("An overlay listener must be a function.");
+  const state = overlayState(tables), entry = () => listener(); state.listeners.add(entry);
+  return () => { state.listeners.delete(entry); };
+}
+
+// A locale artifact v5 of this catalog from any release: the fingerprint is read, not compared, and the locale may be one
+// the catalog lacks. Its markup contract must be version 2; each message is checked against this catalog's contract.
+function validateOverlayEnvelope(value) {
+  const members = ["artifactVersion","messageGrammarVersion","profile","catalog","locale","contractFingerprint","messages","markupContract"];
+  if (!isRecord(value)) return "RTR0023/malformed";
+  if (Object.keys(value).some(name => !members.includes(name) && name !== "formatData")) return "RTR0023/unknown-member";
+  if (!members.every(name => Object.hasOwn(value, name))) return "RTR0023/malformed";
+  if (value.artifactVersion !== 5) return "RTR0023/artifact-version-mismatch";
+  if (value.messageGrammarVersion !== 5 || value.profile !== profile) return "RTR0023/message-grammar-version-mismatch";
+  if (!isRecord(value.markupContract) || value.markupContract.version !== 2) return "RTR0023/markup-contract-version-mismatch";
+  if (value.catalog !== catalog) return "RTR0023/catalog-mismatch";
+  if (typeof value.contractFingerprint !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value.contractFingerprint)) return "RTR0023/malformed";
+  if (typeof value.locale !== "string" || canonicalLocale(value.locale) !== value.locale) return "RTR0023/locale-mismatch";
+  if (!isRecord(value.messages)) return "RTR0023/malformed"; if (Object.keys(value.messages).length > limits.maximumMessages) return "RTR0023/limit-exceeded";
+  return null;
+}
+
+// The message's inputs in the contract's order, or null when their names or types differ from the contract's.
+function orderedInputs(inputs, expected) {
+  if (!Array.isArray(inputs) || inputs.length !== expected.length) return null;
+  const ordered = [];
+  for (const input of expected) { const match = inputs.find(item => isRecord(item) && item.name === input.name); if (!match || match.type !== input.type) return null; ordered.push(match); }
+  return ordered;
+}
+
+// Whether this runtime has the CLDR data a message needs in a locale the catalog does not declare, found as formatting
+// finds it (cldrLocale: the locale's CLDR data ID, its parents and likely subtags), so an added de-AT uses the embedded de
+// rules and an added pt-PT its own rules when they differ from pt's.
+// Numbers, dates and times need the language's number records (the catalog's or the overlay's formatData), and currency
+// names, units and compact numbers its plural rules.
+function hasLocaleData(locale, ast, formats) {
+  const functions = new Set();
+  let numbers = false, categories = false;
+  const collect = expression => {
+    if (!isRecord(expression)) return;
+    const fn = typeof expression.function === "string" ? expression.function : defaultFunction(expression.valueType);
+    const option = name => expression.options.find(item => item.name === name)?.value, literal = (name, value) => { const found = option(name); return found !== undefined && (found.kind !== "string-literal" || found.value === value); };
+    functions.add(fn);
+    numbers ||= ["integer", "number", "currency", "unit", "runic:relative-time", "date", "time", "datetime"].includes(fn);
+    categories ||= fn === "unit" || (fn === "currency" && literal("currencyDisplay", "name")) || (fn === "number" && literal("runic:notation", "compact"));
+  };
+  for (const declaration of ast.declarations) collect(declaration.expression);
+  for (const variant of ast.variants) for (const node of variant.nodes) if (node.kind === "expression") collect(node.expression);
+  const data = cldrLocale(locale);
+  if (numbers && data.numbers === undefined && (formats?.numbers === undefined || artifactNumberFormat(locale, formats.numbers) === undefined)) return false;
+  const plural = ast.selectors.some(selector => selector.function !== "exact") || functions.has("runic:relative-time") || categories;
+  if (plural && data.cardinal < 0) return false;
+  if (functions.has("runic:relative-time") && data.relativeTime === undefined) return false;
+  return !functions.has("runic:list") || data.list !== undefined;
 }
 
 export function decodeWireValue(value, type) {
@@ -497,14 +1410,16 @@ export function decodeWireValue(value, type) {
     if (type === "int64") { if (typeof value !== "string" || !/^-?(?:0|[1-9][0-9]*)$/.test(value)) return failure(); const parsed = BigInt(value); if (parsed < minimumInt64 || parsed > maximumInt64) return failure(); return success(parsed); }
     if (type === "boolean") return typeof value === "boolean" ? success(value) : failure();
     if (typeof value !== "string" || value.length > 16384) return failure();
+    // The transport form of a date-time stays exactly UTC yyyy-MM-ddTHH:mm:ssZ; callers' wider inputs do not apply.
+    if (type === "datetime") return validDateTime(value) ? success(value) : failure();
     return success(coerceInput(value, type, "wire"));
   } catch { return failure(); }
 }
 
-function validateEnvelope(value) {
+function validateEnvelope(value, rmf2Contract) {
   const members=["artifactVersion","messageGrammarVersion","profile","catalog","locale","contractFingerprint","messages","markupContract"];
   if (!isRecord(value)) return "RTR0023/malformed";
-  if (Object.keys(value).some(name=>!members.includes(name))) return "RTR0023/unknown-member";
+  if (Object.keys(value).some(name=>!members.includes(name)&&name!=="formatData")) return "RTR0023/unknown-member";
   if (!members.every(name=>Object.hasOwn(value,name))) return "RTR0023/malformed";
   if (value.artifactVersion !== 5) return "RTR0023/artifact-version-mismatch";
   if (value.messageGrammarVersion !== 5 || value.profile !== profile) return "RTR0023/message-grammar-version-mismatch";
@@ -516,12 +1431,13 @@ function validateEnvelope(value) {
   return null;
 }
 
-function validateMessageWrapper(wrapper, contract, artifactLocale, key) {
+// accepts tests the content locale; by default it must be one of the catalog's locales.
+function validateMessageWrapper(wrapper, contract, artifactLocale, key, accepts = null) {
   if (!contract || !isRecord(wrapper)) return "malformed-pattern";
   const wrapperMembers=["contentLocale","ast"];
   if (Object.keys(wrapper).some(name=>!wrapperMembers.includes(name))) return "unknown-member";
-  if (!wrapperMembers.every(name=>Object.hasOwn(wrapper,name)) || typeof wrapper.contentLocale !== "string" || !localeSet.has(wrapper.contentLocale)) return "malformed-pattern";
-  if (artifactLocale !== null && rmf2Contract.messages?.[key]?.contentLocales?.[artifactLocale] !== wrapper.contentLocale) return "argument-contract-mismatch";
+  if (!wrapperMembers.every(name=>Object.hasOwn(wrapper,name)) || typeof wrapper.contentLocale !== "string" || !(accepts === null ? localeSet.has(wrapper.contentLocale) : accepts(wrapper.contentLocale))) return "malformed-pattern";
+  if (artifactLocale !== null && contract.contentLocales?.[artifactLocale] !== wrapper.contentLocale) return "argument-contract-mismatch";
   const ast = wrapper.ast, astMembers=["astVersion","profile","inputs","declarations","selectors","variants"];
   if (!isRecord(ast)) return "malformed-pattern";
   if (Object.keys(ast).some(name=>!astMembers.includes(name))) return "unknown-member";
@@ -560,7 +1476,7 @@ function validateMessageWrapper(wrapper, contract, artifactLocale, key) {
     const vector = []; let all = true;
     for (let index = 0; index < variant.keys.length; index++) { const validated = validateKey(variant.keys[index], ast.selectors[index]); if (validated.error) return validated.error; vector.push(validated.value); all &&= validated.value === "*"; }
     const encoded = JSON.stringify(vector); if (vectors.has(encoded)) return "malformed-pattern"; vectors.add(encoded); fallback ||= all;
-    const stack = [], slotCounts = Object.create(null), slotRequirements = rmf2Contract.messages?.[key]?.slots ?? Object.create(null); let totalNodes = 0, textBytes = 0;
+    const stack = [], slotCounts = Object.create(null), slotRequirements = contract.slots; let totalNodes = 0, textBytes = 0;
     for (const node of variant.nodes) {
       if (++totalNodes > 4096) return "limit-exceeded";
       if (!isRecord(node) || typeof node.kind !== "string") return "malformed-pattern";
@@ -569,7 +1485,7 @@ function validateMessageWrapper(wrapper, contract, artifactLocale, key) {
       else if (node.kind === "markup") {
         const memberError=closedMemberError(node,["kind","name","markupKind","options","annotations"]);if(memberError)return memberError==="unknown-member"?memberError:"argument-contract-mismatch";
         const annotationError=validateAnnotations(node.annotations,"argument-contract-mismatch");if(annotationError)return annotationError;
-        if (!validName(node.name,true) || !["open","close","standalone"].includes(node.markupKind) || !Object.hasOwn(rmf2Contract.contracts,node.name)) return "argument-contract-mismatch";
+        if (!validName(node.name,true) || !["open","close","standalone"].includes(node.markupKind) || !Object.hasOwn(markupContracts,node.name)) return "argument-contract-mismatch";
         const markupError = validateMarkupNode(node,symbols,slotRequirements,slotCounts,stack); if (markupError) return markupError;
         if (node.markupKind === "open") { stack.push(node.name); if (stack.length > 16) return "limit-exceeded"; } else if (node.markupKind === "close" && stack.pop() !== node.name) return "malformed-pattern";
       }
@@ -579,8 +1495,8 @@ function validateMessageWrapper(wrapper, contract, artifactLocale, key) {
     for (const [slot,bounds] of Object.entries(slotRequirements)) if ((slotCounts[slot] ?? 0) < bounds.min || (slotCounts[slot] ?? 0) > bounds.max) return "argument-contract-mismatch";
     // Document profile v1: block rules and leaf invariants are malformed patterns; a skeleton
     // outside the locked source skeletons is a structure mismatch. Inline messages stay inline.
-    if (rmf2Contract.messages?.[key]?.content === "document") { const skeleton = documentSkeleton(variant.nodes); if (skeleton === null) return "malformed-pattern"; if (!rmf2Contract.messages[key].skeletons.includes(skeleton)) return "document-structure-mismatch"; }
-    else if (variant.nodes.some(node => node.kind === "markup" && rmf2Contract.contracts[node.name].placement !== "inline")) return "malformed-pattern";
+    if (contract.content === "document") { const skeleton = documentSkeleton(variant.nodes); if (skeleton === null) return "malformed-pattern"; if (!contract.skeletons.includes(skeleton)) return "document-structure-mismatch"; }
+    else if (variant.nodes.some(node => node.kind === "markup" && markupContracts[node.name].placement !== "inline")) return "malformed-pattern";
   }
   return fallback ? null : "malformed-pattern";
 }
@@ -590,7 +1506,7 @@ function validateMessageWrapper(wrapper, contract, artifactLocale, key) {
 function documentSkeleton(nodes) {
   const frames = [{ model: "root", first: true }]; let encoded = "", leaf = [];
   for (const node of nodes) {
-    const frame = frames.at(-1), contract = node.kind === "markup" ? rmf2Contract.contracts[node.name] : null;
+    const frame = frames.at(-1), contract = node.kind === "markup" ? markupContracts[node.name] : null;
     if (frame.model === "root" || frame.model === "list") {
       if (!contract) return null;
       if (node.markupKind === "close") { frames.pop(); if (frame.model === "list") encoded += ")"; continue; }
@@ -623,7 +1539,8 @@ function validateExpression(expression, symbols, references) {
   if (["input","local"].includes(expression.operand.kind)) { if (!Object.hasOwn(symbols,expression.operand.value) || symbols[expression.operand.value].type !== expression.valueType) return "argument-contract-mismatch"; }
   else { try { literal(expression.operand, expression.valueType); } catch { return "malformed-pattern"; } }
   if (expression.function === undefined) return expression.options.length === 0 ? null : "malformed-pattern";
-  const accepted = functionType(expression.function); if (!accepted || !(accepted === expression.valueType || (expression.valueType === "int64" && accepted === "decimal"))) return "argument-contract-mismatch";
+  const accepted = functionType(expression.function); if (!accepted && formatterFeature(expression.function)) return "unsupported-function";
+  if (!accepted || !(accepted === expression.valueType || (expression.valueType === "int64" && accepted === "decimal"))) return "argument-contract-mismatch";
   const optionError=validateOptions(expression.options,symbols,expression.function);if(optionError)return optionError;
   if (references) for (const option of expression.options) referenceValue(option.value,references);
   return null;
@@ -631,16 +1548,16 @@ function validateExpression(expression, symbols, references) {
 
 function validateOptions(options, symbols, fn) {
   if (!Array.isArray(options) || options.length > 256) return "argument-contract-mismatch"; const names = new Set(), staticEntries=[]; let dynamic=false;
-  for (const option of options) { const memberError=closedMemberError(option,["name","value"]);if(memberError)return memberError==="unknown-member"?memberError:"argument-contract-mismatch";const valueError=validateValue(option.value);if(valueError)return ["unknown-member","malformed"].includes(valueError)?valueError:"argument-contract-mismatch";if(!validName(option.name)||names.has(option.name))return "argument-contract-mismatch";names.add(option.name); if (fn) { const type = optionType(fn,option.name); if (!type) return "argument-contract-mismatch"; if (["input","local"].includes(option.value.kind)) { if (option.name === "select" || !Object.hasOwn(symbols,option.value.value) || symbols[option.value.value].type !== type || !symbols[option.value.value].explicitDependencies) return "argument-contract-mismatch"; dynamic=true; } else { try { staticEntries.push([option.name,literal(option.value,type)]); } catch { return "argument-contract-mismatch"; } } } }
-  if(fn){try{const resolved=freezeOwnRecord(staticEntries);validateResolvedOptions(fn,resolved);if(dynamic&&fn==="number"){const style=resolved.style,min=resolved.minimumFractionDigits??0n,max=resolved.maximumFractionDigits;if(style==="percent"&&min>4n||max!==undefined&&min>max)return "argument-contract-mismatch";}}catch{return "argument-contract-mismatch";}}
+  for (const option of options) { const memberError=closedMemberError(option,["name","value"]);if(memberError)return memberError==="unknown-member"?memberError:"argument-contract-mismatch";const valueError=validateValue(option.value);if(valueError)return ["unknown-member","malformed"].includes(valueError)?valueError:"argument-contract-mismatch";if(!validName(option.name,true)||names.has(option.name))return "argument-contract-mismatch";names.add(option.name); if (fn) { const type = optionType(fn,option.name); if (!type) return formatterFeature(fn,option.name) ? "unsupported-function" : "argument-contract-mismatch"; if (["input","local"].includes(option.value.kind)) { if (option.name === "select" || option.name === "u:dir" || !Object.hasOwn(symbols,option.value.value) || symbols[option.value.value].type !== type || !symbols[option.value.value].explicitDependencies) return "argument-contract-mismatch"; dynamic=true; } else { try { staticEntries.push([option.name,literal(option.value,type)]); } catch { return "argument-contract-mismatch"; } } } }
+  if(fn){try{const resolved=freezeOwnRecord(staticEntries);validateResolvedOptions(fn,resolved);if(dynamic&&(fn==="number")){const style=resolved.style,min=resolved.minimumFractionDigits??0n,max=resolved.maximumFractionDigits;if(style==="percent"&&min>4n||max!==undefined&&min>max)return "argument-contract-mismatch";}}catch{return "argument-contract-mismatch";}}
   return null;
 }
 function validateMarkupNode(node,symbols,requirements,counts,stack) {
-  const contract=rmf2Contract.contracts[node.name],functional=["runic:link","runic:action","runic:icon"].includes(node.name);
+  const contract=markupContracts[node.name],functional=["runic:link","runic:action","runic:icon"].includes(node.name);
   if(!Array.isArray(node.options))return "argument-contract-mismatch";
   if(node.markupKind==="close") return node.options.length===0?null:"argument-contract-mismatch";
   if((contract.kind==="standalone")!==(node.markupKind==="standalone"))return "argument-contract-mismatch";
-  if(contract.interactive&&stack.some(name=>rmf2Contract.contracts[name]?.interactive))return "argument-contract-mismatch";
+  if(contract.interactive&&stack.some(name=>markupContracts[name]?.interactive))return "argument-contract-mismatch";
   if(node.options.length>256)return "limit-exceeded";
   const values=Object.create(null);
   for(const option of node.options){const memberError=closedMemberError(option,["name","value"]);if(memberError)return memberError==="unknown-member"?memberError:"argument-contract-mismatch";const valueError=validateValue(option.value);if(valueError)return ["unknown-member","malformed"].includes(valueError)?valueError:"argument-contract-mismatch";if(!validName(option.name)||Object.hasOwn(values,option.name))return "argument-contract-mismatch";values[option.name]=option.value;}
@@ -667,8 +1584,10 @@ function validName(value, qualified = false) {
 function validDate(value) { if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000-")) return false; const date = new Date(`${value}T00:00:00Z`); return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0,10) === value; }
 function validTime(value) { if (!/^\d{2}:\d{2}:\d{2}$/.test(value)) return false; return Number(value.slice(0,2)) < 24 && Number(value.slice(3,5)) < 60 && Number(value.slice(6,8)) < 60; }
 function validDateTime(value) { if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value) || value.startsWith("0000-")) return false; const date = new Date(value); return !Number.isNaN(date.valueOf()) && date.toISOString().replace(".000Z","Z") === value; }
+// POSIX-style tags such as de_DE name the same locale as de-DE.
 function canonicalLocale(value) {
-  if (typeof value!=="string"||!value||value.startsWith("-")||value.endsWith("-")) return null;
+  if (typeof value!=="string") return null; value=value.replaceAll("_","-");
+  if (!value||value.startsWith("-")||value.endsWith("-")) return null;
   const parts=value.split("-");
   if(parts[0].length<2||parts[0].length>8||!/^[A-Za-z]+$/.test(parts[0])) return null;
   const result=[parts[0].toLowerCase()]; let index=1;
@@ -772,7 +1691,7 @@ function createRendererCore(factory, bindings = [], allowUnboundCustom = false, 
   const custom = new Map();
   for (const binding of bindings) {
     if (!isRecord(binding) || !isRecord(binding.contract) || typeof binding.render !== "function") throw new TypeError("Invalid markup renderer binding.");
-    const suppliedContract = binding.contract, declared = rmf2Contract.contracts[suppliedContract.name];
+    const suppliedContract = binding.contract, declared = markupContracts[suppliedContract.name];
     if (!declared || suppliedContract.name.startsWith("runic:") || custom.has(suppliedContract.name) || declared.kind !== suppliedContract.kind || declared.placement !== (suppliedContract.placement ?? "inline") || declared.children !== suppliedContract.children || declared.plainText !== suppliedContract.plainText || declared.interactive !== suppliedContract.interactive) throw new TypeError("Incompatible or duplicate renderer contract.");
     const suppliedOptions = suppliedContract.options ?? Object.create(null);
     if (!isRecord(suppliedOptions) || Object.keys(declared.options).length !== Object.keys(suppliedOptions).length || Object.entries(declared.options).some(([name,schema]) => {
@@ -782,18 +1701,18 @@ function createRendererCore(factory, bindings = [], allowUnboundCustom = false, 
     custom.set(suppliedContract.name,binding.render);
   }
   function render(content,{slots=Object.create(null)}={}) {
-    const requirements=rmf2Contract.messages[content?.key]?.slots;if(!isRecord(content)||!["localized-content","localized-document"].includes(content.kind)||!requirements||!isRecord(slots))throw new TypeError("Unknown RMF2 content contract.");
-    const document=rmf2Contract.messages[content.key].content==="document";
+    const messageContract=isRecord(content)?structuredMessage(content.key):undefined,requirements=messageContract?.slots;if(!isRecord(content)||!["localized-content","localized-document"].includes(content.kind)||!requirements||!isRecord(slots))throw new TypeError("Unknown RMF2 content contract.");
+    const document=messageContract.content==="document";
     if(document!==(content.kind==="localized-document"))throw new TypeError("Unknown RMF2 content contract.");
     if(document!==documents)throw new TypeError(document?`'${content.key}' is a document message; render it with createDocumentRenderer.`:`'${content.key}' is an inline message; render it with createInlineRenderer.`);
     const validatedSlots=Object.create(null);for (const [reference,requirement] of Object.entries(requirements)) validatedSlots[reference]=validateSlotBinding(reference,requirement.kind,slots[reference]);
     const counts=Object.create(null);let count=0;
     function checkOptions(node,contract){let binding;for(const[name,value]of Object.entries(node.attributes)){if(name==="ref"&&["runic:link","runic:action","runic:icon"].includes(node.name)){binding=validatedSlots[value];if(requirements[value]?.kind!==node.name||!binding)throw new TypeError(`Invalid slot '${value}'.`);counts[value]=(counts[value]??0)+1;}else if(!contract.options[name]||!renderOption(contract.options[name],value))throw new TypeError(`Invalid option '${name}'.`);}if(["runic:link","runic:action","runic:icon"].includes(node.name)&&!binding)throw new TypeError("Missing functional slot ref.");for(const name of Object.keys(contract.options))if(!Object.hasOwn(node.attributes,name))throw new TypeError(`Missing option '${name}'.`);return binding;}
     // In documents an inline element's occurrence is <blockPath>/<index path>; inline messages keep <key>:<node occurrence>.
-    function visit(nodes,interactive=false,depth=0,prefix=null){if(depth>16)throw new RangeError("Inline nesting exceeds 16 levels.");return nodes.map((node,index)=>{if(++count>4096)throw new RangeError("Inline node limit exceeded.");if(node.kind==="text")return node;const contract=rmf2Contract.contracts[node.name];if(node.kind!=="element"||!contract||contract.placement!=="inline"||(contract.kind==="standalone")!==node.standalone||interactive&&contract.interactive)throw new TypeError("Unknown or invalid inline markup.");const binding=checkOptions(node,contract);const occurrence=prefix===null?`${content.key}:${node.occurrence}`:prefix+index;const element={name:node.name,children:visit(node.children,interactive||contract.interactive,depth+1,prefix===null?null:occurrence+"."),options:node.attributes,binding,occurrence,locale:content.locale,standalone:node.standalone};if(!custom.has(node.name)&&!node.name.startsWith("runic:")&&!allowUnboundCustom)throw new TypeError(`No renderer linked for '${node.name}'.`);return element;});}
-    function blocks(nodes,list,path,depth){const siblings=Object.create(null);return nodes.map(node=>{if(++count>4096)throw new RangeError("Document node limit exceeded.");const contract=node.kind==="element"?rmf2Contract.contracts[node.name]:undefined;if(!contract||node.standalone||contract.placement!==(list?"list-item":"block"))throw new TypeError("Invalid document structure.");if(depth+1>16)throw new RangeError("Document nesting exceeds 16 levels.");checkOptions(node,contract);const name=node.name.startsWith("runic:")?node.name.slice(6):node.name;siblings[name]=(siblings[name]??0)+1;const occurrence=`${path?path+"/":""}${name}[${siblings[name]}]`;return contract.children==="list-items"?{block:true,name:node.name,options:node.attributes,children:blocks(node.children,true,occurrence,depth+1),occurrence}:{block:true,name:node.name,options:node.attributes,children:visit(node.children,false,depth+1,occurrence+"/"),occurrence};});}
+    function visit(nodes,interactive=false,depth=0,prefix=null){if(depth>16)throw new RangeError("Inline nesting exceeds 16 levels.");return nodes.map((node,index)=>{if(++count>4096)throw new RangeError("Inline node limit exceeded.");if(node.kind==="text")return node;const contract=markupContracts[node.name];if(node.kind!=="element"||!contract||contract.placement!=="inline"||(contract.kind==="standalone")!==node.standalone||interactive&&contract.interactive)throw new TypeError("Unknown or invalid inline markup.");const binding=checkOptions(node,contract);const occurrence=prefix===null?`${content.key}:${node.occurrence}`:prefix+index;const element={name:node.name,children:visit(node.children,interactive||contract.interactive,depth+1,prefix===null?null:occurrence+"."),options:node.attributes,binding,occurrence,locale:content.locale,standalone:node.standalone};if(!custom.has(node.name)&&!node.name.startsWith("runic:")&&!allowUnboundCustom)throw new TypeError(`No renderer linked for '${node.name}'.`);return element;});}
+    function blocks(nodes,list,path,depth){const siblings=Object.create(null);return nodes.map(node=>{if(++count>4096)throw new RangeError("Document node limit exceeded.");const contract=node.kind==="element"?markupContracts[node.name]:undefined;if(!contract||node.standalone||contract.placement!==(list?"list-item":"block"))throw new TypeError("Invalid document structure.");if(depth+1>16)throw new RangeError("Document nesting exceeds 16 levels.");checkOptions(node,contract);const name=node.name.startsWith("runic:")?node.name.slice(6):node.name;siblings[name]=(siblings[name]??0)+1;const occurrence=`${path?path+"/":""}${name}[${siblings[name]}]`;return contract.children==="list-items"?{block:true,name:node.name,options:node.attributes,children:blocks(node.children,true,occurrence,depth+1),occurrence}:{block:true,name:node.name,options:node.attributes,children:visit(node.children,false,depth+1,occurrence+"/"),occurrence};});}
     const output=document?blocks(content.nodes,false,"",0):visit(content.nodes);for(const[slot,bounds]of Object.entries(requirements))if((counts[slot]??0)<bounds.min||(counts[slot]??0)>bounds.max)throw new TypeError(`Slot multiplicity mismatch for '${slot}'.`);
-    function materialize(node){if(node.kind==="text")return factory.text(node.value);if(node.block)return factory.block(node.name,node.options,Object.freeze(node.children.map(materialize)),Object.freeze({occurrence:node.occurrence,locale:content.locale}));const contract=rmf2Contract.contracts[node.name];const bound=custom.has(node.name)&&(!projection||["explicit","alternateText"].includes(contract?.plainText));if(projection&&!bound&&!node.name.startsWith("runic:")&&["omit","lineBreak"].includes(contract?.plainText))return contract.plainText==="lineBreak"?"\n":"";const element={...node,children:node.children.map(materialize)};return bound?custom.get(node.name)(element):factory.element(element);}
+    function materialize(node){if(node.kind==="text")return factory.text(node.value);if(node.block)return factory.block(node.name,node.options,Object.freeze(node.children.map(materialize)),Object.freeze({occurrence:node.occurrence,locale:content.locale}));const contract=markupContracts[node.name];const bound=custom.has(node.name)&&(!projection||["explicit","alternateText"].includes(contract?.plainText));if(projection&&!bound&&!node.name.startsWith("runic:")&&["omit","lineBreak"].includes(contract?.plainText))return contract.plainText==="lineBreak"?"\n":"";const element={...node,children:node.children.map(materialize)};return bound?custom.get(node.name)(element):factory.element(element);}
     return Object.freeze(output.map(materialize));
   }
   return Object.freeze({ render, extend(extra) { return createRendererCore(factory,[...bindings,...extra],allowUnboundCustom,documents,projection); } });
@@ -801,14 +1720,14 @@ function createRendererCore(factory, bindings = [], allowUnboundCustom = false, 
 function validateSlotBinding(reference,kind,binding){if(binding?.kind!==kind)throw new TypeError(`Missing or incompatible slot '${reference}'.`);return kind==="runic:link"?linkBinding(binding):kind==="runic:action"?actionBinding(binding):iconBinding(binding);}
 // The project's own markup contracts from runic.json, by name, in the form defineMarkup returns: pass one to
 // bindMarkup to replace a tag's default rendering without restating its contract.
-export const projectMarkup = freezeTrusted(Object.fromEntries(Object.entries(rmf2Contract.contracts)
+export const projectMarkup = freezeTrusted(Object.fromEntries(Object.entries(markupContracts)
   .filter(([name]) => !name.startsWith("runic:")).map(([name, contract]) => [name, { name, ...contract }])));
 export function defineMarkup(contract) { if (!isRecord(contract) || !validName(contract.name,true) || contract.name.startsWith("runic:") || !["paired","standalone"].includes(contract.kind) || contract.placement !== undefined && contract.placement !== "inline" || contract.children !== (contract.kind === "standalone" ? "none" : "inline") || typeof contract.interactive !== "boolean" || !["children","lineBreak","alternateText","explicit","omit"].includes(contract.plainText) || contract.options !== undefined && !isRecord(contract.options)) throw new TypeError("Invalid markup contract."); return cloneFreeze(contract); }
 export function bindMarkup(contract,render) { if (typeof render !== "function") throw new TypeError("A markup renderer is required."); return Object.freeze({contract,render}); }
 export function toPlainText(content,{slots=Object.create(null),allowActionLabels=false,annotateLinkDestinations=false,custom=[],listMarker="- "}={}) {
   if (typeof listMarker !== "string") throw new TypeError("The list marker must be a string.");
   const document = content?.kind === "localized-document";
-  const renderer=createRendererCore({text:value=>value,element({name,children,binding,locale}) { if (name==="runic:br") return "\n"; if (name==="runic:action"&&!allowActionLabels) throw new TypeError("Action labels require explicit projection policy."); if (name==="runic:icon") { if (binding?.decorative) return ""; const label=binding?.accessibleName?.(locale); if (typeof label!=="string"||!label.trim()) throw new TypeError("Meaningful icon alternate text is empty."); return label; } const contract=rmf2Contract.contracts[name]; if(!name.startsWith("runic:")&&contract?.plainText==="lineBreak")return "\n";if(!name.startsWith("runic:")&&contract?.plainText==="omit")return "";if(!name.startsWith("runic:")&&["explicit","alternateText"].includes(contract?.plainText))throw new TypeError("Custom markup requires an explicit plain-text adapter.");const text=children.join(""); return name==="runic:link"&&annotateLinkDestinations?`${text} (${binding.href})`:text; },
+  const renderer=createRendererCore({text:value=>value,element({name,children,binding,locale}) { if (name==="runic:br") return "\n"; if (name==="runic:action"&&!allowActionLabels) throw new TypeError("Action labels require explicit projection policy."); if (name==="runic:icon") { if (binding?.decorative) return ""; const label=binding?.accessibleName?.(locale); if (typeof label!=="string"||!label.trim()) throw new TypeError("Meaningful icon alternate text is empty."); return label; } const contract=markupContracts[name]; if(!name.startsWith("runic:")&&contract?.plainText==="lineBreak")return "\n";if(!name.startsWith("runic:")&&contract?.plainText==="omit")return "";if(!name.startsWith("runic:")&&["explicit","alternateText"].includes(contract?.plainText))throw new TypeError("Custom markup requires an explicit plain-text adapter.");const text=children.join(""); return name==="runic:link"&&annotateLinkDestinations?`${text} (${binding.href})`:text; },
     // Document projection (document profile v1): items are joined by one line break, further item lines are indented two spaces.
     block(name,options,children) { if (!["runic:ul","runic:ol"].includes(name)) return children.join(""); const start=name==="runic:ol"?Number(options.start):1; return children.map((item,index)=>(name==="runic:ol"?`${listNumber(start+index,options.marker)}. `:listMarker)+item.split("\n").map((line,lineIndex)=>lineIndex&&line?`  ${line}`:line).join("\n")).join("\n"); }},custom,true,document,true);
   // Empty blocks project to nothing and add no separator, so the text never starts or ends with a line break.
@@ -830,8 +1749,12 @@ function integerOption(text,schema){return typeof text==="string"&&text.length<=
 // and clearContent retire the previous render: its actions stop calling back and its links lose their destination.
 // Paragraphs and headings with no children or only empty text, and lists with no items, are skipped; occurrences keep counting them.
 const domDocumentLifetimes=new WeakMap();
-export function createDomDocumentRenderer(document,{headingBase=2,custom=[]}={}) {
+// pageDirection defaults, per render, to the document's <html dir> when it is ltr or rtl, else to the active locale's
+// direction (getLocale(), the same source as SvelteKit's %runic.dir%), so English fallback blocks on an Arabic page get dir="ltr".
+export function createDomDocumentRenderer(document,{headingBase=2,custom=[],pageDirection}={}) {
   if(!Number.isInteger(headingBase)||headingBase<1||headingBase>9)throw new RangeError("headingBase must be an integer from 1 to 9.");
+  if(pageDirection!==undefined&&pageDirection!=="ltr"&&pageDirection!=="rtl")throw new RangeError("pageDirection must be \"ltr\" or \"rtl\".");
+  const page=()=>{if(pageDirection!==undefined)return pageDirection;const dir=document.documentElement?.getAttribute?.("dir")?.toLowerCase();return dir==="ltr"||dir==="rtl"?dir:localeDirection(getLocale());};
   let lifetime=null;
   const empty=new WeakSet();
   const create=(tag,occurrence)=>{const node=document.createElement(tag);node.setAttribute("data-runic-occurrence",occurrence);return node;};
@@ -854,12 +1777,13 @@ export function createDomDocumentRenderer(document,{headingBase=2,custom=[]}={})
       else if(["runic:p","runic:ul","runic:li"].includes(name))node=create(name.slice(6),occurrence);
       else throw new TypeError(`No DOM renderer linked for block '${name}'.`);
       if(!["runic:ul","runic:ol"].includes(name))node.setAttribute("class","runic-leaf");
-      // Top-level blocks carry the effective content locale, which differs from the requested one after a fallback.
-      if(!occurrence.includes("/"))node.setAttribute("lang",locale);
+      // Top-level blocks carry the effective content locale, which differs from the requested one after a fallback, and its
+      // direction when it differs from the page's (English fallback text in an Arabic page).
+      if(!occurrence.includes("/")){node.setAttribute("lang",locale);const direction=localeDirection(locale);if(direction!==lifetime.page)node.setAttribute("dir",direction);}
       node.append(...present);return node;
     }},custom);
   // A nested render (from an icon's accessibleName or a custom binding) restores the outer render's lifetime.
-  function build(content,options){const own={active:true,links:[],actions:[]},outer=lifetime;lifetime=own;try{return {nodes:core.render(content,options).filter(node=>node!==null),own};}finally{lifetime=outer;}}
+  function build(content,options){const own={active:true,links:[],actions:[],page:page()},outer=lifetime;lifetime=own;try{return {nodes:core.render(content,options).filter(node=>node!==null),own};}finally{lifetime=outer;}}
   // Retiring also drops the references to application callbacks, so retained nodes do not keep them alive.
   function retire(target){const previous=domDocumentLifetimes.get(target);if(!previous)return;previous.active=false;for(const link of previous.links)link.removeAttribute("href");for(const action of previous.actions){action.node.setAttribute("disabled","");action.release();}previous.links.length=0;previous.actions.length=0;domDocumentLifetimes.delete(target);}
   return Object.freeze({
@@ -867,7 +1791,7 @@ export function createDomDocumentRenderer(document,{headingBase=2,custom=[]}={})
     // Builds first, so a binding failure leaves the displayed content and its callbacks untouched.
     setContent(target,content,options){const {nodes,own}=build(content,options);retire(target);domDocumentLifetimes.set(target,own);target.replaceChildren(...nodes);},
     clearContent(target){retire(target);target.replaceChildren();},
-    extend(extra){return createDomDocumentRenderer(document,{headingBase,custom:[...custom,...extra]});},
+    extend(extra){return createDomDocumentRenderer(document,{headingBase,custom:[...custom,...extra],pageDirection});},
   });
 }
 

@@ -175,6 +175,18 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
 
     public IServiceProvider Services { get; } = services;
 
+    // RunicWindowTestHostOptions.ApplicationLocale: the application's locale and the one DisposeAsync sets back.
+    private (IRunicApplicationLocale Locale, string? Previous)? _restoreLocale;
+
+    internal async ValueTask StartApplicationLocaleAsync(string locale, CancellationToken cancellationToken)
+    {
+        var applicationLocale = Services.GetService<IRunicApplicationLocale>() ?? throw new InvalidOperationException(
+            "RunicWindowTestHostOptions.ApplicationLocale sets the application's IRunicApplicationLocale, which the services do " +
+            "not register. Call AddRunicWindowService() on them.");
+        _restoreLocale = (applicationLocale, applicationLocale.Locale);
+        await applicationLocale.SetLocaleAsync(locale, cancellationToken).ConfigureAwait(false);
+    }
+
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal RunicTestWindow Find(IRunicWindow window)
@@ -290,8 +302,14 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
                     TimeProvider = _time,
                     CreateId = options.CreateId ?? (() => Interlocked.Increment(ref _nextId).ToString(CultureInfo.InvariantCulture)),
                     IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? options.IncludeFailureDetail,
+                    // As Runic Desktop and CS-WebUI: the Window scope's RunicValidationOptions (TextFor,
+                    // configureFieldErrorText's reasons) unless the test host's options name others.
+                    Validation = options.Validation ?? provider.GetService<RunicValidationOptions>(),
                     FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? options.FlowCultureFromLocale,
+                    // Each Window's own locale; ApplicationLocale is the application's, which StartApplicationLocaleAsync set.
+                    Locale = options.Locale,
                     MaximumInputBytes = opening.Options.MaximumInputBytes ?? options.MaximumInputBytes,
+                    MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? options.MaximumUploadBytes,
                     PublicationTimeout = options.PublicationTimeout,
                 })
             { Services = provider, WindowPresentation = presentation };
@@ -342,7 +360,14 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
         RunicTestWindow[] windows;
         lock (_gate) windows = [.. _windows];
         // Owned Windows first, as an application closes a dialog before its owner.
-        foreach (var window in windows.Reverse()) await window.Bridge.DisposeAsync().ConfigureAwait(false);
+        try
+        {
+            foreach (var window in windows.Reverse()) await window.Bridge.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (_restoreLocale is { } restore) await RunicWindowTestHost.RestoreApplicationLocaleAsync(restore).ConfigureAwait(false);
+        }
     }
 }
 

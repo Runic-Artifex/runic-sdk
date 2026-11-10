@@ -508,7 +508,12 @@ Third-party packages:
   | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.8, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
   | `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) | `[10.10.0, 11)` | `Runic.Application.Testing` |
   | `effect` (npm) | `^4.0.1` | `@runic-artifex/views-effect` |
+  | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.9.1, 0.10.0-0.0)` | `Runic.Application.Views.Translations` |
 
+- Runic Translations releases on its own timeline. Before its 1.0 a minor release
+  may break, so `Runic.Application.Views.Translations` is bounded to the
+  Translations minor it is built with, the range `Runic.Translations.Build` gives
+  any library; the `-0.0` bound keeps the next minor's previews out as well.
 - Moving to a new major of one of them needs a major Runic release, with one
   exception: the ReactiveUI adapters (`Runic.Application.Views.ReactiveUI*` and
   `Runic.Navigation.ReactiveUI*`, both flavors together) may move to a new
@@ -602,8 +607,9 @@ requirement, not a consumer one.
   in a minor release. An experimental type does not appear in a stable API's
   signature. Graduation removes the attribute and retires the ID, which is
   never reused. IDs follow the numbering in `docs/experimental.md` (from `100`
-  where the prefix already names diagnostics, such as `RUNICDBUS100`). No .NET
-  API is experimental today.
+  where the prefix already names diagnostics, such as `RUNICDBUS100`).
+  Experimental now: `RUNICDESK103` (hosted application windows and the Runic
+  host protocol, through 1.0).
   Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
   `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
   `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0),

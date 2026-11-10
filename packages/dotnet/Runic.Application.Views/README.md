@@ -1730,6 +1730,124 @@ class with only read-only or computed properties is fine as state or a result. A
 page sends needs a public constructor whose parameters map to its properties,
 or a public parameterless constructor with public setters (`RUNICBRIDGE003`).
 
+## Shared clients
+
+Since 0.17, ViewModels that publish the same members can share one generated
+client, so one web component renders all of them, for example read-only result
+pages with a table and a button each. Declare the members on an interface,
+mark it `[RunicSharedClient]`, and implement it in each ViewModel:
+
+```csharp
+/// <summary>A read-only result page with one action per element.</summary>
+[RunicSharedClient]
+public interface IResultPage
+{
+    /// <summary>The table the page shows.</summary>
+    ResultTable Page { get; }
+
+    /// <summary>Runs the action of the element with the id.</summary>
+    IAsyncRelayCommand<string> RunActionCommand { get; }
+}
+
+public sealed partial class OrdersViewModel : ObservableObject, IResultPage
+{
+    public ResultTable Page => _orders.ToTable();
+
+    [RelayCommand]
+    private Task RunActionAsync(string elementId) => _orders.RunAsync(elementId);
+}
+```
+
+Besides each ViewModel's own module, the generator writes `resultPage.ts`, named
+after the interface without its leading `I` (or `[RunicSharedClient(Name = "…")]`):
+
+```ts
+export interface ResultPageState {
+  readonly page: ResultTable;
+  readonly isRunActionExecuting: boolean;
+}
+export interface ResultPageClient extends ViewClient<ResultPageState> {
+  runAction(elementId: string): Promise<ResultPageState>;
+  canRunAction(elementId: string): Promise<boolean>;
+  startRunAction(elementId: string, options?: BridgeOperationStartOptions): Promise<ResultPageRunActionOperation>;
+  recoverRunAction(requestId: string): Promise<ResultPageRunActionOperation>;
+}
+/** The page reference of any View whose ViewModel implements `IResultPage`. */
+export interface ResultPagePageReference {
+  readonly kind: "invoices" | "orders" | "quotes";
+  connect(): Promise<ResultPageClient>;
+}
+export const resultPageKinds: readonly ResultPagePageReference["kind"][] = ["invoices", "orders", "quotes"];
+```
+
+Every implementing ViewModel's `{Name}PageReference` extends
+`ResultPagePageReference`, and its client has the shared client's members, so a
+component written against the shared types takes any of them without a cast.
+The frameworks' `ViewRegistry` types accept it for each kind of the shared
+reference, and `registryEntries` from `@runic-artifex/views` registers it for
+all of them:
+
+```tsx
+import { registryEntries } from "@runic-artifex/views";
+import { useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
+import { resultPageKinds, type ResultPagePageReference } from "./generated/resultPage.js";
+
+function ResultPage({ page }: { readonly page: ResultPagePageReference }) {
+  const { state, client } = useView(page); // a ResultPageClient
+  return <ResultTableView table={state?.page} onAction={id => void client?.runAction(id)} />;
+}
+
+const pages = { ...registryEntries(resultPageKinds, ResultPage), settings: SettingsPage }
+  satisfies ViewRegistry<MainState["main"]>;
+```
+
+A content slot or `NavigationRegion` typed as the interface presents any of the
+implementing ViewModels, and `RunicWindowTestHost`'s `View<IResultPage>(vm => vm.Main)`
+drives whichever one it presents. A web test mocks one implementing ViewModel
+with its own typed mock, such as `mockOrders`, and passes its reference to the
+shared component.
+
+**What the shared client contains.** The interface's properties, including those
+of the interfaces it extends, in declaration order: state, a setter for each
+property the interface declares settable, commands with their availability,
+execution state and operations, query collections and region collections. A
+member's validation errors (`{name}Errors`) are shared when every implementing
+ViewModel has them. Methods and events of the interface, the ViewModels' other
+members, checked writes, field descriptors, interactions and view requests are
+not. The shared client changes only the TypeScript types: the wire contract and
+the contract fingerprint stay the same, and a ViewModel that implements no
+`[RunicSharedClient]` interface generates exactly what it did before.
+
+**Matching.** Every ViewModel with a View that implements the interface must
+publish each of its properties alike, or the build fails with
+[`RUNICBRIDGE036`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge036):
+
+- through a public property that the ViewModel class declares, which the Bridge
+  publishes: not an explicit implementation, an inherited property or a
+  `[RunicIgnore]` one;
+- with the interface's nullability, including type arguments;
+- with the same generated TypeScript as the other implementing ViewModels: the
+  same wire name, value type, command input, key and declared failure. Only
+  parameter names may differ; the most common one names the shared parameter.
+  The error names the ViewModel that differs from the others and shows both
+  declarations.
+
+A ViewModel may be settable where the interface is get-only; the shared client
+then has no setter. C# already requires each property and its type; the
+generator checks what C# does not see, such as `[JsonPropertyName]`,
+`[RunicCommandInput]` or `[RunicFailure]` on one ViewModel only. Renaming a
+member in the interface renames it in the shared client, so a component that
+still reads the old name no longer compiles.
+
+**Several interfaces.** A ViewModel may implement several `[RunicSharedClient]`
+interfaces. Each gets its own module, the ViewModel's page reference extends
+all of their references, and a registry accepts any of their components for its
+kind. An interface that no ViewModel with a View implements generates nothing.
+A generic interface is an error, and so is a name that collides with a
+ViewModel's module or whose `{Name}PageReference` is a presentation kind's page
+reference ([`RUNICBRIDGE004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge004));
+give the interface another name with `[RunicSharedClient(Name = "…")]`.
+
 ## Generator diagnostics
 
 The generator reports every ViewModel's first problem in one build. An error
@@ -1828,6 +1946,8 @@ an extension point.
 | `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
+| `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as the `runic-app` template's `--translations` option and a Bun or Angular page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
+| `RunicApplicationFrontendTranslationsDirectory` | `<frontend>/.runic/translations` | Where `RunicApplicationFrontendTranslations` mirrors the ESM; the page imports `messages.js`, `runtime.js` and `transport.js` from it. Keep it out of version control. |
 | `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
 | `RunicApplicationFrontendDelivery` | `Files` | `Files` copies the frontend to the web root. `Embedded` packs the same tree (referenced projects' frontends, this project's output and the host's `runic-views.js`) into the assembly with Runic.Assets, and the Runic Desktop, WPF and CS-WebUI hosts serve it; see [Ship the frontend inside the executable](#ship-the-frontend-inside-the-executable). Closed: another value, no single Desktop or CS-WebUI host, or a project that sets `RunicAssetsDist` itself warns with [`RUNICBRIDGE030`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge030) and builds as `Files`. |
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
@@ -3026,41 +3146,87 @@ tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
 Text that a ViewModel produces, such as a status line or a validation
 message, can follow the window's language without a call per string. The
 ViewModel produces a text reference of
-[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/transport.md)
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/transport.md)
 (a message key, typed arguments and a fallback text) instead of a sentence, and
 the page formats it with its Translations runtime (the `translation-text/1`
 feature). When the language changes, the page formats the references it has
 again.
 
+The guide [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md)
+walks through one catalog for the page and C#, the application's language,
+native text and tests, step by step. This section is the reference. It needs
+Runic Translations 0.9.1 or later. `dotnet new runic-app --translations` starts
+an application with all of it, and the
+[multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
+shows it in English, German and Arabic.
+
+**One catalog.** Keep the catalog with the frontend and name its `runic.json`
+in the .NET project, which then gets the generated C# API for every message
+([Strings outside the Views](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-desktop.md#strings-outside-the-views)):
+
+```xml
+<PackageReference Include="Runic.Translations" Version="0.9.1" />
+<PackageReference Include="Runic.Translations.Build" Version="0.9.1" PrivateAssets="all" />
+<RunicTranslationProject Include="Frontend/translations/runic.json" />
+```
+
+The page gets the same catalog's ESM one of two ways:
+
+- **From the .NET build**, as `dotnet new runic-app --translations` and the
+  multi-window example do. The build writes the ESM with the
+  `dotnet-runic-translations` tool of `.config/dotnet-tools.json`, and
+  `RunicApplicationFrontendTranslations` copies it to
+  `Frontend/.runic/translations` (gitignored) before the frontend builds; the
+  page imports `../.runic/translations/messages.js`, `runtime.js` and
+  `transport.js`. It works with every bundler, Angular's included, and needs no
+  npm package, but `vite dev` does not reload an edited message: build again.
+
+  ```xml
+  <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+  <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
+  ```
+
+- **From the Translations Vite plugin**, which compiles the catalog for a Vite
+  page, reloads messages in `vite dev`, and serves the modules as
+  `virtual:runic-translations/<catalog>`, as in the examples below. Leave
+  `RunicApplicationFrontendTranslations` off then.
+
 **Values.** A member, DTO member, command input or result of type
 `Runic.Translations.TranslationReference` crosses the Bridge as the reference's
 transport JSON, and is a `TextReference` in TypeScript. The Views packages do
 not depend on Runic Translations: the generator recognizes the type by name, and
-the generated code, compiled into your application, calls its serializer. Add
-the `Runic.Translations` package and the generated catalog to the .NET project
-as the [Translations guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)
-shows. `RunicTextReference` holds a reference's JSON where Views code needs one:
+the generated code, compiled into your application, calls
+`TranslationReference.Parse` and
+`TranslationReferenceJsonContext.Default.TranslationReference`, which Runic
+Translations keeps stable. The generated catalog's `References` class creates a
+reference for each plain-text message, with its contract fingerprint, typed
+arguments and the base locale's text as the fallback.
+`RunicTextReference` holds a reference's JSON where Views code needs one:
+
+```rmf2
+ready = Ready
+saved = Saved {$title}.
+```
 
 ```csharp
 public partial class EditorViewModel : ObservableObject
 {
     [ObservableProperty]
-    public partial TranslationReference Status { get; set; } = NotesText.Ready();
+    public partial TranslationReference Status { get; set; } = NotesText.References.ready();
 
     [RelayCommand]
     private async Task SaveAsync()
     {
         await _store.SaveAsync(Title);
-        Status = NotesText.Saved(Title);
+        Status = NotesText.References.saved(title: Title);
     }
 }
-
-// NotesText.Saved: a reference with a fallback for a page that cannot translate it.
-public static TranslationReference Saved(string title) => new(NotesTextCatalog.CatalogId,
-    NotesTextCatalog.ContractFingerprint, "saved",
-    new Dictionary<string, TranslationReferenceArgument> { ["title"] = new(TextArgumentType.String, title) },
-    $"Saved {title}.");
 ```
+
+Messages with markup have no factory, as a reference resolves to plain text.
+`"code": { "referenceFallbackText": false }` in `runic.json` leaves the
+fallback text out; the page then shows the key when it cannot translate a
+reference.
 
 **Validation messages.** Give a validation message a reference, and the page
 shows the error's `text` in the window's language, with the message as the
@@ -3082,9 +3248,10 @@ fallback. `{name}Errors` keeps the messages.
   {
       TextFor = (attribute, member) => attribute switch
       {
-          RequiredAttribute => Text(NotesText.Required(member.DisplayName)),
-          MaxLengthAttribute maximum => Text(NotesText.TooLong(member.DisplayName, maximum.Length)),
-          RangeAttribute range => Text(NotesText.OutOfRange(member.DisplayName, $"{range.Minimum}", $"{range.Maximum}")),
+          RequiredAttribute => Text(NotesText.References.validation_required(field: member.DisplayName)),
+          MaxLengthAttribute maximum => Text(NotesText.References.validation_too_long(field: member.DisplayName, max: maximum.Length)),
+          RangeAttribute range => Text(NotesText.References.validation_out_of_range(
+              field: member.DisplayName, min: $"{range.Minimum}", max: $"{range.Maximum}")),
           _ => null,
       },
   });
@@ -3154,10 +3321,19 @@ fallback. `{name}Errors` keeps the messages.
   }
 
   this.ValidationRule(vm => vm.Title, this.WhenAnyValue(vm => vm.Title).Select(title => title.Length <= 80
-      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.TitleTooLong(80)))));
+      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.References.title_too_long(max: 80)))));
   ```
 
 - Any other entry of `GetErrors` can implement `IRunicTextReferenceSource`.
+
+**Runic's own text in German.** The optional
+[Runic.Application.Views.Translations](../Runic.Application.Views.Translations/README.md)
+package (with `@runic-artifex/views-translations` on the page) ships English and
+German text for the built-in validation attributes, field errors,
+`DesktopPlatformTexts` and the standard macOS menus as a Runic Translations
+library catalog, `runic-views`. `services.AddRunicViewsTranslations()` sets
+`TextFor` and keeps the platform texts in the application's locale; an
+application overrides single messages in its `runic.json`.
 
 **The window's language.** The application owns the window's locale: take
 `IRunicWindowLocale` in the ViewModel's constructor and set `Locale`, for
@@ -3203,18 +3379,30 @@ Views packages do not reference Runic Translations: `Follow` takes any
 // After the services are built, before the first Window opens. A handler runs on the
 // SynchronizationContext it subscribed on: in WPF's startup, the UI thread. A Runic
 // Desktop body has none, so it runs on the switch's thread; SetMenuBar is thread-safe.
+TranslationContext translations = await TranslationContext.CreateBuilder()
+    .Add(NotesTextCatalog.Registration)              // and the catalogs of your libraries
+    .BuildAsync();
 var locale = services.GetRequiredService<IRunicApplicationLocale>();
-locale.Follow(translations.SetLocaleAsync);        // TranslationContext (0.9) or ITranslationManager
+locale.Follow(translations.SetLocaleAsync);        // every catalog of the context switches first
 locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
-// The user's choice, else the best match for the operating system's languages.
-await locale.SetLocaleAsync(settings.Language ?? Negotiate(DesktopLanguages.Preferred, ["en", "de"]));
+// RUNIC_LOCALE (a test or screenshot run), else the user's choice, else the best match for the
+// operating system's languages, each matched to the catalog's languages (de-CH starts in de). A tag
+// that matches none, such as a mistyped RUNIC_LOCALE or an old setting, is skipped, so it never
+// stops the start.
+string? Supported(string? tag) =>
+    string.IsNullOrWhiteSpace(tag) ? null : LocaleNegotiation.Match(tag.Trim(), translations.SupportedLocales);
+await locale.SetLocaleAsync(Supported(Environment.GetEnvironmentVariable("RUNIC_LOCALE"))
+    ?? Supported(settings.Language)
+    ?? LocaleNegotiation.Negotiate(DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
 
-// A language switch, from any ViewModel or menu command:
+// A language switch, from any ViewModel or menu command. It saves the catalog's language, and only
+// after the switch succeeded:
 [RelayCommand]
 private async Task SwitchLanguageAsync(string language)
 {
-    await _locale.SetLocaleAsync(language);
-    _settings.Language = language;
+    if (LocaleNegotiation.Match(language, _translations.SupportedLocales) is not { } supported) return;
+    await _locale.SetLocaleAsync(supported);
+    _settings.Language = supported;
 }
 ```
 
@@ -3235,6 +3423,15 @@ follower, or a Window's `PropertyChanged` handler, must not call `SetLocaleAsync
 during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
 handler may, and that switch's event follows the current handlers.
 
+**`RUNIC_LOCALE`.** Start the application in the locale that the
+`RUNIC_LOCALE` environment variable names, matched to the catalog's languages
+and before the user's saved choice, as above; `dotnet new runic-app
+--translations` does the same, and saves no choice. Browser tests of a
+serve-only application (`RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de`),
+screenshots and translators' checks then run the unchanged application in any
+language. The Runic packages do not read it: it is a convention of the
+application's startup code, so the application decides where it applies.
+
 `IRunicWindowLocale.Locale` returns the application's locale while the Window
 has none of its own. To save a Window's language and set it back later, save
 `OwnLocale` (since 0.17), which is `null` while the Window follows the
@@ -3246,10 +3443,12 @@ showed. `WindowContentSession.Locale = null` on a Window that
 `DesktopLanguages.Preferred` (Runic.Platform) lists the user's languages as the
 operating system does, most preferred first: Windows' display languages,
 macOS' preferred languages, and on Linux `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`
-and `LANG` as gettext reads them. Negotiate it against the locales your catalog
-ships, with the generated catalog's `ResolveLocale` from Runic Translations 0.9,
-or by comparing each tag and then its language. `null` calls no follower and
-leaves the pages of following Windows in the language they show.
+and `LANG` as gettext reads them. Negotiate it against
+`TranslationContext.SupportedLocales`, the locales every catalog of the context
+shows, so no window mixes languages: `LocaleNegotiation.Negotiate` matches with
+CLDR likely subtags and parent locales (`de-CH` to `de`, `zh-TW` to `zh-Hant`).
+`null` calls no follower and leaves the pages of following Windows in the
+language they show.
 
 **One language per window.** A window has one locale, which all of its pages
 show, also when several browsers share a CS-WebUI window. A page cannot choose a
@@ -3290,18 +3489,21 @@ await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFro
 
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
-Runic Translations and its Vite plugin:
+Runic Translations and its Vite plugin (a page that gets the ESM from the .NET
+build imports `../.runic/translations/messages.js`, `runtime.js` and
+`transport.js` instead):
 
 ```ts
 import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
 import { useTextLocale } from "@runic-artifex/svelte";   // or @runic-artifex/vue
-import { m } from "virtual:runic-translations/app/messages";
-import { configureLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
+import { m } from "virtual:runic-translations/app";
+import { configureSharedLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
 import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 const locale = createLocaleSource({ initialLocale: navigator.language });
 const textLocale = useTextLocale();
-configureLocaleResolver(() => textLocale.current ?? locale.getLocale());   // Vue: textLocale.value
+// Every catalog on the page follows the window's language, library catalogs included.
+configureSharedLocaleResolver(() => textLocale.current ?? locale.getRequestedLocale());   // Vue: textLocale.value
 configureTranslatedText({
   ...locale,
   resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
@@ -3310,16 +3512,63 @@ configureTranslatedText({
 syncDocumentLocale();   // <html lang dir> follow the text locale
 ```
 
+`configureSharedLocaleResolver` (Runic Translations 0.9) sets the locale of
+every generated catalog on the page that has no resolver of its own, so the
+text of component libraries switches with the page's. A page with only its own
+catalog can call that catalog's `configureLocaleResolver` instead.
+
 The locale source is plain state, so a template that calls `m.*()` renders
 again on a switch only when it reads a reactive text locale:
 
 | Framework | Re-render the page's own messages |
 | --- | --- |
-| Svelte | `configureLocaleResolver(() => useTextLocale().current ?? locale.getLocale())`: one handle for the page, read wherever `m.*()` runs |
-| Vue | `configureLocaleResolver(() => useTextLocale().value ?? locale.getLocale())`: one ref for the page |
-| Angular | `configureLocaleResolver(() => textLocaleSignal()() ?? locale.getLocale())`: one signal for the page, also for `OnPush` templates |
-| React | `configureLocaleResolver(locale.getLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
+| Svelte | `configureSharedLocaleResolver(() => useTextLocale().current ?? locale.getRequestedLocale())`: one handle for the page, read wherever `m.*()` runs |
+| Vue | `configureSharedLocaleResolver(() => useTextLocale().value ?? locale.getRequestedLocale())`: one ref for the page |
+| Angular | `configureSharedLocaleResolver(() => textLocaleSignal()() ?? locale.getRequestedLocale())`: one signal for the page, also for `OnPush` templates |
+| React | `configureSharedLocaleResolver(locale.getRequestedLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
 | Effect | `textLocales()`, a stream of the locale; render the messages again on each |
+
+**References of several catalogs.** `configureTranslatedText` takes one
+`resolve`, and a later call replaces an earlier one. When ViewModels send
+references of a library's catalog too, such as a component library's
+validation text, resolve them by catalog with the generated transport's
+`createReferenceResolver`. Each reference is formatted by its own catalog, and
+one of a catalog the page does not list shows its fallback text. One written
+against another release of a catalog is checked key by key: it translates while
+its key and arguments still match, and shows its fallback text otherwise
+([Runic Translations' rules](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/transport.md)):
+
+```ts
+import * as appTransport from "virtual:runic-translations/app/transport";
+import * as gridTransport from "virtual:runic-translations/acme.grid/transport";
+import { m as grid } from "virtual:runic-translations/acme.grid";
+
+const resolveReference = appTransport.createReferenceResolver([
+  { transport: appTransport, messages: m },
+  { transport: gridTransport, messages: grid },
+]);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveReference(reference, { locale: language }).text,
+  direction: localeDirection,
+});
+```
+
+With the Vite plugin's `dependencies: "auto"`, the page's copy of a library
+catalog is regenerated with the application's `overrides`, so a reference
+resolves to the same text as in C#
+([Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/libraries.md)).
+
+**Right-to-left text.** Since Runic Translations 0.9, a catalog that declares a
+right-to-left locale, such as `ar` or `he`, isolates the placeholders of its
+formatted text with invisible characters (FSI, LRI or RLI before a placeholder,
+PDI after it), also in the English fallback for an Arabic request. Pages show
+them correctly; compare such text in tests after the runtime's
+`removeBidiIsolates` (.NET: `BidiText.RemoveIsolates`). `runtime.bidiIsolation`
+in `runic.json` turns it on or off. The runtime's `localeDirection`, passed as
+`direction`, gives `syncDocumentLocale` and `textDirection()` the direction of
+each locale; see
+[Bidirectional text](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/bidi.md).
 
 `syncDocumentLocale()` sets `lang` and `dir` on `<html>` (direction from the
 runtime's `direction`, such as `localeDirection`, else the locale's script) and
@@ -3375,9 +3624,20 @@ or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `host.Content.Locale` shows what the ViewModel set.
 `await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
 locale, the registered one or, for a host built with a constructor, one of the
-host's own, which the window follows. In page tests, the mock bridge's
-`setWindowLocale("de")` pushes a locale as the application does, so a test can
-check that a template's `m.*()` text renders again.
+host's own, which the window follows. `RunicWindowTestHostOptions.Locale` starts
+the window in a locale of its own (`CreateWindowAsync`: the application in it).
+To check the text a user sees, resolve a
+reference with the application's `TranslationContext` in the locale:
+
+```csharp
+TranslationReference status = host.Root.Snapshot().Read(vm => vm.Status);
+await translations.SetLocaleAsync("de");   // de.rmf2: saved = {$title} gespeichert.
+Assert.Equal("Atlas gespeichert.", translations.Resolve(status).Text);
+```
+
+In page tests, the mock bridge's `setWindowLocale("de")` pushes a locale as the
+application does, so a test can check that a template's `m.*()` text renders
+again.
 
 ## Appearance
 
@@ -4270,6 +4530,19 @@ trace id; correlate them with the host's spans by time and route.
 | 2007 | `DesktopDevelopmentReloadFailed` | Debug | A window did not reload after the directory changed, for example because it closed meanwhile. | |
 | 2008 | `DesktopLayoutDirectionFailed` | Warning | An embedded window did not change its native direction after its window locale (`IRunicWindowLocale`) changed. | `ErrorType` |
 | 2009 | `DesktopAppearanceWatchFailed` | Warning | Watching the desktop's appearance settings (`IDesktopSettings`) for the Windows' pages (`appearance/1`) failed; the pages keep the last appearance read, and the next Window that opens watches again. | `ErrorType` |
+| 2010 | `DesktopHostedStartFailed` | Error | Hosted mode (`RunicGuestOptions`, Runic host protocol) did not start; `RunicDesktopHost.Run` throws `RunicHostedApplicationException` with the same code. | `Code`, `Reason` |
+| 2011 | `DesktopHostedShutdown` | Information | A hosted application's host went away or asked it to shut down; its Windows close. | `Reason` |
+| 2012 | `DesktopHostedExit` | Warning | A hosted application's body did not return within 10 seconds after its host went away, so the process exits. | `Seconds` |
+| 2013 | `DesktopHostedChannelFailed` | Warning | Handling a message of the host channel, closing a hosted Window, or an event handler of a hosted Window's presentation failed. | `ErrorType` |
+| 2014 | `DesktopHostedBodyEnded` | Information | A hosted application's body ended with a Window open that its host's going away ended (`hosted-host-gone`) or with a cancellation, after the host went away; `Run` returns 0. | `ErrorType` |
+| 2015 | `DesktopHostedApplicationStarted` | Information | A host (`IRunicHostedApplications`) started a guest application and completed the handshake. | `Name`, `Version`, `ProcessId` |
+| 2016 | `DesktopHostedApplicationStartFailed` | Warning | A host could not start a guest application; `StartAsync` throws `RunicHostedApplicationException` with the same code. | `FileName`, `Code`, `Reason` |
+| 2017 | `DesktopHostedApplicationExited` | Information | A hosted guest application exited, crashed or was stopped; the host closed its windows. | `Name`, `ExitCode` |
+| 2018 | `DesktopHostedApplicationChannelFailed` | Warning | Handling a message of a guest's host channel, or stopping the guest, failed. | `ErrorType` |
+| 2019 | `DesktopHostedWindowFailed` | Warning | The host could not open a guest's window, or release its surface after it closed. | `Name`, `ErrorType` |
+| 2020 | `DesktopHostedWindowPolicyFailed` | Error | The host's `IRunicHostedWindowPolicy` or a `WindowOpened`/`WindowClosed` handler threw; the guest's request fails. | `ErrorType` |
+| 2021 | `DesktopHostedGuestOutput` | Debug | A line a guest application wrote to its standard output, other than its launch line, which carries a secret. | `FileName`, `Line` |
+| 2022 | `DesktopHostedGuestError` | Debug | A line a guest application wrote to its standard error. | `FileName`, `Line` |
 | 2100 | `CsWebUiWindowShowFailed` | Error | CS-WebUI cannot show a window: it finds no browser, the selected browser does not exist or start, its page does not connect in time, or the WebView does not start. `OpenWindowAsync` fails with a `RunicWindowConfigurationException`. | `Window`, `Code`, `Browser`, `BrowserPath`, `DiagnosticMessage` |
 | 2101 | `CsWebUiNativeLibraryUnchecked` | Warning | CS-WebUI loads a WebUI library that the application selected through `CSWEBUI_NATIVE_LIBRARY` or `WebUiNativeLibrary.SetLibraryPath`, whose version Runic cannot check; it needs WebUI commit `efac0e24` or later and is tested with `2b35db13f` (CsWebUi 2.5.0-beta.4.8). Once per process, before the first window opens. | `Path` |
 | 2102 | `CsWebUiMenuCommandFailed` | Error | A menu bar command of a CS-WebUI Window's root ViewModel (`IRunicMenuCommandSource`, `RunicCsWebUiHostOptions.MenuBar`) threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |

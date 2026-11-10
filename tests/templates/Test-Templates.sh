@@ -305,14 +305,15 @@ verify_template() {
   # Trailing flags: "defaults" omits --host and --view-models, so the checks
   # below prove that the template's defaults are this host and ViewModel
   # library; "tests" adds the TUnit test project and runs it; "gtk4" adds
-  # --linux-gtk 4 to the desktop host.
-  local defaults="" tests="" restore="" linux_gtk=3 flag
+  # --linux-gtk 4 to the desktop host; "translations" adds --translations.
+  local defaults="" tests="" restore="" translations="" linux_gtk=3 flag
   for flag in "${@:5}"; do
     case "$flag" in
       defaults) defaults=defaults ;;
       tests) tests=tests ;;
       restore) restore=restore ;;
       gtk4) linux_gtk=4 ;;
+      translations) translations=translations ;;
       *) echo "Unknown verify_template flag: $flag" >&2; exit 2 ;;
     esac
   done
@@ -326,6 +327,7 @@ verify_template() {
   local tests_options=()
   [[ "$tests" == tests ]] && tests_options=(--tests)
   [[ "$restore" == restore ]] && tests_options+=(--restore)
+  [[ "$translations" == translations ]] && tests_options+=(--translations)
   # SvelteKit renders its page from src/app.html and its routes; the other Vite frontends build HTML inputs.
   local html_inputs=true
   [[ "$framework" == angular || "$framework" == sveltekit ]] && html_inputs=false
@@ -334,6 +336,7 @@ verify_template() {
   if [[ "$linux_gtk" == 4 ]]; then host_label+=-gtk4; host_name+=Gtk4; fi
   local project_name="Acceptance${framework^}${manager^}${host_name}${view_models^}"
   local output="$template_tmp/$framework-$manager-$host_label-$view_models"
+  if [[ "$translations" == translations ]]; then project_name+=Translations; output+=-translations; fi
   local expected_manager_version
   local selected_lock
   case "$manager" in
@@ -364,7 +367,8 @@ verify_template() {
   # The candidate template references the candidate packages: the pack stamped their versions.
   if ! grep -Fq "\"version\": \"$package_version\"" "$output/.config/dotnet-tools.json" \
     || grep -E 'Include="Runic\.[^"]*" Version=' "$output/$project_name.csproj" \
-      | grep -vF "Version=\"$package_version\"" | grep -vF "Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\""; then
+      | grep -vF "Version=\"$package_version\"" | grep -vF "Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\"" \
+      | grep -vE 'Include="Runic\.Translations(\.Build)?" Version="0\.9\.1"'; then
     echo "The template does not reference the Runic $package_version packages; pack it with -p:RunicNuGetTemplateVersion=$package_version." >&2
     exit 1
   fi
@@ -486,8 +490,9 @@ verify_template() {
     echo "The generated $framework project contains unprocessed template syntax." >&2
     exit 1
   fi
-  # The Window project switch is the one Runic build setting the template declares.
-  if grep -vF 'RunicApplicationFrontendWindowProject>' "$output/$project_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge|RunicViewsWindowProject'; then
+  # The Window project switch is the one Runic build setting the template declares, and --translations opts in to
+  # RunicApplicationFrontendTranslations, which is off by default.
+  if grep -vE 'RunicApplicationFrontend(WindowProject|Translations)>' "$output/$project_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge|RunicViewsWindowProject'; then
     echo "The generated $framework project declares settings the Runic packages default." >&2
     exit 1
   fi
@@ -687,9 +692,13 @@ verify_template() {
     run_desktop_smoke "$output" "$project_name" "$host_label" "$linux_gtk"
   fi
   if [[ "$tests" == tests ]]; then
-    run_generated_tests "$output" "$project_name"
+    # --translations replaces the welcome test with three: the greeting in English and German, and a regional or
+    # unknown language.
+    if [[ "$translations" == translations ]]; then run_generated_tests "$output" "$project_name" 5
+    else run_generated_tests "$output" "$project_name" 3; fi
   fi
-  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" "${restore:+|restore}"
+  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s%s%s\n' "$framework" "$manager" "$host_label" "$view_models" "${tests:-no-tests}" \
+    "${restore:+|restore}" "${translations:+|translations}"
 }
 
 # Runs the generated test project as its README documents. The tests build the
@@ -697,14 +706,15 @@ verify_template() {
 run_generated_tests() {
   local output="$1"
   local project_name="$2"
+  local expected_tests="$3"
   local log="$output/dotnet-test.log"
   if ! (cd "$output" && dotnet test --project "$project_name.Tests") > "$log" 2>&1; then
     echo "The generated tests failed." >&2
     tail -n 80 "$log" >&2
     exit 1
   fi
-  if ! grep -Eq 'succeeded: 3\b' "$log" || grep -Eq 'failed: [1-9]' "$log"; then
-    echo "The generated test run did not pass its three tests." >&2
+  if ! grep -Eq "succeeded: $expected_tests\b" "$log" || grep -Eq 'failed: [1-9]' "$log"; then
+    echo "The generated test run did not pass its $expected_tests tests." >&2
     tail -n 40 "$log" >&2
     exit 1
   fi
@@ -946,6 +956,13 @@ variants=(
   "vue npm desktop toolkit tests gtk4"
   "sveltekit npm cswebui toolkit tests restore"
   "sveltekit bun desktop toolkit tests"
+  # --translations: the catalog's C# API and page ESM from one runic.json, each frontend's language switch and its
+  # translated-text tests, .NET and page.
+  "react pnpm desktop toolkit tests translations"
+  "vue bun cswebui reactiveui tests translations"
+  "svelte npm desktop reactiveui tests translations"
+  "sveltekit npm desktop reactiveui tests translations"
+  "angular npm desktop reactiveui tests translations"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then

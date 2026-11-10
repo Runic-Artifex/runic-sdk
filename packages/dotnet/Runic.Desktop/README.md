@@ -424,8 +424,9 @@ disk: 13 to 78 seconds on new `windows-2025` runners with WebView2 156, where la
 starts with fresh profiles took under a second and the page connected within 2
 seconds of the window appearing. So the window does not wait for WebView2 longer than
 1.5 seconds: it then appears with a loading surface, which has the window's
-placement, size, maximized or full-screen state, title (`Loading…`, until the page
-sets one) and icon, the background of its `ColorScheme` (or of the Windows app
+placement, size, maximized or full-screen state, title
+(`DesktopPlatformTexts.LoadingTitle`, `Loading…` by default, until the page sets
+one; it is also the surface's accessible name) and icon, the background of its `ColorScheme` (or of the Windows app
 theme, or the high-contrast colors) and an indeterminate progress bar, and the
 WebView takes its place once it exists. A start within 1.5 seconds shows the window
 once WebView2 is ready, as before; a `Hidden` window stays hidden, and a
@@ -1790,8 +1791,10 @@ completes AppKit's empty default menu instead of adding a second one:
 - Window: Minimize (Command and M), Zoom and Bring All to Front.
 
 The titles are English unless `DesktopHostOptions.StandardMenuTitles` supplies
-them. Runic ships no translations: take them from the application's own, such
-as its Runic Translations catalog, for the user's language when the host starts.
+them. Take them from the application's own translations, such as its Runic
+Translations catalog, for the user's language when the host starts, or from the
+optional [Runic.Application.Views.Translations](../Runic.Application.Views.Translations/README.md#standard-macos-menus)
+package, which has them in English and German.
 `DesktopHost.SetStandardMenuTitles(titles)` replaces them while the application
 runs, for example after a language switch, together with `SetMenuBar`; `null`
 returns to English.
@@ -1852,6 +1855,13 @@ option (`Warning`) from `ValidateOptions`, and every missing prerequisite from
 `GetAvailabilityDiagnostics` while `IsSupported` is `false`, with codes and
 remediations of your own. `Create()` returns a new, closed host for each window
 that opens.
+
+**Hosted application windows.** A window of a hosted application (the experimental
+[Runic host protocol](../../../specs/desktop/host-protocol.md), `RUNICDESK103`) opens with
+`DesktopWindowHostOptions.EphemeralDataStore`, a key: the window's cookies, storage and caches must stay in memory,
+shared only by windows of the same key. Runic Desktop gives such a window only to a host that implements
+`IDesktopEphemeralDataStoreWindowHost`, as `Runic.Desktop.Gtk4` does with an ephemeral `WebKitNetworkSession`; on any
+other the window does not open (`hosted-data-store-unavailable`).
 
 **Threading.** Runic Desktop calls a host's members from any thread, often the
 thread pool. Marshal native work to the thread that owns the window, as the GTK 4

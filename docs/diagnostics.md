@@ -81,6 +81,8 @@ and severities are open.
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
+| [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
+| [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
 | [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 | [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
@@ -147,6 +149,13 @@ The generator's own TypeScript bindings, such as the client's wire type,
 runtime imports and page reference caches, never collide with names derived
 from your types: when a ViewModel is named `WireViewModel` or `ViewViewModel`,
 the module uses `_WireState` or imports `ViewClient as _ViewClient` instead.
+
+A `[RunicSharedClient]` interface's shared client declares `{Name}PageReference`,
+which every implementing ViewModel's module imports. When that is also the page
+reference of a presentation kind, such as `OrdersPagePageReference` for the
+shared client `OrdersPage` and `OrdersView` with `[RunicViewContract("Page")]`,
+or `OrdersPageReference` for an interface `IOrders` beside `OrdersViewModel`,
+the error asks for another name: set `[RunicSharedClient(Name = "…")]`.
 
 **Fix:** rename one member or type, or set a wire name with `[RunicAlias]`.
 Rename a reserved command; the message suggests a name, such as `CreateCommand`
@@ -638,6 +647,67 @@ instance would never reach the page.
 **Fix:** expose the member as a get-only property, such as
 `public ViewRequest<FocusTarget> Focus { get; } = new();`. See
 [View requests](../specs/application/README.md#view-requests).
+
+### RUNICBRIDGE036
+
+An error from the Bridge generator (since 0.17). A ViewModel with a View
+implements an interface marked `[RunicSharedClient]`, and the generator cannot
+write the interface's shared client, because:
+
+- the ViewModel does not publish a property of the interface: it implements it
+  explicitly, inherits it from a base class, uses the interface's default
+  implementation, marks it `[RunicIgnore]`, or publishes it under another
+  member, such as the availability of a command;
+- the ViewModel's property has other nullability than the interface's, such as
+  `string` where the interface declares `string?`;
+- its generated TypeScript differs from the other implementing ViewModels':
+  another wire name (`[JsonPropertyName]`), command input (`[RunicCommandInput]`,
+  `[RunicCommandKey]`) or declared failure (`[RunicFailure]`). The error names
+  the ViewModel that differs from the most common declaration and shows both;
+  a property of an interface that another `[RunicSharedClient]` interface
+  extends is reported once;
+- the property is settable in the interface, but the page cannot set it, or it
+  is an interaction or a view request, which a shared client does not include;
+- the interface is generic, declares a property name twice through the
+  interfaces it extends, has a write-only property, or its `Name` is not a
+  letter followed by letters and digits.
+
+Without the attribute the build stays the same: an interface that is not marked
+is never checked.
+
+**Fix:** declare the property on the ViewModel class as a public property with
+the interface's type and nullability and the same attributes as the other
+implementing ViewModels, remove the member from the interface, or give a
+generic interface a non-generic one for its shared client. See
+[Shared clients](../packages/dotnet/Runic.Application.Views/README.md#shared-clients).
+
+### RUNICBRIDGE037
+
+An error from the `Runic.Application.Views` build targets (since 0.17). The
+project sets `RunicApplicationFrontendTranslations=true`, which keeps
+`RunicApplicationFrontendTranslationsDirectory` (by default
+`.runic/translations` in the frontend directory) equal to the ESM that
+`Runic.Translations.Build` writes for the project's catalog, and one of these
+holds:
+
+- The build wrote no ESM: `Runic.Translations.Build` is not referenced, the
+  project declares no `RunicTranslationProject`, or `RunicTranslationsEmitEsm`
+  is not `true`. The page would import a missing catalog, or the one of an
+  earlier build.
+- The directory holds files but no Runic Translations ESM (no
+  `web-module-manifest-v*.json`). The build deletes the files there that the
+  catalog does not have, so it stops instead.
+
+A catalog with errors is not `RUNICBRIDGE037`: the build reports the catalog's
+errors and leaves the directory as it is.
+
+**Fix:** reference `Runic.Translations.Build`, declare the catalog's
+`runic.json` as a `RunicTranslationProject` and set
+`<RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>`; or point
+`RunicApplicationFrontendTranslationsDirectory` at a directory of its own. A page
+that gets the catalog from the Translations Vite plugin does not need
+`RunicApplicationFrontendTranslations`. See
+[Translated text](../packages/dotnet/Runic.Application.Views/README.md#translated-text).
 
 ### RUNICBRIDGE050
 

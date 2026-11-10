@@ -41,9 +41,15 @@
       },
       "Runic.Translations": {
         "type": "Direct",
-        "requested": "[0.8.0, )",
-        "resolved": "0.8.0",
-        "contentHash": "MGxOBrzB/eFJBh99t8Vu5tSdqu15xhPkZrccB7VIk8JrcncrAMaLmvesXdGEgzwKFlSklBNLVbzjWcoLGQKY+Q=="
+        "requested": "[0.9.1, )",
+        "resolved": "0.9.1",
+        "contentHash": "Mn8Eo7XEyfHNEa7v8qsTH2hqsh0pNpffcWictp7V6cQWCbbixpYNhzeLNAcizw85r6IpNTW0p8UEMXPXqFx3tg=="
+      },
+      "Runic.Translations.Build": {
+        "type": "Direct",
+        "requested": "[0.9.1, )",
+        "resolved": "0.9.1",
+        "contentHash": "uAZvEb/NiBVWYmi8pTVm2VTtbquU0gpWAesGGmk/yzWjHAqn3J114gvU+w3jY6y4x2moaDO1lIbscCucdr1KAg=="
       },
       "Microsoft.Extensions.Configuration": {
         "type": "Transitive",

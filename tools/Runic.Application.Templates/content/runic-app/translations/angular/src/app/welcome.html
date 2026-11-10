@@ -1,0 +1,5 @@
+<section>
+  <!-- A text reference of the catalog, shown in the window's language. -->
+  <h2>{{ state()?.greeting | runicText: m.welcome_loading() }}</h2>
+  @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
+</section>

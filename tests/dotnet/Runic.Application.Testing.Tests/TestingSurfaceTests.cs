@@ -88,7 +88,7 @@ internal sealed class TestingSurfaceTests
             // RunicTestWindowPresentation implements IRunicWindowPresentation.
             Require(valueTask == (method.DeclaringType == typeof(RunicTestWindowPresentation) || name is "InMemoryBridgeTransport.BroadcastAsync"
                     or "InMemoryBridgeTransport.SendAsync" or "InMemoryBridgeTransport.RequestAsync"
-                    or "RunicServeOnlyApplication.DisposeAsync" or "RunicTestNavigationEntry`1.DisposeAsync"
+                    or "RunicServeOnlyApplication.DisposeAsync" or "RunicTestHost.DisposeAsync" or "RunicTestNavigationEntry`1.DisposeAsync"
                     or "RunicTestPlatform.DisposeAsync" or "RunicTestNotifications.DisposeAsync" or "RunicTestWindow.DisposeAsync"
                     or "RunicTestRowSource`2.CountAsync" or "RunicTestRowSource`2.LoadAsync" or "RunicTestRowSource`2.IndexOfAsync"),
                 $"{name} returns {method.ReturnType.Name}.");

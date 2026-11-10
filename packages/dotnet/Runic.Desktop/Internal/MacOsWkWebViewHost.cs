@@ -19,6 +19,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly nint DelegateClass = CreateDelegateClass();
     // Hosts by their WKWebView, for the web content delegate, the drop override and the page's drop label.
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> WebViews = new();
+    // The non-persistent WKWebsiteDataStores of runic-host/1 hosted windows by data store key
+    // (WebUiEmbeddedHostOptions.EphemeralDataStore), on the main thread: one for each host session.
+    private static readonly EphemeralDataStoreCache<nint> EphemeralStores = new();
     private static readonly nint WebViewClass = CreateWebViewClass();
     private static readonly nint TitleObserverClass = CreateTitleObserverClass();
     private static readonly nint WebContentDelegateClass = CreateWebContentDelegateClass();
@@ -91,6 +94,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private nint _application;
     private nint _window;
     private nint _webView;
+    // runic-host/1 hosted windows: the key of the data store this window holds (EphemeralStores).
+    private string? _ephemeralDataStore;
     private nint _titleObserver;
     private nint _delegate;
     // The web view's navigation and UI delegate, which WebKit references weakly; released with the web view.
@@ -531,10 +536,17 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(minimumWidth, minimumHeight));
         }
 
+        nint dataStore = 0;
+        if (options.EphemeralDataStore is { } key)
+        {
+            dataStore = EphemeralStores.Acquire(key, static () => Api.NewNonPersistentDataStore());
+            _ephemeralDataStore = key;
+        }
         _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0,
-            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0);
+            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, dataStore);
         if (_webView == 0)
         {
+            ReleaseEphemeralDataStore();
             Api.SendVoid(_window, "close");
             throw new InvalidOperationException("WebKit could not create a WKWebView.");
         }
@@ -1550,6 +1562,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (windowDelegate != 0)
         {
             Api.SendVoid(windowDelegate, "release");
+        }
+        ReleaseEphemeralDataStore();
+    }
+
+    // The web view retains its configuration's data store; the cache's own reference goes with the key's last window.
+    private void ReleaseEphemeralDataStore()
+    {
+        if (Interlocked.Exchange(ref _ephemeralDataStore, null) is { } key)
+        {
+            EphemeralStores.Release(key, static store => Api.SendVoid(store, "release"));
         }
     }
 
@@ -2584,7 +2606,17 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         // The script runs at document start in every frame (WKUserScriptInjectionTimeAtDocumentStart = 0).
-        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler, nint windowChromeHandler)
+        // runic-host/1 hosted windows: a data store that keeps cookies, storage and caches in memory, retained for the
+        // caller (macOS 10.11 and later).
+        internal nint NewNonPersistentDataStore()
+        {
+            var store = SendNint(GetClass("WKWebsiteDataStore"), "nonPersistentDataStore");
+            if (store == 0) throw new InvalidOperationException("WebKit could not create a non-persistent data store.");
+            return SendNint(store, "retain");
+        }
+
+        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler, nint windowChromeHandler,
+            nint websiteDataStore = 0)
         {
             var configuration = SendNint(SendNint(GetClass("WKWebViewConfiguration"), "alloc"), "init");
             if (configuration == 0)
@@ -2594,6 +2626,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
             try
             {
+                if (websiteDataStore != 0)
+                {
+                    SendVoidNint(configuration, "setWebsiteDataStore:", websiteDataStore);
+                }
+
                 if (documentStartScript is not null)
                 {
                     var source = CreateString(documentStartScript);

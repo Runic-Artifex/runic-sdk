@@ -29,7 +29,31 @@ export type { TextReference } from "./wire.js";
  * ```
  *
  * A template that calls `m.*()` renders again on a language switch when the locale resolver reads the framework's
- * reactive text locale (`useTextLocale` in React, Vue and Svelte, `textLocaleSignal` in Angular).
+ * reactive text locale (`useTextLocale` in React, Vue and Svelte, `textLocaleSignal` in Angular). With library catalogs
+ * on the page, `configureSharedLocaleResolver` (Runic Translations 0.9) sets the locale of every catalog, and the
+ * transport's `createReferenceResolver` resolves references of each catalog:
+ *
+ * ```ts
+ * import { configureTranslatedText } from "@runic-artifex/views";
+ * import { m } from "virtual:runic-translations/app";
+ * import { configureSharedLocaleResolver, createLocaleSource, localeDirection } from "virtual:runic-translations/app/runtime";
+ * import * as appTransport from "virtual:runic-translations/app/transport";
+ * import { m as grid } from "virtual:runic-translations/acme.grid";
+ * import * as gridTransport from "virtual:runic-translations/acme.grid/transport";
+ *
+ * const locale = createLocaleSource({ initialLocale: navigator.language });
+ * configureSharedLocaleResolver(locale.getRequestedLocale);
+ * // createReferenceResolver belongs to a generated transport module, not to @runic-artifex/views.
+ * const resolveReference = appTransport.createReferenceResolver([
+ *   { transport: appTransport, messages: m },
+ *   { transport: gridTransport, messages: grid },
+ * ]);
+ * configureTranslatedText({
+ *   ...locale,
+ *   resolve: (reference, language) => resolveReference(reference, { locale: language }).text,
+ *   direction: localeDirection,
+ * });
+ * ```
  */
 export interface TextTranslations {
   /**
@@ -85,7 +109,8 @@ function changed(): void {
 /**
  * Connects the page's Translations runtime: `resolveText`, `useText` and the framework helpers format references with
  * it, and the window's locale, when the application sets one, is passed to its `setLocale`. Returns a function that
- * disconnects it. A later call replaces an earlier one.
+ * disconnects it. A later call replaces an earlier one, so a page with several catalogs passes one `resolve` for all of
+ * them, such as the generated `createReferenceResolver`'s.
  */
 export function configureTranslatedText(translations: TextTranslations): () => void {
   if (typeof translations?.resolve !== "function" || typeof translations.getLocale !== "function")

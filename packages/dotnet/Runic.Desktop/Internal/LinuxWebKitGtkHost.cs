@@ -8,6 +8,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 {
     private static readonly Lazy<GtkApi> NativeApi = new(static () => new());
     private static GtkApi Api => NativeApi.Value;
+    // The ephemeral web contexts of runic-host/1 hosted windows by data store key (WebUiEmbeddedHostOptions.EphemeralDataStore),
+    // on the GTK thread: a context of its own, with an ephemeral website data manager, for each host session.
+    private static readonly EphemeralDataStoreCache<nint> EphemeralContexts = new();
     private static readonly Lazy<GtkDispatcher> NativeDispatcher = new(static () => new(Api));
     private static GtkDispatcher Dispatcher => NativeDispatcher.Value;
 
@@ -34,6 +37,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     // GTK thread only: the window's DesktopWebContentPolicy (SEC-04) and the web context's download-started connection.
     private WebKitGtkWebContent? _webContent;
     private nint _downloadContext;
+    // runic-host/1 hosted windows: the key of the ephemeral web context this window holds (EphemeralContexts).
+    private string? _ephemeralDataStore;
     private ulong _downloadHandler;
 
     // Tests observe the URLs handed to the system's handler here instead of launching it.
@@ -330,7 +335,15 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
         _window = Api.GtkWindowNew();
         var (dictionaries, missing) = SpellingLanguages.ForWebKitGtk(options.SpellCheckingLanguages);
-        _webView = Api.WebKitWebViewNew(options.Language, dictionaries);
+        if (options.EphemeralDataStore is { } dataStore)
+        {
+            _webView = Api.WebKitWebViewNewEphemeral(EphemeralContexts, dataStore, options.Language, dictionaries);
+            if (_webView != 0) _ephemeralDataStore = dataStore;
+        }
+        else
+        {
+            _webView = Api.WebKitWebViewNew(options.Language, dictionaries);
+        }
         ReportMissingDictionaries(missing);
         if (_window == 0 || _webView == 0)
         {
@@ -639,6 +652,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         _dragPaths = null;
         _window = 0;
         _webView = 0;
+        if (Interlocked.Exchange(ref _ephemeralDataStore, null) is { } dataStore)
+        {
+            EphemeralContexts.Release(dataStore, static context => Api.GObjectUnref(context));
+        }
         _nativeShutdown.Cancel();
         _closed.TrySetResult();
         Closed?.Invoke(this, EventArgs.Empty);
@@ -1339,6 +1356,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GdkScreenGetRgbaVisualPointer = Optional(_gtk, "gdk_screen_get_rgba_visual");
                 GtkWidgetSetAppPaintablePointer = Optional(_gtk, "gtk_widget_set_app_paintable");
                 WebKitWebContextNewPointer = Required(_webkit, "webkit_web_context_new");
+                WebKitWebContextNewEphemeralPointer = Optional(_webkit, "webkit_web_context_new_ephemeral");
                 WebKitWebViewNewWithContextPointer = Required(_webkit, "webkit_web_view_new_with_context");
                 WebKitWebViewLoadUriPointer = Required(_webkit, "webkit_web_view_load_uri");
                 WebKitWebViewReloadPointer = Required(_webkit, "webkit_web_view_reload");
@@ -1757,6 +1775,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GdkScreenGetRgbaVisualPointer { get; }
         private nint GtkWidgetSetAppPaintablePointer { get; }
         private nint WebKitWebContextNewPointer { get; }
+        private nint WebKitWebContextNewEphemeralPointer { get; }
         private nint WebKitWebViewNewWithContextPointer { get; }
         private nint WebKitWebViewLoadUriPointer { get; }
         private nint WebKitWebViewReloadPointer { get; }
@@ -2050,6 +2069,43 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             {
                 return 0;
             }
+            ConfigureContext(context, language, spellingDictionaries);
+
+            try
+            {
+                return ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewNewWithContextPointer)(context);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(context);
+            }
+        }
+
+        // runic-host/1 hosted windows: a view in the host session's ephemeral web context, which keeps cookies and
+        // storage in memory and shares them with no other session. The cache keeps one reference to the context until the
+        // key's last window is destroyed; the view keeps its own.
+        internal nint WebKitWebViewNewEphemeral(EphemeralDataStoreCache<nint> contexts, string dataStore, string? language,
+            string[] spellingDictionaries)
+        {
+            if (WebKitWebContextNewEphemeralPointer == 0)
+            {
+                throw new DesktopException(DesktopErrorCategory.Unavailable, "hosted-data-store-unavailable",
+                    "This WebKitGTK has no ephemeral web context, so it cannot show a hosted application's window.");
+            }
+            var context = contexts.Acquire(dataStore, () =>
+            {
+                var created = ((delegate* unmanaged[Cdecl]<nint>)WebKitWebContextNewEphemeralPointer)();
+                if (created == 0) throw new InvalidOperationException("WebKitGTK could not create an ephemeral web context.");
+                ConfigureContext(created, language, spellingDictionaries);
+                return created;
+            });
+            var view = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewNewWithContextPointer)(context);
+            if (view == 0) contexts.Release(dataStore, context => GObjectUnref(context));
+            return view;
+        }
+
+        private void ConfigureContext(nint context, string? language, string[] spellingDictionaries)
+        {
             SetSpellChecking(context, spellingDictionaries);
             // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
             if (language is not null && WebKitWebContextSetPreferredLanguagesPointer != 0)
@@ -2059,15 +2115,6 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 languages[0] = (nint)tag.Pointer;
                 languages[1] = 0;
                 ((delegate* unmanaged[Cdecl]<nint, nint*, void>)WebKitWebContextSetPreferredLanguagesPointer)(context, languages);
-            }
-
-            try
-            {
-                return ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewNewWithContextPointer)(context);
-            }
-            finally
-            {
-                ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(context);
             }
         }
 

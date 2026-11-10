@@ -639,6 +639,7 @@ The vocabulary is open.
 
 | Code | Cause |
 | --- | --- |
+| `guest-start-failed` | The guest's executable could not be started, such as one that does not exist, or could not be contained (a Windows job object). |
 | `guest-start-timeout` | No channel line, or no `hello` reply, within the start timeout, retries included. |
 | `guest-exited` | The guest exited before the `hello` reply. |
 | `guest-not-hostable` | The guest wrote an invalid channel line, a reply carried no matching guest proof, or a proven reply failed for another reason than `protocol-mismatch`. |
