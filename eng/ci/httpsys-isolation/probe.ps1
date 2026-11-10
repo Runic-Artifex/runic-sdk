@@ -128,3 +128,49 @@ Case '7. Another standard user: A holds exclusive loopback sockets, B binds sock
     Start-As 'runic-probe-b' 'B7' @('-Port', $port, '-Exclusive')
     Show 'A7', 'B7'
 }
+
+Write-Output ""
+Write-Output "== Reservations on this runner (netsh http show urlacl, as admin)"
+netsh http show urlacl | Select-String 'Reserved URL' | ForEach-Object { Write-Output "  $($_.Line.Trim())" }
+
+function Reserve([string]$url, [scriptblock]$body) {
+    netsh http add urlacl url=$url user=BUILTIN\Users listen=yes | Out-Null
+    try { & $body } finally { netsh http delete urlacl url=$url | Out-Null }
+}
+Case '8. An administrator reserved http://+:P/ for Users: A holds localhost root, B registers a strong-wildcard longer prefix after' {
+    $port = FreePort
+    Reserve "http://+:$port/" {
+        Start-As 'runic-probe-a' 'A8' @('-Port', $port, '-Prefixes', "http://localhost:$port/")
+        Start-As 'runic-probe-b' 'B8' @('-Port', $port, '-Prefixes', "http://+:$port/_runic/")
+        Start-As 'runic-probe-b' 'B8root' @('-Port', $port, '-Prefixes', "http://+:$port/")
+        Request $port '/_runic/blobs/abc' '-4'; Request $port '/other' '-4'
+        Show 'A8', 'B8', 'B8root'
+    }
+}
+Case '9. An administrator reserved http://localhost:P/ for Users: A holds the root, B registers a longer prefix after' {
+    $port = FreePort
+    Reserve "http://localhost:$port/" {
+        Start-As 'runic-probe-a' 'A9' @('-Port', $port, '-Prefixes', "http://localhost:$port/")
+        Start-As 'runic-probe-b' 'B9' @('-Port', $port, '-Prefixes', "http://localhost:$port/_runic/")
+        Request $port '/_runic/blobs/abc' '-4'
+        Show 'A9', 'B9'
+    }
+}
+Case '10. An administrator reserved http://+:P/ for Users: A holds exclusive loopback sockets, B registers through http.sys' {
+    $port = FreePort
+    Reserve "http://+:$port/" {
+        Start-As 'runic-probe-a' 'A10' @('-Port', $port, '-Exclusive')
+        Start-As 'runic-probe-b' 'B10' @('-Port', $port, '-Prefixes', "http://+:$port/_runic/")
+        Start-As 'runic-probe-b' 'B10star' @('-Port', $port, '-Prefixes', "http://localhost:$port/_runic/")
+        Request $port '/_runic/blobs/abc' '-4'; Request $port '/_runic/blobs/abc' '-6'
+        Show 'A10', 'B10', 'B10star'
+    }
+}
+Case '11. Same user, two prefixes deeper than the root: B registers /_runic/blobs/abc/ after A holds the root' {
+    $port = FreePort
+    Start-As 'runic-probe-a' 'A11' @('-Port', $port, '-Prefixes', "http://localhost:$port/")
+    Start-As 'runic-probe-a' 'B11' @('-Port', $port, '-Prefixes', "http://localhost:$port/_runic/blobs/abc/")
+    Start-As 'runic-probe-b' 'B11b' @('-Port', $port, '-Prefixes', "http://localhost:$port/_runic/upload/")
+    Request $port '/_runic/blobs/abc' '-4'; Request $port '/_runic/upload' '-4'
+    Show 'A11', 'B11', 'B11b'
+}
