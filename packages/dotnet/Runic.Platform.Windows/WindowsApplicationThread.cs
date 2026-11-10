@@ -9,15 +9,25 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // The application's own STA thread for native UI without a window: task dialogs and shell handoffs (Shared), and each
-// unowned file dialog's thread of its own (StartDialog), so that two windows' dialogs never nest in one modal loop. Each
+// unowned file dialog's thread of its own (RentDialog), so that two windows' dialogs never nest in one modal loop. Each
 // background thread runs a message loop with a message-only window. Work is queued to that window, so it also runs
 // inside the modal loop of a dialog shown on the thread: cancelling an unowned file dialog closes it from there. Actions
 // receive no window handle (0).
+// No thread ever ends: a dialog's thread waits, idle, for the next unowned dialog, so there are only ever as many as
+// were shown at once, and all of them end with the process. A dialog thread that ended (its window destroyed,
+// CoUninitialize, thread detach) while another dialog was still shown crashed the process when that other dialog
+// closed: exit code 0xC000041D (STATUS_FATAL_USER_CALLBACK_EXCEPTION), faulting module ntdll, a null dereference in
+// RtlpWaitOnCriticalSection under oleacc!CPropMgr::ClearProps, called from
+// explorerframe!CNavBar::ClearHwndAccProperties as comdlg32!CFileOpenSave::_OnDestroyDialog tore down the navigation
+// bar inside the second dialog's DestroyWindow. oleacc keeps its accessibility property store for the whole process,
+// and the thread that had ended left that store's lock unusable (#845; the windows-11-arm runners, about one run in
+// six). Ending a thread only at shutdown would gain nothing: the process ends them, and a dialog can still be closing
+// then.
 [SupportedOSPlatform("windows8.0")]
 internal sealed class WindowsApplicationThread : INativeWindowOwner
 {
     private const string ClassName = "RunicApplicationThread";
-    private const uint WorkMessage = PInvoke.WM_APP + 0x52, StopMessage = PInvoke.WM_APP + 0x53;
+    private const uint WorkMessage = PInvoke.WM_APP + 0x52;
     private static readonly Lazy<WindowsApplicationThread> Instance = new(static () => new WindowsApplicationThread("Runic application UI"));
     // The window class every thread's message-only window uses, registered once per process.
     private static readonly Lazy<bool> ClassRegistered = new(RegisterClass);
@@ -26,14 +36,13 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
 
     private readonly System.Collections.Concurrent.ConcurrentQueue<Action> _work = new();
     private readonly TaskCompletionSource<bool> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Dialog threads whose dialog is done, for the next unowned dialog.
+    private static readonly System.Collections.Concurrent.ConcurrentStack<WindowsApplicationThread> IdleDialogThreads = new();
     private nint _window;
     private int _threadId;
-    // Tests follow a dialog thread's end: its message loop, window and COM.
-    private readonly Action<string>? _trace;
 
-    private WindowsApplicationThread(string name, Action<string>? trace = null)
+    private WindowsApplicationThread(string name)
     {
-        _trace = trace;
         var thread = new Thread(Run) { IsBackground = true, Name = name };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -42,22 +51,26 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
     // The process's thread, started on first use.
     internal static WindowsApplicationThread Shared => Instance.Value;
 
-    // A thread of its own for one dialog; Stop ends it once the dialog is done.
-    internal static WindowsApplicationThread StartDialog(Action<string>? trace = null) => new("Runic unowned dialog", trace);
+    // A thread for one dialog: an idle one whose earlier dialog is done, or a new one. Return gives it back.
+    internal static WindowsApplicationThread RentDialog()
+    {
+        while (IdleDialogThreads.TryPop(out var idle))
+            // A thread that could not start its message loop takes no more dialogs.
+            if (idle._ready.Task is not { IsCompleted: true, Result: false }) return idle;
+        return new("Runic unowned dialog");
+    }
 
-    // Ends the thread's message loop after the work queued before it; the thread then releases its window and COM.
-    internal void Stop()
+    // The dialog on this thread is done (Show returned and released it): the thread waits for the next one.
+    internal void Return()
     {
         if (ReferenceEquals(this, Instance.IsValueCreated ? Instance.Value : null)) throw new InvalidOperationException("The application's thread lives as long as the process.");
-        _ = _ready.Task.ContinueWith(static (ready, state) =>
-        {
-            if (ready.Result) PInvoke.PostMessage((HWND)Volatile.Read(ref ((WindowsApplicationThread)state!)._window), StopMessage, default, default);
-        }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        if (_ready.Task is { IsCompleted: true, Result: false }) return;
+        IdleDialogThreads.Push(this);
     }
 
     public Guid Generation { get; } = Guid.NewGuid();
 
-    // The shared thread never closes: it lives as long as the process; a dialog's thread lives until its picker stops it.
+    // Neither the shared thread nor a dialog's thread closes: both live as long as the process.
     // A thread whose window could not be created fails each invocation with NativeBackendUnavailableException instead.
     public bool IsAvailable => true;
 
@@ -122,12 +135,10 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
         {
             _ready.TrySetResult(false);
             t_current = null;
-            _trace?.Invoke("thread's message loop ended");
-            // A stopped dialog thread: work queued after Stop fails, as its window is gone.
+            // Only a thread whose loop failed gets here: work queued after it fails, as its window is gone.
             Volatile.Write(ref _window, 0);
             if (window != default) PInvoke.DestroyWindow(window);
             if (com) PInvoke.CoUninitialize();
-            _trace?.Invoke("thread ends");
         }
     }
 
@@ -160,12 +171,6 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
             if (message == WorkMessage && t_current is { } thread)
             {
                 thread.RunQueued();
-                return (LRESULT)0;
-            }
-            if (message == StopMessage && t_current is { } stopping)
-            {
-                stopping.RunQueued();
-                PInvoke.PostQuitMessage(0);
                 return (LRESULT)0;
             }
         }

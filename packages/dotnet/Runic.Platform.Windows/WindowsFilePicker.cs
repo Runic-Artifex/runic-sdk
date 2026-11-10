@@ -12,7 +12,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // Generated unmanaged Common Item Dialog bindings preserve NativeAOT support. An unowned picker shows each dialog
-// without a parent window, on an STA thread of its own (WindowsApplicationThread.StartDialog): dialogs that two
+// without a parent window, on an STA thread of its own (WindowsApplicationThread.RentDialog): dialogs that two
 // presentations show at once each run their own modal loop, so neither waits for the other to close.
 internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool unowned = false) : INativeFilePicker, INativeDirectoryPicker
 {
@@ -58,7 +58,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         bool save = request.Save, multiple = request.AllowMultiple && !save;
         var generation = owner.Generation;
         // The thread the dialog runs on, and its close requests with it.
-        WindowsApplicationThread? own = unowned && OperatingSystem.IsWindowsVersionAtLeast(8) ? WindowsApplicationThread.StartDialog(Trace) : null;
+        WindowsApplicationThread? own = unowned && OperatingSystem.IsWindowsVersionAtLeast(8) ? WindowsApplicationThread.RentDialog() : null;
         INativeWindowOwner thread = own ?? owner;
         nint dialog = 0;
         IReadOnlyList<NativeFileSelection>? selection = null;
@@ -140,7 +140,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
             shown.TrySetResult();
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
-            if (OperatingSystem.IsWindowsVersionAtLeast(8)) own?.Stop();
+            if (OperatingSystem.IsWindowsVersionAtLeast(8)) own?.Return();
         }
         // The facade releases late selection if cancellation won the delivery race.
         return selection;
