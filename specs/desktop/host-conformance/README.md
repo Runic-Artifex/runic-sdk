@@ -57,7 +57,8 @@ or `disconnect` step; `note` is a comment.
 | `exit` | — | Ends its own process with `code` |
 | `advance` | Waits for the named limit of `arrange.limits` to pass | The same |
 | `guest` | Makes the test application do one [action](#test-application) | — |
-| `expect` | Checks the outcome of the guest application: an action's result, the guest's start failure, its exit | Checks the host's outcome: its start, or its start failure code |
+| `user` | — | Makes the host's user do one [action](#the-hosts-user) in a window of the host |
+| `expect` | Checks the outcome of the guest application: an action's result, the guest's start failure, its exit | Checks the host's outcome: its start, or its start failure code, a window's menu bar or its close |
 
 A `receive` step waits until a message arrives, up to the runner's own timeout; time in a scenario passes only through
 `advance` and the work the implementation does on its own. When the scenario ends, each open connection must have no
@@ -72,7 +73,14 @@ Messages are compared by JSON value, never by bytes or member order.
   scenario then provides.
 - **`{"$id": name}`** is an identifier from `ids`. A `request` id is a request's `id`: the runner binds the value the
   first time a message it receives carries it, and chooses a new value for a message it sends. A `window` id is a
-  window id that the guest chooses and the runner binds the same way. A `wire` id has a fixed `value`.
+  window id that the guest chooses and the runner binds the same way. An `item` id is a menu item id that the guest
+  chooses ([`menus/1`](../host-protocol.md#menu-entries)), such as in `set-menu-bar` or `show-context-menu`: the runner
+  binds it from the first message it receives that carries it, and a message the runner sends, such as `menu-invoke`
+  or a context menu's reply, carries only an item id it bound. A `wire` id has a fixed `value`. In the `host` role the
+  runner is the guest, so its window and item ids are literal values of the scenario.
+- **`{"$file": name}`** and **`{"$directory": name}`** are the absolute path of a file or directory `name` (a plain name,
+  no separators) in a temporary directory of the runner, which creates it on first use with some content and removes
+  it after the scenario: the paths a dialog returns (`dialogs/1`) are real and absolute on every platform.
 - **`{"$secret": name}`** is a secret of the launch, which the runner computes:
 
 | `name` | Value |
@@ -108,7 +116,60 @@ runner checks the protocol, not the page. A guest application under test opens n
 | `answerGuard` | `allow` | — |
 | `holdGuard` | — | — |
 | `activity` | `window` | The Window's `IRunicWindowPresentation.Activity`, `{active, minimized, visible}` |
+| `setMenuBar` | `menu`: `"test"`, `"german"` or `"none"` | — (the application declares that [menu bar](#menus-and-dialogs), or none) |
+| `setCommandEnabled` | `command`, one of the bar's command ids; `value`: boolean | — (the application's command can run, or no longer) |
+| `invoked` | — | `invoked`: the command ids of the bar that the application ran, in order, since the start; the runner waits until they are the expected ones |
+| `contextMenu` | `window`, optional `point` `{x, y}` | The Window's context menu (`IWindowPlatformServices.ShowContextMenuAsync`, at `point` or the pointer): `chosen`, the command id of the item the user chose or `null`, or an `outcome` |
+| `openFile`, `openFiles`, `saveFile`, `openFolder` | `window` | The Window's file dialog (`IFileDialogs`: `OpenFileAsync`, `OpenFilesAsync`, `SaveFileAsync`, `OpenDirectoryAsync`): `selected`, the file or directory names of the selection, in order; `dismissed: true`; or an `outcome` |
+| `messageBox` | `window` | The Window's message box (`IDesktopMessageBoxes`): `button`, the id of the button the user chose or `null`, or an `outcome` |
+| `cancelDialog` | `window` | — (it cancels the window's pending `contextMenu` and dialog actions through their cancellation token) |
 
 `expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start, or the host's start
 of the guest, failed with a code), `exited` (the guest process exited; a code when given), `running` (the guest still
-runs) or `started` (the host's start of the guest succeeded).
+runs) or `started` (the host's start of the guest succeeded). An action that did not end as expected, such as one still
+waiting, fails the step after the runner's own timeout. `cancelled: true` expects an action that ended cancelled, such as
+after `cancelOpen` or `cancelDialog`. The `outcome` of a dialog or context menu is the platform's
+(`unavailable` with a reason or `failed` with a code, in kebab case): a dialog request that the host refused reports
+`failed` with `permission-denied`, a second dialog of a window `failed` with `resource-busy`, and a Window whose host
+does not use the feature `unavailable` with `owner-unavailable`.
+
+### Menus and dialogs
+
+The test application's menu bar is declared for the application (`DesktopHost.SetMenuBar`) when it starts, before any
+Window opens, and runs the application's commands (`RunicDesktopHost.UseApplicationMenu`): `file.open`, `file.save`,
+`file.recent` and `view.grid`, each recorded for `invoked` when it runs and able to run until `setCommandEnabled` says
+otherwise. Its Windows' root ViewModels take no part in the bar. `"test"` is the bar in English, `"german"` the same
+bar in German (the titles in brackets); the shortcuts use the [shortcut text](../fixtures/shortcuts.json):
+
+| Menu | Entries |
+| --- | --- |
+| `File` (Datei), role `file` | `Open` (Öffnen), `file.open`, `Primary+O`; `Save` (Sichern), `file.save`, `Primary+S`; a separator; the submenu `Recent` (Zuletzt geöffnet) with `notes.txt`, `file.recent` |
+| `View` (Ansicht) | `Grid` (Raster), `view.grid`, a check item, not checked |
+
+Its context menu has the items `Cut` (`edit.cut`), `Copy` (`edit.copy`, `Primary+C`), a separator and `Paste`
+(`edit.paste`), which is disabled.
+
+Its dialogs: `openFile` and `openFiles` with the title `Open` and one filter `Text` (`txt`); `saveFile` with the title
+`Save` and the suggested name `notes.txt`; `openFolder` with the title `Choose a folder`; `messageBox` a warning with the
+message `Save changes?`, the title `Conformance` and the buttons `save` (Save, default), `discard` (Don't Save,
+destructive) and `cancel` (Cancel, cancel).
+
+## The host's user
+
+A host runner plays the user of the host application too. Its host shows each window without a screen, as the window
+`window-open` named: a `user` step or an `expect` names it by that id. Each context menu and dialog the host shows waits
+for a `user` step that answers it, or until the host closes it.
+
+| Action | Members | What the user does |
+| --- | --- | --- |
+| `chooseMenuItem` | `window`, `titles`: the path of titles to an item of the window's menu bar | Chooses the item, as its native bar or its shortcut does; the step fails when the bar has no such enabled item |
+| `awaitContextMenu` | — | Waits until the host shows a context menu, and leaves it open |
+| `chooseContextItem` | `title`, or `dismiss: true` | Chooses the item of that title in the oldest open context menu, or dismisses it |
+| `awaitDialog` | optional `dialog` | Waits until the host shows a dialog (of that kind), and leaves it open |
+| `answerDialog` | optional `dialog`; `paths` (`$file` or `$directory` values), `button`, or `dismiss: true` | Answers the oldest open dialog (of that kind): selects the paths, presses the button, or closes the dialog without either |
+| `closeWindow` | `window` | Presses the window's close button, which asks the guest (`close-request`) |
+
+`dialog` is a kind of `file-dialog` (`open`, `open-multiple`, `save`, `folder`, `folder-multiple`) or `message-box`.
+`expect` with `window` checks the host's window: `menuBar`, the entries its native menu bar shows, as menu entries
+without their `id` members (the host's own items are part of it), waiting until they match; or `closed: true`, that the
+window closed.

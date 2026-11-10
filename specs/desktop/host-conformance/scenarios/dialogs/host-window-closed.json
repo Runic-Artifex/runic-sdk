@@ -1,0 +1,39 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "dialogs.host-window-closed.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "dialogs",
+  "roles": ["host"],
+  "description": "When the user closes a window whose dialog is open, the host asks the guest with close-request; once the guest's window-closed closed the window, the dialog is closed and its request is answered unavailable with owner-closed, as is a dialog request for the closed window.",
+  "requires": ["dialogs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "d1": {"kind":"request"},
+    "close-1": {"kind":"request"},
+    "d2": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1"]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"send":{"id":{"$id":"d1"},"kind":"file-dialog","window":"w1","dialog":"open","title":"Open","filters":[{"name":"Text","extensions":["txt"],"mimeTypes":[]}]},"connection":"c1"},
+    {"user":{"action":"awaitDialog","dialog":"open"}},
+    {"user":{"action":"closeWindow","window":"w1"}},
+    {"receive":{"id":{"$id":"close-1"},"kind":"close-request","window":"w1"},"connection":"c1"},
+    {"send":{"id":{"$id":"close-1"},"ok":true,"allow":true},"connection":"c1"},
+    {"send":{"kind":"window-closed","window":"w1"},"connection":"c1"},
+    {"receive":{"id":{"$id":"d1"},"ok":true,"outcome":"unavailable","reason":"owner-closed"},"connection":"c1"},
+    {"expect":{"window":"w1","closed":true}},
+    {"send":{"id":{"$id":"d2"},"kind":"message-box","window":"w1","icon":"warning","message":"Save changes?","title":"Conformance","buttons":[{"id":"save","label":"Save","role":"default"},{"id":"discard","label":"Don't Save","role":"destructive"},{"id":"cancel","label":"Cancel","role":"cancel"}]},"connection":"c1"},
+    {"receive":{"id":{"$id":"d2"},"ok":true,"outcome":"unavailable","reason":"owner-closed"},"connection":"c1"}
+  ]
+}
