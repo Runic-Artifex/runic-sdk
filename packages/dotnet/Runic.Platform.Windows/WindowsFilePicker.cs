@@ -180,8 +180,13 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         Guid clsid = new("B5F8350B-0548-48B1-A6EE-88BD00B4A5E7"), iid = new("00000000-0000-0000-C000-000000000046");
         void* store = null;
         // Never released: the process ends with it.
-        _ = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &iid, &store);
+        HeldPropertyServiceResult = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &iid, &store).Value;
+        HeldPropertyService = (nint)store;
     }
+
+    // TEMPORARY (#845 diagnosis): tests read the held service and its result.
+    internal static nint HeldPropertyService { get; private set; }
+    internal static int HeldPropertyServiceResult { get; private set; } = 1;
 
     private static unsafe nint Create(bool save)
     {
