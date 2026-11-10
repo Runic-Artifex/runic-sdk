@@ -323,7 +323,7 @@ internal sealed partial class LinuxWebKitGtkHost
         Api.GtkWidgetShowAll(menu);
         if (options is { X: { } x, Y: { } y })
         {
-            var (pointX, pointY) = GtkMenus.PagePoint(x, y, Api.GetZoomLevel(_webView));
+            var (pointX, pointY) = GtkMenus.PagePoint(x, y, Api.GetZoomLevel(_webView), Api.WidgetAllocatedWidth(_webView), Api.WidgetAllocatedHeight(_webView));
             MenuApi.MenuPopupAtPoint(menu, _webView, pointX, pointY, _triggerEvent);
         }
         else

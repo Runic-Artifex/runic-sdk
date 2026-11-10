@@ -13,7 +13,10 @@ namespace Runic.Application.Views.Desktop.Hosting;
 // with each item's state from the Window's command path, as a native window of the guest would show it. The bar goes to
 // the host with set-menu-bar when the window opened and whenever the application declares another; a changed state
 // goes with update-menu-items. Requests go one at a time, so the host applies them in order, and changes made while one
-// is sent are coalesced. The host's menu-invoke runs the item through the same command path.
+// is sent are coalesced; a request the host's rate limit turned away is sent again a little later. The host's
+// menu-invoke runs the item through the same command path. An item id names one item for the window's lifetime: an
+// item of the new bar keeps its id when it was in the bar before, any other gets a new one, so a menu-invoke from a bar
+// the host showed before the change runs the item the user chose, or nothing.
 internal sealed class HostedWindowMenus : IDisposable
 {
     private readonly HostedGuest _guest;
@@ -25,6 +28,9 @@ internal sealed class HostedWindowMenus : IDisposable
     private MenuCommandBinding? _application;
     private Dictionary<string, DesktopMenuItem> _items = new(StringComparer.Ordinal);
     private Dictionary<string, (bool Enabled, bool? Checked)> _states = new(StringComparer.Ordinal);
+    // The ids of the current bar's items, by the item, and the last id given: ids are never given again.
+    private Dictionary<DesktopMenuItem, string> _ids = new(ReferenceEqualityComparer.Instance);
+    private long _lastId;
     private bool _sentBar;
     // The application's bar that the host has now; another one means the bar changed, also before MenuBarChanged ran.
     private IReadOnlyList<DesktopMenu>? _publishedBar;
@@ -109,12 +115,49 @@ internal sealed class HostedWindowMenus : IDisposable
             }
             try
             {
-                var request = bar ? BarRequest() : UpdateRequest();
-                if (request is not null) _ = await _guest.WindowRequestAsync(_window, request, CancellationToken.None).ConfigureAwait(false);
+                if (bar)
+                {
+                    if (BarRequest() is { } request && OverRate(await _guest.WindowRequestAsync(_window, request, CancellationToken.None).ConfigureAwait(false)))
+                        await AgainAsync(bar: true).ConfigureAwait(false);
+                }
+                else if (UpdateRequest() is { } update)
+                {
+                    var (request, states, changed) = update;
+                    if (OverRate(await _guest.WindowRequestAsync(_window, request, CancellationToken.None).ConfigureAwait(false)))
+                    {
+                        await AgainAsync(bar: false).ConfigureAwait(false);
+                        continue;
+                    }
+                    // The host has the states now; a new bar meanwhile starts over with states of its own.
+                    lock (_gate)
+                    {
+                        if (ReferenceEquals(_states, states))
+                        {
+                            foreach (var (id, state) in changed) states[id] = state;
+                        }
+                    }
+                }
             }
             catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedChannelFailed(_logger, error, error.GetType().Name); }
         }
     }
+
+    // The host's rate limit turned the request away (host-protocol.md, Limits).
+    private static bool OverRate(JsonObject? reply) =>
+        reply is not null && HostProtocol.Boolean(reply, "ok") == false && reply["error"] is JsonObject error && HostProtocol.String(error, "reason") == "capacity";
+
+    // Sends the bar or the states again after a pause, with whatever changed meanwhile.
+    private async Task AgainAsync(bool bar)
+    {
+        await Task.Delay(RetryDelay).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (bar) _barChanged = true;
+            else _statesChanged = true;
+        }
+    }
+
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(250);
 
     private (bool Enabled, bool? Checked) State(DesktopMenuItem item)
     {
@@ -128,33 +171,50 @@ internal sealed class HostedWindowMenus : IDisposable
         var menus = _desktop.MenuBar;
         var items = new Dictionary<string, DesktopMenuItem>(StringComparer.Ordinal);
         var states = new Dictionary<string, (bool Enabled, bool? Checked)>(StringComparer.Ordinal);
-        var entries = HostedWire.WriteEntries(menus, items, (id, item) => states[id] = State(item));
+        var ids = new Dictionary<DesktopMenuItem, string>(ReferenceEqualityComparer.Instance);
+        Dictionary<DesktopMenuItem, string> previous;
+        lock (_gate) previous = _ids;
+        // An item of the bar before keeps its id; any other item, and an item the bar shows twice, gets a new one.
+        string NewId(DesktopMenuItem item)
+        {
+            var id = previous.TryGetValue(item, out var kept) && !items.ContainsKey(kept)
+                ? kept
+                : "i" + Interlocked.Increment(ref _lastId).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            ids.TryAdd(item, id);
+            return id;
+        }
+        var entries = HostedWire.WriteEntries(menus, items, NewId, (id, item) => states[id] = State(item));
         lock (_gate)
         {
             _publishedBar = menus;
             _items = items;
             _states = states;
+            _ids = ids;
             if (menus.Count == 0 && !_sentBar) return null;
             _sentBar = menus.Count > 0;
         }
         return new JsonObject { ["id"] = 0, ["kind"] = "set-menu-bar", ["menu"] = menus.Count == 0 ? null : entries };
     }
 
-    // update-menu-items with the items whose state changed since the last request; null when none did.
-    private JsonObject? UpdateRequest()
+    // update-menu-items with the items whose state changed since the host last had them, and those states, which the
+    // caller records once the host has them; null when none changed.
+    private (JsonObject Request, Dictionary<string, (bool Enabled, bool? Checked)> States, List<(string Id, (bool Enabled, bool? Checked) State)> Changed)? UpdateRequest()
     {
         Dictionary<string, DesktopMenuItem> items;
         Dictionary<string, (bool Enabled, bool? Checked)> states;
         lock (_gate) (items, states) = (_items, _states);
         var changes = new JsonArray();
+        var changed = new List<(string Id, (bool Enabled, bool? Checked) State)>();
         foreach (var (id, item) in items)
         {
             var state = State(item);
-            if (states.TryGetValue(id, out var previous) && previous == state) continue;
-            states[id] = state;
+            bool same;
+            lock (_gate) same = states.TryGetValue(id, out var previous) && previous == state;
+            if (same) continue;
+            changed.Add((id, state));
             changes.Add((JsonNode)new JsonObject { ["id"] = id, ["enabled"] = state.Enabled, ["checked"] = state.Checked });
         }
-        return changes.Count == 0 ? null : new JsonObject { ["id"] = 0, ["kind"] = "update-menu-items", ["items"] = changes };
+        return changes.Count == 0 ? null : (new JsonObject { ["id"] = 0, ["kind"] = "update-menu-items", ["items"] = changes }, states, changed);
     }
 
     // menu-invoke: the item the user chose in the host's bar, or whose shortcut they pressed; an id of no current item is

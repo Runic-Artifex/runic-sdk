@@ -263,3 +263,18 @@ Runic.Application.Views.Desktop.RunicDesktopHostOptions.FlowCultureFromLocale.in
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuRequest.GuestItemId(Runic.Platform.DesktopMenuItem! item) -> string?
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuRequest.operator !=(Runic.Application.Views.Desktop.RunicHostedMenuRequest? left, Runic.Application.Views.Desktop.RunicHostedMenuRequest? right) -> bool
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedMenuRequest.operator ==(Runic.Application.Views.Desktop.RunicHostedMenuRequest? left, Runic.Application.Views.Desktop.RunicHostedMenuRequest? right) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedWindowPolicy.Limits.get -> Runic.Application.Views.Desktop.RunicHostedLimits!
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedLimits.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedLimits.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedLimits.ToString() -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedLimits!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.Equals(Runic.Application.Views.Desktop.RunicHostedLimits? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MaximumDialogs.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MaximumDialogs.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MenuRequestsPerSecond.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.MenuRequestsPerSecond.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedLimits.RunicHostedLimits() -> void
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedLimits.Default.get -> Runic.Application.Views.Desktop.RunicHostedLimits!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedLimits.operator !=(Runic.Application.Views.Desktop.RunicHostedLimits? left, Runic.Application.Views.Desktop.RunicHostedLimits? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedLimits.operator ==(Runic.Application.Views.Desktop.RunicHostedLimits? left, Runic.Application.Views.Desktop.RunicHostedLimits? right) -> bool

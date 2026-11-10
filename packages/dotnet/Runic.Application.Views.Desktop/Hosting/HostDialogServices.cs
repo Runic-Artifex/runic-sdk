@@ -26,7 +26,8 @@ internal sealed class HostDialogServices(IDesktopMessageBoxes messageBoxes, INat
 
 // The menu commands of a hosted window (DesktopWindow.MenuCommands): a guest's item that the window's bar shows runs
 // the guest's command through menu-invoke; any other item, such as one a policy added, goes to the host
-// application's commands.
+// application's commands. A choice or shortcut of a bar the window showed before the guest's latest one carries an id
+// that bar alone had, and is dropped (host-protocol.md, The guest's menu bar).
 internal sealed class HostedMenuTarget(RunicHostedWindow window) : IDesktopMenuCommandTarget
 {
     public bool CanExecute(DesktopMenuItem item) =>
@@ -34,6 +35,6 @@ internal sealed class HostedMenuTarget(RunicHostedWindow window) : IDesktopMenuC
 
     public void Execute(DesktopMenuItem item)
     {
-        if (HostedWire.ItemId(item) is { } id) window.Application.InvokeMenuItem(window, id);
+        if (HostedWire.ItemId(item) is { } id && window.ShowsMenuItem(id)) window.Application.InvokeMenuItem(window, id);
     }
 }

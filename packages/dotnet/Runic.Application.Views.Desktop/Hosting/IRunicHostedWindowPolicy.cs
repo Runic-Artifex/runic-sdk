@@ -12,9 +12,10 @@ namespace Runic.Application.Views.Desktop;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every member has a default that allows the request unchanged, so a policy implements only what it restricts. A later
-/// release can add members for later protocol features, such as window services, with defaults that allow them. A
-/// policy's members can run concurrently, for different windows and requests.
+/// Every member has a default that allows the request unchanged, and <see cref="Limits"/> the protocol's default limits,
+/// so a policy implements only what it restricts. A later release can add members for later protocol features, such as
+/// window services, with defaults that allow them. A policy's members can run concurrently, for different windows and
+/// requests.
 /// </para>
 /// <code>
 /// sealed class OneWindowPolicy : IRunicHostedWindowPolicy
@@ -65,7 +66,11 @@ public interface IRunicHostedWindowPolicy
     /// or with an item of the host's own, or refuse them, which the guest receives as
     /// <see cref="PlatformFailureCode.PermissionDenied"/>; a refused menu bar shows no menus of the guest.
     /// </returns>
-    /// <remarks>Called on any thread, and for a bar on each change of an item's state, so keep it cheap.</remarks>
+    /// <remarks>
+    /// Called on any thread; for a bar each time the host rebuilds the window's native bar, at most once per 50
+    /// milliseconds, after any number of changes. Keep it cheap. Menu titles are the guest's texts: a policy that does not
+    /// trust a guest can refuse its bar, or show it changed, such as with each menu's title marked as the guest's.
+    /// </remarks>
     RunicHostedMenuDecision Menu(RunicHostedMenuRequest request) => RunicHostedMenuDecision.Allow();
 
     /// <summary>
@@ -79,9 +84,71 @@ public interface IRunicHostedWindowPolicy
     /// such as with another initial directory, or refuse it, which the guest receives as
     /// <see cref="PlatformFailureCode.PermissionDenied"/>.
     /// </returns>
-    /// <remarks>A policy that throws fails the guest's dialog as failed.</remarks>
+    /// <remarks>
+    /// <para>
+    /// A policy that throws fails the guest's dialog as failed. The host shows the dialog owned by the guest's window,
+    /// but its title, texts and button labels are the guest's, and nothing marks them as the guest's: a guest can word a
+    /// message box as the host application's. A policy that does not trust a guest can mark its dialogs, or refuse its
+    /// message boxes:
+    /// </para>
+    /// <code>
+    /// public ValueTask&lt;RunicHostedDialogDecision&gt; DialogAsync(RunicHostedDialogRequest request, CancellationToken cancellationToken) =&gt;
+    ///     ValueTask.FromResult(request.Kind == RunicHostedDialogKind.MessageBox
+    ///         ? RunicHostedDialogDecision.Apply(request with { MessageBox = request.MessageBox! with { Title = $"{request.Window.Application.Guest.Name}: {request.MessageBox.Title}" } })
+    ///         : RunicHostedDialogDecision.Apply(request with { Title = $"{request.Window.Application.Guest.Name}: {request.Title}" }));
+    /// </code>
+    /// </remarks>
     ValueTask<RunicHostedDialogDecision> DialogAsync(RunicHostedDialogRequest request, CancellationToken cancellationToken) =>
         ValueTask.FromResult(RunicHostedDialogDecision.Allow());
+
+    /// <summary>
+    /// The limits of the guest's menu and dialog requests (<c>menus/1</c>, <c>dialogs/1</c>); the host reads them once,
+    /// when the guest started. The default is <see cref="RunicHostedLimits.Default"/>.
+    /// </summary>
+    RunicHostedLimits Limits => RunicHostedLimits.Default;
+}
+
+/// <summary>
+/// The limits of a guest's menu and dialog requests (the Runic host protocol, <c>runic-host/1</c>), which keep a guest
+/// from flooding the host's user interface (<see cref="IRunicHostedWindowPolicy.Limits"/>).
+/// </summary>
+/// <remarks>Experimental; see <c>docs/experimental.md</c>.</remarks>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed record RunicHostedLimits
+{
+    /// <summary>The protocol's default limits.</summary>
+    public static RunicHostedLimits Default { get; } = new();
+
+    /// <summary>
+    /// How many menu requests (<c>set-menu-bar</c>, <c>update-menu-items</c>, <c>show-context-menu</c>) one window may
+    /// make per second, after a burst of as many; 20 by default. A request over the rate is turned away, which Runic's
+    /// guest answers by sending its latest menus again a little later.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int MenuRequestsPerSecond
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(MenuRequestsPerSecond));
+            field = value;
+        }
+    } = Hosting.HostFeatures.DefaultMenuRequestsPerSecond;
+
+    /// <summary>
+    /// How many dialogs (file dialogs and message boxes) the guest may show at once, across its windows; 1 by default. A
+    /// window shows one dialog at a time in any case. A dialog over the limit fails as busy.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
+    public int MaximumDialogs
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(MaximumDialogs));
+            field = value;
+        }
+    } = Hosting.HostFeatures.DefaultDialogsPerGuest;
 }
 
 /// <summary>Which menus of a guest a <see cref="RunicHostedMenuRequest"/> is.</summary>

@@ -37,6 +37,8 @@ internal static class HostedSmoke
 
     private static async Task<int> RunHostAsync(RunicDesktopHost host, GuestOutput logs, string toolkit)
     {
+        // The host application's own bar, which its windows show and a guest's never does.
+        host.Desktop.SetMenuBar([new DesktopMenu("Host Tools", [new DesktopMenuItem("Host Item", "host.item")])]);
         // The host's own page sets a cookie for 127.0.0.1, which cookies share across ports.
         await using var surface = await host.Desktop.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page("Host")) });
         await using var hostWindow = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 420, Height = 300 });
@@ -96,18 +98,32 @@ internal static class HostedSmoke
             while (windowA.MenuBar.Count == 0) await Task.Delay(50, menuWait.Token);
         }
         var openItem = windowA.MenuBar.Single(static menu => menu.Title == "Smoke File").Items.OfType<DesktopMenuItem>().Single();
-        Check(windowA.MenuBar.Single().Role == DesktopMenuRole.File && openItem.Title == "Open…" && openItem.Shortcut == new DesktopShortcut("O"),
-            "Guest a's menu bar did not reach its window.");
+        Check(windowA.MenuBar.Count == 2 && windowA.MenuBar[0].Role == DesktopMenuRole.File && openItem.Title == "Open…" &&
+            openItem.Shortcut == new DesktopShortcut("O"), "Guest a's menu bar did not reach its window.");
+        await CheckNativeMenusAsync(toolkit, windowA.Presentation, hostWindow);
         Check(await windowA.Presentation.TryExecuteMenuItemAsync(openItem), "The window's menu command path did not run guest a's item.");
         var ran = await logs.ReportAsync("a-menu");
         Check(ran["command"]!.GetValue<string>() == "file.open", $"Guest a ran {ran}.");
         Console.WriteLine($"PASS hosted {toolkit}: guest a's menu bar is in its window, and choosing its item ran the guest's command.");
+        if (toolkit == "wkwebview")
+        {
+            // The hosted window is key again when it closes: the application menu bar returns to the host's menus.
+            await windowA.Presentation.FocusAsync();
+            var again = await NativeMenus.WaitAsync(windowA.Presentation, toolkit, static titles => titles.Contains("Smoke File"), TestTimeouts.Scale(Wait));
+            Check(again.Contains("Smoke File"), $"The application menu bar did not show guest a's menus again: [{string.Join(", ", again)}].");
+        }
 
         // A close through the guest: its Window closes, then the host's window.
         Check(await windowA.RequestCloseAsync(), "Guest a refused the close.");
         await windowA.Closed.WaitAsync(TestTimeouts.Scale(Wait));
         Check(!windowA.Presentation.IsOpen && !a.Exited.IsCompleted, "Guest a's window is open, or guest a exited with it.");
         Console.WriteLine($"PASS hosted {toolkit}: the window closed through the guest.");
+        if (toolkit == "wkwebview")
+        {
+            var closed = await NativeMenus.WaitAsync(hostWindow, toolkit, static titles => IsHostBar(titles), TestTimeouts.Scale(Wait));
+            Check(IsHostBar(closed), $"After the key hosted window closed, the application menu bar shows [{string.Join(", ", closed)}], not the host's menus.");
+            Console.WriteLine($"PASS hosted {toolkit}: the host's menus returned to the application menu bar when the key hosted window closed.");
+        }
 
         if (OperatingSystem.IsWindows())
         {
@@ -152,6 +168,46 @@ internal static class HostedSmoke
         await hostWindow.CloseAsync();
         return 0;
     }
+
+    // The native bars, read from the toolkit (NativeMenus): a hosted window shows the guest's menus and never the host's,
+    // the host's window the host's. On macOS the one application menu bar follows the key window: the host's application
+    // menu first, then the guest's File menu in the File menu's place, the standard Edit, View, into which the guest's
+    // View menu merged, and Window, without the host's other menus; and the host's menus once a host window is key.
+    private static async Task CheckNativeMenusAsync(string toolkit, DesktopWindow hosted, DesktopWindow hostWindow)
+    {
+        string[] guestBar = ["Smoke File", "View"];
+        switch (toolkit)
+        {
+            case "gtk3" or "gtk4":
+                var titles = await NativeMenus.WaitAsync(hosted, toolkit, titles => titles.SequenceEqual(guestBar), TestTimeouts.Scale(Wait));
+                Check(titles.SequenceEqual(guestBar), $"Guest a's window shows the native bar [{string.Join(", ", titles)}], not [{string.Join(", ", guestBar)}].");
+                var host = await NativeMenus.WaitAsync(hostWindow, toolkit, static titles => titles.SequenceEqual(["Host Tools"]), TestTimeouts.Scale(Wait));
+                Check(host.SequenceEqual(["Host Tools"]), $"The host's window shows the native bar [{string.Join(", ", host)}], not its own.");
+                Console.WriteLine($"PASS hosted {toolkit}: the native menu bar widget of guest a's window shows the guest's menus, the host's window its own.");
+                break;
+            case "wkwebview":
+                string[] merged = ["Smoke File", "Edit", "View", "Window"];
+                await hosted.FocusAsync();
+                var bar = await NativeMenus.WaitAsync(hosted, toolkit, titles => titles.Skip(1).SequenceEqual(merged), TestTimeouts.Scale(Wait));
+                Check(bar.Skip(1).SequenceEqual(merged),
+                    $"While guest a's window is key, NSApp.mainMenu is [{string.Join(", ", bar)}], not the application menu then [{string.Join(", ", merged)}].");
+                var view = await NativeMenus.MacItemsAsync(hosted, "View");
+                Check(view.Contains("Smoke Zoom"), $"The guest's View menu did not join the standard one: [{string.Join(", ", view)}].");
+                Console.WriteLine($"PASS hosted {toolkit}: while guest a's window is key, NSApp.mainMenu shows the host's application menu, then the guest's menus.");
+                await hostWindow.FocusAsync();
+                var back = await NativeMenus.WaitAsync(hostWindow, toolkit, static titles => IsHostBar(titles), TestTimeouts.Scale(Wait));
+                Check(IsHostBar(back), $"While the host's window is key, NSApp.mainMenu is [{string.Join(", ", back)}], not the host's menus.");
+                Console.WriteLine($"PASS hosted {toolkit}: when the host's window is key, NSApp.mainMenu shows the host's menus again.");
+                break;
+            default:
+                Console.WriteLine($"Hosted {toolkit}: the native menu bar is not read on this platform; the managed model was checked.");
+                break;
+        }
+    }
+
+    // The host's bar on macOS: its declared menu, the standard File menu under its own title, and no menu of a guest.
+    private static bool IsHostBar(string[] titles) =>
+        titles.Contains("Host Tools") && titles.Contains("File") && !titles.Contains("Smoke File") && titles.Count(static title => title == "View") == 1;
 
     // The positive control for the scan: the same page script in a window with a persistent profile, in a scratch folder.
     // Once its browser process let go of the folder, the same scan must find the cookie or the storage key, so a hosted
@@ -294,10 +350,15 @@ internal static class HostedSmoke
                 async host =>
                 {
                     // menus/1: the application's bar, whose command reports that it ran.
-                    host.Desktop.SetMenuBar([new DesktopMenu("Smoke File", [new DesktopMenuItem("Open…", "file.open") { Shortcut = new DesktopShortcut("O") }])
-                    {
-                        Role = DesktopMenuRole.File,
-                    }]);
+                    host.Desktop.SetMenuBar(
+                    [
+                        new DesktopMenu("Smoke File", [new DesktopMenuItem("Open…", "file.open") { Shortcut = new DesktopShortcut("O") }])
+                        {
+                            Role = DesktopMenuRole.File,
+                        },
+                        // On macOS it joins the standard View menu.
+                        new DesktopMenu("View", [new DesktopMenuItem("Smoke Zoom", "view.zoom")]),
+                    ]);
                     using var commands = host.UseApplicationMenu(new Dictionary<string, System.Windows.Input.ICommand>
                     {
                         ["file.open"] = new ReportCommand(() =>

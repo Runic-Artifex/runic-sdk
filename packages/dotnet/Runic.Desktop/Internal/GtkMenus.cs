@@ -40,11 +40,27 @@ internal static class GtkMenus
         return checkedCount.Where(static pair => pair.Value == 1).Select(static pair => pair.Key).ToHashSet(StringComparer.Ordinal);
     }
 
-    // A point of the page's viewport in CSS pixels as widget coordinates of the web view at its zoom level.
-    internal static (int X, int Y) PagePoint(double x, double y, double zoom)
+    // A point of the page's viewport in CSS pixels as widget coordinates of the web view at its zoom level, inside the
+    // web view's width and height (ContextMenuPoints.InView).
+    internal static (int X, int Y) PagePoint(double x, double y, double zoom, double width, double height)
+    {
+        var (viewX, viewY) = ContextMenuPoints.InView(x, y, zoom, width, height);
+        return ((int)Math.Round(viewX, MidpointRounding.AwayFromZero), (int)Math.Round(viewY, MidpointRounding.AwayFromZero));
+    }
+}
+
+// Where a context menu at a page's point opens: in the web view's coordinates at its zoom level, clamped to the view, so
+// a page, such as a hosted guest's (runic-host/1 menus/1), never places a native menu outside its window. Windows
+// clamps to the client area in WindowsWebView2Host the same way.
+internal static class ContextMenuPoints
+{
+    internal static (double X, double Y) InView(double x, double y, double zoom, double width, double height)
     {
         if (!double.IsFinite(zoom) || zoom <= 0) zoom = 1;
-        return ((int)Math.Round(x * zoom, MidpointRounding.AwayFromZero), (int)Math.Round(y * zoom, MidpointRounding.AwayFromZero));
+        return (Clamp(x * zoom, width), Clamp(y * zoom, height));
+
+        static double Clamp(double value, double size) =>
+            !double.IsFinite(value) ? 0 : Math.Clamp(value, 0, double.IsFinite(size) && size > 0 ? size : 0);
     }
 }
 

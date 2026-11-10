@@ -541,6 +541,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             dataStore = EphemeralStores.Acquire(key, static () => Api.NewNonPersistentDataStore());
             _ephemeralDataStore = key;
+            // A hosted window shows its guest's menus, none until the guest sends them: never the host application's.
+            Volatile.Write(ref _hostedMenuBar, []);
         }
         _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0,
             WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, dataStore);
@@ -1015,6 +1017,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     }
                     break;
                 default:
+                    // A menu titled as the standard View or Window menu joins it instead of showing a second one: its
+                    // entries come first, with a separator before the standard items.
+                    if (menu.Role == DesktopMenuRole.None && StandardMenu(mainMenu, application, menu.Title) is var standard and not 0)
+                    {
+                        AddEntries(standard, menu.Items, insertAt: 0, separate: true, menu.IsEnabled, declared);
+                        break;
+                    }
                     var windowMenu = Api.SendNint(application, "windowsMenu");
                     var count = (int)Api.SendNint(mainMenu, "numberOfItems");
                     var index = DesktopMenuBar.InsertionIndex(menu.Role, count, windowMenu == 0 ? -1 : (int)Api.IndexOfSubmenu(mainMenu, windowMenu));
@@ -1025,6 +1034,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
         }
         s_menuEntries = declared.ToImmutable();
+    }
+
+    // The standard View or Window menu when the title is its title in the host's language, else 0.
+    private static nint StandardMenu(nint mainMenu, nint application, string title)
+    {
+        var titles = Volatile.Read(ref HostSettings.Titles);
+        if (string.Equals(title, titles.View, StringComparison.OrdinalIgnoreCase))
+            return Api.FindSubmenu(mainMenu, MacOsMainMenu.ViewIdentifier, MacOsMainMenu.ViewActions);
+        if (string.Equals(title, titles.Window, StringComparison.OrdinalIgnoreCase))
+            return Api.SendNint(application, "windowsMenu") is var windows and not 0
+                ? windows
+                : Api.FindSubmenu(mainMenu, MacOsMainMenu.WindowIdentifier, MacOsMainMenu.WindowActions);
+        return 0;
     }
 
     // A declared entry and whether it and every menu around it are enabled.
@@ -1430,12 +1452,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             nint view;
             if (options.X is { } x && options.Y is { } y)
             {
-                // CSS pixels of the viewport to the web view's points, measured from its top-left corner.
-                var zoom = Api.SendDouble(_webView, "pageZoom");
-                if (!double.IsFinite(zoom) || zoom <= 0) zoom = 1;
+                // CSS pixels of the viewport to the web view's points, measured from its top-left corner, inside the view.
                 var bounds = Api.SendRect(_webView, "bounds");
-                var top = y * zoom;
-                location = new CGPoint(x * zoom, Api.SendBool(_webView, "isFlipped") ? top : bounds.Height - top);
+                var (left, top) = ContextMenuPoints.InView(x, y, Api.SendDouble(_webView, "pageZoom"), bounds.Width, bounds.Height);
+                location = new CGPoint(left, Api.SendBool(_webView, "isFlipped") ? top : bounds.Height - top);
                 view = _webView;
             }
             else

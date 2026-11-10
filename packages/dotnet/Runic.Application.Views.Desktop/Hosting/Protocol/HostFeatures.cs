@@ -21,8 +21,17 @@ internal static class HostFeatures
     internal const int MaximumContextEntries = 256;
     internal const int MaximumTitleLength = 128;
     internal const int MaximumMessageBoxButtons = 6;
+    // A message box's message and detail; a dialog's title (host-protocol.md, Dialogs).
     internal const int MaximumMessageBoxText = 4_096;
+    internal const int MaximumDialogTitle = 1_024;
+    internal const int MaximumSuggestedName = 255;
     internal const int MaximumFilters = 64;
+
+    // The host's limits by default (host-protocol.md, Limits): menu requests per second and window, dialogs a guest shows
+    // at once, and how often a window's native menu bar is rebuilt at most.
+    internal const int DefaultMenuRequestsPerSecond = 20;
+    internal const int DefaultDialogsPerGuest = 1;
+    internal static readonly TimeSpan MenuRebuildInterval = TimeSpan.FromMilliseconds(50);
 
     // The requests that wait for the user, which a requester may give up with a cancel push (host-protocol.md, Dialogs).
     internal static bool WaitsForUser(string? kind) => kind is "file-dialog" or "message-box" or "show-context-menu";
@@ -134,9 +143,8 @@ internal static class HostFeatures
     {
         var dialog = HostProtocol.String(request, "dialog");
         if (dialog is not ("open" or "open-multiple" or "save" or "folder" or "folder-multiple")) return false;
-        if (!OptionalString(request, "title", MaximumMessageBoxText) || !OptionalPath(request, "initialDirectory")) return false;
-        if (dialog == "save" ? HostProtocol.Text(request, "suggestedName", 255) is null || HostProtocol.String(request, "suggestedName")!.Contains('\0')
-            : request["suggestedName"] is not null)
+        if (!OptionalString(request, "title", MaximumDialogTitle) || !OptionalPath(request, "initialDirectory")) return false;
+        if (dialog == "save" ? !IsFileName(HostProtocol.Text(request, "suggestedName", MaximumSuggestedName)) : request["suggestedName"] is not null)
             return false;
         if (!OptionalBoolean(request, "showFilterChoice")) return false;
         if (request["filters"] is null) return true;
@@ -158,21 +166,30 @@ internal static class HostFeatures
     {
         if (HostProtocol.Text(request, "message", MaximumMessageBoxText) is not { } message || string.IsNullOrWhiteSpace(message) || message.Contains('\0'))
             return false;
-        if (!OptionalString(request, "title", MaximumMessageBoxText) || !OptionalString(request, "detail", MaximumMessageBoxText)) return false;
+        if (!OptionalString(request, "title", MaximumDialogTitle) || !OptionalString(request, "detail", MaximumMessageBoxText)) return false;
         // The box's icon, an open set: an unknown one shows none.
         if (!OptionalString(request, "icon", 64)) return false;
         if (request["buttons"] is null) return true;
         if (request["buttons"] is not JsonArray { Count: <= MaximumMessageBoxButtons } buttons) return false;
         var ids = new HashSet<string>(StringComparer.Ordinal);
+        int defaults = 0, cancels = 0;
         foreach (var node in buttons)
         {
             if (node is not JsonObject button || HostProtocol.Text(button, "id", 128) is not { } id || !ids.Add(id) ||
-                HostProtocol.Text(button, "label", MaximumTitleLength) is null ||
+                HostProtocol.Text(button, "label", MaximumTitleLength) is not { } label || string.IsNullOrWhiteSpace(label) || label.Contains('\0') ||
                 !(button["role"] is null || HostProtocol.String(button, "role") is not null) || !AccessKey(button))
                 return false;
+            // At most one default and one cancel button.
+            var role = HostProtocol.String(button, "role");
+            if (role == "default" && ++defaults > 1 || role == "cancel" && ++cancels > 1) return false;
         }
         return true;
     }
+
+    // A save dialog's suggested name: a file name, not a path (SaveFileOptions.SuggestedName), so the dialog shows the
+    // directory it names and nothing else.
+    private static bool IsFileName(string? name) =>
+        name is not null && !string.IsNullOrWhiteSpace(name) && name.IndexOfAny(['/', '\\', '\0']) < 0 && name is not ("." or "..");
 
     private static bool Title(JsonObject entry) =>
         HostProtocol.String(entry, "title") is { Length: > 0 and <= MaximumTitleLength } title && !string.IsNullOrWhiteSpace(title) && !title.Contains('\0');

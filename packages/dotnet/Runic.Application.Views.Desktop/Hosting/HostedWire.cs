@@ -15,10 +15,16 @@ internal static class HostedWire
 
     // ----- Guest: menus
 
-    // The wire entries of menus or a context menu. Each item gets an id, recorded in items; state gives an item's
+    // The wire entries of a context menu: its items get the ids i1, i2 and so on, recorded in items. The reply names the
+    // chosen one, so the ids need to be unique in the menu only.
+    internal static JsonArray WriteEntries(IEnumerable<DesktopMenuEntry> entries, Dictionary<string, DesktopMenuItem> items,
+        Func<string, DesktopMenuItem, (bool Enabled, bool? Checked)> state) =>
+        WriteEntries(entries, items, _ => "i" + (items.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), state);
+
+    // The wire entries of menus. Each item gets the id that newId gives it, recorded in items; state gives an item's
     // enabled and checked state, such as from the window's command path.
     internal static JsonArray WriteEntries(IEnumerable<DesktopMenuEntry> entries, Dictionary<string, DesktopMenuItem> items,
-        Func<string, DesktopMenuItem, (bool Enabled, bool? Checked)> state)
+        Func<DesktopMenuItem, string> newId, Func<string, DesktopMenuItem, (bool Enabled, bool? Checked)> state)
     {
         var list = new JsonArray();
         foreach (var entry in entries)
@@ -26,7 +32,7 @@ internal static class HostedWire
             switch (entry)
             {
                 case DesktopMenuItem item:
-                    var id = "i" + (items.Count + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    var id = newId(item);
                     items[id] = item;
                     var (enabled, isChecked) = state(id, item);
                     var node = new JsonObject
@@ -54,7 +60,7 @@ internal static class HostedWire
                         ["enabled"] = menu.IsEnabled,
                     };
                     if (menu.AccessKey is { } menuKey) submenu["accessKey"] = menuKey.ToString();
-                    submenu["items"] = WriteEntries(menu.Items, items, state);
+                    submenu["items"] = WriteEntries(menu.Items, items, newId, state);
                     list.Add((JsonNode)submenu);
                     break;
                 // An entry kind of a later release that the protocol does not carry.
@@ -132,7 +138,7 @@ internal static class HostedWire
                 ? request.AllowMultiple ? "folder-multiple" : "folder"
                 : request.Save ? "save" : request.AllowMultiple ? "open-multiple" : "open",
         };
-        if (request.Title is { } title) message["title"] = title;
+        if (request.Title is { } title) message["title"] = Shorten(title, HostFeatures.MaximumDialogTitle);
         if (request.InitialDirectory is { } directory) message["initialDirectory"] = directory;
         if (request.Save) message["suggestedName"] = request.SuggestedName ?? "";
         if (!folder && !request.Filters.IsDefaultOrEmpty)
@@ -161,10 +167,10 @@ internal static class HostedWire
                 DesktopMessageBoxKind.Error => "error",
                 _ => "none",
             },
-            ["message"] = box.Message,
+            ["message"] = Shorten(box.Message, HostFeatures.MaximumMessageBoxText),
         };
-        if (box.Title is { } title) message["title"] = title;
-        if (box.Detail is { } detail) message["detail"] = detail;
+        if (box.Title is { } title) message["title"] = Shorten(title, HostFeatures.MaximumDialogTitle);
+        if (box.Detail is { } detail) message["detail"] = Shorten(detail, HostFeatures.MaximumMessageBoxText);
         var buttons = new JsonArray();
         foreach (var button in box.Buttons.IsDefault ? [] : box.Buttons)
         {
@@ -185,6 +191,15 @@ internal static class HostedWire
         }
         message["buttons"] = buttons;
         return message;
+    }
+
+    // A text shortened to the protocol's limit, which Runic's guest sends instead of a longer one (host-protocol.md,
+    // Dialogs); it never ends in half a surrogate pair.
+    internal static string Shorten(string text, int maximum)
+    {
+        if (text.Length <= maximum) return text;
+        var length = char.IsHighSurrogate(text[maximum - 1]) ? maximum - 1 : maximum;
+        return text[..length];
     }
 
     // ----- Host: dialogs

@@ -21,7 +21,7 @@ namespace Runic.Application.Views.Desktop;
 /// </remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 [SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
-    Justification = "The cancellation source has no timer and the menu gate no wait handle; neither holds anything to release.")]
+    Justification = "The cancellation source has no timer; it holds nothing to release.")]
 public sealed class RunicHostedWindow
 {
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -83,10 +83,16 @@ public sealed class RunicHostedWindow
 
     private IReadOnlyList<DesktopMenu> _menuBar = [];
 
-    // menus/1: the guest's bar as it sent it, with its updates; null for none. Changed under MenuGate.
+    // menus/1: the guest's bar as it sent it, with its updates; null for none. Read and changed under MenuModel.
     internal JsonArray? GuestMenuBar { get; set; }
 
-    internal readonly SemaphoreSlim MenuGate = new(1, 1);
+    internal readonly object MenuModel = new();
+
+    // menus/1 limits (host-protocol.md, Limits): the rate of the window's menu requests, and its native bar's rebuilds,
+    // coalesced; set by the application when the window opens.
+    internal MenuRequestRate? MenuRate { get; set; }
+
+    internal CoalescedRebuild<MenuBarAnswer>? MenuRebuild { get; set; }
 
     // The guest's item ids of the bar shown now, which menu-invoke may name.
     private HashSet<string> _menuItems = new(StringComparer.Ordinal);
@@ -119,9 +125,16 @@ public sealed class RunicHostedWindow
 
     internal void EndDialog() => Volatile.Write(ref _dialog, 0);
 
+    // The window's dialog services; once the window is closing, services that report the closed owner, so a request
+    // that raced the close creates none that nothing would dispose.
     internal HostDialogServices Dialogs(Func<DesktopWindow, HostDialogServices> create)
     {
-        lock (_dialogGate) return _dialogs ??= create(Presentation);
+        lock (_dialogGate)
+        {
+            if (_closing.IsCancellationRequested)
+                return new HostDialogServices(DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.OwnerClosed), null, PlatformUnavailableReason.OwnerClosed);
+            return _dialogs ??= create(Presentation);
+        }
     }
 
     // Cancelled when the native window closes, which ends its dialogs and context menus (host-protocol.md, Dialogs).

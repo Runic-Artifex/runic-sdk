@@ -67,6 +67,11 @@ public sealed partial class RunicHostedApplication
             await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed))).ConfigureAwait(false);
             return true;
         }
+        if (feature == HostFeatures.Menus && !WithinMenuRate(window))
+        {
+            await request.FailAsync("rejected", "capacity", "The window's menu requests are over the host's rate.").ConfigureAwait(false);
+            return true;
+        }
         switch (request.Kind)
         {
             case "set-menu-bar":
@@ -84,7 +89,36 @@ public sealed partial class RunicHostedApplication
 
     // ----- menus/1: the menu bar
 
-    private async Task SetMenuBarAsync(HostRequest request, RunicHostedWindow window)
+    // The limits of the guest's requests, read once from the policy (host-protocol.md, Limits).
+    private RunicHostedLimits? _limits;
+
+    private RunicHostedLimits Limits
+    {
+        get
+        {
+            if (Volatile.Read(ref _limits) is { } limits) return limits;
+            try { limits = Policy.Limits ?? RunicHostedLimits.Default; }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                DesktopLog.HostedWindowPolicyFailed(_logger, error, error.GetType().Name);
+                limits = RunicHostedLimits.Default;
+            }
+            return Interlocked.CompareExchange(ref _limits, limits, null) ?? limits;
+        }
+    }
+
+    // Whether the window's menu requests are within the rate; the first request sets the window's rate and rebuilds up.
+    private bool WithinMenuRate(RunicHostedWindow window)
+    {
+        lock (window.MenuModel)
+        {
+            window.MenuRate ??= new MenuRequestRate(Limits.MenuRequestsPerSecond);
+            window.MenuRebuild ??= new CoalescedRebuild<MenuBarAnswer>(HostFeatures.MenuRebuildInterval, () => RebuildMenuBarAsync(window));
+            return window.MenuRate.TryTake();
+        }
+    }
+
+    private static async Task SetMenuBarAsync(HostRequest request, RunicHostedWindow window)
     {
         var menu = request.Message["menu"] as JsonArray;
         // Rules the shape check leaves to Runic's menus, such as a radio group name or two File menus.
@@ -94,45 +128,47 @@ public sealed partial class RunicHostedApplication
             await request.FailAsync("rejected", "invalid-request", Limit($"The menu bar is not valid: {error.Message}")).ConfigureAwait(false);
             return;
         }
-        await window.MenuGate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            window.GuestMenuBar = (JsonArray?)menu?.DeepClone();
-            await ReplyMenuBarAsync(request, window).ConfigureAwait(false);
-        }
-        finally { window.MenuGate.Release(); }
+        lock (window.MenuModel) window.GuestMenuBar = (JsonArray?)menu?.DeepClone();
+        await AnswerMenuBarAsync(request, window).ConfigureAwait(false);
     }
 
-    private async Task UpdateMenuItemsAsync(HostRequest request, RunicHostedWindow window)
+    private static async Task UpdateMenuItemsAsync(HostRequest request, RunicHostedWindow window)
     {
-        await window.MenuGate.WaitAsync().ConfigureAwait(false);
-        try
+        bool changed;
+        // Ids that name no item of the bar are ignored: the bar may have changed since (host-protocol.md, Menus).
+        lock (window.MenuModel) changed = window.GuestMenuBar is { } bar && HostFeatures.ApplyUpdates(bar, (JsonArray)request.Message["items"]!);
+        if (!changed)
         {
-            // Ids that name no item of the bar are ignored: the bar may have changed since (host-protocol.md, Menus).
-            if (window.GuestMenuBar is not { } bar || !HostFeatures.ApplyUpdates(bar, (JsonArray)request.Message["items"]!))
-            {
-                await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()))).ConfigureAwait(false);
-                return;
-            }
-            await ReplyMenuBarAsync(request, window).ConfigureAwait(false);
+            await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()))).ConfigureAwait(false);
+            return;
         }
-        finally { window.MenuGate.Release(); }
+        await AnswerMenuBarAsync(request, window).ConfigureAwait(false);
     }
 
     private static void CheckBar(ImmutableArray<DesktopMenuEntry> entries) =>
         _ = DesktopMenuBar.Check([.. entries.Cast<DesktopMenu>()], DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
 
-    // Under MenuGate: the policy decides the guest's bar as it is now, and the window shows the result.
-    private async Task ReplyMenuBarAsync(HostRequest request, RunicHostedWindow window)
+    // The guest's bar changed: the reply waits for the next rebuild of the window's native bar, which shows the change
+    // and every other one made meanwhile (host-protocol.md, Limits).
+    private static async Task AnswerMenuBarAsync(HostRequest request, RunicHostedWindow window)
     {
-        var entries = window.GuestMenuBar is { } bar ? HostedWire.ReadEntries(bar) : [];
+        var answer = await window.MenuRebuild!.RequestAsync().ConfigureAwait(false);
+        if (answer.Failure is var (kind, reason, message)) await request.FailAsync(kind, reason, message).ConfigureAwait(false);
+        // Every request of the rebuild gets its own copy: a reply takes its members.
+        else await request.ReplyAsync((JsonObject)answer.Reply!.DeepClone()).ConfigureAwait(false);
+    }
+
+    // The policy decides the guest's bar as it is now, and the window shows the result.
+    private async Task<MenuBarAnswer> RebuildMenuBarAsync(RunicHostedWindow window)
+    {
+        ImmutableArray<DesktopMenuEntry> entries;
+        lock (window.MenuModel) entries = window.GuestMenuBar is { } bar ? HostedWire.ReadEntries(bar) : [];
         RunicHostedMenuDecision decision;
         try { decision = Policy.Menu(new RunicHostedMenuRequest(window, RunicHostedMenuKind.MenuBar, entries)); }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
             DesktopLog.HostedWindowPolicyFailed(_logger, error, error.GetType().Name);
-            await request.FailAsync("failed", null, "The host's window policy failed.").ConfigureAwait(false);
-            return;
+            return MenuBarAnswer.Failed("failed", null, "The host's window policy failed.");
         }
         IReadOnlyList<DesktopMenu> shown = [];
         if (decision.IsAllowed)
@@ -142,27 +178,21 @@ public sealed partial class RunicHostedApplication
                 applied.Entries.IsDefault || applied.Entries.Any(static entry => entry is not DesktopMenu)))
             {
                 DesktopLog.HostedWindowPolicyFailed(_logger, null, "InvalidMenu");
-                await request.FailAsync("failed", null, "The host's window policy returned menus for another window or not a menu bar.").ConfigureAwait(false);
-                return;
+                return MenuBarAnswer.Failed("failed", null, "The host's window policy returned menus for another window or not a menu bar.");
             }
             shown = [.. (applied?.Entries ?? entries).Cast<DesktopMenu>()];
             try { CheckBar([.. shown]); }
             catch (ArgumentException error)
             {
                 DesktopLog.HostedWindowPolicyFailed(_logger, error, error.GetType().Name);
-                await request.FailAsync("failed", null, "The host's window policy returned a menu bar that is not valid.").ConfigureAwait(false);
-                return;
+                return MenuBarAnswer.Failed("failed", null, "The host's window policy returned a menu bar that is not valid.");
             }
         }
         // A refused bar shows no menus of the guest.
         window.ShowMenuBar(shown);
         var result = await ShowAsync(window, shown).ConfigureAwait(false);
-        if (!decision.IsAllowed)
-        {
-            await request.FailAsync("rejected", "refused", Limit(decision.Message ?? "The host's window policy refused the menus.")).ConfigureAwait(false);
-            return;
-        }
-        await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+        if (!decision.IsAllowed) return MenuBarAnswer.Failed("rejected", "refused", Limit(decision.Message ?? "The host's window policy refused the menus."));
+        return new MenuBarAnswer(Outcome(result), null);
 
         static async Task<PlatformResult<PlatformUnit>> ShowAsync(RunicHostedWindow window, IReadOnlyList<DesktopMenu> menus)
         {
@@ -198,13 +228,42 @@ public sealed partial class RunicHostedApplication
         }
     }
 
+    // The dialogs the guest shows now, across its windows (RunicHostedLimits.MaximumDialogs).
+    private int _dialogsShown;
+
+    private bool TryBeginGuestDialog()
+    {
+        var maximum = Limits.MaximumDialogs;
+        while (true)
+        {
+            var shown = Volatile.Read(ref _dialogsShown);
+            if (shown >= maximum) return false;
+            if (Interlocked.CompareExchange(ref _dialogsShown, shown + 1, shown) == shown) return true;
+        }
+    }
+
+    private void EndGuestDialog() => Interlocked.Decrement(ref _dialogsShown);
+
     private async Task UserRequestAsync(HostRequest request, RunicHostedWindow window)
     {
         var dialog = request.Kind != "show-context-menu";
-        // One dialog per window (host-protocol.md, Dialogs); a context menu replaces the window's open one natively.
+        // A context menu shows only in the active window, the one the user works in (host-protocol.md, Context menus); a
+        // new one replaces the window's open one natively.
+        if (!dialog && window.PresentationOrNull?.Activity is not { IsActive: true })
+        {
+            await request.FailAsync("rejected", "refused", "The window is not active: a context menu shows only in the active window.").ConfigureAwait(false);
+            return;
+        }
+        // One dialog per window, and at most the policy's number per guest (host-protocol.md, Dialogs).
         if (dialog && !window.TryBeginDialog())
         {
             await request.FailAsync("rejected", "busy", "The window already shows a dialog.").ConfigureAwait(false);
+            return;
+        }
+        if (dialog && !TryBeginGuestDialog())
+        {
+            window.EndDialog();
+            await request.FailAsync("rejected", "busy", "The application already shows as many dialogs as the host allows.").ConfigureAwait(false);
             return;
         }
         // The answer is sent after the window's dialog ended, so the guest's next dialog never finds it busy.
@@ -237,7 +296,11 @@ public sealed partial class RunicHostedApplication
             finally
             {
                 _userRequests.TryRemove(request.Id, out _);
-                if (dialog) window.EndDialog();
+                if (dialog)
+                {
+                    EndGuestDialog();
+                    window.EndDialog();
+                }
             }
         }
         await answer().ConfigureAwait(false);
@@ -438,4 +501,11 @@ public sealed partial class RunicHostedApplication
     }
 
     private static string Limit(string message) => message.Length <= 1_024 ? message : message[..1_024];
+}
+
+// The answer to the requests that waited for one rebuild of a window's native menu bar: a platform outcome, or a
+// failure (kind, reason, message).
+internal sealed record MenuBarAnswer(JsonObject? Reply, (string Kind, string? Reason, string Message)? Failure)
+{
+    internal static MenuBarAnswer Failed(string kind, string? reason, string message) => new(null, (kind, reason, message));
 }
