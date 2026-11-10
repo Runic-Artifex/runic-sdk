@@ -1314,7 +1314,8 @@ again when the archive or the packer changes. Since 0.15.
 ## Runic Desktop build
 
 The `Runic.Desktop` build targets report these errors; `RUNICDESK001` comes from
-`Runic.Desktop.Kestrel` and `RUNICDESK005` from `Runic.Desktop.NativeServer`.
+`Runic.Desktop.Kestrel`, `RUNICDESK005` and `RUNICDESK006` from
+`Runic.Desktop.NativeServer`.
 `RUNICDESK102`, the native server's experimental ID until 0.15.0, is retired
 ([Graduated and retired IDs](experimental.md#retired)).
 
@@ -1360,8 +1361,9 @@ executable that opens no Runic Desktop window sets `RunicDesktopServer` to
 ### RUNICDESK005
 
 The native Desktop server has no library for the build: a NativeAOT publish
-found no static library (`Runic.Desktop.NativeServer.Static.<rid>`, which NuGet
-restores through `Runic.Desktop.NativeServer`'s `runtime.json` for a
+that links the server's static library (`RunicDesktopNativeServerLinkage`
+`Static`, the default) found none (`Runic.Desktop.NativeServer.Static.<rid>`,
+which NuGet restores through `Runic.Desktop.NativeServer`'s `runtime.json` for a
 runtime-specific restore), or `RunicDesktopNativeServerLibraryDirectory` names a
 directory without `librunic_server` or `runic_server`.
 
@@ -1369,6 +1371,20 @@ directory without `librunic_server` or `runic_server`.
 restores for it), use a runtime identifier the package supports (its README
 lists them), or point `RunicDesktopNativeServerLibraryDirectory` at a directory
 with the library, as `buildRunicApplication` does with its source build.
+
+### RUNICDESK006
+
+`RunicDesktopNativeServerLinkage` has a value other than `Static`, `Shared` or
+`Application`. The property selects how a NativeAOT publish gets the native
+Desktop server: `Static` links the package's static library into the
+executable, `Shared` puts the shared library beside it, and `Application`
+leaves the server to the application's own Rust static library, which links the
+`runic-server` crate. It has no effect on builds that run under the JIT. Since
+0.17.1.
+
+**Fix:** set one of the three values, or remove the property for the default,
+`Static`. See
+[NativeAOT and an application's own Rust library](../packages/dotnet/Runic.Desktop.NativeServer/README.md#nativeaot-and-an-applications-own-rust-library).
 
 ## Navigation ReactiveUI build
 

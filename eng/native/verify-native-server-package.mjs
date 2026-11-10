@@ -6,7 +6,13 @@
 // restores Runic.Desktop.NativeServer.Static.<rid> through the package's runtime.json and links it: one executable,
 // no librunic_server beside it, and no static library in any output.
 //
-//   node eng/native/verify-native-server-package.mjs <feed> [--rid <rid>] [--no-aot] [--keep]
+// An application with a Rust static library of its own (#859) is the fixture's native/ crate, built with Cargo: one
+// NativeAOT publish loads the server's shared library beside the executable (RunicDesktopNativeServerLinkage=Shared),
+// another links the runic-server crate into the application's library (Application). Both run the application's
+// native function as well as the server. --no-app-native leaves them out; they need Cargo and the host's
+// runtime identifier.
+//
+//   node eng/native/verify-native-server-package.mjs <feed> [--rid <rid>] [--no-aot] [--no-app-native] [--keep]
 //
 // <feed> holds Runic.Desktop.NativeServer and Runic.Desktop.NativeServer.Static.<rid> packages; the script packs
 // Runic.Desktop and its Runic dependencies from this checkout into it with the same version. Writes
@@ -22,7 +28,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const args = process.argv.slice(2);
 const feed = args[0] && !args[0].startsWith("--") ? resolve(args[0]) : null;
 if (!feed) {
-  console.error("usage: node eng/native/verify-native-server-package.mjs <feed> [--rid <rid>] [--no-aot] [--keep]");
+  console.error("usage: node eng/native/verify-native-server-package.mjs <feed> [--rid <rid>] [--no-aot] [--no-app-native] [--keep]");
   process.exit(2);
 }
 const option = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
@@ -35,6 +41,7 @@ const hostRid = () => {
 };
 const rid = option("--rid") ?? hostRid();
 const aot = !args.includes("--no-aot");
+const appNative = aot && !args.includes("--no-app-native") && rid === hostRid();
 const keep = args.includes("--keep");
 const version = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "utf8")).version;
 const exe = process.platform === "win32" ? ".exe" : "";
@@ -119,6 +126,58 @@ try {
     const executable = join(native, `Runic.Desktop.PackageConsumer${exe}`);
     assert.match(run(executable, [], native), /Runic\.Desktop package consumer passed/);
     report.aot = { files: aotFiles.length, bytes: bytes(aotFiles), executableBytes: statSync(executable).size };
+  }
+
+  if (appNative) {
+    // The application's own Rust static library, as Cargo builds it outside this repository: the path dependency on
+    // this checkout's crate, and the lock seeded from native/Cargo.lock, so the crates are the versions the SDK ships.
+    const cargoProject = join(consumer, "native");
+    const manifest = join(cargoProject, "Cargo.toml");
+    const crate = JSON.stringify(join(root, "native/runic-server").replaceAll("\\", "/"));
+    writeFileSync(manifest, readFileSync(manifest, "utf8").replace('path = "../../../../../native/runic-server"', `path = ${crate}`));
+    cpSync(join(root, "native/Cargo.lock"), join(cargoProject, "Cargo.lock"));
+    const staticName = rid.startsWith("win-") ? "consumer_native.lib" : "libconsumer_native.a";
+    const buildNative = (name, features) => {
+      const target = join(directory, name);
+      // rustup takes the toolchain native/rust-toolchain.toml pins from the working directory.
+      run("cargo", ["build", "--manifest-path", manifest, "--release", "--target-dir", target, ...features], join(root, "native"));
+      return join(target, "release", staticName);
+    };
+    const lockVersions = file => new Map([...readFileSync(file, "utf8").matchAll(/^name = "([^"]+)"\r?\nversion = "([^"]+)"/gm)]
+      .map(([, name, version]) => [`${name}@${version}`, name]));
+    const publishWith = (name, linkage, library) => {
+      // A fresh NativeAOT compilation and link for each library.
+      rmSync(join(consumer, "obj/Release/net10.0", rid, "native"), { recursive: true, force: true });
+      const output = join(directory, name);
+      run("dotnet", ["publish", project, "-c", "Release", "-r", rid, "-p:PublishAot=true", "-o", output, ...properties,
+        `-p:RunicDesktopNativeServerLinkage=${linkage}`, `-p:RunicPackageConsumerNativeLibrary=${library}`], consumer, env);
+      const published = files(output).filter(file => !/\.(pdb|dbg)$/.test(file) && !file.includes(".dSYM"));
+      assert.ok(!published.some(file => /(lib)?(runic_server|consumer_native)\.(a|lib)$/.test(file)), `the ${linkage} output carries a static library`);
+      const stdout = run(join(output, `Runic.Desktop.PackageConsumer${exe}`), [], output);
+      assert.match(stdout, /native library answered 42/);
+      assert.match(stdout, /Runic\.Desktop package consumer passed/);
+      return published;
+    };
+
+    const own = buildNative("cargo-own", []);
+    // Shared: the server's shared library beside the executable, which loads it at the first window.
+    const shared = publishWith("aot-shared", "Shared", own);
+    const sharedServer = shared.filter(file => /(lib)?runic_server\.(so|dylib|dll)$/.test(file));
+    assert.equal(sharedServer.length, 1, `the Shared output has no single native server library: ${shared.join(", ")}`);
+    report.aotShared = { files: shared.length, bytes: bytes(shared) };
+
+    // Application: the crate in the application's own library, which exports its C ABI; Runic links no library.
+    const linked = buildNative("cargo-linked", ["--features", "runic-server"]);
+    const shipped = lockVersions(join(root, "native/Cargo.lock"));
+    const drifted = [...lockVersions(join(cargoProject, "Cargo.lock"))]
+      .filter(([key, name]) => name !== "consumer_native" && !shipped.has(key)).map(([key]) => key);
+    assert.deepEqual(drifted, [], "the application's lock resolved crates that native/Cargo.lock does not pin");
+    const application = publishWith("aot-application", "Application", linked);
+    assert.ok(!application.some(file => /(lib)?runic_server\.(so|dylib|dll)$/.test(file)),
+      `the Application output has a native server library beside the executable: ${application.join(", ")}`);
+    report.aotApplication = { files: application.length, bytes: bytes(application) };
+  } else if (aot) {
+    console.log(`Skipped the application's own native library: ${args.includes("--no-app-native") ? "--no-app-native" : `${rid} is not the host's runtime identifier`}.`);
   }
   const reportFile = join(dirname(feed), "native-server-consumer.json");
   writeFileSync(reportFile, `${JSON.stringify(report, null, 2)}\n`);

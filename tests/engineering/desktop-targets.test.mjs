@@ -126,3 +126,56 @@ test("a server whose package is missing fails with RUNICDESK004, an unknown one 
   const unknown = validateServer("unknown", "<RunicDesktopServer>Axum</RunicDesktopServer>");
   assert.match(unknown.stdout, /error RUNICDESK003: RunicDesktopServer is 'Axum'; it must be Native, Kestrel or None\./);
 });
+
+// RunicDesktopNativeServerLinkage (#859): how a NativeAOT publish gets the native server. Static links the package's (or
+// RunicDesktopNativeServerLibraryDirectory's) static library, Shared leaves the shared library beside the executable,
+// Application binds the C functions from the application's own library with the runic-server crate in it.
+// eng/native/verify-native-server-package.mjs publishes and runs each.
+function nativeLinkage(name, properties, { rid = "linux-x64", libraries = ["librunic_server.a", "librunic_server.so"] } = {}) {
+  const library = join(directory, `${name}-library`);
+  mkdirSync(library, { recursive: true });
+  for (const file of libraries) writeFileSync(join(library, file), "");
+  const result = spawnSync("dotnet", ["msbuild", project(name, `<OutputType>Exe</OutputType><PublishAot>true</PublishAot>
+<RuntimeIdentifier>${rid}</RuntimeIdentifier><RunicDesktopNativeServerLibraryDirectory>${library}</RunicDesktopNativeServerLibraryDirectory>
+${properties}`, ["native"]), "-t:RunicDesktopValidateNativeServer;RunicDesktopLinkNativeServer", "-getItem:NativeLibrary",
+  "-getItem:DirectPInvoke", "-getItem:None", "-getProperty:_RunicDesktopNativeServerLinked", "-nologo", "-noAutoResponse",
+  "-nodeReuse:false"], { encoding: "utf8" });
+  if (result.status !== 0) return { error: result.stdout + result.stderr };
+  const output = JSON.parse(result.stdout);
+  const names = items => (items ?? []).map(item => item.Identity.startsWith(library) ? item.Identity.slice(library.length + 1) : item.Identity);
+  return {
+    linked: output.Properties._RunicDesktopNativeServerLinked === "true",
+    directPInvoke: names(output.Items.DirectPInvoke),
+    nativeLibrary: names(output.Items.NativeLibrary),
+    none: names(output.Items.None),
+  };
+}
+
+test("RunicDesktopNativeServerLinkage Static, the default, links the static library", () => {
+  const expected = { linked: true, directPInvoke: ["runic_server"], nativeLibrary: ["librunic_server.a"], none: ["librunic_server.so"] };
+  assert.deepEqual(nativeLinkage("linkage-default", ""), expected);
+  assert.deepEqual(nativeLinkage("linkage-static", "<RunicDesktopNativeServerLinkage>Static</RunicDesktopNativeServerLinkage>"), expected);
+  const missing = nativeLinkage("linkage-static-missing", "", { libraries: ["librunic_server.so"] });
+  assert.match(missing.error, /error RUNICDESK005: A NativeAOT publish for linux-x64 links the native Desktop server statically/);
+});
+
+test("RunicDesktopNativeServerLinkage Shared links nothing and keeps the shared library", () => {
+  assert.deepEqual(nativeLinkage("linkage-shared", "<RunicDesktopNativeServerLinkage>Shared</RunicDesktopNativeServerLinkage>",
+    { libraries: ["librunic_server.so"] }),
+  { linked: false, directPInvoke: [], nativeLibrary: [], none: ["librunic_server.so"] });
+});
+
+test("RunicDesktopNativeServerLinkage Application binds the C functions without a library of Runic's", () => {
+  assert.deepEqual(nativeLinkage("linkage-application", "<RunicDesktopNativeServerLinkage>Application</RunicDesktopNativeServerLinkage>",
+    { libraries: ["librunic_server.so"] }),
+  { linked: true, directPInvoke: ["runic_server"], nativeLibrary: [], none: ["librunic_server.so"] });
+  // Rust's standard library needs the same system libraries on Windows wherever the crate is linked.
+  assert.deepEqual(nativeLinkage("linkage-application-win", "<RunicDesktopNativeServerLinkage>application</RunicDesktopNativeServerLinkage>",
+    { rid: "win-x64", libraries: ["runic_server.dll"] }),
+  { linked: true, directPInvoke: ["runic_server"], nativeLibrary: ["ntdll.lib", "ws2_32.lib", "userenv.lib", "bcrypt.lib"], none: ["runic_server.dll"] });
+});
+
+test("an unknown RunicDesktopNativeServerLinkage fails with RUNICDESK006", () => {
+  const result = nativeLinkage("linkage-unknown", "<RunicDesktopNativeServerLinkage>Dynamic</RunicDesktopNativeServerLinkage>");
+  assert.match(result.error, /error RUNICDESK006: RunicDesktopNativeServerLinkage is 'Dynamic'; it must be Static, Shared or Application\./);
+});
