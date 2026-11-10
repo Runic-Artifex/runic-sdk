@@ -2,7 +2,7 @@
 // exception exit (an NTSTATUS such as 0xC0000409) other than a few signals as exit code 127, the code for a missing
 // command, so a test host that crashed looked like one that never started. This prints the command, its process id
 // and its real exit code, and after a crash the runner's Windows Error Reporting and event-log entries for it
-// (eng/ci/windows-crash-report.ps1), with a minidump in artifacts/native-crash-dumps for the job's artifact.
+// (eng/ci/windows-crash-report.ps1), with a full dump in artifacts/native-crash-dumps for the job's artifact.
 // Usage: node eng/ci/windows-native-run.mjs <command> [arguments...]
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";

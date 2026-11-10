@@ -1,6 +1,6 @@
 # Prints what Windows recorded about a crashed process (eng/ci/windows-native-run.mjs): Windows Error Reporting's and
 # the .NET runtime's Application event-log entries since the process started, the WER reports it filed, and the
-# faulting thread's stack from the minidump WER wrote (LocalDumps) when the runner has the Windows debugger.
+# faulting thread's stack from the full dump WER wrote (LocalDumps) when the runner has the Windows debugger.
 # Usage: windows-crash-report.ps1 -Since <ISO 8601 time> -ProcessId <id> -Image <name.exe> -DumpFolder <directory>
 param(
   [Parameter(Mandatory)] [string] $Since,
@@ -66,15 +66,6 @@ if ($dump -and $debugger) {
     Write-Output '::endgroup::'
   }
   Invoke-Debugger "the exception and the faulting thread's stack" '.lastevent', '.exr -1', '.ecxr', 'kn 60', '~*kn 25'
-  # TEMPORARY (#845): the oleacc critical section the faulting thread waits on, the heap block it lives in, and the code
-  # that reaches it and manages its lifetime.
-  Invoke-Debugger 'the critical section the faulting thread waits on' '.ecxr', 'r', 'dq @x19-0x80 L40', '!cs -s @x19',
-    '!address @x19', '!heap -x @x19', 'lmv m oleacc', 'lmv m explorerframe', 'x oleacc!*PropMgr*', 'x oleacc!g_*',
-    'x oleacc!CAccPropServices::*'
-  Invoke-Debugger 'oleacc and explorerframe code on the faulting path' 'uf oleacc!CPropMgr::ClearProps',
-    'uf oleacc!CPropMgr::ClearHwndProps', 'uf explorerframe!CNavBar::ClearHwndAccProperties', 'uf oleacc!CPropMgr::Release',
-    'uf oleacc!CPropMgr::AddRef', 'uf oleacc!CPropMgr::~CPropMgr', 'uf oleacc!CPropMgr::CPropMgr',
-    'uf oleacc!CAccPropServices::~CAccPropServices', 'uf oleacc!CAccPropServices::CAccPropServices' 300
 } elseif ($dump) {
-  Write-Output 'No cdb.exe on this runner: the minidump is in the job artifact native-crash-dumps-<rid>-<run id>.'
+  Write-Output 'No cdb.exe on this runner: the dump is in the job artifact native-crash-dumps-<rid>-<run id>.'
 }

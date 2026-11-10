@@ -88,7 +88,7 @@ internal sealed partial class UnownedDialogTests
         var one = firstPicker.SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Runic first unowned dialog" }, first.Token).AsTask();
         var two = secondPicker.SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Runic second unowned dialog" }, second.Token).AsTask();
         nint firstWindow = await FindAsync("Runic first unowned dialog"), secondWindow = await FindAsync("Runic second unowned dialog");
-        trace.Enqueue($"{started.ElapsedMilliseconds} ms: both dialogs found ({PropertyStore()})");
+        trace.Enqueue($"{started.ElapsedMilliseconds} ms: both dialogs found");
         Live(started, "test", "both dialogs found");
         string Trace() => string.Join(Environment.NewLine + "  ", trace);
         try
@@ -115,21 +115,7 @@ internal sealed partial class UnownedDialogTests
     // Each step as it happens, with the native thread it runs on: a test host that crashes mid-test (exit 127 under Git
     // Bash) leaves its last step in the log, and the thread ids match the crash dump's.
     private static void Live(System.Diagnostics.Stopwatch started, string name, string line) =>
-        Console.WriteLine($"  [{started.ElapsedMilliseconds} ms, thread {GetCurrentThreadId()}] {name}: {line} ({PropertyStore()})");
-
-    // TEMPORARY (#845 diagnosis): oleacc's process-wide property store behind the service WindowsFilePicker holds, and its
-    // reference count. CComObject<CPropMgr> keeps the store at +0x10 (CPropMgr::CPropMgr), the store its count at +0x1C.
-    private static string PropertyStore()
-    {
-        var service = WindowsFilePicker.HeldPropertyService;
-        if (service == 0) return $"no held service, 0x{WindowsFilePicker.HeldPropertyServiceResult:X8}";
-        try
-        {
-            var store = Marshal.ReadIntPtr(service + 0x10);
-            return store == 0 ? "store 0" : $"store 0x{store:X}, references {Marshal.ReadInt32(store + 0x1C)}";
-        }
-        catch (Exception error) { return $"store unreadable: {error.GetType().Name}"; }
-    }
+        Console.WriteLine($"  [{started.ElapsedMilliseconds} ms, thread {GetCurrentThreadId()}] {name}: {line}");
 
     private static async Task<nint> FindAsync(string title)
     {
