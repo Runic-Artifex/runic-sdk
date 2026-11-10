@@ -174,3 +174,16 @@ Case '11. Same user, two prefixes deeper than the root: B registers /_runic/blob
     Request $port '/_runic/blobs/abc' '-4'; Request $port '/_runic/upload' '-4'
     Show 'A11', 'B11', 'B11b'
 }
+Case '12. A standard user lists reservations; a reservation nested under the port' {
+    $port = FreePort
+    Reserve "http://localhost:$port/_runic/" {
+        $out = Join-Path $root 'urlacl.txt'
+        $cmd = Start-Process cmd.exe -ArgumentList '/c', "netsh http show urlacl > `"$out`" 2>&1" -Credential $credentials['runic-probe-b'] -LoadUserProfile -WorkingDirectory $root -PassThru -WindowStyle Hidden -Wait
+        $text = Get-Content $out -Raw
+        Write-Output "  netsh http show urlacl as a standard user: exit $($cmd.ExitCode); lists the reservation: $($text -match "localhost:$port/_runic/")"
+        Start-As 'runic-probe-a' 'A12' @('-Port', $port, '-Prefixes', "http://localhost:$port/")
+        Start-As 'runic-probe-b' 'B12' @('-Port', $port, '-Prefixes', "http://localhost:$port/_runic/")
+        Request $port '/_runic/blobs/abc' '-4'
+        Show 'A12', 'B12'
+    }
+}
