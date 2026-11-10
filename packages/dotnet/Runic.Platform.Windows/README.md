@@ -22,8 +22,7 @@ A window's file dialogs require its owner. A presentation without a native windo
 such as a CS-WebUI browser window or a tray-only application, uses
 `WindowsPlatformProvider.CreateUnownedFileDialogs()`: the same dialogs without a
 parent, each on a single-threaded apartment thread of its own that Runic starts for
-it, so dialogs that two windows show at once close independently. A dialog's thread
-stays for the next unowned dialog once it closes, until the process ends. Pass it to
+it, so dialogs that two windows show at once close independently. Pass it to
 Runic.Application.Views.CsWebUi's `services.AddRunicPlatformServices(...)` so each
 window's `IFileDialogs` shows them for `OwnerPolicy.PreferOwner`, or call it directly
 from any thread. Cancellation closes a shown dialog from inside its modal loop.
