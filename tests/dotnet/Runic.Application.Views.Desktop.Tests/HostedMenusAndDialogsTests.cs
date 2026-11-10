@@ -33,7 +33,7 @@ internal sealed class HostedMenusAndDialogsTests
     public async Task TheGuestsMenuBarShowsInItsWindowAndRunsTheGuestsCommands()
     {
         await using var fixture = await HostFixture.StartAsync();
-        if (await fixture.RefusedAsElevatedAsync()) return;
+        await fixture.RequireUnelevatedAsync();
         // The host application's own bar never shows in a guest's window.
         fixture.Desktop.SetMenuBar([new DesktopMenu("Host", [new DesktopMenuItem("Host item", "host.item")])]);
         var opened = fixture.Next(opened: true);
@@ -83,7 +83,7 @@ internal sealed class HostedMenusAndDialogsTests
     public async Task APolicyChangesOrRefusesTheGuestsMenus()
     {
         await using var fixture = await HostFixture.StartAsync();
-        if (await fixture.RefusedAsElevatedAsync()) return;
+        await fixture.RequireUnelevatedAsync();
         var hostCommands = new RecordingCommands();
         fixture.Desktop.MenuCommands = hostCommands;
         // The policy hides Save and adds an item of the host's own to the guest's File menu.
@@ -143,7 +143,7 @@ internal sealed class HostedMenusAndDialogsTests
             };
             using var installed = dialogs.Install();
             await using var fixture = await HostFixture.StartAsync();
-            if (await fixture.RefusedAsElevatedAsync()) return;
+            await fixture.RequireUnelevatedAsync();
             ImmutableArray<DesktopMenuEntry> shownMenu = default;
             DesktopContextMenuOptions? shownAt = null;
             fixture.Factory.ContextMenu = (items, options, _) =>
@@ -217,7 +217,7 @@ internal sealed class HostedMenusAndDialogsTests
         };
         using var installed = dialogs.Install();
         await using var fixture = await HostFixture.StartAsync();
-        if (await fixture.RefusedAsElevatedAsync()) return;
+        await fixture.RequireUnelevatedAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("dialog-closed"));
         var window = await opened.WaitScaledAsync(Timeout);
@@ -244,7 +244,7 @@ internal sealed class HostedMenusAndDialogsTests
         };
         using var installed = dialogs.Install();
         await using var fixture = await HostFixture.StartAsync();
-        if (await fixture.RefusedAsElevatedAsync()) return;
+        await fixture.RequireUnelevatedAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("dialog-crash"));
         var window = await opened.WaitScaledAsync(Timeout);

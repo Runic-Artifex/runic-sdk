@@ -30,7 +30,7 @@
     {"receive":{"id":{"$id":"d1-request"},"kind":"file-dialog","window":{"$id":"w1"},"dialog":"open","title":"Open","filters":[{"name":"Text","extensions":["txt"],"mimeTypes":[]}]},"connection":"c1"},
     {"guest":{"action":"close","window":"w1"}},
     {"receiveAll":[{"kind":"cancel","request":{"$id":"d1-request"}},{"kind":"window-closed","window":{"$id":"w1"}}],"connection":"c1","note":"The guest gives the dialog up as its Window closes."},
-    {"expect":{"action":"d1","outcome":{"unavailable":"owner-closed"}}},
-    {"send":{"id":{"$id":"d1-request"},"ok":true,"outcome":"unavailable","reason":"owner-closed"},"connection":"c1"}
+    {"send":{"id":{"$id":"d1-request"},"ok":true,"outcome":"unavailable","reason":"owner-closed"},"connection":"c1"},
+    {"expect":{"action":"d1","outcome":{"unavailable":"owner-closed"}}}
   ]
 }

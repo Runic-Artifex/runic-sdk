@@ -589,7 +589,8 @@ menu is open, the request is answered `unavailable` with `owner-closed`.
 [request timeout](#messages). The guest MAY give one up, such as when its application cancelled the call, with a
 `cancel` push: `{"kind":"cancel","request":<the request's id>}`. The host closes the menu or dialog and answers the
 request `{"ok":false,"error":{"kind":"cancelled",…}}`, unless it already answered, after the menu or dialog closed. The guest
-ignores the reply's content, but Runic's guest waits for it, within the request timeout, before the window's next dialog. A
+ignores the reply's content, but Runic's guest waits for it, within the request timeout, before the window's next dialog,
+unless the window is closing: the host answers a closed window's requests after `window-closed`. A
 `cancel` that names no waiting request of these kinds is ignored. Either feature in use allows the push.
 
 ## Dialogs (`dialogs/1`)

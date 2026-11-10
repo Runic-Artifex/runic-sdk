@@ -252,7 +252,7 @@ internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IA
             ["menu"] = HostedWire.WriteEntries(items, chosen, static (_, item) => (item.IsEnabled, item.IsChecked)),
             ["point"] = options is { X: { } x, Y: { } y } ? new JsonObject { ["x"] = x, ["y"] = y } : null,
         };
-        var reply = await _window.Guest.UserRequestAsync(_window.Id, request, cancellationToken).ConfigureAwait(false);
+        var reply = await _window.Guest.UserRequestAsync(_window.Id, request, cancellationToken, AwaitsReplies).ConfigureAwait(false);
         return Outcome(reply) switch
         {
             null => new PlatformResult<DesktopMenuItem?>.Success(
@@ -279,8 +279,14 @@ internal sealed class HostedWindowPlatformServices : IWindowPlatformServices, IA
 
     internal HostedWindow Window => _window;
 
+    // Whether a request the application gave up waits for the host's reply: not once the services stop with the window.
+    private volatile bool _stopping;
+
+    internal bool AwaitsReplies() => !_stopping;
+
     public async ValueTask DisposeAsync()
     {
+        _stopping = true;
         try { await _lifetime.DisposeAsync().ConfigureAwait(false); }
         catch (Exception error) when (error is OwnerClosedException or AggregateException) { }
     }
@@ -369,7 +375,7 @@ internal sealed class HostedFilePicker(HostedWindowPlatformServices services) : 
     private async Task<JsonObject?> AskAsync(JsonObject request, CancellationToken cancellationToken)
     {
         var window = services.Window;
-        var reply = await window.Guest.UserRequestAsync(window.Id, request, cancellationToken).ConfigureAwait(false);
+        var reply = await window.Guest.UserRequestAsync(window.Id, request, cancellationToken, services.AwaitsReplies).ConfigureAwait(false);
         switch (HostedWindowPlatformServices.Outcome(reply))
         {
             case null:
@@ -412,7 +418,7 @@ internal sealed class HostedMessageBoxes(HostedWindowPlatformServices services) 
     private async ValueTask<PlatformResult<DesktopMessageBoxButton?>> AskAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken)
     {
         var window = services.Window;
-        var reply = await window.Guest.UserRequestAsync(window.Id, HostedWire.WriteMessageBox(messageBox), cancellationToken).ConfigureAwait(false);
+        var reply = await window.Guest.UserRequestAsync(window.Id, HostedWire.WriteMessageBox(messageBox), cancellationToken, services.AwaitsReplies).ConfigureAwait(false);
         return HostedWindowPlatformServices.Outcome(reply) switch
         {
             // A button the box does not have reads as none, as a box closed without a button.

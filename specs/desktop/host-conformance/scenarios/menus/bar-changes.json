@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "menus",
   "roles": ["guest"],
-  "description": "When the application declares another menu bar, such as with German titles, the guest sends set-menu-bar again with the new bar.",
+  "description": "When the application declares another menu bar, such as with German titles, the guest sends set-menu-bar again with the new bar; when it declares none, set-menu-bar with menu null, and no update of the old bar's items before it.",
   "requires": ["menus/1"],
   "ids": {
     "c1": {"kind":"connection"},
@@ -13,7 +13,8 @@
     "open-w1": {"kind":"request"},
     "open-w1-action": {"kind":"action"},
     "bar-1": {"kind":"request"},
-    "bar-2": {"kind":"request"}
+    "bar-2": {"kind":"request"},
+    "bar-3": {"kind":"request"}
   },
   "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
   "steps": [
@@ -30,6 +31,9 @@
     {"send":{"id":{"$id":"bar-1"},"ok":true,"outcome":"success"},"connection":"c1"},
     {"guest":{"action":"setMenuBar","menu":"german"}},
     {"receive":{"id":{"$id":"bar-2"},"kind":"set-menu-bar","window":{"$id":"w1"},"menu":[{"kind":"submenu","title":"Datei","role":"file","enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"Öffnen","shortcut":"Primary+O","enabled":true,"checked":null},{"kind":"item","id":{"$any":"string"},"title":"Sichern","shortcut":"Primary+S","enabled":true,"checked":null},{"kind":"separator"},{"kind":"submenu","title":"Zuletzt geöffnet","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"notes.txt","shortcut":null,"enabled":true,"checked":null}]}]},{"kind":"submenu","title":"Ansicht","role":null,"enabled":true,"items":[{"kind":"item","id":{"$any":"string"},"title":"Raster","shortcut":null,"enabled":true,"checked":false}]}]},"connection":"c1"},
-    {"send":{"id":{"$id":"bar-2"},"ok":true,"outcome":"success"},"connection":"c1"}
+    {"send":{"id":{"$id":"bar-2"},"ok":true,"outcome":"success"},"connection":"c1"},
+    {"guest":{"action":"setMenuBar","menu":"none"}},
+    {"receive":{"id":{"$id":"bar-3"},"kind":"set-menu-bar","window":{"$id":"w1"},"menu":null},"connection":"c1"},
+    {"send":{"id":{"$id":"bar-3"},"ok":true,"outcome":"success"},"connection":"c1"}
   ]
 }

@@ -446,9 +446,11 @@ internal sealed class HostedGuest : IAsyncDisposable
     internal bool InUse(string feature) => Session.Features.Contains(feature, StringComparer.Ordinal);
 
     // A request for a window that waits for the user (host-protocol.md, Giving up a request): no request timeout; giving
-    // it up sends the cancel push and waits for the host's reply, which closes the dialog, before it throws. Null when the
-    // channel closed.
-    internal async Task<JsonObject?> UserRequestAsync(string window, JsonObject request, CancellationToken cancellationToken)
+    // it up sends the cancel push and, unless awaitReply says otherwise, waits for the host's reply, which closes the
+    // dialog, before it throws. A window that is closing does not wait: the host closes its dialogs when window-closed
+    // arrives, which the close sends only after it. Null when the channel closed.
+    internal async Task<JsonObject?> UserRequestAsync(string window, JsonObject request, CancellationToken cancellationToken,
+        Func<bool>? awaitReply = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_channel is not { IsOpen: true } channel) return null;
@@ -462,8 +464,11 @@ internal sealed class HostedGuest : IAsyncDisposable
         {
             await PushAsync(new JsonObject { ["kind"] = "cancel", ["request"] = HostProtocol.Integer(request, "id") }).ConfigureAwait(false);
             // The host answers once its dialog closed; until then the window's next dialog would find it busy.
-            try { _ = await replied.WaitAsync(_options.RequestTimeout, CancellationToken.None).ConfigureAwait(false); }
-            catch (Exception error) when (error is HostChannelClosedException or TimeoutException) { }
+            if (awaitReply?.Invoke() != false)
+            {
+                try { _ = await replied.WaitAsync(_options.RequestTimeout, CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception error) when (error is HostChannelClosedException or TimeoutException) { }
+            }
             throw;
         }
     }

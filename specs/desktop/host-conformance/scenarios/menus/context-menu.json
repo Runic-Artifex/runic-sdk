@@ -46,7 +46,7 @@
     {"receive":{"id":{"$id":"m3-request"},"kind":"show-context-menu","window":{"$id":"w1"},"menu":[{"kind":"item","id":{"$any":"string"},"title":"Cut","shortcut":null,"enabled":true,"checked":null},{"kind":"item","id":{"$any":"string"},"title":"Copy","shortcut":"Primary+C","enabled":true,"checked":null},{"kind":"separator"},{"kind":"item","id":{"$any":"string"},"title":"Paste","shortcut":null,"enabled":false,"checked":null}],"point":null},"connection":"c1"},
     {"guest":{"action":"cancelDialog","window":"w1"}},
     {"receive":{"kind":"cancel","request":{"$id":"m3-request"}},"connection":"c1"},
-    {"expect":{"action":"m3","cancelled":true}},
-    {"send":{"id":{"$id":"m3-request"},"ok":false,"error":{"kind":"cancelled","message":"The guest gave the request up."}},"connection":"c1","note":"The guest ignores the reply to a request it gave up."}
+    {"send":{"id":{"$id":"m3-request"},"ok":false,"error":{"kind":"cancelled","message":"The guest gave the request up."}},"connection":"c1","note":"The guest waits for the reply to a request it gave up, and ignores its content."},
+    {"expect":{"action":"m3","cancelled":true}}
   ]
 }
