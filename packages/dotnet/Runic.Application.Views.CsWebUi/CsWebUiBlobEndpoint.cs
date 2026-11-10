@@ -22,7 +22,9 @@ namespace Runic.Application.Views.CsWebUi;
 //   starts, the endpoint connects to each address and gives up the port unless its own listener answers that very
 //   connection (ConfirmOwnership), on every OS. A port where the listener cannot start because another process holds
 //   it, as http.sys refuses one where another socket holds either address, is given up the same way: the endpoint
-//   tries another port and, when every port tried is held, says so (event 2103).
+//   tries another port and, when every port tried is held, says so (event 2103). On Windows, a port that a URL
+//   reservation of http.sys names is given up as well: without one, http.sys refuses every other process, of any user, a
+//   URL under the listener's (CsWebUiUrlReservations).
 // - An upload also needs its connection's token, which only the page's own hello received. WebUI's connections are
 //   not visible to this listener, so a blob URL is bound to the window, not to a connection.
 // - On Windows, HttpListener is http.sys, which lets a user without administrator rights listen on localhost only.
@@ -131,6 +133,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
     // whichever address a client picks, and an upload's token never reaches another process's listener.
     private static (HttpListener Listener, CsWebUiLoopbackRelay? Relay) Listen(string host, int port, bool relay)
     {
+        // http.sys refuses another process a URL under the listener's, unless a URL reservation names the port.
+        if (OperatingSystem.IsWindows() && Reservations(port) is [_, ..] reservations)
+            throw new PortHeldException(["a URL reservation"], port, $"http.sys reserves {string.Join(", ", reservations)}");
         var listener = new HttpListener { IgnoreWriteExceptions = true };
         listener.Prefixes.Add(string.Create(CultureInfo.InvariantCulture, $"http://{host}:{port}/"));
         if (OperatingSystem.IsWindows() || host != "localhost")
@@ -176,6 +181,17 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
                 listener.Close();
                 throw;
             }
+        }
+    }
+
+    // The URL reservations of http.sys that name port. Without the list, no port can be shown to be free of them.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static IReadOnlyList<string> Reservations(int port)
+    {
+        try { return CsWebUiUrlReservations.Naming(port); }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            throw new PlatformNotSupportedException("http.sys did not list its URL reservations.", error);
         }
     }
 

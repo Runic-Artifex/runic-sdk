@@ -5,11 +5,12 @@
 param([Parameter(Mandatory)][string]$Directory)
 $ErrorActionPreference = 'Stop'
 $sessions = @{}
+$done = @{}
 function Log([string]$id, [string]$line) { Add-Content -LiteralPath (Join-Path $Directory "$id.log") -Value $line -Encoding utf8 }
 while ($true) {
     foreach ($file in Get-ChildItem -LiteralPath $Directory -Filter '*.prefixes') {
         $id = $file.BaseName
-        if ($sessions.ContainsKey($id)) { continue }
+        if ($sessions.ContainsKey($id) -or $done.ContainsKey($id)) { continue }
         $listeners = @()
         foreach ($prefix in Get-Content -LiteralPath $file.FullName) {
             if (-not $prefix) { continue }
@@ -45,7 +46,8 @@ while ($true) {
         if (Test-Path -LiteralPath (Join-Path $Directory "$id.stop")) {
             foreach ($entry in $sessions[$id]) { $entry.Listener.Close() }
             Log $id 'stopped'
-            $sessions[$id] = @()
+            $sessions.Remove($id)
+            $done[$id] = $true
         }
     }
     Start-Sleep -Milliseconds 20

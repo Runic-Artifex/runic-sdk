@@ -134,8 +134,10 @@ uploads"):
   addresses can listen beside it but receive no connections to either loopback
   address. On Linux and macOS, a blob load or an upload sent to the endpoint
   therefore does not reach another process. On Windows the endpoint checks this
-  when it starts; whether another process can later register a more specific
-  http.sys URL under the endpoint's port is not yet verified.
+  when it starts, and http.sys keeps it so afterwards: it refuses every other
+  process, of the same user or another, a URL under the endpoint's. That holds
+  only where no URL reservation (`netsh http add urlacl`) names the port, so
+  the endpoint does not use a port that one names.
 - An upload needs the page's origin and a token that only the connection's
   `hello` received; it is limited per upload and per window, dropped after 30
   seconds without data, and decodes only for that connection, once. An upload
