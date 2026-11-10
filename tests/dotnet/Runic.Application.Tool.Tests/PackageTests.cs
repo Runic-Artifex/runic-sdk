@@ -883,17 +883,17 @@ internal sealed partial class ToolTests
         // Every runtime identifier's packages, once, including both NativeAOT compiler packages.
         foreach (string id in new[] { "Microsoft.DotNet.ILCompiler", "runtime.linux-x64.Microsoft.DotNet.ILCompiler", "runtime.linux-arm64.Microsoft.DotNet.ILCompiler", "Microsoft.Extensions.DependencyInjection" })
             Equal(1, locked.Count(entry => entry.Package.Id == id));
-        IReadOnlyList<FlathubNuGetPackage> merged = FlathubSources.Merge([.. locked.Select(entry => entry.Package), new("Microsoft.NETCore.App.Runtime.linux-x64", "10.0.12"), new("microsoft.dotnet.ilcompiler", "10.0.12")]);
+        IReadOnlyList<FlathubNuGetPackage> merged = FlathubSources.Merge([.. locked.Select(entry => entry.Package), new("Microsoft.NETCore.App.Runtime.linux-x64", "10.0.14"), new("microsoft.dotnet.ilcompiler", "10.0.14")]);
         Equal(locked.Count + 1, merged.Count);
-        string nuget = FlathubSources.NuGetSources([new("Microsoft.DotNet.ILCompiler", "10.0.12")], _ => "ab12");
+        string nuget = FlathubSources.NuGetSources([new("Microsoft.DotNet.ILCompiler", "10.0.14")], _ => "ab12");
         Equal("""
             [
               {
                 "type": "file",
-                "url": "https://api.nuget.org/v3-flatcontainer/microsoft.dotnet.ilcompiler/10.0.12/microsoft.dotnet.ilcompiler.10.0.12.nupkg",
+                "url": "https://api.nuget.org/v3-flatcontainer/microsoft.dotnet.ilcompiler/10.0.14/microsoft.dotnet.ilcompiler.10.0.14.nupkg",
                 "sha512": "ab12",
                 "dest": "nuget-sources",
-                "dest-filename": "microsoft.dotnet.ilcompiler.10.0.12.nupkg"
+                "dest-filename": "microsoft.dotnet.ilcompiler.10.0.14.nupkg"
               }
             ]
 
@@ -939,7 +939,7 @@ internal sealed partial class ToolTests
     {
         PackageIdentity identity = PackageIdentityFor(["notes"], [new(".notes", null)], dbus: true);
         string manifest = FlathubPackager.Manifest(
-            new FlathubBuild(identity, "https://example.org/notes.git", null, "v2.1.0", "src/Notes App/Notes.csproj", "src/Notes App/Frontend", "10.0.12", true),
+            new FlathubBuild(identity, "https://example.org/notes.git", null, "v2.1.0", "src/Notes App/Notes.csproj", "src/Notes App/Frontend", "10.0.14", true),
             "src/Notes App/icons/icon.png", null);
         foreach (string line in new[]
         {
@@ -947,7 +947,7 @@ internal sealed partial class ToolTests
             "  - --share=network\n  # The Linux global menu: KDE Plasma's menu registrar (Runic.Desktop, global-menu-permission).\n  - --talk-name=com.canonical.AppMenu.Registrar\n",
             "  - org.freedesktop.Sdk.Extension.dotnet10\n  - org.freedesktop.Sdk.Extension.node24\n",
             "append-path: /usr/lib/sdk/dotnet10/bin:/usr/lib/sdk/node24/bin\n", "RUNIC_RUNTIME: linux-arm64\n",
-            "cd ''src/Notes App/Frontend'' && npm ci --offline", "dotnet publish ''src/Notes App/Notes.csproj'' -c Release -r \"$RUNIC_RUNTIME\" -p:PublishAot=true -p:RuntimeFrameworkVersion=10.0.12 -p:RestoreLockedMode=true",
+            "cd ''src/Notes App/Frontend'' && npm ci --offline", "dotnet publish ''src/Notes App/Notes.csproj'' -c Release -r \"$RUNIC_RUNTIME\" -p:PublishAot=true -p:RuntimeFrameworkVersion=10.0.14 -p:RestoreLockedMode=true",
             "--source \"$PWD/nuget-sources\"", "      - type: git\n        url: 'https://example.org/notes.git'\n        tag: 'v2.1.0'\n",
             "      - nuget-sources.json\n      - npm-sources.json\n", "install -Dm644 org.example.Notes.mime.xml", "install -Dm644 org.example.Notes.service",
             "path: org.example.Notes.service\n", "''#!/bin/sh\\nexec \"/app/lib/Notes/Notes\" \"$@\"\\n'' > /app/bin/Notes",
@@ -959,7 +959,7 @@ internal sealed partial class ToolTests
         DoesNotContain(manifest, "commit:");
         DoesNotContain(manifest, "scalable");
         string withoutFrontend = FlathubPackager.Manifest(
-            new FlathubBuild(identity, "https://example.org/notes.git", "0123abcd", null, "Notes.csproj", null, "10.0.12", false), "icons/icon.png", "icons/icon.svg");
+            new FlathubBuild(identity, "https://example.org/notes.git", "0123abcd", null, "Notes.csproj", null, "10.0.14", false), "icons/icon.png", "icons/icon.svg");
         DoesNotContain(withoutFrontend, "node24");
         DoesNotContain(withoutFrontend, "npm ci");
         DoesNotContain(withoutFrontend, "      - npm-sources.json");
