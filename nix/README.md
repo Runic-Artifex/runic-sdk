@@ -551,7 +551,7 @@ and `buildRunicApplication` follows it with the library it builds from source
   ```nix
   cargoLock = {
     lockFile = ./native/Cargo.lock;
-    outputHashes."runic-server-0.18.0" = "sha256-…";
+    outputHashes."runic-server-0.17.1" = "sha256-…";
   };
   ```
 

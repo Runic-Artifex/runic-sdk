@@ -99,7 +99,7 @@ standard library. When the application links a Rust static library of its own
 as well, the program gets two copies, and the link fails on duplicate symbols
 such as `rust_eh_personality`, `std::panicking::EMPTY_PANIC` or
 `ARGV_INIT_ARRAY`. `RunicDesktopNativeServerLinkage` chooses how a NativeAOT
-publish gets the server instead (since 0.18):
+publish gets the server instead (since 0.17.1):
 
 | `RunicDesktopNativeServerLinkage` | The NativeAOT publish |
 | --- | --- |
@@ -122,7 +122,7 @@ linker optimise the server together with the application's own Rust code
 
 ```toml
 [dependencies]
-runic-server = { git = "https://github.com/Runic-Artifex/runic-sdk", tag = "v0.18.0" }
+runic-server = { git = "https://github.com/Runic-Artifex/runic-sdk", tag = "v0.17.1" }
 ```
 
 Its static library crate names it, because Rust links no dependency that the
@@ -172,7 +172,7 @@ link with undefined `runic_server_*` symbols.
   about 1 MiB; Runic.Desktop still loads `runic_server` under the JIT.
 - **Nix.** `buildRunicApplication` keeps building the server's library from
   source for JIT builds and tests. The application's Rust derivation fetches the
-  git dependency with a hash: `cargoLock.outputHashes."runic-server-0.18.0"`
+  git dependency with a hash: `cargoLock.outputHashes."runic-server-0.17.1"`
   ([nix/README.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#the-native-desktop-server-and-an-applications-own-rust-library)).
 
 ## Building it
