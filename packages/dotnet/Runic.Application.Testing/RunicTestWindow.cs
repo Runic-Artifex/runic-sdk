@@ -290,8 +290,12 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
                     TimeProvider = _time,
                     CreateId = options.CreateId ?? (() => Interlocked.Increment(ref _nextId).ToString(CultureInfo.InvariantCulture)),
                     IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? options.IncludeFailureDetail,
+                    // As Runic Desktop and CS-WebUI: the Window scope's RunicValidationOptions (TextFor,
+                    // configureFieldErrorText's reasons) unless the test host's options name others.
+                    Validation = options.Validation ?? provider.GetService<RunicValidationOptions>(),
                     FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? options.FlowCultureFromLocale,
                     MaximumInputBytes = opening.Options.MaximumInputBytes ?? options.MaximumInputBytes,
+                    MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? options.MaximumUploadBytes,
                     PublicationTimeout = options.PublicationTimeout,
                 })
             { Services = provider, WindowPresentation = presentation };
