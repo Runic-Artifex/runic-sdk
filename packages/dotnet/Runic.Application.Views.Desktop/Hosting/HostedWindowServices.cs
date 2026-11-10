@@ -26,6 +26,8 @@ internal sealed class HostedWindowMenus : IDisposable
     private Dictionary<string, DesktopMenuItem> _items = new(StringComparer.Ordinal);
     private Dictionary<string, (bool Enabled, bool? Checked)> _states = new(StringComparer.Ordinal);
     private bool _sentBar;
+    // The application's bar that the host has now; another one means the bar changed, also before MenuBarChanged ran.
+    private IReadOnlyList<DesktopMenu>? _publishedBar;
     private bool _barChanged;
     private bool _statesChanged;
     private bool _sending;
@@ -100,7 +102,9 @@ internal sealed class HostedWindowMenus : IDisposable
                     _sending = false;
                     return;
                 }
-                bar = _barChanged;
+                // A command binding can report a change of the new bar before MenuBarChanged reaches this window: the
+                // new bar goes first, never states of the old one.
+                bar = _barChanged || !ReferenceEquals(_desktop.MenuBar, _publishedBar);
                 _barChanged = _statesChanged = false;
             }
             try
@@ -127,6 +131,7 @@ internal sealed class HostedWindowMenus : IDisposable
         var entries = HostedWire.WriteEntries(menus, items, (id, item) => states[id] = State(item));
         lock (_gate)
         {
+            _publishedBar = menus;
             _items = items;
             _states = states;
             if (menus.Count == 0 && !_sentBar) return null;

@@ -512,7 +512,7 @@ it tells the guest which item the user chose.
 | Message | Direction | Members | Reply |
 | --- | --- | --- | --- |
 | `set-menu-bar` | guest → host request | `window`; `menu`: an array of submenu [entries](#menu-entries), the bar's menus in the guest's order, or `null` for none | A [platform outcome](#platform-outcomes) |
-| `update-menu-items` | guest → host request | `window`; `items`: an array of 1 to 1,000 `{id, title?, enabled?, checked?}` | A platform outcome |
+| `update-menu-items` | guest → host request | `window`; `items`: an array of 1 to 1,000 `{id, title?, enabled?, checked?}`; a member that is absent or `null` keeps the item's value | A platform outcome |
 | `show-context-menu` | guest → host request | `window`; `menu`: an array of 1 or more entries; `point`: `{x, y}` in CSS pixels of the page's viewport, or `null` for the pointer's position | A platform outcome; with `success`, `itemId`: the chosen item's id, or `null` when the menu was dismissed |
 | `menu-invoke` | host → guest push | `window`; `itemId` | — |
 
@@ -615,8 +615,9 @@ the same that its windows show for itself; a guest that is not Runic's chooses h
 - **When the window closes** while its dialog is open, also because the guest closed its Window, the host closes the
   dialog and answers the request `unavailable` with `owner-closed`. The guest's closed Window reports
   `OwnerClosed` for its dialogs in any case.
-- **When the guest gives the dialog up** (`cancel`), the host closes it and answers `cancelled`. When the guest goes
-  away, the host closes its dialogs.
+- **When the guest gives the dialog up** (`cancel`), the host closes it and answers `cancelled`. A guest whose Window
+  closes while its dialog is open MAY send `cancel` before `window-closed`. When the guest goes away, the host closes
+  its dialogs.
 - A platform that cannot show a dialog, such as a host window without a native owner, answers `unavailable`.
 
 ## Window services (`window-services/1`)
