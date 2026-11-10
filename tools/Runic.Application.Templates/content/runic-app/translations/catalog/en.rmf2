@@ -1,0 +1,42 @@
+# The application's text, for the page (Frontend/src) and C# (the generated AppText). Add a language to "locales" in
+# runic.json and a <locale>.rmf2 beside this file; the build checks that both sides use every message correctly, and
+# the page's language list shows every language of runic.json.
+
+# A text reference the ViewModel produces: the page shows it in the application's language.
+welcome_greeting = Your first Runic View is ready.
+
+# The page's own text.
+app {
+  title = Runic Views
+  # The frontend's name, such as React.
+  subtitle = Window/View starter · {$frontend}
+  language = Language
+  loading = Connecting to the Window…
+}
+
+nav {
+  label = Main navigation
+  welcome = Welcome
+  counter = Counter
+}
+
+# The connection to the .NET Window. While the Bridge reconnects, the page keeps the last state the Window sent.
+status {
+  connecting = Connecting to the .NET Window…
+  connected = Connected to the .NET Window.
+  stale = Showing the last state the .NET Window sent.
+  reconnecting = Reconnecting to the .NET Window…
+  lost = The connection to the .NET Window was lost. The page reconnects when the application is back.
+  closed = The application closed this window.
+}
+
+welcome {
+  loading = Connecting…
+}
+
+counter {
+  title = Counter View
+  step = Step
+  label = Label
+  increment = Increment
+}

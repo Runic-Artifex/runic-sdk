@@ -63,6 +63,46 @@ public sealed class RunicWindowTestHostOptions
     public bool? FlowCultureFromLocale { get; init; }
 
     /// <summary>
+    /// The window's own locale when the host starts, a BCP 47 tag such as <c>de</c> or <c>ar</c>, as a Window whose
+    /// ViewModel sets <see cref="IRunicWindowLocale.Locale"/> before it opens: the page's first <c>hello</c> receives
+    /// it, and with <see cref="FlowCultureFromLocale"/> the window's requests run in its culture. The window keeps it
+    /// when the application's locale changes. <see langword="null"/>, the default, follows the application's locale
+    /// (<see cref="ApplicationLocale"/>).
+    /// </summary>
+    /// <remarks>
+    /// It means the same on every host: the constructors, <c>RunicWindowTestHost.Create</c>, and every Window that
+    /// <c>RunicWindowTestHost.CreateWindowAsync</c> opens, including the Windows its ViewModels open later. A locale the
+    /// ViewModel sets through <see cref="IRunicWindowLocale"/> before the window opens takes precedence. To start the
+    /// whole application in a language and switch it later, set <see cref="ApplicationLocale"/> instead. A value that
+    /// is not 1 to 64 letters, digits and <c>-</c>, starting with a letter, throws <see cref="ArgumentException"/>.
+    /// </remarks>
+    public string? Locale { get; init; }
+
+    /// <summary>
+    /// The application's locale (<see cref="IRunicApplicationLocale"/>) while the host runs, such as <c>de</c>: the
+    /// host sets it before the window opens, as an application does at start, and every window without a
+    /// <see cref="Locale"/> of its own follows it and any later switch. <see langword="null"/>, the default, leaves
+    /// the application's locale as it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>RunicWindowTestHost.CreateWindowAsync</c> and <c>RunicWindowTestHost.Create</c> set the
+    /// <see cref="IRunicApplicationLocale"/> that the services register, which <c>AddRunicWindowService()</c> registers
+    /// as a singleton, so its followers (such as a Translations context) switch too. Disposing the host, or the Window
+    /// that <c>CreateWindowAsync</c> returned, sets it back to the locale it had before, also when the test switched it
+    /// since: tests that share one provider do not inherit the language. A constructor's host, and a
+    /// <c>Create</c> host whose services register none, start their own <see cref="RunicWindowTestHost{TViewModel}.ApplicationLocale"/>
+    /// in it.
+    /// </para>
+    /// <para>
+    /// <c>CreateWindowAsync</c> requires a registered <see cref="IRunicApplicationLocale"/> for it and awaits the switch.
+    /// The constructors and <c>Create</c> are synchronous and wait for it and for the switch back. A value that is not
+    /// a locale tag throws <see cref="ArgumentException"/>.
+    /// </para>
+    /// </remarks>
+    public string? ApplicationLocale { get; init; }
+
+    /// <summary>
     /// The largest Bridge input of the window, in UTF-8 bytes
     /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>). <see langword="null"/>, the default, is 1 MiB.
     /// </summary>

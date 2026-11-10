@@ -20,3 +20,6 @@
 *.snupkg
 **/.nuget/
 **/.claude/worktrees/
+
+# examples/multi-window: the catalog ESM its build writes for the page.
+examples/multi-window/Frontend/.runic/

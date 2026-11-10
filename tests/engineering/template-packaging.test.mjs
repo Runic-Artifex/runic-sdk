@@ -118,7 +118,7 @@ test("the shipped template has no hidden or version parameters, and the pack sta
     const symbols = JSON.parse(shipped).symbols;
     const parameters = Object.entries(symbols).filter(([, symbol]) => symbol.type === "parameter").map(([name]) => name);
     assert.deepEqual(parameters,
-      ["frontend", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "tests", "nix", "packaging", "restore", "applicationId"]);
+      ["frontend", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "tests", "translations", "nix", "packaging", "restore", "applicationId"]);
     for (const name of parameters) {
       assert.doesNotMatch(`${name} ${symbols[name].replaces ?? ""}`, /version/i, `${name} sets a version`);
       assert.ok(host.symbolInfo[name], `${name} has no dotnetcli.host.json entry`);
@@ -213,6 +213,81 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
       const result = spawnSync("dotnet", ["new", "runic-app", "--name", "Removed", "--output", "removed", ...removed,
         "--debug:custom-hive", join(directory, "hive")], { cwd: directory, encoding: "utf8" });
       assert.notEqual(result.status, 0, `dotnet new runic-app ${removed.join(" ")} succeeded`);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// G10: --translations adds one Runic Translations catalog for the page and C#, the C# side of the language and each
+// frontend's overlay files, and leaves the projects without it unchanged.
+test("--translations scaffolds a translated application for every frontend", () => {
+  const directory = mkdtempSync(join(tmpdir(), "runic-template-translations-"));
+  try {
+    const content = join(directory, "content");
+    cpSync(templateContent, content, { recursive: true });
+    writeFileSync(join(content, ".template.config/template.json"), stampTemplateJson(join(directory, "stamp")));
+    const dotnet = (...args) => {
+      const result = spawnSync("dotnet", [...args, "--debug:custom-hive", join(directory, "hive")],
+        { cwd: directory, encoding: "utf8", env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1", DOTNET_NOLOGO: "1" } });
+      assert.equal(result.status, 0, `dotnet ${args.join(" ")}\n${result.stdout}${result.stderr}`);
+    };
+    dotnet("new", "install", content);
+    const create = (output, ...options) => {
+      dotnet("new", "runic-app", "--name", "Translated", "--output", output, "--tests", ...options);
+      return Object.fromEntries(readdirSync(join(directory, output), { recursive: true, withFileTypes: true })
+        .filter(entry => entry.isFile())
+        .map(entry => join(entry.parentPath, entry.name))
+        .map(path => [path.slice(join(directory, output).length + 1).replaceAll("\\", "/"), readFileSync(path, "utf8")]));
+    };
+    const overlays = {
+      react: ["src/translations.ts", "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx"],
+      vue: ["src/translations.ts", "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts"],
+      svelte: ["src/translations.ts", "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts"],
+      sveltekit: ["src/lib/translations.ts", "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts"],
+      angular: ["src/translations.ts", "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts"],
+    };
+    for (const [frontend, files] of Object.entries(overlays)) {
+      for (const viewModels of ["reactiveui", "toolkit"]) {
+        const plain = create(`${frontend}-${viewModels}`, "--frontend", frontend, "--view-models", viewModels);
+        const translated = create(`${frontend}-${viewModels}-translations`, "--frontend", frontend, "--view-models", viewModels, "--translations");
+        const label = `${frontend} ${viewModels}`;
+        // The catalog and the overlays; the plain project has none of it.
+        for (const file of ["runic.json", "en.rmf2", "de.rmf2"]) {
+          assert.ok(translated[`Frontend/translations/${file}`], `${label}: no Frontend/translations/${file}`);
+          assert.ok(!plain[`Frontend/translations/${file}`], `${label}: the plain project has Frontend/translations/${file}`);
+        }
+        assert.match(translated["Frontend/translations/runic.json"], /"namespace": "Translated"/);
+        assert.ok(!plain[files[0]], `${label}: the plain project has ${files[0]}`);
+        for (const file of files) {
+          assert.ok(translated[`Frontend/${file}`], `${label}: no Frontend/${file}`);
+          assert.notEqual(translated[`Frontend/${file}`], plain[`Frontend/${file}`], `${label}: Frontend/${file} is not the translated one`);
+        }
+        assert.match(translated[`Frontend/${files[0]}`], /configureSharedLocaleResolver/);
+        assert.match(translated[`Frontend/${files.at(-1)}`], /setWindowLocale\("de"\)/);
+        // The language list comes from the catalog's locales, and the starter's own text from the catalog.
+        assert.match(translated[`Frontend/${files[0]}`], /export const languages = locales\.map/);
+        for (const file of files.slice(1, -1)) assert.doesNotMatch(translated[`Frontend/${file}`], /"English"|>Counter<|Connecting to the/, `${label}: ${file}`);
+        // The C# side: the packages, the catalog and the generated API.
+        assert.match(translated["Translated.csproj"], /<PackageReference Include="Runic\.Translations" Version="0\.9\.1" \/>/);
+        assert.match(translated["Translated.csproj"], /<RunicTranslationProject Include="Frontend\/translations\/runic\.json" \/>/);
+        assert.doesNotMatch(plain["Translated.csproj"], /Translations/);
+        assert.match(translated["WorkspaceViewModel.cs"], /AppText\.References\.welcome_greeting\(\)/);
+        assert.match(translated["WorkspaceViewModel.cs"], viewModels === "reactiveui" ? /ChooseLanguageCommand = / : /ChooseLanguageAsync\(/);
+        assert.doesNotMatch(plain["WorkspaceViewModel.cs"], /Translations|AppText/);
+        assert.match(translated["WorkspaceServices.cs"], /StartLanguageAsync/);
+        assert.match(translated["Program.cs"], /RUNIC_LOCALE/);
+        assert.doesNotMatch(plain["Program.cs"] + plain["WorkspaceServices.cs"], /RUNIC_LOCALE|Translation/);
+        assert.match(translated["Translated.Tests/WorkspaceWindowTests.cs"], /Deine erste Runic View ist bereit\./);
+        // The tool manifest stays JSON and gains the Translations tool.
+        const tools = JSON.parse(translated[".config/dotnet-tools.json"]).tools;
+        assert.deepEqual(Object.keys(tools), ["dotnet-runic", "dotnet-runic-translations"]);
+        assert.equal(tools["dotnet-runic-translations"].version, "0.9.1");
+        assert.deepEqual(Object.keys(JSON.parse(plain[".config/dotnet-tools.json"]).tools), ["dotnet-runic"]);
+        assert.match(translated[".gitignore"], /Frontend\/\.runic\//);
+        for (const [path, text] of Object.entries(translated))
+          assert.doesNotMatch(text, /#if \(translations\)|\/\/#endif/, `${label}: ${path} keeps a template condition`);
+      }
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

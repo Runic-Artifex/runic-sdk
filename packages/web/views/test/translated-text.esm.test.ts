@@ -98,6 +98,21 @@ test("references of an application's and a library's catalog resolve by catalog,
     assert.equal(resolveText(saved), "Atlas gespeichert.");
     assert.equal(resolveText(selection), "3 Zeilen in Orders ausgewählt");
     assert.equal(grid.rows_selected({ count: 2, table: "Kunden" }), "2 Zeilen in Kunden ausgewählt");
+    // A reference that another release of the library's catalog wrote is checked key by key: its key and arguments
+    // still match, so it translates and only reports the changed contract; a key this release no longer has, or an
+    // argument of another type, shows the reference's fallback text.
+    const otherRelease = { ...selection, contractFingerprint: `sha256:${"0".repeat(64)}` };
+    const skewed = resolveReference(otherRelease, { locale: "de" });
+    assert.equal(skewed.outcome, "translated");
+    assert.equal(skewed.text, "3 Zeilen in Orders ausgewählt");
+    assert.deepEqual(skewed.diagnostics.map(diagnostic => diagnostic.reason), ["contract-changed"]);
+    assert.equal(resolveText(otherRelease), "3 Zeilen in Orders ausgewählt");
+    const removed = resolveReference({ ...otherRelease, key: "rows_removed" }, { locale: "de" });
+    assert.equal(removed.outcome, "fallback");
+    assert.equal(removed.text, selection.fallbackText);
+    const retyped = resolveReference({ ...otherRelease, arguments: { ...otherRelease.arguments, table: { type: "boolean", value: true } } }, { locale: "de" });
+    assert.equal(retyped.outcome, "fallback");
+    assert.equal(retyped.text, selection.fallbackText);
     assert.equal(root.getAttribute("lang"), "de");
     assert.equal(root.getAttribute("dir"), "ltr");
 

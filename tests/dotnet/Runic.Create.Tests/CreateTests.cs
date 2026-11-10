@@ -46,11 +46,12 @@ internal sealed class CreateTests
         Equal("Native", model.Options[4].Find("native")!.DisplayName);
         Equal("CommunityToolkit.Mvvm", model.Options[5].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
-        Equal("tests,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
+        Equal("tests,translations,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
-        Equal("Nix flake", model.Toggles[1].DisplayName);
-        Equal("Packaging manifests", model.Toggles[2].DisplayName);
-        Equal("Restore packages", model.Toggles[3].DisplayName);
+        Equal("Translations", model.Toggles[1].DisplayName);
+        Equal("Nix flake", model.Toggles[2].DisplayName);
+        Equal("Packaging manifests", model.Toggles[3].DisplayName);
+        Equal("Restore packages", model.Toggles[4].DisplayName);
         // Text parameters are options generated from the model; --application-id is the template's only one.
         Equal("application-id", string.Join(',', model.Texts.Select(text => text.LongName)));
         Equal("Application ID", model.Texts[0].DisplayName);
@@ -321,7 +322,7 @@ internal sealed class CreateTests
         // Options and toggles are keyed by the template's option names, not by a naming policy.
         Equal(string.Join(",", Runic.Create.Program.OptionFlags),
             string.Join(",", payload.GetProperty("options").EnumerateObject().Select(property => property.Name)));
-        Equal("tests=False,nix=False,packaging=False,restore=False",
+        Equal("tests=False,translations=False,nix=False,packaging=False,restore=False",
             string.Join(",", payload.GetProperty("toggles").EnumerateObject().Select(property => $"{property.Name}={property.Value.GetBoolean()}")));
         Equal(Path.GetFullPath("MyApp"), payload.GetProperty("fullPath").GetString());
         True(!payload.GetProperty("created").GetBoolean(), "a dry run creates nothing");
@@ -337,7 +338,7 @@ internal sealed class CreateTests
         Equal(
             "{\"name\":\"MyApp\",\"directory\":\"apps/MyApp\",\"fullPath\":\"/work/apps/MyApp\",\"version\":\"1.0.0\"," +
             "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"linux-gtk\":\"3\",\"desktop-server\":\"native\",\"view-models\":\"reactiveui\"}," +
-            "\"toggles\":{\"tests\":true,\"nix\":false,\"packaging\":false,\"restore\":false}," +
+            "\"toggles\":{\"tests\":true,\"translations\":false,\"nix\":false,\"packaging\":false,\"restore\":false}," +
             "\"textOptions\":{}," +
             "\"commands\":[\"dotnet new install Runic.Application.Templates@1.0.0\"," +
             "\"dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests\"]," +
@@ -351,7 +352,7 @@ internal sealed class CreateTests
     [Test, DisplayName("an interactive console asks each question on standard error")]
     public void InteractiveConsoleAsks()
     {
-        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "", "y", "", "", ""]) };
+        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "", "y", "", "", "", ""]) };
         int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
         True(exitCode == 0, console.Error.ToString());
         True(console.Answers.Count == 0, "Every question was asked.");
@@ -360,7 +361,8 @@ internal sealed class CreateTests
         True(error.Contains("Frontend", StringComparison.Ordinal) && error.Contains("Test project", StringComparison.Ordinal), error);
         string output = console.Output.ToString();
         True(output.Contains("dotnet new runic-app --name MyApp --frontend vue", StringComparison.Ordinal), output);
-        True(output.Contains("--tests", StringComparison.Ordinal) && !output.Contains("--nix", StringComparison.Ordinal), output);
+        True(output.Contains("--tests", StringComparison.Ordinal) && !output.Contains("--nix", StringComparison.Ordinal)
+            && !output.Contains("--translations", StringComparison.Ordinal), output);
     }
 
     [Test, DisplayName("RUNIC_COMMANDLINE_NO_INPUT uses the defaults instead of asking")]
