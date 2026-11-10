@@ -92,7 +92,7 @@
       "dotnet-runic": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.17.0, )",
+          "Runic.Assets": "[0.17.1, )",
           "Runic.CommandLine": "[0.11.0, )",
           "Runic.CommandLine.Spectre": "[0.11.0, )"
         }
