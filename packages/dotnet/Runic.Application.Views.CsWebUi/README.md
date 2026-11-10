@@ -453,6 +453,27 @@ the window's language only, and do not log or store them. A page can stop
 sending them with `configureClientLanguages({ send: false })` from
 `@runic-artifex/views`, called in `main.ts` before it connects.
 
+## Runic's own text
+
+The text Runic itself shows in a CS-WebUI application follows the same hooks
+as on Runic Desktop: validation messages take `RunicValidationOptions.TextFor`
+in every window, and the platform services' dialogs (where the platform has no
+translated text of its own) and the in-page bar's shortcut labels take
+`DesktopPlatformTexts.Current` (the bar shows English Ctrl/Shift/Alt unless the
+application names them).
+[`Runic.Application.Views.Translations`](../Runic.Application.Views.Translations/README.md)
+keeps both in the application's language. A file the frontend does not have is
+answered with an empty `404`, without a page.
+
+Two pages are WebUI's own and stay English: **Access Denied**, which a second
+browser gets when `MultiClient` is off and another one already shows the
+window, and **Resource Not Available**, which WebUI shows for a request it
+cannot serve itself. They are built into the WebUI library that CS-WebUI
+ships, which has no way to replace them, so `DesktopPlatformTexts`'
+`AccessDeniedTitle`, `ContentInUseMessage`, `ResourceUnavailableTitle` and
+`ResourceUnavailableMessage` apply to Runic Desktop's browser windows only.
+Translating them needs a CS-WebUI change.
+
 ## Security
 
 This host adds no admission of its own. Runic Desktop checks the `Origin` of
