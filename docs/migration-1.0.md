@@ -53,6 +53,16 @@ the release notes, which give the full detail and the pull requests:
   [Testing and page errors](../eng/release/notes/0.16.0.md#testing-and-page-errors-t),
   [Views protocol 4 features](../eng/release/notes/0.16.0.md#views-protocol-4-features),
   [Known issues](../eng/release/notes/0.16.0.md#known-issues)
+- 0.17.0: [Upgrading from 0.16](../eng/release/notes/0.17.0.md#upgrading-from-016),
+  [Security](../eng/release/notes/0.17.0.md#security-cs-webui-blob-endpoint),
+  [The application's language](../eng/release/notes/0.17.0.md#the-applications-language-and-runics-own-text),
+  [Translations 0.9.1](../eng/release/notes/0.17.0.md#runic-translations-091-and-the-translated-template-sx),
+  [Appearance](../eng/release/notes/0.17.0.md#appearance-beyond-light-and-dark-s10),
+  [Shared clients](../eng/release/notes/0.17.0.md#shared-clients-for-viewmodels-with-the-same-members-sc-839),
+  [Owner-less file dialogs](../eng/release/notes/0.17.0.md#owner-less-file-dialogs-for-cs-webui),
+  [Hosted application windows](../eng/release/notes/0.17.0.md#hosted-application-windows-experimental-runicdesk103),
+  [Views protocol 4 features](../eng/release/notes/0.17.0.md#views-protocol-4-features),
+  [Known issues](../eng/release/notes/0.17.0.md#known-issues)
 
 ## Before you start
 
