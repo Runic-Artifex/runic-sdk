@@ -594,6 +594,14 @@ another item. A context menu's ids need to be unique in that menu only: its repl
   `menu-invoke` whose `itemId` names no item of the window's current bar, such as after the bar changed, is ignored
   ([item ids](#item-ids)). An item a host policy added runs the host application's command (`DesktopHost.MenuCommands`)
   and is not pushed.
+- **Order.** The guest runs one window's `menu-invoke` pushes one at a time, in the order it received them, as a native
+  bar runs the clicks and shortcuts of its window: each item runs once the command of the push before it returned from
+  its `Execute`, such as at the first `await` of an asynchronous command. Each item asks whether it can run when its
+  turn comes, not when the push arrived: an item whose command cannot run then is ignored, not kept for later. A command
+  that cannot run while it runs, such as an asynchronous command that allows one run at a time, thus ignores a second
+  choice made while the first still runs, as the native bar would, where the item shows disabled meanwhile. The guest
+  reads pushes off its receive loop, so a command that runs long delays the window's next items, never its other
+  messages.
 
 ### Context menus
 

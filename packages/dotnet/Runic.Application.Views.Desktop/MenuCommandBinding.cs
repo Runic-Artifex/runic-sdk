@@ -204,15 +204,18 @@ internal sealed partial class MenuCommandBinding : IDisposable
     public void Execute(DesktopMenuItem item) => Execute(item, invoker: null);
 
     // An item that the page whose connection is invoker chose (MenuBarPageRoutes), or the native bar's (null).
-    internal void Execute(DesktopMenuItem item, BridgeConnection? invoker)
+    internal void Execute(DesktopMenuItem item, BridgeConnection? invoker) => _ = ExecuteAsync(item, invoker);
+
+    // Execute, completing once the command's Execute returned in its model turn; it never faults.
+    internal Task ExecuteAsync(DesktopMenuItem item, BridgeConnection? invoker)
     {
         ArgumentNullException.ThrowIfNull(item);
         Entry? entry;
         lock (_gate)
         {
-            if (_disposed || !_entries.TryGetValue(MenuCommandKey.Of(item), out entry)) return;
+            if (_disposed || !_entries.TryGetValue(MenuCommandKey.Of(item), out entry)) return Task.CompletedTask;
         }
-        _ = RunAsync(entry, invoker);
+        return RunAsync(entry, invoker);
     }
 
     private async Task RunAsync(Entry entry, BridgeConnection? invoker)
