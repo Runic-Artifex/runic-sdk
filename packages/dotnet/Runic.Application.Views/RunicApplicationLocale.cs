@@ -188,6 +188,10 @@ internal sealed class RunicApplicationLocale : IRunicApplicationLocale, IDisposa
     // Whether the application set a locale of its own, which a host's locale does not replace.
     internal bool HasOwnLocale => Volatile.Read(ref _ownLocale);
 
+    // Hosted mode: the host's current locale, which SetLocaleAsync(null) switches to directly, so giving the application's
+    // own locale up switches once, not to no locale and then to the host's. Null outside hosted mode.
+    internal Func<string?>? HostLocale { get; set; }
+
     private async ValueTask<bool> SwitchAsync(string? locale, bool fromHost, CancellationToken cancellationToken)
     {
         if (locale is not null && !BridgeDispatcher.IsLocale(locale))
@@ -206,6 +210,8 @@ internal sealed class RunicApplicationLocale : IRunicApplicationLocale, IDisposa
         {
             if (fromHost && _ownLocale) return false;
             if (!fromHost) Volatile.Write(ref _ownLocale, locale is not null);
+            // Giving the own locale up in hosted mode follows the host's at once.
+            if (!fromHost && locale is null && HostLocale?.Invoke() is { } host && BridgeDispatcher.IsLocale(host)) locale = host;
             var old = Volatile.Read(ref _locale);
             if (string.Equals(old, locale, StringComparison.Ordinal))
             {

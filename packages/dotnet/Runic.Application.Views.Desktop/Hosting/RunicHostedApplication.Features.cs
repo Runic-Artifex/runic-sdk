@@ -223,9 +223,13 @@ public sealed partial class RunicHostedApplication
         }
     }
 
-    // A guest's item was chosen in the window's menu bar or by its shortcut: menu-invoke (host-protocol.md, Menus).
-    internal void InvokeMenuItem(RunicHostedWindow window, string itemId) =>
+    // A guest's item was chosen in the window's menu bar or by its shortcut: menu-invoke (host-protocol.md, Menus). The
+    // user worked in the window (window-services/1).
+    internal void InvokeMenuItem(RunicHostedWindow window, string itemId)
+    {
+        window.NoteUserInteraction();
         _ = PushAsync(new JsonObject { ["kind"] = "menu-invoke", ["window"] = window.Id, ["itemId"] = itemId });
+    }
 
     // ----- Requests that wait for the user: context menus and dialogs
 
@@ -384,6 +388,8 @@ public sealed partial class RunicHostedApplication
             case PlatformResult<DesktopMenuItem?>.Success(var item):
                 // The window closed while the menu was open.
                 if (!window.IsOpen) return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed));
+                // The user chose an item: they work in the window (window-services/1).
+                if (item is not null) window.NoteUserInteraction();
                 var itemId = item is null ? null : HostedWire.ItemId(item);
                 // An item a policy added runs the host application's command, as its own menus do; the guest chose nothing.
                 if (item is not null && itemId is null)
@@ -484,8 +490,9 @@ public sealed partial class RunicHostedApplication
             // The guest opens the paths itself, with its own access: the host keeps no grant (host-protocol.md, Dialogs).
             var single = kind is RunicHostedDialogKind.OpenFile or RunicHostedDialogKind.SaveFile or RunicHostedDialogKind.OpenFolder;
             var paths = (single ? selected.Take(1) : selected).ToArray();
-            // The user gave the guest these paths: it may open them through the host (window-services/1).
-            GivePaths(paths.Select(static selection => selection.Path));
+            // The user gave the guest these paths: it may open them through the host (window-services/1). A save dialog's
+            // path is only a place: the guest writes the content, which the user did not choose.
+            if (kind != RunicHostedDialogKind.SaveFile) GivePaths(paths.Select(static selection => selection.Path));
             var filter = selected[0].Filter is { } chosen && native.Filters.IndexOf(chosen) is >= 0 and var index ? index : (int?)null;
             return new JsonObject
             {

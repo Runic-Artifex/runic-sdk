@@ -1,4 +1,7 @@
+using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using Runic.Application.Views.Desktop.Hosting;
 using Runic.Desktop;
@@ -142,6 +145,15 @@ public sealed class RunicHostedWindow
 
     internal bool BeginMonitorWatch() => Interlocked.Exchange(ref _monitorWatch, 1) == 0;
 
+    // The monitors the guest listed last, or null before its first list.
+    private StrongBox<ImmutableArray<DesktopMonitor>>? _listedMonitors;
+
+    internal ImmutableArray<DesktopMonitor>? ListedMonitors
+    {
+        get => Volatile.Read(ref _listedMonitors)?.Value;
+        set => Volatile.Write(ref _listedMonitors, value is { } list ? new(list) : null);
+    }
+
     // The window's dialog services; once the window is closing, services that report the closed owner, so a request
     // that raced the close creates none that nothing would dispose.
     internal HostDialogServices Dialogs(Func<DesktopWindow, HostDialogServices> create)
@@ -191,6 +203,85 @@ public sealed class RunicHostedWindow
         _presentation = presentation;
         Adapter = adapter;
         Features = adapter.Features;
+        // The window opened at the guest's request (window-open): when it has the focus now, the guest gave it.
+        lock (_activationGate)
+        {
+            _active = presentation.Activity is { IsActive: true };
+            _guestActivated = _active;
+            if (_active) _guestRequest = 0;
+        }
+        presentation.ActivityChanged += (_, _) => Observe();
+    }
+
+    // ----- Activation (host-protocol.md, Window services): whether the window is active because the guest asked.
+
+    // How long after the guest's own request that can activate the window (window-open, present, set-visible) an
+    // activation counts as the guest's, and how long after the user's activation ended a clipboard write is still allowed.
+    internal static readonly TimeSpan GuestActivationWindow = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan ClipboardWriteGrace = TimeSpan.FromSeconds(1);
+
+    private readonly object _activationGate = new();
+    // Stopwatch timestamps: the guest's last request that can activate the window, until an activation followed it, and
+    // when an activation that was not the guest's ended; 0 for none.
+    private long _guestRequest;
+    private long _userActivationEnded;
+    private bool _active;
+    private bool _guestActivated;
+
+    // The guest asked for a request that can activate the window: an activation that follows within
+    // GuestActivationWindow is the guest's.
+    internal void NoteGuestActivationRequest()
+    {
+        lock (_activationGate) _guestRequest = Stopwatch.GetTimestamp();
+    }
+
+    // The user worked in the window in a way the host sees: chose an item of its menus, or dropped files onto it.
+    internal void NoteUserInteraction()
+    {
+        lock (_activationGate) _guestActivated = false;
+    }
+
+    // The window has the keyboard focus.
+    internal bool IsActive => Observe().Active;
+
+    // The window is active because of the guest's own request, and the user has not worked in it since.
+    internal bool IsGuestActivated => Observe().GuestActivated;
+
+    // The user works in the window: it is active, and not because of the guest's own request.
+    internal bool IsUserActive => Observe() is { Active: true, GuestActivated: false };
+
+    // The user's activation of the window ended less than ClipboardWriteGrace ago.
+    internal bool IsInWriteGrace
+    {
+        get
+        {
+            var (active, _) = Observe();
+            lock (_activationGate)
+                return !active && _userActivationEnded != 0 && Stopwatch.GetElapsedTime(_userActivationEnded) <= ClipboardWriteGrace;
+        }
+    }
+
+    // The platform's activity, read at once; its change event follows on the thread pool, so a change the event has not
+    // reported yet counts from now.
+    private (bool Active, bool GuestActivated) Observe()
+    {
+        var active = _presentation?.Activity is { IsActive: true };
+        lock (_activationGate)
+        {
+            if (active && !_active)
+            {
+                // The guest's request accounts for one activation: the user's next one is the user's.
+                _guestActivated = _guestRequest != 0 && Stopwatch.GetElapsedTime(_guestRequest) <= GuestActivationWindow;
+                _guestRequest = 0;
+            }
+            else if (!active && _active)
+            {
+                _userActivationEnded = _guestActivated ? 0 : Stopwatch.GetTimestamp();
+                _guestActivated = false;
+            }
+            _active = active;
+            return (_active, _active && _guestActivated);
+        }
     }
 
     // The native window as IRunicWindowPresentation, for the requests it shares with a Window's presentation.

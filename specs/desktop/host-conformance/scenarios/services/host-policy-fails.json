@@ -1,0 +1,34 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "services.host-policy-fails.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "services",
+  "roles": ["host"],
+  "description": "A host whose window policy fails for a window service answers the guest's request failed.",
+  "requires": ["window-services/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "r1": {"kind":"request"},
+    "m1": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0","policy":"fails-services"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1","window-services/1"]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"user":{"action":"deactivateWindow","window":"w1"}},
+    {"user":{"action":"activateWindow","window":"w1"},"note":"The user switches to the window: the user activated it."},
+    {"send":{"id":{"$id":"r1"},"kind":"clipboard-read","window":"w1","format":"text","maximum":1024},"connection":"c1"},
+    {"receive":{"id":{"$id":"r1"},"ok":false,"error":{"kind":"failed","message":{"$any":"string"}}},"connection":"c1"},
+    {"send":{"id":{"$id":"m1"},"kind":"monitors","window":"w1"},"connection":"c1"},
+    {"receive":{"id":{"$id":"m1"},"ok":false,"error":{"kind":"failed","message":{"$any":"string"}}},"connection":"c1"}
+  ]
+}

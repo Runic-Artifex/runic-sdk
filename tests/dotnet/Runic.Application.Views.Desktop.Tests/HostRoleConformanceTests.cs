@@ -9,6 +9,7 @@ using System.Text.Json.Nodes;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Desktop.Hosting;
+using Runic.Desktop;
 using Runic.Platform;
 using TUnit.Core;
 
@@ -130,14 +131,21 @@ internal sealed class HostRoleConformanceTests
                 StopTimeout = Limit("stopTimeout", HostProtocol.DefaultStopTimeout),
                 HostName = host["name"]!.GetValue<string>(),
                 HostVersion = host["version"]!.GetValue<string>(),
-                // The scenario's menu rates, dialogs per guest and dialog rate, or the protocol's defaults.
+                // The scenario's rates and dialogs per guest, or the host's defaults; a host policy that fails for window
+                // services when the scenario says so.
                 Policy = new ScenarioPolicy(new RunicHostedLimits
                 {
                     MenuRequestsPerSecond = Limits["menuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.MenuRequestsPerSecond,
                     MaximumDialogs = Limits["dialogs"]?.GetValue<int>() ?? RunicHostedLimits.Default.MaximumDialogs,
                     GuestMenuRequestsPerSecond = Limits["guestMenuRequests"]?.GetValue<int>() ?? RunicHostedLimits.Default.GuestMenuRequestsPerSecond,
                     DialogsPerTenSeconds = Limits["dialogRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.DialogsPerTenSeconds,
-                }),
+                    ServiceRequestsPerSecond = Limits["serviceRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.ServiceRequestsPerSecond,
+                    LaunchesPerTenSeconds = Limits["launchRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.LaunchesPerTenSeconds,
+                    PresentsPerSecond = Limits["presentRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.PresentsPerSecond,
+                    PresentBurst = Limits["presentRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.PresentBurst,
+                    AnnouncementsPerSecond = Limits["announcementRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.AnnouncementsPerSecond,
+                    AnnouncementBurst = Limits["announcementRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.AnnouncementBurst,
+                }, failsServices: host["policy"]?.GetValue<string>() == "fails-services"),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);
             _puppet = await _control.AcceptTcpClientAsync(accept.Token);
@@ -240,6 +248,34 @@ internal sealed class HostRoleConformanceTests
             return _fixture!.Factory.Hosts[index];
         }
 
+        // The user gives the focus to another window or back to this one. The step ends once the window reported the
+        // change: a person switches windows slower than the platform reports it, which the host's rules for the
+        // user's activation rely on (host-protocol.md, Window services).
+        private async Task SwitchAsync(string id, bool active)
+        {
+            var window = Window(id).Presentation;
+            if (window.Activity?.IsActive == active)
+            {
+                Native(id).SetActive(active);
+                return;
+            }
+            var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnActivity(object? sender, DesktopWindowActivityChangedEventArgs e)
+            {
+                if (e.Activity.IsActive == active) reported.TrySetResult();
+            }
+            window.ActivityChanged += OnActivity;
+            try
+            {
+                Native(id).SetActive(active);
+                await reported.Task.WaitScaledAsync(StepTimeout);
+            }
+            finally
+            {
+                window.ActivityChanged -= OnActivity;
+            }
+        }
+
         private async Task UserAsync(JsonObject user)
         {
             var action = user["action"]!.GetValue<string>();
@@ -258,10 +294,19 @@ internal sealed class HostRoleConformanceTests
                     Check(native.Choose(titles), $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
                     break;
                 case "deactivateWindow" or "activateWindow":
-                    Native(user["window"]!.GetValue<string>()).SetActive(action == "activateWindow");
+                    await SwitchAsync(user["window"]!.GetValue<string>(), action == "activateWindow");
                     break;
                 case "copyText":
-                    _platform.Clipboard.SetText(user["text"]!.GetValue<string>());
+                    var copied = user["text"]!.GetValue<string>();
+                    _platform.Clipboard.SetText(user["repeat"] is { } repeat ? string.Concat(Enumerable.Repeat(copied, repeat.GetValue<int>())) : copied);
+                    break;
+                case "changeMonitors":
+                    _fixture!.Factory.FakeMonitors.Set([new DesktopMonitor("changed", "Changed")
+                    {
+                        Bounds = new(0, 0, 1024, 768),
+                        WorkArea = new(0, 0, 1024, 768),
+                        IsPrimary = true,
+                    }]);
                     break;
                 case "setLocale":
                     await _fixture!.Locale.SetLocaleAsync(user["locale"]?.GetValue<string>());
@@ -527,10 +572,16 @@ internal sealed class HostRoleConformanceTests
         }
     }
 
-    // The host's policy of a scenario: it allows everything, within the scenario's limits.
-    private sealed class ScenarioPolicy(RunicHostedLimits limits) : IRunicHostedWindowPolicy
+    // The host's policy of a scenario: the defaults, within the scenario's limits; with failsServices it throws for every
+    // window service, as a policy with a bug does.
+    private sealed class ScenarioPolicy(RunicHostedLimits limits, bool failsServices) : IRunicHostedWindowPolicy
     {
         public RunicHostedLimits Limits => limits;
+
+        public ValueTask<RunicHostedServiceDecision> ServiceAsync(RunicHostedServiceRequest request, CancellationToken cancellationToken) =>
+            failsServices
+                ? throw new InvalidOperationException("The scenario's policy fails.")
+                : ValueTask.FromResult(request.IsAllowedByDefault ? RunicHostedServiceDecision.Allow() : RunicHostedServiceDecision.Refuse());
     }
 
     // The host's user: each context menu and dialog the host shows waits until a user step answers it, or until the host

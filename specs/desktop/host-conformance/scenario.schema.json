@@ -154,6 +154,22 @@
             "dialogRate": {
               "type": "integer",
               "minimum": 1
+            },
+            "serviceRate": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "launchRate": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "presentRate": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "announcementRate": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },
@@ -173,6 +189,11 @@
             },
             "version": {
               "type": "string"
+            },
+            "policy": {
+              "enum": [
+                "fails-services"
+              ]
             }
           }
         }
@@ -953,7 +974,8 @@
                     "copyText",
                     "setLocale",
                     "setAppearance",
-                    "dropFiles"
+                    "dropFiles",
+                    "changeMonitors"
                   ]
                 },
                 "window": {
@@ -998,6 +1020,11 @@
                 },
                 "text": {
                   "type": "string"
+                },
+                "repeat": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4194304
                 },
                 "locale": {
                   "type": [
@@ -1482,6 +1509,9 @@
           "properties": {
             "$file": {
               "$ref": "#/$defs/fileName"
+            },
+            "then": {
+              "$ref": "#/$defs/pathSegments"
             }
           }
         },
@@ -1494,10 +1524,30 @@
           "properties": {
             "$directory": {
               "$ref": "#/$defs/fileName"
+            },
+            "then": {
+              "$ref": "#/$defs/pathSegments"
             }
           }
         }
       ]
+    },
+    "pathSegments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              ".",
+              ".."
+            ]
+          },
+          {
+            "$ref": "#/$defs/fileName"
+          }
+        ]
+      }
     },
     "menuEntries": {
       "type": "array",

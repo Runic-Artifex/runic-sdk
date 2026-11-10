@@ -194,6 +194,7 @@ internal sealed class HostedGuest : IAsyncDisposable
         // The application starts in the host's locale, before its body opens a Window; an application that gives its own
         // locale up follows the host's again.
         await guest.FollowLocaleAsync().ConfigureAwait(false);
+        if (locale is RunicApplicationLocale own) own.HostLocale = guest.HostLocaleToFollow;
         if (locale is not null) locale.LocaleChanged += guest.OnApplicationLocaleChanged;
         return guest;
     }
@@ -643,7 +644,17 @@ internal sealed class HostedGuest : IAsyncDisposable
         }
     }
 
-    // The application gave its own locale up: it follows the host's again.
+    // The host's locale that RunicApplicationLocale switches to when the application gives its own locale up, which is the
+    // locale this guest follows from then on.
+    private string? HostLocaleToFollow()
+    {
+        var locale = Session.Locale;
+        if (locale is not null) Volatile.Write(ref _followedLocale, locale);
+        return locale;
+    }
+
+    // The application gave its own locale up: it follows the host's again. RunicApplicationLocale switched to the host's
+    // locale itself (HostLocaleToFollow); another implementation switched to none.
     private void OnApplicationLocaleChanged(object? sender, RunicApplicationLocaleChangedEventArgs e)
     {
         if (e.Locale is null && Session.Locale is not null) _ = FollowLocaleAsync();
@@ -714,6 +725,7 @@ internal sealed class HostedGuest : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (_locale is not null) _locale.LocaleChanged -= OnApplicationLocaleChanged;
+        if (_locale is RunicApplicationLocale own) own.HostLocale = null;
         await _ended.CancelAsync().ConfigureAwait(false);
         // The Windows that are closing, such as after the host's shutdown, push window-closed before the channel closes,
         // and so do the windows whose open the guest gave up when their reply arrives.

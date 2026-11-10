@@ -29,6 +29,27 @@ internal static class HostServices
     // guest's windows, and launches per ten seconds.
     internal const int DefaultServiceRequestsPerSecond = 20;
     internal const int DefaultLaunchesPerTenSeconds = 5;
+    // The guest's requests that can activate a window (present, set-visible true) and its announcements, per second
+    // across its windows, after a burst (the base protocol's presentation requests).
+    internal const int DefaultPresentsPerSecond = 2;
+    internal const int DefaultPresentBurst = 3;
+    internal const int DefaultAnnouncementsPerSecond = 2;
+    internal const int DefaultAnnouncementBurst = 5;
+
+    // The most a clipboard read can return in one reply (host-protocol.md, Limits), so the host never reads more than a
+    // reply can carry: characters of text, HTML or RTF (each at least one byte), bytes of a PNG image (in base64, four
+    // characters for three bytes), entries of a file list.
+    internal const int MaximumClipboardReplyText = HostProtocol.MaximumMessageBytes;
+    internal const int MaximumClipboardReplyImage = (HostProtocol.MaximumMessageBytes - 256) / 4 * 3;
+
+    // A read's bound, clamped to what a reply can carry: content over the clamped bound fails as too large, as content
+    // over the guest's bound does.
+    internal static int ClampedBound(DesktopClipboardFormats format, int maximum) => Math.Min(maximum, format switch
+    {
+        DesktopClipboardFormats.Image => MaximumClipboardReplyImage,
+        DesktopClipboardFormats.Files => MaximumClipboardFiles,
+        _ => MaximumClipboardReplyText,
+    });
 
     // ----- Appearance
 

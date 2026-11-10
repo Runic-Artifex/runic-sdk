@@ -430,10 +430,19 @@ internal static class HostedWindowServicesScript
         Report("LAUNCH-OTHER", Describe(await services.FileLauncher.LaunchAsync(dropped + ".other")));
         Report("DRAG", Describe(await services.StartDragAsync(new DesktopDragData { Paths = [dropped] })));
         Report("ANNOUNCE", Describe(await services.AnnounceAsync("Ready")));
+        Report("ANNOUNCE-ASSERTIVE", Describe(await services.AnnounceAsync("Now", PlatformAnnouncementPriority.Assertive)));
+        // The guest replaces the file the user gave it with another one at the same path: no longer the user's file.
+        File.WriteAllText(dropped + ".swap", "Replaced by the guest");
+        File.Move(dropped + ".swap", dropped, overwrite: true);
+        Report("LAUNCH-REPLACED", Describe(await services.FileLauncher.LaunchAsync(dropped, DesktopFileOperation.Reveal)));
         Report("PHASE", "1");
         // The host's locale changes to fr: the application followed it; the window is no longer active.
         while (locale.Locale != "fr") await Task.Delay(50);
         Report("READ-INACTIVE", Describe(await clipboard.ReadTextAsync(1_000)));
+        Report("ANNOUNCE-INACTIVE", Describe(await services.AnnounceAsync("Later", PlatformAnnouncementPriority.Assertive)));
+        // Well over a second after the user left the window: no writes either.
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        Report("WRITE-INACTIVE", Describe(await clipboard.WriteTextAsync("from the background")));
         await locale.SetLocaleAsync("en");
         Report("OWN", locale.Locale ?? "none");
         Report("PHASE", "2");
