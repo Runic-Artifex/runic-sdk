@@ -712,6 +712,8 @@
                     "cancelOpen",
                     "setMenuBar",
                     "setCommandEnabled",
+                    "holdCommand",
+                    "releaseCommand",
                     "invoked",
                     "contextMenu",
                     "openFile",
@@ -939,6 +941,43 @@
                         ]
                       }
                     }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "holdCommand"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "command",
+                      "value"
+                    ],
+                    "properties": {
+                      "value": {
+                        "enum": [
+                          "blocking",
+                          "running"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "releaseCommand"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "command"
+                    ]
                   }
                 }
               ]

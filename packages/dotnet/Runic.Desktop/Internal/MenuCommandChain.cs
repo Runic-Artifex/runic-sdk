@@ -93,6 +93,33 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
         return false;
     }
 
+    // TryExecute for callers that run items one after the other, such as a hosted window's menu-invoke: it returns once
+    // the item's Execute returned, also when the target runs it in a model turn of its own (IAwaitableMenuCommandTarget).
+    // A command that starts asynchronous work returns at its first await, as on the native bar.
+    internal static async Task<bool> TryExecuteAsync(DesktopMenuItem item, IDesktopMenuCommandTarget? window,
+        IDesktopMenuCommandTarget? application, ILogger? logger)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (!item.IsEnabled) return false;
+        foreach (var target in new[] { window, ReferenceEquals(application, window) ? null : application })
+        {
+            if (target is null || !SafeCanExecute(target, item, logger)) continue;
+            try
+            {
+                if (target is IAwaitableMenuCommandTarget awaitable)
+                    await awaitable.ExecuteAsync(item).ConfigureAwait(false);
+                else
+                    target.Execute(item);
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                Report(logger, error, "Execute", item);
+            }
+            return true;
+        }
+        return false;
+    }
+
     private static bool SafeCanExecute(IDesktopMenuCommandTarget target, DesktopMenuItem item, ILogger? logger)
     {
         try
@@ -113,4 +140,11 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
         else
             Trace.TraceError($"A menu command target's {member} failed for {item.CommandId} with {DesktopLog.ErrorType(error)}.");
     }
+}
+
+// A menu command target whose Execute hands the item to another turn, such as a ViewModel's model turn: ExecuteAsync
+// completes once the item's command returned there (MenuCommandChain.TryExecuteAsync).
+internal interface IAwaitableMenuCommandTarget
+{
+    Task ExecuteAsync(DesktopMenuItem item);
 }

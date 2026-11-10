@@ -5,8 +5,12 @@ using Runic.Platform;
 
 namespace Runic.Application.Views.Menus
 {
-    // On Runic Desktop the binding is the target of DesktopWindow.MenuCommands and DesktopHost.MenuCommands.
-    internal sealed partial class MenuCommandBinding : IDesktopMenuCommandTarget;
+    // On Runic Desktop the binding is the target of DesktopWindow.MenuCommands and DesktopHost.MenuCommands, and a hosted
+    // window's menu-invoke waits for each of its items in turn (MenuCommandChain.TryExecuteAsync).
+    internal sealed partial class MenuCommandBinding : IDesktopMenuCommandTarget, Runic.Desktop.Internal.IAwaitableMenuCommandTarget
+    {
+        Task Runic.Desktop.Internal.IAwaitableMenuCommandTarget.ExecuteAsync(DesktopMenuItem item) => ExecuteAsync(item, invoker: null);
+    }
 
     internal static class MenuBarLog
     {
