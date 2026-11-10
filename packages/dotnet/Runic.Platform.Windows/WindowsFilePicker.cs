@@ -100,10 +100,17 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                 await Task.WhenAny(shown.Task, Task.Delay(attempt < 50 ? 100 : 1000, CancellationToken.None)).ConfigureAwait(false);
             }
         }
+        // An unowned dialog starts only once every other unowned dialog's window is up (StartGate).
+        bool gated = false;
         try
         {
-            if (OperatingSystem.IsWindowsVersionAtLeast(8)) await HoldPropertyStoreAsync().ConfigureAwait(false);
-            await thread.InvokeAsync(handle =>
+            if (own is not null && OperatingSystem.IsWindowsVersionAtLeast(8))
+            {
+                await HoldPropertyStoreAsync().ConfigureAwait(false);
+                await StartGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                gated = true;
+            }
+            var showing = thread.InvokeAsync(handle =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (handle == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
@@ -130,7 +137,13 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                     Trace?.Invoke("dialog released");
                     shown.TrySetResult();
                 }
-            }, cancellationToken).ConfigureAwait(false);
+            }, cancellationToken).AsTask();
+            if (gated)
+            {
+                gated = false;
+                await OpenGateWhenUpAsync(showing).ConfigureAwait(false);
+            }
+            await showing.ConfigureAwait(false);
         }
         catch (COMException error) when (error.HResult == unchecked((int)0x80070005))
         { throw new UnauthorizedAccessException("Windows denied file dialog access.", error); }
@@ -138,6 +151,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         { throw new IOException("The Windows file dialog failed.", error); }
         finally
         {
+            if (gated) StartGate.Release();
             shown.TrySetResult();
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
@@ -145,21 +159,49 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         }
         // The facade releases late selection if cancellation won the delivery race.
         return selection;
+
+        // Opens the start gate once the dialog's window is visible, which it is after its initialization, or once Show
+        // has returned. The check runs on the dialog's thread, between the messages the dialog pumps.
+        async Task OpenGateWhenUpAsync(Task showing)
+        {
+            try
+            {
+                while (!showing.IsCompleted)
+                {
+                    bool up = false;
+                    try
+                    {
+                        await thread.InvokeAsync(_ => up = dialog != 0 && IsWindowUp(dialog), CancellationToken.None)
+                            .ConfigureAwait(false);
+                    }
+                    catch (Exception) { return; }
+                    if (up)
+                    {
+                        Trace?.Invoke("dialog up, start gate opens");
+                        return;
+                    }
+                    await Task.WhenAny(showing, Task.Delay(50, CancellationToken.None)).ConfigureAwait(false);
+                }
+            }
+            finally { StartGate.Release(); }
+        }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatformGuard("windows6.1")]
     private static bool IsNativeWindows() => OperatingSystem.IsWindowsVersionAtLeast(6, 1);
 
-    // The dialog's navigation bar (explorerframe!CNavBar) creates an accessibility property service when the dialog
-    // opens and releases it when the dialog closes. Each of these oleacc objects shares one process-wide store
+    // The dialog's navigation bar (explorerframe!CNavBar) creates accessibility property services as the dialog
+    // initializes and releases them as it closes. All of these oleacc objects share one process-wide store
     // (CPropMgrImpl), which the first creates and the last frees, and neither the store's creation nor its reference
-    // count is synchronized (oleacc!CPropMgr::CPropMgr). Two dialogs on two threads, such as two unowned ones (#834),
-    // could therefore lose a reference: closing the first dialog freed the store the second still used, and closing the
-    // second crashed the process in its DestroyWindow with 0xC000041D (STATUS_FATAL_USER_CALLBACK_EXCEPTION) in
-    // ntdll!RtlpWaitOnCriticalSection, entering the freed store's critical section from oleacc!CPropMgr::ClearHwndProps
-    // (#845). The application's thread, whose apartment lasts as long as the process, holds one service from before the
-    // first dialog: the store is created once and never freed, and a dialog only adds and removes a reference to it, a
-    // single unlocked increment or decrement.
+    // count is synchronized (oleacc!CPropMgr::CPropMgr: a plain increment). Two unowned dialogs (#834) that initialized
+    // at once on their two threads lost references: the count reached 2 where five services held it, so closing the
+    // first dialog freed the store the second still used, and closing the second crashed the process in its
+    // DestroyWindow with 0xC000041D (STATUS_FATAL_USER_CALLBACK_EXCEPTION) in ntdll!RtlpWaitOnCriticalSection, entering
+    // the freed store's critical section from oleacc!CPropMgr::ClearHwndProps (#845). Therefore unowned dialogs
+    // initialize one at a time (StartGate), and the application's thread, whose apartment lasts as long as the process,
+    // holds one service from before the first of them, so that the store is created once and a closing dialog never
+    // frees it. Owned dialogs run on their windows' threads, outside the gate, as before.
+    private static readonly SemaphoreSlim StartGate = new(1, 1);
     private static readonly Lock PropertyStoreLock = new();
     private static Task? s_propertyStore;
 
@@ -311,18 +353,26 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
         if (dialog != 0) Marshal.ThrowExceptionForHR(((IFileDialog*)dialog)->Close(new HRESULT(Cancelled)).Value);
     }
-    // Posts WM_CLOSE to the dialog's window (IOleWindow), which ends Show as cancelled; false without a window.
-    private static unsafe bool PostClose(nint dialog)
+    // Posts WM_CLOSE to the dialog's window, which ends Show as cancelled; false without a window.
+    private static bool PostClose(nint dialog) =>
+        IsNativeWindows() && DialogWindow(dialog) is var handle && !handle.IsNull
+        && PInvoke.PostMessage(handle, PInvoke.WM_CLOSE, default, default);
+
+    // Whether the dialog's window is visible: the dialog has initialized.
+    private static bool IsWindowUp(nint dialog) =>
+        IsNativeWindows() && DialogWindow(dialog) is var handle && !handle.IsNull && PInvoke.IsWindowVisible(handle);
+
+    // The dialog's window (IOleWindow), or none before the dialog has created it.
+    private static unsafe HWND DialogWindow(nint dialog)
     {
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
         Guid iid = typeof(IOleWindow).GUID;
         void* window = null;
-        if (((IUnknown*)dialog)->QueryInterface(&iid, &window).Value < 0 || window == null) return false;
+        if (((IUnknown*)dialog)->QueryInterface(&iid, &window).Value < 0 || window == null) return default;
         try
         {
             HWND handle;
-            return ((IOleWindow*)window)->GetWindow(&handle).Value >= 0 && !handle.IsNull
-                && PInvoke.PostMessage(handle, PInvoke.WM_CLOSE, default, default);
+            return ((IOleWindow*)window)->GetWindow(&handle).Value >= 0 ? handle : default;
         }
         finally { Release((nint)window); }
     }
