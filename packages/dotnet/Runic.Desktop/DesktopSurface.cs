@@ -38,6 +38,14 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// <summary>Gets the surface URL.</summary>
     public Uri Url => _engine.Url ?? throw new ObjectDisposedException(nameof(DesktopSurface));
 
+    // The one-time address a host application's window opens this surface with in runic-host/1 hosted mode
+    // (WebUiWindow.BeginHostedLaunch).
+    internal Uri BeginHostedLaunch()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.BeginHostedLaunch();
+    }
+
     /// <summary>Registers or replaces a named presentation capability.</summary>
     /// <remarks>
     /// Each browser connection admits one invocation or connection event at a time, but only until the

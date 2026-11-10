@@ -817,8 +817,9 @@ public static partial class DesktopPlatformServices
     /// browser that may run on another computer, every request reports
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. The instance that
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers decides
-    /// on first use, so <c>RunicDesktopHostOptions.ServeOnly</c> of the host built on that provider counts too, and it
-    /// names the application by its application ID on Linux when one is given.
+    /// on first use, so <c>RunicDesktopHostOptions.ServeOnly</c> and <c>RunicDesktopHostOptions.Guest</c> (hosted mode) of
+    /// the host built on that provider count too, and it names the application by its application ID on Linux when one is
+    /// given.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -826,12 +827,13 @@ public static partial class DesktopPlatformServices
         ? DesktopRecentDocuments.Unavailable(PlatformUnavailableReason.BackendUnavailable)
         : Runic.Desktop.Internal.RecentDocuments.Shared;
 
-    // AddRunicPlatformServices: decided on first use, once a RunicDesktopHost recorded RunicDesktopHostOptions.ServeOnly;
-    // the application ID, when given, names the application in Linux's recently-used.xbel.
+    // AddRunicPlatformServices: decided on first use, once a RunicDesktopHost recorded RunicDesktopHostOptions.ServeOnly
+    // or Guest (hosted mode has no recent documents, D055.8); the application ID, when given, names the application in
+    // Linux's recently-used.xbel.
     internal static IDesktopRecentDocuments CreateRecentDocuments(DesktopServeOnlyState serveOnly, string? applicationId) =>
         new LazyRecentDocuments(() => serveOnly.Choose<IDesktopRecentDocuments>(
             () => applicationId is null ? Runic.Desktop.Internal.RecentDocuments.Shared : new Runic.Desktop.Internal.RecentDocuments(null, applicationId),
-            DesktopRecentDocuments.Unavailable));
+            DesktopRecentDocuments.Unavailable, unavailableWhenHosted: true));
 
     private sealed class LazyRecentDocuments(Func<IDesktopRecentDocuments> create) : IDesktopRecentDocuments, IDesktopServiceStatus
     {

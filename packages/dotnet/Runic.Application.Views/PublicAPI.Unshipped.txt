@@ -47,3 +47,9 @@ Runic.Application.Views.WindowContentSession.Appearance.get -> Runic.Platform.De
 Runic.Application.Views.WindowContentSession.Appearance.set -> void
 Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.get -> bool
 Runic.Application.Views.WindowContentSessionOptions.FlowCultureFromLocale.init -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.Code.get -> string!
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.GuestCode.get -> string?
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.GuestCode.init -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.RunicHostedApplicationException(string! code, string! message, System.Exception? innerException) -> void
+[RUNICDESK103]Runic.Application.Views.RunicHostedApplicationException.RunicHostedApplicationException(string! code, string! message) -> void
