@@ -42,7 +42,7 @@ internal sealed partial class CsWebUiBlobEndpointChecks
         RequireStandardUser();
         using var work = new Work();
         using var blobs = work.Blobs();
-        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, FreePort)
+        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, new Ports().Next)
             ?? throw new InvalidOperationException("The endpoint did not start.");
         var grant = blobs.Grant(ConnectionKey) ?? throw new InvalidOperationException("The hello granted no upload.");
         using var other = await HttpSysProcess.StartAsync(sameUser, PrefixesUnder(endpoint.Port));
@@ -84,10 +84,10 @@ internal sealed partial class CsWebUiBlobEndpointChecks
 
         using var work = new Work();
         using var blobs = work.Blobs();
-        var offered = new Queue<int>(reserved);
-        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance,
-            () => offered.Count > 0 ? offered.Dequeue() : FreePort()) ?? throw new InvalidOperationException("The endpoint did not start.");
-        Require(offered.Count == 0 && !reserved.Contains(endpoint.Port),
+        var offered = new Ports([.. reserved]);
+        using var endpoint = BlobEndpoint.Start(blobs, static () => PagePort, NullLogger.Instance, offered.Next)
+            ?? throw new InvalidOperationException("The endpoint did not start.");
+        Require(offered.FirstAllOffered && !reserved.Contains(endpoint.Port),
             $"The endpoint listens on port {endpoint.Port}, which a URL reservation names ({string.Join(", ", reserved)}).");
         using var late = await HttpSysProcess.StartAsync(sameUser: false, PrefixesUnder(endpoint.Port));
         Require(late.Registered.Count == 0, $"Another process registered {string.Join(", ", late.Registered)} under the endpoint's port.");
