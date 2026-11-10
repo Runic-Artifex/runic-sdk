@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/views-translations",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Optional English and German text for Runic's own page messages (field errors, validation texts) as a Runic Translations library catalog",
   "license": "MIT",
   "type": "module",
@@ -37,7 +37,7 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/views": "0.17.0"
+    "@runic-artifex/views": "0.17.1"
   },
   "devDependencies": {
     "@runic-artifex/views": "workspace:*",
