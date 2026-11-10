@@ -36,13 +36,20 @@ const raw = (address, port, { method = "GET", path = "/", headers = {}, body, fa
   if (body !== undefined) request.write(body);
   request.end();
 });
-// Whether another process could listen on address:port: Node's servers set SO_REUSEADDR. Resolves with the error code
-// (EADDRINUSE while the port is held, EADDRNOTAVAIL or EAFNOSUPPORT where the machine has no such address), or "listening".
-const squat = (address, port) => new Promise(resolve => {
+// Whether another process could listen on address:port: Node's servers set SO_REUSEADDR (outside Windows), and with
+// reusePort SO_REUSEPORT too where libuv supports it (Linux, FreeBSD; elsewhere listen fails with ENOTSUP, which is
+// skipped). Resolves with the error code of each attempt (EADDRINUSE while the port is held, EADDRNOTAVAIL or
+// EAFNOSUPPORT where the machine has no such address), or "listening".
+const squatOnce = (address, port, reusePort) => new Promise(resolve => {
   const server = createServer((_, response) => response.end());
   server.once("error", error => resolve(error.code ?? String(error)));
-  server.listen({ host: address, port, exclusive: true }, () => server.close(() => resolve("listening")));
+  server.listen({ host: address, port, exclusive: true, reusePort }, () => server.close(() => resolve("listening")));
 });
+const squat = async (address, port) => {
+  const plain = await squatOnce(address, port, false);
+  const shared = await squatOnce(address, port, true);
+  return plain === "listening" || shared === "listening" ? "listening" : plain;
+};
 // What listens on a TCP port, for a failure's report.
 const listeners = port => {
   const command = process.platform === "win32" ? ["netstat", ["-ano", "-p", "TCP"]]
