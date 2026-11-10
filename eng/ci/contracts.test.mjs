@@ -12,6 +12,7 @@ import { managedGroups, managedTests, jobSuites, webTests, plan, applicationFixt
 import { actArguments } from './local.mjs';
 import { nativeLegs, testTimeoutScales, wpfLegs } from './platforms.mjs';
 import { testTimeoutScale } from './test-timeout-scale.mjs';
+import { describeExitCode } from './windows-native-run.mjs';
 import { npmReleaseAgeArguments } from '../dependencies/release-age.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
@@ -523,4 +524,19 @@ test('merge queue entries run CI in their own concurrency groups and report veri
   }
   assert.equal(workflow.jobs.verify.name, 'verify');
   assert.equal(workflow.jobs.verify.if, 'always()');
+});
+
+// Git Bash reports a crashed Windows process as 127, the code for a missing command; the wrapper reports the NTSTATUS.
+test('the Windows native wrapper reports the exit code Windows gave and what Git Bash shows for it', () => {
+  assert.deepEqual(describeExitCode(0), { crashed: false, text: 'exit code 0' });
+  assert.deepEqual(describeExitCode(2), { crashed: false, text: 'exit code 2' });
+  for (const code of [-1073740791, 3221226505]) {
+    const { crashed, text } = describeExitCode(code);
+    assert.ok(crashed);
+    assert.match(text, /^exit code 0xC0000409 \(3221226505\): STATUS_STACK_BUFFER_OVERRUN.*; Git Bash reports 127$/);
+  }
+  assert.match(describeExitCode(0xc0000005).text, /STATUS_ACCESS_VIOLATION; Git Bash reports 139$/);
+  assert.match(describeExitCode(0xc0001234).text, /unknown.*; Git Bash reports 127$/);
+  const step = workflow.jobs.native.steps.find(step => step.name === 'Verify Windows message boxes with JIT and NativeAOT');
+  assert.equal(step.run.match(/node eng\/ci\/windows-native-run\.mjs /g)?.length, 2);
 });
