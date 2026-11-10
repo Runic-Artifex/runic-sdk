@@ -30,8 +30,15 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable> attach,
         RunicWindowTestHostOptions? options)
         : this(viewModel, attach, options?.RootRoute ?? RunicMembers.RouteOf(typeof(TViewModel)), Create(viewModel, options),
-            options?.PublicationTimeout ?? TimeSpan.FromSeconds(5))
+            options?.PublicationTimeout ?? TimeSpan.FromSeconds(5), options?.Locale)
     {
+        // A host of its own: its application's locale is its own too (RunicWindowTestHost.Create passes no
+        // ApplicationLocale here, and sets the registered one itself).
+        if (options?.ApplicationLocale is { } applicationLocale)
+        {
+            try { StartOwnApplicationLocale(applicationLocale); }
+            catch { Dispose(); throw; }
+        }
     }
 
     /// <summary>
@@ -48,7 +55,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
 
     private RunicWindowTestHost(TViewModel viewModel,
         Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable> attach, string rootRoute,
-        WindowContentSessionOptions sessionOptions, TimeSpan publicationTimeout)
+        WindowContentSessionOptions sessionOptions, TimeSpan publicationTimeout, string? locale = null)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         ArgumentException.ThrowIfNullOrWhiteSpace(rootRoute);
@@ -60,6 +67,12 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         try
         {
             Content = new WindowContentSession(Transport, sessionOptions);
+            // The window's own locale, as one a ViewModel set before its Window opened.
+            if (locale is not null)
+            {
+                try { Content.Locale = locale; }
+                catch { Content.Dispose(); throw; }
+            }
             // blobs/1: the window serves blobs and uploads at the test origin; ReadBlobAsync serves what a page loads.
             Blobs.Attach(BridgeBlobEndpoint.Below(static () => RunicBlobs.TestOrigin));
             IDisposable? attachment = null;
@@ -135,16 +148,35 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                if (_applicationLocale is { } created) return created;
-                var own = new RunicApplicationLocale();
-                // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's.
-                _ownLocale = new RunicWindowContext(own);
-                _ownLocale.AttachContent(Content);
-                Volatile.Write(ref _applicationLocale, own);
-                return own;
+                return _applicationLocale ?? AttachOwnApplicationLocale(new RunicApplicationLocale());
             }
         }
     }
+
+    // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's. Under _gate.
+    private RunicApplicationLocale AttachOwnApplicationLocale(RunicApplicationLocale own)
+    {
+        _ownLocale = new RunicWindowContext(own);
+        _ownLocale.AttachContent(Content);
+        Volatile.Write(ref _applicationLocale, own);
+        return own;
+    }
+
+    // RunicWindowTestHostOptions.ApplicationLocale of a host whose services register no application locale.
+    internal void StartOwnApplicationLocale(string locale)
+    {
+        var own = new RunicApplicationLocale();
+        // No Window follows it yet, so the switch has no one to wait for.
+        RunicWindowTestHost.Wait(own.SetLocaleAsync(locale));
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            AttachOwnApplicationLocale(own);
+        }
+    }
+
+    // RunicWindowTestHostOptions.ApplicationLocale of a Create host: the registered locale and the one Dispose sets back.
+    internal (IRunicApplicationLocale Locale, string? Previous)? RestoreApplicationLocale { get; init; }
 
     private IRunicApplicationLocale? _applicationLocale;
     private RunicWindowContext? _ownLocale;
@@ -368,7 +400,14 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             finally
             {
                 try { Transport.Dispose(); }
-                finally { Platform?.Close(); }
+                finally
+                {
+                    try { Platform?.Close(); }
+                    finally
+                    {
+                        if (RestoreApplicationLocale is { } restore) RunicWindowTestHost.Wait(RunicWindowTestHost.RestoreApplicationLocaleAsync(restore));
+                    }
+                }
             }
         }
     }

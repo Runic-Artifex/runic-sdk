@@ -1946,6 +1946,8 @@ an extension point.
 | `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
+| `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as the `runic-app` template's `--translations` option and a Bun or Angular page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
+| `RunicApplicationFrontendTranslationsDirectory` | `<frontend>/.runic/translations` | Where `RunicApplicationFrontendTranslations` mirrors the ESM; the page imports `messages.js`, `runtime.js` and `transport.js` from it. Keep it out of version control. |
 | `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
 | `RunicApplicationFrontendDelivery` | `Files` | `Files` copies the frontend to the web root. `Embedded` packs the same tree (referenced projects' frontends, this project's output and the host's `runic-views.js`) into the assembly with Runic.Assets, and the Runic Desktop, WPF and CS-WebUI hosts serve it; see [Ship the frontend inside the executable](#ship-the-frontend-inside-the-executable). Closed: another value, no single Desktop or CS-WebUI host, or a project that sets `RunicAssetsDist` itself warns with [`RUNICBRIDGE030`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge030) and builds as `Files`. |
 | `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `runic-views.js` in the web root. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
@@ -3153,11 +3155,13 @@ again.
 The guide [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-views.md)
 walks through one catalog for the page and C#, the application's language,
 native text and tests, step by step. This section is the reference. It needs
-Runic Translations 0.9.1 or later.
+Runic Translations 0.9.1 or later. `dotnet new runic-app --translations` starts
+an application with all of it, and the
+[multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
+shows it in English, German and Arabic.
 
-**One catalog.** Keep the catalog with the frontend, where the Translations
-Vite plugin compiles it for the page, and name the same `runic.json` in the
-.NET project, which then gets the generated C# API for every message
+**One catalog.** Keep the catalog with the frontend and name its `runic.json`
+in the .NET project, which then gets the generated C# API for every message
 ([Strings outside the Views](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/runic-desktop.md#strings-outside-the-views)):
 
 ```xml
@@ -3165,6 +3169,27 @@ Vite plugin compiles it for the page, and name the same `runic.json` in the
 <PackageReference Include="Runic.Translations.Build" Version="0.9.1" PrivateAssets="all" />
 <RunicTranslationProject Include="Frontend/translations/runic.json" />
 ```
+
+The page gets the same catalog's ESM one of two ways:
+
+- **From the .NET build**, as `dotnet new runic-app --translations` and the
+  multi-window example do. The build writes the ESM with the
+  `dotnet-runic-translations` tool of `.config/dotnet-tools.json`, and
+  `RunicApplicationFrontendTranslations` copies it to
+  `Frontend/.runic/translations` (gitignored) before the frontend builds; the
+  page imports `../.runic/translations/messages.js`, `runtime.js` and
+  `transport.js`. It works with every bundler, Angular's included, and needs no
+  npm package, but `vite dev` does not reload an edited message: build again.
+
+  ```xml
+  <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
+  <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
+  ```
+
+- **From the Translations Vite plugin**, which compiles the catalog for a Vite
+  page, reloads messages in `vite dev`, and serves the modules as
+  `virtual:runic-translations/<catalog>`, as in the examples below. Leave
+  `RunicApplicationFrontendTranslations` off then.
 
 **Values.** A member, DTO member, command input or result of type
 `Runic.Translations.TranslationReference` crosses the Bridge as the reference's
@@ -3360,16 +3385,24 @@ TranslationContext translations = await TranslationContext.CreateBuilder()
 var locale = services.GetRequiredService<IRunicApplicationLocale>();
 locale.Follow(translations.SetLocaleAsync);        // every catalog of the context switches first
 locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
-// The user's choice, else the best match for the operating system's languages.
-await locale.SetLocaleAsync(settings.Language ?? LocaleNegotiation.Negotiate(
-    DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
+// RUNIC_LOCALE (a test or screenshot run), else the user's choice, else the best match for the
+// operating system's languages, each matched to the catalog's languages (de-CH starts in de). A tag
+// that matches none, such as a mistyped RUNIC_LOCALE or an old setting, is skipped, so it never
+// stops the start.
+string? Supported(string? tag) =>
+    string.IsNullOrWhiteSpace(tag) ? null : LocaleNegotiation.Match(tag.Trim(), translations.SupportedLocales);
+await locale.SetLocaleAsync(Supported(Environment.GetEnvironmentVariable("RUNIC_LOCALE"))
+    ?? Supported(settings.Language)
+    ?? LocaleNegotiation.Negotiate(DesktopLanguages.Preferred, translations.SupportedLocales, NotesTextCatalog.DefaultLocale));
 
-// A language switch, from any ViewModel or menu command:
+// A language switch, from any ViewModel or menu command. It saves the catalog's language, and only
+// after the switch succeeded:
 [RelayCommand]
 private async Task SwitchLanguageAsync(string language)
 {
-    await _locale.SetLocaleAsync(language);
-    _settings.Language = language;
+    if (LocaleNegotiation.Match(language, _translations.SupportedLocales) is not { } supported) return;
+    await _locale.SetLocaleAsync(supported);
+    _settings.Language = supported;
 }
 ```
 
@@ -3389,6 +3422,15 @@ second call with the same locale updates the Windows that failed again. A
 follower, or a Window's `PropertyChanged` handler, must not call `SetLocaleAsync`
 during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
 handler may, and that switch's event follows the current handlers.
+
+**`RUNIC_LOCALE`.** Start the application in the locale that the
+`RUNIC_LOCALE` environment variable names, matched to the catalog's languages
+and before the user's saved choice, as above; `dotnet new runic-app
+--translations` does the same, and saves no choice. Browser tests of a
+serve-only application (`RUNIC_APPLICATION_SERVE_ONLY=1 RUNIC_LOCALE=de`),
+screenshots and translators' checks then run the unchanged application in any
+language. The Runic packages do not read it: it is a convention of the
+application's startup code, so the application decides where it applies.
 
 `IRunicWindowLocale.Locale` returns the application's locale while the Window
 has none of its own. To save a Window's language and set it back later, save
@@ -3447,7 +3489,9 @@ await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFro
 
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
-Runic Translations and its Vite plugin:
+Runic Translations and its Vite plugin (a page that gets the ESM from the .NET
+build imports `../.runic/translations/messages.js`, `runtime.js` and
+`transport.js` instead):
 
 ```ts
 import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
@@ -3488,9 +3532,11 @@ again on a switch only when it reads a reactive text locale:
 `resolve`, and a later call replaces an earlier one. When ViewModels send
 references of a library's catalog too, such as a component library's
 validation text, resolve them by catalog with the generated transport's
-`createReferenceResolver`. Each reference is formatted by its own catalog; one
-of a catalog the page does not list shows its fallback text, and one written
-against another release of a catalog is checked key by key:
+`createReferenceResolver`. Each reference is formatted by its own catalog, and
+one of a catalog the page does not list shows its fallback text. One written
+against another release of a catalog is checked key by key: it translates while
+its key and arguments still match, and shows its fallback text otherwise
+([Runic Translations' rules](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.9.1/docs/guides/translations/transport.md)):
 
 ```ts
 import * as appTransport from "virtual:runic-translations/app/transport";
@@ -3578,7 +3624,9 @@ or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
 `host.Content.Locale` shows what the ViewModel set.
 `await host.ApplicationLocale.SetLocaleAsync("de")` switches the application's
 locale, the registered one or, for a host built with a constructor, one of the
-host's own, which the window follows. To check the text a user sees, resolve a
+host's own, which the window follows. `RunicWindowTestHostOptions.Locale` starts
+the window in a locale of its own (`CreateWindowAsync`: the application in it).
+To check the text a user sees, resolve a
 reference with the application's `TranslationContext` in the locale:
 
 ```csharp

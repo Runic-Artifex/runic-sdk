@@ -1,0 +1,34 @@
+welcome_greeting = Deine erste Runic View ist bereit.
+
+app {
+  title = Runic Views
+  subtitle = Window/View-Vorlage · {$frontend}
+  language = Sprache
+  loading = Verbindung zum Fenster wird hergestellt …
+}
+
+nav {
+  label = Hauptnavigation
+  welcome = Willkommen
+  counter = Zähler
+}
+
+status {
+  connecting = Verbindung zum .NET-Fenster wird hergestellt …
+  connected = Mit dem .NET-Fenster verbunden.
+  stale = Der zuletzt vom .NET-Fenster gesendete Zustand wird angezeigt.
+  reconnecting = Verbindung zum .NET-Fenster wird wiederhergestellt …
+  lost = Die Verbindung zum .NET-Fenster wurde unterbrochen. Die Seite verbindet sich neu, sobald die Anwendung wieder da ist.
+  closed = Die Anwendung hat dieses Fenster geschlossen.
+}
+
+welcome {
+  loading = Verbindung wird hergestellt …
+}
+
+counter {
+  title = Zähler-View
+  step = Schritt
+  label = Beschriftung
+  increment = Erhöhen
+}

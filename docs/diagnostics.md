@@ -82,6 +82,7 @@ and severities are open.
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
 | [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
+| [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
 | [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 | [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
@@ -679,6 +680,34 @@ the interface's type and nullability and the same attributes as the other
 implementing ViewModels, remove the member from the interface, or give a
 generic interface a non-generic one for its shared client. See
 [Shared clients](../packages/dotnet/Runic.Application.Views/README.md#shared-clients).
+
+### RUNICBRIDGE037
+
+An error from the `Runic.Application.Views` build targets (since 0.17). The
+project sets `RunicApplicationFrontendTranslations=true`, which keeps
+`RunicApplicationFrontendTranslationsDirectory` (by default
+`.runic/translations` in the frontend directory) equal to the ESM that
+`Runic.Translations.Build` writes for the project's catalog, and one of these
+holds:
+
+- The build wrote no ESM: `Runic.Translations.Build` is not referenced, the
+  project declares no `RunicTranslationProject`, or `RunicTranslationsEmitEsm`
+  is not `true`. The page would import a missing catalog, or the one of an
+  earlier build.
+- The directory holds files but no Runic Translations ESM (no
+  `web-module-manifest-v*.json`). The build deletes the files there that the
+  catalog does not have, so it stops instead.
+
+A catalog with errors is not `RUNICBRIDGE037`: the build reports the catalog's
+errors and leaves the directory as it is.
+
+**Fix:** reference `Runic.Translations.Build`, declare the catalog's
+`runic.json` as a `RunicTranslationProject` and set
+`<RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>`; or point
+`RunicApplicationFrontendTranslationsDirectory` at a directory of its own. A page
+that gets the catalog from the Translations Vite plugin does not need
+`RunicApplicationFrontendTranslations`. See
+[Translated text](../packages/dotnet/Runic.Application.Views/README.md#translated-text).
 
 ### RUNICBRIDGE050
 
