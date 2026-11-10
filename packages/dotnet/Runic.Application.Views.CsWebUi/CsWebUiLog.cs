@@ -17,7 +17,7 @@ internal static partial class CsWebUiLog
         string browser, string browserPath, string diagnosticMessage);
 
     [LoggerMessage(EventId = 2101, EventName = "CsWebUiNativeLibraryUnchecked", Level = LogLevel.Warning,
-        Message = "CS-WebUI loads the WebUI library {Path}, whose version Runic cannot check. Runic needs WebUI commit efac0e24 or later: with an older WebUI, Bridge calls that arrive together can lose their replies or receive another call's arguments or reply. Runic is tested with WebUI commit 2b35db13f, which CsWebUi 2.5.0-beta.4.8 bundles.")]
+        Message = "CS-WebUI loads the WebUI library {Path}, whose version Runic cannot check. Runic needs WebUI commit efac0e24 or later: with an older WebUI, Bridge calls that arrive together can lose their replies or receive another call's arguments or reply. Runic is tested with WebUI commit 24c7d196e, which CsWebUi 2.5.0-beta.4.9 bundles.")]
     private static partial void NativeLibraryUnchecked(ILogger logger, string path);
 
     // A process that holds one loopback address of localhost on the ports the blob endpoint tries pushes it off localhost:
@@ -47,7 +47,7 @@ internal static partial class CsWebUiLog
         if (string.IsNullOrWhiteSpace(path)) return;
         var logger = services.GetService<ILoggerFactory>()?.CreateLogger(LogCategory);
         if (logger is not null) NativeLibraryUnchecked(logger, path);
-        else Trace.TraceWarning($"CS-WebUI loads the WebUI library {path}, whose version Runic cannot check; Runic needs WebUI commit efac0e24 or later and is tested with 2b35db13f.");
+        else Trace.TraceWarning($"CS-WebUI loads the WebUI library {path}, whose version Runic cannot check; Runic needs WebUI commit efac0e24 or later and is tested with 24c7d196e.");
     }
 
     private static string? ConfiguredNativeLibrary() =>
