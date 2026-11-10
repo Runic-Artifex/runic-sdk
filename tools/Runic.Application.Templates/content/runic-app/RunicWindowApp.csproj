@@ -87,7 +87,7 @@
   </ItemGroup>
   <PropertyGroup>
     <!-- The page's ESM of the same catalog, which the dotnet-runic-translations tool of .config/dotnet-tools.json writes
-         (run dotnet tool restore once). RunicApplicationFrontendTranslations keeps Frontend/.runic/translations, where
+         (run dotnet tool restore once). The property below keeps Frontend/.runic/translations, where
          the page imports it, equal to that ESM before the frontend builds. -->
     <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
     <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>

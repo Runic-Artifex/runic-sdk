@@ -490,8 +490,9 @@ verify_template() {
     echo "The generated $framework project contains unprocessed template syntax." >&2
     exit 1
   fi
-  # The Window project switch is the one Runic build setting the template declares.
-  if grep -vF 'RunicApplicationFrontendWindowProject>' "$output/$project_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge|RunicViewsWindowProject'; then
+  # The Window project switch is the one Runic build setting the template declares, and --translations opts in to
+  # RunicApplicationFrontendTranslations, which is off by default.
+  if grep -vE 'RunicApplicationFrontend(WindowProject|Translations)>' "$output/$project_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge|RunicViewsWindowProject'; then
     echo "The generated $framework project declares settings the Runic packages default." >&2
     exit 1
   fi
