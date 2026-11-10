@@ -22,7 +22,9 @@ namespace Runic.Application.Views.CsWebUi;
 //   starts, the endpoint connects to each address and gives up the port unless its own listener answers that very
 //   connection (ConfirmOwnership), on every OS. A port where the listener cannot start because another process holds
 //   it, as http.sys refuses one where another socket holds either address, is given up the same way: the endpoint
-//   tries another port and, when every port tried is held, says so (event 2103).
+//   tries another port and, when every port tried is held, says so (event 2103). On Windows, a port that a URL
+//   reservation of http.sys names is given up as well (event 2104): without one, http.sys refuses every other process, of any user, a
+//   URL under the listener's (CsWebUiUrlReservations).
 // - An upload also needs its connection's token, which only the page's own hello received. WebUI's connections are
 //   not visible to this listener, so a blob URL is bound to the window, not to a connection.
 // - On Windows, HttpListener is http.sys, which lets a user without administrator rights listen on localhost only.
@@ -79,6 +81,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         {
             // The ports given up because another process held or answered one of their loopback addresses, per address.
             var held = new Dictionary<string, int>();
+            // The ports given up because a URL reservation of http.sys names them, and the reserved prefixes.
+            var reserved = 0;
+            var reservations = new SortedSet<string>(StringComparer.Ordinal);
             var attempts = 0;
             for (; attempts < 5; attempts++)
             {
@@ -97,6 +102,11 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
                     if (error is PortHeldException { Addresses: var addresses })
                         foreach (var address in addresses)
                             held[address] = held.GetValueOrDefault(address) + 1;
+                    if (error is PortReservedException { Prefixes: var prefixes })
+                    {
+                        reserved++;
+                        reservations.UnionWith(prefixes);
+                    }
                     // Another process holds the port, on one of localhost's addresses, or took it between the probe and
                     // the start: try another port. A host name that cannot be held whole: try the next one.
                     if (error is PlatformNotSupportedException) break;
@@ -108,6 +118,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
             // A process that holds one address on many ports can push the endpoint off localhost: say so.
             foreach (var (address, count) in held)
                 CsWebUiLog.BlobEndpointPortsHeld(logger, address, count, attempts, host);
+            // No process holds a reserved port, so a port given up for a reservation is logged on its own.
+            if (reserved > 0)
+                CsWebUiLog.BlobEndpointPortsReserved(logger, string.Join(", ", reservations), reserved, attempts, host);
         }
         BlobsLog.EndpointFailed(logger, last!, last!.GetType().Name);
         return null;
@@ -123,6 +136,14 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         internal IReadOnlyList<string> Addresses { get; } = addresses;
     }
 
+    // A URL reservation of http.sys names the port: no process need hold it, but the reservation's access list, not
+    // http.sys's own rule, decides who may register a URL under the listener's.
+    private sealed class PortReservedException(IReadOnlyList<string> prefixes, int port)
+        : SocketException((int)SocketError.AddressAlreadyInUse, $"http.sys reserves {string.Join(", ", prefixes)}, which name port {port}.")
+    {
+        internal IReadOnlyList<string> Prefixes { get; } = prefixes;
+    }
+
     // Listens on host:port. For localhost outside Windows, the managed HttpListener binds only the first address that
     // .NET resolves localhost to (Dns.GetHostAddresses("localhost")[0]): ::1 or 127.0.0.1, depending on the hosts file
     // and the system's address sorting. Browsers and Node resolve localhost themselves, may try ::1 first and fall back
@@ -131,6 +152,9 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
     // whichever address a client picks, and an upload's token never reaches another process's listener.
     private static (HttpListener Listener, CsWebUiLoopbackRelay? Relay) Listen(string host, int port, bool relay)
     {
+        // http.sys refuses another process a URL under the listener's, unless a URL reservation names the port.
+        if (OperatingSystem.IsWindows() && Reservations(port, CsWebUiUrlReservations.Naming) is [_, ..] reservations)
+            throw new PortReservedException(reservations, port);
         var listener = new HttpListener { IgnoreWriteExceptions = true };
         listener.Prefixes.Add(string.Create(CultureInfo.InvariantCulture, $"http://{host}:{port}/"));
         if (OperatingSystem.IsWindows() || host != "localhost")
@@ -176,6 +200,18 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
                 listener.Close();
                 throw;
             }
+        }
+    }
+
+    // The URL reservations of http.sys that name port, as naming lists them. Without the list, no port can be shown to be
+    // free of them, so the endpoint does not start: also where httpapi or its entry points cannot be loaded. The reader is
+    // a parameter for tests.
+    internal static IReadOnlyList<string> Reservations(int port, Func<int, IReadOnlyList<string>> naming)
+    {
+        try { return naming(port); }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or DllNotFoundException or EntryPointNotFoundException)
+        {
+            throw new PlatformNotSupportedException("http.sys did not list its URL reservations.", error);
         }
     }
 

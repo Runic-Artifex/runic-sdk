@@ -839,6 +839,15 @@ jobs:
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release --
           --treenode-filter "/*/*/CsWebUiBlobEndpointChecks/*" --timeout 5m --output detailed
+      # The endpoint is an http.sys registration on Windows. As a standard user, it must keep every other process, of the
+      # same user and of another standard user, from registering a URL under it, and must not use a port that a URL
+      # reservation names (CsWebUiBlobEndpointChecks.HttpSys.cs). The script creates the users and reservations on this
+      # ephemeral runner and removes them afterwards.
+      - name: Check http.sys URL isolation of the CS-WebUI blob endpoint on Windows
+        if: runner.os == 'Windows' && runner.environment == 'github-hosted' && matrix.cswebui
+        timeout-minutes: 12
+        shell: pwsh
+        run: eng/ci/windows-httpsys-isolation.ps1 -TestAssembly tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll
       - name: Retain desktop contract diagnostics
         if: always()
         continue-on-error: true
