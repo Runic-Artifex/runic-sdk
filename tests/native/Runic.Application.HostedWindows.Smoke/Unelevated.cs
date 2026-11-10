@@ -86,6 +86,9 @@ internal static partial class Unelevated
         {
             if (variable.Key is not string name || variable.Value is not string value) continue;
             if (ProfileVariables.Contains(name) || name is UserVariable or PasswordVariable) continue;
+            // The runner's file commands are the elevated step's; the user cannot write them, as a test platform's step
+            // summary would.
+            if (name.ToUpperInvariant() is "GITHUB_STEP_SUMMARY" or "GITHUB_OUTPUT" or "GITHUB_ENV" or "GITHUB_PATH" or "GITHUB_STATE") continue;
             variables[name] = value;
         }
         foreach (var (name, value) in user)
