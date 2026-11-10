@@ -277,6 +277,14 @@ internal sealed class HostConformanceTests
                     _menus.Command(guest["command"]!.GetValue<string>()).SetEnabled(guest["value"]!.GetValue<bool>());
                     result = Task.FromResult<object?>(null);
                     break;
+                case "holdCommand":
+                    _menus.Command(guest["command"]!.GetValue<string>()).Hold(guest["value"]!.GetValue<string>() == "blocking");
+                    result = Task.FromResult<object?>(null);
+                    break;
+                case "releaseCommand":
+                    _menus.Command(guest["command"]!.GetValue<string>()).Release();
+                    result = Task.FromResult<object?>(null);
+                    break;
                 case "invoked":
                     result = Task.FromResult<object?>(_menus);
                     break;
@@ -913,15 +921,67 @@ internal sealed class ConformanceMenus
     public static ImmutableArray<DesktopMenuEntry> ContextMenu => HostedContextMenu.Entries;
 }
 
+// A command of the test application: it records each run, can be disabled (setCommandEnabled), and its next run can be
+// held (holdCommand) until releaseCommand: blocking in Execute, or running on after Execute returned, unable to run.
 internal sealed class ConformanceCommand(Action execute) : ICommand
 {
+    private readonly object _gate = new();
     private volatile bool _enabled = true;
+    private volatile bool _running;
+    private bool? _holdBlocking;
+    private TaskCompletionSource? _release;
 
     public event EventHandler? CanExecuteChanged;
 
-    public bool CanExecute(object? parameter) => _enabled;
+    public bool CanExecute(object? parameter) => _enabled && !_running;
 
-    public void Execute(object? parameter) => execute();
+    public void Execute(object? parameter)
+    {
+        bool? blocking;
+        Task? released;
+        lock (_gate)
+        {
+            (blocking, _holdBlocking) = (_holdBlocking, null);
+            released = blocking is null ? null : _release?.Task;
+        }
+        if (released is null)
+        {
+            execute();
+            return;
+        }
+        if (blocking == true)
+        {
+            // A long synchronous command: recorded when its Execute returns. A runner that never releases it fails its
+            // step after its timeout; the wait ends then too.
+            _ = released.Wait(TimeSpan.FromSeconds(60));
+            execute();
+            return;
+        }
+        execute();
+        _running = true;
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        _ = released.ContinueWith(_ =>
+        {
+            _running = false;
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    public void Hold(bool blocking)
+    {
+        lock (_gate)
+        {
+            _holdBlocking = blocking;
+            _release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    public void Release()
+    {
+        TaskCompletionSource? release;
+        lock (_gate) (release, _release) = (_release, null);
+        release?.TrySetResult();
+    }
 
     public void SetEnabled(bool enabled)
     {

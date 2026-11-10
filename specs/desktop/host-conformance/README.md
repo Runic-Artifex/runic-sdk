@@ -120,6 +120,8 @@ runner checks the protocol, not the page. A guest application under test opens n
 | `activity` | `window` | The Window's `IRunicWindowPresentation.Activity`, `{active, minimized, visible}` |
 | `setMenuBar` | `menu`: `"test"`, `"german"` or `"none"` | — (the application declares that [menu bar](#menus-and-dialogs), or none) |
 | `setCommandEnabled` | `command`, one of the bar's command ids; `value`: boolean | — (the application's command can run, or no longer) |
+| `holdCommand` | `command`, one of the bar's command ids; `value`: `"blocking"` or `"running"` | — (the command's next run holds until `releaseCommand`: `"blocking"` waits in its `Execute`, as a long synchronous command, and is recorded when it returns; `"running"` is recorded and returns at once, and the command cannot run until released, as an asynchronous command that allows one run at a time) |
+| `releaseCommand` | `command` | — (the held run ends: a blocking `Execute` returns, a running command can run again) |
 | `invoked` | — | `invoked`: the command ids of the bar that the application ran, in order, since the start; the runner waits until they are the expected ones |
 | `contextMenu` | `window`, optional `point` `{x, y}` | The Window's context menu (`IWindowPlatformServices.ShowContextMenuAsync`, at `point` or the pointer): `chosen`, the command id of the item the user chose or `null`, or an `outcome` |
 | `openFile`, `openFiles`, `saveFile`, `openFolder` | `window` | The Window's file dialog (`IFileDialogs`: `OpenFileAsync`, `OpenFilesAsync`, `SaveFileAsync`, `OpenDirectoryAsync`): `selected`, the file or directory names of the selection, in order; `dismissed: true`; or an `outcome` |

@@ -14,9 +14,10 @@ namespace Runic.Application.Views.Desktop.Hosting;
 // the host with set-menu-bar when the window opened and whenever the application declares another; a changed state
 // goes with update-menu-items. Requests go one at a time, so the host applies them in order, and changes made while one
 // is sent are coalesced; a request the host's rate limit turned away is sent again a little later. The host's
-// menu-invoke runs the item through the same command path. An item id names one item for the window's lifetime: an
-// item of the new bar keeps its id when it was in the bar before, any other gets a new one, so a menu-invoke from a bar
-// the host showed before the change runs the item the user chose, or nothing.
+// menu-invoke runs the item through the same command path, one push after the other, in the order the host sent them,
+// as a native bar runs its clicks on its UI thread. An item id names one item for the window's lifetime: an item of the
+// new bar keeps its id when it was in the bar before, any other gets a new one, so a menu-invoke from a bar the host
+// showed before the change runs the item the user chose, or nothing.
 internal sealed class HostedWindowMenus : IDisposable
 {
     private readonly HostedGuest _guest;
@@ -37,6 +38,9 @@ internal sealed class HostedWindowMenus : IDisposable
     private bool _barChanged;
     private bool _statesChanged;
     private bool _sending;
+    // The items of the menu-invoke pushes not run yet, in the order received, and whether a loop runs them.
+    private readonly Queue<DesktopMenuItem> _invocations = new();
+    private bool _invoking;
     private bool _disposed;
 
     // commands: the Window's root ViewModel's binding, or null when it takes no part in the menu bar.
@@ -224,14 +228,41 @@ internal sealed class HostedWindowMenus : IDisposable
         return changes.Count == 0 ? null : (new JsonObject { ["id"] = 0, ["kind"] = "update-menu-items", ["items"] = changes }, states, changed);
     }
 
-    // menu-invoke: the item the user chose in the host's bar, or whose shortcut they pressed; an id of no current item is
-    // ignored. Runs off the channel's receive loop.
+    // menu-invoke: the item the user chose in the host's bar, or whose shortcut they pressed; an id of no item of the bar
+    // sent last is ignored. The items run one at a time in the order received, each once the Execute of the one before
+    // returned, and each asks the command path whether it can run when its turn comes: an item whose command cannot run
+    // then, such as an asynchronous command still running from an earlier choice, is ignored, as on a native bar
+    // (host-protocol.md, Choosing an item). The receive loop only queues the item; a loop off it runs the queue.
     internal void Invoke(string itemId)
     {
-        DesktopMenuItem? item;
-        lock (_gate) item = _disposed ? null : _items.GetValueOrDefault(itemId);
-        if (item is null) return;
-        _ = Task.Run(() => MenuCommandChain.TryExecute(item, _commands, _desktop.MenuCommands, _logger));
+        lock (_gate)
+        {
+            if (_disposed || !_items.TryGetValue(itemId, out var item)) return;
+            _invocations.Enqueue(item);
+            if (_invoking) return;
+            _invoking = true;
+        }
+        _ = Task.Run(InvokeQueuedAsync);
+    }
+
+    private async Task InvokeQueuedAsync()
+    {
+        while (true)
+        {
+            DesktopMenuItem? item;
+            lock (_gate)
+            {
+                if (_disposed || !_invocations.TryDequeue(out item))
+                {
+                    _invocations.Clear();
+                    _invoking = false;
+                    return;
+                }
+            }
+            // The chain logs a target that throws; this only keeps the loop running.
+            try { _ = await MenuCommandChain.TryExecuteAsync(item, _commands, _desktop.MenuCommands, _logger).ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedChannelFailed(_logger, error, error.GetType().Name); }
+        }
     }
 
     public void Dispose()
