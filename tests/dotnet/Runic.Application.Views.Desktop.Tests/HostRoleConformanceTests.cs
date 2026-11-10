@@ -10,6 +10,7 @@ using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Desktop.Hosting;
 using Runic.Desktop;
+using Runic.Desktop.Internal;
 using Runic.Platform;
 using TUnit.Core;
 
@@ -72,6 +73,16 @@ internal sealed class HostRoleConformanceTests
         private TimeSpan Limit(string name, TimeSpan fallback) =>
             Limits[name] is { } value ? TimeSpan.FromMilliseconds(value.GetValue<int>()) : fallback;
 
+        // The wait of an advance step. Runic's host fixes how long an activation after the guest's request counts as the
+        // guest's (RunicHostedWindow.GuestActivationWindow), so the runner waits at least that long, and a little more.
+        private TimeSpan Advance(string name)
+        {
+            var wait = Limit(name, StepTimeout);
+            return name == "guestActivation"
+                ? TimeSpan.FromTicks(Math.Max(wait.Ticks, RunicHostedWindow.GuestActivationWindow.Ticks)) + TimeSpan.FromMilliseconds(100)
+                : wait;
+        }
+
         public async Task RunAsync()
         {
             var steps = scenario["steps"]!.AsArray();
@@ -101,7 +112,7 @@ internal sealed class HostRoleConformanceTests
                 case "closed": await ClosedAsync(value!.AsObject()); break;
                 case "disconnect": await HostChannel.CloseAsync(_connections[value!.GetValue<string>()], WebSocketCloseStatus.NormalClosure, ""); break;
                 case "exit": await ExitAsync(value!.GetValue<int>()); break;
-                case "advance": await Task.Delay(Limit(value!.GetValue<string>(), StepTimeout)); break;
+                case "advance": await Task.Delay(Advance(value!.GetValue<string>())); break;
                 case "expect": await ExpectAsync(value!.AsObject()); break;
                 case "user": await UserAsync(value!.AsObject()); break;
                 default: throw new InvalidOperationException($"The host runner does not implement the step '{action}'.");
@@ -119,6 +130,7 @@ internal sealed class HostRoleConformanceTests
             var host = scenario["arrange"]!["host"]!;
             var start = HostedGuestProgram.StartInfo(HostedGuestProgram.PuppetArgument) with
             {
+                UserStarted = host["userStarted"]?.GetValue<bool>() == true,
                 Environment = new Dictionary<string, string?>
                 {
                     [HostedGuestProgram.PuppetPortVariable] = ((IPEndPoint)_control.LocalEndpoint).Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -145,7 +157,8 @@ internal sealed class HostRoleConformanceTests
                     PresentBurst = Limits["presentRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.PresentBurst,
                     AnnouncementsPerSecond = Limits["announcementRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.AnnouncementsPerSecond,
                     AnnouncementBurst = Limits["announcementRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.AnnouncementBurst,
-                }, failsServices: host["policy"]?.GetValue<string>() == "fails-services"),
+                }, failsServices: host["policy"]?.GetValue<string>() == "fails-services",
+                    prompt: host["policy"]?.GetValue<string>() == "prompts-launches" ? _user.PromptAsync : null),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);
             _puppet = await _control.AcceptTcpClientAsync(accept.Token);
@@ -240,6 +253,11 @@ internal sealed class HostRoleConformanceTests
             lock (_opened) return _opened.LastOrDefault(window => window.Id == id) ?? throw new InvalidOperationException($"The host opened no window {id}.");
         }
 
+        private string[] OpenIds()
+        {
+            lock (_opened) return [.. _opened.Where(static window => window.IsOpen).Select(static window => window.Id).Distinct()];
+        }
+
         private HostedWindowHost Native(string id)
         {
             int index;
@@ -287,14 +305,35 @@ internal sealed class HostRoleConformanceTests
                     if (user["bar"] is not null)
                     {
                         // The bar the window showed before its current one, which the user still clicks during a change.
-                        Check(native.ChoosePrevious(titles),
+                        Check(HostMenuChoice.Run(() => native.ChoosePrevious(titles)),
                             $"The window's previous menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.PreviousMenuBar)}.");
                         break;
                     }
-                    Check(native.Choose(titles), $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
+                    // A click in the native bar is a choice in the host's own menu; a shortcut is a key the page left alone.
+                    var chosen = user["by"]?.GetValue<string>() == "shortcut" ? native.Choose(titles) : HostMenuChoice.Run(() => native.Choose(titles));
+                    Check(chosen, $"The window's menu bar has no enabled item {string.Join(" > ", titles)}: {HostedWindowHost.Describe(native.MenuBar)}.");
                     break;
                 case "deactivateWindow" or "activateWindow":
                     await SwitchAsync(user["window"]!.GetValue<string>(), action == "activateWindow");
+                    break;
+                case "deactivateHost":
+                    // The user switches to another application: the host's active window becomes inactive, and until the
+                    // user switches back, the host's requests to activate a window are deferred, as on macOS.
+                    _fixture!.Factory.DeactivateHost();
+                    foreach (var id in OpenIds())
+                    {
+                        if (Native(id).IsActive) await SwitchAsync(id, false);
+                    }
+                    break;
+                case "activateHost":
+                    // The user switches back to the host application, such as with Cmd-Tab: the desktop activates the
+                    // window the host asked for last while it was inactive, else the one active before.
+                    if (_fixture!.Factory.ActivateHost() is { } key)
+                    {
+                        var keyId = OpenIds().LastOrDefault(id => ReferenceEquals(Native(id), key))
+                            ?? throw new InvalidOperationException("The host application has no open window of the guest to activate.");
+                        await SwitchAsync(keyId, true);
+                    }
                     break;
                 case "copyText":
                     var copied = user["text"]!.GetValue<string>();
@@ -574,14 +613,26 @@ internal sealed class HostRoleConformanceTests
 
     // The host's policy of a scenario: the defaults, within the scenario's limits; with failsServices it throws for every
     // window service, as a policy with a bug does.
-    private sealed class ScenarioPolicy(RunicHostedLimits limits, bool failsServices) : IRunicHostedWindowPolicy
+    // The scenario's policy: the defaults, or one that fails for window services, or one that asks the user before each
+    // launch in a prompt of the host's own (prompts-launches), which a user step answers with the button allow or deny.
+    private sealed class ScenarioPolicy(RunicHostedLimits limits, bool failsServices,
+        Func<CancellationToken, Task<object?>>? prompt = null) : IRunicHostedWindowPolicy
     {
         public RunicHostedLimits Limits => limits;
 
         public ValueTask<RunicHostedServiceDecision> ServiceAsync(RunicHostedServiceRequest request, CancellationToken cancellationToken) =>
             failsServices
                 ? throw new InvalidOperationException("The scenario's policy fails.")
-                : ValueTask.FromResult(request.IsAllowedByDefault ? RunicHostedServiceDecision.Allow() : RunicHostedServiceDecision.Refuse());
+                : prompt is not null && request.Kind == RunicHostedServiceKind.Launch
+                    ? new(AskAsync(request, prompt, cancellationToken))
+                    : ValueTask.FromResult(Default(request));
+
+        private static async Task<RunicHostedServiceDecision> AskAsync(RunicHostedServiceRequest request, Func<CancellationToken, Task<object?>> prompt,
+            CancellationToken cancellationToken) =>
+            await prompt(cancellationToken) as string == "allow" ? Default(request) : RunicHostedServiceDecision.Refuse();
+
+        private static RunicHostedServiceDecision Default(RunicHostedServiceRequest request) =>
+            request.IsAllowedByDefault ? RunicHostedServiceDecision.Allow() : RunicHostedServiceDecision.Refuse();
     }
 
     // The host's user: each context menu and dialog the host shows waits until a user step answers it, or until the host
@@ -601,6 +652,14 @@ internal sealed class HostRoleConformanceTests
             var shown = new Shown(entries, "context-menu", new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously), cancellationToken);
             await _menus.Writer.WriteAsync(shown, CancellationToken.None);
             return (DesktopMenuItem?)await shown.Answer.Task.WaitAsync(cancellationToken);
+        }
+
+        // A prompt the host's policy shows itself (host-prompt), answered with a button.
+        public async Task<object?> PromptAsync(CancellationToken cancellationToken)
+        {
+            var shown = new Shown("host-prompt", "host-prompt", new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously), cancellationToken);
+            await _dialogs.Writer.WriteAsync(shown, CancellationToken.None);
+            return await shown.Answer.Task.WaitAsync(cancellationToken);
         }
 
         public async Task<object?> DialogAsync(FakeHostDialog dialog, CancellationToken cancellationToken)

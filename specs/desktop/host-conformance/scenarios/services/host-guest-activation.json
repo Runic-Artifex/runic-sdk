@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "services",
   "roles": ["host"],
-  "description": "A window the guest made active itself, by opening or presenting it, does not count as the user's: the host refuses its clipboard reads, writes and launches until the user activates the window.",
+  "description": "A window the guest made active itself, by opening or presenting it, does not count as the user's: the host refuses its clipboard reads, writes and launches until the user activates the window, later than the guest's last request that can activate one of its windows.",
   "requires": ["window-services/1"],
   "ids": {
     "c1": {"kind":"connection"},
@@ -20,7 +20,7 @@
     "l2": {"kind":"request"},
     "r3": {"kind":"request"}
   },
-  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000,"guestActivation":2000},"host":{"name":"Conformance Host","version":"1.0.0"}},
   "steps": [
     {"start":{"host":true}},
     {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
@@ -38,6 +38,7 @@
     {"receive":{"id":{"$id":"cw0"},"ok":false,"error":{"kind":"rejected","reason":"refused","message":{"$any":"string"}}},"connection":"c1"},
     {"send":{"id":{"$id":"l0"},"kind":"launch","window":"w1","uri":"https://runic.dev/"},"connection":"c1"},
     {"receive":{"id":{"$id":"l0"},"ok":false,"error":{"kind":"rejected","reason":"refused","message":{"$any":"string"}}},"connection":"c1"},
+    {"advance":"guestActivation","note":"Any activation of the guest's windows right after its own request counts as the guest's."},
     {"user":{"action":"deactivateWindow","window":"w1"}},
     {"user":{"action":"activateWindow","window":"w1"},"note":"The user switches to the window: the user activated it."},
     {"send":{"id":{"$id":"r1"},"kind":"clipboard-read","window":"w1","format":"text","maximum":1024},"connection":"c1"},
@@ -51,6 +52,7 @@
     {"receive":{"id":{"$id":"cw2"},"ok":false,"error":{"kind":"rejected","reason":"refused","message":{"$any":"string"}}},"connection":"c1"},
     {"send":{"id":{"$id":"l2"},"kind":"launch","window":"w1","uri":"https://runic.dev/"},"connection":"c1"},
     {"receive":{"id":{"$id":"l2"},"ok":false,"error":{"kind":"rejected","reason":"refused","message":{"$any":"string"}}},"connection":"c1"},
+    {"advance":"guestActivation","note":"Any activation of the guest's windows right after its own request counts as the guest's."},
     {"user":{"action":"deactivateWindow","window":"w1"}},
     {"user":{"action":"activateWindow","window":"w1"},"note":"The user switches to the window: the user activated it."},
     {"send":{"id":{"$id":"r3"},"kind":"clipboard-read","window":"w1","format":"text","maximum":1024},"connection":"c1"},

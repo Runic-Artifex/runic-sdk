@@ -41,6 +41,9 @@ internal sealed class HostedMenuTarget(RunicHostedWindow window) : IDesktopMenuC
 
     public void Execute(DesktopMenuItem item)
     {
-        if (HostedWire.ItemId(item) is { } id && window.ShowsMenuItem(id)) window.Application.InvokeMenuItem(window, id);
+        // A choice in the host's native menu, not a shortcut, the page or TryExecuteMenuItemAsync: Runic Desktop's menu
+        // paths run it synchronously on the UI thread (HostMenuChoice).
+        if (HostedWire.ItemId(item) is { } id && window.ShowsMenuItem(id))
+            window.Application.InvokeMenuItem(window, id, Runic.Desktop.Internal.HostMenuChoice.IsCurrent);
     }
 }

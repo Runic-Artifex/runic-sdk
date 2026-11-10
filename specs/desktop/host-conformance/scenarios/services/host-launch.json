@@ -16,7 +16,7 @@
     "l4": {"kind":"request"},
     "l5": {"kind":"request"}
   },
-  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000,"guestActivation":2000},"host":{"name":"Conformance Host","version":"1.0.0"}},
   "steps": [
     {"start":{"host":true}},
     {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
@@ -27,6 +27,7 @@
     {"expect":{"started":true}},
     {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
     {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1"},
+    {"advance":"guestActivation","note":"Any activation of the guest's windows right after its own request counts as the guest's."},
     {"user":{"action":"deactivateWindow","window":"w1"}},
     {"user":{"action":"activateWindow","window":"w1"},"note":"The user switches to the window: the user activated it."},
     {"send":{"id":{"$id":"l1"},"kind":"launch","window":"w1","uri":"https://runic.dev/docs"},"connection":"c1"},

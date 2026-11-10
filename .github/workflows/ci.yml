@@ -832,6 +832,15 @@ jobs:
         run: >-
           dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release --
           --treenode-filter "/*/*/FileTransferTests/*" --timeout 3m --output detailed
+      # The managed job runs these cases on Linux. The CS-WebUI blob endpoint listens through http.sys on Windows and on
+      # BSD sockets on macOS, whose rules for another socket on a port that a listener holds differ from Linux's; on macOS
+      # the class runs again with DOTNET_SYSTEM_NET_DISABLEIPV6=1 in a child process, as on Linux.
+      - name: Test the CS-WebUI blob endpoint on Windows and macOS
+        if: runner.os != 'Linux' && matrix.cswebui
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release --
+          --treenode-filter "/*/*/CsWebUiBlobEndpointChecks/*" --timeout 5m --output detailed
       - name: Retain desktop contract diagnostics
         if: always()
         continue-on-error: true

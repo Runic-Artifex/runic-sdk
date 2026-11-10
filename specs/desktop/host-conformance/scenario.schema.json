@@ -170,6 +170,10 @@
             "announcementRate": {
               "type": "integer",
               "minimum": 1
+            },
+            "guestActivation": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },
@@ -192,8 +196,12 @@
             },
             "policy": {
               "enum": [
-                "fails-services"
+                "fails-services",
+                "prompts-launches"
               ]
+            },
+            "userStarted": {
+              "type": "boolean"
             }
           }
         }
@@ -248,7 +256,8 @@
         "stopTimeout",
         "unauthenticatedTimeout",
         "helloTimeout",
-        "requestTimeout"
+        "requestTimeout",
+        "guestActivation"
       ]
     },
     "outcome": {
@@ -707,6 +716,8 @@
                     "cancelOpen",
                     "setMenuBar",
                     "setCommandEnabled",
+                    "holdCommand",
+                    "releaseCommand",
                     "invoked",
                     "contextMenu",
                     "openFile",
@@ -935,6 +946,43 @@
                       }
                     }
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "holdCommand"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "command",
+                      "value"
+                    ],
+                    "properties": {
+                      "value": {
+                        "enum": [
+                          "blocking",
+                          "running"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "releaseCommand"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "command"
+                    ]
+                  }
                 }
               ]
             },
@@ -971,6 +1019,8 @@
                     "closeWindow",
                     "deactivateWindow",
                     "activateWindow",
+                    "deactivateHost",
+                    "activateHost",
                     "copyText",
                     "setLocale",
                     "setAppearance",
@@ -992,6 +1042,12 @@
                 "bar": {
                   "const": "previous"
                 },
+                "by": {
+                  "enum": [
+                    "click",
+                    "shortcut"
+                  ]
+                },
                 "title": {
                   "type": "string"
                 },
@@ -1005,7 +1061,8 @@
                     "save",
                     "folder",
                     "folder-multiple",
-                    "message-box"
+                    "message-box",
+                    "host-prompt"
                   ]
                 },
                 "paths": {
@@ -1539,6 +1596,7 @@
         "anyOf": [
           {
             "enum": [
+              "",
               ".",
               ".."
             ]

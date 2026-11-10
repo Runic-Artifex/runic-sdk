@@ -223,11 +223,12 @@ public sealed partial class RunicHostedApplication
         }
     }
 
-    // A guest's item was chosen in the window's menu bar or by its shortcut: menu-invoke (host-protocol.md, Menus). The
-    // user worked in the window (window-services/1).
-    internal void InvokeMenuItem(RunicHostedWindow window, string itemId)
+    // A guest's item was chosen in the window's menu bar or by its shortcut: menu-invoke (host-protocol.md, Menus). A
+    // choice the host's native menu reported is the user's work in the window (window-services/1); a shortcut is not,
+    // since a key the page leaves unhandled, which may be the user's typing into a window the guest activated, runs it.
+    internal void InvokeMenuItem(RunicHostedWindow window, string itemId, bool fromHostMenu)
     {
-        window.NoteUserInteraction();
+        if (fromHostMenu) window.NoteUserInteraction();
         _ = PushAsync(new JsonObject { ["kind"] = "menu-invoke", ["window"] = window.Id, ["itemId"] = itemId });
     }
 
@@ -297,6 +298,9 @@ public sealed partial class RunicHostedApplication
         using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(window.Closing, _ending.Token, replaced.Token))
         {
             _userRequests[request.Id] = cancel;
+            // The platform activates the owner again as the dialog or menu ends, also when the user answered, before the
+            // host learns of the answer: the guest asked for it (window-services/1).
+            BeginGuestPrompt();
             try
             {
                 var reply = request.Kind switch
@@ -325,6 +329,7 @@ public sealed partial class RunicHostedApplication
             finally
             {
                 _userRequests.TryRemove(request.Id, out _);
+                EndGuestPrompt();
                 if (!dialog) window.EndContextMenu(replaced);
                 if (dialog)
                 {
@@ -375,6 +380,9 @@ public sealed partial class RunicHostedApplication
             (entries, position) = (applied.Entries, applied.Position);
         }
         var presentation = window.PresentationOrNull!;
+        // A choice in a menu shown while the user works in the window is the user's work in it; in one the guest showed
+        // in a window it activated itself, it is an answer to the guest, as a dialog's is (window-services/1).
+        var shownToUser = window.Activation.UserActive;
         PlatformResult<DesktopMenuItem?> result;
         try { result = await DesktopPlatformServices.ShowContextMenuAsync(presentation, entries, position, cancellationToken).ConfigureAwait(false); }
         catch (ArgumentException error)
@@ -388,8 +396,8 @@ public sealed partial class RunicHostedApplication
             case PlatformResult<DesktopMenuItem?>.Success(var item):
                 // The window closed while the menu was open.
                 if (!window.IsOpen) return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed));
-                // The user chose an item: they work in the window (window-services/1).
-                if (item is not null) window.NoteUserInteraction();
+                // The user chose an item: they work in the window, unless the guest had activated it (window-services/1).
+                if (item is not null && shownToUser) window.NoteUserInteraction();
                 var itemId = item is null ? null : HostedWire.ItemId(item);
                 // An item a policy added runs the host application's command, as its own menus do; the guest chose nothing.
                 if (item is not null && itemId is null)

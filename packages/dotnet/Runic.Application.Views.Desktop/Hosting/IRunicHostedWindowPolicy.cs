@@ -254,9 +254,10 @@ public sealed record RunicHostedLimits
     } = Hosting.HostServices.DefaultLaunchesPerTenSeconds;
 
     /// <summary>
-    /// How many requests that can bring a window to the front (<c>present</c>, and <c>set-visible</c> that shows one) the
-    /// guest may make per second across its windows, after a burst of <see cref="PresentBurst"/>; 2 by default. It keeps a
-    /// guest from taking the focus again and again. A request over the rate fails as busy.
+    /// How many requests that can activate a window (<c>present</c>, <c>minimize</c>, <c>set-visible</c>,
+    /// <c>set-full-screen</c> and <c>toggle-maximized</c>) the guest may make per second across its windows, after a burst
+    /// of <see cref="PresentBurst"/>; 2 by default. It keeps a guest from taking the focus again and again. A request over
+    /// the rate fails as busy.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is less than 1.</exception>
     public int PresentsPerSecond
@@ -368,10 +369,13 @@ public sealed record RunicHostedServiceRequest
 
     /// <summary>
     /// Whether <see cref="Window"/> is active because of the guest's own request, and the user has not worked in it since:
-    /// it became active within two seconds after the guest opened it (<c>window-open</c>), presented it (<c>present</c>)
-    /// or showed it (<c>set-visible</c>). The user's own activation of the window, choosing an item of its menus, and a
-    /// drop onto it end it. A guest that takes the focus this way cannot use it to read the clipboard, write it or open
-    /// files and links by default.
+    /// it became active within two seconds after any request of the guest that can activate one of its windows, such as
+    /// opening, presenting, showing, hiding, minimizing or maximizing a window, entering or leaving full screen, closing
+    /// one of its windows, which activates its owner, or the end of one of its dialogs or context menus, also one the
+    /// user answered, or while one of them shows. The user's own later activation of the window, a choice in its native menu bar, a choice in a
+    /// context menu shown while the user worked in the window, and a drop onto it end it; a shortcut of its menus does
+    /// not, since a key the guest's page leaves unhandled runs it. A guest that takes the focus this way cannot use it to
+    /// read the clipboard, write it or open files and links by default.
     /// </summary>
     /// <remarks>
     /// The host does not see the user's input in the guest's page, so a guest's window the user works in stays

@@ -108,6 +108,27 @@ public sealed record RunicGuestStartInfo(string FileName, IReadOnlyList<string> 
     /// </summary>
     public IReadOnlyDictionary<string, string?>? Environment { get; init; }
 
+    /// <summary>
+    /// Whether the user started the guest directly, such as from the host's own menu or launcher;
+    /// <see langword="false"/> by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// By default the guest's windows start <i>guest-activated</i> (<see cref="RunicHostedServiceRequest.IsGuestActivated"/>):
+    /// the guest opened them, so the host refuses their clipboard reads, clipboard writes and launches until the user
+    /// switches to the window, clicks its native menu bar, picks a context menu item or drops files onto it. A link the user
+    /// clicks in a guest's fresh first window is refused until then.
+    /// </para>
+    /// <para>
+    /// With <see langword="true"/>, the first activation of the guest's first window counts as the user's, as if the user
+    /// had switched to it. Set it only when the user's own action started the guest just now. The trade-off: the guest
+    /// decides when it opens that window, so it can open it later, while the user works in another window, and the host
+    /// still treats it as the user's. Later windows, and the first one once the guest presents, shows, maximizes or makes it
+    /// full screen, are guest-activated as usual.
+    /// </para>
+    /// </remarks>
+    public bool UserStarted { get; init; }
+
     private static string RequireText(string value, string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, name);

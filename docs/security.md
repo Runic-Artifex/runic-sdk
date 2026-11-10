@@ -123,7 +123,19 @@ uploads"):
   `frame-ancestors` stays in force), so serving untrusted HTML or SVG as a blob
   does not run it as the application. Cross-site loads (`Sec-Fetch-Site:
   cross-site`) are refused. CS-WebUI's endpoint also serves loopback peers only,
-  which matters on Windows, where http.sys routes requests by their `Host`.
+  which matters on Windows, where http.sys routes requests by their `Host`;
+  outside Windows, a relayed connection is checked for its client's address.
+  Its URLs name `localhost`, and it holds both loopback addresses of
+  `localhost` on its port (`::1` and `127.0.0.1`). After it starts, it connects
+  to each address and gives up the port unless its own listener answers that
+  connection, so it does not use a port where another process listens on, or
+  passes on connections from, either address. On Linux, no other process can
+  listen on either address while it does. On macOS, sockets on the wildcard
+  addresses can listen beside it but receive no connections to either loopback
+  address. On Linux and macOS, a blob load or an upload sent to the endpoint
+  therefore does not reach another process. On Windows the endpoint checks this
+  when it starts; whether another process can later register a more specific
+  http.sys URL under the endpoint's port is not yet verified.
 - An upload needs the page's origin and a token that only the connection's
   `hello` received; it is limited per upload and per window, dropped after 30
   seconds without data, and decodes only for that connection, once. An upload
@@ -278,9 +290,20 @@ experimental (`RUNICDESK103`). What Runic enforces:
 - **Clipboard, links and files: the host's rights, the user's choices.** With `window-services/1` a guest uses the
   host's clipboard, monitors and launcher, which act with the host's rights. The clipboard holds what the user copies in
   every application, passwords included, so the host reads and writes it for a guest only while the user works in the
-  guest's window: it is active, and not because the guest itself opened, presented or showed it within the last two
-  seconds. A guest that brings its window to the front cannot use that focus to read what the user just copied, replace
-  it or open links; the user's own switch to the window, a choice in its menus or a drop onto it gives it back. A write
+  guest's window: it is active, and not within two seconds after any of the guest's requests that can activate one of
+  its windows, such as opening, presenting, maximizing or leaving full screen, closing an owned window, which activates
+  its owner, or the end of one of its dialogs. A guest that brings its window to the front cannot use that focus to read
+  what the user just copied, replace it or open links; the user's own later switch to the window, a choice in its native
+  menu bar or in a context menu shown while the user worked in it, or a drop onto it gives it back. A shortcut of its
+  menus does not, since a key the guest's page leaves unhandled runs it, and neither does an answer to the guest's own
+  dialog or context menu. An activation the desktop deferred, such as macOS activating a window the guest presented
+  only when the user next switches to the host, is the guest's too, however late it comes. The guest's windows,
+  its first one included, therefore start guest-activated: a link the user clicks in a guest's fresh window is
+  refused until the user switches to it. A host that started the guest at the user's request can set
+  `RunicGuestStartInfo.UserStarted`, which makes the first activation of the guest's first window the user's; leave it
+  off otherwise, since the guest chooses when it opens that window. Activations right after any guest's request count
+  as a guest's, also for another guest's window, so one guest cannot hand another, or a second instance of itself, the
+  user's activation; a host policy's own prompt counts as a guest's dialog. A write
   is also allowed within a second after the user left the window, for a copy that closes it. The host never tells a
   guest when the clipboard changes: a guest in the background cannot snoop on it or replace what the user copies
   elsewhere (threat T14). A guest the user works in can read what the clipboard holds, as any focused application can;
@@ -292,8 +315,8 @@ experimental (`RUNICDESK103`). What Runic enforces:
   `mailto` attachments), at most five per ten seconds by default: a guest cannot start a program, open a settings page
   or flood the desktop with browser tabs unless the host's policy widens this (T15). The paths of a drop come from the
   host's platform, never from a page; the drop's target label and effect are routing hints (T16). `RunicHostedLimits`
-  bounds a guest's clipboard and monitor requests (20 a second), its launches, its requests that bring a window to the
-  front (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5).
+  bounds a guest's clipboard and monitor requests (20 a second), its launches, its requests that can activate a window
+  (2 a second after a burst of 3) and its announcements (2 a second after a burst of 5).
 - **Screen reader announcements.** A guest's announcements speak through the host's window, so assistive technology
   attributes them to the host application. Only the window the user works in announces assertively, interrupting the
   screen reader; another window's announcements are polite, and their rate is bounded (T17). A host that does not trust

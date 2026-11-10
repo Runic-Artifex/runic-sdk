@@ -210,7 +210,9 @@ internal sealed class HostedApplicationTests
         await using var fixture = await HostFixture.StartAsync();
         await fixture.RequireUnelevatedAsync();
         var opened = fixture.Next(opened: true);
-        var policy = new RecordingPolicy { Refused = RunicHostedPresentationKind.Minimize };
+        // Present, minimize, set-visible and set-full-screen all count toward the rate of requests that can activate a
+        // window; the guest sends four at once, over the default burst.
+        var policy = new RecordingPolicy { Refused = RunicHostedPresentationKind.Minimize, Limits = RunicHostedLimits.Default with { PresentBurst = 8 } };
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("present"), new RunicHostedApplicationOptions { Policy = policy });
         var window = await opened.WaitScaledAsync(Timeout);
         Check(await TestTimeouts.UntilAsync(() => fixture.GuestErrors.Contains("PRESENTED"), Timeout), "The guest did not finish its requests.");
@@ -218,8 +220,7 @@ internal sealed class HostedApplicationTests
         Check(errors.Contains("OUTCOME present success"), $"present did not succeed:\n{errors}");
         Check(errors.Contains("OUTCOME minimize failed PermissionDenied"), $"The policy's refusal did not reach the guest:\n{errors}");
         Check(errors.Contains("OUTCOME visible success"), $"set-visible did not succeed:\n{errors}");
-        // The headless window cannot enter full screen, so its window-open reply did not list the feature.
-        Check(errors.Contains("OUTCOME full-screen unavailable BackendUnavailable"), $"set-full-screen was not unavailable:\n{errors}");
+        Check(errors.Contains("OUTCOME full-screen success"), $"set-full-screen did not succeed:\n{errors}");
         Check(policy.Presented.Contains(RunicHostedPresentationKind.Present) && policy.Presented.Contains(RunicHostedPresentationKind.SetVisible),
             "The policy did not see the requests.");
         Check(fixture.Factory.Hosts.Single().Focused > 0, "present did not focus the window.");
@@ -601,6 +602,7 @@ internal sealed class HostedApplicationTests
         public bool RefuseWindows { get; init; }
         public DesktopPermissionGrant? Grant { get; init; }
         public RunicHostedPresentationKind? Refused { get; init; }
+        public RunicHostedLimits Limits { get; init; } = RunicHostedLimits.Default;
         public List<RunicHostedWindowRequest> Windows { get; } = [];
         public List<RunicHostedPresentationKind> Presented { get; } = [];
 
@@ -739,12 +741,66 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
         lock (_hosts) _hosts.Add(host);
         return host;
     }
+
+    // The windows in the order they were last activated, the last most recently: as on Windows, when the active window
+    // closes or hides, the desktop activates the one before it, such as an owned window's owner.
+    private readonly List<HostedWindowHost> _activations = [];
+
+    internal void Activated(HostedWindowHost host)
+    {
+        lock (_activations)
+        {
+            _activations.Remove(host);
+            _activations.Add(host);
+        }
+    }
+
+    // Whether the user works in another application. As on macOS 15 and later, the host's requests then do not activate
+    // a window: the one asked for last becomes the key window, which is activated once the user switches back to the
+    // host application.
+    private volatile bool _hostInactive;
+    private HostedWindowHost? _keyOnActivation;
+
+    internal bool IsHostInactive => _hostInactive;
+
+    // The user switches to another application; the windows are made inactive by the caller.
+    internal void DeactivateHost() => _hostInactive = true;
+
+    // A request to activate the window while the host is not active: it becomes active when the user switches back.
+    internal void Defer(HostedWindowHost host)
+    {
+        lock (_activations) _keyOnActivation = host;
+    }
+
+    // The user switches back to the host application: the window to activate, the one asked for last, or else the one
+    // active last.
+    internal HostedWindowHost? ActivateHost()
+    {
+        _hostInactive = false;
+        lock (_activations)
+        {
+            var key = _keyOnActivation is { IsOpen: true } deferred ? deferred : _activations.LastOrDefault(static host => host.IsOpen);
+            _keyOnActivation = null;
+            return key;
+        }
+    }
+
+    internal void ActivateNext(HostedWindowHost leaving)
+    {
+        HostedWindowHost? next;
+        lock (_activations)
+        {
+            _activations.Remove(leaving);
+            next = _activations.LastOrDefault(static host => host.IsOpen);
+        }
+        if (next is { IsActive: false }) next.SetActive(true);
+    }
 }
 
 // A headless embedded window host that honours the ephemeral data store of hosted windows and records how it opened.
 // UserClose is the title-bar close button.
 internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost,
-    IDesktopFileDropWindowHost
+    IDesktopFileDropWindowHost, IDesktopPlacementWindowHost
 {
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
@@ -754,7 +810,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move |
         DesktopWindowCapabilities.Visibility | DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.MenuBar |
-        DesktopWindowCapabilities.ContextMenu;
+        DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FullScreen;
 
     // The window has the keyboard focus from its open until SetActive says otherwise or it closes. Runic Desktop reads it
     // for the host's context menu rule; without the Activity capability the host pushes no activity, which the
@@ -769,8 +825,11 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     public void SetActive(bool active)
     {
         _active = active;
+        if (active) _factory?.Activated(this);
         ActivityChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    public bool IsActive => _active && !_closedOnce;
 
     private volatile bool _closedOnce;
 
@@ -894,15 +953,32 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
         Options = options;
         if (_factory?.OpenGate is { } gate) await gate();
         _open = true;
+        if (_factory is { IsHostInactive: true } factory)
+        {
+            _active = false;
+            factory.Defer(this);
+        }
+        else _factory?.Activated(this);
+    }
+
+    // The platform activates the window at the host's request, or, while the user works in another application, makes
+    // it the window activated when the user switches back.
+    private void ActivateForRequest()
+    {
+        if (_active) return;
+        if (_factory is { IsHostInactive: true } factory) factory.Defer(this);
+        else SetActive(true);
     }
 
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         if (_open)
         {
+            var wasActive = _active;
             _open = false;
             _closedOnce = true;
             Closed?.Invoke(this, EventArgs.Empty);
+            if (wasActive) _factory?.ActivateNext(this);
         }
         return ValueTask.CompletedTask;
     }
@@ -913,12 +989,32 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     public ValueTask FocusAsync(CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _focused);
-        if (!_active) SetActive(true);
+        ActivateForRequest();
         return ValueTask.CompletedTask;
     }
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+    // As on Windows, where ShowWindow with SW_MAXIMIZE or SW_RESTORE activates the window.
+    public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default)
+    {
+        ActivateForRequest();
+        return ValueTask.CompletedTask;
+    }
+
+    private volatile bool _fullScreen;
+
+    // As on Windows: entering full screen does not activate the window; leaving it restores its placement with
+    // SW_SHOWNORMAL or SW_SHOWMAXIMIZED, which does.
+    public ValueTask SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default)
+    {
+        var leaving = _fullScreen && !fullScreen;
+        _fullScreen = fullScreen;
+        if (leaving) ActivateForRequest();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
