@@ -102,6 +102,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         }
         try
         {
+            if (OperatingSystem.IsWindowsVersionAtLeast(8)) await HoldPropertyStoreAsync().ConfigureAwait(false);
             await thread.InvokeAsync(handle =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -148,6 +149,39 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
 
     [System.Runtime.Versioning.SupportedOSPlatformGuard("windows6.1")]
     private static bool IsNativeWindows() => OperatingSystem.IsWindowsVersionAtLeast(6, 1);
+
+    // The dialog's navigation bar (explorerframe!CNavBar) creates an accessibility property service when the dialog
+    // opens and releases it when the dialog closes. Each of these oleacc objects shares one process-wide store
+    // (CPropMgrImpl), which the first creates and the last frees, and neither the store's creation nor its reference
+    // count is synchronized (oleacc!CPropMgr::CPropMgr). Two dialogs on two threads, such as two unowned ones (#834),
+    // could therefore lose a reference: closing the first dialog freed the store the second still used, and closing the
+    // second crashed the process in its DestroyWindow with 0xC000041D (STATUS_FATAL_USER_CALLBACK_EXCEPTION) in
+    // ntdll!RtlpWaitOnCriticalSection, entering the freed store's critical section from oleacc!CPropMgr::ClearHwndProps
+    // (#845). The application's thread, whose apartment lasts as long as the process, holds one service from before the
+    // first dialog: the store is created once and never freed, and a dialog only adds and removes a reference to it, a
+    // single unlocked increment or decrement.
+    private static readonly Lock PropertyStoreLock = new();
+    private static Task? s_propertyStore;
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+    private static async ValueTask HoldPropertyStoreAsync()
+    {
+        Task hold;
+        lock (PropertyStoreLock)
+            hold = s_propertyStore ??= WindowsApplicationThread.Shared.InvokeAsync(static _ => HoldPropertyStore()).AsTask();
+        // Without the service a dialog still works.
+        try { await hold.ConfigureAwait(false); }
+        catch (Exception) { }
+    }
+
+    private static unsafe void HoldPropertyStore()
+    {
+        if (!IsNativeWindows()) return;
+        Guid clsid = new("B5F8350B-0548-48B1-A6EE-88BD00B4A5E7"), iid = new("00000000-0000-0000-C000-000000000046");
+        void* store = null;
+        // Never released: the process ends with it.
+        _ = PInvoke.CoCreateInstance(&clsid, null, CLSCTX.CLSCTX_INPROC_SERVER, &iid, &store);
+    }
 
     private static unsafe nint Create(bool save)
     {
