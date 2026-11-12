@@ -22,6 +22,7 @@ try {
   archive = resolve(archive ?? await pack("@runic-artifex/angular"));
   const manifest = JSON.parse((await execute("tar", ["-xOf", archive, "package/package.json"])).stdout);
   assert.equal(manifest.name, "@runic-artifex/angular");
+  assert.deepEqual(Object.keys(manifest.exports), [".", "./forms", "./experimental", "./package.json"]);
   // The adapter peers on the Views runtime of the same release, packed next to it.
   assert.equal(manifest.peerDependencies["@runic-artifex/views"], manifest.version);
   const views = process.argv[2]
@@ -60,11 +61,14 @@ try {
   await writeFile(join(root, "src/main.ts"), `import { Component, input, provideZonelessChangeDetection, type InputSignal } from "@angular/core";
 import { bootstrapApplication } from "@angular/platform-browser";
 import { injectBridgeConnection, injectCommand, RunicViewOutlet, ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
+import { RunicHostedRegion, type HostedRegionStateChange } from "@runic-artifex/angular/experimental";
 type Page = { readonly kind: "counter"; connect(): Promise<unknown> };
 @Component({ selector: "counter-page", standalone: true, template: "{{ page().kind }}" })
 class CounterPage { readonly page: InputSignal<Page> = input.required<Page>(); }
-@Component({ selector: "consumer-root", standalone: true, imports: [ViewOutlet],
+@Component({ selector: "consumer-root", standalone: true, imports: [ViewOutlet, RunicHostedRegion],
   template: '<runic-view-outlet [content]="current" [registry]="registry" [missing]="missingView" />' +
+    '<runic-hosted-region #check="runicHostedRegion" name="check" sizing="content-height" (stateChange)="changed($event)">' +
+    '<p>{{ check.state() }}</p></runic-hosted-region>' +
     '<ng-template #missingView let-page><p role="alert">{{ page.kind }}</p></ng-template>' +
     '@if (connection.state() === "lost") { <p role="alert">lost</p> }' })
 class ConsumerRoot {
@@ -72,6 +76,7 @@ class ConsumerRoot {
   readonly registry = { counter: CounterPage } satisfies ViewRegistry<Page>;
   readonly refresh = injectCommand(async (count: number) => count + 1);
   readonly connection = injectBridgeConnection();
+  changed(change: HostedRegionStateChange): void { void change.state; }
 }
 // The deprecated alias is the same class, so an AOT build resolves it as the outlet component (#643).
 @Component({ selector: "legacy-outlet", standalone: true, imports: [RunicViewOutlet],
