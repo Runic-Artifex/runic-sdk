@@ -4,7 +4,7 @@ import {
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
   upload as uploadBlob, type BlobRef, type UploadOptions,
-  pageInstance, type RunicInstance,
+  defaultInstance, type RunicInstance,
 } from "@runic-artifex/views";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -30,8 +30,9 @@ function attempt<A, E>(run: () => PromiseLike<A>, map: (cause: unknown) => E | u
 }
 
 /**
- * The Runic instance that the Effects and streams of this package connect and read through: the page instance
- * (`pageInstance()` from `@runic-artifex/views`) unless one is provided. A guest that runs inside another page provides
+ * The Runic instance that the Effects and streams of this package connect and read through: the default instance
+ * (`defaultInstance()` from `@runic-artifex/views`, the page instance or in a component bundle its element's) unless
+ * one is provided. A guest that runs inside another page provides
  * its own:
  *
  * ```ts
@@ -40,7 +41,7 @@ function attempt<A, E>(run: () => PromiseLike<A>, map: (cause: unknown) => E | u
  * ```
  */
 export const CurrentRunicInstance: Context.Reference<RunicInstance> =
-  Context.Reference<RunicInstance>("@runic-artifex/views-effect/CurrentRunicInstance", { defaultValue: () => pageInstance() });
+  Context.Reference<RunicInstance>("@runic-artifex/views-effect/CurrentRunicInstance", { defaultValue: () => defaultInstance() });
 
 const viewFailure = (cause: unknown): ViewError | undefined => {
   const failure = bridgeFailure(cause);
