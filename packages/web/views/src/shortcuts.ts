@@ -1,6 +1,8 @@
 // Keyboard shortcuts for the page, with the rule of Runic.Platform's DesktopShortcut: "Primary" is Command on Apple
 // platforms and Ctrl elsewhere, so one shortcut such as "Primary+S" means Save on every platform. The shared cases
 // are in specs/desktop/fixtures/shortcuts.json.
+import type { RunicTextKey } from "./runic-text.js";
+import { runicText } from "./translated-text.js";
 
 /** A modifier of a shortcut. `Control` is the Control key on Apple platforms and the same Ctrl as `Primary` elsewhere. */
 export type ShortcutModifier = "Primary" | "Control" | "Alt" | "Shift";
@@ -114,26 +116,40 @@ export function matchesShortcut(event: ShortcutEvent, shortcut: string | Shortcu
     && keyMatches(parsed.key, event);
 }
 
+// Apple platforms show symbols, except for the space key.
 const appleKeys: Record<string, string> = {
-  Enter: "↩", Escape: "⎋", Tab: "⇥", Space: "Space", Backspace: "⌫", Delete: "⌦", ArrowUp: "↑", ArrowDown: "↓",
+  Enter: "↩", Escape: "⎋", Tab: "⇥", Backspace: "⌫", Delete: "⌦", ArrowUp: "↑", ArrowDown: "↓",
   ArrowLeft: "←", ArrowRight: "→", Home: "↖", End: "↘", PageUp: "⇞", PageDown: "⇟", Plus: "+",
 };
-const otherKeys: Record<string, string> = {
-  Escape: "Esc", Delete: "Del", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
-  PageUp: "Page Up", PageDown: "Page Down", Plus: "+",
+// The other platforms name the keys, in the window's language (runic-views `shortcut.*`).
+const keyNames: Record<string, RunicTextKey> = {
+  Enter: "shortcut.enter", Escape: "shortcut.escape", Tab: "shortcut.tab", Space: "shortcut.space",
+  Backspace: "shortcut.backspace", Delete: "shortcut.delete", ArrowUp: "shortcut.up", ArrowDown: "shortcut.down",
+  ArrowLeft: "shortcut.left", ArrowRight: "shortcut.right", Home: "shortcut.home", End: "shortcut.end",
+  PageUp: "shortcut.page_up", PageDown: "shortcut.page_down",
 };
 
-/** The shortcut as the platform shows it, such as `⇧⌘S` on Apple platforms and `Ctrl+Shift+S` elsewhere; `""` for invalid text. */
+function keyName(key: string): string | undefined {
+  const name = Object.hasOwn(keyNames, key) ? keyNames[key] : undefined;
+  return name === undefined ? undefined : runicText(name);
+}
+
+/**
+ * The shortcut as the platform shows it, such as `⇧⌘S` on Apple platforms and `Ctrl+Shift+S` elsewhere; `""` for
+ * invalid text. Key and modifier names, such as `Ctrl` and `Page Up`, are in the window's language when the page has
+ * Runic's text (`configureRunicText`); letters, digits and symbols are shown as they are.
+ */
 export function formatShortcut(shortcut: string | Shortcut, options: ShortcutOptions = {}): string {
   const parsed = typeof shortcut === "string" ? parseShortcut(shortcut) : shortcut;
   if (!parsed) return "";
   const has = (modifier: ShortcutModifier) => parsed.modifiers.has(modifier);
   if (options.apple ?? isApplePlatform()) {
     return (has("Control") ? "⌃" : "") + (has("Alt") ? "⌥" : "") + (has("Shift") ? "⇧" : "") + (has("Primary") ? "⌘" : "")
-      + (appleKeys[parsed.key] ?? parsed.key);
+      + (appleKeys[parsed.key] ?? (parsed.key === "Space" ? keyName("Space") : undefined) ?? parsed.key);
   }
-  return (has("Primary") || has("Control") ? "Ctrl+" : "") + (has("Alt") ? "Alt+" : "") + (has("Shift") ? "Shift+" : "")
-    + (otherKeys[parsed.key] ?? parsed.key);
+  return (has("Primary") || has("Control") ? runicText("platform.control_key") + "+" : "")
+    + (has("Alt") ? runicText("platform.alt_key") + "+" : "") + (has("Shift") ? runicText("platform.shift_key") + "+" : "")
+    + (parsed.key === "Plus" ? "+" : keyName(parsed.key) ?? parsed.key);
 }
 
 /** The shortcut as `parseShortcut` reads it, in canonical order: `Primary+Control+Alt+Shift+Key`. */

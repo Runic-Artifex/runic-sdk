@@ -842,7 +842,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 webView = WebView.NewWithProperties(
                     [new GObject.ConstructArgument("web-context", contextValue)]);
             }
-            window.Title = "Runic Desktop";
+            // The title until the page has one, as on Windows: window lists and screen readers name the window by it.
+            window.Title = Runic.Platform.DesktopPlatformTexts.Current.LoadingTitle;
             var width = options.Width;
             var height = options.Height;
             var x11 = Gtk4X11Placement.IsActive;
@@ -1377,7 +1378,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     }
 
     // The window takes the page's <title>, as on GTK 3, WebView2 and in a browser: window lists and screen readers
-    // name the window by it. "Runic Desktop" stays until the page has a title.
+    // name the window by it. DesktopPlatformTexts.LoadingTitle ("Loading…") stays until the page has a title.
     private static unsafe partial class TitleSignal
     {
         internal static void Connect(Gtk4WindowHost host, WebView webView)

@@ -127,8 +127,8 @@ public sealed record DesktopPlatformTexts
     public string ResourceUnavailableMessage { get; init; } = "The requested resource is not available.";
 
     /// <summary>
-    /// Gets the title of a Windows window while WebView2 is still starting, until the page has a title; it is also the
-    /// loading surface's accessible name, which a screen reader reads. <c>Loading…</c>.
+    /// Gets the title of a window until the page has a title: on Windows while WebView2 is still starting, where it is
+    /// also the loading surface's accessible name, which a screen reader reads, and on Linux with GTK 4. <c>Loading…</c>.
     /// </summary>
     public string LoadingTitle { get; init; } = "Loading…";
 
