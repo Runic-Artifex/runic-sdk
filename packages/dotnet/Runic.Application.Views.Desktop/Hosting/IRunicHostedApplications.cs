@@ -64,13 +64,29 @@ public interface IRunicHostedApplications
     /// Raised when a region of one of the host's pages starts to show a guest's window (<c>region/1</c>,
     /// <see cref="RunicHostedRegion.Attached"/>), on a thread-pool thread, in order with the window events.
     /// </summary>
-    event EventHandler<RunicHostedRegionEventArgs>? RegionAttached;
+    /// <remarks>
+    /// Runic's implementation (<see cref="RunicDesktopHost.HostedApplications"/>) raises it. The interface's default
+    /// implementation, which a test double of an earlier release keeps, never raises it.
+    /// </remarks>
+    event EventHandler<RunicHostedRegionEventArgs>? RegionAttached
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Raised when a region no longer shows a guest's window, with the reason (<see cref="RunicHostedRegion.Detached"/>),
     /// on a thread-pool thread, in order with the window events.
     /// </summary>
-    event EventHandler<RunicHostedRegionEventArgs>? RegionDetached;
+    /// <remarks>
+    /// Runic's implementation (<see cref="RunicDesktopHost.HostedApplications"/>) raises it. The interface's default
+    /// implementation, which a test double of an earlier release keeps, never raises it.
+    /// </remarks>
+    event EventHandler<RunicHostedRegionEventArgs>? RegionDetached
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>Starts a guest application in hosted mode and completes the handshake with it.</summary>
     /// <param name="startInfo">The guest's executable and the arguments that select its hosted mode.</param>
