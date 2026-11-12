@@ -131,7 +131,7 @@ internal static partial class RegionSmoke
         using var route = window.AttachRegionFrame(new RegionFrameRoute(launch.Url, DesktopPermissionGrant.MediaCapture,
             drop => routed.Writer.TryWrite(drop), hostPage => Console.WriteLine($"REGION crashed (host page: {hostPage}).")))
             ?? throw new InvalidOperationException($"The {hostName} window routes no region frames.");
-        await surface.ExecuteJavaScriptAsync($"document.getElementById('region').src = {JsonSerializer.Serialize(launch.Url.AbsoluteUri)}; return '';");
+        await surface.ExecuteJavaScriptAsync($"document.getElementById('region').src = {System.Text.Json.Nodes.JsonValue.Create(launch.Url.AbsoluteUri).ToJsonString()}; return '';");
 
         var ready = (await GuestMessageAsync(surface, "ready"))!.Value;
         Require(ready.GetProperty("origin").GetString() == guestOrigin, $"the frame loaded {ready}, not the guest's page of {guestOrigin}");
@@ -258,7 +258,7 @@ internal static partial class RegionSmoke
         do
         {
             var json = await surface.ExecuteJavaScriptAsync(
-                $"const found = window.__guest.find(m => m && m.kind === {JsonSerializer.Serialize(kind)}); " +
+                $"const found = window.__guest.find(m => m && m.kind === {System.Text.Json.Nodes.JsonValue.Create(kind).ToJsonString()}); " +
                 (clear ? $"if (found) window.__guest = window.__guest.filter(m => m !== found); " : "") +
                 "return found ? JSON.stringify(found) : '';", StepTimeout);
             if (json.Length > 0)

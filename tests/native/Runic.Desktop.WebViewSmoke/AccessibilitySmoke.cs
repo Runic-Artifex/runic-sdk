@@ -153,7 +153,7 @@ internal static class AccessibilitySmoke
             var launch = await guest.BeginFrameLaunchAsync(Runic.Desktop.Internal.RegionFrames.Origin(surface.Url), allowSameSite: true,
                 measuresHeight: false, CancellationToken.None);
             await surface.ExecuteJavaScriptAsync(
-                $"document.getElementById('region').src = {System.Text.Json.JsonSerializer.Serialize(launch.Url.AbsoluteUri)}; return '';");
+                $"document.getElementById('region').src = {System.Text.Json.Nodes.JsonValue.Create(launch.Url.AbsoluteUri).ToJsonString()}; return '';");
             Console.WriteLine($"ACCESSIBILITY region frame from {Runic.Desktop.Internal.RegionFrames.Origin(launch.Url)}{(launch.SameSite ? " (same-site)" : "")}.");
         }
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
