@@ -543,7 +543,10 @@ fn names_frame_ancestors(headers: &HeaderMap) -> bool {
     headers.get_all(header::CONTENT_SECURITY_POLICY).iter().any(|value| {
         value.to_str().is_ok_and(|policy| {
             policy.split(';').any(|directive| {
-                directive.split_ascii_whitespace().next().is_some_and(|name| name.eq_ignore_ascii_case("frame-ancestors"))
+                directive
+                    .split_ascii_whitespace()
+                    .next()
+                    .is_some_and(|name| name.eq_ignore_ascii_case("frame-ancestors"))
             })
         })
     })
