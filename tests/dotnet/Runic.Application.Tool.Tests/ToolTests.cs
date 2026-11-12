@@ -948,6 +948,34 @@ internal sealed partial class ToolTests
         False(old.Checks.Any(check => check.Name == "dotnet-runtime"), "doctor checks the runtime only for a usable SDK.");
     }
 
+    // D059.17: the .NET 11 SDK's dotnet CLI dies on SIGTERM without forwarding it to dotnet runic, so dev stops when
+    // the dotnet process that started it is gone, which shows as a changed parent process ID.
+    [Test, DisplayName("dev stops when the dotnet command that started it exits")]
+    public async Task DevStopsWhenItsLauncherExits()
+    {
+        True(LauncherWatch.IsDotNetHost("dotnet") && LauncherWatch.IsDotNetHost("DOTNET"), "The dotnet host starts dotnet runic.");
+        False(LauncherWatch.IsDotNetHost("bash") || LauncherWatch.IsDotNetHost(null), "A shell that starts the tool is not watched.");
+
+        var time = new FakeTimeProvider();
+        int parent = 4242;
+        int exits = 0;
+        Task watch = LauncherWatch.WatchAsync(() => parent, 4242, LauncherWatch.PollInterval, () => exits++, time, CancellationToken.None);
+        time.Advance(LauncherWatch.PollInterval * 4);
+        False(watch.IsCompleted, "The watch continues while the launcher runs.");
+        Equal(0, exits);
+        parent = 1; // Reparented to init once the launcher exited.
+        time.Advance(LauncherWatch.PollInterval);
+        await watch.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
+        Equal(1, exits);
+
+        // dev's own stop ends the watch without a call.
+        using var stop = new CancellationTokenSource();
+        Task stopped = LauncherWatch.WatchAsync(() => 4242, 4242, LauncherWatch.PollInterval, () => exits++, time, stop.Token);
+        stop.Cancel();
+        await stopped.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
+        Equal(1, exits);
+    }
+
     [Test, DisplayName("dev reports a missing application runtime before it starts the application")]
     public void DevFindsMissingApplicationRuntime()
     {

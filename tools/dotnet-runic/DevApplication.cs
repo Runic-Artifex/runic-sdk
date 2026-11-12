@@ -48,6 +48,12 @@ internal static class DevApplication
         using var quit = PosixSignalRegistration.Create(PosixSignal.SIGQUIT, stopHandler);
         using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, stopHandler);
         using var hangUp = PosixSignalRegistration.Create(PosixSignal.SIGHUP, stopHandler);
+        // The .NET 11 SDK's dotnet CLI does not forward SIGTERM to dotnet runic, so its exit stops dev too.
+        Task launcher = LauncherWatch.Start(() =>
+        {
+            Console.Error.WriteLine("[dev] The dotnet command that started dev exited; stopping the application.");
+            stop.Cancel();
+        }, stop.Token);
         try
         {
             if (!options.Restore && configuration.NodeEnabled)
@@ -95,6 +101,8 @@ internal static class DevApplication
         finally
         {
             stop.Cancel();
+            // The watch ends on the cancellation, so stop is not used after it is disposed.
+            await launcher.ConfigureAwait(false);
         }
     }
 

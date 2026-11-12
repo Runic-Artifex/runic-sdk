@@ -58,7 +58,11 @@ application: the Window gets SIGTERM on Linux and macOS, or Ctrl+C on Windows,
 and up to 5 seconds to close its windows and finish its work before `dev` kills
 it. A restart after a C# or frontend compiler edit gets the same grace;
 `dev` sets `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS=5000` for `dotnet watch`
-unless you set it yourself.
+unless you set it yourself. On Linux and macOS, `dev` also stops when the
+`dotnet` command that started it exits (0.18): the .NET 11 SDK's `dotnet runic`
+dies on SIGTERM without passing it to the tool, so an IDE or script that sends
+SIGTERM to `dotnet runic dev` would otherwise leave the development server,
+`dotnet watch` and the application running.
 
 `dev` picks a free loopback port for the development server, and on a shared
 machine another process could take that port first. Since 0.11, `dev` passes
