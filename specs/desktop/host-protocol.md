@@ -1113,7 +1113,12 @@ The guest never takes the keyboard focus from the host page:
   the region already. Otherwise the focus stays where the user has it, also when the host window was inactive and
   becomes active.
 - **On attach.** The host decides whether its page moves the focus into a newly attached region, such as for a wizard
-  step that consists of the region. Such focus is programmatic, not the user's.
+  step that consists of the region. Such focus is programmatic, not the user's, and moves only when the host page holds
+  no focus, as for `present`: a focus that stays on the host's own button that started the step stays there.
+- **Who decides.** The host page knows whether it holds the focus. In
+  [`hosted-regions/1`](../application/README.md#hosted-regions) the host asks its page to focus the region, the page does
+  so only while it holds no focus, and reports the focus as the script's; the host pushes `region-focus` `programmatic`
+  only after that report, within a second of its request.
 - **The guest's script.** A guest page can call `focus()` in its frame without the user's activation, and engines may
   let that move the keyboard focus out of the host page. The host page reports how the focus entered its region
   ([`hosted-regions/1`](../application/README.md#hosted-regions)), and focus that entered without a Tab or a click

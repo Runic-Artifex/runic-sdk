@@ -224,8 +224,9 @@ files the host opened for the guest, in order (a link's absolute URI, a file's p
 ## Region scenarios
 
 The scenarios of [`region/1`](../host-protocol.md#regions-region1) are in `scenarios/region/`, with `requires:
-["region/1"]`. The guest role's are in the corpus; the host role's come with the host's implementation, which also adds
-the host runner's steps below and their schema.
+["region/1"]`. The host role's are named `region.host-*`. A host scenario's `arrange.host.embed` names the region in which
+the host's policy shows each window of the guest that can show in a region and has no owner, and `embedOptions` its
+`focusOnAttach` and `reattachOnReload`.
 
 | Scenario | Roles | Checks |
 | --- | --- | --- |
@@ -237,16 +238,25 @@ the host runner's steps below and their schema.
 | `region.detach-revokes` | guest | After `region-detach`, the window's code and token are refused, `activity` of the Window reports `visible: false`, and a new `region-attach` answers a new code |
 | `region.reattach-replaces` | guest | A `region-attach` for an attached window revokes the earlier code |
 | `region.set-title` | guest | The Window's page title changes are sent as `set-title`; a `capacity` rejection is followed by the latest title |
-| `region.presentation-mapping` | guest, host | Each presentation request of a region window gets its reply from [presentation in a region](../host-protocol.md#presentation-in-a-region): `minimize`, `set-visible`, `set-full-screen`, `set-color-scheme` `unavailable` with `backend-unavailable` without being sent, `toggle-maximized`, `move`, `set-represented-file` `unavailable` with `embedded` |
-| `region.window-mode-title` | host | `set-title` for a window shown in a window is `rejected` with `invalid-request` |
-| `region.set-title-rate` | host | The 11th `set-title` within a second after a burst of 10 is `rejected` with `capacity` |
-| `region.bounds-coalesced` | host | Several size changes of the region within one frame reach the guest as one `region-bounds` with the latest size |
-| `region.activity` | host | `activity` follows the region: `visible` with the region shown, `active` with the focus in it, `minimized` with the host window |
-| `region.present-keeps-host-focus` | host | `present` while the host page has a focused element answers `success` and leaves the focus; with no focused element it pushes `region-focus` `programmatic` |
-| `region.menus-embedded` | host | `set-menu-bar` and `update-menu-items` are answered `unavailable` with `embedded` |
-| `region.dialog-owned-by-host-window` | host | A region window's dialog is owned by its host window; with the window detached it is `unavailable` with `owner-unavailable` |
-| `region.services-guest-focus` | host | Clipboard reads are refused while the focus entered the region by `present` or script, and allowed after the user's Tab into it |
-| `region.page-revoked` | host | `region-page` `revoked` makes the host detach the window |
+| `region.presentation-mapping` | guest | Each presentation request of a region window gets its reply from [presentation in a region](../host-protocol.md#presentation-in-a-region): `minimize`, `set-visible`, `set-full-screen`, `set-color-scheme` `unavailable` with `backend-unavailable` without being sent, `toggle-maximized`, `move`, `set-represented-file` `unavailable` with `embedded` |
+| `region.host-lifecycle` | host | A region window opens without a page, attaches when a page declares its region, detaches with `removed` or `reload` and attaches again by name with a new code; its close empties the region |
+| `region.host-presentation-mapping` | host | The host's replies of [presentation in a region](../host-protocol.md#presentation-in-a-region), `resize` while the region's height follows the page included |
+| `region.host-content-height` | host | With `sizing: "content-height"`, the region takes the height of the guest's `resize` |
+| `region.host-window-mode-title` | host | `set-title` for a window shown in a window is `rejected` with `invalid-request` |
+| `region.host-set-title-rate` | host | `set-title` names the region's frame; the 11th within a second after a burst of 10 is `rejected` with `capacity` |
+| `region.host-bounds-coalesced` | host | Several size changes of the region within one frame reach the guest as one `region-bounds` with the latest size |
+| `region.host-activity` | host | `activity` follows the region: `visible` with the region shown and in view, `active` with the host window active and the focus in the region; Tab and Shift+Tab into it push `region-focus` |
+| `region.host-present-keeps-host-focus` | host | `present` while the host page has a focused element answers `success` and leaves the focus; with no focused element it pushes `region-focus` `programmatic` |
+| `region.host-menus-embedded` | host | `set-menu-bar` and `update-menu-items` are answered `unavailable` with `embedded`; context menus show while the focus is in the region |
+| `region.host-dialog-owned-by-host-window` | host | A region window's dialog is owned by its host window; while no region shows it, it is `unavailable` with `owner-unavailable` |
+| `region.host-services-guest-focus` | host | Clipboard reads are refused while the focus entered the region by `present` or script, also after a click into a frame that had it, and allowed after the user's Tab into it |
+| `region.host-page-revoked` | host | `region-page` `revoked` makes the host detach the window and attach it again with a new code |
+| `region.host-region-ambiguous` | host | A name-only embed fails the open with `region-ambiguous` while two host windows declare the region |
+| `region.host-attach-refused` | host | A refused or failed `region-attach` leaves the window open and detached, and the page shows its fallback |
+| `region.host-departure` | host | A departure the host decides asks the guest with `close-request` first |
+| `region.host-host-window-closes` | host | The host window's close detaches the region window and closes it with a forced `close-request` |
+| `region.host-move` | host | The host moves a region window to another host window's region, and detaches it |
+| `region.host-embed-options` | host | Focus on attach, and no re-attach on reload |
 
 New steps and actions the runners need:
 
@@ -260,8 +270,14 @@ New steps and actions the runners need:
   | `launch` | `GET` of the frame launch address, without following the redirect or sending a cookie. A `303` must redirect to the frame surface with `#runic-frame=<token>`, which binds `frame-token`, and carry `Content-Security-Policy: frame-ancestors <embedder>`, `Referrer-Policy: no-referrer` and no `X-Frame-Options` or `Set-Cookie` |
   | `bootstrap` | `GET` of the frame surface's `webui.js`, which must carry no session credential |
   | `upgrade` | The Bridge WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner sends the Bridge's token check, so the guest counts the page, and keeps the connection until the scenario ends |
-- **The host's user (host runner).** Actions `declareRegion` (`window`: the host window, `name`, `sizing`),
-  `removeRegion`, `resizeRegion` (`width`, `height`, `scale`), `focusRegion` (`source`: `tab`, `shift-tab`, `pointer`
-  or `script`) and `focusHost`, which play the host page's
-  [`hosted-regions/1`](../../application/README.md#hosted-regions) reports; and `expect` with `region`: its state, its
-  title and whether it holds the focus.
+- **The host's user and the host application (host runner).** Actions that play the host page's
+  [`hosted-regions/1`](../../application/README.md#hosted-regions) reports, with `window` naming a host window, which the
+  runner opens with the page's first region: `declareRegion` (`name`, `sizing`), `removeRegion` (`name`, and `reason`
+  `reload` for a page that reloads), `resizeRegion` (`name`, `width`, `height`, `scale`, optional `visible`),
+  `focusRegion` (`name`, `source`: `tab`, `shift-tab`, `pointer` or `script`) and `focusHost` (`focused: false` for a page
+  that holds no focus). The page moves the focus into a region at the host's request only while it holds none, and then
+  reports it as the script's. Actions of the host application, with `window` naming the guest's window:
+  `departRegion` (the region's departure guard), `detachRegion` and `moveRegion` (`to`: a host window, `name`). `expect`
+  with `window` and `region` checks the region's `state`, `title`, `focused` and `documentEdited`; with `window` (a host
+  window) and `page` what the host shows in the page's region `name` (`shows`, `src`, `title`, `allow`, `height`); with
+  `dialogOwner` the host window that owns the latest dialogs; with `departure` whether the oldest departure went ahead.

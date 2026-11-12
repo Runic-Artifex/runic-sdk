@@ -1784,8 +1784,10 @@ Pushes (producer → the connection that declared the region):
   guest page's access. It gives the page no reference to the frame, so a later embedding can replace it. A
   `hosted-region-content` with an `embedding` the client does not know removes the region's content and shows its
   fallback, and the client reports the region as unsupported.
-- **Focus.** On `hosted-region-focus`, the client focuses the frame (`iframe.focus()`); the guest's page then focuses
-  its own element. The client moves the focus at no other time.
+- **Focus.** On `hosted-region-focus`, the client focuses the frame (`iframe.focus()`) only while the page holds no
+  focus: its `document.activeElement` is none, its body or the region; otherwise it does nothing, and the focus stays where
+  the user has it. When it moved the focus, its next `hosted-region-state` reports it with `focusSource: "script"`, and the
+  producer tells the guest's page to focus its own element. The client moves the focus at no other time.
 
 A connection that does not use the feature never receives these pushes; its requests of these kinds are `rejected`
 with `invalid-request`. A guest's own page does not use the feature.
