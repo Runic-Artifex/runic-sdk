@@ -12,7 +12,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, content and region collections, query collections, presentations, presented states and window close, operations, interactions, view requests, versions |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, content and region collections, query collections, presentations, presented states and window close, operations, interactions, view requests, hosted regions, versions |
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
@@ -247,6 +247,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `navigation-path/1` | The window's Back, and its route path kept in the page's URL: [navigation paths](#navigation-paths) | 0.16 |
 | `appearance/1` | The desktop's appearance preferences that a page's engine may not expose, such as the text scale, the accent colour and the forced-colours palette: [appearance](#appearance) | 0.17 |
 | `client-languages/1` | The page reports its browser's preferred languages in `hello`: [client languages](#client-languages) | 0.17 |
+| `hosted-regions/1` | The page declares regions where the host shows a guest application's Window, and reports their size, visibility and focus: [hosted regions](#hosted-regions) | 0.18 |
 
 ### Request sessions
 
@@ -1722,6 +1723,73 @@ A client registers its handlers with `view-requests` after the presentation's `o
 uses the feature, and again with a higher `generation` whenever they change while the presentation is open. After a
 reconnect, it registers them again once the new `open` succeeded.
 
+## Hosted regions
+
+With the feature `hosted-regions/1`, a host page declares **hosted regions**, places in its own document where the host
+application can show a guest application's Window ([regions](../desktop/host-protocol.md#regions-region1) of the Runic
+host protocol), and reports each region's size, visibility and focus to its own producer. The producer tells the page
+what to show in each. The page never talks to the guest: the guest's page loads in the region's frame and connects to
+the guest's own backend. Runic's client is the `<runic-hosted-region>` element of `@runic-artifex/views`.
+
+```json
+{"kind":"hosted-region-declare","name":"check","sizing":"fill"}
+{"ok":true}
+{"kind":"hosted-region-content","name":"check","embedding":"frame","src":"http://[::1]:40117/_runic_frame/Xk2bT9…","title":"System check","allow":""}
+{"kind":"hosted-region-state","name":"check","width":800,"height":520,"scale":1.5,"x":0,"y":96,"visible":true,"focused":true,"focusSource":"tab"}
+{"ok":true}
+```
+
+Requests (page → producer), each answered `{"ok":true}` without other members:
+
+| `kind` | Members |
+| --- | --- |
+| `hosted-region-declare` | `name`; `sizing`: `"fill"` (the default) or `"content-height"` |
+| `hosted-region-remove` | `name` |
+| `hosted-region-state` | `name`; `width`, `height`: the region's size in CSS pixels, numbers from 0 to 32,767; `scale`: the page's device pixel ratio, a number from 0.25 to 8; `x`, `y`: the region's offset in the page's viewport in CSS pixels, numbers from −32,768 to 32,767; `visible`, `focused`: booleans; `focusSource`: `"tab"`, `"shift-tab"`, `"pointer"`, `"script"`, or `null` while the region does not hold the focus |
+
+Pushes (producer → the connection that declared the region):
+
+| `kind` | Members | The page |
+| --- | --- | --- |
+| `hosted-region-content` | `name`; `embedding`: `"frame"`; `src`: the frame launch address; `title`: the guest's title or `null`; `allow`: the frame's permissions policy, at most 1,024 characters | Shows a new frame with that `src`, replacing the region's content |
+| `hosted-region-update` | `name`; optional `title`: a string or `null`; optional `height`: the region's height in CSS pixels, an integer from 0 to 32,767 | Applies the members it carries: the frame's accessible name, and with `sizing: "content-height"` the region's height |
+| `hosted-region-empty` | `name`; `reason`: `"waiting"` (no Window shows in the region yet), `"detached"` (its Window is detached and may come back) or `"ended"` (its Window closed or its guest went away) | Removes the frame and shows the region's fallback content |
+| `hosted-region-focus` | `name` | Moves the keyboard focus into the region, as the host decided ([focus in a region](../desktop/host-protocol.md#focus-in-a-region)) |
+
+- **Names.** `name` is 1 to 64 ASCII letters, digits, dots, underscores or hyphens. A connection declares a name once
+  until it removes it, and at most 64 regions at once (`rejected` with `capacity`); a second declaration of a name the
+  connection declared, a `hosted-region-remove` or `hosted-region-state` of a name it did not declare, or a member out
+  of range, is `rejected` with `invalid-request`. A name names one region of the window: when another connection of
+  the window declares a name that a connection declared, the latest declaration wins, and the earlier one's region is
+  emptied with `detached`.
+- **Producer.** The producer keeps each connection's regions and passes them to the host application (in .NET,
+  `RunicHostedRegion`), which decides what each shows. When the connection closes, its regions are removed, as a page
+  reload or a crash removes them; the producer cannot tell those apart. `x` and `y` stay with the host: they place
+  the host's context menus for the guest, and the host never sends them to a guest.
+- **Reports.** A page sends `hosted-region-state` after its declaration and then for each change, coalesced to at most
+  one per animation frame: of its size (a `ResizeObserver`), its visibility (an `IntersectionObserver`, and whether the
+  element is hidden), its device pixel ratio (`matchMedia` of the current resolution, which also changes with zoom),
+  its place and its focus (`focusin` and `focusout`).
+- **`focusSource`.** How the focus entered the region: `"tab"` or `"shift-tab"` when the page's last input before it
+  was the Tab key without or with Shift, which moved the focus out of the page's document into the frame; `"pointer"`
+  when the page has transient user activation (`navigator.userActivation.isActive`) and saw no `pointerdown` or
+  `keydown` event of its own in the last 5 seconds, as after a click inside the frame, since user activation reaches
+  the ancestor documents; `"script"` in every other case, also where the page cannot tell. A click in the page and
+  then, within 5 seconds, into the frame is reported as `"script"`: a false refusal, never a false grant. Focus that a
+  `hosted-region-focus` of the producer moved is `"script"` as well. The host counts only `tab`, `shift-tab` and
+  `pointer` as the user's ([features in a region](../desktop/host-protocol.md#features-in-a-region)).
+- **The frame.** A client shows `src` in an `<iframe>` with `sandbox="allow-scripts allow-same-origin allow-forms"`, the
+  `allow` attribute exactly as pushed, `referrerpolicy="no-referrer"`, and `title` from the push unless the page names
+  the region itself. It loads each `src` once: a frame launch address is one-time, and loading it again revokes the
+  guest page's access. It gives the page no reference to the frame, so a later embedding can replace it. A
+  `hosted-region-content` with an `embedding` the client does not know removes the region's content and shows its
+  fallback, and the client reports the region as unsupported.
+- **Focus.** On `hosted-region-focus`, the client focuses the frame (`iframe.focus()`); the guest's page then focuses
+  its own element. The client moves the focus at no other time.
+
+A connection that does not use the feature never receives these pushes; its requests of these kinds are `rejected`
+with `invalid-request`. A guest's own page does not use the feature.
+
 ## Window turns
 
 The producer serializes the work of one window: the part of a request that changes state, the publication of changes
@@ -1769,6 +1837,9 @@ Requests:
 | `closing-reply` (`presented/1`) | none | none |
 | `flush-reply` (`field-flush/1`) | `id` | none |
 | `client-error` (`client-errors/1`) | `source`, `message`, `name?`, `stack?`, `url?`, `route?`, `dropped?` | none |
+| `hosted-region-declare` (`hosted-regions/1`) | `name`, `sizing?` | none |
+| `hosted-region-remove` (`hosted-regions/1`) | `name` | none |
+| `hosted-region-state` (`hosted-regions/1`) | `name`, `width`, `height`, `scale`, `x`, `y`, `visible`, `focused`, `focusSource` | none |
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and
@@ -1790,6 +1861,7 @@ Pushes:
 | `flush` (`field-flush/1`) | `id` | each connection that uses `field-flush/1`, before a departure is decided ([field flush](#field-flush)) |
 | `locale` (`translation-text/1`) | `locale` | each connection that uses `translation-text/1`, after its `hello` and on each change |
 | `appearance` (`appearance/1`) | `colorScheme`, `contrast`, `reducedMotion`, `textScale`, `accentColor`, `systemColors` | each connection that uses `appearance/1`, after its `hello` and on each change |
+| `hosted-region-content`, `hosted-region-update`, `hosted-region-empty`, `hosted-region-focus` (`hosted-regions/1`) | `name` and the members of [hosted regions](#hosted-regions) | the connection that declared the region |
 
 ## Blobs and uploads
 
@@ -1876,4 +1948,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`. |
