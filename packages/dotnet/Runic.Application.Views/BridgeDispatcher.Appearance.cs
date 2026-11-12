@@ -46,11 +46,14 @@ internal sealed partial class BridgeDispatcher
     }
 
     // Whether the hello lists appearance/1. TryReadFeatures already checked the array's shape.
-    private static bool ListsAppearance(JsonElement root)
+    private static bool ListsAppearance(JsonElement root) => ListsFeature(root, AppearanceFeature);
+
+    // Whether the hello lists a feature. TryReadFeatures already checked the array's shape.
+    private static bool ListsFeature(JsonElement root, string name)
     {
         if (!root.TryGetProperty("features", out var features) || features.ValueKind != JsonValueKind.Array) return false;
         foreach (var feature in features.EnumerateArray())
-            if (feature.ValueKind == JsonValueKind.String && feature.ValueEquals(AppearanceFeature)) return true;
+            if (feature.ValueKind == JsonValueKind.String && feature.ValueEquals(name)) return true;
         return false;
     }
 

@@ -20,6 +20,7 @@ import { appearanceFeature, receiveAppearancePush } from "./appearance-push.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { clientLanguages, clientLanguagesFeature } from "./client-languages.js";
+import { hostedRegionsFeature } from "./hosted-region-wire.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitDrafts } from "./field-controller.js";
@@ -76,7 +77,7 @@ function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void>
 export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature,
+  translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature, hostedRegionsFeature,
 ];
 
 /** A push handler, registered per push kind and route. */

@@ -1,6 +1,7 @@
 // Reading the messages of Views protocol 4 (specs/application/README.md, "Message catalogue"). The runtime parses
 // each reply and push once here; members a message does not need are ignored, so producers may add members.
 import { BridgeError, decodeFailureDetail, type BridgeErrorKind, type BridgeErrorReason } from "./errors.js";
+import { hostedRegionPushKinds, invalidHostedRegionPush, type HostedRegionPush } from "./hosted-region-wire.js";
 
 export type Message = Readonly<Record<string, unknown>>;
 
@@ -79,7 +80,9 @@ export type Push =
   | Message & { readonly kind: "appearance"; readonly route?: undefined }
   /** navigation-path/1: the window's route path changed; a window push. */
   | Message & { readonly kind: "navigation-path"; readonly route?: undefined; readonly path: string | null;
-    readonly operation: "push" | "back" | "replace" };
+    readonly operation: "push" | "back" | "replace" }
+  /** hosted-regions/1: what a region of the page shows; a window push for the connection that declared the region. */
+  | HostedRegionPush;
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -228,7 +231,7 @@ function invalidChanges(changes: unknown): string | undefined {
 }
 
 const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing",
-  "view-request", "flush", "locale", "navigation-path", "appearance"]);
+  "view-request", "flush", "locale", "navigation-path", "appearance", ...hostedRegionPushKinds]);
 
 // A locale tag the producer may push: letters, digits and '-', starting with a letter, at most 64 characters.
 const localeTag = /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/;
@@ -260,6 +263,11 @@ export function readPush(text: unknown): PushReading {
   }
   // appearance/1: about the window; a member of the wrong type or value is read as null, so every push applies.
   if (kind === "appearance") return { result: "valid", push: { ...push, route: undefined } as Push };
+  // hosted-regions/1: about a region of the page, which names no route.
+  if ((hostedRegionPushKinds as readonly string[]).includes(kind)) {
+    const reason = invalidHostedRegionPush(push);
+    return reason === undefined ? { result: "valid", push: { ...push, route: undefined } as Push } : { result: "invalid", kind, reason };
+  }
   if (kind === "flush") return isString(push["id"]) ? { result: "valid", push: push as Push } : invalid("The flush push has no id.");
   if (kind === "locale") {
     const locale = push["locale"];

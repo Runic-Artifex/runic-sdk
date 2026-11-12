@@ -761,3 +761,18 @@ The package re-exports `installBackNavigation`, `installNavigationPath`,
 starts, before or after mounting: the mouse's Back button and Alt+Left then go
 back in the .NET window, and `#/customers/42` follows its path region. See
 [Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#back-and-the-url).
+
+## Hosted regions (experimental)
+
+`RunicHostedRegion` from `@runic-artifex/svelte/experimental` renders
+`<runic-hosted-region>`, a region where the host application shows a hosted guest's
+Window ([hosted regions](../views/README.md#hosted-regions-experimental)). Its `fallback` snippet takes the region's state and
+shows while no guest page shows in it:
+
+```svelte
+<RunicHostedRegion name="check" style="height: 420px" onstatechange={onState}>
+  {#snippet fallback(state)}
+    {#if state === "ended"}<RunAgain />{:else}<p>Starting the check…</p>{/if}
+  {/snippet}
+</RunicHostedRegion>
+```
