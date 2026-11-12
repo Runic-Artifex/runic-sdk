@@ -1,8 +1,9 @@
 import { getContext, setContext } from "svelte";
-import { pageInstance, type RunicInstance } from "@runic-artifex/views";
+import { defaultInstance, type RunicInstance } from "@runic-artifex/views";
 
 // The Runic instance of a component subtree (`createRunicInstance` in @runic-artifex/views). Without one set it is the
-// page instance, on `globalThis.__runicBridge`, as before instances existed.
+// default instance: the page instance, on `globalThis.__runicBridge`, as before instances existed, or in a component
+// bundle its element's.
 const instanceKey = Symbol("runic.svelte.instance");
 
 /**
@@ -24,12 +25,13 @@ export function setRunicInstance(instance: RunicInstance): RunicInstance {
 }
 
 /**
- * The Runic instance of the calling component: the one the nearest `setRunicInstance` set, or the page instance. Outside
- * component initialization, where Svelte has no context, it is the page instance.
+ * The Runic instance of the calling component: the one the nearest `setRunicInstance` set, or the default instance
+ * (`defaultInstance()`: the page instance, or in a component bundle its element's). Outside component initialization,
+ * where Svelte has no context, it is the default instance.
  */
 export function getRunicInstance(): RunicInstance {
   let instance: RunicInstance | undefined;
   try { instance = getContext<RunicInstance | undefined>(instanceKey); }
   catch { instance = undefined; }
-  return instance ?? pageInstance();
+  return instance ?? defaultInstance();
 }

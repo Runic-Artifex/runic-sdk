@@ -1806,3 +1806,41 @@ starts keeps the instance. Code after an `await` inside `fn` does not, so call
 The page's history (`installNavigationPath`, `installBackNavigation`) and its
 uncaught errors (`installErrorReporting`) stay with the page instance. See
 [Runic instances](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#runic-instances).
+
+### Components
+
+`@runic-artifex/views/component` is the runtime of trusted component mode: a
+guest's Views as a custom element in a host page's own document. The `component`
+build target of `@runic-artifex/vite-plugin-runic` builds it; the guest writes the
+mount function:
+
+```ts
+// src/component.tsx
+import { createRoot } from "react-dom/client";
+import { RunicInstanceProvider } from "@runic-artifex/react";
+import type { RunicComponentMount } from "@runic-artifex/views/component";
+
+const mount: RunicComponentMount = ({ container, instance }) => {
+  const root = createRoot(container);
+  root.render(<RunicInstanceProvider instance={instance}><App /></RunicInstanceProvider>);
+  return () => root.unmount();
+};
+export default mount;
+```
+
+Each element has an open shadow root with the bundle's CSS as constructable
+stylesheets, and its own instance on the Bridge it is connected with
+(`element.connect({ bridge })`). The element mounts while it is in the document and
+disposes its instance when it is removed. Its `lang` and `dir` follow its
+instance's text locale. A component bundle carries its own copy of this package,
+whose `defaultInstance()` is the instance of its one connected element: code
+outside a provider and outside `run`, such as `resolveText` in an event handler or
+a generated client's `upload`, uses that element's instance, never the host page's.
+With several elements of one bundle on a page, such code has no instance and a
+connect call rejects as `unavailable`; call it inside `instance.run` or under the
+provider. A component calls none of the document-level installers
+(`installNavigationPath`, `installBackNavigation`, `installErrorReporting`), uses
+`createMenuBarController` with `keyboard: false`, and shows no title of its own.
+Connecting with a component token (`{ url, token }`) is not available yet:
+`connectComponentBridge` throws until the component attach of `region-component/1`
+ships.

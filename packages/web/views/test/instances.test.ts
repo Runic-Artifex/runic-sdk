@@ -4,13 +4,19 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
   appearance, commitAllFields, configureTranslatedText, createFieldController, createRunicInstance, createViewController,
-  currentInstance, onBridgeConnection, onBridgeDiagnostic, pageInstance, resolveText, textLocale, windowLocale,
+  currentInstance, defaultInstance, onBridgeConnection, onBridgeDiagnostic, pageInstance, resolveText, textLocale, windowLocale,
   type BridgeConnectionState, type BridgeDiagnostic, type RunicBridgeClient, type RunicInstance, type TextReference,
   type TextTranslations,
 } from "../dist/index.js";
 import { connectView } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, type MockBridge, type MockView } from "../dist/mock.js";
+// Internal (stripped from the declarations): what a component bundle (component.ts) sets as its copy's default instance.
+const { detachedSlots, setDefaultSlots, slotsOf } = await import("../dist/scope.js") as unknown as {
+  detachedSlots(): object;
+  setDefaultSlots(resolve: (() => object) | undefined): void;
+  slotsOf(instance: RunicInstance): object;
+};
 
 type Host = typeof globalThis & { __runicBridge?: RunicBridgeClient };
 const host = globalThis as Host;
@@ -237,4 +243,28 @@ test("a disposed instance releases its Views and refuses new ones; the other kee
 test("createRunicInstance needs a Bridge", () => {
   assert.throws(() => createRunicInstance({} as never), TypeError);
   assert.throws(() => createRunicInstance({ bridge: { request() {} } } as never), TypeError);
+});
+
+test("a component bundle's default instance replaces the page instance outside run, and the page is still reachable", async () => {
+  const a = guest(4);
+  host.__runicBridge = createMockBridge();
+  setDefaultSlots(() => slotsOf(a.instance));
+  disposals.push(() => setDefaultSlots(undefined));
+  assert.equal(defaultInstance(), a.instance);
+  assert.equal(currentInstance(), a.instance);
+  assert.equal(pageInstance().run(() => currentInstance()), pageInstance());
+  assert.equal(pageInstance().run(() => a.instance.run(() => currentInstance())), a.instance);
+  // A connect call outside run goes to the default instance, not to the page's __runicBridge.
+  const client = await connectCounter();
+  disposals.push(() => client.dispose());
+  assert.equal(client.snapshot.count, 4);
+  assert.equal((host.__runicBridge as MockBridge).calls.length, 0);
+
+  // Without exactly one element, a component bundle's default instance has no Bridge and is disposed.
+  setDefaultSlots(() => detachedSlots());
+  assert.equal(defaultInstance().page, false);
+  assert.equal(defaultInstance().bridge, undefined);
+  await assert.rejects(connectCounter(), { name: "BridgeError", kind: "unavailable" });
+  setDefaultSlots(undefined);
+  assert.equal(defaultInstance(), pageInstance());
 });

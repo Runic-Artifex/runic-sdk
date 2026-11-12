@@ -8,7 +8,9 @@
 // Code that runs later (a push, a timer, a reply) uses the slots of the object it belongs to: a runtime, a route, a
 // controller or a subscription captures them when it is created. `RunicInstance.run` makes an instance the current one
 // while a function runs synchronously, so a connect call, a controller or a text function called inside it, including
-// one of a generated client, belongs to that instance. Outside `run` the current instance is the page instance.
+// one of a generated client, belongs to that instance. Outside `run` the current instance is the default instance: the
+// page instance, except in a component bundle (component.ts), whose copy of this package defaults to the instance of
+// its one connected component element instead.
 import type { RunicBridgeClient } from "./transport.js";
 
 /** The slots of one Runic instance, which hold its page-wide state: `globalThis` for the page instance. Not part of the public API. */
@@ -24,9 +26,25 @@ function page(): Slots {
   return globalThis as unknown as Slots;
 }
 
-/** @internal The slots of the current instance: those of the innermost `run`, or the page's. */
+// What this copy of the package uses outside `run`: the page's slots, unless a component bundle set a resolver
+// (component.ts). It is a module variable, not a shared key: each component bundles a copy of its own.
+let defaultResolver: (() => Slots) | undefined;
+
+function defaultSlots(): Slots {
+  return defaultResolver?.() ?? page();
+}
+
+/**
+ * @internal Makes `resolve` the source of this copy's default instance, used outside `run` and outside a binding's
+ * provider. Only a component bundle sets it.
+ */
+export function setDefaultSlots(resolve: (() => Slots) | undefined): void {
+  defaultResolver = resolve;
+}
+
+/** @internal The slots of the current instance: those of the innermost `run`, or the default instance's. */
 export function currentSlots(): Slots {
-  return (page()[currentKey] as Slots | undefined) ?? page();
+  return (page()[currentKey] as Slots | undefined) ?? defaultSlots();
 }
 
 /** @internal Whether `slots` belong to the page instance. */
@@ -38,7 +56,8 @@ export function isPageSlots(slots: Slots): boolean {
 export function runInSlots<T>(slots: Slots, run: () => T): T {
   const host = page();
   const previous = host[currentKey];
-  host[currentKey] = slots === host ? undefined : slots;
+  // The page's own slots too, so that `pageInstance().run` in a component bundle reaches the page.
+  host[currentKey] = slots;
   try { return run(); }
   finally { host[currentKey] = previous; }
 }
@@ -98,6 +117,16 @@ export function onInstanceDisposed(slots: Slots, dispose: () => void): () => voi
   return () => { set.delete(dispose); };
 }
 
+/**
+ * @internal Slots of an instance that has no Bridge and is already disposed: the default instance of a component
+ * bundle without exactly one connected element. A connect call in it rejects as `unavailable`.
+ */
+export function detachedSlots(): Slots {
+  const slots: Slots = Object.create(null) as Slots;
+  slots[disposedKey] = true;
+  return slots;
+}
+
 /** @internal Whether the instance with `slots` was disposed. */
 export function isDisposedSlots(slots: Slots): boolean {
   return slots[disposedKey] === true;
@@ -151,7 +180,18 @@ export function pageInstance(): RunicInstance {
   return pageInstanceObject ??= instanceFor(page());
 }
 
-/** The current instance: that of the innermost {@link RunicInstance.run}, or the page instance. */
+/**
+ * The instance that code uses outside {@link RunicInstance.run} and outside a framework binding's instance provider.
+ * On a page it is the page instance. In a component bundle (`@runic-artifex/views/component`), which carries its own
+ * copy of this package, it is the instance of the bundle's connected component element while exactly one is connected,
+ * and otherwise an instance without a Bridge, never the host page's.
+ */
+export function defaultInstance(): RunicInstance {
+  const slots = defaultSlots();
+  return isPageSlots(slots) ? pageInstance() : instanceFor(slots);
+}
+
+/** The current instance: that of the innermost {@link RunicInstance.run}, or the {@link defaultInstance}. */
 export function currentInstance(): RunicInstance {
   const slots = currentSlots();
   return isPageSlots(slots) ? pageInstance() : instanceFor(slots);

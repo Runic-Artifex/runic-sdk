@@ -63,6 +63,9 @@ internal sealed record DoctorProjectConfiguration(
     /// </summary>
     internal string DesktopServer { get; init; } = string.Empty;
 
+    /// <summary>The RollForward property, which the build writes to runtimeconfig.json; empty for the default (Minor).</summary>
+    internal string RollForward { get; init; } = string.Empty;
+
     /// <summary>False when StripSymbols is explicitly false; Native AOT then needs no objcopy.</summary>
     internal bool StripSymbols { get; init; } = true;
 
@@ -137,6 +140,7 @@ internal sealed record DoctorProjectConfiguration(
             PublishAot = IsTrue(Value("PublishAot")),
             SelfContained = IsTrue(Value("SelfContained")),
             DesktopServer = Value("RunicDesktopServer"),
+            RollForward = Value("RollForward"),
             StripSymbols = !Value("StripSymbols").Equals("false", StringComparison.OrdinalIgnoreCase),
             UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
             DirectReferences = references,
@@ -208,7 +212,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,_RunicApplicationHostAdapter,ApplicationId",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,RollForward,_RunicApplicationHostAdapter,ApplicationId",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));
