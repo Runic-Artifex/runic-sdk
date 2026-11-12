@@ -47,6 +47,8 @@ internal sealed record DevProjectConfiguration(
         "_RunicApplicationFrontendCompilerHotReloadTarget",
         "ProjectAssetsFile",
         "TargetDir",
+        // The runtimeconfig.json of the build, whose frameworks dev checks before it starts the application.
+        "ProjectRuntimeConfigFilePath",
         // The hosts whose build files the project imports, such as "desktop;cswebui", and the one it chose.
         "_RunicApplicationHostNames",
         "RunicApplicationHost",
@@ -61,6 +63,9 @@ internal sealed record DevProjectConfiguration(
     internal bool? UsesRunicVitePlugin { get; init; }
 
     internal string ProjectAssetsFile { get; init; } = string.Empty;
+
+    /// <summary>The build's runtimeconfig.json; empty when MSBuild did not evaluate ProjectRuntimeConfigFilePath.</summary>
+    internal string RuntimeConfigPath { get; init; } = string.Empty;
 
     internal string FrontendCompilerWatchPattern { get; init; } = string.Empty;
 
@@ -198,6 +203,7 @@ internal sealed record DevProjectConfiguration(
         {
             IsViewsWindowProject = viewsWindow,
             ProjectAssetsFile = NormalizeOptional(Value("ProjectAssetsFile"), evaluatedDirectory),
+            RuntimeConfigPath = NormalizeOptional(Value("ProjectRuntimeConfigFilePath"), evaluatedDirectory),
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
