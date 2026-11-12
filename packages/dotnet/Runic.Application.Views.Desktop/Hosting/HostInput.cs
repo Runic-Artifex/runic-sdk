@@ -57,50 +57,101 @@ internal sealed class HostInput
     }
 }
 
-// Hosted mode refuses a guest that runs with more rights than the host chose (host-protocol.md, Same user; Security
-// requirements 8). The check fails closed: a guest that cannot show that its parent runs as its own user refuses.
+// What hosted mode knows about this process's privileges and its parent's (host-protocol.md, Same user, Elevated
+// host). Elevated: root on Linux and macOS (an effective uid 0), an elevated token on Windows. SameUser: the parent runs
+// as this process's user, as GuestPrivileges shows it; false when that cannot be shown. ParentElevated: that same,
+// verified parent runs elevated; false when it cannot be shown or SameUser is false.
+internal readonly record struct GuestPrivilegeFacts(bool Elevated, bool SameUser, bool ParentElevated)
+{
+    // A standard user's process started by its own user: the in-process runners' guest.
+    internal static GuestPrivilegeFacts StandardUser => new(Elevated: false, SameUser: true, ParentElevated: false);
+}
+
+// Whether hosted mode may start with these privileges: the refusal code and its message, or no code and, for an
+// elevated pair, the decision for the log (event 2025).
+internal readonly record struct GuestPrivilegeDecision(string? Code, string? Message);
+
+// Hosted mode refuses a guest that runs with more rights than the host chose (host-protocol.md, Same user, Elevated
+// host; Security requirements 8). The checks fail closed: a guest that cannot show that its parent runs as its own
+// user, or, when both sides allow an elevated pair, that its parent runs elevated, refuses. Nothing the host sends is
+// evidence: the offer's elevatedGuest is the host's opt-in, and the guest checks its parent's token or uids itself.
 internal static class GuestPrivileges
 {
-    internal static string? Check()
+    internal const string OtherUserMessage = "The application runs as another user than the process that started it, so it cannot be hosted.";
+
+    internal static GuestPrivilegeFacts Read()
     {
         // Root on Linux and macOS, an elevated token on Windows.
-        if (Environment.IsPrivilegedProcess) return "guest-elevated";
-        return SameUser() ? null : "guest-other-user";
+        var elevated = Environment.IsPrivilegedProcess;
+        var parent = Parent();
+        return new GuestPrivilegeFacts(elevated, parent.SameUser, parent.SameUser && parent.Elevated);
+    }
+
+    // Every combination outside the one pair both sides opted into keeps its refusal: an elevated guest without its
+    // own opt-in, or whose host's offer does not allow it, refuses with guest-elevated as before.
+    internal static GuestPrivilegeDecision Decide(GuestPrivilegeFacts facts, bool guestAllowsElevatedHost, bool hostAllowsElevatedGuest)
+    {
+        if (!facts.Elevated) return facts.SameUser ? default : new("guest-other-user", OtherUserMessage);
+        if (!guestAllowsElevatedHost)
+            return new("guest-elevated", "The application runs elevated, so it cannot be hosted; it does not allow an elevated host (RunicGuestOptions.AllowElevatedHost).");
+        if (!hostAllowsElevatedGuest)
+            return new("guest-elevated", "The application runs elevated, so it cannot be hosted; the host's offer does not allow an elevated guest (RunicGuestStartInfo.AllowElevatedGuest).");
+        if (!facts.SameUser) return new("guest-other-user", OtherUserMessage);
+        if (!facts.ParentElevated)
+            return new("guest-elevated-host-not-elevated",
+                "The application runs elevated and allows an elevated host, but the process that started it does not run elevated, so it cannot be hosted.");
+        return new(null, "The application runs elevated, as does the process that started it, as the same user; both allow an elevated pair, so it is hosted elevated.");
     }
 
     // Whether this process and its parent run as the same user, on this system; false when that cannot be shown.
-    internal static bool SameUser()
+    internal static bool SameUser() => Parent().SameUser;
+
+    // This process's parent: whether it runs as the same user and whether it runs elevated, from one read of it.
+    private static ParentFacts Parent()
     {
-        if (OperatingSystem.IsLinux()) return SameUserOnLinux(ReadLines);
-        if (OperatingSystem.IsMacOS()) return SameUserOnMacOS();
-        if (OperatingSystem.IsWindows()) return WindowsProcesses.SameUser();
-        return false;
+        if (OperatingSystem.IsLinux()) return ParentOnLinux(ReadLines);
+        if (OperatingSystem.IsMacOS()) return ParentOnMacOS();
+        if (OperatingSystem.IsWindows()) return WindowsProcesses.Parent();
+        return default;
     }
 
-    // A process as the Windows check sees it: when it was created (FILETIME) and the user SID of its token (TokenUser).
-    internal readonly record struct WindowsProcessIdentity(long CreationTime, byte[] UserSid);
+    // The parent as one read of it showed it. Elevated is meaningful only with SameUser.
+    internal readonly record struct ParentFacts(bool SameUser, bool Elevated);
+
+    // A process as the Windows check sees it: when it was created (FILETIME), the user SID of its token (TokenUser) and
+    // whether the token is elevated (TokenElevation, or a TokenIntegrityLevel of High or above).
+    internal readonly record struct WindowsProcessIdentity(long CreationTime, byte[] UserSid, bool Elevated = false);
 
     // Windows: the user SIDs of this process's token and its parent's must be equal. The parent is the process that
     // created this one (InheritedFromUniqueProcessId), held open while it is read; one created after this process is
     // another process that reused the gone parent's id. A parent that is gone, or whose token cannot be read, as for
     // another user's process, fails.
-    internal static bool SameUserOnWindows(Func<WindowsProcessIdentity?> self, Func<int?> parentId, Func<int, WindowsProcessIdentity?> parent)
+    internal static bool SameUserOnWindows(Func<WindowsProcessIdentity?> self, Func<int?> parentId, Func<int, WindowsProcessIdentity?> parent) =>
+        ParentOnWindows(self, parentId, parent).SameUser;
+
+    // The same check, and whether that verified parent's token is elevated, as read while the parent was held open.
+    internal static ParentFacts ParentOnWindows(Func<WindowsProcessIdentity?> self, Func<int?> parentId, Func<int, WindowsProcessIdentity?> parent)
     {
-        if (self() is not { } own || parentId() is not { } id || id <= 0 || parent(id) is not { } creator) return false;
-        return creator.CreationTime <= own.CreationTime && own.UserSid.Length > 0 && own.UserSid.AsSpan().SequenceEqual(creator.UserSid);
+        if (self() is not { } own || parentId() is not { } id || id <= 0 || parent(id) is not { } creator) return default;
+        var same = creator.CreationTime <= own.CreationTime && own.UserSid.Length > 0 && own.UserSid.AsSpan().SequenceEqual(creator.UserSid);
+        return new ParentFacts(same, same && creator.Elevated);
     }
 
     // Linux: the real and effective uids of this process and its parent from /proc; all four must be equal. A parent
     // that is gone (PPid 0 or 1) or whose status cannot be read, as under hidepid for another user's process, fails.
-    internal static bool SameUserOnLinux(Func<string, string[]?> read)
+    internal static bool SameUserOnLinux(Func<string, string[]?> read) => ParentOnLinux(read).SameUser;
+
+    // The same check; the parent runs elevated when, from the same read of its status, its effective uid is 0.
+    internal static ParentFacts ParentOnLinux(Func<string, string[]?> read)
     {
         if (read("/proc/self/status") is not { } self || Field(self, "PPid:", 0) is not { } parent || parent <= 1 ||
             Field(self, "Uid:", 0) is not { } real || Field(self, "Uid:", 1) is not { } effective)
-            return false;
+            return default;
         if (read($"/proc/{parent.ToString(CultureInfo.InvariantCulture)}/status") is not { } parentStatus ||
             Field(parentStatus, "Uid:", 0) is not { } parentReal || Field(parentStatus, "Uid:", 1) is not { } parentEffective)
-            return false;
-        return real == effective && parentReal == real && parentEffective == real;
+            return default;
+        var same = real == effective && parentReal == real && parentEffective == real;
+        return new ParentFacts(same, same && parentEffective == 0);
     }
 
     private static string[]? ReadLines(string path)
@@ -124,23 +175,25 @@ internal static class GuestPrivileges
     }
 
     // macOS: this process's real and effective uids, and its parent's from proc_pidinfo(PROC_PIDTBSDINFO); all four must
-    // be equal. A parent that is gone or that proc_pidinfo cannot describe fails.
+    // be equal. A parent that is gone or that proc_pidinfo cannot describe fails. The parent runs elevated when, in the
+    // same description, its effective uid is 0.
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]
-    private static bool SameUserOnMacOS()
+    private static ParentFacts ParentOnMacOS()
     {
         try
         {
             var parent = MacOS.GetParentProcessId();
-            if (parent <= 1) return false;
+            if (parent <= 1) return default;
             // struct proc_bsdinfo (sys/proc_info.h), 136 bytes: pbi_uid (effective) at 20, pbi_ruid at 28.
             var info = new byte[136];
-            if (MacOS.ProcessInformation(parent, MacOS.ProcessBsdInformation, 0, info, info.Length) < info.Length) return false;
+            if (MacOS.ProcessInformation(parent, MacOS.ProcessBsdInformation, 0, info, info.Length) < info.Length) return default;
             var parentEffective = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(20));
             var parentReal = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(28));
             var real = MacOS.GetUserId();
-            return MacOS.GetEffectiveUserId() == real && parentReal == real && parentEffective == real;
+            var same = MacOS.GetEffectiveUserId() == real && parentReal == real && parentEffective == real;
+            return new ParentFacts(same, same && parentEffective == 0);
         }
-        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return false; }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return default; }
     }
 
     private static class MacOS
@@ -161,20 +214,24 @@ internal static class GuestPrivileges
     }
 }
 
-// The process queries of GuestPrivileges.SameUserOnWindows: NtQueryInformationProcess for the parent's id, OpenProcess
-// with PROCESS_QUERY_LIMITED_INFORMATION, GetProcessTimes and the token's TokenUser. Any failure reads as null.
+// The process queries of GuestPrivileges.ParentOnWindows: NtQueryInformationProcess for the parent's id, OpenProcess
+// with PROCESS_QUERY_LIMITED_INFORMATION, GetProcessTimes and the token's TokenUser, TokenElevation and
+// TokenIntegrityLevel. A failure reads as null, except that a token whose elevation cannot be read reads as not elevated.
 [System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static partial class WindowsProcesses
 {
     private const uint QueryLimitedInformation = 0x1000; // PROCESS_QUERY_LIMITED_INFORMATION
     private const uint TokenQuery = 0x0008;
     private const int TokenUserClass = 1;
+    private const int TokenElevationClass = 20;
+    private const int TokenIntegrityLevelClass = 25;
+    private const uint HighIntegrity = 0x3000; // SECURITY_MANDATORY_HIGH_RID
     private const int ProcessBasicInformationClass = 0;
 
-    internal static bool SameUser()
+    internal static GuestPrivileges.ParentFacts Parent()
     {
-        try { return GuestPrivileges.SameUserOnWindows(Self, ParentId, Parent); }
-        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return false; }
+        try { return GuestPrivileges.ParentOnWindows(Self, ParentId, Parent); }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return default; }
     }
 
     internal static GuestPrivileges.WindowsProcessIdentity? Self() => Identity(GetCurrentProcess());
@@ -188,7 +245,7 @@ internal static partial class WindowsProcesses
         return parent is > 0 and <= int.MaxValue ? (int)parent : null;
     }
 
-    // The parent, held open while its creation time and user are read.
+    // The parent, held open while its creation time, user and elevation are read.
     internal static GuestPrivileges.WindowsProcessIdentity? Parent(int processId)
     {
         var process = OpenProcess(QueryLimitedInformation, false, (uint)processId);
@@ -214,10 +271,26 @@ internal static partial class WindowsProcesses
                 if (sid == 0 || !IsValidSid(sid)) return null;
                 var length = GetLengthSid(sid);
                 if (length is 0 or > 68) return null;
-                return new GuestPrivileges.WindowsProcessIdentity(created, new ReadOnlySpan<byte>((void*)sid, (int)length).ToArray());
+                return new GuestPrivileges.WindowsProcessIdentity(created, new ReadOnlySpan<byte>((void*)sid, (int)length).ToArray(), Elevated(token));
             }
         }
         finally { _ = CloseHandle(token); }
+    }
+
+    // TOKEN_ELEVATION.TokenIsElevated, or a mandatory label of High integrity or above (TOKEN_MANDATORY_LABEL: the last
+    // subauthority of its SID); false when neither can be read.
+    private static unsafe bool Elevated(nint token)
+    {
+        uint elevation = 0;
+        if (GetTokenInformation(token, TokenElevationClass, &elevation, sizeof(uint), out _) && elevation != 0) return true;
+        _ = GetTokenInformation(token, TokenIntegrityLevelClass, null, 0, out var size);
+        if (size is 0 or > 256) return false;
+        var buffer = stackalloc byte[(int)size];
+        if (!GetTokenInformation(token, TokenIntegrityLevelClass, buffer, size, out _)) return false;
+        var sid = *(nint*)buffer;
+        if (sid == 0 || !IsValidSid(sid)) return false;
+        var count = *GetSidSubAuthorityCount(sid);
+        return count > 0 && *GetSidSubAuthority(sid, (uint)(count - 1)) >= HighIntegrity;
     }
 
     [System.Runtime.InteropServices.LibraryImport("kernel32")]
@@ -247,6 +320,12 @@ internal static partial class WindowsProcesses
 
     [System.Runtime.InteropServices.LibraryImport("advapi32")]
     private static partial uint GetLengthSid(nint sid);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32")]
+    private static unsafe partial byte* GetSidSubAuthorityCount(nint sid);
+
+    [System.Runtime.InteropServices.LibraryImport("advapi32")]
+    private static unsafe partial uint* GetSidSubAuthority(nint sid, uint index);
 
     [System.Runtime.InteropServices.LibraryImport("kernel32")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]

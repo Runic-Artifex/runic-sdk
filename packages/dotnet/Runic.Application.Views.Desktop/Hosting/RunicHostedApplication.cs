@@ -102,6 +102,21 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
     internal static async Task<RunicHostedApplication> StartAsync(RunicHostedApplications owner, RunicDesktopHost host,
         RunicGuestStartInfo startInfo, RunicHostedApplicationOptions options, ILogger logger, CancellationToken cancellationToken)
     {
+        if (startInfo.AllowElevatedGuest)
+        {
+            // An elevated guest is never looked up in PATH or relative to the current directory.
+            if (!Path.IsPathFullyQualified(startInfo.FileName))
+                throw new ArgumentException($"The guest '{startInfo.FileName}' must be a fully qualified path when AllowElevatedGuest is set.", nameof(startInfo));
+            if (startInfo.WorkingDirectory is { } directory && !Path.IsPathFullyQualified(directory))
+                throw new ArgumentException($"The working directory '{directory}' must be a fully qualified path when AllowElevatedGuest is set.", nameof(startInfo));
+            if (!options.IsHostElevated())
+            {
+                var refused = new RunicHostedApplicationException("host-not-elevated",
+                    $"'{startInfo.FileName}': AllowElevatedGuest is set, but this process does not run elevated; only an elevated host may allow an elevated guest.");
+                DesktopLog.HostedApplicationStartFailed(logger, startInfo.FileName, refused.Code, refused.Message);
+                throw refused;
+            }
+        }
         GuestProcess process;
         try { process = GuestProcess.Start(startInfo); }
         catch (Exception error) when (error is Win32Exception or IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -115,6 +130,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName)
         {
             _firstWindowUserStarted = startInfo.UserStarted ? 1 : 0,
+            _allowElevatedGuest = startInfo.AllowElevatedGuest,
         };
         try
         {
@@ -147,7 +163,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         {
             // The offer carries the nonce: it is written to the guest's standard input only, never logged.
             var offer = Encoding.UTF8.GetBytes(HostProtocol.Line(HostProtocol.OfferPrefix,
-                HostProtocol.Offer([HostProtocol.Version], HostProtocol.Base64Url(nonce), hostName, hostVersion)));
+                HostProtocol.Offer([HostProtocol.Version], HostProtocol.Base64Url(nonce), hostName, hostVersion, _allowElevatedGuest)));
             await _process.StandardInput.WriteAsync(offer, deadline.Token).ConfigureAwait(false);
             await _process.StandardInput.FlushAsync(deadline.Token).ConfigureAwait(false);
         }
@@ -451,6 +467,10 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
 
     // 1 until the guest's first window opened, when the user started the guest (RunicGuestStartInfo.UserStarted).
     private int _firstWindowUserStarted;
+
+    // Whether the offer allows an elevated guest (RunicGuestStartInfo.AllowElevatedGuest); StartAsync checked that this
+    // process runs elevated.
+    private bool _allowElevatedGuest;
 
     internal void BeginGuestPrompt() => _owner.BeginGuestPrompt();
 
