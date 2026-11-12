@@ -767,3 +767,18 @@ The package re-exports `installBackNavigation`, `installNavigationPath`,
 starts, before or after mounting: the mouse's Back button and Alt+Left then go
 back in the .NET window, and `#/customers/42` follows its path region. See
 [Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#back-and-the-url).
+
+## Hosted regions (experimental)
+
+`RunicHostedRegion` from `@runic-artifex/vue/experimental` renders
+`<runic-hosted-region>`, a region where the host application shows a hosted guest's
+Window ([hosted regions](../views/README.md#hosted-regions-experimental)). Its `fallback` slot, scoped with the region's
+`state`, shows while no guest page shows in it:
+
+```vue
+<RunicHostedRegion name="check" style="height: 420px" @state-change="onState">
+  <template #fallback="{ state }">
+    <RunAgain v-if="state === 'ended'" /><p v-else>Starting the check…</p>
+  </template>
+</RunicHostedRegion>
+```

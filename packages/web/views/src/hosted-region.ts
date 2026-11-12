@@ -58,6 +58,12 @@ export interface HostedRegionTitleChangeDetail {
  * styles the frame.
  */
 export interface RunicHostedRegionElement extends HTMLElement {
+  /** The `name` attribute. */
+  name: string;
+  /** The `sizing` attribute: `fill` unless it is `content-height`. */
+  sizing: HostedRegionSizing;
+  /** The `label` attribute, or `null`. */
+  label: string | null;
   /** What the region shows now. */
   readonly state: HostedRegionState;
   /** The guest page's title as the host passed it on, or `null`. */
@@ -140,7 +146,7 @@ function classifyFocus(watch: InputWatch, programmatic: boolean): FocusSource {
 // The element's side of the client.
 interface Region {
   readonly regionName: string;
-  readonly sizing: HostedRegionSizing;
+  readonly regionSizing: HostedRegionSizing;
   /** The client's state changed: waiting for a connection, declared, or not available. */
   clientState(state: "waiting" | "declared" | "detached" | "unsupported"): void;
   /** A push for the region's name. */
@@ -217,7 +223,7 @@ class HostedRegions {
     this.declared.add(name);
     this.reported.delete(name);
     const connection = this.connection;
-    this.send(name, { kind: "hosted-region-declare", name, sizing: region.sizing }).then(reply => {
+    this.send(name, { kind: "hosted-region-declare", name, sizing: region.regionSizing }).then(reply => {
       if (connection !== this.connection || this.owner(name) !== region) return;
       if (reply === undefined) return;
       if (!reply) { this.declared.delete(name); region.clientState("unsupported"); return; }
@@ -343,18 +349,31 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
       this.#content.className = "content";
       this.#fallback = document.createElement("div");
       this.#fallback.className = "fallback";
-      this.#fallback.part.add("fallback");
+      this.#fallback.setAttribute("part", "fallback");
       this.#shadow.append(style, this.#content, this.#fallback);
-      this.#render();
+      // Attributes only from connectedCallback on: a constructor that document.createElement runs may not add any.
+      this.#renderShadow();
     }
 
     get state(): HostedRegionState { return this.#state; }
     get guestTitle(): string | null { return this.#guestTitle; }
     get focused(): boolean { return this.#focused; }
     get regionName(): string { return this.#registered?.name ?? ""; }
-    get sizing(): HostedRegionSizing { return this.#registered?.sizing ?? "fill"; }
+    get regionSizing(): HostedRegionSizing { return this.#registered?.sizing ?? "fill"; }
+
+    // Reflected attributes, so frameworks that set properties (React 19, Vue, Angular) and ones that set attributes agree.
+    get name(): string { return this.getAttribute("name") ?? ""; }
+    set name(value: string) { this.setAttribute("name", value); }
+    get sizing(): HostedRegionSizing { return this.getAttribute("sizing") === "content-height" ? "content-height" : "fill"; }
+    set sizing(value: HostedRegionSizing) { this.setAttribute("sizing", value); }
+    get label(): string | null { return this.getAttribute("label"); }
+    set label(value: string | null | undefined) {
+      if (value === null || value === undefined) this.removeAttribute("label");
+      else this.setAttribute("label", value);
+    }
 
     connectedCallback(): void {
+      this.#render();
       this.#register();
       if (this.#stops.length > 0) return;
       const watch = inputWatch();
@@ -482,7 +501,7 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
             this.#applyTitle();
             this.dispatchEvent(new CustomEvent("runicregiontitlechange", { detail: { title: this.#guestTitle } }));
           }
-          if (typeof push["height"] === "number" && this.sizing === "content-height") {
+          if (typeof push["height"] === "number" && this.regionSizing === "content-height") {
             this.#height = push["height"];
             this.#applyHeight();
           }
@@ -545,7 +564,7 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
       frame.setAttribute("sandbox", frameSandbox);
       frame.setAttribute("allow", allow);
       frame.setAttribute("referrerpolicy", "no-referrer");
-      frame.part.add("frame");
+      frame.setAttribute("part", "frame");
       frame.addEventListener("load", () => {
         if (this.#frame === frame && this.#state === "loading") this.#setState("attached");
       });
@@ -575,7 +594,7 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
 
     #applyHeight(): void {
       if (!this.#frame) return;
-      this.#frame.style.height = this.sizing === "content-height" && this.#height !== undefined ? `${this.#height}px` : "";
+      this.#frame.style.height = this.regionSizing === "content-height" && this.#height !== undefined ? `${this.#height}px` : "";
     }
 
     #setState(state: HostedRegionState): void {
@@ -588,6 +607,10 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
 
     #render(): void {
       this.setAttribute("state", this.#state);
+      this.#renderShadow();
+    }
+
+    #renderShadow(): void {
       this.#content.classList.toggle("loading", this.#state === "loading");
       this.#fallback.classList.toggle("over", this.#state === "loading");
       if (this.#state === "attached") { this.#fallback.replaceChildren(); return; }

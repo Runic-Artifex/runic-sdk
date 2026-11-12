@@ -862,3 +862,19 @@ The package re-exports `installBackNavigation`, `installNavigationPath`,
 starts, before or after mounting: the mouse's Back button and Alt+Left then go
 back in the .NET window, and `#/customers/42` follows its path region. See
 [Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#back-and-the-url).
+
+## Hosted regions (experimental)
+
+`RunicHostedRegion` from `@runic-artifex/angular/experimental` is the component whose
+element is `<runic-hosted-region>` itself, a region where the host application shows
+a hosted guest's Window ([hosted regions](../views/README.md#hosted-regions-experimental)). Projected content shows while no
+guest page shows in it, and `state()` tells which state the region is in:
+
+```html
+<runic-hosted-region #check="runicHostedRegion" name="check" style="height: 420px" (stateChange)="onState($event)">
+  @if (check.state() === "ended") { <button (click)="runAgain()">Run the check again</button> }
+  @else { <p>Starting the check…</p> }
+</runic-hosted-region>
+```
+
+Add `RunicHostedRegion` to the component's `imports`.

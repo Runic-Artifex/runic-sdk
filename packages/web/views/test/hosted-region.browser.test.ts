@@ -150,6 +150,19 @@ test("Chromium: the region declares itself, reports its size and place, and show
       return [region.shadowRoot, region.querySelector("iframe"), Object.keys(region).length];
     }), [null, null, 0]);
 
+    // Created by script, as frameworks create it, with its attributes set as properties.
+    assert.deepEqual(await tab.evaluate(() => {
+      const created = document.createElement("runic-hosted-region");
+      const before = created.getAttribute("state");
+      created.name = "other";
+      created.sizing = "content-height";
+      created.label = "Other";
+      document.body.append(created);
+      const after = [created.getAttribute("name"), created.getAttribute("sizing"), created.getAttribute("label"), created.getAttribute("state")];
+      created.remove();
+      return [before, ...after];
+    }), [null, "other", "content-height", "Other", "waiting"]);
+
     // Scrolling moves the region in the viewport: a new report with its place.
     await tab.evaluate(() => scrollTo(0, 50));
     await report(tab, value => value["y"] === (first["y"] as number) - 50, "The scroll was not reported");
