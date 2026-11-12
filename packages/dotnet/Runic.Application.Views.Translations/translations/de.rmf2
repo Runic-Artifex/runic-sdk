@@ -102,3 +102,36 @@ menu {
   zoom = Zoomen
   bring_all_to_front = Alle nach vorne bringen
 }
+bridge {
+  unavailable = Diese Seite läuft nicht in einem Runic-Host und kann die Anwendung daher nicht erreichen.
+  timeout = Die Anwendung hat nicht rechtzeitig geantwortet.
+  disconnected = Die Verbindung zur Anwendung wurde unterbrochen. Sie wird automatisch wiederhergestellt.
+  released = Diese Ansicht wurde geschlossen oder ersetzt.
+  cancelled = Die Anfrage wurde abgebrochen.
+  rejected = Die Anwendung hat die Anfrage abgelehnt.
+  failed = Die Anfrage ist fehlgeschlagen.
+  action_unavailable = Diese Aktion ist gerade nicht verfügbar.
+  busy = Die Anwendung ist ausgelastet. Versuchen Sie es gleich noch einmal.
+  invalid_input = Die Eingabe ist ungültig.
+  item_not_found = Das Element ist nicht mehr vorhanden.
+  protocol_mismatch = Diese Seite und die Anwendung verwenden unterschiedliche Runic-Versionen. Erstellen Sie das Frontend neu.
+  state_withheld = Die Änderung wurde ausgeführt, kann auf der Seite aber noch nicht angezeigt werden.
+  outcome_unknown = Es ist nicht bekannt, ob der Vorgang abgeschlossen wurde. Prüfen Sie das Ergebnis, bevor Sie es erneut versuchen.
+  value_not_saved = Der Wert wurde nicht gespeichert.
+}
+shortcut {
+  enter = Eingabe
+  escape = Esc
+  tab = Tab
+  space = Leertaste
+  backspace = Rücktaste
+  delete = Entf
+  up = Nach-oben
+  down = Nach-unten
+  left = Nach-links
+  right = Nach-rechts
+  home = Pos1
+  end = Ende
+  page_up = Bild-auf
+  page_down = Bild-ab
+}

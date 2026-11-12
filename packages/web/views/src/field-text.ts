@@ -495,14 +495,13 @@ function hasOffset(value: unknown): value is string {
 export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextParser<TValue> {
   const { kind, nullable, integer, choices, scale } = traits;
   const empty = (text: string) => text.trim().length === 0;
-  // An integer `number` field reports `whole-number` but keeps its English "Enter a number.".
-  const required = (expected: FieldErrorExpected, message?: string): TValue => {
+  const required = (expected: FieldErrorExpected): TValue => {
     if (nullable) return null as TValue;
-    throw invalidText("required", { expected }, message);
+    throw invalidText("required", { expected });
   };
   switch (kind) {
     case "number": return text => {
-      if (empty(text)) return integer ? required("whole-number", "Enter a number.") : required("number");
+      if (empty(text)) return required(integer ? "whole-number" : "number");
       const shown = text.trim();
       const plain = delocalize(text, numberSymbols(traits.locale));
       // `Number` reads hexadecimal and binary forms and `Infinity`; a field reads decimal numbers only.

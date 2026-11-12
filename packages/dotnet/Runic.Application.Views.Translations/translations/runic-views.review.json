@@ -1,0 +1,209 @@
+{
+  "$schema": "runic.translations.interchange-review/2",
+  "catalog": "runic-views",
+  "entries": [
+    {
+      "key": "bridge_action_unavailable",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:9ed0b434f1e41712316ccf0afb4a07dfc500860246071beed39b148abf37dcd2"
+    },
+    {
+      "key": "bridge_busy",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:d10ada886fa17abd1b21e3494c59d9f5de224ad5ce1576895c24da0b25794b56"
+    },
+    {
+      "key": "bridge_cancelled",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:d9f3bb7750221628c49fb110462e931b535ff0c6af1b7bf7de7e34dbabed39b3"
+    },
+    {
+      "key": "bridge_disconnected",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:048562c6e5eb634f04bb57f4aec44620b33746b4e578a1173fce0fba04e0aa58"
+    },
+    {
+      "key": "bridge_failed",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:a57b8be98a89145812ee96af5637a3437ecab74e2289cc0a8dc675571818c973"
+    },
+    {
+      "key": "bridge_invalid_input",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:bc039d5f63e933cb4fd6e346d3cf2d2b5946eea1468dcde72ed935ba19e3c785"
+    },
+    {
+      "key": "bridge_item_not_found",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:354830ab8217f2bbf72f2f066eeb8a2cf3378502ddb8547f8cf9b26b2a5a9df8"
+    },
+    {
+      "key": "bridge_outcome_unknown",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:56f6870abcb93fedf27d4469c2395c1f3ed9c0241a27d078acc319f9672e912d"
+    },
+    {
+      "key": "bridge_protocol_mismatch",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:5f54e91180247287ca0c5a5dfea544efdbf0876545704ac65e7b3922e5ab5fc9"
+    },
+    {
+      "key": "bridge_rejected",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:88e3ab393d4af5ca059f96e8bdc7d302e8bcbb87f00289a76d122d610d964099"
+    },
+    {
+      "key": "bridge_released",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:90589c1f8b57c3a0fc54872fecf23b1e6c3d5afb4be4c927dd15c9cb4e78bbb7"
+    },
+    {
+      "key": "bridge_state_withheld",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:01f4e9f8378f42ba04787b6674d880565fa9929f01a98cd1c7a78c462e640f15"
+    },
+    {
+      "key": "bridge_timeout",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:6f7cdc12b9c34f54f863effc7d49afdf5df85e454572f8aded83d1c4871bf63d"
+    },
+    {
+      "key": "bridge_unavailable",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:40c7a65898f63038e0775bbe778db221a1783456525d791513f62f3db40be23a"
+    },
+    {
+      "key": "bridge_value_not_saved",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:088ac09d64316244887b71a8a9e360b5c28ccf22bda3067085810ba5f18ec7c2"
+    },
+    {
+      "key": "shortcut_backspace",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:06adb0f1d7a7fb9433b41d518e913860079bdc767974b990a9514fe492d26254"
+    },
+    {
+      "key": "shortcut_delete",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:0078a676aa9836c8b59b5dfe53d4b51f7e38f122d208893a0888f43b5f92565a"
+    },
+    {
+      "key": "shortcut_down",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:c7bd85f9aebfe82386323057785e68d3b9172d96d0360a0908087bd9f40bc541"
+    },
+    {
+      "key": "shortcut_end",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:f6a0e3e9da3944683347c42b14a84acd2255ae4f05e162d8bd2ca62ee4245de7"
+    },
+    {
+      "key": "shortcut_enter",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:6135339c02244fba71a8e30a033bc38b8ac1dac89bf1d8dc2df65cbe4e9e595e"
+    },
+    {
+      "key": "shortcut_escape",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:89e9e782e7bcace5bca2b208fcbdc6b89b9d3266e36f3fc14239734fa39a35fa"
+    },
+    {
+      "key": "shortcut_home",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:a69d164d5872100c06d28c587d513b2961eb2b35d0134fbe9749478210a3a340"
+    },
+    {
+      "key": "shortcut_left",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:1e8f75d331a73e150b293e2cd94a304bb3725a760e65250b2dd1f6e11162ac27"
+    },
+    {
+      "key": "shortcut_page_down",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:4a35dc0e9d2f8a58784ab11850d6101a04e8d1cca1a149b537daf6c47c9dc5df"
+    },
+    {
+      "key": "shortcut_page_up",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:5ee10a8864f5e4da36819642950832387bed7828494fe4dd66d51bd0f6c7cd82"
+    },
+    {
+      "key": "shortcut_right",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:64a3fc61299e3aec1a9b2f6dc92a920ff8a1faf5d5c016009e442a30761dc010"
+    },
+    {
+      "key": "shortcut_space",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:31ba595a0eb8ef466eba9f54d058dcc225eac1d399d5337c60fd2197b039ee1e"
+    },
+    {
+      "key": "shortcut_tab",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:7533114d4ab8c23d1294d86863e403f2cc3dfc78537bd4db697984d39b5e8538"
+    },
+    {
+      "key": "shortcut_up",
+      "locale": "de",
+      "state": "translated",
+      "note": "Drafted in sdk#881 S1 for the German review of the 0.18 train (D061.9).",
+      "sourceFingerprint": "sha256:b32416d9f192c10d3ca145ad4c83280fe5bc264c39ba2dbb174a92ae73bacf9e"
+    }
+  ]
+}

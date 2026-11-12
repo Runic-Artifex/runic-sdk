@@ -1,7 +1,7 @@
 {
   "name": "@runic-artifex/views-translations",
   "version": "0.17.1",
-  "description": "Optional English and German text for Runic's own page messages (field errors, validation texts) as a Runic Translations library catalog",
+  "description": "Optional English and German text for Runic's own page messages (field errors, validation texts, error sentences, shortcut labels) as a Runic Translations library catalog",
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.4.4",

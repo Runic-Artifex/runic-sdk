@@ -1,7 +1,8 @@
-// Runic's own page text from the runic-views catalog (English and German): field errors, and the references of
-// Runic.Application.Views.Translations' validation texts. The catalog is imported by a relative path, so an application
+// Runic's own page text from the runic-views catalog (English and German): field errors, the sentences of
+// describeBridgeError and the key names of formatShortcut, and the references of Runic.Application.Views.Translations'
+// validation texts. The catalog is imported by a relative path, so an application
 // whose Vite build uses runicTranslations({ dependencies: "auto" }) gets it regenerated with its overrides and locales.
-import { configureFieldErrorText } from "@runic-artifex/views";
+import { configureFieldErrorText, configureRunicText } from "@runic-artifex/views";
 import { m } from "./dist/translations/runic-views.esm-v5/messages.js";
 import * as transport from "./dist/translations/runic-views.esm-v5/transport.js";
 
@@ -56,12 +57,28 @@ export function runicViewsFieldErrorText(error, locale) {
 }
 
 /**
- * Shows field errors (`FieldState.error`, `describeBridgeError`) with the runic-views text in the window's language, in
- * `instance` or the current Runic instance (the page's by default). Returns a function that removes it. Replaces an
- * earlier `configureFieldErrorText` of that instance; an application with texts of its own calls
- * `runicViewsFieldErrorText` from its hook instead.
+ * The text of a `RunicTextKey`, such as `bridge.failed` or `shortcut.page_up`, in `locale`, as `configureRunicText`
+ * takes it: the catalog's message of that name; `undefined` for a key this version has no message for.
+ */
+export function runicViewsText(key, locale) {
+  if (typeof key !== "string") return undefined;
+  const name = key.replace(".", "_");
+  const message = Object.hasOwn(m, name) ? m[name] : undefined;
+  return typeof message === "function" ? message(locale === undefined ? undefined : { locale }) : undefined;
+}
+
+/**
+ * Shows Runic's page text with the runic-views text in the window's language, in `instance` or the current Runic
+ * instance (the page's by default): field errors (`FieldState.error`, `resolveText`) through `configureFieldErrorText`,
+ * and the sentences of `describeBridgeError` and the key names of `formatShortcut` through `configureRunicText`.
+ * Returns a function that removes both. Replaces an earlier configuration of those hooks in that instance; an
+ * application with texts of its own calls `runicViewsFieldErrorText` and `runicViewsText` from its hooks instead.
  */
 export function configureRunicViewsText(instance) {
-  const configure = () => configureFieldErrorText(runicViewsFieldErrorText);
+  const configure = () => {
+    const stopFieldErrors = configureFieldErrorText(runicViewsFieldErrorText);
+    const stopText = configureRunicText(runicViewsText);
+    return () => { stopText(); stopFieldErrors(); };
+  };
   return instance === undefined ? configure() : instance.run(configure);
 }

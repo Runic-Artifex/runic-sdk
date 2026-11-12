@@ -1,9 +1,11 @@
 # Runic.Application.Views.Translations
 
 Optional English and German text for Runic's own messages: validation messages of
-the built-in DataAnnotations attributes, field errors, Linux dialog titles, the
-suggested "Untitled" file name, shortcut key names, the error pages of a Runic
-Desktop browser window and the standard macOS menus. It is a
+the built-in DataAnnotations attributes, field errors, the page's error sentences
+(`describeBridgeError`) and shortcut labels (`formatShortcut`), Linux dialog
+titles, the suggested "Untitled" file name, shortcut key names, the error pages
+of a Runic Desktop browser window, the title of a window until its page has one,
+and the standard macOS menus. It is a
 [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk)
 library catalog, `runic-views`, so it follows the application's locale and an
 application changes single messages, or adds a language, in its own `runic.json`.
@@ -11,7 +13,7 @@ application changes single messages, or adds a language, in its own `runic.json`
 The core packages keep no Runic Translations dependency: without this package,
 Runic shows its English text and takes yours through the same hooks
 (`RunicValidationOptions.TextFor`, `DesktopPlatformTexts`,
-`DesktopHost.SetStandardMenuTitles`, `configureFieldErrorText`). The page side is
+`DesktopHost.SetStandardMenuTitles`, `configureFieldErrorText`, `configureRunicText`). The page side is
 the npm package
 [`@runic-artifex/views-translations`](../../web/views-translations/README.md),
 built from the same catalog.
@@ -94,7 +96,7 @@ On the page, register the catalog's references and field errors once, in
 ```ts
 import { configureRunicViewsText, runicViewsCatalog } from '@runic-artifex/views-translations';
 
-configureRunicViewsText();   // field errors in the window's language
+configureRunicViewsText();   // field errors, error sentences and shortcut labels in the window's language
 const resolveReference = transport.createReferenceResolver([{ transport, messages: m }, runicViewsCatalog]);
 ```
 
@@ -241,8 +243,14 @@ release notes.
 | `field` | `required.number`, `required.whole_number`, `required.date`, `required.time`, `required.date_time`, `not_a_number`, `not_a_whole_number`, `too_many_fraction_digits`, `out_of_range`, `not_a_boolean`, `not_a_choice`, `not_a_date`, `not_a_date_in`, `not_a_time`, `not_a_time_in`, `not_a_date_time`, `offset_out_of_range`, `no_text_form` | the page's field errors (input `text`, and `scale`; the lists `choices` and `patterns`, joined as alternatives) |
 | `platform` | one per `DesktopPlatformTexts` text, such as `untitled_file_name`, `save_file_title`, `control_key`, `access_denied_title`, `loading_title` | `PlatformTexts`, `FollowPlatformTexts` |
 | `menu` | one per `DesktopStandardMenuTitles` title, such as `about`, `quit`, `edit`, `select_all` (input `app` for `about`, `hide`, `quit`) | `MenuTitles`, the standard macOS menus |
+| `bridge` | `unavailable`, `timeout`, `disconnected`, `released`, `cancelled`, `rejected`, `failed` (by `BridgeError` kind); `action_unavailable`, `busy`, `invalid_input`, `item_not_found`, `protocol_mismatch`, `state_withheld` (by reason); `outcome_unknown`, `value_not_saved` | the page's `describeBridgeError` (since 0.18) |
+| `shortcut` | `enter`, `escape`, `tab`, `space`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`; with `platform.control_key`, `shift_key` and `alt_key` | the page's `formatShortcut` (since 0.18) |
 
-The English text is the English that Runic shows without the package. The
+The English text is the English that Runic shows without the package. The page
+names its texts `bridge.failed`, `shortcut.page_up` and so on (`RunicTextKey`,
+`runicTextKeys` in `@runic-artifex/views`). Tests in both packages fail when a
+message lacks English or German, when the German uses other inputs than the
+English, or when a message is left that Runic no longer shows. The
 generated catalog classes are internal; `RunicViewsTranslations.CatalogId` and
 `CatalogRegistration` are the catalog's public members.
 

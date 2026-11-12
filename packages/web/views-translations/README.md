@@ -1,7 +1,8 @@
 # @runic-artifex/views-translations
 
 Optional English and German text for Runic's own page messages: field errors (a
-number, date or time field that cannot read the user's text) and the validation
+number, date or time field that cannot read the user's text), the sentences of
+`describeBridgeError`, the key names of `formatShortcut`, and the validation
 texts that the NuGet package
 [`Runic.Application.Views.Translations`](../../dotnet/Runic.Application.Views.Translations/README.md)
 gives the built-in DataAnnotations attributes. It is the page side of the
@@ -15,7 +16,7 @@ npm install @runic-artifex/views-translations
 
 It requires the `@runic-artifex/views` of its release.
 
-## Field errors
+## Field errors, error sentences and shortcut labels
 
 Once, in `main.ts`:
 
@@ -28,11 +29,15 @@ configureRunicViewsText();
 `FieldState.error`, `resolveText`, the framework helpers (`useText`, `runicText`)
 and `describeBridgeError` then show field errors in the window's language, such as
 `1e ist keine Zahl.` Errors of other kinds, and reasons a later `@runic-artifex/views`
-adds, keep their English message. An application with field error texts of its
-own calls `runicViewsFieldErrorText` from its hook instead:
+adds, keep their English message. `describeBridgeError` writes its sentences in
+the window's language too (`Die Verbindung zur Anwendung wurde unterbrochen. …`),
+and `formatShortcut` its key names (`Strg+Umschalt+Bild-ab`). An application with
+texts of its own calls `runicViewsFieldErrorText` and `runicViewsText` from its
+hooks instead:
 
 ```ts
 configureFieldErrorText((error, locale) => appFieldErrorText(error, locale) ?? runicViewsFieldErrorText(error, locale));
+configureRunicText((key, locale) => appRunicText(key, locale) ?? runicViewsText(key, locale));
 ```
 
 ## Validation texts
@@ -88,8 +93,9 @@ English override and added French against the packed package
 
 | Export | What it is |
 | --- | --- |
-| `configureRunicViewsText()` | `configureFieldErrorText(runicViewsFieldErrorText)`; returns a function that removes it |
+| `configureRunicViewsText(instance?)` | `configureFieldErrorText(runicViewsFieldErrorText)` and `configureRunicText(runicViewsText)`; returns a function that removes both |
 | `runicViewsFieldErrorText(error, locale)` | The text of a field error, or `undefined` |
+| `runicViewsText(key, locale)` | The text of a `RunicTextKey`, such as `bridge.failed`, or `undefined` |
 | `runicViewsCatalog` | `{ transport, messages }` for `createReferenceResolver` |
 | `resolveRunicViewsText(reference, locale?)` | A `runic-views` reference's text, or `undefined` |
 | `runicViewsMessages`, `runicViewsTransport` | The catalog's generated `m` and transport module |
