@@ -140,7 +140,7 @@ Another client implementation for the web SHOULD use the same keys.
 | `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |
 | `runic.views.BridgeOutcome` | An outcome | A non-enumerable `true` that `isBridgeOutcome` checks. |
 | `runic.views.mockFailure` | An error | The declared failure of an error from `mockFailure()` (`@runic-artifex/views/mock`). |
-| `runic.views.current-instance` | `globalThis` | While `RunicInstance.run` of an instance other than the page instance runs synchronously, that instance's slots; otherwise absent. Every copy reads it, so a generated client of another bundle connects in the same instance. Since 0.18. |
+| `runic.views.current-instance` | `globalThis` | While `RunicInstance.run` runs synchronously, that instance's slots (`globalThis` itself for the page instance); otherwise absent, and each copy uses its default instance. Every copy reads it, so a generated client of another bundle connects in the same instance. Since 0.18. |
 | `runic.views.instance` | A `RunicInstance` | A non-enumerable property: the instance's slots, so a copy that did not create the instance finds them. Since 0.18. |
 | `runic.views.client-languages` | `globalThis` | `false` while `configureClientLanguages({ send: false })` is in effect. Since 0.18. |
 
@@ -158,7 +158,8 @@ can share one document.
   diagnostics, translated text and window locale, appearance, fields, kept clients or reported missing views.
 - Code runs in an instance through `RunicInstance.run(fn)`: what `fn` calls synchronously, including a generated
   `connect{View}`, belongs to that instance, and what it starts (a View, a controller, a subscription) keeps it. Outside
-  `run` the current instance is the page instance. The framework bindings provide an instance to a subtree
+  `run` the current instance is the copy's **default instance** (`defaultInstance()`): the page instance, except in a
+  component bundle (below). The framework bindings provide an instance to a subtree
   (`RunicInstanceProvider` in React, `provideRunicInstance` in Vue and Angular, `setRunicInstance` in Svelte,
   `CurrentRunicInstance` in `@runic-artifex/views-effect`).
 - `RunicInstance.dispose()` ends an instance other than the page instance: its runtime stops listening to its Bridge,
@@ -166,6 +167,15 @@ can share one document.
 - Document-level resources stay with the document: `installNavigationPath` and `installBackNavigation` own the page's
   history, and `installErrorReporting` in an instance other than the page instance reports only the errors its runtime
   catches, not the document's uncaught errors.
+- A **component bundle** (`@runic-artifex/views/component`, built by the `component` target of
+  `@runic-artifex/vite-plugin-runic`) carries its own copy of the package. Each element of its custom element creates
+  an instance on its own Bridge and mounts the guest's Views in its shadow root inside that instance. The copy's default
+  instance is that element's instance while exactly one element of the bundle is connected; with none or several it is
+  a disposed instance without a Bridge, in which a connect call rejects as `unavailable`. Code of a component that runs
+  outside `run` and outside a provider, such as `resolveText`, a generated `fieldErrors` or `upload`, or
+  `commitAllFields`, therefore never reaches the host page's instance. A component installs no document-level
+  resource: it calls none of the installers above, and the element's `lang` and `dir` follow its instance's text
+  locale instead of `<html>`'s.
 
 ## Handshake
 
