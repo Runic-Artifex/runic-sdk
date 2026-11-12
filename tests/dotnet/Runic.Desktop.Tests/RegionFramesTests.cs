@@ -89,10 +89,12 @@ public sealed class RegionFramesTests
         var window = new List<DesktopFileDropEventArgs>();
         var guest = new TaskCompletionSource<DesktopFileDropEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var pairing = new FileDropPairing(window.Add, TimeSpan.FromSeconds(30));
-        pairing.NativeDrop(["/tmp/a.txt"]);
+        // A fully qualified path on every system: the drop's arguments refuse any other.
+        var path = Path.Combine(Path.GetTempPath(), "a.txt");
+        pairing.NativeDrop([path]);
         pairing.PageReport("target", deliverTo: guest.SetResult);
-        var drop = await guest.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(["/tmp/a.txt"], drop.Paths);
+        var drop = await guest.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal([path], drop.Paths);
         Assert.Equal("target", drop.Target);
         Assert.Empty(window);
     }
