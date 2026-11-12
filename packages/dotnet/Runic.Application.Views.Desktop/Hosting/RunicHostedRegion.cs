@@ -223,7 +223,7 @@ public sealed class RunicHostedRegion
     /// <param name="window">The host's Window whose page declares the region.</param>
     /// <param name="region">The region's name.</param>
     /// <param name="cancellationToken">Cancels the wait; the move still happens.</param>
-    /// <returns>A task that completes when the move started.</returns>
+    /// <returns>A task that completes when the move started: the window is detached, and attaches when the region takes it.</returns>
     /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
     public Task MoveToAsync(IRunicWindow window, string region, CancellationToken cancellationToken = default)
     {
@@ -234,7 +234,8 @@ public sealed class RunicHostedRegion
             if (IsEnded) return;
             _ = _directory.Detach(this);
             await DetachGuestAsync("host").ConfigureAwait(false);
-            if (_directory.Retarget(this, window, region) is { } slot) await AttachAsync(slot).ConfigureAwait(false);
+            // The attach follows in the queue; the move has started once the guest learned of the detach.
+            if (_directory.Retarget(this, window, region) is { } slot) OnBound(slot);
         }).WaitAsync(cancellationToken);
     }
 
@@ -319,7 +320,13 @@ public sealed class RunicHostedRegion
         else if (CurrentSlot is null) SetStateIf(RunicHostedRegionState.Loading, RunicHostedRegionState.Detached);
     });
 
-    internal void OnHostWindowClosed() => _ = Window.RequestCloseAsync(force: true).AsTask();
+    // The host window closed: the window closes too, after the guest learned of the detach (host-protocol.md, Lifecycle
+    // in a region).
+    internal void OnHostWindowClosed() => _ = Enqueue(async () =>
+    {
+        await Window.PushesSent().ConfigureAwait(false);
+        _ = await Window.RequestCloseAsync(force: true).ConfigureAwait(false);
+    });
 
     // hosted-region-state: the region's size, visibility and focus.
     internal void OnReport(HostedRegionSlot slot, Bridge.HostedRegionReport report)
@@ -332,7 +339,6 @@ public sealed class RunicHostedRegion
             _size = SizeOf(report);
             var current = ReferenceEquals(_attachedSlot, slot);
             bounds = current && _sentSize != _size;
-            if (bounds) _sentSize = _size;
             if (report.Focused && !_focused)
             {
                 _focusByUser = report.FocusSource is Bridge.HostedRegionFocusSource.Tab or Bridge.HostedRegionFocusSource.ShiftTab
@@ -352,8 +358,7 @@ public sealed class RunicHostedRegion
             _focused = report.Focused;
             _visible = report.Visible;
         }
-        if (bounds)
-            Window.Push("region-bounds", () => BoundsPush());
+        if (bounds) ScheduleBounds();
         if (focusDirection is { } direction)
             Window.Push("region-focus", () => new JsonObject { ["kind"] = "region-focus", ["window"] = Window.Id, ["focus"] = "enter", ["direction"] = direction });
         // The window services' rule reads the focus at once (RunicHostedWindow.Activation).
@@ -429,6 +434,8 @@ public sealed class RunicHostedRegion
         SetState(RunicHostedRegionState.Loading);
         ObserveHostWindow(slot.Page.NativeWindow);
         var size = SizeOf(slot.Report);
+        // The window's pushes so far, such as the activity of a detach, reach the guest before the attach.
+        await Window.PushesSent().ConfigureAwait(false);
         var attach = await _application.RegionAttachAsync(Window, slot.Page.Embedder, size, slot.Sizing, slot.Page.AllowsSameSite).ConfigureAwait(false);
         if (attach.Url is not { } url)
         {
@@ -448,6 +455,14 @@ public sealed class RunicHostedRegion
         {
             _attachedSlot = slot;
             _sentSize = size;
+            // The region as the page reported it last, before the frame showed the guest's page.
+            if (slot.Report is { } report)
+            {
+                _size = SizeOf(report);
+                _visible = report.Visible;
+                _focused = report.Focused;
+                _focusByUser = false;
+            }
         }
         lock (_directory.Gate) _attachedOnce = true;
         // The page removed the region while the guest answered: the detach that follows in the queue tells the guest.
@@ -459,13 +474,7 @@ public sealed class RunicHostedRegion
         Raise(Attached, null);
         _application.RaiseRegionAttached(this);
         // A size the page reported while the guest answered.
-        bool bounds;
-        lock (_stateGate)
-        {
-            bounds = _size is { } latest && latest != _sentSize;
-            if (bounds) _sentSize = _size;
-        }
-        if (bounds) Window.Push("region-bounds", () => BoundsPush());
+        ScheduleBounds();
         ApplyPreferredHeight(slot);
         PushActivity();
         if (Options.FocusOnAttach) RequestFocus();
@@ -695,12 +704,33 @@ public sealed class RunicHostedRegion
         }
         if (previous is not null) previous.ActivityChanged -= OnHostActivity;
         if (window is not null) window.ActivityChanged += OnHostActivity;
+        Window.FollowHostWindow(window);
     }
 
     private void OnHostActivity(object? sender, DesktopWindowActivityChangedEventArgs e)
     {
         _ = Window.Activation;
         PushActivity();
+    }
+
+    // region-bounds: coalesced per window, latest wins, at most one per animation frame of the host page.
+    private int _boundsDue;
+    internal static readonly TimeSpan BoundsFrame = TimeSpan.FromMilliseconds(16);
+
+    private void ScheduleBounds()
+    {
+        if (Interlocked.Exchange(ref _boundsDue, 1) == 1) return;
+        _ = Task.Delay(BoundsFrame).ContinueWith(_ =>
+        {
+            Volatile.Write(ref _boundsDue, 0);
+            bool send;
+            lock (_stateGate)
+            {
+                send = _attachedSlot is not null && _size is { } size && size != _sentSize;
+                if (send) _sentSize = _size;
+            }
+            if (send) Window.Push("region-bounds", () => BoundsPush());
+        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
 
     private JsonObject BoundsPush()

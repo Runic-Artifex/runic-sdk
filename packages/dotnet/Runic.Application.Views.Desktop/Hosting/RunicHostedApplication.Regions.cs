@@ -34,7 +34,7 @@ public sealed partial class RunicHostedApplication
         var allow = grant.HasFlag(DesktopPermissionGrant.MediaCapture) ? "camera; microphone" : "";
         var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow);
         window.AttachRegion(region, RegionFeatures);
-        if (Regions.Open(region, out _) is { } failure)
+        if (Regions.Open(region, out var slot) is { } failure)
         {
             await region.EndAsync().ConfigureAwait(false);
             window.MarkClosed();
@@ -60,6 +60,8 @@ public sealed partial class RunicHostedApplication
             return;
         }
         _owner.RaiseWindowOpened(window);
+        // A region declared now takes the window; it attaches once the guest has the reply (RunicHostedRegion.Opened).
+        if (slot is not null) region.OnBound(slot);
         try
         {
             await request.ReplyAsync(new JsonObject

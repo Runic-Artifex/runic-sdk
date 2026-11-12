@@ -64,6 +64,12 @@ internal sealed class HostRoleConformanceTests
         // The host windows' clipboard and launcher (window-services/1).
         private readonly Runic.Application.Testing.RunicTestPlatform _platform = new();
         private RunicHostedApplication? _application;
+        // region/1: the host's own windows whose pages declare regions, by the scenario's names, and the native windows
+        // that the host's dialogs were created for, in order.
+        private readonly Dictionary<string, HostPage> _pages = new(StringComparer.Ordinal);
+        private readonly List<DesktopWindow> _dialogOwners = [];
+        // The host application's departures (RunicHostedRegion.AsDepartureGuard), in order.
+        private readonly Queue<Task<bool>> _departures = new();
         private long _nextRequest = 1000;
         private byte[]? _nonce;
         private string? _key;
@@ -127,6 +133,12 @@ internal sealed class HostRoleConformanceTests
             _fixture.Factory.ContextMenu = _user.ContextMenuAsync;
             _dialogs.Answer = _user.DialogAsync;
             _dialogsInstalled = _dialogs.Install(_platform);
+            var installed = RunicHostedApplication.CreateDialogs;
+            RunicHostedApplication.CreateDialogs = window =>
+            {
+                lock (_dialogOwners) _dialogOwners.Add(window);
+                return installed(window);
+            };
             var host = scenario["arrange"]!["host"]!;
             var start = HostedGuestProgram.StartInfo(HostedGuestProgram.PuppetArgument) with
             {
@@ -158,7 +170,13 @@ internal sealed class HostRoleConformanceTests
                     AnnouncementsPerSecond = Limits["announcementRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.AnnouncementsPerSecond,
                     AnnouncementBurst = Limits["announcementRate"]?.GetValue<int>() ?? RunicHostedLimits.Default.AnnouncementBurst,
                 }, failsServices: host["policy"]?.GetValue<string>() == "fails-services",
-                    prompt: host["policy"]?.GetValue<string>() == "prompts-launches" ? _user.PromptAsync : null),
+                    prompt: host["policy"]?.GetValue<string>() == "prompts-launches" ? _user.PromptAsync : null,
+                    embed: host["embed"]?.GetValue<string>(),
+                    embedOptions: new RunicHostedRegionOptions
+                    {
+                        FocusOnAttach = host["embedOptions"]?["focusOnAttach"]?.GetValue<bool>() ?? false,
+                        ReattachOnReload = host["embedOptions"]?["reattachOnReload"]?.GetValue<bool>() ?? true,
+                    }),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);
             _puppet = await _control.AcceptTcpClientAsync(accept.Token);
@@ -258,20 +276,52 @@ internal sealed class HostRoleConformanceTests
             lock (_opened) return [.. _opened.Where(static window => window.IsOpen).Select(static window => window.Id).Distinct()];
         }
 
+        // The native window of a guest's window, or of a host window whose page the scenario plays. The factory creates the
+        // native windows in the order they open: the guest's windows of their own and the host's windows.
         private HostedWindowHost Native(string id)
         {
+            if (_pages.TryGetValue(id, out var page)) return page.Host;
             int index;
-            lock (_opened) index = _opened.FindLastIndex(window => window.Id == id);
-            if (index < 0) throw new InvalidOperationException($"The host opened no window {id}.");
-            return _fixture!.Factory.Hosts[index];
+            lock (_opened) index = _opened.Where(static window => window.PresentationKind == RunicHostedWindowPresentationKind.Window).ToList()
+                .FindLastIndex(window => window.Id == id);
+            if (index < 0) throw new InvalidOperationException($"The host opened no window {id} of its own.");
+            var hostWindows = _pages.Values.Select(static page => page.Host).ToHashSet();
+            return _fixture!.Factory.Hosts.Where(host => !hostWindows.Contains(host)).ElementAt(index);
         }
+
+        private DesktopWindow NativeWindow(string id) => _pages.TryGetValue(id, out var page) ? page.Window : Window(id).Presentation;
+
+        // A host window whose page the scenario plays (HostedRegionTestPage), opened at its first region.
+        private sealed record HostPage(HostedRegionTestPage Page, DesktopSurface Surface, DesktopWindow Window, HostedWindowHost Host);
+
+        private async Task<HostPage> PageAsync(string name)
+        {
+            if (_pages.TryGetValue(name, out var existing)) return existing;
+            var surface = await _fixture!.Desktop.CreateSurfaceAsync();
+            var window = await surface.OpenWindowAsync(RunicDesktopHost.DefaultWindowOptions);
+            var host = _fixture.Factory.Hosts[^1];
+            // A Window that never opens stands for the host's Window of the page (RunicHostedRegion.MoveToAsync names it).
+            var page = new HostPage(new HostedRegionTestPage(_fixture.Host.RegionDirectory, window, DesktopHostedRegionPage.Origin(surface.Url), new HostedMenuWindow()),
+                surface, window, host);
+            window.Closed += (_, _) => page.Page.Close();
+            _pages[name] = page;
+            return page;
+        }
+
+        private static HostedRegionFocusSource FocusSource(string source) => source switch
+        {
+            "tab" => HostedRegionFocusSource.Tab,
+            "shift-tab" => HostedRegionFocusSource.ShiftTab,
+            "pointer" => HostedRegionFocusSource.Pointer,
+            _ => HostedRegionFocusSource.Script,
+        };
 
         // The user gives the focus to another window or back to this one. The step ends once the window reported the
         // change: a person switches windows slower than the platform reports it, which the host's rules for the
         // user's activation rely on (host-protocol.md, Window services).
         private async Task SwitchAsync(string id, bool active)
         {
-            var window = Window(id).Presentation;
+            var window = NativeWindow(id);
             if (window.Activity?.IsActive == active)
             {
                 Native(id).SetActive(active);
@@ -399,6 +449,41 @@ internal sealed class HostRoleConformanceTests
                     else if (user["button"] is { } button) dialog.Answer.TrySetResult(button.GetValue<string>());
                     else dialog.Answer.TrySetResult(null);
                     break;
+                // region/1: the host page's reports (hosted-regions/1), which a host window's page sends its backend.
+                case "declareRegion":
+                    (await PageAsync(user["window"]!.GetValue<string>())).Page.Declare(user["name"]!.GetValue<string>(),
+                        user["sizing"]?.GetValue<string>() == "content-height" ? HostedRegionSizing.ContentHeight : HostedRegionSizing.Fill);
+                    break;
+                case "removeRegion":
+                    _pages[user["window"]!.GetValue<string>()].Page.Remove(user["name"]!.GetValue<string>(), user["reason"]?.GetValue<string>() ?? "removed");
+                    break;
+                case "resizeRegion":
+                    _pages[user["window"]!.GetValue<string>()].Page.Report(user["name"]!.GetValue<string>(), region =>
+                    {
+                        region.Width = user["width"]!.GetValue<double>();
+                        region.Height = user["height"]!.GetValue<double>();
+                        region.Scale = user["scale"]!.GetValue<double>();
+                        if (user["visible"] is { } visible) region.Visible = visible.GetValue<bool>();
+                    });
+                    break;
+                case "focusRegion":
+                    _pages[user["window"]!.GetValue<string>()].Page.FocusRegion(user["name"]!.GetValue<string>(), FocusSource(user["source"]!.GetValue<string>()));
+                    break;
+                // The host application's own decisions about a region window.
+                case "departRegion":
+                    var departing = Window(user["window"]!.GetValue<string>()).Region!.AsDepartureGuard();
+                    _departures.Enqueue(departing.CanDepartAsync(null!, CancellationToken.None).AsTask());
+                    break;
+                case "detachRegion":
+                    await Window(user["window"]!.GetValue<string>()).Region!.DetachAsync().WaitScaledAsync(StepTimeout);
+                    break;
+                case "moveRegion":
+                    var target = (await PageAsync(user["to"]!.GetValue<string>())).Page.Window!;
+                    await Window(user["window"]!.GetValue<string>()).Region!.MoveToAsync(target, user["name"]!.GetValue<string>()).WaitScaledAsync(StepTimeout);
+                    break;
+                case "focusHost":
+                    _pages[user["window"]!.GetValue<string>()].Page.FocusHost(user["focused"]?.GetValue<bool>() ?? true);
+                    break;
                 default: throw new InvalidOperationException($"The host runner does not implement the user action '{action}'.");
             }
         }
@@ -452,6 +537,61 @@ internal sealed class HostRoleConformanceTests
                 {
                     throw new InvalidOperationException($"The window's menu bar is {Entries(native.MenuBar).ToJsonString()}, not {menuBar.ToJsonString()}.");
                 }
+                return;
+            }
+            if (expect["region"] is JsonObject region)
+            {
+                var hosted = Window(expect["window"]!.GetValue<string>()).Region ?? throw new InvalidOperationException("The window shows in a window of its own.");
+                JsonObject Actual() => new()
+                {
+                    ["state"] = hosted.State.ToString().ToLowerInvariant(),
+                    ["title"] = hosted.Title,
+                    ["focused"] = hosted.IsFocused,
+                    ["documentEdited"] = hosted.IsDocumentEdited,
+                };
+                bool Matches()
+                {
+                    var actual = Actual();
+                    return region.All(member => JsonNode.DeepEquals(member.Value, actual[member.Key]));
+                }
+                Check(await TestTimeouts.UntilAsync(Matches, StepTimeout), $"The region is {Actual().ToJsonString()}, not {region.ToJsonString()}.");
+                return;
+            }
+            if (expect["page"] is JsonObject shown)
+            {
+                var page = _pages[expect["window"]!.GetValue<string>()].Page;
+                var name = shown["name"]!.GetValue<string>();
+                JsonObject Actual() => page.Find(name) is { } declared
+                    ? new JsonObject
+                    {
+                        ["name"] = name,
+                        ["shows"] = declared.Shows,
+                        ["src"] = declared.Src,
+                        ["title"] = declared.Title,
+                        ["allow"] = declared.Allow,
+                        ["height"] = declared.AppliedHeight,
+                    }
+                    : new JsonObject { ["name"] = name };
+                bool Matches()
+                {
+                    var actual = Actual();
+                    return shown.All(member => member.Value is JsonObject any && any["$any"] is not null
+                        ? actual[member.Key] is not null
+                        : JsonNode.DeepEquals(member.Value, actual[member.Key]));
+                }
+                Check(await TestTimeouts.UntilAsync(Matches, StepTimeout), $"The page's region is {Actual().ToJsonString()}, not {shown.ToJsonString()}.");
+                return;
+            }
+            if (expect["departure"] is { } departure)
+            {
+                var allowed = await _departures.Dequeue().WaitScaledAsync(StepTimeout);
+                Check(allowed == departure.GetValue<bool>(), $"The departure was {(allowed ? "allowed" : "refused")}.");
+                return;
+            }
+            if (expect["dialogOwner"] is { } dialogOwner)
+            {
+                var owner = NativeWindow(dialogOwner.GetValue<string>());
+                lock (_dialogOwners) Check(_dialogOwners.Count > 0 && ReferenceEquals(_dialogOwners[^1], owner), "The host's last dialogs were not created for that window.");
                 return;
             }
             if (expect["closed"] is not null)
@@ -604,6 +744,7 @@ internal sealed class HostRoleConformanceTests
             }
             _puppet?.Dispose();
             _control.Stop();
+            foreach (var page in _pages.Values) await page.Surface.DisposeAsync();
             if (_fixture is not null) await _fixture.DisposeAsync();
             _dialogsInstalled?.Dispose();
             await _platform.DisposeAsync();
@@ -615,10 +756,17 @@ internal sealed class HostRoleConformanceTests
     // window service, as a policy with a bug does.
     // The scenario's policy: the defaults, or one that fails for window services, or one that asks the user before each
     // launch in a prompt of the host's own (prompts-launches), which a user step answers with the button allow or deny.
+    // With embed, the guest's windows that can show in a region and have no owner show in the region of that name
+    // (region/1).
     private sealed class ScenarioPolicy(RunicHostedLimits limits, bool failsServices,
-        Func<CancellationToken, Task<object?>>? prompt = null) : IRunicHostedWindowPolicy
+        Func<CancellationToken, Task<object?>>? prompt = null, string? embed = null, RunicHostedRegionOptions? embedOptions = null) : IRunicHostedWindowPolicy
     {
         public RunicHostedLimits Limits => limits;
+
+        public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(embed is not null && request.CanEmbed && request.Owner is null
+                ? RunicHostedWindowDecision.Embed(embed, embedOptions ?? RunicHostedRegionOptions.Default)
+                : RunicHostedWindowDecision.Allow());
 
         public ValueTask<RunicHostedServiceDecision> ServiceAsync(RunicHostedServiceRequest request, CancellationToken cancellationToken) =>
             failsServices

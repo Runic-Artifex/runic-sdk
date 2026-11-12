@@ -1,0 +1,29 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "region.host-window-mode-title.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "region",
+  "roles": ["host"],
+  "description": "set-title applies only to a window in a region: for a window of its own it is rejected with invalid-request.",
+  "requires": ["region/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "open-w1": {"kind":"request"},
+    "t1": {"kind":"request"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"host":{"name":"Conformance Host","version":"1.0.0"}},
+  "steps": [
+    {"start":{"host":true}},
+    {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"accept":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":{"$any":"array"},"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1","window-services/1","region/1"]},"connection":"c1"},
+    {"expect":{"started":true}},
+    {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"receive":{"id":{"$id":"open-w1"},"ok":true,"features":{"$any":"array"},"activity":{"$any":"object"},"colorScheme":{"$any":"string"}},"connection":"c1","note":"This host's policy does not embed: the window opens in a window of its own."},
+    {"send":{"id":{"$id":"t1"},"kind":"set-title","window":"w1","title":"System check"},"connection":"c1"},
+    {"receive":{"id":{"$id":"t1"},"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string"}}},"connection":"c1"}
+  ]
+}

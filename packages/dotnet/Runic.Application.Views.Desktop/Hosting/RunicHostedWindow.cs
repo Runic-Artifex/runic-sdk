@@ -275,6 +275,19 @@ public sealed class RunicHostedWindow
         }
     }
 
+    // A region window follows another host window (or none): its activation starts from that window's, which neither the
+    // guest nor the user changed for it; an activation that follows is judged as for any window.
+    internal void FollowHostWindow(DesktopWindow? native)
+    {
+        lock (_activationGate)
+        {
+            _active = native?.Activity is { IsActive: true };
+            _guestActivated = false;
+            _guestActivationPending = false;
+            _firstActivationIsUsers = false;
+        }
+    }
+
     // The host's native window that shows the window: its own, or for a region window the host window that shows the
     // region now, null while it is detached.
     internal DesktopWindow? NativeWindow => Region is { } region ? region.NativeWindow : _presentation;
@@ -428,6 +441,19 @@ public sealed class RunicHostedWindow
         _ = Task.Run(SendPushesAsync);
     }
 
+    // Completes when the pushes queued now have been sent, so a request that follows them, such as a region-attach after
+    // a region's activity, reaches the guest after them.
+    internal Task PushesSent()
+    {
+        lock (_pushGate)
+        {
+            if (!_pushing) return Task.CompletedTask;
+            return (_pushesSent ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+    }
+
+    private TaskCompletionSource? _pushesSent;
+
     private async Task SendPushesAsync()
     {
         while (true)
@@ -438,6 +464,8 @@ public sealed class RunicHostedWindow
                 if (_pendingPushes.Count == 0)
                 {
                     _pushing = false;
+                    _pushesSent?.TrySetResult();
+                    _pushesSent = null;
                     return;
                 }
                 next = _pendingPushes[0].Push;
