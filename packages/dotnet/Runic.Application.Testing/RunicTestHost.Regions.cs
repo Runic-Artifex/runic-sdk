@@ -139,6 +139,54 @@ public sealed partial class RunicTestHostedWindow
     public bool FrameIsSameSite { get; private set; }
 
     /// <summary>
+    /// Attaches the region window as a <b>component</b> (<c>region-component/1</c>, trusted component mode): the guest
+    /// answers its component module, its WebSocket address and a new component token, for a host page whose origin is
+    /// <paramref name="embedder"/>. Needs <c>region-component/1</c> in <see cref="RunicTestHostOptions.Features"/>, a
+    /// guest that allows component embedding (<c>RunicGuestOptions.AllowComponentEmbedding</c>) and its component build.
+    /// </summary>
+    /// <param name="embedder">The origin of the host page that loads the component, such as <c>http://127.0.0.1:5173</c>.</param>
+    /// <param name="allowSameSite">
+    /// Whether the guest may serve the component from the embedder's own site, as Runic's embedded hosts allow; without
+    /// it, a component for a <c>127.0.0.1</c> page comes from <c>[::1]</c>.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the wait for the reply.</param>
+    /// <returns>
+    /// The module, WebSocket address and token: import <c>Module</c> in the page, create the element named by its
+    /// <c>tag</c> export and call its <c>connect({ url, token })</c>, as <c>&lt;runic-hosted-region&gt;</c> does.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">The window is not a region window, or the guest refused the attach.</exception>
+    public async Task<RunicTestComponent> AttachComponentAsync(string embedder, bool allowSameSite = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(embedder);
+        if (!IsRegion) throw new InvalidOperationException("The window shows in a window of its own, not in a region.");
+        var reply = await _host.RequestAsync(new JsonObject
+        {
+            ["id"] = 0,
+            ["kind"] = "region-attach",
+            ["window"] = Id,
+            ["embedding"] = "component",
+            ["embedder"] = embedder,
+            ["width"] = 800,
+            ["height"] = 600,
+            ["scale"] = 1,
+            ["allowSameSite"] = allowSameSite,
+        }, cancellationToken).ConfigureAwait(false);
+        if (HostProtocol.Boolean(reply, "ok") != true || reply["component"] is not JsonObject component ||
+            HostProtocol.String(component, "module") is not { } module || HostProtocol.String(component, "url") is not { } url ||
+            HostProtocol.String(component, "token") is not { } token)
+        {
+            var error = reply["error"] as JsonObject;
+            throw new InvalidOperationException(
+                $"The guest refused the component attach: {(error is null ? "no component" : $"{HostProtocol.String(error, "kind")} {HostProtocol.String(error, "reason")}: {HostProtocol.String(error, "message")}")}.");
+        }
+        _sizing = "fill";
+        IsAttached = true;
+        return new RunicTestComponent(new Uri(module, UriKind.Absolute), new Uri(url, UriKind.Absolute), token,
+            HostProtocol.Boolean(component, "sameSite") == true);
+    }
+
+    /// <summary>
     /// Detaches the region, as a host does when its page removed the region (<c>region-detach</c>): the guest revokes
     /// the frame's address and token and disconnects its page; the Window stays open.
     /// </summary>
@@ -194,3 +242,13 @@ public sealed partial class RunicTestHostedWindow
                 ? title.GetString()!
                 : string.Empty)];
 }
+
+/// <summary>
+/// A guest's component as <see cref="RunicTestHostedWindow.AttachComponentAsync"/> attached it (<c>region-component/1</c>).
+/// </summary>
+/// <param name="Module">The address of the guest's component module.</param>
+/// <param name="Url">The WebSocket address the component connects to.</param>
+/// <param name="Token">The component token, which the guest admits only from the embedder's origin.</param>
+/// <param name="SameSite">Whether the guest serves it from the embedder's own site.</param>
+[System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed record RunicTestComponent(Uri Module, Uri Url, string Token, bool SameSite);

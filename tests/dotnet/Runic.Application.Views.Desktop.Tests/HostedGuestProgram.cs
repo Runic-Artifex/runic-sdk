@@ -73,7 +73,18 @@ internal static class HostedGuestProgram
             return RunicDesktopHost.Run(provider, new DesktopHostOptions { WaitForConnection = false },
                 new RunicDesktopHostOptions
                 {
-                    SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+                    SurfaceOptions = new DesktopSurfaceOptions
+                    {
+                        Content = new DesktopContent.Html("<!doctype html>"),
+                        // The component mode's component build (region-component/1), as the component build target writes it.
+                        Resources = (request, _) => ValueTask.FromResult<ContentResponse?>(mode != "component" ? null : request.Path switch
+                        {
+                            "/_runic_component/runic-component.json" => ContentResponse.Text(
+                                """{"version":1,"name":"hosted-guest","module":"component.js","tag":"hosted-guest-00000000"}""", "application/json"),
+                            "/_runic_component/component.js" => ContentResponse.Text("export const tag = \"hosted-guest-00000000\";", "text/javascript"),
+                            _ => null,
+                        }),
+                    },
                     // The media mode's Windows ask for the camera and microphone (window-open permissions).
                     WindowOptions = mode == "media"
                         ? RunicDesktopHost.DefaultWindowOptions with { AllowedPermissions = DesktopPermissionGrant.MediaCapture }
@@ -83,6 +94,8 @@ internal static class HostedGuestProgram
                         ApplicationName = "Hosted guest",
                         ApplicationVersion = "1.0.0",
                         ApplicationId = ApplicationId,
+                        // The component mode allows component embedding by every host.
+                        AllowComponentEmbedding = mode == "component" ? static _ => true : null,
                     },
                 },
                 host => BodyAsync(host, mode));
@@ -100,6 +113,7 @@ internal static class HostedGuestProgram
         {
             case "main":
             case "media":
+            case "component":
             {
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
                 await window.WaitForCloseAsync();
