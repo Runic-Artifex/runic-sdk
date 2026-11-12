@@ -2,10 +2,12 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic, suppressErrorDiagnostic } fr
 import { BridgeError } from "./errors.js";
 import { abortable, throwIfAborted } from "./lifetime.js";
 import { bridgeProtocol } from "./version.js";
+import { bridgeOf, currentSlots, isDisposedSlots, type Slots } from "./scope.js";
 
 /**
  * The host bridge a host script installs as `globalThis.__runicBridge` (Views protocol 4, specs/application,
- * "Host bridge"). Messages cross it as JSON text; the Views runtime parses each one once.
+ * "Host bridge"), or that `createRunicInstance` is given. Messages cross it as JSON text; the Views runtime parses each
+ * one once.
  */
 export interface RunicBridgeClient {
   /** Whether the host connection is open and authenticated. */
@@ -40,8 +42,6 @@ export interface WaitForBridgeOptions {
   readonly signal?: AbortSignal | undefined;
 }
 
-type BridgeHost = typeof globalThis & { __runicBridge?: RunicBridgeClient };
-
 const defaultTimeout = 5_000;
 const unavailableReported = Symbol.for("runic.views.unavailableReported");
 
@@ -52,38 +52,43 @@ const missingBridgeMessage =
   "installMockBridge() from @runic-artifex/views/mock before the first connect call.";
 
 /**
- * Waits for the installed host Bridge to report a connection to .NET.
+ * Waits for the current instance's host Bridge (the installed `__runicBridge` on the page) to report a connection to .NET.
  * Rejects with an `unavailable` BridgeError when no host installed
  * `window.__runicBridge`, with a `timeout` BridgeError when it did not connect in time,
  * with a `failed` BridgeError (and a `protocol` diagnostic) when the host implements Views protocol 3 or
  * earlier, and with the abort reason when `options.signal` aborts first.
  */
-export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
+export function waitForBridge(options: WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
+  return waitForBridgeIn(currentSlots(), options);
+}
+
+/** @internal `waitForBridge` in the instance with `slots`. */
+export async function waitForBridgeIn(slots: Slots, options: WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
   const timeout = options.timeout ?? defaultTimeout;
   if (!Number.isFinite(timeout) || timeout < 0) throw new RangeError("The Bridge timeout must be a non-negative number of milliseconds.");
   const { signal } = options;
   throwIfAborted(signal);
-  const host = globalThis as BridgeHost;
+  if (isDisposedSlots(slots)) throw new BridgeError("unavailable", "This Runic instance was disposed.");
   const deadline = Date.now() + timeout;
-  while (!host.__runicBridge?.isConnected()) {
+  while (!bridgeOf(slots)?.isConnected()) {
     if (Date.now() >= deadline) {
-      const error = host.__runicBridge === undefined
+      const error = bridgeOf(slots) === undefined
         ? new BridgeError("unavailable", missingBridgeMessage)
         : new BridgeError("timeout", `The Runic Bridge is installed but did not connect to .NET within ${timeout} ms. ` +
           "Check that the .NET host is running and that its output shows no startup error.");
       // Every connect call fails the same way on a page without a Bridge;
       // DevTools gets the missing Bridge once per page.
-      const page = globalThis as unknown as Record<symbol, unknown>;
-      if (error.kind !== "unavailable" || page[unavailableReported] !== true) emitErrorDiagnostic(error);
-      if (error.kind === "unavailable") page[unavailableReported] = true;
+      if (error.kind !== "unavailable" || slots[unavailableReported] !== true) emitErrorDiagnostic(slots, error);
+      if (error.kind === "unavailable") slots[unavailableReported] = true;
       throw error;
     }
-    const wait = nextCheck(host.__runicBridge);
+    const wait = nextCheck(bridgeOf(slots));
     try { await abortable(wait.promise, signal); }
     finally { wait.cancel(); }
+    if (isDisposedSlots(slots)) throw new BridgeError("unavailable", "This Runic instance was disposed.");
   }
-  const bridge = host.__runicBridge;
-  assertMessageBridge(bridge);
+  const bridge = bridgeOf(slots)!;
+  assertMessageBridge(slots, bridge);
   return bridge;
 }
 
@@ -116,10 +121,10 @@ const protocolReported = new WeakSet<object>();
  * Reports a host of another protocol: one `protocol` diagnostic per Bridge, and every error that reports it
  * is marked as reported, so it is the only report.
  */
-export function reportProtocolMismatch(error: BridgeError, bridge: object): void {
+export function reportProtocolMismatch(slots: Slots, error: BridgeError, bridge: object): void {
   if (protocolReported.has(bridge)) { suppressErrorDiagnostic(error); return; }
   protocolReported.add(bridge);
-  emitBridgeDiagnostic({ kind: "error", code: "protocol", message: error.message, error, ...(error.route === undefined ? {} : { route: error.route }) });
+  emitBridgeDiagnostic(slots, { kind: "error", code: "protocol", message: error.message, error, ...(error.route === undefined ? {} : { route: error.route }) });
 }
 
 /** The error of a host that speaks another protocol. `host` describes it, such as "uses Views protocol 5". */
@@ -130,16 +135,11 @@ export function protocolMismatchError(host: string): BridgeError {
 }
 
 // A host script of protocol 3 or earlier installs `call(name, …args)` instead of `request(message)`.
-function assertMessageBridge(bridge: RunicBridgeClient): void {
+function assertMessageBridge(slots: Slots, bridge: RunicBridgeClient): void {
   if (typeof (bridge as Partial<RunicBridgeClient>).request === "function") return;
   const error = protocolMismatchError("implements Views protocol 3 or earlier (its host bridge has no `request`)");
-  reportProtocolMismatch(error, bridge);
+  reportProtocolMismatch(slots, error, bridge);
   throw error;
-}
-
-/** Window members and the shared runtime slot. */
-export function hostCallbacks(): Record<string | symbol, unknown> {
-  return globalThis as unknown as Record<string | symbol, unknown>;
 }
 
 // A View the page or .NET released, as `released` while the Bridge is connected
@@ -151,22 +151,22 @@ export function notConnectedError(bridge: RunicBridgeClient, message: string, ro
 }
 
 /**
- * client-errors/1: the reporter of `installErrorReporting` (error-reporting.ts), in a slot every copy of this package
- * on the page shares, so the runtime of one copy reports to the reporter another copy installed.
+ * client-errors/1: the reporter of `installErrorReporting` (error-reporting.ts), in a slot of the instance that every
+ * copy of this package shares, so the runtime of one copy reports to the reporter another copy installed.
  */
 export const clientErrorObserverKey = Symbol.for("runic.views.client-error-observer");
 export type RuntimeErrorObserver = (error: unknown, route?: string) => void;
 
 // A throwing subscriber or an undecodable push must not stop delivery to
 // other subscribers or unwind into the host script that pushed it.
-// A released View is expected after navigation and is not reported.
-export function reportBridgeError(error: unknown, route?: string): void {
+// A released View is expected after navigation and is not reported. `slots` are those of the instance the error belongs to.
+export function reportBridgeError(slots: Slots, error: unknown, route?: string): void {
   if (error instanceof BridgeError && error.kind === "released") return;
-  const observer = hostCallbacks()[clientErrorObserverKey] as RuntimeErrorObserver | undefined;
+  const observer = slots[clientErrorObserverKey] as RuntimeErrorObserver | undefined;
   if (typeof observer === "function") {
     try { observer(error, route); } catch { /* A reporter never fails the runtime. */ }
   }
-  emitErrorDiagnostic(error, route);
+  emitErrorDiagnostic(slots, error, route);
   const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;
   if (typeof report === "function") report(error); else console.error(error);
 }

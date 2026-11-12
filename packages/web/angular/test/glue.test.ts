@@ -640,12 +640,12 @@ describe("injectBridgeConnection", () => {
   test("requires an injection context or an injector, and is a root export (0.11)", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
-      "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText", "configureTranslatedText",
-      "fieldErrorText", "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
-      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectText",
+      "RUNIC_INSTANCE", "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
+      "configureTranslatedText", "createRunicInstance", "fieldErrorText", "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
+      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectRunicInstance", "injectText",
       "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
       "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath", "openNavigationPath",
-      "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection", "textLocaleSignal", "upload",
+      "pageInstance", "provideRunicInstance", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection", "textLocaleSignal", "upload",
       "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useSyncExternalStore } from "react";
-import type { ViewClient, ViewConnector } from "@runic-artifex/views";
+import { pageInstance, type RunicInstance, type ViewClient, type ViewConnector } from "@runic-artifex/views";
 import { checkKeepAlive, isViewClient } from "@runic-artifex/views/bindings";
+import { useRunicInstance } from "./instance.js";
 
 type SuspendedConnection = {
   status: "pending" | "ready" | "failed";
@@ -16,8 +17,15 @@ type SuspendedConnection = {
 };
 
 // Suspense discards the state of a component that never mounted, so pending
-// connections live here, keyed by connect function, until a component claims them.
-const suspended = new WeakMap<object, SuspendedConnection>();
+// connections live here, per Runic instance and keyed by connect function, until a component claims them.
+type Suspended = WeakMap<object, SuspendedConnection>;
+const suspendedByInstance = new WeakMap<RunicInstance, Suspended>();
+
+function suspendedOf(instance: RunicInstance): Suspended {
+  let suspended = suspendedByInstance.get(instance);
+  if (!suspended) suspendedByInstance.set(instance, suspended = new WeakMap());
+  return suspended;
+}
 const defaultReleaseTimeout = 10_000;
 // setTimeout runs a larger delay, like Infinity, at once.
 const maxReleaseTimeout = 2_147_483_647;
@@ -31,7 +39,7 @@ function checkReleaseTimeout(value: number | undefined): number {
 
 // Releases an entry no mounted component uses after `delay`: disposes its client, or
 // forgets its failure so that a later render connects again. Infinity keeps it.
-function releaseLater(key: object, entry: SuspendedConnection, delay: number): void {
+function releaseLater(suspended: Suspended, key: object, entry: SuspendedConnection, delay: number): void {
   clearTimeout(entry.timer);
   entry.timer = delay === Infinity ? undefined : setTimeout(() => {
     if (entry.users !== 0 || suspended.get(key) !== entry) return;
@@ -40,28 +48,29 @@ function releaseLater(key: object, entry: SuspendedConnection, delay: number): v
   }, delay);
 }
 
-function suspendedConnection(connector: ViewConnector<ViewClient>, releaseTimeout: number): SuspendedConnection {
+function suspendedConnection(instance: RunicInstance, connector: ViewConnector<ViewClient>, releaseTimeout: number): SuspendedConnection {
+  const suspended = suspendedOf(instance);
   const key = connector.connect;
   const existing = suspended.get(key);
   if (existing) {
     if (releaseTimeout > existing.releaseTimeout) {
       existing.releaseTimeout = releaseTimeout;
       // A settled entry that nobody uses waits for the longer timeout from now.
-      if (existing.status !== "pending" && existing.users === 0) releaseLater(key, existing, releaseTimeout);
+      if (existing.status !== "pending" && existing.users === 0) releaseLater(suspended, key, existing, releaseTimeout);
     }
     return existing;
   }
   const entry: SuspendedConnection = { status: "pending", promise: Promise.resolve(), users: 0, releaseTimeout, keepAlive: 0 };
-  entry.promise = Promise.resolve().then(() => connector.connect()).then(client => {
+  entry.promise = Promise.resolve().then(() => instance.run(() => connector.connect())).then(client => {
     entry.status = "ready";
     entry.client = client;
     // Release a connection whose render was abandoned before it mounted.
-    releaseLater(key, entry, entry.releaseTimeout);
+    releaseLater(suspended, key, entry, entry.releaseTimeout);
   }, (error: unknown) => {
     entry.status = "failed";
     entry.error = error;
     // Keep the failure for the error boundary; forget it later so a later render reconnects.
-    releaseLater(key, entry, entry.releaseTimeout);
+    releaseLater(suspended, key, entry, entry.releaseTimeout);
   });
   suspended.set(key, entry);
   return entry;
@@ -71,8 +80,10 @@ function suspendedConnection(connector: ViewConnector<ViewClient>, releaseTimeou
  * Forgets a failed `useSuspenseView` connection, so the next render connects
  * again. Call it from an error boundary's reset before rendering the
  * component again. A connection that is pending or connected is unaffected.
+ * Pass the Runic instance of the component (`useRunicInstance()`) when it is not the page instance.
  */
-export function retrySuspenseView(source: ViewConnector<ViewClient>): void {
+export function retrySuspenseView(source: ViewConnector<ViewClient>, instance: RunicInstance = pageInstance()): void {
+  const suspended = suspendedOf(instance);
   const entry = suspended.get(source.connect);
   if (entry?.status !== "failed") return;
   clearTimeout(entry.timer);
@@ -124,8 +135,10 @@ export function useSuspenseView<TClient extends ViewClient>(
 ): SuspenseViewHandle<TClient> {
   const releaseTimeout = checkReleaseTimeout(options.releaseTimeout);
   const keepAlive = checkKeepAlive(options.keepAlive, "useSuspenseView's keepAlive");
+  const instance = useRunicInstance();
+  const suspended = suspendedOf(instance);
   const connector = isViewClient(source) ? undefined : source;
-  const entry = connector ? suspendedConnection(connector, releaseTimeout) : undefined;
+  const entry = connector ? suspendedConnection(instance, connector, releaseTimeout) : undefined;
   const [, refresh] = useReducer((count: number) => count + 1, 0);
   useEffect(() => {
     if (!connector || !entry) return;
@@ -137,9 +150,9 @@ export function useSuspenseView<TClient extends ViewClient>(
     clearTimeout(entry.timer);
     return () => {
       entry.users--;
-      if (entry.users === 0) releaseLater(key, entry, entry.keepAlive);
+      if (entry.users === 0) releaseLater(suspended, key, entry, entry.keepAlive);
     };
-  }, [entry, keepAlive]);
+  }, [suspended, entry, keepAlive]);
   if (entry?.status === "pending") throw entry.promise;
   if (entry?.status === "failed") throw entry.error;
   const client = (entry ? entry.client : source) as TClient;

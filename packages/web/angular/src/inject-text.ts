@@ -3,8 +3,10 @@ import {
   type OnDestroy, type PipeTransform, type Signal,
 } from "@angular/core";
 import {
-  onWindowLocale, resolveText, subscribeText, textLocale, textVersion, windowLocale, type FieldError, type TextReference,
+  onWindowLocale, resolveText, subscribeText, textLocale, textVersion, windowLocale, type FieldError, type RunicInstance,
+  type TextReference,
 } from "@runic-artifex/views";
+import { contextInstance, instanceOf } from "./instance.js";
 
 export interface InjectTextOptions {
   /** Required outside an injection context. */
@@ -32,14 +34,16 @@ export function injectText(
 ): Signal<string> {
   if (!provided) assertInInjectionContext(injectText);
   const injector = provided ?? inject(Injector);
+  const instance = instanceOf(injector);
   const version = signal(0);
   if (injector.get(PLATFORM_ID, null) !== "server") {
-    const stop = subscribeText(() => version.update(value => value + 1));
+    const stop = instance.run(() => subscribeText(() => version.update(value => value + 1)));
     injector.get(DestroyRef).onDestroy(stop);
   }
   return computed(() => {
     version();
-    return resolveText(source(), fallback?.());
+    const value = source(), otherwise = fallback?.();
+    return instance.run(() => resolveText(value, otherwise));
   });
 }
 
@@ -50,32 +54,37 @@ export function injectText(
 export function injectWindowLocale({ injector: provided }: InjectTextOptions = {}): Signal<string | null> {
   if (!provided) assertInInjectionContext(injectWindowLocale);
   const injector = provided ?? inject(Injector);
-  const locale = signal<string | null>(windowLocale());
+  const instance = instanceOf(injector);
+  const locale = signal<string | null>(instance.run(windowLocale));
   if (injector.get(PLATFORM_ID, null) !== "server") {
-    const stop = onWindowLocale(next => locale.set(next));
+    const stop = instance.run(() => onWindowLocale(next => locale.set(next)));
     injector.get(DestroyRef).onDestroy(stop);
   }
   return locale.asReadonly();
 }
 
-let pageTextLocale: Signal<string | undefined> | undefined;
+const textLocales = new WeakMap<RunicInstance, Signal<string | undefined>>();
 
 /**
- * The locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's locale),
- * as a signal. It is one signal for the page and needs no injection context, so the page's locale resolver can read
- * it: a template that calls `m.*()` reads the signal through the resolver and renders again on a language switch.
- * `undefined` while the page has no Translations runtime and the application sets no window locale.
+ * The locale that text is shown in (`textLocale`: the instance's Translations locale, which follows the window's
+ * locale), as a signal. It is one signal per Runic instance and needs no injection context, so the page's locale
+ * resolver can read it: a template that calls `m.*()` reads the signal through the resolver and renders again on a
+ * language switch. `undefined` while the instance has no Translations runtime and the application sets no window
+ * locale. The instance is `instance`, else that of the injection context, else the page instance.
  *
  * ```ts
  * const textLocale = textLocaleSignal();
  * configureLocaleResolver(() => textLocale() ?? locale.getLocale());
  * ```
  */
-export function textLocaleSignal(): Signal<string | undefined> {
-  if (pageTextLocale) return pageTextLocale;
-  const current = signal<string | undefined>(textLocale());
-  subscribeText(() => current.set(textLocale()));
-  return pageTextLocale = current.asReadonly();
+export function textLocaleSignal(instance: RunicInstance = contextInstance()): Signal<string | undefined> {
+  const existing = textLocales.get(instance);
+  if (existing) return existing;
+  const current = signal<string | undefined>(instance.run(textLocale));
+  instance.run(() => subscribeText(() => current.set(instance.run(textLocale))));
+  const locale = current.asReadonly();
+  textLocales.set(instance, locale);
+  return locale;
 }
 
 /**
@@ -88,15 +97,16 @@ export function textLocaleSignal(): Signal<string | undefined> {
 @Pipe({ name: "runicText", standalone: true, pure: false })
 export class RunicTextPipe implements PipeTransform, OnDestroy {
   private readonly changes = inject(ChangeDetectorRef);
-  private readonly stop = subscribeText(() => this.changes.markForCheck());
+  private readonly instance = instanceOf(inject(Injector));
+  private readonly stop = this.instance.run(() => subscribeText(() => this.changes.markForCheck()));
 
   private last: { value: unknown; fallback: string | undefined; version: number; text: string } | undefined;
 
   transform(value: TextReference | FieldError | string | null | undefined, fallback?: string): string {
-    const version = textVersion();
+    const version = this.instance.run(textVersion);
     const last = this.last;
     if (last && last.value === value && last.fallback === fallback && last.version === version) return last.text;
-    const text = resolveText(value, fallback);
+    const text = this.instance.run(() => resolveText(value, fallback));
     this.last = { value, fallback, version, text };
     return text;
   }

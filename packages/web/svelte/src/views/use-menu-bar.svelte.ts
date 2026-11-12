@@ -1,4 +1,5 @@
 import { untrack } from "svelte";
+import { getRunicInstance } from "./instance.js";
 import {
   BridgeError,
   createMenuBarController,
@@ -44,8 +45,10 @@ export function useMenuBar(options: UseMenuBarOptions = {}): MenuBarHandle {
     accessKeyHints: false, revision: 0, menus: Object.freeze([]),
   }));
   let controller: MenuBarController | undefined;
+  const instance = getRunicInstance();
   $effect.pre(() => untrack(() => {
-    const created = createMenuBarController(controllerOptions);
+    // The menu bar of the component's Runic instance.
+    const created = instance.run(() => createMenuBarController(controllerOptions));
     controller = created;
     state = created.current;
     created.subscribe(() => { state = created.current; });
