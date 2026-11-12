@@ -120,6 +120,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         _transport = transport;
         _targeted = transport as IBridgeConnectionTransport;
         Blobs = new BridgeBlobs();
+        HostedRegions = new BridgeHostedRegions(transport, () => _logger);
         _transportKeysUnique = transport is IBridgeUniqueConnectionKeys;
         // A closing window can still attach content while accepted work drains, after its host disposed the
         // transport. Its dispatcher serves nothing then.
@@ -145,6 +146,9 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
 
     // The Window's blobs and uploads (blobs/1). The host attaches its endpoint; the window session disposes it.
     internal BridgeBlobs Blobs { get; }
+
+    // hosted-regions/1: the regions the window's pages declare, which a host of hosted applications observes.
+    internal BridgeHostedRegions HostedRegions { get; }
 
     internal TimeProvider TimeProvider => _timeProvider;
 
@@ -574,6 +578,8 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
                         ? NavigateInCulture(envelope, cancellationToken)
                         : Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use navigation-path/1."));
                 if (envelope.Kind == "client-error") return Reply(ClientError(connection, envelope));
+                // hosted-regions/1: a host page's regions, without a route of their own.
+                if (BridgeHostedRegions.IsKind(envelope.Kind)) return Reply(HostedRegions.Handle(connection, envelope.Kind, envelope.Root));
                 // view-requests/1: a presentation registers its view request handlers only on a connection that uses it.
                 if (envelope.Kind == "view-requests" && !connection.UsesViewRequests)
                     return Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use view-requests/1."));
@@ -786,6 +792,8 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         // blobs/1: the connection's upload token stops working and its unclaimed uploads are deleted, also when a hello of
         // another session replaced it. Its token and uploads are under its own key, which a later page never gets.
         Blobs.ConnectionClosed(connection.Key);
+        // hosted-regions/1: the connection's regions are removed, as a page reload or a crash removes them.
+        HostedRegions.ConnectionClosed(connection.Key);
         foreach (var observer in observers)
         {
             try { observer(connection.Key); }
@@ -933,6 +941,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var usesAppearance = ListsAppearance(root);
+        var usesHostedRegions = ListsFeature(root, BridgeHostedRegions.Feature);
         if (!TryReadLanguages(root, usesClientLanguages, out var languages))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's languages are not an array of at most {MaximumClientLanguages} strings.", hello: true);
@@ -962,6 +971,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTranslationText = usesTranslationText;
             connection.UsesNavigationPath = usesNavigationPath;
             connection.UsesAppearance = usesAppearance;
+            connection.UsesHostedRegions = usesHostedRegions;
             connection.Languages = languages;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
@@ -1212,6 +1222,8 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     internal bool UsesTranslationText { get; set; }
     // Whether the connection uses appearance/1.
     internal bool UsesAppearance { get; set; }
+    // Whether the connection uses hosted-regions/1.
+    internal bool UsesHostedRegions { get; set; }
     // Whether the connection uses view-requests/1.
     internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.

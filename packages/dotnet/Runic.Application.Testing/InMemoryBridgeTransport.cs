@@ -329,6 +329,9 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteStringValue("appearance/1");
                 // client-languages/1: the languages SetLanguages gave the connection, none by default.
                 writer.WriteStringValue("client-languages/1");
+                // hosted-regions/1: a test page may declare hosted regions; a connection that declares none receives no push
+                // of the feature.
+                writer.WriteStringValue("hosted-regions/1");
                 writer.WriteEndArray();
                 writer.WriteStartArray("languages");
                 foreach (var language in languages) writer.WriteStringValue(language);
