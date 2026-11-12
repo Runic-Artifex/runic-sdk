@@ -81,7 +81,7 @@ internal sealed class HostedRegionTests
         Check(next != frame && next.Host == "127.0.0.1" && !window.FrameIsSameSite, $"The next frame launch address is {next}.");
         using (var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }))
         using (var stale = await http.GetAsync(frame, cancel.Token))
-            Check(stale.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound, $"The earlier address was answered {(int)stale.StatusCode}.");
+            Check(stale.StatusCode == HttpStatusCode.Forbidden, $"The earlier address was answered {(int)stale.StatusCode}.");
 
         Check(await window.RequestCloseAsync(cancellationToken: cancel.Token), "The guest refused the close.");
         Check(await host.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{host.StandardError}");

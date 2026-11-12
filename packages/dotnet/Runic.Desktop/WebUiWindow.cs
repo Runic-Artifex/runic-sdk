@@ -3524,6 +3524,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             context.SetResponseHeader("Permissions-Policy", "camera=(), microphone=()");
         }
+        // A frame launch code of a surface in region mode is answered on every listener, a dead one with 403
+        // (host-protocol.md, Limits).
+        if (region && !context.IsWebSocketRequest &&
+            PresentationExchange.StartsWithSegments(context.Path, FrameLaunchBinding.PathSegment, out var frameCode))
+        {
+            await ServeFrameLaunchAsync(context, frameCode.TrimStart('/')).ConfigureAwait(false);
+            return;
+        }
         // The IPv6 loopback listener serves only the frame of a surface in region mode.
         if (!ServesListener(context.Listener))
         {
@@ -3532,12 +3540,6 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         if (region)
         {
-            if (!context.IsWebSocketRequest &&
-                PresentationExchange.StartsWithSegments(context.Path, FrameLaunchBinding.PathSegment, out var frameCode))
-            {
-                await ServeFrameLaunchAsync(context, frameCode.TrimStart('/')).ConfigureAwait(false);
-                return;
-            }
             // No client cookie: a frame's page proves itself with its frame token on the WebSocket alone.
             await next(context).ConfigureAwait(false);
             return;
@@ -3638,13 +3640,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             return;
         }
-        // The code belongs to the listener the host was given; it is not spent elsewhere.
-        if (!SameAuthority(context.Listener ?? Url, _frameBinding.Listener))
-        {
-            context.StatusCode = PresentationStatus.NotFound;
-            return;
-        }
-        switch (_frameBinding.Consume(code, TimeProvider, out var token, out var target))
+        // The code belongs to the listener the host was given; it is not spent elsewhere, and after a detach it is dead.
+        string? token = null;
+        Uri? target = null;
+        var outcome = SameAuthority(context.Listener ?? Url, _frameBinding.Listener)
+            ? _frameBinding.Consume(code, TimeProvider, out token, out target)
+            : FrameLaunchBinding.Outcome.Refused;
+        switch (outcome)
         {
             case FrameLaunchBinding.Outcome.Bound:
                 ReportConnectionProgress(ConnectionProgress.DocumentRequested);

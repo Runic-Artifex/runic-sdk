@@ -224,6 +224,9 @@ public sealed class FrameLaunchBindingTests
         Assert.Contains(await RefusedAsync(frame, origin, token), new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.NotFound });
         using (var after = await http.GetAsync(surface.Url))
             Assert.Equal("frame-ancestors 'none'", Single(after, "Content-Security-Policy"));
+        // A dead frame launch code is refused with 403 on its listener (host-protocol.md, Limits).
+        using (var dead = await http.GetAsync(launch.Url))
+            Assert.Equal(HttpStatusCode.Forbidden, dead.StatusCode);
         // A new attachment mints a new code and token.
         var next = await surface.BeginFrameLaunchAsync(Embedder, allowSameSite: true, measuresHeight: false, CancellationToken.None);
         Assert.NotEqual(launch.Url, next.Url);

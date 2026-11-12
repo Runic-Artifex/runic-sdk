@@ -40,7 +40,7 @@
     {"expect":{"action":"a1","activity":{"active":false,"minimized":false,"visible":false}}},
     {"send":{"id":{"$id":"attach-2"},"kind":"region-attach","window":{"$id":"w1"},"embedding":"frame","embedder":"http://127.0.0.1:38200","width":800,"height":520,"scale":1.5,"sizing":"fill"},"connection":"c1"},
     {"receive":{"id":{"$id":"attach-2"},"ok":true,"frame":{"url":{"$secret":"frame-url"},"sameSite":false}},"connection":"c1"},
-    {"frame":{"request":"launch","url":"previous","refused":true}},
+    {"frame":{"request":"launch","url":"previous","status":403}},
     {"frame":{"request":"launch","status":303}}
   ]
 }
