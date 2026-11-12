@@ -250,10 +250,10 @@ New steps and actions the runners need:
 
 - **Test application (guest runner).** An action `setTitle` (`window`, `value`), which sets the title of the Window's
   page, since the pages are not loaded; `frame` (`window`, `request`: `"launch"`, `"bootstrap"` or `"upgrade"`, and for
-  the latter two a token), which makes a request of the frame surface named by the bound `frame.url` and expects its
+  `"upgrade"` a token), which makes a request of the frame surface named by the bound `frame.url` and expects its
   status, so a scenario checks the one-time code, the fragment redirect, one page per token and revocation without a
-  browser; `$secret` values `frame-url`, which matches a frame launch address, and `frame-token`, the token of the last
-  launch.
+  browser, and that the `"bootstrap"` script carries no credential; `$secret` values `frame-url`, which matches a frame
+  launch address, and `frame-token`, the token of the last launch.
 - **The host's user (host runner).** Actions `declareRegion` (`window`: the host window, `name`, `sizing`),
   `removeRegion`, `resizeRegion` (`width`, `height`, `scale`), `focusRegion` (`source`: `tab`, `shift-tab`, `pointer`
   or `script`) and `focusHost`, which play the host page's
