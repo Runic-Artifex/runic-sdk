@@ -55,11 +55,11 @@ const spec: MockTypedViewSpec = {
     setBody: { member: "body", checked: "writeBody" },
   },
   commands: {
-    save: { member: "save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    save: { member: "save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: SaveFailure = typed; bridgeWire.encodeUnion(bridgeUnion0); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     discard: { member: "discard", available: "canDiscard" },
   },
   operations: {
-    save: { member: "save", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    save: { member: "save", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: SaveFailure = typed; bridgeWire.encodeUnion(bridgeUnion0); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     discard: { member: "discard" },
   },
   interactions: {

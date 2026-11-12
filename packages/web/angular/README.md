@@ -700,7 +700,7 @@ readonly fontSize = computed(() => `${this.appearance().textScale ?? 1}rem`);
 The `error()` signal of `injectView` and of a command or operation is typed
 `unknown`: it holds whatever the connection or the call rejected with. A Bridge
 failure is a `BridgeError` from `@runic-artifex/views`. Show it with
-`describeBridgeError(error)`, one English sentence, instead of interpolating
+`describeBridgeError(error)`, one sentence (in the window's language with `configureRunicViewsText()`), instead of interpolating
 the error, and narrow it with `isBridgeError` (or `instanceof`) before reading
 `kind`, `route` or `detail`:
 

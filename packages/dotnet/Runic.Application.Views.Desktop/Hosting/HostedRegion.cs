@@ -88,9 +88,18 @@ internal sealed class HostedRegion : IDisposable
         if (Bounded(message) is not { } bounds ||
             HostProtocol.String(message, "embedder") is not { } embedder || WebUiWindow.FrameEmbedderHost(embedder) is null ||
             message["sizing"] is { } sizing && HostProtocol.String(message, "sizing") is null ||
-            message["allowSameSite"] is { } allow && HostProtocol.Boolean(message, "allowSameSite") is null)
+            message["allowSameSite"] is { } allow && HostProtocol.Boolean(message, "allowSameSite") is null ||
+            message["browser"] is { } browser && HostProtocol.Boolean(message, "browser") is null)
         {
             await request.FailAsync("rejected", "invalid-request", "A member of the region-attach is missing or out of range.").ConfigureAwait(false);
+            return;
+        }
+        // A browser host's page runs in the user's browser, a process that does not run elevated: an elevated guest's page
+        // is never shown there (host-protocol.md, Browser hosts; elevated-peer admission). The window stays open.
+        if (HostProtocol.Boolean(message, "browser") == true && _guest.RunsElevated)
+        {
+            await request.FailAsync("rejected", "guest-elevated",
+                "The application runs elevated, so it does not show its page in a region of a browser host's page.").ConfigureAwait(false);
             return;
         }
         // An unknown sizing reads as "fill".

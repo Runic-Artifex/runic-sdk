@@ -1,4 +1,4 @@
-import type { FieldError, RunicInstance } from "@runic-artifex/views";
+import type { FieldError, RunicInstance, RunicTextKey } from "@runic-artifex/views";
 import type { m } from "./dist/translations/runic-views.esm-v5/messages.js";
 import type * as transport from "./dist/translations/runic-views.esm-v5/transport.js";
 
@@ -29,8 +29,16 @@ export declare function resolveRunicViewsText(reference: unknown, locale?: strin
 export declare function runicViewsFieldErrorText(error: FieldError, locale: string | undefined): string | undefined;
 
 /**
- * Shows field errors (`FieldState.error`, `resolveText`, `describeBridgeError`) with the runic-views text in the window's
- * language: `configureFieldErrorText(runicViewsFieldErrorText)` in `instance`, or in the current Runic instance (the
- * page's unless called inside `RunicInstance.run`). Returns a function that removes it.
+ * The runic-views text of Runic's own page text in `locale`, as `configureRunicText` takes it: the sentences
+ * `describeBridgeError` writes (`bridge.*`) and the key names `formatShortcut` writes (`shortcut.*`, `platform.*_key`);
+ * `undefined` for a key this version has no message for, so it shows its English text.
+ */
+export declare function runicViewsText(key: RunicTextKey, locale: string | undefined): string | undefined;
+
+/**
+ * Shows Runic's page text in the window's language, in `instance` or in the current Runic instance (the page's unless
+ * called inside `RunicInstance.run`): field errors (`FieldState.error`, `resolveText`, `describeBridgeError`) with
+ * `configureFieldErrorText(runicViewsFieldErrorText)`, and the sentences of `describeBridgeError` and the key names of
+ * `formatShortcut` with `configureRunicText(runicViewsText)`. Returns a function that removes both.
  */
 export declare function configureRunicViewsText(instance?: RunicInstance): () => void;

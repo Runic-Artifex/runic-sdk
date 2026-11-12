@@ -20,6 +20,10 @@ internal static class HostFeatures
     internal static readonly string[] GuestImplemented = [.. Implemented, Region];
     internal static readonly string[] HostImplemented = [.. Implemented, Region];
 
+    // A browser (serve-only) host's: no native window owns dialogs or menus, or tells which window the user works in, so
+    // it lists region/1 alone, and the guest's services report OwnerUnavailable, as in serve-only mode.
+    internal static readonly string[] BrowserHostImplemented = [Region];
+
     // A menu bar: at most 8 levels of entry lists and 1,000 entries in all. A context menu: at most 5 levels (four nested
     // submenus) and 256 entries, as IWindowPlatformServices.ShowContextMenuAsync allows.
     internal const int MaximumBarDepth = 8;

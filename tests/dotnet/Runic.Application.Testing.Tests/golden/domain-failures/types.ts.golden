@@ -392,6 +392,49 @@ export interface TypedSaveResult {
   readonly contentLength: number;
 }
 
+export type UnionListArea =
+  | ({ readonly $case: "empty" } & UnionListEmpty)
+  | ({ readonly $case: "rail" } & UnionListRail)
+  | ({ readonly $case: "rows" } & UnionListRows);
+
+export interface UnionListEmpty {
+  readonly id: string;
+  readonly pages: readonly string[];
+}
+
+export interface UnionListLink {
+  readonly href: string;
+}
+
+export interface UnionListNote {
+  readonly lines: readonly string[];
+}
+
+export interface UnionListPage {
+  readonly id: string;
+  readonly marks: readonly number[];
+}
+
+export interface UnionListRail {
+  readonly id: string;
+  readonly pages: readonly string[];
+  readonly phases: readonly string[];
+  readonly groups: Readonly<Record<string, readonly UnionListPage[]>>;
+  readonly target: UnionListTarget;
+  readonly hints: readonly string[] | null;
+}
+
+export interface UnionListRows {
+  readonly id: string;
+  readonly pages: readonly string[];
+  readonly entries: readonly UnionListPage[];
+  readonly targets: readonly UnionListTarget[];
+}
+
+export type UnionListTarget =
+  | ({ readonly $case: "link" } & UnionListLink)
+  | ({ readonly $case: "note" } & UnionListNote);
+
 export interface ValidatableOnlyAddress {
   readonly city: string;
 }

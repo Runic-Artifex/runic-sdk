@@ -159,6 +159,10 @@ public sealed class DesktopSurface : IAsyncDisposable
         return _engine.ObserveConnections(webUiEvent => handler(new DesktopConnectionEvent(this, webUiEvent)));
     }
 
+    // The admitted Origin of the connected page whose DesktopConnectionEvent.SessionId this is, or null: the origin a page
+    // has in the browser, such as a development server's, which a region's frame must name as its embedder (region/1).
+    internal string? ConnectionOrigin(ulong sessionId) => _engine.ConnectionOrigin(sessionId);
+
     /// <summary>Gets the number of pages connected to this surface.</summary>
     /// <remarks>
     /// A page counts from its <see cref="DesktopConnectionEventKind.Connected"/> event until its

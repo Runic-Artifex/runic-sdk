@@ -864,8 +864,8 @@ backend is the Views protocol's [`hosted-regions/1`](../application/README.md#ho
 - **The host decides.** The host's policy decides at `window-open` whether a Window shows in a window or in a region
   (in .NET, `RunicHostedWindowDecision.Embed`). The guest does not ask for either.
 - **Terms.** A **region window** is a guest Window whose `window-open` reply named `presentation: "region"`. Its **host
-  window** is the host's native window whose page shows the region. The region window is **attached** from its
-  `region-attach` reply until its `region-detach`.
+  window** is the host's native window whose page shows the region, or for a [browser host](#browser-hosts) the page
+  in the user's browser. The region window is **attached** from its `region-attach` reply until its `region-detach`.
 - **Open embeddings.** `region-attach` names how the region shows the page (`embedding`). This version defines
   `"frame"`; [component mode](#component-mode-region-component1) reserves `"component"`. Only frame admission is
   specific to frames.
@@ -884,7 +884,7 @@ The `window-open` reply of a region window names its presentation:
 | `region` | With `"region"`: `{width, height, scale}`, as in [`region-bounds`](#region-bounds), when a region of the host page shows the window already, or `null` while the window waits for one. Informational: the guest's page loads only after a `region-attach`. |
 
 - **Features.** A region window's `features` never list `minimize`, `visibility`, `full-screen`, `color-scheme` or
-  `per-window-color-scheme`.
+  `per-window-color-scheme`, and a [browser host](#browser-hosts)'s list neither `present` nor `owned-windows`.
 - **No window launch.** When the reply names `"region"`, the guest revokes the window's launch code (`url`) at once. A
   region window's page loads only through [frame admission](#frame-admission).
 - **Open without a page.** A region window is open when the reply arrives, whether or not a region shows it. Its open
@@ -925,11 +925,12 @@ The host attaches a region window when its region is shown, and the guest answer
 | Member | Contract |
 | --- | --- |
 | `embedding` | `"frame"`. An open set: a guest answers an embedding it does not implement `rejected` with `embedding-unsupported`, and the host's policy then falls back or refuses. |
-| `embedder` | The origin of the host page that frames the guest's page: `http://`, the host `127.0.0.1`, `[::1]` or `localhost`, an explicit port from 1 to 65,535 without leading zeros, and nothing after it (no path, query, fragment or user information), at most 256 characters: the form in which browsers serialize such an origin. It is the host's own page, or in development its development server. |
+| `embedder` | The origin of the host page that frames the guest's page: `http://`, the host `127.0.0.1`, `[::1]` or `localhost`, an explicit port from 1 to 65,535 without leading zeros, and nothing after it (no path, query, fragment or user information), at most 256 characters: the form in which browsers serialize such an origin. It is the origin the host page has in its web view or browser, such as the host's own page, or in development its development server; Runic's host takes the `Origin` with which the page that declared the region connected to it. |
 | `width`, `height` | The region's size in CSS pixels of the host page, integers from 0 to 32,767. |
 | `scale` | The host page's device pixel ratio, a number from 0.25 to 8. |
 | `sizing` | Optional. `"fill"` (the default): the host's layout sets the region's size, and the guest's page fills it and scrolls inside it. `"content-height"`: the region takes the height that the guest asks for with [`resize`](#presentation-in-a-region), within the host's minimum and maximum, and its width follows the host. An open set; a value the guest does not know reads as `"fill"`. |
 | `allowSameSite` | Optional, `false` by default. `true` lets the guest serve the frame from the embedder's own loopback family when it cannot listen on the other one ([guest origin](#guest-origin)). |
+| `browser` | Optional, `false` by default. `true` when the host page runs in an installed browser rather than the host's own web view: a [browser host](#browser-hosts)'s page, or a host's browser fallback. A guest that runs elevated refuses it. A value that is not a boolean is `rejected` with `invalid-request`. |
 
 Reply members:
 
@@ -947,7 +948,9 @@ Reply members:
   `region-attach` for an attached window treats it as a detach followed by the attach.
 - **Failures.** A guest that cannot listen on the cross-site family, and may not fall back, answers `failed` with
   `cross-site-unavailable`. A guest that refuses region mode for its host, such as an elevated guest whose host is not
-  an [elevated peer](#elevated-peer-admission), answers `rejected` with `refused`. The window stays open and unattached.
+  an [elevated peer](#elevated-peer-admission), answers `rejected` with `refused`. A guest that runs elevated answers a
+  `region-attach` with `browser: true` `rejected` with `guest-elevated` ([browser hosts](#browser-hosts)). The window
+  stays open and unattached.
 
 #### `region-detach`
 
@@ -1165,6 +1168,37 @@ The guest never takes the keyboard focus from the host page:
 - **The guest goes away**: the host empties its regions, and its page shows its own content for the ended state.
 - **The frame's content process ends**: the host detaches the window with `crashed` and attaches it again with a new
   code. A host page never loads a frame launch address twice: the second load would be a launch conflict.
+
+### Browser hosts
+
+A **browser host** is a host whose pages run in the user's installed browser, such as a Runic application that runs
+serve-only (`RUNIC_APPLICATION_SERVE_ONLY=1`). It has no native window of its own, so it shows a guest's Windows only
+in regions of its pages, with fewer features than a host with native windows:
+
+- **Features.** Its `hello` lists `region/1` alone. Without `menus/1`, `dialogs/1` and `window-services/1`, a guest's
+  menus, dialogs and window services report `OwnerUnavailable`, as in serve-only mode.
+- **No windows of their own.** It answers a `window-open` that its policy does not show in a region `rejected` with
+  `refused`, so the guest's open fails with `hosted-window-refused`. Owned windows are among them. In .NET,
+  `RunicHostedWindowRequest.CanOpenWindow` is `false` and only `RunicHostedWindowDecision.Embed` shows a window.
+- **Presentation.** A region window's `features` list neither `present` nor `owned-windows`. `present` and `announce`
+  are answered `unavailable` with `backend-unavailable`: the host can neither bring the user's browser forward nor speak
+  through it. `activity` reports the region `active` while it holds the focus of its page, since a browser reports
+  nothing about its window; `minimized` is always `false`. The rest of [presentation in a region](#presentation-in-a-region)
+  applies, and `region-focus` `leave` is answered `success`.
+- **Cross-site only.** Its `region-attach` carries `browser: true` and never `allowSameSite: true`: the user's browser
+  holds the cookies of other local applications on the same loopback names, which a same-site frame would receive. A
+  guest that cannot listen on the other loopback family answers `failed` with `cross-site-unavailable`, and the region
+  shows its fallback content.
+- **The embedder** is the origin with which the host page connected to the host, as its browser sent it, so a page
+  opened through `localhost` names `http://localhost:<port>` and the guest serves its frame from `[::1]`, else
+  `127.0.0.1` ([guest origin](#guest-origin)). Runic's surfaces admit a page's connection only from their own origin or
+  one of their additional origins.
+- **Elevated guests.** A guest that runs elevated refuses every `region-attach` with `browser: true` (`rejected`,
+  `guest-elevated`): its page would run in a process that does not run elevated. The window stays open and unattached.
+  [Elevated-peer admission](#elevated-peer-admission) refuses such a browser's connections in any case.
+
+A host with native windows whose page runs in a browser fallback, rather than its embedded web view, attaches with
+`browser: true` too, and never allows the same site.
 
 ### Component mode (`region-component/1`)
 
@@ -1384,7 +1418,7 @@ application is in the [security guide](../../docs/security.md#hosted-application
     token it redirects to, in the address's fragment, never with a cookie; a token admits one connected page and dies
     at detach. A frame surface allows framing only by the `embedder` of the latest `region-attach`, listens on the
     loopback family that the embedder does not use, and falls back to the embedder's own only when the host allows it,
-    which a browser host never does. The host gives the frame only the permissions its policy granted the guest's
+    which a browser host never does; an elevated guest refuses a browser host's page. The host gives the frame only the permissions its policy granted the guest's
     Window, routes drops and permission requests of the frame to the guest and never to its own page, never moves the
     focus out of its page for the guest, counts focus that the user did not move into the region as the guest's for
     the window services, and redacts frame tokens in console messages it forwards.

@@ -44,6 +44,32 @@ function fresh(): MockBridge {
   client.dispose();
 }
 
+// Union cases with list, dictionary, optional-list and nested-union members round-trip through the mock (#863).
+{
+  const bridge = fresh();
+  const { connectUnionList } = await load("unionList");
+  const { mockUnionList } = await load("unionList.mock");
+  const groups = Object.assign(Object.create(null) as Record<string, unknown>, { g: [{ id: "q", marks: [3] }] });
+  const areas = [
+    { $case: "rows", id: "rows", pages: ["a"], entries: [{ id: "p", marks: [1, 2] }], targets: [{ $case: "note", lines: ["x"] }, { $case: "link", href: "/y" }] },
+    { $case: "rail", id: "rail", pages: ["b"], phases: ["one"], groups, target: { $case: "note", lines: [] }, hints: ["hint"] },
+    { $case: "empty", id: "empty", pages: [] },
+  ];
+  const inputs: unknown[] = [];
+  const mock = mockUnionList(bridge, {
+    state: { areas },
+    commands: { replace: (_state: unknown, input: unknown) => { inputs.push(input); return {}; } },
+  });
+  const client = await connectUnionList();
+  assert.deepEqual(client.snapshot.areas, areas);
+  await client.replace(areas);
+  assert.deepEqual(inputs, [areas]);
+  const rail = { $case: "rail", id: "next", pages: [], phases: ["two"], groups: Object.create(null), target: { $case: "link", href: "/z" }, hints: null };
+  mock.update({ areas: [rail] });
+  assert.deepEqual(client.snapshot.areas, [rail]);
+  client.dispose();
+}
+
 // Members the page leaves out stay out of the encoded input; a mock decodes a missing nullable one as null.
 {
   const bridge = fresh();

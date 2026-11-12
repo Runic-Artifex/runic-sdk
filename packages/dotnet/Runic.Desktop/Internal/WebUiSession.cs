@@ -65,6 +65,10 @@ internal sealed class WebUiSession : IAsyncDisposable
     // The page connection slot the WebSocket was admitted to (DesktopConnectionSlot), from the credential it offered.
     public DesktopConnectionSlot Slot { get; init; }
 
+    // The upgrade's Origin header, which the window's origin check admitted; empty when the request had none or the
+    // window checks no origin. A region's host page frames the guest from this origin (region/1, region-attach embedder).
+    public string Origin { get; init; } = string.Empty;
+
     public bool IsAuthenticated => Volatile.Read(ref _revoked) == 0 && Volatile.Read(ref _authenticated) != 0;
 
     // Completes once the ended receive loop has snapshotted the accepted callbacks

@@ -5,7 +5,7 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.Translations</PackageId>
-    <Description>Optional English and German text for Runic's own messages (validation, field errors, dialog titles, error pages, standard menus), as a Runic Translations library catalog that follows the application's locale.</Description>
+    <Description>Optional English and German text for Runic's own messages (validation, field errors, error sentences and shortcut labels of the page, dialog titles, error pages, standard menus), as a Runic Translations library catalog that follows the application's locale.</Description>
     <PackageTags>runic-artifex;application;i18n;localization;translations;dotnet;nativeaot</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Packs runic/runic-views/ (runic.json, sources, contract.json) and buildTransitive/Runic.Application.Views.Translations.props,
