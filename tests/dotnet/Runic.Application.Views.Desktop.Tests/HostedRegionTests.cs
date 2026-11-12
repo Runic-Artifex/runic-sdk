@@ -1,95 +1,133 @@
-using System.Diagnostics;
 using System.Net;
-using System.Text;
-using System.Text.Json;
 using Runic.Application.Testing;
+using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
+using Runic.Application.Views.Desktop.Hosting;
+using Runic.Desktop;
 using TUnit.Core;
-using static HostedApplicationTests;
 
-// region/1 on the guest (host-protocol.md, Regions) between a real guest process (HostedGuestProgram "main") and
-// RunicTestHost as a region host: the Window's page loads only through a frame launch address, and what the page
-// reports goes to the host.
+// region/1 end to end: Runic's host embeds the window of Runic's guest in a region of a host page that the test plays
+// (HostedRegionTestPage), and loads the frame launch address the guest answers without a browser.
 internal sealed class HostedRegionTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
-    private static ProcessStartInfo Process(RunicGuestStartInfo start)
+    private sealed class EmbedPolicy(string region) : IRunicHostedWindowPolicy
     {
-        var info = new ProcessStartInfo(start.FileName) { WorkingDirectory = start.WorkingDirectory };
-        foreach (var argument in start.Arguments) info.ArgumentList.Add(argument);
-        return info;
+        public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(request.CanEmbed ? RunicHostedWindowDecision.Embed(region) : RunicHostedWindowDecision.Refuse("Region mode only."));
     }
 
-    [Test, NotInParallel(Order = 74)]
-    public async Task AWindowInARegionLoadsThroughItsFrameAndReportsItsPageToTheHost()
+    [Test, NotInParallel(Order = 50)]
+    public async Task EmbedsTheGuestsWindowInARegionAndAttachesItAgainByName()
     {
-        await using var host = await RunicTestHost.StartGuestAsync(Process(HostedGuestProgram.Guest("main")), new RunicTestHostOptions
+        await using var fixture = await HostFixture.StartAsync();
+        await fixture.RequireUnelevatedAsync();
+        await using var surface = await fixture.Desktop.CreateSurfaceAsync();
+        var hostWindow = await surface.OpenWindowAsync(RunicDesktopHost.DefaultWindowOptions);
+        var page = new HostedRegionTestPage(fixture.Host.RegionDirectory, hostWindow);
+        var region = page.Declare("check");
+        Check(region.Shows == "waiting", $"The page shows {region.Shows} before a window.");
+
+        var opened = fixture.Next(opened: true);
+        var attached = new TaskCompletionSource<RunicHostedRegionEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Applications.RegionAttached += (_, e) => attached.TrySetResult(e);
+        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"),
+            new RunicHostedApplicationOptions { Policy = new EmbedPolicy("check") });
+        var window = await opened.WaitScaledAsync(Timeout);
+        Check(window.PresentationKind == RunicHostedWindowPresentationKind.Region && window.Region is { Name: "check" } && window.IsOpen,
+            "The window does not show in the region.");
+        Check(Throws<InvalidOperationException>(() => _ = window.Presentation), "A region window reports a native window of its own.");
+        Check(fixture.Factory.Hosts.Count == 1, "The host opened a native window for the region window.");
+        var hosted = window.Region!;
+        Check((await attached.Task.WaitScaledAsync(Timeout)).Region == hosted, "RegionAttached named another region.");
+
+        // The page loads the frame launch address: the guest redirects to its page with the frame token in the fragment.
+        var first = await WaitForSourceAsync(page, "check", null);
+        Check(Uri.TryCreate(first, UriKind.Absolute, out var frame) && frame.AbsolutePath.Contains("/_runic_frame/", StringComparison.Ordinal),
+            $"The frame launch address is {first}.");
+        Check(hosted.State == RunicHostedRegionState.Loading, $"The region is {hosted.State} before its page connected.");
+        using var client = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+        using (var launch = await client.GetAsync(frame))
         {
-            StartTimeout = TestTimeouts.Scale(Timeout),
-            Features = ["menus/1", "dialogs/1", "window-services/1", "region/1"],
-            EmbedWindow = static _ => true,
-        });
-        if (host.Exited.IsCompleted) Skip.Test("The guest refused hosted mode (an elevated test process).");
-        Check(host.Features.Contains("region/1"), $"The guest's hello listed [{string.Join(", ", host.Features)}].");
-        var window = await host.WaitForWindowAsync(nameof(ConformanceMainWindow), TestTimeouts.Scale(Timeout));
-        Check(window.IsRegion && !window.IsAttached, "The window is not an unattached region window.");
-        using var cancel = TestTimeouts.Cancellation(Timeout);
-
-        // The window-mode launch address admits nobody: a region window's page loads only in a frame.
-        using (var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }))
-        using (var launch = await http.GetAsync(window.LaunchUrl, cancel.Token))
-            Check(launch.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound, $"The launch address was answered {(int)launch.StatusCode}.");
-
-        var frame = await window.AttachRegionAsync("http://127.0.0.1:38200", width: 640, height: 400, sizing: "content-height",
-            allowSameSite: true, cancellationToken: cancel.Token);
-        Check(System.Text.RegularExpressions.Regex.IsMatch(frame.AbsoluteUri, @"^http://(\[::1\]|127\.0\.0\.1):\d+/[A-Za-z0-9_-]+/_runic_frame/[A-Za-z0-9_-]{43}$"),
-            $"The frame launch address is {frame}.");
-        Check(frame.Host == "[::1]" || window.FrameIsSameSite, "An IPv4 frame was not reported as same-site.");
-
-        var (page, token) = await DesktopWireClient.ConnectFrameAsync(frame, cancel.Token);
-        using (page)
-        {
-            Check(token.Length == 43, "The redirect carried no frame token.");
-            Check(await TestTimeouts.UntilAsync(() => window.RegionPages.SequenceEqual(["connected"]), Timeout),
-                $"The guest reported [{string.Join(", ", window.RegionPages)}].");
-
-            // The page's title and content height (WebUiBridge's region reports): set-title and the preferred size.
-            _ = await page.CallAsync("__webui_core_api__", cancel.Token, "region", "{\"title\":\"System\\u0000 check\",\"height\":420.2}");
-            Check(await TestTimeouts.UntilAsync(() => window.Titles.SequenceEqual(["System check"]), Timeout),
-                $"The guest sent the titles [{string.Join(", ", window.Titles)}].");
-            Check(await TestTimeouts.UntilAsync(() => Resizes(window).SequenceEqual([(640, 421)]), Timeout),
-                $"The guest sent the sizes [{string.Join(", ", Resizes(window))}].");
-            // The same title again is not sent again.
-            _ = await page.CallAsync("__webui_core_api__", cancel.Token, "region", "{\"title\":\"System check\"}");
-
-            // The host moves the focus into the region: the page is told the direction.
-            await window.FocusRegionAsync("backward", cancel.Token);
-            var (command, payload) = await page.NextCommandAsync(cancel.Token);
-            Check(command == 0xF8 && Encoding.ASCII.GetString(payload).TrimEnd('\0') == "__runicRegion\0backward",
-                $"The page received command {command:X2} {Encoding.ASCII.GetString(payload)}.");
-
-            // Detaching disconnects the page and revokes its token; the Window stays open.
-            await window.DetachRegionAsync(cancellationToken: cancel.Token);
-            Check(await page.ClosedAsync(cancel.Token), "The page stayed connected.");
+            Check(launch.StatusCode == HttpStatusCode.SeeOther && launch.Headers.Location?.OriginalString.Contains("#runic-frame=", StringComparison.Ordinal) == true,
+                $"The frame launch answered {(int)launch.StatusCode} {launch.Headers.Location}.");
         }
-        Check(window.Titles.Count == 1, $"The guest sent the titles [{string.Join(", ", window.Titles)}].");
-        Check(!window.IsClosed, "The Window closed with its region.");
 
-        // A new attachment has a new address; the earlier one admits nobody.
-        var next = await window.AttachRegionAsync("http://[::1]:38200", cancellationToken: cancel.Token);
-        Check(next != frame && next.Host == "127.0.0.1" && !window.FrameIsSameSite, $"The next frame launch address is {next}.");
-        using (var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }))
-        using (var stale = await http.GetAsync(frame, cancel.Token))
-            Check(stale.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound, $"The earlier address was answered {(int)stale.StatusCode}.");
+        // A second load of the spent code revokes the token: the host detaches and attaches again with a new code.
+        using (var again = await client.GetAsync(frame)) Check(again.StatusCode == HttpStatusCode.Forbidden, $"A spent code answered {(int)again.StatusCode}.");
+        var second = await WaitForSourceAsync(page, "check", first);
 
-        Check(await window.RequestCloseAsync(cancellationToken: cancel.Token), "The guest refused the close.");
-        Check(await host.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{host.StandardError}");
+        // The page removes the region: the window stays open and detached, and its code no longer loads.
+        var detached = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        hosted.Detached += (_, e) => detached.TrySetResult(e.Reason);
+        page.Remove("check");
+        Check(await detached.Task.WaitScaledAsync(Timeout) == "removed", "The region did not detach as removed.");
+        Check(window.IsOpen && hosted.State == RunicHostedRegionState.Detached, $"The window is {hosted.State} after the page removed the region.");
+        // The guest refuses it, whatever the status (its frame surface may be gone).
+        using (var revoked = await client.GetAsync(new Uri(second)))
+            Check((int)revoked.StatusCode >= 400, $"A detached window's code answered {(int)revoked.StatusCode}.");
+
+        // The region of the same name comes back in the same host window: the window attaches again.
+        page.Declare("check");
+        var third = await WaitForSourceAsync(page, "check", second);
+        Check(third != first && third != second, "The window attached again with a code it had used.");
+
+        // The host's departure asks the guest, whose main Window does not guard its close: the window closes.
+        Check(await hosted.AsDepartureGuard().CanDepartAsync(null!, CancellationToken.None).AsTask().WaitScaledAsync(Timeout), "The guest refused the departure.");
+        await window.Closed.WaitScaledAsync(Timeout);
+        Check(await TestTimeouts.UntilAsync(() => hosted.State == RunicHostedRegionState.Ended && page.Get("check").Shows == "ended", Timeout),
+            $"The region is {hosted.State} and the page shows {page.Find("check")?.Shows} after the window closed.");
+        Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its Window closed.");
     }
 
-    private static IEnumerable<(int Width, int Height)> Resizes(RunicTestHostedWindow window) =>
-        window.PresentationRequests.Where(static request => request.Kind == "resize")
-            .Select(static request => (request.Message.GetProperty("width").GetInt32(), request.Message.GetProperty("height").GetInt32()));
+    // A host Window's page as the host sees it (DesktopHostedRegionPage): the regions its Views connections declare through
+    // hosted-regions/1, also those declared before the host followed it, reach the region directory, which answers the
+    // page through the same connection; the page's origin is the embedder.
+    [Test]
+    public async Task AHostWindowsPageReachesTheRegionDirectoryThroughItsViewsConnection()
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        await using var surface = await fixture.Desktop.CreateSurfaceAsync();
+        var hostWindow = await surface.OpenWindowAsync(RunicDesktopHost.DefaultWindowOptions);
+        using var transport = new InMemoryBridgeTransport();
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions());
+        var regions = BridgeDispatcher.For(transport).HostedRegions;
+        var hello = transport.Request("""{"kind":"hello","protocol":4,"session":"s1","client":{"name":"test-client","version":"1.0.0"},"features":["hosted-regions/1"]}""", "c1");
+        Check(hello.StartsWith("""{"ok":true""", StringComparison.Ordinal), $"The hello was answered {hello}.");
+        Check(transport.Request("""{"kind":"hosted-region-declare","name":"check"}""", "c1") == """{"ok":true}""", "The declaration failed.");
+
+        var directory = new HostedRegionDirectory();
+        var page = DesktopHostedRegionPage.Follow(directory, regions, new HostedMenuWindow(), hostWindow, new Uri("http://127.0.0.1:38200/index.html"));
+        Check(page.Embedder == "http://127.0.0.1:38200" && page.AllowsSameSite && ReferenceEquals(page.NativeWindow, hostWindow),
+            $"The page's embedder is {page.Embedder}.");
+        Check(transport.Request("""{"kind":"hosted-region-declare","name":"other","sizing":"content-height"}""", "c1") == """{"ok":true}""", "The declaration failed.");
+        await regions.WhenRaised();
+        await BridgeTargetedPushes.For(transport).WhenSent();
+        // No window waits for either region: the directory empties both as waiting, the earlier one too.
+        var pushes = transport.TakeMessages().Select(static message => message.Json).ToArray();
+        Check(pushes.SequenceEqual([
+            """{"kind":"hosted-region-empty","name":"check","reason":"waiting"}""",
+            """{"kind":"hosted-region-empty","name":"other","reason":"waiting"}""",
+        ]), $"The page received [{string.Join(", ", pushes)}].");
+        Check(DesktopHostedRegionPage.Origin(new Uri("http://[::1]:40117/a/b")) == "http://[::1]:40117", "An IPv6 origin is not serialized as browsers do.");
+        await hostWindow.CloseAsync();
+    }
+
+    // The frame launch address the page shows, once it is another than previous.
+    private static async Task<string> WaitForSourceAsync(HostedRegionTestPage page, string name, string? previous)
+    {
+        string? Source() => page.Find(name) is { Shows: "content", Src: { } src } && src != previous ? src : null;
+        Check(await TestTimeouts.UntilAsync(() => Source() is not null, Timeout), $"The page shows {page.Find(name)?.Shows} {page.Find(name)?.Src}.");
+        return Source()!;
+    }
+
+    private static bool Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T) { return true; }
+        return false;
+    }
 
     private static void Check(bool condition, string message)
     {
