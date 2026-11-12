@@ -17,10 +17,12 @@ namespace Runic.Application.Views;
 /// <item><term><c>offer-invalid</c></term><description>Guest: the offer line is not valid.</description></item>
 /// <item><term><c>protocol-unsupported</c></term><description>The host and the guest share no protocol version.</description></item>
 /// <item><term><c>host-not-accepted</c></term><description>Guest: <c>RunicGuestOptions.AcceptHost</c> declined the host.</description></item>
-/// <item><term><c>guest-elevated</c>, <c>guest-other-user</c></term><description>Guest: it runs elevated, or as another user than its parent.</description></item>
+/// <item><term><c>guest-elevated</c>, <c>guest-other-user</c></term><description>Guest: it runs elevated, and it or its host did not allow an elevated pair; or it runs as another user than its parent.</description></item>
+/// <item><term><c>guest-elevated-host-not-elevated</c></term><description>Guest: it runs elevated and both sides allow an elevated pair, but its parent does not run elevated.</description></item>
 /// <item><term><c>network-exposure</c></term><description>Guest: its Desktop host listens on other interfaces than loopback.</description></item>
 /// <item><term><c>handshake-timeout</c>, <c>handshake-invalid</c>, <c>host-gone</c></term><description>Guest: no valid authenticated <c>hello</c> arrived in time, or standard input ended first.</description></item>
 /// <item><term><c>guest-start-failed</c></term><description>Host: the guest's executable could not be started or contained (<see cref="Exception.InnerException"/>).</description></item>
+/// <item><term><c>host-not-elevated</c></term><description>Host: it allows an elevated guest (<c>RunicGuestStartInfo.AllowElevatedGuest</c>) but does not run elevated; no guest started.</description></item>
 /// <item><term><c>guest-start-timeout</c>, <c>guest-exited</c>, <c>guest-not-hostable</c>, <c>guest-refused</c></term><description>Host: the guest wrote no channel line or answered no <c>hello</c> in time, exited first, could not be authenticated, or refused for another reason (<see cref="GuestCode"/>).</description></item>
 /// </list>
 /// <para>The protocol and this type are experimental; see <c>docs/experimental.md</c>.</para>

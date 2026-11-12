@@ -800,9 +800,17 @@ if (args is ["hosted"])
   and prove that it started this process. A failure, such as no offer or a host
   that `RunicGuestOptions.AcceptHost` declines, throws
   `RunicHostedApplicationException` with its `Code` and logs event 2010. Hosted
-  mode refuses to start elevated, with `DesktopHostOptions.NetworkExposure`
-  other than loopback, or, on Linux and macOS, when its real or effective user
-  is not its parent's or it cannot read its parent's (`guest-other-user`).
+  mode refuses to start with `DesktopHostOptions.NetworkExposure` other than
+  loopback, or when it runs as another user than its parent or cannot read its
+  parent's (`guest-other-user`). It refuses to start elevated
+  (`guest-elevated`), unless the application sets
+  `RunicGuestOptions.AllowElevatedHost` and its host
+  `RunicGuestStartInfo.AllowElevatedGuest`: then its parent must run elevated
+  as the same user (`guest-elevated-host-not-elevated` otherwise), which the
+  application checks itself, and it logs event 2025. An unelevated host cannot
+  allow an elevated guest (`host-not-elevated`). The
+  [security guide](../../../docs/security.md#elevated-hosts-and-guests) lists
+  what the user's unelevated processes can still reach.
 - **Windows.** No window toolkit loop starts, and the application never shows a
   window of its own. Each Window's page is served as in serve-only mode, and the
   host opens a window that loads it with a one-time launch address; the host's
@@ -977,6 +985,13 @@ var exitCode = await tool.Exited;
   requests (20 a second), the files and links it opens (5 per ten seconds), its requests that can activate a window
   (present, minimize, set-visible, set-full-screen and toggle-maximized: 2 a second after a burst of 3) and its announcements (2 a second after a burst of 5). The host rebuilds a window's native bar
   at most every 50 milliseconds, however many changes arrive.
+- **Elevated guests.** A guest that an elevated host starts runs elevated too, and refuses hosted mode
+  (`guest-refused` with `guest-elevated`). An elevated host whose guest needs administrator rights as well, such as an
+  installer that hosts a check tool, sets `RunicGuestStartInfo.AllowElevatedGuest`, and the guest
+  `RunicGuestOptions.AllowElevatedHost`; the guest then checks that its parent runs elevated as the same user. The
+  host must run elevated (`host-not-elevated` otherwise) and name the guest by a fully qualified path, in a location
+  only administrators can change; see
+  [security](../../../docs/security.md#elevated-hosts-and-guests).
 - **Permissions.** A guest's request for the camera and microphone is granted only as far as the host grants its
   own windows (`RunicDesktopHost.WindowOptions.AllowedPermissions`); a host that grants nothing grants a guest
   nothing. A policy can grant more through `RunicHostedWindowDecision.Allow(request.WindowOptions with { ... })`.

@@ -54,9 +54,11 @@ namespace Runic.Application.Views.Desktop;
 /// </para>
 /// <para>
 /// Any process of the same user that knows the parameter can host the application; <see cref="AcceptHost"/> is a product
-/// filter, not a security boundary. Hosted mode refuses to start when the process runs elevated, or, on Linux and macOS,
-/// when its real or effective user is not its parent's or it cannot read its parent's. The protocol is experimental; see
-/// <c>docs/experimental.md</c>.
+/// filter, not a security boundary. Hosted mode refuses to start when the process runs as another user than its parent,
+/// or cannot show that it does (on Linux and macOS its real and effective user ids, on Windows its token's user). It
+/// also refuses when the process runs elevated, unless <see cref="AllowElevatedHost"/> and the host's
+/// <see cref="RunicGuestStartInfo.AllowElevatedGuest"/> allow the one elevated pair: a parent that runs elevated as the
+/// same user. The protocol is experimental; see <c>docs/experimental.md</c>.
 /// </para>
 /// </remarks>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
@@ -91,6 +93,33 @@ public sealed record RunicGuestOptions
     /// </summary>
     /// <remarks>The name and version are what the host says about itself: a filter for the product, not a credential.</remarks>
     public Func<RunicHostInfo, bool>? AcceptHost { get; init; }
+
+    /// <summary>
+    /// Whether the application, when it runs elevated, accepts a host that runs elevated as the same user;
+    /// <see langword="false"/>, the default, refuses hosted mode whenever the process runs elevated (<c>guest-elevated</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For administrative tools whose host and guest both need administrator rights, such as an installer that hosts a
+    /// check tool. It has no effect on a process that does not run elevated. With <see langword="true"/>, a process that
+    /// runs elevated (an elevated token on Windows, an effective user id 0 on Linux and macOS) is hosted only when all of
+    /// these hold, and refuses otherwise:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>The host's offer allows an elevated guest (<see cref="RunicGuestStartInfo.AllowElevatedGuest"/>); otherwise <c>guest-elevated</c>.</description></item>
+    /// <item><description>Its parent process is the process that started it, not a newer one that reused a gone parent's id, and runs as the same user (the token's user on Windows; the real and effective user ids on Linux and macOS); otherwise <c>guest-other-user</c>.</description></item>
+    /// <item><description>That parent runs elevated (Windows: its token is elevated, or its integrity level is High or above; Linux and macOS: its effective user id is 0); otherwise <c>guest-elevated-host-not-elevated</c>.</description></item>
+    /// </list>
+    /// <para>
+    /// The application checks its parent's token or user ids itself; nothing the host says counts as evidence. Processes
+    /// of the same user that do not run elevated cannot read the channel's secrets or the Windows' launch addresses, but
+    /// they can still connect to its loopback listeners, see the screen and read the clipboard; an elevating launcher that
+    /// relays another process's standard input and output, such as <c>sudo</c>, makes that process the host. Start the
+    /// application only from a location that only administrators can change. The residual risks are in
+    /// <c>docs/security.md</c>, "Hosted application windows".
+    /// </para>
+    /// </remarks>
+    public bool AllowElevatedHost { get; init; }
 
     /// <summary>
     /// How long the hosted start may take, from <c>Run</c> to the host's authenticated <c>hello</c>: 30 seconds by default.
@@ -141,8 +170,9 @@ public sealed record RunicGuestOptions
     // Ends the process; tests replace it.
     internal Action<int> ExitProcess { get; init; } = Environment.Exit;
 
-    // The refusal code for this process's privileges, or null; tests replace it.
-    internal Func<string?> CheckPrivileges { get; init; } = Hosting.GuestPrivileges.Check;
+    // This process's privileges and its parent's, read once as hosted mode starts; tests replace it to play an elevated
+    // process, parent or both.
+    internal Func<Hosting.GuestPrivilegeFacts> ReadPrivileges { get; init; } = Hosting.GuestPrivileges.Read;
 
     internal string ResolvedName =>
         ApplicationName ?? Assembly.GetEntryAssembly()?.GetName().Name ?? AppDomain.CurrentDomain.FriendlyName;

@@ -111,14 +111,22 @@ internal static class HostProtocol
     internal static string Line(string prefix, JsonObject content) => prefix + content.ToJsonString() + "\n";
 
     // The offer the host writes on the guest's standard input.
-    internal static JsonObject Offer(IEnumerable<int> protocols, string nonce, string hostName, string hostVersion) => new()
+    // elevatedGuest is present, and true, only when the host allows an elevated guest (RunicGuestStartInfo.AllowElevatedGuest).
+    internal static JsonObject Offer(IEnumerable<int> protocols, string nonce, string hostName, string hostVersion, bool elevatedGuest = false)
     {
-        ["protocols"] = new JsonArray([.. protocols.Select(static version => (JsonNode)version)]),
-        ["nonce"] = nonce,
-        ["host"] = ProductNode(hostName, hostVersion),
-    };
+        var offer = new JsonObject
+        {
+            ["protocols"] = new JsonArray([.. protocols.Select(static version => (JsonNode)version)]),
+            ["nonce"] = nonce,
+            ["host"] = ProductNode(hostName, hostVersion),
+        };
+        if (elevatedGuest) offer["elevatedGuest"] = true;
+        return offer;
+    }
 
-    internal sealed record OfferContent(IReadOnlyList<int> Protocols, byte[] Nonce, string NonceText, string HostName, string HostVersion);
+    // ElevatedGuest: the host's opt-in to an elevated guest, never evidence of the host's elevation (host-protocol.md, Offer).
+    internal sealed record OfferContent(IReadOnlyList<int> Protocols, byte[] Nonce, string NonceText, string HostName, string HostVersion,
+        bool ElevatedGuest);
 
     // The offer's members in range (host-protocol.md, Offer), or null.
     internal static OfferContent? ReadOffer(JsonObject offer)
@@ -133,7 +141,9 @@ internal static class HostProtocol
         }
         if (String(offer, "nonce") is not { } nonceText || DecodeSecret(nonceText) is not { } nonce) return null;
         if (Product(offer, "host") is not { } host) return null;
-        return new(protocols, nonce, nonceText, host.Name, host.Version);
+        // Anything but true, such as a string, reads as no opt-in.
+        var elevatedGuest = offer["elevatedGuest"] is JsonValue optIn && optIn.GetValueKind() == JsonValueKind.True;
+        return new(protocols, nonce, nonceText, host.Name, host.Version, elevatedGuest);
     }
 
     internal sealed record ChannelContent(Uri Url, string Key, int Protocol);

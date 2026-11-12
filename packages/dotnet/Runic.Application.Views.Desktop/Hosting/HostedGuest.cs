@@ -227,10 +227,9 @@ internal sealed class HostedGuest : IAsyncDisposable
         var host = new RunicHostInfo(offer.HostName, offer.HostVersion);
         if (_options.AcceptHost is { } accept && !accept(host))
             throw Refuse("host-not-accepted", $"The application does not accept the host '{host.Name}' {host.Version}.");
-        if (_options.CheckPrivileges() is { } privileges)
-            throw Refuse(privileges, privileges == "guest-elevated"
-                ? "The application runs elevated, so it cannot be hosted."
-                : "The application runs as another user than the process that started it, so it cannot be hosted.");
+        var privileges = GuestPrivileges.Decide(_options.ReadPrivileges(), _options.AllowElevatedHost, offer.ElevatedGuest);
+        if (privileges.Code is { } refusal) throw Refuse(refusal, privileges.Message!);
+        if (privileges.Message is { } elevated) DesktopLog.HostedElevated(_logger, elevated);
         if (_desktop.Options.NetworkExposure != DesktopNetworkExposure.Loopback)
             throw Refuse("network-exposure", "The application's Desktop host listens on other interfaces than loopback.");
 
