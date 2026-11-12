@@ -6,8 +6,9 @@ using Runic.Desktop;
 // and focus to the host's region directory, and records what the host shows in each. Like Runic's element, it moves the
 // focus into a region at the host's request only while the page holds no focus of its own, and then reports the focus
 // as the script's, a little later, as a page does after its next animation frame.
+// A browser page (browser) stands for a browser (serve-only) host's page, which no native window shows.
 internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, DesktopWindow? nativeWindow, string embedder = "http://127.0.0.1:38200",
-    Runic.Application.Views.IRunicWindow? window = null) : IHostedRegionPage
+    Runic.Application.Views.IRunicWindow? window = null, bool browser = false) : IHostedRegionPage
 {
     internal static readonly TimeSpan ReportDelay = TimeSpan.FromMilliseconds(50);
 
@@ -45,7 +46,9 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
 
     public string Embedder => embedder;
 
-    public bool AllowsSameSite => true;
+    public bool IsBrowser => browser;
+
+    public bool AllowsSameSite => !browser;
 
     // Whether an element of the page outside its regions holds the focus.
     internal bool HostFocused { get; set; }

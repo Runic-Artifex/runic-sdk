@@ -44,8 +44,10 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
-        if (_host.IsHosted || _host.ServeOnly)
-            throw new InvalidOperationException("A hosted or serve-only application shows no windows of its own, so it cannot host another application.");
+        // A serve-only application is a browser host: it shows the guest's windows only in regions of its pages
+        // (host-protocol.md, Browser hosts). A hosted application has a host of its own, which shows its windows.
+        if (_host.IsHosted)
+            throw new InvalidOperationException("A hosted application shows no windows of its own, so it cannot host another application.");
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
         {

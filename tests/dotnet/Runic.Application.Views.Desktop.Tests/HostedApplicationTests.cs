@@ -510,13 +510,6 @@ internal sealed class HostedApplicationTests
         catch (Exception error) when (error is ArgumentException or InvalidOperationException) { return true; }
     }
 
-    [Test, NotInParallel(Order = 63)]
-    public async Task AHostedOrServeOnlyApplicationCannotHost()
-    {
-        await using var fixture = await HostFixture.StartAsync(serveOnly: true);
-        await Throws<InvalidOperationException>(() => fixture.Applications.StartAsync(HostedGuestProgram.Guest("main")).AsTask());
-    }
-
     // The guest leads a process group of its own on Linux (posix_spawn with POSIX_SPAWN_SETPGROUP), and the start
     // information's environment reaches it without the serve-only switches.
     [Test, NotInParallel(Order = 64)]

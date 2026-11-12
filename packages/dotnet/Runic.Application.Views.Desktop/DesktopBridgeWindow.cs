@@ -102,6 +102,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     // returns when serving ends.
     internal void ServeUntil(Task stopped) => Volatile.Write(ref _served, stopped);
 
+    // Completes when the window's close started, however it started.
+    internal Task CloseStarted => _closeStarted.Task;
+
     // Completes when the window's close finished draining, however it started (hosted mode's window-closed).
     internal async Task WhenClosedAsync()
     {

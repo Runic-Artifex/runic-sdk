@@ -144,6 +144,10 @@ public sealed record RunicGuestOptions
     // The refusal code for this process's privileges, or null; tests replace it.
     internal Func<string?> CheckPrivileges { get; init; } = Hosting.GuestPrivileges.Check;
 
+    // Whether this process runs elevated (root on Linux and macOS, an elevated token on Windows): such a guest refuses a
+    // region in a browser host's page (host-protocol.md, Browser hosts); tests replace it.
+    internal Func<bool> RunsElevated { get; init; } = static () => Environment.IsPrivilegedProcess;
+
     internal string ResolvedName =>
         ApplicationName ?? Assembly.GetEntryAssembly()?.GetName().Name ?? AppDomain.CurrentDomain.FriendlyName;
 

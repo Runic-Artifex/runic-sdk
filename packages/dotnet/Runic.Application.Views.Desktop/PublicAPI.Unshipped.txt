@@ -69,6 +69,7 @@
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind.Region = 1 -> Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind.Window = 0 -> Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.CanEmbed.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.CanOpenWindow.get -> bool
 [RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionOptions.Equals(object? obj) -> bool
 [RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionOptions.GetHashCode() -> int
 [RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionOptions.ToString() -> string!

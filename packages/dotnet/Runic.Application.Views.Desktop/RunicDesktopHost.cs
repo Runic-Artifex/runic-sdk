@@ -613,6 +613,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
                 opening.ReportOwnerIgnored("serve-only mode shows no window");
                 owner.ServeUntil(ServeOnlyStopped());
+                // region/1: a browser host's pages show guests' windows in their regions too (host-protocol.md, Browser
+                // hosts), until the Window closes.
+                var servedTransport = transport;
+                _ = Hosting.DesktopHostedRegionPage.FollowServed(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
+                    surface.Url, servedTransport.ConnectionOrigin, owner.CloseStarted);
                 // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
                 // (S1; native-server.yml checks that serve-only startup does without it).
                 // One write, so another window's lines cannot come between the URL line older parsers read and the
@@ -636,8 +641,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
             // region/1: the regions the Window's page declares (hosted-regions/1) can show guests' windows.
+            var regionTransport = transport;
             _ = Hosting.DesktopHostedRegionPage.Follow(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
-                presentation, surface.Url);
+                presentation, surface.Url, regionTransport.ConnectionOrigin);
             FollowLocaleDirection(content, presentation, (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             // A native close (the user, the window manager) starts the Window's close: it leaves IRunicWindowService.Windows.

@@ -268,6 +268,8 @@ internal sealed class HostConformanceTests
                 MaximumWaitingRequests = Limits["waitingRequests"]?.GetValue<int>() ?? HostProtocol.MaximumWaitingRequests,
                 ExitProcess = code => _exits.Enqueue(code),
                 CheckPrivileges = static () => null,
+                // An elevated guest, which the runner plays without running elevated.
+                RunsElevated = application["elevated"]?.GetValue<bool>() == true ? static () => true : static () => false,
             };
             var services = new ServiceCollection();
             // The Windows' IWindowPlatformServices: their context menus, file dialogs and message boxes.
