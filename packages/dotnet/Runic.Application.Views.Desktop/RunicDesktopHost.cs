@@ -161,6 +161,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private Hosting.RunicHostedApplications? _hostedApplications;
 
+    // region/1: the regions this host's pages declare, which the guests' region windows show (RunicHostedRegion).
+    internal Hosting.HostedRegionDirectory RegionDirectory { get; } = new();
+
     /// <summary>
     /// Starts other Runic applications as guests and shows their Windows in native windows of this host (the Runic host
     /// protocol, <c>runic-host/1</c>, in window mode).
@@ -629,6 +632,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            // region/1: the regions the Window's page declares (hosted-regions/1) can show guests' windows.
+            _ = Hosting.DesktopHostedRegionPage.Follow(RegionDirectory, BridgeDispatcher.For(transport).HostedRegions, opening.Window,
+                presentation, surface.Url);
             FollowLocaleDirection(content, presentation, (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
             // A native close (the user, the window manager) starts the Window's close: it leaves IRunicWindowService.Windows.

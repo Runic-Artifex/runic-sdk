@@ -10,8 +10,8 @@ using Runic.Platform;
 namespace Runic.Application.Views.Desktop;
 
 /// <summary>
-/// A native window of the host that shows one Window of a guest application (the Runic host protocol,
-/// <c>runic-host/1</c>, in window mode).
+/// One Window of a guest application that the host shows (the Runic host protocol, <c>runic-host/1</c>): in a native
+/// window of the host (window mode), or in a region of one of the host's pages (<c>region/1</c>, <see cref="Region"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -65,10 +65,35 @@ public sealed class RunicHostedWindow
     public bool GuardsClose { get; }
 
     /// <summary>The host's native window that shows the guest's page.</summary>
-    public DesktopWindow Presentation => _presentation ?? throw new InvalidOperationException("The window has not opened yet.");
+    /// <exception cref="InvalidOperationException">
+    /// The window has not opened yet, or it shows in a region (<see cref="PresentationKind"/>), which has no native window
+    /// of its own: see <see cref="Region"/>.
+    /// </exception>
+    public DesktopWindow Presentation => Region is not null
+        ? throw new InvalidOperationException("The window shows in a region of a host page, which has no native window of its own; see Region.")
+        : _presentation ?? throw new InvalidOperationException("The window has not opened yet.");
 
-    /// <summary>Whether the window is open.</summary>
-    public bool IsOpen => !_closed.Task.IsCompleted && _presentation is { IsOpen: true };
+    /// <summary>Whether the window shows in a native window of its own or in a region of a host page.</summary>
+    public RunicHostedWindowPresentationKind PresentationKind => Region is null ? RunicHostedWindowPresentationKind.Window : RunicHostedWindowPresentationKind.Region;
+
+    /// <summary>The region that shows the window (<c>region/1</c>), or <see langword="null"/> for a window of its own.</summary>
+    public RunicHostedRegion? Region { get; private set; }
+
+    /// <summary>
+    /// The title of the guest's page in a region (<c>set-title</c>), or <see langword="null"/>; in a window of its own the
+    /// native window shows the page's title itself.
+    /// </summary>
+    public string? Title => Region?.Title;
+
+    /// <summary>Whether the guest marks the Window's document as edited (<c>set-document-edited</c>).</summary>
+    public bool IsDocumentEdited => Region?.IsDocumentEdited ?? Volatile.Read(ref _documentEdited);
+
+    private bool _documentEdited;
+
+    internal void NoteDocumentEdited(bool edited) => Volatile.Write(ref _documentEdited, edited);
+
+    /// <summary>Whether the window is open; a window in a region is open whether or not a region shows it now.</summary>
+    public bool IsOpen => !_closed.Task.IsCompleted && (Region is { } region ? !region.IsEnded : _presentation is { IsOpen: true });
 
     /// <summary>Completes when the window has closed, for any reason.</summary>
     public Task Closed => _closed.Task;
@@ -156,15 +181,35 @@ public sealed class RunicHostedWindow
 
     // The window's dialog services; once the window is closing, services that report the closed owner, so a request
     // that raced the close creates none that nothing would dispose.
+    // A region window's services are its host window's while a region shows it (host-protocol.md, Features in a region),
+    // created again for another host window, and report the unavailable owner while it is detached.
     internal HostDialogServices Dialogs(Func<DesktopWindow, HostDialogServices> create)
     {
+        HostDialogServices? replaced = null;
+        HostDialogServices services;
         lock (_dialogGate)
         {
             if (_closing.IsCancellationRequested)
                 return new HostDialogServices(DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.OwnerClosed), null, PlatformUnavailableReason.OwnerClosed);
-            return _dialogs ??= create(Presentation);
+            if (NativeWindow is not { } native)
+                return new HostDialogServices(DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.OwnerUnavailable), null, PlatformUnavailableReason.OwnerUnavailable);
+            if (_dialogs is not null && !ReferenceEquals(_dialogsFor, native))
+            {
+                replaced = _dialogs;
+                _dialogs = null;
+            }
+            if (_dialogs is null)
+            {
+                _dialogs = create(native);
+                _dialogsFor = native;
+            }
+            services = _dialogs;
         }
+        if (replaced is not null) _ = replaced.DisposeAsync().AsTask();
+        return services;
     }
+
+    private DesktopWindow? _dialogsFor;
 
     // Cancelled when the native window closes, which ends its dialogs and context menus (host-protocol.md, Dialogs).
     private readonly CancellationTokenSource _closing = new();
@@ -217,6 +262,27 @@ public sealed class RunicHostedWindow
         presentation.ActivityChanged += (_, _) => Observe();
     }
 
+    // A window the policy embedded (region/1): it has no native window of its own; its region decides what it shows.
+    internal void AttachRegion(RunicHostedRegion region, RunicWindowPresentationFeatures features)
+    {
+        Region = region;
+        Features = features;
+        lock (_activationGate)
+        {
+            _active = false;
+            _guestActivated = false;
+            _guestActivationPending = false;
+        }
+    }
+
+    // The host's native window that shows the window: its own, or for a region window the host window that shows the
+    // region now, null while it is detached.
+    internal DesktopWindow? NativeWindow => Region is { } region ? region.NativeWindow : _presentation;
+
+    // The native window an owned window of this one opens over: for a region window, the host window that shows the
+    // region or showed it last.
+    internal DesktopWindow? OwnerWindow => Region is { } region ? region.NativeWindow ?? region.LastNativeWindow : _presentation;
+
     // ----- Activation (host-protocol.md, Window services): whether the window is active because the guest asked.
 
     // How long after the guest's last request that can activate one of its windows an activation counts as the guest's
@@ -258,11 +324,11 @@ public sealed class RunicHostedWindow
         }
     }
 
-    // The window's activation, read once for one decision.
-    internal ActivationSnapshot Activation => Observe();
+    // The window's activation, read once for one decision; in a region, the host window's with the region's focus.
+    internal ActivationSnapshot Activation => Region is { } region ? region.Combine(Observe()) : Observe();
 
     // The user works in the window: it is active, and not because of the guest's own request.
-    internal bool IsUserActive => Observe() is { Active: true, GuestActivated: false };
+    internal bool IsUserActive => Activation is { Active: true, GuestActivated: false };
 
     // The platform's activity, read at once under the gate, so concurrent observations apply in order; its change event
     // follows on the thread pool, so a change the event has not reported yet counts from now.
@@ -270,7 +336,7 @@ public sealed class RunicHostedWindow
     {
         lock (_activationGate)
         {
-            var active = _presentation?.Activity is { IsActive: true };
+            var active = NativeWindow?.Activity is { IsActive: true };
             if (active && !_active)
             {
                 // Any guest's request that can activate one of its windows, also another window's, such as the close of
@@ -334,6 +400,12 @@ public sealed class RunicHostedWindow
 
     internal async Task CloseNativeAsync()
     {
+        // A region window has no native window: its region ends, and the window closes with it.
+        if (Region is not null)
+        {
+            await Application.CloseRegionWindowAsync(this).ConfigureAwait(false);
+            return;
+        }
         if (_presentation is not { } window) return;
         try { await window.CloseAsync(CancellationToken.None).ConfigureAwait(false); }
         catch (ObjectDisposedException) { }
