@@ -50,6 +50,10 @@ public sealed record RunicConnection(string ConnectionKey, string ClientKey)
 
     private readonly IReadOnlyList<string> _languages = [];
 
+    // Which page of the Window the connection is: its page or its side panel's page. Not part of equality: the keys
+    // identify the connection.
+    internal RunicConnectionKind Kind { get; init; }
+
     private bool PrintMembers(System.Text.StringBuilder builder)
     {
         builder.Append("ConnectionKey = ").Append(ConnectionKey).Append(", ClientKey = ").Append(ClientKey)
@@ -66,6 +70,16 @@ public sealed record RunicConnection(string ConnectionKey, string ClientKey)
 
     /// <inheritdoc />
     public override int GetHashCode() => HashCode.Combine(ConnectionKey, ClientKey);
+}
+
+// Which page of its Window a connection is (sdk#864, D062.1). Internal until the side panel's API (RUNICDESK104) makes it
+// public on RunicConnection: a Window's page, or the page of its side panel, another page of the same surface beside it
+// that shares the Window's ViewModel tree. The transport sets it (BridgeRequest.ConnectionKind), never the page. A side
+// panel's connection is an ordinary connection of the Window, except that it is not granted navigation-path/1.
+internal enum RunicConnectionKind
+{
+    Page = 0,
+    SidePanel = 1,
 }
 
 /// <summary>The connection that <see cref="IRunicConnections.Connected"/> or <see cref="IRunicConnections.Disconnected"/> reports.</summary>
@@ -200,6 +214,9 @@ internal sealed class RunicConnections : IRunicConnections, IDisposable
         RunicInteractionInvocation.Current is { ConnectionKey: { } connectionKey, ClientKey: { } clientKey } invocation
         && Volatile.Read(ref _session) is { } session && ReferenceEquals(invocation.Session, session)
             ? Find(connectionKey) ?? new RunicConnection(connectionKey, clientKey)
+            {
+                Kind = session.Dispatcher.FindConnection(connectionKey)?.Kind ?? RunicConnectionKind.Page,
+            }
             : null;
 
     public event EventHandler<RunicConnectionEventArgs>? Connected;
@@ -249,7 +266,7 @@ internal sealed class RunicConnections : IRunicConnections, IDisposable
         {
             // A connection that closed before this turn is not reported: its Closed turn found nothing to remove.
             if (!connection.IsOpen || Find(connection.Key) is not null) return null;
-            var added = new RunicConnection(connection.Key, connection.ClientKey) { Languages = connection.Languages };
+            var added = new RunicConnection(connection.Key, connection.ClientKey) { Languages = connection.Languages, Kind = connection.Kind };
             Volatile.Write(ref _current, [.. Volatile.Read(ref _current), added]);
             return raise => { if (raise) Raise(Connected, added, "Connected"); };
         });

@@ -95,6 +95,37 @@ internal sealed class NavigationPathBridgeTests
         Require(window.Shell.Main.Current is NavEditorViewModel { Title: "b" }, "The last change did not win.");
     }
 
+    // sdk#864 (D062.6): a Runic Desktop side panel's page is another connection of the window, but keeps its own address:
+    // it is not granted navigation-path/1, receives no path pushes and cannot go back or open a path in the window.
+    [Test]
+    public async Task ASidePanelNeitherFollowsNorDrivesThePathAsync()
+    {
+        await using var window = new PathWindow();
+        var host = window.Host;
+        using var sync = RunicPresentation.SyncNavigationPath(window.Shell.Main, window.Routes);
+        host.Root.Snapshot();
+        const string panel = "side-panel";
+        host.Transport.MarkSidePanel(panel);
+        var hello = await host.Transport.RequestAsync("""{"kind":"hello","protocol":4,"session":"panel-session","client":{"name":"panel","version":"1"},"features":["navigation-path/1","hosted-regions/1"]}""", panel)
+            .AsTask().WaitScaledAsync(Timeout);
+        Require(!hello.Contains("navigation-path/1", StringComparison.Ordinal) && !hello.Contains("navigationPath", StringComparison.Ordinal)
+                && hello.Contains("hosted-regions/1", StringComparison.Ordinal),
+            $"The panel's hello: {hello}");
+
+        var back = await host.Transport.RequestAsync("""{"kind":"navigation","action":"back"}""", panel).AsTask().WaitScaledAsync(Timeout);
+        var open = await host.Transport.RequestAsync("""{"kind":"navigation","action":"open","path":"editors/b"}""", panel).AsTask().WaitScaledAsync(Timeout);
+        Require(back.Contains("\"invalid-request\"", StringComparison.Ordinal) && open.Contains("\"invalid-request\"", StringComparison.Ordinal)
+                && window.Shell.Main.Current is NavHomeViewModel,
+            $"The panel navigated the window: {back} / {open}");
+
+        // The page follows the window's path; the panel does not.
+        await host.OpenNavigationPathAsync("editors/a").WaitScaledAsync(Timeout);
+        await Until(() => host.NavigationPathPushes is [("editors/a", "push")], $"The page's pushes: {string.Join(", ", host.NavigationPathPushes)}.");
+        Require(Pushes(host, panel).Length == 0, $"The panel received path pushes: {string.Join(", ", Pushes(host, panel))}.");
+        Require(host.Connections.Current.Select(static connection => connection.Kind).SequenceEqual([RunicConnectionKind.Page, RunicConnectionKind.SidePanel]),
+            $"The connections' kinds: {string.Join(", ", host.Connections.Current.Select(static connection => connection.Kind))}.");
+    }
+
     // The window's Back skips a region that no Bridge presents, however recently it was created.
     [Test]
     public async Task BackSkipsRegionsNoBridgePresentsAsync()

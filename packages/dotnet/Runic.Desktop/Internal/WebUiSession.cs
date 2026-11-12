@@ -62,6 +62,9 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     public string Cookies { get; }
 
+    // The page connection slot the WebSocket was admitted to (DesktopConnectionSlot), from the credential it offered.
+    public DesktopConnectionSlot Slot { get; init; }
+
     public bool IsAuthenticated => Volatile.Read(ref _revoked) == 0 && Volatile.Read(ref _authenticated) != 0;
 
     // Completes once the ended receive loop has snapshotted the accepted callbacks
@@ -781,7 +784,8 @@ internal sealed class WebUiSession : IAsyncDisposable
                 .ConfigureAwait(false);
             if (accepted)
             {
-                _window.NotifyAuthenticated();
+                // The window's presentation waits for its page; a side panel's page connects to an open window.
+                if (Slot == DesktopConnectionSlot.Page) _window.NotifyAuthenticated();
                 // The page announces DesktopWindow.AnnounceAsync while it has the focus on WebView2 (I-184). Its live
                 // regions are added now, so that the screen reader knows them before the first message.
                 if (_window.AnnouncesInPage)

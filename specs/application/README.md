@@ -1473,6 +1473,11 @@ region**, which the application chooses. A route path is a string of segments se
 `invalid-request`, and so is `navigation` on a connection that does not use the feature. The producer sends
 `navigationPath` and `navigation-path` only to connections that use the feature.
 
+A producer may withhold the feature from a connection whose page keeps an address of its own: its `hello` reply then
+does not list `navigation-path/1`, so the page neither follows nor drives the window's route path. Runic Desktop
+withholds it from a window's **side panel** connection, a second page of the window's surface beside its page that
+connects to the same window; every other feature is granted to it as to the page.
+
 **Back.** `action: "back"` goes back in the innermost presented region that can: the producer looks at the window's
 regions that no page owns, the most recently created first, and within a region at the regions its current page owns,
 the most recently created first, before the region itself; of a region collection or other selection it follows only

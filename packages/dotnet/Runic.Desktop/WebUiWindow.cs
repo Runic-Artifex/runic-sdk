@@ -149,6 +149,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private WebUiBrowser _currentBrowser;
     private int _requestedPort;
     private int _activeConnections;
+    // The side panel's page connection slot (sdk#864) and its one connection, beside the page's (_activeConnections).
+    private readonly PanelConnectionSlot _panelSlot = new();
+    private int _activePanelConnections;
     private long _nextClientId;
     private long _nextConnectionId;
     private long _nextEventNumber;
@@ -1261,8 +1264,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        // The window's page: a side panel's page keeps its own address.
         return Task.WhenAll(_sessions.Values
-            .Where(static session => session.IsAuthenticated)
+            .Where(static session => session.IsAuthenticated && session.Slot == DesktopConnectionSlot.Page)
             .Select(session => session.NavigateAsync(url, cancellationToken)));
     }
 
@@ -1957,7 +1961,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             0,
             session.ClientId,
             session.ConnectionId,
-            session.Cookies);
+            session.Cookies)
+        {
+            Slot = session.Slot,
+        };
         var previousCallbackWindow = CallbackWindow.Value;
         CallbackWindow.Value = this;
         List<Exception>? failures = null;
@@ -2046,7 +2053,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             (nuint)registration.Order,
             session.ClientId,
             session.ConnectionId,
-            session.Cookies);
+            session.Cookies)
+        {
+            Slot = session.Slot,
+        };
         var previousCallbackWindow = CallbackWindow.Value;
         CallbackWindow.Value = this;
         try
@@ -2060,8 +2070,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
+    // The window's page, never a side panel's page.
     private WebUiSession GetExecutionSession()
-        => _sessions.Values.FirstOrDefault(static session => session.IsAuthenticated)
+        => _sessions.Values.FirstOrDefault(static session => session.IsAuthenticated && session.Slot == DesktopConnectionSlot.Page)
             ?? throw new InvalidOperationException("No authenticated WebUI browser is connected.");
 
     private IWebUiEmbeddedHost GetEmbeddedHost()
@@ -3364,7 +3375,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal static string CreateFrameAncestorsPolicy(IEnumerable<string>? additionalOrigins) =>
         string.Join(' ', (additionalOrigins ?? []).Order(StringComparer.Ordinal).Prepend("frame-ancestors 'self'"));
 
-    private string CreateDocumentStartScript()
+    private string CreateDocumentStartScript() => CreateDocumentStartScript(_sessionCredential);
+
+    private string CreateDocumentStartScript(string sessionCredential)
     {
         var url = Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.");
         var origins = (_securityPolicy?.AdditionalOrigins ?? Enumerable.Empty<string>())
@@ -3398,7 +3411,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
               Object.defineProperty(globalThis, Symbol.for("runic-desktop.bootstrap"), {
                 value: Object.freeze({
                   token: {{AsciiNumbers.Format(_token)}},
-                  sessionCredential: {{EncodeJavaScriptString(_sessionCredential)}}
+                  sessionCredential: {{EncodeJavaScriptString(sessionCredential)}}
                 })
               });
             })();
@@ -3435,13 +3448,30 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
+        // The slot follows from the credential the WebSocket offered (PanelConnectionSlot).
+        var slot = SlotOf(acceptedSubprotocol, out var panelGeneration);
+        if (slot is null)
+        {
+            HandshakeLog.RecordRejection("the side panel closed");
+            context.StatusCode = PresentationStatus.Unauthorized;
+            return;
+        }
+
         bool admitted;
         lock (_connectionGate)
         {
-            admitted = AllowMultipleClients || _activeConnections == 0 || YieldSilentConnections(_activeConnections, _sessions.Values);
-            if (admitted)
+            // One connection per slot: the page's slot as before, and the side panel's for its own credential.
+            if (slot == DesktopConnectionSlot.SidePanel)
             {
-                _activeConnections++;
+                admitted = _activePanelConnections == 0
+                    || YieldSilentConnections(_activePanelConnections, SessionsOf(DesktopConnectionSlot.SidePanel));
+                if (admitted) _activePanelConnections++;
+            }
+            else
+            {
+                admitted = AllowMultipleClients || _activeConnections == 0
+                    || YieldSilentConnections(_activeConnections, SessionsOf(DesktopConnectionSlot.Page));
+                if (admitted) _activeConnections++;
             }
         }
 
@@ -3450,7 +3480,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (!admitted)
         {
             ReportConnectionProgress(context, ConnectionProgress.WebSocketRejected, credentialed);
-            HandshakeLog.RecordRejection("another WebSocket holds the only connection");
+            HandshakeLog.RecordRejection(slot == DesktopConnectionSlot.SidePanel
+                ? "another WebSocket holds the side panel's connection"
+                : "another WebSocket holds the only connection");
             context.StatusCode = PresentationStatus.Forbidden;
             return;
         }
@@ -3471,7 +3503,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 connectionId,
                 context.GetRequestHeader("Cookie"),
                 WebUiApplication.BridgeHandshakeTimeout,
-                TimeProvider);
+                TimeProvider)
+            {
+                Slot = slot.Value,
+            };
             if (!_sessions.TryAdd(session.Id, session))
             {
                 await session.DisposeAsync().ConfigureAwait(false);
@@ -3480,6 +3515,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             // A detach, a new attach or a launch conflict that came between the token check and now disconnected the
             // pages it found; this one was not listed yet.
             if (_frameBinding.IsActive && _frameBinding.Generation != frameGeneration)
+            {
+                _sessions.TryRemove(session.Id, out _);
+                await session.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+            // The same for the side panel: a close or a new open since the credential check revoked this page's admission.
+            if (slot == DesktopConnectionSlot.SidePanel && !_panelSlot.Holds(panelGeneration))
             {
                 _sessions.TryRemove(session.Id, out _);
                 await session.DisposeAsync().ConfigureAwait(false);
@@ -3510,7 +3552,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             lock (_connectionGate)
             {
-                _activeConnections--;
+                if (slot == DesktopConnectionSlot.SidePanel) _activePanelConnections--;
+                else _activeConnections--;
             }
         }
     }
@@ -3984,6 +4027,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return string.Empty;
         }
 
+        // The side panel's page offers the panel credential instead (PanelConnectionSlot); region mode admits only its
+        // frame.
+        if (!_frameBinding.IsActive && OffersPanelCredential(context, out var panel))
+        {
+            return panel ?? RefuseCredential(context);
+        }
+
         // A frame's page offers its frame token instead (FrameLaunchBinding); none is admitted before the frame used its
         // launch code or after the token was revoked.
         var expected = _frameBinding.IsActive ? _frameBinding.ExpectedProtocol : $"runic-desktop.{_sessionCredential}";
@@ -4013,6 +4063,89 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             found |= CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(protocol), expectedBytes);
         }
         return found;
+    }
+
+    // Whether a WebSocket offers the open side panel's credential; panel is its subprotocol, or null when the WebSocket
+    // offers the session credential too, which admits it to neither slot.
+    private bool OffersPanelCredential(PresentationExchange context, out string? panel)
+    {
+        var offered = context.WebSocketRequestedProtocols;
+        panel = _panelSlot.Admit(offered, out _);
+        if (panel is null) return false;
+        if (OffersCredential(offered, $"runic-desktop.{_sessionCredential}")) panel = null;
+        return true;
+    }
+
+    private string? RefuseCredential(PresentationExchange context)
+    {
+        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+            DesktopErrorCategory.AuthenticationDenied,
+            "credential-required",
+            "A valid session credential is required.",
+            Retryable: false));
+        context.StatusCode = PresentationStatus.Unauthorized;
+        return null;
+    }
+
+    // The slot of a WebSocket that ValidateWebSocketAdmission admitted with accepted, and for the side panel the
+    // generation it holds the slot at. Null when it offered the side panel's credential and the panel closed or opened
+    // again since: the WebSocket is then admitted to no slot.
+    private DesktopConnectionSlot? SlotOf(string accepted, out long panelGeneration)
+    {
+        panelGeneration = 0;
+        if (accepted.Length == 0 || _frameBinding.IsActive ||
+            string.Equals(accepted, $"runic-desktop.{_sessionCredential}", StringComparison.Ordinal))
+        {
+            return DesktopConnectionSlot.Page;
+        }
+        return _panelSlot.Admit([accepted], out panelGeneration) is not null ? DesktopConnectionSlot.SidePanel : null;
+    }
+
+    // The sessions of one slot, which YieldSilentConnections looks through for that slot's one connection.
+    private IEnumerable<WebUiSession> SessionsOf(DesktopConnectionSlot slot) =>
+        _sessions.Values.Where(session => session.Slot == slot);
+
+    // sdk#864, P1a: opens the side panel's connection slot and returns its credential, which only the panel's view
+    // receives, in its document-start script (CreatePanelDocumentStartScript). Opening again revokes the earlier
+    // credential and closes its page's connection. The surface must admit one page with a session credential, outside
+    // region mode and hosted or installed-browser launches (D062.8). The caller hands the credential only to a view that
+    // runs document-start scripts: a served bootstrap script never carries it.
+    internal string OpenPanelSlot()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_securityPolicy is not { RequireSessionCredential: true } || AllowMultipleClients)
+            throw new InvalidOperationException(
+                "A side panel needs the session credential and a single client (DesktopSecurityPolicy).");
+        if (_frameBinding.IsActive || ChecksLaunchBinding)
+            throw new InvalidOperationException(
+                "A side panel needs a window of its own: the surface shows in a region, a host's window or an installed browser.");
+        var hadPanel = _panelSlot.IsOpen;
+        var credential = _panelSlot.Open();
+        if (hadPanel) ClosePanelSessions();
+        return credential;
+    }
+
+    // Revokes the side panel's credential and closes its page's connection. False when no panel slot was open.
+    internal bool ClosePanelSlot()
+    {
+        if (!_panelSlot.Close()) return false;
+        ClosePanelSessions();
+        return true;
+    }
+
+    internal bool HasPanelSlot => _panelSlot.IsOpen;
+
+    // The side panel's view's document-start script: CreateDocumentStartScript with the panel credential in place of the
+    // session credential, so the panel's page offers it on its Bridge WebSocket. Null while no panel slot is open.
+    internal string? CreatePanelDocumentStartScript() =>
+        _panelSlot.Credential is { } credential ? CreateDocumentStartScript(credential) : null;
+
+    private void ClosePanelSessions()
+    {
+        foreach (var session in SessionsOf(DesktopConnectionSlot.SidePanel))
+        {
+            _ = CloseBridgeIgnoringFailureAsync(session, CancellationToken.None);
+        }
     }
 
     private bool AllowMultipleClients => _securityPolicy?.AllowMultipleClients ?? WebUiApplication.MultiClient;

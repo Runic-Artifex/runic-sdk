@@ -30,14 +30,15 @@ sealed class DesktopWireClient : IDisposable
         System.Net.CookieContainer? cookies = null) => ConnectAsync(surface.Url, cancellationToken, cookies);
 
     // A surface by its address, such as another process's (a hosted guest's), whose page the cookies bound.
+    // credential: one in place of the bootstrap's session credential, such as a side panel's (sdk#864).
     public static async Task<DesktopWireClient> ConnectAsync(Uri surfaceUrl, CancellationToken cancellationToken,
-        System.Net.CookieContainer? cookies = null)
+        System.Net.CookieContainer? cookies = null, string? credential = null)
     {
         var surface = new { Url = surfaceUrl };
         using var http = cookies is null ? new HttpClient() : new HttpClient(new HttpClientHandler { CookieContainer = cookies });
         var bootstrap = await http.GetStringAsync(new Uri(surface.Url, "webui.js"), cancellationToken);
         var token = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
-        var credential = Between(bootstrap, "const SESSION_CREDENTIAL = \"", "\"");
+        credential ??= Between(bootstrap, "const SESSION_CREDENTIAL = \"", "\"");
         var socket = new ClientWebSocket();
         try
         {

@@ -47,6 +47,19 @@ public sealed class DesktopSurface : IAsyncDisposable
         return _engine.BeginHostedLaunch();
     }
 
+    // sdk#864, P1a: the side panel's page connection slot (WebUiWindow.OpenPanelSlot): a second page of this surface
+    // that connects to the same window as its page. Opening returns the panel credential for the panel view's
+    // document-start script (SidePanelDocumentStartScript); closing revokes it and disconnects the panel's page.
+    internal string OpenSidePanelSlot()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.OpenPanelSlot();
+    }
+
+    internal bool CloseSidePanelSlot() => _engine.ClosePanelSlot();
+
+    internal string? SidePanelDocumentStartScript => _engine.CreatePanelDocumentStartScript();
+
     // runic-host/1 region/1: the window shows in a region of a host page, in a frame (WebUiWindow.EnterRegionMode).
     internal void EnterRegionMode()
     {
