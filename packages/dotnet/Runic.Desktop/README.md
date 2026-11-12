@@ -367,7 +367,10 @@ which frame asks, so while the page contains a frame of another origin, the
 window denies every camera and microphone request, and WebKit then refuses the
 page's later requests until it reloads. Frames of another origin can ask only
 when the page delegates capture to them (`<iframe allow="camera; microphone">`);
-ask for capture before you show such a frame. A browser cannot limit a grant to
+ask for capture before you show such a frame. A hosted region's frame is decided
+by its guest's grant instead (`region/1`, from 0.18.0); on WebKitGTK, which
+does not say which frame asks, the window denies it as any frame of another
+origin. A browser cannot limit a grant to
 one origin, so a browser fallback opens without it and reports
 `permission-grant-withheld` to the diagnostic sink and the logger; an explicitly
 selected browser asks the user, naming the requesting origin, and reports
@@ -1254,7 +1257,12 @@ own `drop` event (`DataTransfer.getData`); they raise no event.
 
 Drops into a frame of the presented origin are delivered like drops onto the
 top-level document, with the label and effect from inside the frame; a frame of
-another origin never delivers a drop, and a drop there navigates nothing.
+another origin never delivers a drop, and a drop there navigates nothing. The
+one exception is the frame of an attached hosted region (`region/1` of the
+[Runic host protocol](../../../specs/desktop/host-protocol.md#features-in-a-region)):
+a drop there goes to the guest whose page the frame shows, as `files-dropped`
+under the host's policy, and never to the host's page or the window's
+`FileDropped`. This routing is not built yet; it comes with region mode in 0.18.0.
 
 | Presentation | Paths from | Target label and effect | Promised files | Frames | Verified |
 | --- | --- | --- | --- | --- | --- |

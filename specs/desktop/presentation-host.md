@@ -312,7 +312,10 @@ per-surface scope holds there only for surfaces with their own listener
 
 Every surface response carries `Content-Security-Policy: frame-ancestors
 'self'` followed by the additional origins, and `X-Frame-Options: SAMEORIGIN`,
-so that other origins cannot frame surface documents.
+so that other origins cannot frame surface documents. The one exception is a
+hosted guest's frame surface, which sends `frame-ancestors` with the single
+host page origin that its host named and no `X-Frame-Options`
+([frame admission](host-protocol.md#frame-admission)).
 
 Browser origins are compared as canonical `(scheme, ASCII host, effective
 port)` tuples; paths, queries, fragments, and user information are not origin

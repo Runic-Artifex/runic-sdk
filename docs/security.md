@@ -163,6 +163,11 @@ origin cannot frame the application. A content handler that sets its own
 `Content-Security-Policy` header sends it as a second header, so the framing
 policy stays in force.
 
+The one exception is a hosted guest's frame surface in region mode: it sends
+`frame-ancestors` with the one host page origin that its host named over the
+host channel, and no `X-Frame-Options`
+([hosted windows in a region](#hosted-windows-in-a-region)).
+
 Add a Content-Security-Policy for your pages' scripts as a defence in depth
 against injected script. Set `RunicDesktopHostOptions.ContentSecurityPolicy`
 (Views on Runic Desktop), `RunicViewHost.ContentSecurityPolicy` (WPF),
@@ -268,7 +273,9 @@ experimental (`RUNICDESK103`). What Runic enforces:
   user cannot keep the host out by holding connections open; the host retries a connection that was closed.
 - **Pages stay apart.** The guest's page binds to its own surface with a one-time launch code, as an installed
   browser does; the host injects no credential into it, does not admit its origin as one of its own and gives each
-  guest session a data store of its own, not persisted, so the guest never receives the host's cookies.
+  guest session a data store of its own, not persisted, so the guest never receives the host's cookies. A guest's
+  page shown in a region of a host page is admitted differently; see
+  [hosted windows in a region](#hosted-windows-in-a-region).
 - **The guest gets its own windows only.** The channel names windows by ids of the guest's own; it cannot list the
   host's windows, run script in the host's pages or navigate a hosted window away from its own origin. The host's
   policy (`IRunicHostedWindowPolicy`) can refuse or limit every request, and the protocol bounds message sizes, waiting
@@ -342,6 +349,71 @@ filters hosts by name and version for the product's sake; it is not a security b
 dialogs return and decide its windows' close, so a guest acts only on the files a dialog returned, as with its own
 dialogs. A host should treat a guest like any other program it starts: start only the executables it chose, and keep
 the policy's limits for guests it does not ship itself.
+
+### Hosted windows in a region
+
+With `region/1`, a host shows a guest's Window in a region of one of its own pages instead of in a window of its own:
+the guest's page loads in a frame from the guest's own loopback origin
+([regions](../specs/desktop/host-protocol.md#regions-region1)). What Runic enforces:
+
+- **No script access either way.** The host page and the guest's page have different origins, so neither can read or
+  script the other's document, address or storage. The frame's `sandbox` takes away top-level navigation, pop-ups,
+  `alert` and `confirm`, and downloads.
+- **A credential the host page never holds.** The guest admits its frame with a one-time frame launch code, which only
+  the host's backend receives, over the channel, and with the frame token that the code redirects to. The token travels
+  in the address's fragment, which never reaches a server or a `Referer`, and the guest's page removes it from the
+  address at once. It admits one connected page at a time and dies when the region detaches; a spent code presented
+  again revokes it. The host page can show the guest's page or keep it from loading, but never act as it (threat T21).
+- **No cookies cross.** Frame admission uses no cookie. The guest serves the frame from the loopback family that the
+  host page does not use, `[::1]` for a page on `127.0.0.1`, so the frame is cross-site to the host page: no cookie of
+  the host page's origin reaches the guest, and Chromium and WebView2 run the frame in a process of its own (T22). A
+  same-site frame would receive every cookie of the host page's origin, `HttpOnly` ones included. Where the other
+  family is not available, such as without IPv6, an embedded host lets the guest fall back to the same family and logs
+  a warning, since its web view profile holds only its own cookies; a browser host refuses, since the user's browser
+  holds the cookies of other local applications.
+- **Framing by the host's page only.** A frame surface allows framing (`frame-ancestors`) only by the origin that the
+  host named over the channel. Another page, a rogue loopback server included, cannot frame the guest, and a guest
+  still cannot frame its host's pages.
+- **Focus stays the user's.** `present` brings the host window forward but never takes the focus from the host page.
+  Focus that entered the region without the user's Tab or click, such as by the guest page's script, is the guest's:
+  the clipboard and launches stay refused until the user moves the focus into the region (T20).
+- **The host window's rules.** The guest's dialogs are owned by the host window. A guest shows no menu bar in a
+  region. Files dropped onto the frame go to the guest, as `files-dropped` under the host's policy, never to the host
+  page. The frame gets only the permissions that the host's policy granted the guest's Window, not the host window's.
+- **What each side learns.** The host page learns the guest's title and document-edited flag, as the host's backend
+  passes them on, and its region's state. The guest learns its region's size and scale and when the focus enters it,
+  never the host page's content or the region's place in it.
+
+What it means for applications:
+
+- **Storage in a region is session-scoped.** A region's frame keeps `localStorage` and IndexedDB in the host window's
+  web view profile or browser, partitioned under the host page's site, where they can outlive the session; window
+  mode's data store per host session does not apply. Runic's page runtime uses `sessionStorage` only. Do not keep
+  secrets in a guest's persistent storage.
+- **Clickjacking is a residual (T19).** The host page can lay elements over the frame, make it transparent or move it
+  under the pointer just before a click. For the host as a whole that gives nothing: a guest trusts its host as it
+  trusts its own native dialogs (T7). A *compromised* host page, one with injected script or one that renders remote
+  content, can however trick a click into an attached guest. It cannot attach a guest, which takes a code that only the
+  host's backend receives. Do not embed guests in host pages that render untrusted content. A guest can guard a
+  sensitive confirmation itself, such as with IntersectionObserver v2 visibility on Chromium. Runic adds no input
+  guard.
+- **Tokens in logs.** An engine's console message for a framing that `frame-ancestors` blocked can carry the frame's
+  full address with its token. Runic's hosts redact it in the console messages they forward. A token in a log is
+  useless while its frame is connected, and it dies at detach.
+- **Elevated guests admit elevated peers only.** An elevated guest admits connections to every one of its listeners,
+  its channel, its page surfaces and its frame and component surfaces, only from loopback peer processes that run
+  elevated. An installed browser, or another process of the user that does not run elevated, then cannot render or
+  drive the elevated guest's page, also with a code or token it obtained (T23). On macOS, where Runic cannot look up a
+  connection's process, an elevated guest refuses region mode. **Not yet enforced:** the rule ships with region mode's
+  native work in 0.18.0.
+
+**Trusted component mode** (`region-component/1`, reserved) will let a guest's Views run as a component in the host
+page's own document, for theme and layout. There host page and guest code share one realm: the guest can read the host
+page and call its Bridge, and the host page holds the guest's token. It needs an explicit opt-in on both sides,
+`RunicGuestOptions.AllowComponentEmbedding` and the host policy's `RunicHostedWindowDecision.EmbedComponent`, and is
+meant for applications of the same vendor.
+
+### File access
 
 File access is not handed over: a guest receives the paths the host's dialog returned, not the host's access to them,
 and opens them with its own rights. Where the operating system grants access through its picker, a sandboxed host or
