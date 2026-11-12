@@ -16,8 +16,11 @@ internal interface IPresentationServer : IAsyncDisposable
 {
     IServiceProvider Services { get; }
 
-    // Binds the listener and starts dispatching. Returns the bound port.
-    Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken);
+    // Binds the listener and starts dispatching. Returns the bound port. With admission, each accepted connection is
+    // served only when admission admits its peer, asked before anything is read from it; a refused one is closed
+    // without a response (host-protocol.md, Elevated-peer admission).
+    Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, LoopbackPeerAdmission? admission,
+        CancellationToken cancellationToken);
 }
 
 // Implemented by a server assembly that Runic.Desktop loads by name.

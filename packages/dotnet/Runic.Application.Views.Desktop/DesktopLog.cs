@@ -126,6 +126,10 @@ internal static partial class DesktopLog
         Message = "A region of a hosted application failed with {ErrorType}.")]
     internal static partial void HostedRegionFailed(ILogger logger, Exception? exception, string errorType);
 
+    [LoggerMessage(EventId = 2029, EventName = "DesktopHostedPeerRefused", Level = LogLevel.Warning,
+        Message = "The elevated hosted application refused a connection from {Peer}: the process at that end does not run elevated, or Runic cannot show that it does (elevated-peer-refused).")]
+    internal static partial void HostedPeerRefused(ILogger logger, string peer);
+
     [LoggerMessage(EventId = 2023, EventName = "DesktopHostedLocaleFailed", Level = LogLevel.Warning,
         Message = "The application's locale could not follow the host's locale: {ErrorType}.")]
     internal static partial void HostedLocaleFailed(ILogger logger, Exception? exception, string errorType);

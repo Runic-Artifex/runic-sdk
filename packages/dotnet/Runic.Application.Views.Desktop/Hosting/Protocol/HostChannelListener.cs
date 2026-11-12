@@ -30,15 +30,18 @@ internal sealed class HostChannelListener : IAsyncDisposable
     private readonly string _host;
     private readonly TimeSpan _unauthenticatedTimeout;
     private readonly TimeSpan _helloTimeout;
+    private readonly Func<IPEndPoint, IPEndPoint, bool>? _admission;
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
     // The connections that have not authenticated, oldest first.
     private readonly LinkedList<TcpClient> _pending = [];
     private int _stopped;
 
-    private HostChannelListener(TcpListener listener, TimeSpan unauthenticatedTimeout, TimeSpan helloTimeout)
+    private HostChannelListener(TcpListener listener, TimeSpan unauthenticatedTimeout, TimeSpan helloTimeout,
+        Func<IPEndPoint, IPEndPoint, bool>? admission)
     {
         _listener = listener;
+        _admission = admission;
         _unauthenticatedTimeout = unauthenticatedTimeout;
         _helloTimeout = helloTimeout;
         var endpoint = (IPEndPoint)listener.LocalEndpoint;
@@ -50,8 +53,11 @@ internal sealed class HostChannelListener : IAsyncDisposable
 
     internal Uri Url { get; }
 
-    // Listens on 127.0.0.1, or on ::1 where IPv4 loopback is unavailable, on a port the system chooses.
-    internal static HostChannelListener Start(TimeSpan unauthenticatedTimeout, TimeSpan helloTimeout)
+    // Listens on 127.0.0.1, or on ::1 where IPv4 loopback is unavailable, on a port the system chooses. With admission,
+    // an elevated guest's, each connection is checked before anything is read from it, and a refused one is closed
+    // without a response (host-protocol.md, Elevated-peer admission).
+    internal static HostChannelListener Start(TimeSpan unauthenticatedTimeout, TimeSpan helloTimeout,
+        Func<IPEndPoint, IPEndPoint, bool>? admission = null)
     {
         TcpListener listener;
         try
@@ -64,7 +70,7 @@ internal sealed class HostChannelListener : IAsyncDisposable
             listener = new TcpListener(IPAddress.IPv6Loopback, 0);
             listener.Start();
         }
-        return new HostChannelListener(listener, unauthenticatedTimeout, helloTimeout);
+        return new HostChannelListener(listener, unauthenticatedTimeout, helloTimeout, admission);
     }
 
     // Accepts connections until one's first message is accepted by authenticate, then stops listening, closes the other
@@ -127,6 +133,10 @@ internal sealed class HostChannelListener : IAsyncDisposable
         deadline.CancelAfter(_unauthenticatedTimeout);
         try
         {
+            if (_admission is { } admission &&
+                (client.Client.RemoteEndPoint is not IPEndPoint peer || client.Client.LocalEndPoint is not IPEndPoint local ||
+                 !await Task.Run(() => admission(peer, local), deadline.Token).ConfigureAwait(false)))
+                return;
             client.NoDelay = true;
             var stream = client.GetStream();
             if (!await UpgradeAsync(stream, deadline.Token).ConfigureAwait(false)) return;

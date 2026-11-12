@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Runic.Desktop;
+using Runic.Desktop.Internal;
 using Runic.Platform;
 
 namespace Runic.Application.Views.Desktop.Hosting;
@@ -188,6 +189,30 @@ internal sealed class HostedGuest : IAsyncDisposable
 
     internal bool IsHostGone => _shutdown != 0;
 
+    // This guest runs elevated, hosted by its elevated parent (host-protocol.md, Elevated host).
+    internal bool IsElevatedPair { get; private set; }
+
+    // An elevated guest without elevated-peer admission, on a system where Runic cannot look peers up (macOS), refuses
+    // region and component mode: whoever renders a region's page would otherwise not be checked.
+    internal bool RefusesEmbedding => IsElevatedPair && !_options.CanCheckPeers;
+
+    // Refused peers are logged at most this often, so a process that keeps connecting does not flood the log.
+    private const int MaximumRefusalLogsPerMinute = 10;
+    private readonly Queue<long> _refusalLogs = new();
+
+    private void OnPeerRefused(System.Net.IPEndPoint peer)
+    {
+        lock (_refusalLogs)
+        {
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            while (_refusalLogs.Count > 0 && System.Diagnostics.Stopwatch.GetElapsedTime(_refusalLogs.Peek(), now) > TimeSpan.FromMinutes(1))
+                _refusalLogs.Dequeue();
+            if (_refusalLogs.Count >= MaximumRefusalLogsPerMinute) return;
+            _refusalLogs.Enqueue(now);
+        }
+        DesktopLog.HostedPeerRefused(_logger, peer.ToString());
+    }
+
     // Runs the launch contract and the handshake; throws RunicHostedApplicationException when the host cannot host it.
     internal static async Task<HostedGuest> StartAsync(RunicGuestOptions options, DesktopHost desktop, ILogger logger,
         IRunicApplicationLocale? locale = null)
@@ -227,13 +252,27 @@ internal sealed class HostedGuest : IAsyncDisposable
         var host = new RunicHostInfo(offer.HostName, offer.HostVersion);
         if (_options.AcceptHost is { } accept && !accept(host))
             throw Refuse("host-not-accepted", $"The application does not accept the host '{host.Name}' {host.Version}.");
-        var privileges = GuestPrivileges.Decide(_options.ReadPrivileges(), _options.AllowElevatedHost, offer.ElevatedGuest);
+        var facts = _options.ReadPrivileges();
+        var privileges = GuestPrivileges.Decide(facts, _options.AllowElevatedHost, offer.ElevatedGuest);
         if (privileges.Code is { } refusal) throw Refuse(refusal, privileges.Message!);
         if (privileges.Message is { } elevated) DesktopLog.HostedElevated(_logger, elevated);
         if (_desktop.Options.NetworkExposure != DesktopNetworkExposure.Loopback)
             throw Refuse("network-exposure", "The application's Desktop host listens on other interfaces than loopback.");
 
-        _listener = HostChannelListener.Start(_options.UnauthenticatedTimeout, _options.HelloTimeout);
+        // An elevated pair: every listener, the channel's and the Desktop host's, admits only elevated peers, checked
+        // before anything is read (host-protocol.md, Elevated-peer admission). Where Runic cannot look peers up (macOS),
+        // the listeners keep the pair's other protections, and region and component mode are refused.
+        LoopbackPeerAdmission? admission = null;
+        if (facts.Elevated)
+        {
+            IsElevatedPair = true;
+            if (_options.CanCheckPeers)
+            {
+                admission = new LoopbackPeerAdmission(_options.CheckPeer, OnPeerRefused);
+                _desktop.PeerAdmission = admission;
+            }
+        }
+        _listener = HostChannelListener.Start(_options.UnauthenticatedTimeout, _options.HelloTimeout, admission is null ? null : admission.Admit);
         var key = HostProtocol.NewSecret();
         var hostProof = HostProtocol.Proof(offer.Nonce, HostProtocol.HostProofLabel, key);
         var guestProof = HostProtocol.Proof(offer.Nonce, HostProtocol.GuestProofLabel, key);
@@ -589,6 +628,12 @@ internal sealed class HostedGuest : IAsyncDisposable
                 BeginShutdown("the host asked to shut down");
                 return;
             case "region-attach" when InUse(HostFeatures.Region):
+                if (RefusesEmbedding)
+                {
+                    await request.FailAsync("rejected", "refused",
+                        "The application runs elevated, and cannot check on this system that the process that renders a region runs elevated.").ConfigureAwait(false);
+                    return;
+                }
                 // The host may attach as soon as it answered window-open, before the guest finished reading the reply.
                 if (await RegionOfAsync(request.Message).ConfigureAwait(false) is { } attached)
                     await attached.AttachAsync(request).ConfigureAwait(false);

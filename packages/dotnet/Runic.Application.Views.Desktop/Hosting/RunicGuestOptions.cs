@@ -174,6 +174,12 @@ public sealed record RunicGuestOptions
     // process, parent or both.
     internal Func<Hosting.GuestPrivilegeFacts> ReadPrivileges { get; init; } = Hosting.GuestPrivileges.Read;
 
+    // Tests only: elevated-peer admission's check of a connection's peer (the peer's end, the listener's end), and
+    // whether the system has one at all; an elevated pair applies them (host-protocol.md, Elevated-peer admission).
+    internal Func<System.Net.IPEndPoint, System.Net.IPEndPoint, bool> CheckPeer { get; init; } = Runic.Desktop.Internal.ElevatedPeers.IsElevated;
+
+    internal bool CanCheckPeers { get; init; } = Runic.Desktop.Internal.ElevatedPeers.IsAvailable;
+
     internal string ResolvedName =>
         ApplicationName ?? Assembly.GetEntryAssembly()?.GetName().Name ?? AppDomain.CurrentDomain.FriendlyName;
 

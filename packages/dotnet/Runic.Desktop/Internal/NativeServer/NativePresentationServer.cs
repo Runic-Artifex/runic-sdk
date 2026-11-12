@@ -28,6 +28,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     private NativeServerHandle? _handle;
     private GCHandle _self;
     private Func<PresentationExchange, Task>? _dispatch;
+    private LoopbackPeerAdmission? _admission;
     private int _disposed;
 
     public IServiceProvider Services =>
@@ -36,7 +37,8 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     internal NativeServerHandle Handle =>
         _handle ?? throw new InvalidOperationException("The presentation server has not started.");
 
-    public unsafe Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken)
+    public unsafe Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, LoopbackPeerAdmission? admission,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!address.Equals(IPAddress.Loopback) && !address.Equals(IPAddress.IPv6Loopback) && !address.Equals(IPAddress.Any))
@@ -49,6 +51,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
         configureServices?.Invoke(services);
         _services = services.BuildServiceProvider();
         _dispatch = dispatch;
+        _admission = admission;
         _self = GCHandle.Alloc(this);
         var options = new RunicServerOptions
         {
@@ -67,6 +70,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
             OnClosed = &OnClosed,
             OnCompleted = &OnCompleted,
             OnReceived = &OnReceived,
+            OnAdmit = admission is null ? null : &OnAdmit,
         };
         nint server;
         ushort bound;
@@ -168,6 +172,27 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
             Debug.WriteLine($"Runic Desktop native server: a request could not be queued: {exception}");
         }
     }
+
+    // On one of the library's blocking threads, before anything is read from the connection: the lookup may take a
+    // moment, and nothing else waits for it.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe int OnAdmit(void* context, byte* remoteAddress, nuint remoteLength, ushort remotePort, byte* localAddress,
+        nuint localLength, ushort localPort)
+    {
+        try
+        {
+            if (From(context)._admission is not { } admission) return 1;
+            return admission.Admit(Address(remoteAddress, remoteLength), remotePort, Address(localAddress, localLength), localPort) ? 1 : 0;
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Runic Desktop native server: a peer check failed: {exception}");
+            return 0;
+        }
+    }
+
+    private static unsafe IPAddress? Address(byte* text, nuint length) =>
+        length is > 0 and <= 64 && IPAddress.TryParse(System.Text.Encoding.ASCII.GetString(text, (int)length), out var address) ? address : null;
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void OnAborted(void* context, ulong id)
