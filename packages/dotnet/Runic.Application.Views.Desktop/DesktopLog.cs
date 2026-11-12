@@ -58,6 +58,12 @@ internal static partial class DesktopLog
         Message = "Hosted mode did not start ({Code}): {Reason}")]
     internal static partial void HostedStartFailed(ILogger logger, string code, string reason);
 
+    // The elevation decision of a hosted start: its refusals are event 2010 with their code (guest-elevated,
+    // guest-elevated-host-not-elevated, guest-other-user); this is the one elevated pair it accepted.
+    [LoggerMessage(EventId = 2025, EventName = "DesktopHostedElevated", Level = LogLevel.Information,
+        Message = "Hosted mode starts elevated: {Decision}")]
+    internal static partial void HostedElevated(ILogger logger, string decision);
+
     [LoggerMessage(EventId = 2011, EventName = "DesktopHostedShutdown", Level = LogLevel.Information,
         Message = "Hosted mode ends: {Reason}; the Windows close and the application shuts down.")]
     internal static partial void HostedShutdown(ILogger logger, string reason);
