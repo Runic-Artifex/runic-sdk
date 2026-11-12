@@ -1,1 +1,5 @@
 #nullable enable
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowElevatedHost.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowElevatedHost.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.AllowElevatedGuest.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.AllowElevatedGuest.init -> void

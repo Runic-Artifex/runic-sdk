@@ -64,8 +64,10 @@ internal sealed class HostedWindowServicesTests
             Locale = "de-CH",
             Languages = ["de-CH", "en"],
             Appearance = DarkMoreContrast,
+            // The elevated pair: the test host plays an elevated host of its elevated guest.
+            AllowElevatedGuest = HostedGuestProgram.ElevatedPair,
         });
-        if (host.Exited.IsCompleted) Skip.Test("The guest refused hosted mode (an elevated test process).");
+        if (host.Exited.IsCompleted && !HostedGuestProgram.ElevatedPair) Skip.Test("The guest refused hosted mode (an elevated test process).");
         var window = await host.WaitForWindowAsync(nameof(HostedDropWindow), TestTimeouts.Scale(Timeout));
         string Errors() => host.StandardError;
         // hello's locale and appearance: the application and its first Window start in them.
@@ -172,7 +174,7 @@ internal sealed class HostedWindowServicesTests
     public async Task TheHostServesAGuestsWindowServicesWithItsDefaultPolicy()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var file = TempFile("report.txt");
         await using var platform = new RunicTestPlatform();
         platform.Clipboard.SetText("from host");
@@ -247,7 +249,7 @@ internal sealed class HostedWindowServicesTests
     public async Task APolicyWidensOrNarrowsTheDefaults()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var file = TempFile("a.txt");
         var hidden = Path.Combine(Path.GetDirectoryName(file)!, "hidden.txt");
         File.WriteAllText(hidden, "hidden");
