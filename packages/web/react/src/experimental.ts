@@ -37,7 +37,7 @@ export interface RunicHostedRegionProps extends Omit<HTMLAttributes<HTMLElement>
  *   fallback={state => state === "ended" ? <RunAgain /> : <p>Starting the check…</p>} />
  * ```
  */
-export function RunicHostedRegion({ name, sizing, label, fallback, onStateChange, onTitleChange, ...attributes }: RunicHostedRegionProps): ReactNode {
+export function RunicHostedRegion({ name, sizing, label, fallback, onStateChange, onTitleChange, className, ...attributes }: RunicHostedRegionProps): ReactNode {
   defineHostedRegion();
   const element = useRef<RunicHostedRegionElement | null>(null);
   const [state, setState] = useState<HostedRegionState>("waiting");
@@ -61,6 +61,7 @@ export function RunicHostedRegion({ name, sizing, label, fallback, onStateChange
   }, []);
   const content = typeof fallback === "function" ? fallback(state) : fallback;
   return createElement(hostedRegionTag, {
-    ...attributes, ref: element, name, ...(sizing === undefined ? {} : { sizing }), ...(label === undefined ? {} : { label }),
+    // React 18 sets a custom element's className as an attribute of that name; `class` is the attribute in 18 and 19.
+    ...attributes, ...(className === undefined ? {} : { class: className }), ref: element, name, ...(sizing === undefined ? {} : { sizing }), ...(label === undefined ? {} : { label }),
   }, content === undefined || content === null ? null : createElement("div", { slot: "fallback", style: { display: "contents" } }, content));
 }

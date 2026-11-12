@@ -13,8 +13,8 @@ import { sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { pageInstance, slotsOf } from "./scope.js";
 import { reportBridgeError, waitForBridgeIn, type RunicBridgeClient } from "./transport.js";
 
-// The page's Views connection: the only place this module reaches the page runtime. A host page's regions belong to
-// the page instance (TC1), whatever instance is current where the element was created.
+// The page's Views connection: the only place this module reaches the page runtime. A host page's regions belong to the
+// page instance (specs/application/README.md, "Runic instances"), whose slots these three functions use.
 const pageConnection = {
   waitForBridge: (): Promise<RunicBridgeClient> => waitForBridgeIn(slotsOf(pageInstance())),
   runtime: (bridge: RunicBridgeClient): SharedRuntime => sharedRuntimeFor(slotsOf(pageInstance()), bridge),

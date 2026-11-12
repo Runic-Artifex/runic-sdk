@@ -61,6 +61,7 @@ test("renders the element, declares the region and renders the fallback of each 
 });
 
 test("renders on the server without a DOM registry", () => {
+  expect(renderToString(createElement(RunicHostedRegion, { name: "check", className: "step" }))).toBe('<runic-hosted-region class="step" name="check"></runic-hosted-region>');
   expect(renderToString(createElement(RunicHostedRegion, { name: "check", fallback: createElement("p", null, "Not running") })))
     .toBe('<runic-hosted-region name="check"><div slot="fallback" style="display:contents"><p>Not running</p></div></runic-hosted-region>');
 });
