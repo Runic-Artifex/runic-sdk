@@ -30,6 +30,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // Bridge transport serves (SetBlobHandler).
     internal const string BlobsPath = "/_runic/blobs";
     internal const string UploadPath = "/_runic/upload";
+    // Trusted component mode (region-component/1): the component build of the surface's content (the `component` target
+    // of @runic-artifex/vite-plugin-runic writes it to _runic_component/), which the embedding host page loads into its
+    // own document from another origin (ServeComponentAsync).
+    internal const string ComponentPath = "/_runic_component";
     private const string ContentSecurityPolicyHeader = "Content-Security-Policy";
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
@@ -110,6 +114,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _resourceHandler;
     // blobs/1: serves an admitted blob request (with its token) or upload (with null).
     private Func<PresentationExchange, string?, Task>? _blobHandler;
+    // region-component/1: the canonical origin of the host page that may load the component build, or null.
+    private string? _componentEmbedder;
     private bool _allowIndexFallback;
     private bool _isPublic;
     private bool _profileConfigured;
@@ -945,6 +951,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // blobs/1: the handler of the window's blob and upload requests, or null to answer them 404.
     internal void SetBlobHandler(Func<PresentationExchange, string?, Task>? handler) =>
         Volatile.Write(ref _blobHandler, handler);
+
+    // region-component/1: the origin of the host page that may load this surface's component build with CORS, or null to
+    // refuse every component request. The component attach (TC3) sets it to the attach's embedder.
+    internal void SetComponentEmbedder(Uri? embedder) =>
+        Volatile.Write(ref _componentEmbedder, embedder is null ? null : PresentationSecurityPolicy.CanonicalOrigin(embedder));
 
     // Removes handler when it is still the window's blob handler.
     internal void ClearBlobHandler(Func<PresentationExchange, string?, Task> handler) =>
@@ -3121,6 +3132,48 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await handler(context, token).ConfigureAwait(false);
     }
 
+    // region-component/1: the component build (ComponentPath) is served to the embedder's document alone, with CORS for
+    // exactly that origin. A module script, a dynamic import, a font and a CORS fetch always send Origin; the embedder's
+    // document has no cookie of this surface, so the client cookie and the single-client rule do not apply. The files
+    // carry no credential: the component gets its token from the host page (TC3). Pages are not served here, and a
+    // request without the embedder's Origin is refused, so another site gets no CORS grant and no bootstrap script.
+    private Task ServeComponentAsync(PresentationExchange context)
+    {
+        if (!(context.IsGet || context.IsHead))
+        {
+            context.StatusCode = PresentationStatus.MethodNotAllowed;
+            return Task.CompletedTask;
+        }
+        var embedder = Volatile.Read(ref _componentEmbedder);
+        var origin = context.GetRequestHeader("Origin");
+        context.SetResponseHeader("Vary", "Origin");
+        if (embedder is null || !Uri.TryCreate(origin, UriKind.Absolute, out var candidate) ||
+            candidate.Scheme is not ("http" or "https") || candidate.PathAndQuery != "/" || candidate.UserInfo.Length != 0 ||
+            !string.Equals(PresentationSecurityPolicy.CanonicalOrigin(candidate), embedder, StringComparison.Ordinal))
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.OriginDenied,
+                "component-origin-not-allowed",
+                embedder is null
+                    ? "The component build was requested while no host page embeds this surface's component."
+                    : "The component build was requested by another origin than the host page that embeds it.",
+                Retryable: false));
+            context.StatusCode = PresentationStatus.Forbidden;
+            return Task.CompletedTask;
+        }
+        var path = GetDecodedPath(context.Path);
+        if (path.EndsWith('/') || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
+        {
+            context.StatusCode = PresentationStatus.NotFound;
+            return Task.CompletedTask;
+        }
+        // The request's own serialization of the origin, which the browser compares byte for byte.
+        context.SetResponseHeader("Access-Control-Allow-Origin", origin);
+        context.SetResponseHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        return ServeContentAsync(context);
+    }
+
     // Any page can embed a loopback script, and a classic script needs no CORS
     // grant to run. Fetch metadata identifies a cross-site embedding. Clients that
     // send none are not browser subresource loads and still need the WebSocket
@@ -3449,6 +3502,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if ((_allowedPermissions & DesktopPermissionGrant.MediaCapture) == 0)
         {
             context.SetResponseHeader("Permissions-Policy", "camera=(), microphone=()");
+        }
+        if (!context.IsWebSocketRequest && PresentationExchange.StartsWithSegments(context.Path, ComponentPath, out _))
+        {
+            // Before the client cookie: the host page's document loads the component, with no cookie of this surface.
+            await ServeComponentAsync(context).ConfigureAwait(false);
+            return;
         }
         if (!context.IsWebSocketRequest)
         {

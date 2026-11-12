@@ -48,6 +48,12 @@ internal static class DevApplication
         using var quit = PosixSignalRegistration.Create(PosixSignal.SIGQUIT, stopHandler);
         using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, stopHandler);
         using var hangUp = PosixSignalRegistration.Create(PosixSignal.SIGHUP, stopHandler);
+        // The .NET 11 SDK's dotnet CLI does not forward SIGTERM to dotnet runic, so its exit stops dev too.
+        Task launcher = LauncherWatch.Start(() =>
+        {
+            Console.Error.WriteLine("[dev] The dotnet command that started dev exited; stopping the application.");
+            stop.Cancel();
+        }, stop.Token);
         try
         {
             if (!options.Restore && configuration.NodeEnabled)
@@ -79,6 +85,7 @@ internal static class DevApplication
                 await BuildAsync(dotnetHost, configuration, options, stop.Token)
                     .ConfigureAwait(false);
             }
+            await RequireApplicationRuntimeAsync(dotnetHost, configuration, stop.Token).ConfigureAwait(false);
             return await RunDevelopmentLoopAsync(
                 dotnetHost,
                 configuration,
@@ -94,6 +101,8 @@ internal static class DevApplication
         finally
         {
             stop.Cancel();
+            // The watch ends on the cancellation, so stop is not used after it is disposed.
+            await launcher.ConfigureAwait(false);
         }
     }
 
@@ -410,6 +419,48 @@ internal static class DevApplication
             $"-property:Configuration={buildConfiguration}",
         };
         return arguments;
+    }
+
+    /// <summary>
+    /// Stops before the application starts when a runtime it needs is missing, which happens with a newer-major SDK,
+    /// such as SDK 11 building a net10.0 application without the .NET 10 runtime installed: the build succeeds and
+    /// the application would exit with code 150 (D059.17).
+    /// </summary>
+    private static async Task RequireApplicationRuntimeAsync(
+        string dotnetHost,
+        DevProjectConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        if (DotNetRuntimes.ReadRuntimeConfig(configuration.RuntimeConfigPath) is not { } required) return;
+        CommandResult result = await CommandRunner.RunAsync(dotnetHost, configuration.ProjectDirectory,
+            DotNetRuntimes.ListArguments, cancellationToken).ConfigureAwait(false);
+        // Without a runtime list, starting the application reports the problem itself.
+        if (result.ExitCode != 0) return;
+        if (FindMissingRuntime(required.Frameworks, required.RollForward, result.StandardOutput,
+                Environment.GetEnvironmentVariable("DOTNET_ROLL_FORWARD")) is { } message)
+        {
+            throw new DevDevelopmentException("RAPPDEV1013", message);
+        }
+    }
+
+    /// <summary>The RAPPDEV1013 message for the first framework that no installed runtime satisfies, or null.</summary>
+    internal static string? FindMissingRuntime(
+        IReadOnlyList<RequiredRuntime> frameworks,
+        string? rollForward,
+        string listRuntimesOutput,
+        string? environmentRollForward)
+    {
+        IReadOnlyList<InstalledRuntime> installed = DotNetRuntimes.Parse(listRuntimesOutput);
+        string? policy = string.IsNullOrWhiteSpace(environmentRollForward) ? rollForward : environmentRollForward;
+        RequiredRuntime? missing = frameworks.FirstOrDefault(framework => !DotNetRuntimes.IsSatisfied(installed, framework, policy));
+        if (missing is null) return null;
+        string major = missing.Version.Split('.')[0];
+        string runtime = StringComparer.OrdinalIgnoreCase.Equals(missing.Name, DotNetRuntimes.AspNetCoreApp)
+            ? $"ASP.NET Core {major} runtime"
+            : $".NET {major} runtime";
+        return $"The application needs the {runtime} ({missing.Name} {missing.Version}), and " +
+            $"{DotNetRuntimes.Describe(installed, missing.Name)}. The .NET SDK builds the application but cannot start it. " +
+            $"Install the {runtime} next to the SDK; 'dotnet runic doctor' checks it.";
     }
 
     private static async Task BuildAsync(

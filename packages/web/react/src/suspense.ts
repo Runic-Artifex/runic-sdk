@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useSyncExternalStore } from "react";
-import { pageInstance, type RunicInstance, type ViewClient, type ViewConnector } from "@runic-artifex/views";
+import { defaultInstance, type RunicInstance, type ViewClient, type ViewConnector } from "@runic-artifex/views";
 import { checkKeepAlive, isViewClient } from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
 
@@ -80,9 +80,9 @@ function suspendedConnection(instance: RunicInstance, connector: ViewConnector<V
  * Forgets a failed `useSuspenseView` connection, so the next render connects
  * again. Call it from an error boundary's reset before rendering the
  * component again. A connection that is pending or connected is unaffected.
- * Pass the Runic instance of the component (`useRunicInstance()`) when it is not the page instance.
+ * Pass the Runic instance of the component (`useRunicInstance()`) when it is not the default instance.
  */
-export function retrySuspenseView(source: ViewConnector<ViewClient>, instance: RunicInstance = pageInstance()): void {
+export function retrySuspenseView(source: ViewConnector<ViewClient>, instance: RunicInstance = defaultInstance()): void {
   const suspended = suspendedOf(instance);
   const entry = suspended.get(source.connect);
   if (entry?.status !== "failed") return;

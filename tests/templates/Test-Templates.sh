@@ -591,6 +591,18 @@ verify_template() {
   fi
   grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
   grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
+  # D059.17: a lane that installs a certified newer-major SDK checks that the project, which has no global.json
+  # pinning an SDK, builds with it, and that doctor certifies it and finds the .NET 10 runtime the application needs.
+  if [[ -n "${RUNIC_TEMPLATE_DOTNET_SDK_MAJOR:-}" ]]; then
+    sdk_version="$(cd "$output" && dotnet --version)"
+    if [[ "$sdk_version" != "$RUNIC_TEMPLATE_DOTNET_SDK_MAJOR".* ]] \
+      || ! grep -Fq "PASS dotnet-sdk: .NET SDK $sdk_version is certified" "$output/doctor.txt" \
+      || ! grep -Fq "PASS dotnet-runtime: " "$output/doctor.txt"; then
+      echo "Expected the generated project to build with a certified .NET $RUNIC_TEMPLATE_DOTNET_SDK_MAJOR SDK, not $sdk_version:" >&2
+      cat "$output/doctor.txt" >&2
+      exit 1
+    fi
+  fi
   if [[ "$host" == desktop* ]]; then
     grep -Fq 'PASS browser: Not required' "$output/doctor.txt"
     if grep -Fq 'CS-WebUI' "$output/doctor.txt"; then
