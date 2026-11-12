@@ -271,7 +271,9 @@ internal sealed class HostedMenusAndDialogsTests
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("dialog-crash"));
         var window = await opened.WaitScaledAsync(Timeout);
         Check(await application.Exited.WaitScaledAsync(Timeout) == HostedGuestProgram.CrashExitCode, "The guest did not crash.");
-        Check(dialogs.Shown.Count == 1 && dialogs.Cancelled.Count == 1, "The host's dialog stayed open after the guest crashed.");
+        // Two checks, so a failure tells a dialog that never showed from one that stayed open.
+        Check(dialogs.Shown.Count == 1, $"The host showed {dialogs.Shown.Count} dialogs before the guest crashed, not 1.");
+        Check(dialogs.Cancelled.Count == 1, "The host's dialog stayed open after the guest crashed.");
         Check(window.Closed.IsCompleted, "The guest's window is still open.");
     }
 

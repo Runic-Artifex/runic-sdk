@@ -120,7 +120,7 @@ internal sealed class HostedElevationTests
     }
 
     // An elevated guest is never looked up in PATH or relative to the current directory.
-    [Test]
+    [Test, NotInParallel(Order = 50)]
     public async Task AnElevatedGuestNeedsFullyQualifiedPaths()
     {
         await using var fixture = await HostFixture.StartAsync();
