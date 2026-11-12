@@ -29,7 +29,7 @@ test("each invalid text has a reason and arguments, and keeps its English messag
   const cases: [string, Partial<BridgeField<typeof client, State, unknown>>, { locale?: string | null; scale?: number },
     FieldErrorReason, FieldErrorArguments, string][] = [
     ["", { kind: "number" }, {}, "required", { expected: "number" }, "Enter a number."],
-    ["", { kind: "number", integer: true }, {}, "required", { expected: "whole-number" }, "Enter a number."],
+    ["", { kind: "number", integer: true }, {}, "required", { expected: "whole-number" }, "Enter a whole number."],
     ["", { kind: "decimal" }, {}, "required", { expected: "number" }, "Enter a number."],
     ["", { kind: "bigint" }, {}, "required", { expected: "whole-number" }, "Enter a whole number."],
     ["", { kind: "date" }, {}, "required", { expected: "date" }, "Enter a date."],

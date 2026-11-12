@@ -14,6 +14,14 @@ public sealed partial class RunicHostedApplication
     private const RunicWindowPresentationFeatures RegionFeatures = RunicWindowPresentationFeatures.Present |
         RunicWindowPresentationFeatures.DocumentEdited | RunicWindowPresentationFeatures.Activity | RunicWindowPresentationFeatures.OwnedWindows;
 
+    // A browser (serve-only) host's: it has no native window to bring forward and opens no window of its own, so neither
+    // present nor owned windows (host-protocol.md, Browser hosts).
+    private const RunicWindowPresentationFeatures BrowserRegionFeatures =
+        RunicWindowPresentationFeatures.DocumentEdited | RunicWindowPresentationFeatures.Activity;
+
+    // A browser (serve-only) host: its pages run in the user's browser, and no native window of its own shows them.
+    private bool IsBrowserHost => _host.ServeOnly;
+
     private HostedRegionDirectory Regions => _host.RegionDirectory;
 
     // window-open with the policy's Embed: the window opens at once, and attaches when a region takes it.
@@ -33,7 +41,8 @@ public sealed partial class RunicHostedApplication
         // The frame's permissions policy: only what the policy granted (host-protocol.md, Features in a region).
         var allow = grant.HasFlag(DesktopPermissionGrant.MediaCapture) ? "camera; microphone" : "";
         var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow, grant);
-        window.AttachRegion(region, RegionFeatures);
+        var features = IsBrowserHost ? BrowserRegionFeatures : RegionFeatures;
+        window.AttachRegion(region, features);
         if (Regions.Open(region, out var slot) is { } failure)
         {
             await region.EndAsync().ConfigureAwait(false);
@@ -67,7 +76,7 @@ public sealed partial class RunicHostedApplication
             await request.ReplyAsync(new JsonObject
             {
                 ["presentation"] = "region",
-                ["features"] = new JsonArray([.. FeatureNames(RegionFeatures).Select(static name => (JsonNode)name)]),
+                ["features"] = new JsonArray([.. FeatureNames(features).Select(static name => (JsonNode)name)]),
                 ["activity"] = region.ActivityMembers(),
                 ["region"] = region.OpenRegionMember(),
             }).ConfigureAwait(false);
@@ -88,9 +97,10 @@ public sealed partial class RunicHostedApplication
         await OnWindowClosedAsync(window, null).ConfigureAwait(false);
     }
 
-    // region-attach: the guest's frame launch address, or why there is none.
+    // region-attach: the guest's frame launch address, or why there is none. browser: the host page runs in an installed
+    // browser, which an elevated guest refuses (guest-elevated); sent only when true.
     internal async Task<RegionAttachResult> RegionAttachAsync(RunicHostedWindow window, string embedder, RunicHostedRegionSize size,
-        Runic.Application.Views.HostedRegionSizing sizing, bool allowSameSite)
+        Runic.Application.Views.HostedRegionSizing sizing, bool allowSameSite, bool browser = false)
     {
         if (_channel is not { IsOpen: true } channel) return new(null, false, "closed");
         var message = new JsonObject
@@ -105,6 +115,7 @@ public sealed partial class RunicHostedApplication
             ["sizing"] = sizing == Runic.Application.Views.HostedRegionSizing.ContentHeight ? "content-height" : "fill",
             ["allowSameSite"] = allowSameSite,
         };
+        if (browser) message["browser"] = true;
         JsonObject reply;
         try { reply = await channel.RequestAsync(message, _ending.Token).ConfigureAwait(false); }
         catch (Exception error) when (error is HostChannelClosedException or OperationCanceledException) { return new(null, false, "closed"); }
@@ -166,7 +177,8 @@ public sealed partial class RunicHostedApplication
         if (request.Kind == "region-focus")
         {
             // Frame mode traverses out of the frame natively: the focus has left already (host-protocol.md, region-focus).
-            await request.ReplyAsync(region.NativeWindow is null
+            // A browser host's region has no native window, and is answered while a region shows the window too.
+            await request.ReplyAsync(!region.IsShown
                 ? Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed))
                 : Outcome(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()))).ConfigureAwait(false);
             return true;
@@ -200,6 +212,9 @@ public sealed partial class RunicHostedApplication
         var native = region.NativeWindow;
         switch (request.Kind)
         {
+            // A browser host cannot bring the user's browser forward or speak through it (host-protocol.md, Browser hosts).
+            case RunicHostedPresentationKind.Present or RunicHostedPresentationKind.Announce when IsBrowserHost:
+                return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
             case RunicHostedPresentationKind.Present:
                 if (native is null) return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
                 // The host window comes forward with the host's activation rights; the focus moves into the region only

@@ -28,6 +28,13 @@ namespace Runic.Application.Views.Desktop;
 /// which windows open and what they may do; by default every window opens.
 /// </para>
 /// <para>
+/// A serve-only application (<see cref="RunicDesktopHostOptions.ServeOnly"/>) is a <b>browser host</b>: its pages run
+/// in the user's browser, so it shows a guest's Windows only in regions of its pages
+/// (<see cref="RunicHostedWindowDecision.Embed(string)"/>, <see cref="RunicHostedWindowRequest.CanOpenWindow"/>). Its
+/// guests get no dialogs, menus or window services, as in serve-only mode, serve their frames only cross-site to its
+/// pages, and an elevated guest refuses its regions.
+/// </para>
+/// <para>
 /// When the Desktop host shuts down, or <see cref="RunicDesktopHost.Run(IServiceProvider, Runic.Desktop.DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
 /// returns, every guest still running is stopped. The protocol and this API are experimental; see
 /// <c>docs/experimental.md</c>.
@@ -99,7 +106,7 @@ public interface IRunicHostedApplications
     /// qualified path.
     /// </exception>
     /// <exception cref="InvalidOperationException">
-    /// The Desktop host is shutting down, or runs serve-only or hosted itself. A shutdown or disposal of the Desktop host
+    /// The Desktop host is shutting down, or runs hosted itself. A shutdown or disposal of the Desktop host
     /// while the start is pending also fails it this way, and ends the guest's process tree.
     /// </exception>
     ValueTask<RunicHostedApplication> StartAsync(RunicGuestStartInfo startInfo, RunicHostedApplicationOptions? options = null,

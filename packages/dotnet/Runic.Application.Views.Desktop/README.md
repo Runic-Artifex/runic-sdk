@@ -746,8 +746,9 @@ details.
 
 **Platform notes.**
 
-- Hosts and guests run on Runic Desktop only. A CS-WebUI, hosted or serve-only
-  application cannot host.
+- Hosts and guests run on Runic Desktop only. A CS-WebUI or hosted application
+  cannot host. A serve-only application hosts only in regions of its pages
+  ([browser hosts](#browser-serve-only-hosts)).
 - Hosted windows have no browser fallback: a browser tab would send the user's
   own `127.0.0.1` cookies to the guest. The host needs an embedded web view.
   WebView2 and WKWebView are built in. On Linux the host selects one:
@@ -1006,8 +1007,8 @@ var exitCode = await tool.Exited;
 - **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
   and completes `Exited` with its exit code (event 2017). `StopAsync` asks the guest to shut down and ends it after
   `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests
-  still running stop when the host's Desktop shuts down and when `RunicDesktopHost.Run` returns. A hosted or
-  serve-only application cannot host.
+  still running stop when the host's Desktop shuts down and when `RunicDesktopHost.Run` returns. A hosted application
+  cannot host; a serve-only one shows guests' windows only in regions ([browser hosts](#browser-serve-only-hosts)).
 
 Each engine keeps a guest session's cookies, storage and caches apart from the host's and from other guests':
 
@@ -1073,8 +1074,9 @@ sealed class CheckPolicy : IRunicHostedWindowPolicy
   widens it).
 - **Origins.** The guest serves the frame from the loopback family the host page does not use, so no cookie of the host
   page reaches it. An embedded host allows the guest to fall back to the same family where the other cannot be bound,
-  and logs it (event 2027). The guest's storage in a region lives in the host window's profile: treat it as
-  session-scoped. A refused or failed attach leaves the window detached (event 2026).
+  and logs it (event 2027). The frame's embedder is the origin with which the page connected, such as a development
+  server's. The guest's storage in a region lives in the host window's profile: treat it as session-scoped. A refused
+  or failed attach leaves the window detached (event 2026).
 
 - **Drops, permissions and keys.** The host window's web view routes the attached frame to its guest
   (`Runic.Desktop/README.md`): a drop onto the frame reaches the guest as `files-dropped` under the policy
@@ -1089,7 +1091,24 @@ sealed class CheckPolicy : IRunicHostedWindowPolicy
   peers (event 2029). On macOS, which has no peer lookup, it refuses region mode, and `Embed` leaves the window detached
   (event 2026, `refused`).
 
-Browser (serve-only) hosts cannot host guests yet.
+#### Browser (serve-only) hosts
+
+A serve-only application (`RunicDesktopHostOptions.ServeOnly` or `RUNIC_APPLICATION_SERVE_ONLY=1`) is a **browser
+host**: its pages run in the user's browser, and it shows guests' windows only in their regions
+([specification](../../../specs/desktop/host-protocol.md#browser-hosts)). Start guests and write the policy as above;
+`RunicHostedWindowRequest.CanOpenWindow` is `false`, and a decision other than `Embed` fails the guest's open with
+`hosted-window-refused` (event 2020, `WindowModeUnavailable`).
+
+- **Reduced features, as in serve-only mode.** The guest's dialogs, menus and window services report
+  `OwnerUnavailable`, and its `present` and announcements `BackendUnavailable`. Its window opens no owned windows. The
+  region is active while it holds the focus of its page.
+- **Cross-site only.** The guest never falls back to the host page's loopback family, since the browser holds other
+  local applications' cookies: without IPv6, a page on `127.0.0.1` shows the region's fallback content
+  (`cross-site-unavailable`, event 2026). A page opened through `localhost` gets its frame from `[::1]`, else
+  `127.0.0.1`.
+- **Elevated guests refuse** a browser host's page (`guest-elevated`): their windows stay open and detached.
+- The guest's storage lives in the user's browser profile; see the security guide's
+  [Hosted windows in a region](../../../docs/security.md#hosted-windows-in-a-region).
 
 ## Automation
 

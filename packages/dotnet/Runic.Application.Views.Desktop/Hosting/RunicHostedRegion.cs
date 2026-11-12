@@ -483,7 +483,8 @@ public sealed class RunicHostedRegion
         var size = SizeOf(slot.Report);
         // The window's pushes so far, such as the activity of a detach, reach the guest before the attach.
         await Window.PushesSent().ConfigureAwait(false);
-        var attach = await _application.RegionAttachAsync(Window, slot.Page.Embedder, size, slot.Sizing, slot.Page.AllowsSameSite).ConfigureAwait(false);
+        var attach = await _application.RegionAttachAsync(Window, slot.Embedder, size, slot.Sizing, slot.Page.AllowsSameSite, slot.Page.IsBrowser)
+            .ConfigureAwait(false);
         if (attach.Url is not { } url)
         {
             // The guest refused or failed the attach: the window stays open and unattached; the page shows its fallback.
@@ -728,12 +729,23 @@ public sealed class RunicHostedRegion
         return new JsonObject { ["active"] = active, ["minimized"] = minimized, ["visible"] = visible };
     }
 
+    // In a page of a browser (serve-only) host, which no native window shows, the region is active while it holds the
+    // focus of its page: the browser reports nothing else of its window.
     private (bool Active, bool Visible, bool Minimized) CurrentActivity()
     {
         var native = NativeWindow;
         var activity = native?.Activity;
         lock (_stateGate)
-            return (_attachedSlot is not null && _focused && activity is { IsActive: true }, _attachedSlot is not null && _visible, activity is { IsMinimized: true });
+        {
+            var hostActive = native is null ? _attachedSlot?.Page.IsBrowser == true : activity is { IsActive: true };
+            return (_attachedSlot is not null && _focused && hostActive, _attachedSlot is not null && _visible, activity is { IsMinimized: true });
+        }
+    }
+
+    // Whether a region shows the window now; its host window may be a browser's, with no native window.
+    internal bool IsShown
+    {
+        get { lock (_stateGate) return _attachedSlot is not null; }
     }
 
     private void PushActivity()

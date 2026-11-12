@@ -226,7 +226,8 @@ files the host opened for the guest, in order (a link's absolute URI, a file's p
 The scenarios of [`region/1`](../host-protocol.md#regions-region1) are in `scenarios/region/`, with `requires:
 ["region/1"]`. The host role's are named `region.host-*`. A host scenario's `arrange.host.embed` names the region in which
 the host's policy shows each window of the guest that can show in a region and has no owner, and `embedOptions` its
-`focusOnAttach` and `reattachOnReload`.
+`focusOnAttach` and `reattachOnReload`. `arrange.host.browser` makes the host a browser (serve-only) host, whose pages no
+native window shows, and a guest scenario's `arrange.application.elevated` plays a guest that runs elevated.
 
 | Scenario | Roles | Checks |
 | --- | --- | --- |
@@ -257,6 +258,9 @@ the host's policy shows each window of the guest that can show in a region and h
 | `region.host-host-window-closes` | host | The host window's close detaches the region window and closes it with a forced `close-request` |
 | `region.host-move` | host | The host moves a region window to another host window's region, and detaches it |
 | `region.host-embed-options` | host | Focus on attach, and no re-attach on reload |
+| `region.browser-attach` | guest | A `region-attach` with `browser: true` and `allowSameSite: false` answers a frame launch address cross-site to the embedder; a `browser` that is not a boolean is `rejected` with `invalid-request` |
+| `region.browser-elevated` | guest | An elevated guest refuses a `region-attach` with `browser: true` with `rejected` and `guest-elevated`, and its Window stays open |
+| `region.host-browser` | host | A [browser host](../host-protocol.md#browser-hosts) lists `region/1` alone, opens region windows without `present` and `owned-windows`, attaches them with `browser: true` and `allowSameSite: false`, answers `present` and `announce` `unavailable` with `backend-unavailable`, and refuses a window of the guest's own |
 
 New steps and actions the runners need:
 

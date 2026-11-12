@@ -207,6 +207,10 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9._-]{1,64}$"
             },
+            "browser": {
+              "type": "boolean",
+              "description": "A browser (serve-only) host: its pages run in the user's browser, and no native window shows them."
+            },
             "embedOptions": {
               "type": "object",
               "additionalProperties": false,
@@ -260,6 +264,10 @@
             "string",
             "null"
           ]
+        },
+        "elevated": {
+          "type": "boolean",
+          "description": "The guest runs elevated, as the runner plays it."
         }
       }
     },

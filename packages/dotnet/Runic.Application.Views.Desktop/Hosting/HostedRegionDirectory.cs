@@ -10,11 +10,16 @@ internal interface IHostedRegionPage
     // The host's Window whose page this is, or null for a page of no Runic Window, as in tests.
     IRunicWindow? Window { get; }
 
-    // The host's native window that shows the page, which owns its regions' dialogs and context menus.
+    // The host's native window that shows the page, which owns its regions' dialogs and context menus; null for a page in
+    // the user's browser that a browser (serve-only) host serves.
     DesktopWindow? NativeWindow { get; }
 
-    // The page's origin, which frames the guest's page (region-attach embedder).
+    // The page's origin, which frames the guest's page (region-attach embedder), unless a declaration names its own.
     string Embedder { get; }
+
+    // Whether the page runs in an installed browser rather than the host's own web view (region-attach browser): a browser
+    // (serve-only) host's pages, and a native host's browser fallback. An elevated guest refuses such a page.
+    bool IsBrowser { get; }
 
     // Whether the guest may serve the frame from the embedder's own loopback family (region-attach allowSameSite): an
     // embedded host allows it, a browser host never does.
@@ -30,11 +35,14 @@ internal interface IHostedRegionPage
 }
 
 // A region that a page declares now.
-internal sealed class HostedRegionSlot(IHostedRegionPage page, string name, Runic.Application.Views.HostedRegionSizing sizing)
+internal sealed class HostedRegionSlot(IHostedRegionPage page, string name, Runic.Application.Views.HostedRegionSizing sizing, string? embedder = null)
 {
     internal IHostedRegionPage Page { get; } = page;
     internal string Name { get; } = name;
     internal Runic.Application.Views.HostedRegionSizing Sizing { get; } = sizing;
+
+    // The origin of the page that declared the region, which frames the guest's page (region-attach embedder).
+    internal string Embedder { get; } = embedder ?? page.Embedder;
 
     // The page's latest report; null before its first.
     internal Runic.Application.Views.HostedRegionReport? Report { get; set; }
@@ -59,7 +67,7 @@ internal sealed class HostedRegionDirectory
     // ----- The pages' side
 
     internal void Declare(IHostedRegionPage page, string name, Runic.Application.Views.HostedRegionSizing sizing,
-        Runic.Application.Views.HostedRegionReport? report = null)
+        Runic.Application.Views.HostedRegionReport? report = null, string? embedder = null)
     {
         HostedRegionSlot slot;
         HostedRegionSlot? replaced;
@@ -70,7 +78,7 @@ internal sealed class HostedRegionDirectory
             if (!_pages.TryGetValue(page, out var slots)) _pages[page] = slots = new(StringComparer.Ordinal);
             // A second declaration of the name in the page, which the producer reports as a removal first; kept robust.
             replaced = slots.GetValueOrDefault(name);
-            slot = new HostedRegionSlot(page, name, sizing) { Report = report };
+            slot = new HostedRegionSlot(page, name, sizing, embedder) { Report = report };
             slots[name] = slot;
             if (replaced?.Region is { } shown)
             {
@@ -134,6 +142,12 @@ internal sealed class HostedRegionDirectory
         }
         foreach (var (slot, region) in removed) region.OnSlotRemoved(slot, "removed");
         foreach (var region in bound) region.OnHostWindowClosed();
+    }
+
+    // The embedder of the region a page declares now, or null (tests).
+    internal string? EmbedderOf(IHostedRegionPage page, string name)
+    {
+        lock (_gate) return _pages.TryGetValue(page, out var slots) && slots.TryGetValue(name, out var slot) ? slot.Embedder : null;
     }
 
     // ----- The region windows' side

@@ -616,7 +616,7 @@ same on the server and in the browser until the browser's first effect.
 The `error` of `useView` and of a command or operation helper is typed
 `unknown`: it holds whatever the connection or the call rejected with. A Bridge
 failure is a `BridgeError` from `@runic-artifex/views`. Show it with
-`describeBridgeError(error)`, one English sentence, instead of `String(error)`,
+`describeBridgeError(error)`, one sentence (in the window's language with `configureRunicViewsText()`), instead of `String(error)`,
 and narrow it with `isBridgeError` (or `instanceof`) before reading `kind`,
 `route` or `detail`:
 

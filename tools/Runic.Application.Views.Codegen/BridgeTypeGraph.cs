@@ -437,7 +437,10 @@ internal sealed class BridgeTypeGraph
                 "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, unionValue + "[" + Quote(member.WireName) + "]")));
             return $"case {Quote(@case.Discriminator)}: return {{ \"$case\": {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
         }));
-        return $"(() => {{ const {unionValue}: any = bridgeWire.encodeUnion({expression}); switch ({unionValue}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
+        // The value keeps its union type, so each case narrows it and the
+        // encoders of its members (a list's .map callback, a dictionary's
+        // entries) see typed values rather than implicit any (#863).
+        return $"(() => {{ const {unionValue}: {TypeScriptNamedTypes.Reference(node)} = {expression}; bridgeWire.encodeUnion({unionValue}); switch ({unionValue}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
     }
 
     private static void AppendWriter(StringBuilder source, BridgeTypeNode node)

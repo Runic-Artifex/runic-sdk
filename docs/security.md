@@ -402,6 +402,17 @@ What it means for applications:
   full address with its token. Runic's hosts forward no engine console messages; the page messages they do log, page
   errors (`client-errors/1`), have frame launch codes and frame tokens redacted, as do the guest's own logs. A token in a
   log is useless while its frame is connected, and it dies at detach.
+- **Browser (serve-only) hosts.** A serve-only application can host guests and show their windows in regions of its
+  pages, which run in the user's browser ([browser hosts](../specs/desktop/host-protocol.md#browser-hosts)). The rules
+  above hold, and the frame must be cross-site. Its `frame-ancestors` names the origin with which the host page
+  connected, which the host's surface admitted, so another tab or another local application's page can neither frame
+  the guest's page nor open its connection, which also needs the frame token. What differs from a host's own web view:
+  the guest's storage lives in the user's browser profile; browser extensions that may read loopback pages can read and
+  script the guest's frame as they can any page; another local application's cookies that allow cross-site use
+  (`SameSite=None`) on the other loopback name can reach the guest's frame surface, which ignores every cookie; and the
+  host page can open the frame's address in a tab of its own instead of a frame, where it still cannot read or script
+  the guest's page. The guest gets no dialogs, menus or window services there, and **an elevated guest refuses a
+  browser host's page**.
 - **Elevated guests admit elevated peers only.** An elevated guest admits connections to every one of its listeners,
   its channel, its page surfaces and its frame and component surfaces, only from loopback peer processes that run
   elevated. An installed browser, or another process of the user that does not run elevated, then cannot render or
