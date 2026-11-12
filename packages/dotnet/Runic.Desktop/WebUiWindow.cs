@@ -3945,7 +3945,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         // The earlier attachment ends first: its page must not survive into the new one.
         EndFrameLaunch();
         EndComponent();
-        if (!_frameBinding.IsActive) _frameBinding.Enter();
+        // Region mode first, with its window-mode launch revoked, as the guest's region window always is.
+        if (!_frameBinding.IsActive) EnterRegionMode();
         var listener = url;
         // Hosts are compared as written: 127.0.0.1, [::1] and localhost are three sites.
         var sameSite = string.Equals(url.Host, host, StringComparison.OrdinalIgnoreCase);
