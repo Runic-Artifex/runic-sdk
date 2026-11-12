@@ -4530,7 +4530,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2007 | `DesktopDevelopmentReloadFailed` | Debug | A window did not reload after the directory changed, for example because it closed meanwhile. | |
 | 2008 | `DesktopLayoutDirectionFailed` | Warning | An embedded window did not change its native direction after its window locale (`IRunicWindowLocale`) changed. | `ErrorType` |
 | 2009 | `DesktopAppearanceWatchFailed` | Warning | Watching the desktop's appearance settings (`IDesktopSettings`) for the Windows' pages (`appearance/1`) failed; the pages keep the last appearance read, and the next Window that opens watches again. | `ErrorType` |
-| 2010 | `DesktopHostedStartFailed` | Error | Hosted mode (`RunicGuestOptions`, Runic host protocol) did not start; `RunicDesktopHost.Run` throws `RunicHostedApplicationException` with the same code. | `Code`, `Reason` |
+| 2010 | `DesktopHostedStartFailed` | Error | Hosted mode (`RunicGuestOptions`, Runic host protocol) did not start; `RunicDesktopHost.Run` throws `RunicHostedApplicationException` with the same code. An elevation refusal names its decision: `guest-elevated`, `guest-elevated-host-not-elevated` or `guest-other-user`. | `Code`, `Reason` |
 | 2011 | `DesktopHostedShutdown` | Information | A hosted application's host went away or asked it to shut down; its Windows close. | `Reason` |
 | 2012 | `DesktopHostedExit` | Warning | A hosted application's body did not return within 10 seconds after its host went away, so the process exits. | `Seconds` |
 | 2013 | `DesktopHostedChannelFailed` | Warning | Handling a message of the host channel, closing a hosted Window, or an event handler of a hosted Window's presentation failed. | `ErrorType` |
@@ -4543,6 +4543,7 @@ trace id; correlate them with the host's spans by time and route.
 | 2020 | `DesktopHostedWindowPolicyFailed` | Error | The host's `IRunicHostedWindowPolicy` or a `WindowOpened`/`WindowClosed` handler threw; the guest's request fails. | `ErrorType` |
 | 2021 | `DesktopHostedGuestOutput` | Debug | A line a guest application wrote to its standard output, other than its launch line, which carries a secret. | `FileName`, `Line` |
 | 2022 | `DesktopHostedGuestError` | Debug | A line a guest application wrote to its standard error. | `FileName`, `Line` |
+| 2025 | `DesktopHostedElevated` | Information | Hosted mode starts elevated: the application runs elevated, its parent, checked by the application, runs elevated as the same user, and both allow the pair (`RunicGuestOptions.AllowElevatedHost`, `RunicGuestStartInfo.AllowElevatedGuest`). | `Decision` |
 | 2026 | `DesktopHostedRegionAttachFailed` | Warning | A guest refused or failed to attach its window to a region of a host page (`region-attach`); the window stays open and detached, and the page shows its fallback. | `Name`, `Region`, `Reason` |
 | 2027 | `DesktopHostedRegionSameSite` | Warning | A guest serves a region's frame from the host page's own loopback family, since it cannot listen on the other one: the frame receives the cookies of the host page's origin. | `Name`, `Region` |
 | 2028 | `DesktopHostedRegionFailed` | Warning | Handling a region of a hosted application failed, such as a push to the host page. | `ErrorType` |

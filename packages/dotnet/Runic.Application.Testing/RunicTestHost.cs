@@ -192,7 +192,8 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         try
         {
             await _process.StandardInput.WriteAsync(HostProtocol.Line(HostProtocol.OfferPrefix,
-                HostProtocol.Offer(_options.Protocols, HostProtocol.Base64Url(nonce), _options.HostName, _options.HostVersion))).ConfigureAwait(false);
+                HostProtocol.Offer(_options.Protocols, HostProtocol.Base64Url(nonce), _options.HostName, _options.HostVersion,
+                    _options.AllowElevatedGuest))).ConfigureAwait(false);
             await _process.StandardInput.FlushAsync(deadline.Token).ConfigureAwait(false);
         }
         catch (IOException error) { throw Failure("guest-exited", "The guest closed its standard input before the offer.", error); }
@@ -637,6 +638,19 @@ public sealed record RunicTestHostOptions
 
     /// <summary>How long the guest may take to write its channel line and answer the <c>hello</c>; 30 seconds by default.</summary>
     public TimeSpan StartTimeout { get; init; } = HostProtocol.DefaultStartTimeout;
+
+    /// <summary>
+    /// Whether the offer allows an elevated guest, as a host's <c>RunicGuestStartInfo.AllowElevatedGuest</c> does;
+    /// <see langword="false"/> by default. With it the test host plays an elevated host for a guest that sets
+    /// <c>RunicGuestOptions.AllowElevatedHost</c>.
+    /// </summary>
+    /// <remarks>
+    /// The guest checks its parent, this test process, itself: an elevated guest is hosted only when the test process runs
+    /// elevated as the same user, and refuses with <c>guest-elevated-host-not-elevated</c> otherwise. A guest that does not
+    /// run elevated ignores the offer's opt-in. Unlike Runic's host, the test host does not check that it runs elevated
+    /// itself, so it can also show that a guest ignores the opt-in when it does not run elevated.
+    /// </remarks>
+    public bool AllowElevatedGuest { get; init; }
 
     /// <summary>
     /// What each window can do, as the <c>window-open</c> reply lists it: every presentation feature but

@@ -89,10 +89,15 @@ public interface IRunicHostedApplications
     /// <exception cref="RunicHostedApplicationException">
     /// The guest could not be hosted, and its process tree was ended. <see cref="RunicHostedApplicationException.Code"/>
     /// is <c>guest-start-failed</c> (the executable could not be started, or not in a job object on Windows; see
-    /// <see cref="Exception.InnerException"/>), <c>guest-start-timeout</c>, <c>guest-exited</c>, <c>guest-not-hostable</c>,
+    /// <see cref="Exception.InnerException"/>), <c>host-not-elevated</c> (<see cref="RunicGuestStartInfo.AllowElevatedGuest"/>
+    /// is set and this process does not run elevated), <c>guest-start-timeout</c>, <c>guest-exited</c>, <c>guest-not-hostable</c>,
     /// <c>guest-refused</c> (with <see cref="RunicHostedApplicationException.GuestCode"/>) or <c>protocol-unsupported</c>.
     /// </exception>
-    /// <exception cref="ArgumentException">On Windows, the executable is a batch file (<c>.bat</c>, <c>.cmd</c>), which only <c>cmd.exe</c> runs.</exception>
+    /// <exception cref="ArgumentException">
+    /// On Windows, the executable is a batch file (<c>.bat</c>, <c>.cmd</c>), which only <c>cmd.exe</c> runs; or
+    /// <see cref="RunicGuestStartInfo.AllowElevatedGuest"/> is set and the executable or the working directory is not a fully
+    /// qualified path.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     /// The Desktop host is shutting down, or runs serve-only or hosted itself. A shutdown or disposal of the Desktop host
     /// while the start is pending also fails it this way, and ends the guest's process tree.
@@ -157,6 +162,28 @@ public sealed record RunicGuestStartInfo(string FileName, IReadOnlyList<string> 
     /// </remarks>
     public bool UserStarted { get; init; }
 
+    /// <summary>
+    /// Whether this host, which runs elevated, allows the guest to run elevated too; <see langword="false"/> by default,
+    /// when a guest that runs elevated refuses hosted mode (<c>guest-elevated</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A guest started by an elevated process inherits its elevation: an elevated token on Windows, root on Linux and
+    /// macOS. With <see langword="true"/>, the offer tells the guest that this host allows it, and a guest that also sets
+    /// <see cref="RunicGuestOptions.AllowElevatedHost"/> is hosted after it checked for itself that its parent, this
+    /// process, runs elevated as the same user. Every other combination is refused as without it.
+    /// </para>
+    /// <para>
+    /// Only a host that runs elevated may set it: an unelevated one fails the start with <c>host-not-elevated</c> before
+    /// the guest starts. <see cref="FileName"/>, and <see cref="WorkingDirectory"/> when it is set, must be fully
+    /// qualified paths, so that the elevated guest is never looked up in <c>PATH</c> or the current directory. The guest
+    /// runs with administrator rights: start only an executable in a location that only administrators can change, such
+    /// as <c>Program Files</c> or a directory owned by root, never one the user can write to. The residual risks are in
+    /// <c>docs/security.md</c>, "Hosted application windows".
+    /// </para>
+    /// </remarks>
+    public bool AllowElevatedGuest { get; init; }
+
     private static string RequireText(string value, string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, name);
@@ -202,6 +229,10 @@ public sealed record RunicHostedApplicationOptions
 
     /// <summary>The host's version the guest learns; by default this application's informational version.</summary>
     public string? HostVersion { get; init; }
+
+    // Whether this process runs elevated, for RunicGuestStartInfo.AllowElevatedGuest; tests replace it to play an elevated
+    // or unelevated host.
+    internal Func<bool> IsHostElevated { get; init; } = static () => System.Environment.IsPrivilegedProcess;
 
     private static TimeSpan RequirePositive(TimeSpan value, string name)
     {
