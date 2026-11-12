@@ -60,6 +60,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
     // The installed browser this window launched, and the client that opened its launch code (SEC-01).
     private readonly BrowserLaunchBinding _launchBinding = new();
+    // runic-host/1 region mode: the frame of a host page that shows this surface, and the page it admits.
+    private readonly FrameLaunchBinding _frameBinding = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _presentationGate = new(1, 1);
     private readonly TaskCompletionSource _disposeCompletion = NewCompletionSource();
@@ -1846,6 +1848,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (element == "__webui_core_api__")
         {
+            if (arguments.Length > 1 && arguments[0].Span.SequenceEqual("region"u8))
+                return ReportFrame(arguments[1]);
             return arguments.Length > 0 && arguments[0].Span.SequenceEqual("high_contrast"u8)
                 ? WebUiResult.FromBoolean(_highContrast ?? WebUiSystemTheme.IsHighContrast)
                 : WebUiResult.None;
@@ -2606,7 +2610,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (Interlocked.Increment(ref _otherRequests) == 1)
         {
-            var request = $"{context.Method} {context.Path}";
+            // A spent launch code does not belong in a log either.
+            var request = $"{context.Method} {FrameLaunchBinding.Redact(context.Path)}";
             Volatile.Write(ref _firstOtherRequest, request);
             HandshakeLog.Record($"{request} requested without the window's cookie or launch code");
         }
@@ -2972,7 +2977,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         if (context.IsGet || context.IsHead)
         {
-            if (!IsFromPage(context))
+            // A frame's requests carry nothing that tells its page from another requester; its WebSocket does.
+            if (_frameBinding.IsActive)
+            {
+            }
+            else if (!IsFromPage(context))
             {
                 ReportOtherRequest(context);
             }
@@ -2980,7 +2989,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             {
                 if (path == "/" || Volatile.Read(ref _connectionProgress) < (int)ConnectionProgress.DocumentRequested)
                 {
-                    HandshakeLog.Record($"{context.Method} {context.Path} requested");
+                    HandshakeLog.Record($"{context.Method} {FrameLaunchBinding.Redact(context.Path)} requested");
                 }
                 ReportConnectionProgress(ConnectionProgress.DocumentRequested);
             }
@@ -3115,9 +3124,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var crossSite = context.GetRequestHeader("Sec-Fetch-Site").Equals("cross-site", StringComparison.OrdinalIgnoreCase);
         var origin = context.GetRequestHeader("Origin");
         var deniedOrigin = upload
-            ? _securityPolicy is not null && (origin.Length == 0 || !_securityPolicy.AllowsOrigin(Url!, origin))
+            ? _securityPolicy is not null && (origin.Length == 0 || !AllowsPageOrigin(origin))
             : crossSite;
-        var deniedClient = UseClientCookies && !IsFromPage(context);
+        var deniedClient = UsesClientCookies && !IsFromPage(context);
         if (deniedOrigin || deniedClient)
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
@@ -3222,13 +3231,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private string BuildBridgeScript(BootstrapInputs inputs)
     {
-        var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs.DocumentStartScript);
+        var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs);
         return WebUiBridge.Script
             .Replace("__TOKEN__", token, StringComparison.Ordinal)
             .Replace("__PORT__", AsciiNumbers.Format(inputs.Port), StringComparison.Ordinal)
             .Replace("__BASE_PATH__", inputs.PathBase, StringComparison.Ordinal)
             .Replace("__SESSION_CREDENTIAL__", sessionCredential, StringComparison.Ordinal)
-            .Replace("__CUSTOM_WINDOW_DRAG__", inputs.CustomWindowDrag ? "true" : "false", StringComparison.Ordinal);
+            .Replace("__CUSTOM_WINDOW_DRAG__", inputs.CustomWindowDrag ? "true" : "false", StringComparison.Ordinal)
+            .Replace("__FRAME__", inputs.Frame ? "true" : "false", StringComparison.Ordinal)
+            .Replace("__MEASURE_HEIGHT__", inputs.MeasuresHeight ? "true" : "false", StringComparison.Ordinal);
     }
 
     private Task ServeDesktopBootstrapAsync(PresentationExchange context)
@@ -3244,7 +3255,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string BuildDesktopBootstrapScript(BootstrapInputs inputs)
     {
         var webSocketPath = $"{inputs.PathBase}{WebSocketPath}";
-        var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs.DocumentStartScript);
+        var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs);
         return $$"""
             (() => {
               "use strict";
@@ -3276,19 +3287,25 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     // The inputs of a bootstrap script that can change between presentations of one window: the server's port and path,
-    // whether the embedded host hands the credentials to the document, and the frameless window's own drag.
-    private readonly record struct BootstrapInputs(int Port, string PathBase, bool DocumentStartScript, bool CustomWindowDrag);
+    // whether the embedded host hands the credentials to the document, the frameless window's own drag, and whether a
+    // host page frames the surface (region mode), whose page offers its frame token instead of the session credential.
+    private readonly record struct BootstrapInputs(int Port, string PathBase, bool DocumentStartScript, bool CustomWindowDrag,
+        bool Frame, bool MeasuresHeight);
 
     private sealed record BootstrapScript(BootstrapInputs Inputs, byte[] Utf8);
 
     private byte[] GetBootstrapScript(ref BootstrapScript? cache, Func<BootstrapInputs, string> build)
     {
         var embeddedHost = _embeddedHost;
+        // A frame's page connects to the listener that serves it.
+        var frameListener = _frameBinding.Listener;
         var inputs = new BootstrapInputs(
-            Url?.Port ?? 0,
+            frameListener?.Port ?? Url?.Port ?? 0,
             _surface?.PathBase ?? string.Empty,
             embeddedHost?.SupportsDocumentStartScript == true,
-            embeddedHost is not null && _frameless);
+            embeddedHost is not null && _frameless,
+            frameListener is not null,
+            frameListener is not null && _frameBinding.MeasuresHeight);
         var cached = Volatile.Read(ref cache);
         if (cached is not null && cached.Inputs == inputs) return cached.Utf8;
         var built = new BootstrapScript(inputs, Encoding.UTF8.GetBytes(build(inputs)));
@@ -3301,13 +3318,47 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // A host that runs a document-start script hands the credentials only to
     // documents from admitted origins. Fetchable scripts then read them from the
-    // document instead of carrying them to every requester.
-    private (string Token, string SessionCredential) GetBootstrapCredentialExpressions(bool documentStartScript) =>
-        documentStartScript
+    // document instead of carrying them to every requester. A frame's bootstrap
+    // carries no credential at all: its page offers the frame token it received.
+    private (string Token, string SessionCredential) GetBootstrapCredentialExpressions(BootstrapInputs inputs) =>
+        inputs.Frame ? (AsciiNumbers.Format(_token), FrameTokenExpression(inputs.PathBase))
+        : inputs.DocumentStartScript
             ? ($"({DocumentBootstrapProperty}?.token ?? 0)", $"({DocumentBootstrapProperty}?.sessionCredential ?? \"\")")
             : (AsciiNumbers.Format(_token), EncodeJavaScriptString(_sessionCredential));
 
+    // Region mode (FrameLaunchBinding): the frame token, read from the #runic-frame= fragment of the frame launch's
+    // redirect before any page script runs and removed from the address at once, or from sessionStorage after a reload
+    // of the frame. Both bootstrap scripts read it through one page-global, so the second finds what the first removed
+    // even where the storage is blocked. Empty without a token: the page is then not admitted.
+    private static string FrameTokenExpression(string pathBase) => $$"""
+        (() => {
+          const shared = Symbol.for("runic-desktop.frame");
+          if (typeof globalThis[shared] === "string") return globalThis[shared];
+          const key = {{EncodeJavaScriptString("runic-frame:" + pathBase)}};
+          const match = /^#{{FrameLaunchBinding.FragmentName}}=([A-Za-z0-9_-]{43})$/.exec(globalThis.location.hash);
+          let token = "";
+          if (match) {
+            token = match[1];
+            try { globalThis.history.replaceState(globalThis.history.state, "", globalThis.location.pathname + globalThis.location.search); } catch {}
+            try { globalThis.sessionStorage.setItem(key, token); } catch {}
+          } else {
+            try { token = globalThis.sessionStorage.getItem(key) ?? ""; } catch {}
+          }
+          Object.defineProperty(globalThis, shared, { value: token });
+          return token;
+        })()
+        """;
+
     private string FrameAncestorsPolicy => _frameAncestorsPolicy ??= CreateFrameAncestorsPolicy(_securityPolicy?.AdditionalOrigins);
+
+    // The origin of the page: in region mode the frame's (the listener that serves it) alone, without additional
+    // origins; otherwise the surface's and its policy's additional origins.
+    private bool AllowsPageOrigin(string origin) =>
+        _frameBinding.IsActive
+            // As browsers serialize it: http://[::1]:40117 (CanonicalOrigin's IdnHost drops an IPv6 literal's brackets).
+            ? _frameBinding.Listener is { } frame &&
+              string.Equals(frame.GetLeftPart(UriPartial.Authority), origin, StringComparison.OrdinalIgnoreCase)
+            : _securityPolicy?.AllowsOrigin(Url!, origin) != false;
 
     // The additional origins are canonical (scheme://host:port), which is a valid CSP host source.
     internal static string CreateFrameAncestorsPolicy(IEnumerable<string>? additionalOrigins) =>
@@ -3364,6 +3415,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
+        // Region mode: the attachment whose token the upgrade offers, checked again once its session is listed.
+        var frameGeneration = _frameBinding.Generation;
         var acceptedSubprotocol = ValidateWebSocketAdmission(context);
         if (acceptedSubprotocol is null)
         {
@@ -3421,6 +3474,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 TimeProvider);
             if (!_sessions.TryAdd(session.Id, session))
             {
+                await session.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+            // A detach, a new attach or a launch conflict that came between the token check and now disconnected the
+            // pages it found; this one was not listed yet.
+            if (_frameBinding.IsActive && _frameBinding.Generation != frameGeneration)
+            {
+                _sessions.TryRemove(session.Id, out _);
                 await session.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -3495,18 +3556,51 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         context.SetResponseHeader("Cache-Control", NoCache);
         context.SetResponseHeader("X-Content-Type-Options", "nosniff");
-        // SEC-05: only the surface's own documents and its additional origins may frame its pages. Browsers that apply
-        // frame-ancestors ignore X-Frame-Options; it covers those that do not.
-        context.SetResponseHeader(ContentSecurityPolicyHeader, FrameAncestorsPolicy);
-        context.SetResponseHeader("X-Frame-Options", "SAMEORIGIN");
+        var region = _frameBinding.IsActive;
+        if (region)
+        {
+            // Region mode: only the host page's origin, which the host named over its authenticated channel, may frame
+            // the page, and none before the first attach. No X-Frame-Options, which would refuse that framer where
+            // frame-ancestors is not applied (CSP 3 makes browsers ignore it next to frame-ancestors). No Referer
+            // leaves the frame's page.
+            context.SetResponseHeader(ContentSecurityPolicyHeader, "frame-ancestors " + (_frameBinding.Embedder ?? "'none'"));
+            context.SetResponseHeader("Referrer-Policy", "no-referrer");
+        }
+        else
+        {
+            // SEC-05: only the surface's own documents and its additional origins may frame its pages. Browsers that
+            // apply frame-ancestors ignore X-Frame-Options; it covers those that do not.
+            context.SetResponseHeader(ContentSecurityPolicyHeader, FrameAncestorsPolicy);
+            context.SetResponseHeader("X-Frame-Options", "SAMEORIGIN");
+        }
         if ((_allowedPermissions & DesktopPermissionGrant.MediaCapture) == 0)
         {
             context.SetResponseHeader("Permissions-Policy", "camera=(), microphone=()");
+        }
+        // A frame launch code of a surface in region mode is answered on every listener, a dead one with 403
+        // (host-protocol.md, Limits).
+        if (region && !context.IsWebSocketRequest &&
+            PresentationExchange.StartsWithSegments(context.Path, FrameLaunchBinding.PathSegment, out var frameCode))
+        {
+            await ServeFrameLaunchAsync(context, frameCode.TrimStart('/')).ConfigureAwait(false);
+            return;
+        }
+        // The IPv6 loopback listener serves only the frame of a surface in region mode.
+        if (!ServesListener(context.Listener))
+        {
+            context.StatusCode = PresentationStatus.NotFound;
+            return;
         }
         if (!context.IsWebSocketRequest && PresentationExchange.StartsWithSegments(context.Path, ComponentPath, out _))
         {
             // Before the client cookie: the host page's document loads the component, with no cookie of this surface.
             await ServeComponentAsync(context).ConfigureAwait(false);
+            return;
+        }
+        if (region)
+        {
+            // No client cookie: a frame's page proves itself with its frame token on the WebSocket alone.
+            await next(context).ConfigureAwait(false);
             return;
         }
         if (!context.IsWebSocketRequest)
@@ -3543,20 +3637,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             context.StatusCode = PresentationStatus.MethodNotAllowed;
             return;
         }
-        if (OperatingSystem.IsLinux() &&
-            context.RemoteIpAddress is { } remoteAddress &&
-            context.LocalIpAddress is { } localAddress &&
-            LoopbackPeerOwner.Find(remoteAddress, context.RemotePort, localAddress, context.LocalPort) is { } owner &&
-            owner != LoopbackPeerOwner.CurrentUser)
+        if (await RefuseForeignUserAsync(context, "browser-launch-foreign-user",
+                "Another user's process opened the browser launch address and was refused.").ConfigureAwait(false))
         {
-            HandshakeLog.RecordRejection("another user opened the launch code");
-            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
-                DesktopErrorCategory.AuthenticationDenied,
-                "browser-launch-foreign-user",
-                "Another user's process opened the browser launch address and was refused.",
-                Retryable: false));
-            context.StatusCode = PresentationStatus.Forbidden;
-            await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
             return;
         }
 
@@ -3579,6 +3662,89 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         context.StatusCode = PresentationStatus.Forbidden;
         await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
     }
+
+    // On Linux, a launch code that another user's process presents is refused without spending it: other users can read
+    // a browser's command line, and a loopback listener is reachable by every user of the machine.
+    private async Task<bool> RefuseForeignUserAsync(PresentationExchange context, string code, string message)
+    {
+        if (!OperatingSystem.IsLinux() ||
+            context.RemoteIpAddress is not { } remoteAddress ||
+            context.LocalIpAddress is not { } localAddress ||
+            LoopbackPeerOwner.Find(remoteAddress, context.RemotePort, localAddress, context.LocalPort) is not { } owner ||
+            owner == LoopbackPeerOwner.CurrentUser)
+        {
+            return false;
+        }
+        HandshakeLog.RecordRejection("another user opened the launch code");
+        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+            DesktopErrorCategory.AuthenticationDenied, code, message, Retryable: false));
+        context.StatusCode = PresentationStatus.Forbidden;
+        await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
+        return true;
+    }
+
+    // Region mode: the host page's frame opened its one-time frame launch address. The first request is redirected to
+    // the page with the frame token in the fragment; the consumed code presented again means that someone else used it
+    // (FrameLaunchBinding): the token is revoked and the page disconnected, so nobody keeps the page.
+    private async Task ServeFrameLaunchAsync(PresentationExchange context, string code)
+    {
+        HandshakeLog.Record($"{FrameLaunchBinding.PathSegment} requested");
+        if (!context.IsGet)
+        {
+            context.StatusCode = PresentationStatus.MethodNotAllowed;
+            return;
+        }
+        if (await RefuseForeignUserAsync(context, "frame-launch-foreign-user",
+                "Another user's process opened the frame launch address and was refused.").ConfigureAwait(false))
+        {
+            return;
+        }
+        // The code belongs to the listener the host was given; it is not spent elsewhere, and after a detach it is dead.
+        string? token = null;
+        Uri? target = null;
+        var outcome = SameAuthority(context.Listener ?? Url, _frameBinding.Listener)
+            ? _frameBinding.Consume(code, TimeProvider, out token, out target)
+            : FrameLaunchBinding.Outcome.Refused;
+        switch (outcome)
+        {
+            case FrameLaunchBinding.Outcome.Bound:
+                ReportConnectionProgress(ConnectionProgress.DocumentRequested);
+                context.StatusCode = PresentationStatus.SeeOther;
+                context.SetResponseHeader("Location",
+                    $"{target!.GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped)}#{FrameLaunchBinding.FragmentName}={token}");
+                return;
+            case FrameLaunchBinding.Outcome.Conflict:
+                HandshakeLog.RecordRejection("another client used the frame launch code first");
+                _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                    DesktopErrorCategory.AuthenticationDenied,
+                    "frame-launch-conflict",
+                    "Another client opened this window's frame launch address. The frame's page was disconnected; attach the region again.",
+                    Retryable: true));
+                CloseSessions();
+                FrameRevoked?.Invoke();
+                break;
+            default:
+                HandshakeLog.RecordRejection("the frame launch code is not valid");
+                break;
+        }
+        context.StatusCode = PresentationStatus.Forbidden;
+        await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
+    }
+
+    private void CloseSessions()
+    {
+        foreach (var session in _sessions.Values)
+        {
+            _ = CloseBridgeIgnoringFailureAsync(session, CancellationToken.None);
+        }
+    }
+
+    // Whether this surface answers a request that arrived on listener: its own listener, and in region mode the frame's.
+    private bool ServesListener(Uri? listener) =>
+        listener is null || SameAuthority(listener, Url) || SameAuthority(listener, _frameBinding.Listener);
+
+    private static bool SameAuthority(Uri? left, Uri? right) =>
+        left is not null && right is not null && string.Equals(left.Authority, right.Authority, StringComparison.OrdinalIgnoreCase);
 
     // Someone else used the launch code before the launched browser, or after it: nobody keeps the surface.
     private void RevokeLaunchedSessions()
@@ -3629,26 +3795,155 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return new Uri(url, $"{BrowserLaunchBinding.PathSegment.TrimStart('/')}/{_launchBinding.Begin(GetBrowserUrl(url))}");
     }
 
+    // runic-host/1 region/1: the window shows in a region of a host page instead of a window of its own. Its window-mode
+    // launch address, which its host never opens, admits nobody from now on, and until a region attaches no origin may
+    // frame its page.
+    internal void EnterRegionMode()
+    {
+        _frameBinding.Enter();
+        _launchBinding.Revoke();
+        CloseSessions();
+    }
+
+    // runic-host/1 region/1, frame admission: a new one-time frame launch address for a frame of the page whose origin
+    // is embedder (FrameEmbedderHost). The frame is served from the loopback family that the embedder does not use, so
+    // it is another site and receives none of the embedder's cookies: from the IPv6 loopback listener for 127.0.0.1 and
+    // localhost, else from the surface's own IPv4 listener. Where [::1] cannot be bound, a localhost embedder's frame
+    // comes from 127.0.0.1, also another site; a 127.0.0.1 embedder's falls back to the surface's listener, of the
+    // embedder's site, only when allowSameSite (SameSite reports it), else DesktopFrameCrossSiteUnavailableException. A
+    // new attachment replaces the earlier one, whose code and token are revoked and whose page is disconnected.
+    internal async Task<DesktopFrameLaunch> BeginFrameLaunchAsync(string embedder, bool allowSameSite, bool measuresHeight,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(embedder);
+        var url = Url ?? throw new InvalidOperationException("The surface must be started before a frame launch.");
+        if (_embeddedHost is not null)
+            throw new InvalidOperationException("This surface is already hosted by an embedded WebView.");
+        if (_securityPolicy is not { RequireSessionCredential: true } || AllowMultipleClients || _host is null || _surface is null)
+            throw new InvalidOperationException(
+                "A frame launch needs the session credential and a single client on a hosted surface (DesktopSecurityPolicy).");
+        if (_externalUrl is not null)
+            throw new InvalidOperationException("A frame shows only content that the surface serves itself, not an external URL.");
+        var host = FrameEmbedderHost(embedder)
+            ?? throw new ArgumentException("The embedder must be an http origin of 127.0.0.1, [::1] or localhost with an explicit port.", nameof(embedder));
+        // The earlier attachment ends first: its page must not survive into the new one.
+        EndFrameLaunch();
+        var listener = url;
+        var sameSite = false;
+        if (host != "[::1]")
+        {
+            if (await _host.GetIpv6LoopbackUrlAsync(_surface, cancellationToken).ConfigureAwait(false) is { } ipv6)
+            {
+                listener = ipv6;
+            }
+            else if (host == "127.0.0.1")
+            {
+                if (!allowSameSite)
+                    throw new DesktopFrameCrossSiteUnavailableException(
+                        "The IPv6 loopback address cannot be bound, so the frame cannot be served cross-site to its 127.0.0.1 host page.");
+                sameSite = true;
+                _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                    DesktopErrorCategory.InvalidState,
+                    "frame-same-site",
+                    "The IPv6 loopback address cannot be bound, so the frame is served from its host page's site, and the host's web view sends it the cookies of the host page's origin.",
+                    Retryable: false));
+            }
+        }
+        var code = _frameBinding.Begin(GetBrowserUrl(listener), embedder, listener, measuresHeight, TimeProvider);
+        return new DesktopFrameLaunch(new Uri(listener, $"{FrameLaunchBinding.PathSegment.TrimStart('/')}/{code}"), sameSite);
+    }
+
+    // Detaches: the code and token are revoked and the page is disconnected; the surface stays in region mode.
+    internal void EndFrameLaunch()
+    {
+        if (_frameBinding.End()) CloseSessions();
+    }
+
+    // The host of a frame embedder in the form browsers serialize such an origin: http://, the host 127.0.0.1, [::1] or
+    // localhost, an explicit port from 1 to 65535 without leading zeros, nothing after it, at most 256 characters
+    // (runic-host/1 region-attach). Null for anything else.
+    internal static string? FrameEmbedderHost(string embedder)
+    {
+        if (embedder.Length > 256 || !embedder.StartsWith("http://", StringComparison.Ordinal)) return null;
+        var authority = embedder.AsSpan("http://".Length);
+        var colon = authority.LastIndexOf(':');
+        if (colon <= 0) return null;
+        var host = authority[..colon].ToString();
+        var port = authority[(colon + 1)..];
+        if (host is not ("127.0.0.1" or "[::1]" or "localhost") || port.Length is 0 or > 5 || port[0] == '0') return null;
+        foreach (var digit in port)
+        {
+            if (!char.IsAsciiDigit(digit)) return null;
+        }
+        return int.Parse(port, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture) <= 65_535 ? host : null;
+    }
+
+    // Region mode: moves the keyboard focus into the frame's page, to its first field ("forward"), its last
+    // ("backward") or the one it had last ("programmatic"); false when no page is connected.
+    internal async Task<bool> FocusFrameAsync(string direction, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_frameBinding.Embedder is null || direction is not ("forward" or "backward" or "programmatic")) return false;
+        var sessions = _sessions.Values.Where(static session => session.IsAuthenticated).ToArray();
+        if (sessions.Length == 0) return false;
+        await Task.WhenAll(sessions.Select(session => session.SendRegionAsync(direction, cancellationToken))).ConfigureAwait(false);
+        return true;
+    }
+
+    // Region mode: what the frame's page reports of itself, its title and its content height (WebUiBridge's region
+    // reports), from an admitted page only. Raised on the session's thread; a handler queues its work.
+    internal event Action<DesktopFrameReport>? FrameReported;
+
+    // Region mode: a launch conflict revoked the frame token (ServeFrameLaunchAsync). Raised on a request's thread.
+    internal event Action? FrameRevoked;
+
+    private WebUiResult ReportFrame(ReadOnlyMemory<byte> report)
+    {
+        if (_frameBinding.Embedder is null || FrameReported is not { } reported || report.Length > 8_192) return WebUiResult.None;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(report);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return WebUiResult.None;
+            string? title = root.TryGetProperty("title", out var titleValue) && titleValue.ValueKind == System.Text.Json.JsonValueKind.String
+                ? titleValue.GetString()
+                : null;
+            int? height = root.TryGetProperty("height", out var heightValue) && heightValue.TryGetDouble(out var measured) &&
+                double.IsFinite(measured) && measured >= 0
+                ? (int)Math.Min(Math.Ceiling(measured), 32_767)
+                : null;
+            if (title is not null || height is not null) reported(new DesktopFrameReport(title, height));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+        }
+        return WebUiResult.None;
+    }
+
     // Launch binding needs the client cookie, a credential to protect and a single client.
     private bool BindsBrowserLaunch =>
         _securityPolicy is { RequireSessionCredential: true } && !AllowMultipleClients && UseClientCookies;
 
     // Only while the surface is not in an embedded host, which has no access to the browser's cookie and
     // receives the credential from its document-start script instead.
-    private bool ChecksLaunchBinding => _embeddedHost is null && _launchBinding.IsActive;
+    // In region mode the frame binding admits the page instead.
+    private bool ChecksLaunchBinding => _embeddedHost is null && _launchBinding.IsActive && !_frameBinding.IsActive;
+
+    // Client cookies identify the page, except in region mode: a frame uses none (FrameLaunchBinding).
+    private bool UsesClientCookies => UseClientCookies && !_frameBinding.IsActive;
 
     // The client of a request that PrepareResponseAsync identified.
     private static nuint RequestClient(PresentationExchange context) => context.ClientId;
 
     // The client a WebSocket upgrade's cookie names, without creating one.
     private nuint FindClient(PresentationExchange context) =>
-        context.GetRequestCookie(AuthCookieName) is { } cookie && _clients.TryGetValue(cookie, out var clientId)
+        UsesClientCookies && context.GetRequestCookie(AuthCookieName) is { } cookie && _clients.TryGetValue(cookie, out var clientId)
             ? clientId
             : 0;
 
     private nuint GetOrCreateClient(PresentationExchange context)
     {
-        if (!UseClientCookies)
+        if (!UsesClientCookies)
         {
             return 0;
         }
@@ -3673,7 +3968,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return string.Empty;
         }
 
-        if (!_securityPolicy.AllowsOrigin(Url!, context.GetRequestHeader("Origin")))
+        if (!AllowsPageOrigin(context.GetRequestHeader("Origin")))
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
                 DesktopErrorCategory.OriginDenied,
@@ -3689,9 +3984,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return string.Empty;
         }
 
-        var expected = $"runic-desktop.{_sessionCredential}";
+        // A frame's page offers its frame token instead (FrameLaunchBinding); none is admitted before the frame used its
+        // launch code or after the token was revoked.
+        var expected = _frameBinding.IsActive ? _frameBinding.ExpectedProtocol : $"runic-desktop.{_sessionCredential}";
         var offered = context.WebSocketRequestedProtocols;
-        if (!OffersCredential(offered, expected))
+        if (expected is null || !OffersCredential(offered, expected))
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
                 DesktopErrorCategory.AuthenticationDenied,

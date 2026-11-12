@@ -1,3 +1,14 @@
 #nullable enable
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.get -> bool
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.EmbedWindow.get -> System.Func<Runic.Application.Testing.RunicTestHostedWindow!, bool>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.EmbedWindow.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.AttachRegionAsync(string! embedder, int width = 800, int height = 600, double scale = 1, string! sizing = "fill", bool allowSameSite = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.DetachRegionAsync(string! reason = "removed", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.FocusRegionAsync(string! direction = "forward", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.FrameIsSameSite.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.IsAttached.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.IsRegion.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.RegionPages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.SetRegionBoundsAsync(int width, int height, double scale = 1, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Titles.get -> System.Collections.Generic.IReadOnlyList<string!>!

@@ -9,9 +9,14 @@ internal static class HostFeatures
 {
     internal const string Menus = "menus/1";
     internal const string Dialogs = "dialogs/1";
+    // A Window shown in a region of a host page (host-protocol.md, Regions); Runic's guest implements it.
+    internal const string Region = "region/1";
 
     // What Runic's guest and host implement, in the order their hellos list them.
     internal static readonly string[] Implemented = [Menus, Dialogs, HostServices.Feature];
+
+    // What Runic's guest implements, in the order its hello lists them: also region/1, whose host side is still to come.
+    internal static readonly string[] GuestImplemented = [.. Implemented, Region];
 
     // A menu bar: at most 8 levels of entry lists and 1,000 entries in all. A context menu: at most 5 levels (four nested
     // submenus) and 256 entries, as IWindowPlatformServices.ShowContextMenuAsync allows.

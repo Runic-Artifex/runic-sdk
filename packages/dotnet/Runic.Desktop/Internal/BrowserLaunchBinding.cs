@@ -61,6 +61,20 @@ internal sealed class BrowserLaunchBinding
         return code;
     }
 
+    // Revokes the code and any binding: no client is admitted until the next Begin. A region window's host never
+    // opens its window-mode launch address (runic-host/1 region mode).
+    internal void Revoke()
+    {
+        lock (_gate)
+        {
+            _pending = null;
+            _consumed = null;
+            _client = 0;
+            _revoked = true;
+            _active = true;
+        }
+    }
+
     internal Outcome Consume(string code, nuint client, out Uri? target)
     {
         ArgumentNullException.ThrowIfNull(code);

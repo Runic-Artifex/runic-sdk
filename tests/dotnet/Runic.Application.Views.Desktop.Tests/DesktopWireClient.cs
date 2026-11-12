@@ -58,6 +58,52 @@ sealed class DesktopWireClient : IDisposable
         }
     }
 
+    // A region's frame (host-protocol.md, Frame admission): opens the frame launch address once, as the host page's frame
+    // does, takes the frame token from the redirect's fragment and connects with it from the frame's origin, without a
+    // cookie.
+    public static async Task<(DesktopWireClient Page, string Token)> ConnectFrameAsync(Uri frameLaunch, CancellationToken cancellationToken)
+    {
+        using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+        string location;
+        using (var redirect = await http.GetAsync(frameLaunch, cancellationToken))
+        {
+            if (redirect.StatusCode != System.Net.HttpStatusCode.SeeOther)
+                throw new InvalidOperationException($"The frame launch was answered {(int)redirect.StatusCode}.");
+            location = redirect.Headers.Location!.OriginalString;
+        }
+        var token = location[(location.IndexOf("#runic-frame=", StringComparison.Ordinal) + "#runic-frame=".Length)..];
+        var frame = new Uri(frameLaunch, "../");
+        var bootstrap = await http.GetStringAsync(new Uri(frame, "webui.js"), cancellationToken);
+        var check = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
+        var socket = new ClientWebSocket();
+        try
+        {
+            socket.Options.SetRequestHeader("Origin", frame.GetLeftPart(UriPartial.Authority));
+            socket.Options.AddSubProtocol($"runic-desktop.{token}");
+            await socket.ConnectAsync(new UriBuilder(frame) { Scheme = "ws", Path = $"{frame.AbsolutePath}_webui_ws_connect" }.Uri, cancellationToken);
+            var client = new DesktopWireClient(socket, check);
+            await client.SendAsync(0, CheckToken, [0], cancellationToken);
+            _ = await client.ReceiveAsync(cancellationToken);
+            return (client, token);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    // Whether the connection ended, as when the guest disconnected its page.
+    public async Task<bool> ClosedAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true) _ = await ReceiveAsync(cancellationToken);
+        }
+        catch (WebSocketException) { return true; }
+        catch (InvalidOperationException) { return true; }
+    }
+
     // Calls one capability with string arguments and returns its reply text.
     public async Task<string> CallAsync(string capability, CancellationToken cancellationToken, params string[] arguments)
     {

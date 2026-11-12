@@ -733,7 +733,8 @@
                     "writeClipboard",
                     "monitors",
                     "launch",
-                    "drops"
+                    "drops",
+                    "setTitle"
                   ]
                 },
                 "window": {
@@ -983,11 +984,101 @@
                       "command"
                     ]
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setTitle"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "value"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  }
                 }
               ]
             },
             "as": {
               "$ref": "#/$defs/name"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "frame"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "frame": {
+              "type": "object",
+              "required": [
+                "request"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "request": {
+                  "enum": [
+                    "launch",
+                    "bootstrap",
+                    "upgrade"
+                  ]
+                },
+                "url": {
+                  "const": "previous"
+                },
+                "token": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "$secret"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "$secret": {
+                          "const": "frame-token"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "status": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                },
+                "refused": {
+                  "const": true
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "status"
+                  ]
+                },
+                {
+                  "required": [
+                    "refused"
+                  ]
+                }
+              ]
             },
             "note": {
               "type": "string"

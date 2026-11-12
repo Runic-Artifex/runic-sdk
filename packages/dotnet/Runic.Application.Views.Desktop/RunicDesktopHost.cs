@@ -203,6 +203,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicGuestSession? Guest => _guest?.Session;
 
+    // region/1: the region of a Window that the host shows in one (the conformance runner's setTitle).
+    internal Hosting.HostedRegion? HostedRegionOf(IRunicWindow window) => _guest?.RegionOf(window);
+
     // Hosted mode's launch contract and handshake, before the application's body runs.
     private async Task StartGuestAsync()
     {
@@ -692,6 +695,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         {
             Locale = content.Locale,
             Drop = content.AcceptsFileDrops ? owner.DeliverHostedDrop : null,
+            Surface = surface,
         };
         // The host can close the window as soon as it answered window-open, before the Window finished opening here: the
         // close then waits until it has (IRunicWindow.CloseWhenOpen), as a result completed during the open does.
@@ -723,8 +727,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             return hosted.OnClosedAsync();
         }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
         opening.UsePresentation(hosted.Presentation!);
-        // As a shown window does, the open waits for the page when the Desktop options say so.
-        if (Desktop.Options.WaitForConnection && surface.ConnectionCount == 0)
+        // As a shown window does, the open waits for the page when the Desktop options say so; a region window's page
+        // loads only when a region attaches, so its open does not wait (host-protocol.md, Presentation of a window).
+        if (Desktop.Options.WaitForConnection && hosted.Region is null && surface.ConnectionCount == 0)
             await WaitForPageAsync(surface, Desktop.Options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
     }
 

@@ -17,6 +17,9 @@ const wirePackages = [
 function* sources(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (entry.name === "bin" || entry.name === "obj") continue;
+    // The Runic host protocol (Runic.Application.Views.Desktop/Hosting) is another protocol, whose region-page push
+    // names a page as disconnected (specs/desktop/host-protocol.md, region-page).
+    if (entry.name === "Hosting") continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) yield* sources(path);
     else if (entry.name.endsWith(".cs")) yield path;

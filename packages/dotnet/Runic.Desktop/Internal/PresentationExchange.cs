@@ -46,6 +46,10 @@ internal abstract class PresentationExchange
 
     internal PresentationRequestCancellation? Cancellation { get; set; }
 
+    // The base URL of the listener the request arrived on (PresentationHostCore): the surfaces' own, or the IPv6 loopback
+    // one that serves frames of a region (FrameLaunchBinding).
+    internal Uri? Listener { get; set; }
+
     // The client a surface identified by its cookie (BrowserLaunchBinding), 0 for none.
     internal nuint ClientId { get; set; }
 

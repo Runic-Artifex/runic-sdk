@@ -23,7 +23,7 @@ use crate::server::{
 };
 
 /// Bumped on every incompatible change of this file's types or functions.
-pub const ABI_VERSION: u32 = 3;
+pub const ABI_VERSION: u32 = 4;
 
 pub const OK: i32 = 0;
 pub const PENDING: i32 = 1;
@@ -36,6 +36,7 @@ pub const ABI_MISMATCH: i32 = -5;
 pub const INTERNAL: i32 = -6;
 
 pub const FLAG_ALL_INTERFACES: u32 = 1;
+pub const FLAG_IPV6_LOOPBACK: u32 = 2;
 pub const REQUEST_WEBSOCKET: u32 = 1;
 
 pub const BODY_EMPTY: u32 = 0;
@@ -310,6 +311,7 @@ pub unsafe extern "C" fn runic_server_start(
     };
     let config = ServerConfig {
         all_interfaces: options.flags & FLAG_ALL_INTERFACES != 0,
+        ipv6_loopback: options.flags & FLAG_IPV6_LOOPBACK != 0,
         port: options.port,
         worker_threads: options.worker_threads as usize,
         max_message_bytes,
