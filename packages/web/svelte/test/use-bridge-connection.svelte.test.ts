@@ -108,11 +108,11 @@ describe("useBridgeConnection", () => {
     expect(fake.listeners).toBe(0);
   });
 
-  test("is a root export (0.11) and the root keeps every earlier export", () => {
+  test("is a root export (0.11) and the root keeps every earlier export, adding the Runic instance helpers (0.18)", () => {
     expect(Object.keys(root).sort()).toEqual([
       "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
-      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
-      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "preloadView", "regionEntries", "resolveText", "selectedRegion",
+      "configureTranslatedText", "createRunicInstance", "fieldErrorText", "getRunicInstance", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "preloadView", "regionEntries", "resolveText", "selectedRegion", "setRunicInstance",
       "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand",
       "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
       "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",

@@ -60,6 +60,11 @@ export function lowestPeerDevDependencies(manifest, framework) {
   const devDependencies = { ...manifest.devDependencies };
   for (const [name, version] of Object.entries(versions)) if (name in devDependencies) devDependencies[name] = version;
   if ("@runic-artifex/views" in devDependencies) devDependencies["@runic-artifex/views"] = `file:${views}`;
+  // Other workspace packages serve only tests that a lowest-peer run leaves out, such as the Vite plugin's component
+  // browser test, and resolve only inside the workspace.
+  for (const [name, version] of Object.entries(devDependencies)) {
+    if (name !== "@runic-artifex/views" && String(version).startsWith("workspace:")) delete devDependencies[name];
+  }
   return { floor, devDependencies };
 }
 

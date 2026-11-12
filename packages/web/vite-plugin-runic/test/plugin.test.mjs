@@ -812,6 +812,7 @@ async function load(path, identifier, meta) {
 }
 const views = "../views/dist/";
 const errors = await load(views + "errors.js", "views/errors");
+await load(views + "scope.js", "views/scope");
 const diagnosticsModule = await load(views + "diagnostics.js", "views/diagnostics");
 const lifetime = await load(views + "lifetime.js", "views/lifetime");
 const version = await load(views + "version.js", "views/version");
@@ -839,7 +840,7 @@ await client.link(link("plugin"));
 await client.evaluate();
 await transport.evaluate();
 const { BridgeError } = errors.namespace;
-diagnosticsModule.namespace.emitErrorDiagnostic(new BridgeError("failed", "Save failed.", {
+diagnosticsModule.namespace.emitErrorDiagnostic(context, new BridgeError("failed", "Save failed.", {
   route: "editorSave",
   detail: {
     type: "System.InvalidOperationException",
@@ -855,7 +856,7 @@ context.__runicBridge = {
   onConnectionChange(listener) { listener(true); return () => {}; },
 };
 await connectionState.evaluate();
-connectionState.namespace.publishConnectionState();
+connectionState.namespace.publishConnectionState(context);
 process.stdout.write(JSON.stringify(sent));
 `;
   const { stdout } = await execFile(process.execPath, [
@@ -890,6 +891,7 @@ async function load(path, identifier, meta) {
 const views = "../views/dist/";
 const loaded = [
   await load(views + "errors.js", "views/errors"),
+  await load(views + "scope.js", "views/scope"),
   await load(views + "diagnostics.js", "views/diagnostics"),
   await load(views + "lifetime.js", "views/lifetime"),
   await load(views + "version.js", "views/version"),
@@ -928,3 +930,24 @@ async function ssrRevisionAfterUpdate(server) {
   }
   return (await server.ssrLoadModule("/src/ssr-entry.js")).revision;
 }
+
+test("component validates its options and needs a relocatable base", async () => {
+  assert.throws(() => runic({ component: {} }), /component\.entry/);
+  assert.throws(() => runic({ component: { entry: "src/component.ts", name: "Acme" } }), /component\.name/);
+  assert.throws(() => runic({ component: { entry: "src/component.ts", name: "1acme" } }), /component\.name/);
+  const plugin = runic({ devtools: false, component: { entry: "src/component.ts", name: "acme-checks" } });
+  const config = plugin.config({}, { command: "build", mode: "production" });
+  assert.equal(config.base, "./");
+  assert.deepEqual(config.builder, {});
+  const environment = config.environments.runic_component;
+  assert.equal(environment.consumer, "client");
+  assert.equal(environment.build.outDir, join("dist", "_runic_component"));
+  assert.equal(environment.build.cssCodeSplit, false);
+  assert.equal(environment.build.rolldownOptions.output.entryFileNames, "component.js");
+  // A configuration's own builder stays; an SSR build has no component.
+  assert.equal(plugin.config({ builder: { sharedPlugins: true } }, { command: "build", mode: "production" }).builder, undefined);
+  assert.equal(plugin.config({}, { command: "build", mode: "production", isSsrBuild: true }).environments, undefined);
+  assert.throws(() => plugin.config({ base: "/app/" }, { command: "build", mode: "production" }), /component requires Vite base/);
+  // Nothing of the component while serving.
+  assert.equal(plugin.config({}, { command: "serve", mode: "development" }), undefined);
+});

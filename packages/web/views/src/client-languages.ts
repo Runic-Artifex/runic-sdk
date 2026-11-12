@@ -2,6 +2,8 @@
 // languages in every `hello`, so the application can choose the window's locale. The window keeps one locale for all
 // of its pages; the languages are a preference, not a request.
 
+import { currentSlots, type Slots } from "./scope.js";
+
 export const clientLanguagesFeature = "client-languages/1";
 
 const maximumLanguages = 16;
@@ -20,10 +22,12 @@ export interface ClientLanguagesOptions {
   readonly send?: boolean;
 }
 
-let sendLanguages = true;
+// Whether `hello` reports the languages, per instance and shared by every copy of this package; absent means `true`.
+const sendKey = Symbol.for("runic.views.client-languages");
 
 /**
- * Configures what the page reports in `hello` for `client-languages/1`. Call it before the page connects, in
+ * Configures what the current instance (the page, outside `RunicInstance.run`) reports in `hello` for
+ * `client-languages/1`. Call it before the page connects, in
  * `main.ts`; a later `hello`, such as after a reconnect, uses the new value. Returns a function that restores the
  * previous configuration.
  *
@@ -32,9 +36,10 @@ let sendLanguages = true;
  * ```
  */
 export function configureClientLanguages(options: ClientLanguagesOptions): () => void {
-  const previous = sendLanguages;
-  sendLanguages = options.send ?? true;
-  return () => { sendLanguages = previous; };
+  const slots = currentSlots();
+  const previous = slots[sendKey];
+  slots[sendKey] = options.send ?? true;
+  return () => { slots[sendKey] = previous; };
 }
 
 /**
@@ -42,8 +47,8 @@ export function configureClientLanguages(options: ClientLanguagesOptions): () =>
  * language tags in order, each once (compared without case), at most 16. `[]` without a navigator, or when
  * {@link configureClientLanguages} turned it off.
  */
-export function clientLanguages(): string[] {
-  if (!sendLanguages) return [];
+export function clientLanguages(slots: Slots): string[] {
+  if (slots[sendKey] === false) return [];
   const navigatorLike = (globalThis as { navigator?: { languages?: unknown; language?: unknown } }).navigator;
   const listed = Array.isArray(navigatorLike?.languages) && navigatorLike.languages.length > 0
     ? navigatorLike.languages as unknown[]

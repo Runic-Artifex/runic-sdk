@@ -17,7 +17,7 @@ test("every entry resolves for import, require-style default and types", () => {
     assert.equal(conditions["default"], conditions["import"], `${entry}: default is the ESM file`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
-    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./package.json"]);
+    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./component", "./mock", "./package.json"]);
 });
 
 test("binding and generator APIs are not in the application entries; graduated APIs are", async () => {

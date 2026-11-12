@@ -39,7 +39,12 @@
       "import": "./dist/generated-mock.js",
       "default": "./dist/generated-mock.js"
     },
-    "./mock": {
+    "./component": {
+    "types": "./dist/component.d.ts",
+    "import": "./dist/component.js",
+    "default": "./dist/component.js"
+  },
+  "./mock": {
       "types": "./dist/mock.d.ts",
       "import": "./dist/mock.js",
       "default": "./dist/mock.js"

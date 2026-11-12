@@ -325,7 +325,7 @@ async function run(scenario: Scenario): Promise<void> {
       if ("connect" in step) {
         host.connect(step["connect"]);
         // The client connects to the host bridge: its page runtime starts and sends hello.
-        sharedRuntimeFor(host.bridge as never);
+        sharedRuntimeFor(globalThis as never, host.bridge as never);
         await idle();
         continue;
       }

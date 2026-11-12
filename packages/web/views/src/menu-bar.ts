@@ -9,7 +9,8 @@ import { disposable } from "./lifetime.js";
 import { isObject, type Message } from "./protocol.js";
 import { sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { isApplePlatform, matchesShortcut, type ShortcutEvent } from "./shortcuts.js";
-import { reportBridgeError, waitForBridge } from "./transport.js";
+import { reportBridgeError, waitForBridgeIn } from "./transport.js";
+import { currentSlots } from "./scope.js";
 
 /** Options of {@link createMenuBarController}. */
 export interface MenuBarControllerOptions {
@@ -229,6 +230,8 @@ function* items(entries: readonly MenuBarEntry[]): Generator<MenuBarItem> {
  * `Symbol.dispose`.
  */
 export function createMenuBarController(options: MenuBarControllerOptions = {}): MenuBarController & Disposable {
+  // The menu bar of the current instance's window.
+  const slots = currentSlots();
   const app = options.shortcuts === "app";
   const keyboard = options.keyboard ?? true;
   const lifetime = new AbortController();
@@ -253,7 +256,7 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
     if (clearError) delete next["error"];
     state = freeze(next as unknown as MenuBarState);
     for (const listener of [...listeners]) {
-      try { listener(); } catch (error) { reportBridgeError(error); }
+      try { listener(); } catch (error) { reportBridgeError(slots, error); }
     }
   };
   const stop = (status: "unavailable" | "failed", error: BridgeError) => {
@@ -322,7 +325,7 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
 
   const run = async () => {
     let bridge;
-    try { bridge = await waitForBridge({ signal: lifetime.signal }); }
+    try { bridge = await waitForBridgeIn(slots, { signal: lifetime.signal }); }
     catch (error) {
       if (disposed) return;
       const failure = error instanceof BridgeError ? error : new BridgeError("failed", "The Bridge could not be reached.", { cause: error });
@@ -330,7 +333,7 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
       return;
     }
     if (disposed) return;
-    runtime = sharedRuntimeFor(bridge);
+    runtime = sharedRuntimeFor(slots, bridge);
     stops.push(runtime.onPush("menu-bar", menuBarRoute, push => { apply(push["state"]); }));
     stops.push(runtime.onConnection(connected => {
       if (!connected) { leased = false; set({ status: "connecting" }); return; }
@@ -368,13 +371,13 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
     const item = match(event);
     if (!item) return false;
     event.preventDefault();
-    invoke(item).catch(reportBridgeError);
+    invoke(item).catch(error => reportBridgeError(slots, error));
     return true;
   };
 
   const emit = (request: MenuBarRequest) => {
     for (const listener of [...requestListeners]) {
-      try { listener(request); } catch (error) { reportBridgeError(error); }
+      try { listener(request); } catch (error) { reportBridgeError(slots, error); }
     }
   };
   const hints = (on: boolean) => { if (state.accessKeyHints !== on) set({ accessKeyHints: on }); };

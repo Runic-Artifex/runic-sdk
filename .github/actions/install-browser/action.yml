@@ -1,5 +1,10 @@
 name: Install the conformance browser
-description: Install pinned Playwright Chromium and its platform dependencies.
+description: Install pinned Playwright Chromium, optionally WebKit, and their platform dependencies.
+inputs:
+  webkit:
+    description: Also install Playwright WebKit and set PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH ("true" or "false").
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -12,7 +17,7 @@ runs:
     - uses: ./.github/actions/dependency-cache
       with:
         path: ${{ runner.os == 'Windows' && '~/AppData/Local/ms-playwright' || runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
-        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}${{ inputs.webkit == 'true' && '-webkit' || '' }}
     # Linux needs system packages, which are not part of the cached directory. Playwright's own
     # --with-deps runs apt-get without a time limit or mirror fallback, so its list for this Ubuntu
     # release, minus what the image already has, goes through eng/ci/apt-install.sh instead.
@@ -20,9 +25,12 @@ runs:
       id: deps
       if: runner.os == 'Linux'
       shell: bash
+      env:
+        BROWSERS: ${{ inputs.webkit == 'true' && 'chromium webkit' || 'chromium' }}
       run: |
         status=0
-        out=$(bunx --bun playwright-core install-deps --dry-run chromium 2>&1) || status=$?
+        # shellcheck disable=SC2086 # BROWSERS is a list of browser names.
+        out=$(bunx --bun playwright-core install-deps --dry-run $BROWSERS 2>&1) || status=$?
         if grep -q '^All system dependencies are installed' <<<"$out"; then
           packages=
         elif grep -q '^Missing system dependencies' <<<"$out"; then
@@ -46,6 +54,13 @@ runs:
         # download takes under a minute, so each attempt is time-limited.
         eng/ci/retry.sh 3 300 bunx --bun playwright-core install chromium
         bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path)' >> "$GITHUB_ENV"
+    # The component browser test of vite-plugin-runic also runs in WebKit, whose custom element registry differs.
+    - name: Download WebKit
+      if: inputs.webkit == 'true'
+      shell: bash
+      run: |
+        eng/ci/retry.sh 3 300 bunx --bun playwright-core install webkit
+        bun -e 'import {webkit} from "playwright-core"; console.log("PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH=" + webkit.executablePath())' >> "$GITHUB_ENV"
     - name: Check the installed browser can start
       shell: bash
       run: |

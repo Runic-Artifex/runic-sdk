@@ -10,9 +10,12 @@ function uniquePin(text, pattern, label) {
   assert.equal(values.length, 1, `Expected one maintained ${label} pin`);
   return values[0];
 }
-// package.json, global.json, .node-version and the setup-sdk action own the pins.
+// package.json, global.json, .node-version and the setup-sdk action own the pins. The repository builds with
+// dotnetSdk; additionalDotnetSdks are newer-major SDKs that applications may build with too, certified by the
+// Templates leg that installs them with setup-sdk's additional-dotnet input (the dotnet-version of that step).
 export function parseToolchain({ global, node, workspace, setup }) {
   const version = new RegExp(`^${semver}$`);
+  const additionalDotnetSdks = [...setup.matchAll(new RegExp(String.raw`^\s*dotnet-version:\s*["']?(${semver})["']?\s*$`, "gm"))].map(match => match[1]);
   const pins = {
     dotnetSdk: global.sdk?.version,
     node: node.trim(),
@@ -21,8 +24,12 @@ export function parseToolchain({ global, node, workspace, setup }) {
     pnpm: uniquePin(setup, new RegExp(String.raw`\bpnpm@(${semver})(?=\s|$)`, "g"), "pnpm CI install"),
   };
   for (const [name, value] of Object.entries(pins)) assert(typeof value === "string" && version.test(value), `Invalid ${name} pin`);
+  const major = value => Number(value.split(".")[0]);
+  for (const sdk of additionalDotnetSdks)
+    assert(major(sdk) > major(pins.dotnetSdk), `Additional .NET SDK ${sdk} must have a newer major version than ${pins.dotnetSdk}`);
+  assert.equal(new Set(additionalDotnetSdks.map(major)).size, additionalDotnetSdks.length, "Expected one additional .NET SDK per major version");
   assert.equal(uniquePin(setup, new RegExp(String.raw`bun-version:\s*["']?(${semver})["']?(?=\s|$)`, "g"), "Bun CI setup"), pins.bun, "CI Bun differs from workspace packageManager");
-  return pins;
+  return { ...pins, additionalDotnetSdks };
 }
 // Every other copy must match the pins: the workspace Bun engine, the template
 // package-manager defaults and the Nix shell's Bun, npm and pnpm archives.

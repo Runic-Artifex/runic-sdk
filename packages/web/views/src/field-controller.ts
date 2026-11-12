@@ -6,7 +6,8 @@ import { FieldError } from "./field-error.js";
 import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
-import { subscribeText, windowLocale } from "./translated-text.js";
+import { subscribeTextIn, windowLocaleIn } from "./translated-text.js";
+import { currentSlots, runInSlots, type Slots } from "./scope.js";
 
 export {
   FieldError, type FieldErrorArguments, type FieldErrorDetail, type FieldErrorExpected, type FieldErrorKind, type FieldErrorReason,
@@ -215,23 +216,22 @@ function sameMessages(left: readonly string[], right: readonly string[]): boolea
 
 function invalid(message: string): FieldError { return new FieldError("invalid-text", message); }
 
-// The page's fields, shared by every copy of this package, so a flush or a window close can write their drafts first.
-// The page holds them weakly: a controller that is dropped without dispose() leaves the set once it is collected.
+// The fields of an instance, shared by every copy of this package, so a flush or a window close can write their drafts
+// first. The instance holds them weakly: a controller that is dropped without dispose() leaves the set once it is collected.
 interface LiveField { readonly hasDraft: () => boolean; readonly commit: () => Promise<unknown> }
 interface LiveFieldRef { deref(): LiveField | undefined }
 const liveFieldsKey = Symbol.for("runic.views.fields/2");
-function liveFieldRefs(): Set<LiveFieldRef> {
-  const page = globalThis as unknown as Record<symbol, Set<LiveFieldRef> | undefined>;
-  return page[liveFieldsKey] ??= new Set();
+function liveFieldRefs(slots: Slots): Set<LiveFieldRef> {
+  return (slots[liveFieldsKey] ??= new Set()) as Set<LiveFieldRef>;
 }
 const weakRef = (globalThis as { readonly WeakRef?: new (target: LiveField) => LiveFieldRef }).WeakRef;
-function addLiveField(field: LiveField): LiveFieldRef {
+function addLiveField(slots: Slots, field: LiveField): LiveFieldRef {
   const ref = weakRef === undefined ? { deref: () => field } : new weakRef(field);
-  liveFieldRefs().add(ref);
+  liveFieldRefs(slots).add(ref);
   return ref;
 }
-function liveFields(): LiveField[] {
-  const refs = liveFieldRefs();
+function liveFields(slots: Slots): LiveField[] {
+  const refs = liveFieldRefs(slots);
   const fields: LiveField[] = [];
   for (const ref of refs) {
     const field = ref.deref();
@@ -241,24 +241,24 @@ function liveFields(): LiveField[] {
   return fields;
 }
 
-/** The number of fields the page holds; for tests. */
+/** The number of fields the current instance holds; for tests. */
 export function liveFieldCount(): number {
-  return liveFields().length;
+  return liveFields(currentSlots()).length;
 }
 
 /**
- * Commits every field of the page that holds a draft, such as a `commit: "pause"` draft not written yet, and resolves
+ * Commits every field of the current instance (the page's, outside `RunicInstance.run`) that holds a draft, such as a `commit: "pause"` draft not written yet, and resolves
  * once their writes settled. The runtime calls it when the application closes the window (`presented/1`), before it
  * acknowledges the close; call it before a departure that the page does not start itself, such as before a host
  * command that navigates. It never rejects.
  */
 export function commitAllFields(): Promise<void> {
-  return commitDrafts() ?? Promise.resolve();
+  return commitDrafts(currentSlots()) ?? Promise.resolve();
 }
 
-/** Commits the page's fields that hold a draft, or returns `undefined` when none does. */
-export function commitDrafts(): Promise<void> | undefined {
-  const drafts = liveFields().filter(field => field.hasDraft());
+/** Commits the fields of the instance with `slots` that hold a draft, or returns `undefined` when none does. */
+export function commitDrafts(slots: Slots): Promise<void> | undefined {
+  const drafts = liveFields(slots).filter(field => field.hasDraft());
   if (drafts.length === 0) return undefined;
   return Promise.all(drafts.map(field => field.commit().catch(() => undefined))).then(() => undefined);
 }
@@ -278,6 +278,8 @@ export function createFieldController<TState, TClient, TValue>(
   definition: FieldDefinition<TClient, TState, TValue>,
   options: FieldOptions<TValue> = {},
 ): FieldController<TState, TClient, TValue> & Disposable {
+  // The field belongs to the current instance: its window locale, its text and the drafts a window close writes.
+  const slots = currentSlots();
   const checked = options.checked === true || definition.checkedOnly === true;
   if (checked && (typeof definition.checked !== "function" || typeof definition.baseline !== "function"))
     throw new TypeError("A checked field needs the member's checked write and baseline; use a generated field descriptor.");
@@ -294,7 +296,7 @@ export function createFieldController<TState, TClient, TValue>(
   // The locale of number, date and time texts: the field's own, none for `null`, or the window's, which the field
   // follows when it has no draft.
   const fieldLocale = (): string | readonly string[] | undefined =>
-    options.locale === null ? undefined : options.locale ?? windowLocale() ?? undefined;
+    options.locale === null ? undefined : options.locale ?? windowLocaleIn(slots) ?? undefined;
   let textLocale = fieldLocale();
   const traits = {
     kind, nullable, integer: definition.integer === true, choices: definition.choices, offset: definition.offset === true,
@@ -338,7 +340,7 @@ export function createFieldController<TState, TClient, TValue>(
     hasDraft: () => !composing && (unsent || queued !== undefined),
     commit: () => controller.commit(),
   };
-  const liveRef = addLiveField(live);
+  const liveRef = addLiveField(slots, live);
   let current: FieldState<TValue> = Object.freeze({
     value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined, validating: false,
   });
@@ -357,7 +359,11 @@ export function createFieldController<TState, TClient, TValue>(
     textLocale = next;
     typed = undefined;
   }
+  // Text references in the messages resolve in the field's instance, also when a push or a timer updates it.
   function update(notify = true): void {
+    runInSlots(slots, () => updateNow(notify));
+  }
+  function updateNow(notify: boolean): void {
     followLocale();
     const value = draft === undefined ? viewValue() : draft.value;
     const errors = definition.errors !== undefined
@@ -374,7 +380,7 @@ export function createFieldController<TState, TClient, TValue>(
     current = Object.freeze(next);
     if (!notify || disposed) return;
     for (const listener of [...listeners]) {
-      try { listener(); } catch (failure) { reportBridgeError(failure); }
+      try { listener(); } catch (failure) { reportBridgeError(slots, failure); }
     }
   }
 
@@ -542,7 +548,7 @@ export function createFieldController<TState, TClient, TValue>(
       if (disposed) return () => {};
       listeners.add(listener);
       // translation-text/1: messages with a text reference follow the window's language while someone listens.
-      stopText ??= subscribeText(() => { if (!disposed) update(); });
+      stopText ??= subscribeTextIn(slots, () => { if (!disposed) update(); });
       return () => {
         listeners.delete(listener);
         if (listeners.size === 0) { stopText?.(); stopText = undefined; }
@@ -598,7 +604,7 @@ export function createFieldController<TState, TClient, TValue>(
     dispose() {
       if (disposed) return;
       disposed = true;
-      liveFieldRefs().delete(liveRef);
+      liveFieldRefs(slots).delete(liveRef);
       listeners.clear();
       stopText?.();
       stopText = undefined;
@@ -614,9 +620,9 @@ export function createFieldController<TState, TClient, TValue>(
         void call(client, last.value).then(result => {
           const receipt = receiptOf(result);
           if (receipt?.kind === "rejected" || receipt?.kind === "conflict" || receipt?.kind === "committed-with-error")
-            reportBridgeError(new FieldError(receipt.kind, receipt.message, receipt.kind === "rejected" ? undefined
+            reportBridgeError(slots, new FieldError(receipt.kind, receipt.message, receipt.kind === "rejected" ? undefined
               : receipt.kind === "conflict" ? receipt.incoming : receipt.snapshot));
-        }, failure => reportBridgeError(failure));
+        }, failure => reportBridgeError(slots, failure));
       };
       // A checked write needs the receipt of the write in flight for its baseline.
       if (checked && inFlight !== 0) void lastWrite.then(send, send);

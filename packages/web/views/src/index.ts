@@ -45,6 +45,7 @@ export {
   type HostAppearance,
 } from "./appearance.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
+export { createRunicInstance, currentInstance, defaultInstance, pageInstance, type RunicInstance, type RunicInstanceOptions } from "./scope.js";
 export {
   blobsFeature,
   upload,

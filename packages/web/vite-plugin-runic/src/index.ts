@@ -1,6 +1,6 @@
 /// <reference types="@vitejs/devtools-kit" />
 
-import type { Plugin, ViteDevServer } from "vite";
+import type { Plugin, UserConfig, ViteDevServer } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
@@ -9,6 +9,12 @@ import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
 import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
+import {
+  buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
+  type RunicComponentOptions,
+} from "./component.js";
+
+export type { RunicComponentOptions } from "./component.js";
 
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
@@ -77,6 +83,12 @@ export interface RunicViteOptions {
     /** Absolute development bootstrap URL; production uses the surface-relative default. */
     bootstrapUrl?: string;
   }>;
+  /**
+   * Adds the `component` build target (trusted component mode): `vite build` also builds the guest's Views as an ES
+   * module that defines a custom element, into `_runic_component/` of the build output. Requires base `./`. The
+   * development server serves the page only.
+   */
+  readonly component?: RunicComponentOptions;
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
@@ -98,6 +110,12 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   if (!html && desktopBootstrapUrl !== undefined) {
     throw new TypeError("desktop requires html: true: the Desktop bootstrap is a script tag the plugin adds to the HTML.");
   }
+  const component = resolveComponentOptions(options.component);
+  const relocatable = desktopBootstrapUrl !== undefined || component !== undefined;
+  const relocatableOption = desktopBootstrapUrl !== undefined ? "desktop: true" : "component";
+  const components = component === undefined ? undefined : componentHooks(component, () => resolvedRoot);
+  const inComponent = (environment: { name: string } | undefined): boolean =>
+    components !== undefined && environment?.name === componentEnvironment;
 
   const timeline = createDevelopmentTimeline(initialDevelopmentState(options.contract), maxTimelineEntries, (state) => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
@@ -151,12 +169,20 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         // load and reloading the page, which drops a host's Bridge connection.
         return client ? { optimizeDeps: { include: [clientPackageId] } } : undefined;
       }
-      if (desktopBootstrapUrl === undefined) return undefined;
+      if (!relocatable) return undefined;
       if (config.base !== undefined && config.base !== "./") {
-        throw new TypeError("desktop: true requires Vite base to be './' for relocatable surface output.");
+        throw new TypeError(`${relocatableOption} requires Vite base to be './' for relocatable surface output.`);
       }
-      return { base: "./" };
+      const result: UserConfig = { base: "./" };
+      if (component !== undefined && environment.isSsrBuild !== true) {
+        // The component builds as an environment of its own next to the page; `builder` makes `vite build` build
+        // every environment, as `vite build --app` does.
+        result.environments = { [componentEnvironment]: componentEnvironmentOptions(config.build?.outDir ?? "dist") };
+        if (config.builder === undefined) result.builder = {};
+      }
+      return result;
     },
+    buildApp: { order: "post", handler: buildComponent },
     // With html: false there is no transformIndexHtml property at all: SvelteKit warns about any plugin that has one.
     ...(html ? {
       // The build parses HTML in a later transform, so host scripts are marked
@@ -175,8 +201,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     } : {}),
     api: { reportDiagnostic: (entry) => { timeline.appendDiagnostic(entry); } },
     configResolved(resolved) {
-      if (resolved.command === "build" && desktopBootstrapUrl !== undefined && resolved.base !== "./") {
-        throw new TypeError("desktop: true requires the resolved Vite base to be './' for relocatable surface output.");
+      if (resolved.command === "build" && relocatable && resolved.base !== "./") {
+        throw new TypeError(`${relocatableOption} requires the resolved Vite base to be './' for relocatable surface output.`);
       }
       if (resolved.command === "serve" && options.devtools === true &&
           !resolved.plugins.some((plugin) => plugin.name === "vite:devtools:server")) {
@@ -208,6 +234,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       });
     },
     resolveId(id, importer, resolveOptions) {
+      if (inComponent(this.environment)) {
+        const resolved = components!.resolveId(id);
+        if (resolved !== undefined) return resolved;
+      }
       if (id === virtualClientId || (id === clientPackageId && importer !== resolvedVirtualClientId)) {
         // The client runs only in a served page. An application import of the package goes through the virtual
         // module too, so that it takes this plugin's options and channel, and is empty in the build.
@@ -218,6 +248,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       return id === clientOptionsId ? resolvedClientOptionsId : undefined;
     },
     load(id) {
+      if (inComponent(this.environment)) {
+        const loaded = components!.load(id);
+        if (loaded !== undefined) return loaded;
+      }
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
         const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = { channel: "hot" };`];
@@ -229,6 +263,13 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       if (id !== resolvedVirtualClientId) return undefined;
       // Imports evaluate in order, so the options are set before the client reads them.
       return `import ${JSON.stringify(clientOptionsId)};\nimport ${JSON.stringify(clientPackageId)};`;
+    },
+    generateBundle: {
+      // After Vite's CSS plugin wrote the component's stylesheet.
+      order: "post",
+      handler(_output, bundle) {
+        if (inComponent(this.environment)) components!.generateBundle(this, bundle);
+      },
     },
     devtools: {
       async setup(context) {

@@ -4,7 +4,8 @@
 import { BridgeError } from "./errors.js";
 import { clientErrorsFeature } from "./protocol.js";
 import { currentRuntime } from "./runtime.js";
-import { clientErrorObserverKey as observerKey, hostCallbacks, type RuntimeErrorObserver } from "./transport.js";
+import { clientErrorObserverKey as observerKey, type RuntimeErrorObserver } from "./transport.js";
+import { currentSlots, isPageSlots } from "./scope.js";
 
 
 /** Where a reported error came from. */
@@ -71,8 +72,10 @@ export function redactUrls(text: string): string {
  * @returns A function that removes the reporter. Installing again replaces the previous reporter.
  */
 export function installErrorReporting(options: ErrorReportingOptions = {}): () => void {
-  const host = hostCallbacks();
-  const target = globalThis as unknown as Partial<Pick<EventTarget, "addEventListener" | "removeEventListener">>;
+  // The reporter of the current instance. The document's uncaught errors and rejections belong to the page instance;
+  // another instance reports only the errors its runtime catches.
+  const host = currentSlots();
+  const target = (isPageSlots(host) ? globalThis : {}) as unknown as Partial<Pick<EventTarget, "addEventListener" | "removeEventListener">>;
   const maxPerMinute = positive(options.maxReportsPerMinute, 10);
   const maxMessage = positive(options.maxMessageLength, 1024);
   const maxStack = positive(options.maxStackLength, 4096);
@@ -128,7 +131,7 @@ export function installErrorReporting(options: ErrorReportingOptions = {}): () =
     flushing = true;
     try {
       while (queue.length > 0 && !removed) {
-        const runtime = currentRuntime();
+        const runtime = currentRuntime(host);
         if (!runtime?.connected) { retry(); return; }
         // The features are known once the connection's hello succeeded. A runtime of an earlier release, without
         // ready, does not list the feature either.
