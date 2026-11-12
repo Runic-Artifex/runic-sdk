@@ -200,7 +200,8 @@ public sealed class WindowsMenuModelTests
     {
         var script = WindowsMenuKeys.Script("t0k3n");
         Assert.Contains("runicMenuKey: \"t0k3n\"", script);
-        Assert.Contains("globalThis.top !== globalThis", script);
+        // Subframes report too: the host hears an attached region's frame besides the top-level document (RegionFrames).
+        Assert.DoesNotContain("globalThis.top !== globalThis", script);
         Assert.Contains("event.defaultPrevented", script);
         Assert.Equal(new MenuKeyReport(83, "s", true, false, false, false),
             WindowsMenuKeys.Parse("""{"runicMenuKey":"t0k3n","keyCode":83,"key":"s","ctrl":true,"shift":false,"alt":false,"meta":false}""", "t0k3n"));

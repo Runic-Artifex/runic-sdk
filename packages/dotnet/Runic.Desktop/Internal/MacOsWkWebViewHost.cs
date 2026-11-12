@@ -104,6 +104,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     // The MediaCapture grant and the origin it is limited to (SEC-37).
     private bool _mediaCaptureGranted;
     private Uri? _presentedUrl;
+    // The page's attached region frames (WebUiEmbeddedHostOptions.RegionFrames), and the reloads after the web content
+    // process ended, which this delegate does instead of WebKit (webViewWebContentProcessDidTerminate:).
+    private RegionFrames? _regionFrames;
+    private readonly WebKitGtkWebProcess _webProcess = new();
     private Action? _closeRequested;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
@@ -186,6 +190,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.SendVoidNint(application, "setAppearance:", Api.NamedAppearance(scheme));
     }
     public bool SupportsDocumentStartScript => true;
+
+    public bool SupportsRegionFrames => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => IsMainThread;
     public async ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken)
@@ -561,6 +567,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         WebViews[_webView] = this;
         _mediaCaptureGranted = (options.AllowedPermissions & DesktopPermissionGrant.MediaCapture) != 0;
         _presentedUrl = url;
+        _regionFrames = options.RegionFrames;
         ApplyWebContent(new WebContentRules(options.WebContent, url, options.AdditionalOrigins));
         // underPageBackgroundColor requires macOS 12; ask the created view, not the unset field.
         if (options.Transparent && Api.RespondsToSelector(_webView, "setUnderPageBackgroundColor:"))
@@ -1794,6 +1801,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&NavigationBecameDownload, "v@:@@@");
         Api.AddMethod(type, "webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint>)&CreateWebView, "@@:@@@@");
+        // The web content process ended: the page's frames, region frames included, ran in it (no site isolation), so
+        // their regions detach with crashed (host-protocol.md, Lifecycle in a region). Implementing it stops WebKit's
+        // own reload, so the window reloads, as the WebKitGTK window does, a few times a minute at most.
+        Api.AddMethod(type, "webViewWebContentProcessDidTerminate:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WebContentProcessDidTerminate, "v@:@");
         // WKUIDelegate, macOS 12: camera and microphone requests follow AllowedPermissions (SEC-37).
         Api.AddMethod(type, "webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint, void>)&RequestMediaCapturePermission, "v@:@@@q@?");
@@ -1925,6 +1937,25 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         return 0;
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void WebContentProcessDidTerminate(nint self, nint selector, nint webView)
+    {
+        try
+        {
+            if (WebViews.TryGetValue(webView, out var host) && host.IsOpen)
+            {
+                host._regionFrames?.HostPageProcessEnded();
+                // The limiter of the WebKitGTK window; its diagnostic names WebKitGTK, so it is not reported here.
+                if (host._webProcess.Terminated(WebKitGtkWebProcess.Crashed, Environment.TickCount64).Reload)
+                    _ = Api.SendNint(webView, "reload");
+            }
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
+    }
+
     // The handler is called exactly once, with Deny when anything fails.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void RequestMediaCapturePermission(nint self, nint selector, nint webView, nint origin, nint frame, nint type, nint decisionHandler)
@@ -1939,13 +1970,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 var frameOrigin = frame == 0 ? 0 : Api.SendNint(frame, "securityOrigin");
                 var topLevel = Api.SendNint(webView, "URL");
                 var topLevelText = topLevel == 0 ? 0 : Api.SendNint(topLevel, "absoluteString");
-                decision = MacOsWebContent.ForMediaCapture(
-                    host._mediaCaptureGranted,
-                    presented,
-                    SecurityOriginUrl(origin),
-                    SecurityOriginUrl(frameOrigin),
-                    topLevelText == 0 ? null : Api.Text(topLevelText),
-                    type);
+                var requesting = SecurityOriginUrl(origin);
+                var frameOriginText = SecurityOriginUrl(frameOrigin);
+                var topLevelUrl = topLevelText == 0 ? null : Api.Text(topLevelText);
+                decision = MacOsWebContent.ForMediaCapture(host._mediaCaptureGranted, presented, requesting, frameOriginText, topLevelUrl, type);
+                // An attached region's frame asks with its guest's grant, not the host window's.
+                if (decision != MacOsWebContent.PermissionGrant && frame != 0 && !Api.SendBool(frame, "isMainFrame") &&
+                    host._regionFrames?.Find(Api.RequestUrl(frame) ?? frameOriginText) is { } region)
+                    decision = MacOsWebContent.ForRegionMediaCapture(region, presented, requesting, frameOriginText, topLevelUrl, type);
             }
         }
         catch
@@ -2063,7 +2095,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 var frame = Api.SendNint(message, "frameInfo");
                 var mainFrame = frame != 0 && Api.SendBool(frame, "isMainFrame");
                 var origin = mainFrame || frame == 0 ? null : SecurityOriginUrl(Api.SendNint(frame, "securityOrigin"));
-                host.PageReport(report.Label, refused: !MacOsDragOperations.AcceptsFrame(mainFrame, host._presentedUrl, origin));
+                // A drop onto an attached region's frame goes to its guest (D059.3), found by the frame's address as
+                // WebKit reports it; any other frame of another origin gets none.
+                var accepted = MacOsDragOperations.AcceptsFrame(mainFrame, host._presentedUrl, origin);
+                var region = accepted || frame == 0 || origin is null ? null
+                    : host._regionFrames?.Find(Api.RequestUrl(frame) is { } address && RegionFrames.SameOrigin(address, origin) ? address : origin);
+                host.PageReport(report.Label, refused: !accepted && region is null, deliverTo: region?.Dropped);
             }
         }
         catch

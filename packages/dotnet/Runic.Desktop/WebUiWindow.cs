@@ -198,6 +198,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal bool IsEmbeddedWindowOpen => _embeddedHost?.IsOpen == true;
 
+    // The regions attached in this window's page (host-protocol.md, Regions): the native host routes their frames'
+    // drops, permission requests and menu keys to their guests. Kept across the window's hosts.
+    internal RegionFrames RegionFrames { get; } = new();
+
+    internal bool SupportsRegionFrames => _embeddedHost?.SupportsRegionFrames == true;
+
     /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
     public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
     internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost is { } host
@@ -2146,6 +2152,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ProfilePath = profilePath,
             BrowserArguments = _browserArguments,
             AllowedPermissions = _allowedPermissions,
+            // Only the host application's own pages show regions; a hosted window shows its guest's page.
+            RegionFrames = hosted is null ? RegionFrames : null,
             WebContent = hosted is null
                 ? WebContentRules.Resolve(_webContent, Environment.GetEnvironmentVariable)
                 : HostedWebContent(WebContentRules.Resolve(_webContent, Environment.GetEnvironmentVariable)),

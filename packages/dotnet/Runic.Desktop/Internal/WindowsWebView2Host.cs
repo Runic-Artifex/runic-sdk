@@ -184,6 +184,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
         }, cancellationToken);
     public bool SupportsDocumentStartScript => true;
+
+    public bool SupportsRegionFrames => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => ReferenceEquals(Thread.CurrentThread, _thread);
     public async ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken)
@@ -841,7 +843,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 title => Native.SetWindowText(_window, title),
                 () => Native.PostMessage(_window, WmClose, 0, 0),
                 options.AllowedPermissions,
-                url);
+                url,
+                options.RegionFrames);
+            if (options.RegionFrames is { } regions) _controller.EnableRegionCrashes(regions);
             _controller.ApplyWebContent(
                 new WebContentRules(options.WebContent, url, options.AdditionalOrigins),
                 target => WindowsWebView2Interop.OpenExternally(target),
@@ -856,10 +860,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             var documentStart = options.DocumentStartScript is { } documentStartScript
                 ? _controller.AddDocumentStartScriptAsync(documentStartScript)
                 : Task.CompletedTask;
-            var fileDrops = _controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
+            var fileDrops = _controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop), options.RegionFrames);
             // The declared shortcuts, in every menu bar presentation: the page sees each key first.
             _controller.RegisterAcceleratorKeys(IsMenuShortcut);
-            var menuKeys = _controller.EnableMenuKeysAsync(url, OnMenuKey);
+            var menuKeys = _controller.EnableMenuKeysAsync(url, OnMenuKey, options.RegionFrames);
             await Task.WhenAll(documentStart, fileDrops, menuKeys);
             _controller.Navigate(url.AbsoluteUri);
             // A window that showed its loading surface has its placement and state already.

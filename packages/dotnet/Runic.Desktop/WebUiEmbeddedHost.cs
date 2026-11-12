@@ -25,6 +25,10 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Whether the host runs <see cref="WebUiEmbeddedHostOptions.DocumentStartScript"/> in every document.</summary>
     bool SupportsDocumentStartScript => false;
 
+    /// <summary>Whether the host routes attached region frames' drops, permission requests and menu keys
+    /// (<see cref="WebUiEmbeddedHostOptions.RegionFrames"/>).</summary>
+    bool SupportsRegionFrames => false;
+
     bool SupportsNativeDispatch => false;
     bool CheckNativeAccess() => false;
     ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken) =>
@@ -195,6 +199,10 @@ internal sealed record WebUiEmbeddedHostOptions
     public string? BrowserArguments { get; init; }
 
     public DesktopPermissionGrant AllowedPermissions { get; init; }
+
+    // The window's attached region frames, whose drops, permission requests and menu keys go to their guests; null for a
+    // window that shows no regions' frames (WebUiWindow.RegionFrames).
+    public Internal.RegionFrames? RegionFrames { get; init; }
 
     /// <summary>The window's web content policy, with the Development default resolved.</summary>
     public DesktopWebContentPolicy WebContent { get; init; } = DesktopWebContentPolicy.Default with { DevTools = false };

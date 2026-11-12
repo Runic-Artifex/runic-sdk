@@ -7,7 +7,9 @@ namespace Runic.Application.Views;
 // client-errors/1 (specs/application/README.md, "Page errors"): a page reports its uncaught errors with client-error
 // requests, and the producer logs them in the category RunicViewsTelemetry.PageLogCategory. The report is untrusted
 // input from the page: every text is capped, control and bidirectional formatting characters are removed, every stack
-// line starts with StackLinePrefix, a URL loses its query and fragment, and each connection logs at most
+// line starts with StackLinePrefix, a URL loses its query and fragment, a region's frame launch code or frame token in
+// any text is redacted (host-protocol.md, Frame admission: an engine's message about a blocked frame can carry the
+// frame's full address), and each connection logs at most
 // MaximumPerMinute reports a minute and each window at most MaximumPerWindowPerMinute, so a page that reloads or opens
 // new connections cannot get a fresh budget.
 internal static class BridgeClientErrors
@@ -94,6 +96,7 @@ internal static class BridgeClientErrors
 
     internal static string Text(string value, int maximumLength, bool singleLine)
     {
+        value = RedactFrameSecrets(value);
         var text = new StringBuilder(Math.Min(value.Length, maximumLength + 1) + (singleLine ? 0 : StackLinePrefix.Length));
         if (!singleLine && value.Length > 0) text.Append(StackLinePrefix);
         var length = 0;
@@ -136,6 +139,25 @@ internal static class BridgeClientErrors
             Started = now;
             Logged = 0;
         }
+    }
+
+    // The code of a frame launch address (/_runic_frame/<code>) and the token of a frame address's fragment
+    // (#runic-frame=<token>), both base64url, become "…".
+    internal static string RedactFrameSecrets(string text)
+    {
+        foreach (var marker in (ReadOnlySpan<string>)["/_runic_frame/", "#runic-frame="])
+        {
+            var start = 0;
+            while ((start = text.IndexOf(marker, start, StringComparison.Ordinal)) >= 0)
+            {
+                var secret = start + marker.Length;
+                var end = secret;
+                while (end < text.Length && (char.IsAsciiLetterOrDigit(text[end]) || text[end] is '-' or '_')) end++;
+                if (end > secret) text = string.Concat(text.AsSpan(0, secret), "…", text.AsSpan(end));
+                start = secret;
+            }
+        }
+        return text;
     }
 
     // The page's URL without its query and fragment, which can carry tokens.

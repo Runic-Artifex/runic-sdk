@@ -45,6 +45,8 @@ public sealed class RunicHostedRegion
     private readonly RunicHostedApplication _application;
     private readonly HostedRegionDirectory _directory;
     private readonly string _allow;
+    // The guest's permissions in its frame, which the host window's native host applies to the frame's requests.
+    private readonly DesktopPermissionGrant _grant;
     private readonly object _stateGate = new();
     private readonly object _queueGate = new();
     private Task _queue = Task.CompletedTask;
@@ -79,12 +81,15 @@ public sealed class RunicHostedRegion
     private (bool Active, bool Visible, bool Minimized)? _sentActivity;
     private DesktopWindow? _observedWindow;
     private readonly Queue<long> _revokes = new();
+    // Under _stateGate: the attached frame's route in its host window (RegionFrames): its drops, permission requests
+    // and menu keys, and the end of its content process.
+    private IDisposable? _frameRoute;
 
     // set-title per window (host-protocol.md, Limits): 10 a second after a burst of 10.
     internal RequestRate TitleRate { get; } = new(10, TimeSpan.FromSeconds(1));
 
     internal RunicHostedRegion(RunicHostedApplication application, HostedRegionDirectory directory, RunicHostedWindow window, string name,
-        IRunicWindow? hostWindow, RunicHostedRegionOptions options, string allow)
+        IRunicWindow? hostWindow, RunicHostedRegionOptions options, string allow, DesktopPermissionGrant grant)
     {
         _application = application;
         _directory = directory;
@@ -93,6 +98,7 @@ public sealed class RunicHostedRegion
         _target = hostWindow;
         Options = options;
         _allow = allow;
+        _grant = grant;
         _title = null;
     }
 
@@ -403,6 +409,47 @@ public sealed class RunicHostedRegion
         }
     }
 
+    // The host window's engine reported that the content process of the attached frame ended (host-protocol.md,
+    // Lifecycle in a region): the window detaches with crashed. A frame's own process (WebView2) leaves an error page in
+    // the frame, so the window attaches again with a new code, as after a revoked token; the host page's own process
+    // takes the page with it, and the page's reload declares the region again. Whichever the host learns first, this or
+    // the page's closed connection, names the detach.
+    private void OnFrameCrashed(HostedRegionSlot slot, bool hostPage) => _ = Enqueue(async () =>
+    {
+        lock (_stateGate) if (!ReferenceEquals(_attachedSlot, slot)) return;
+        await DetachGuestAsync("crashed").ConfigureAwait(false);
+        if (hostPage || !IsCurrent(slot)) return;
+        bool again;
+        lock (_stateGate)
+        {
+            var now = Stopwatch.GetTimestamp();
+            while (_revokes.Count > 0 && Stopwatch.GetElapsedTime(_revokes.Peek(), now) > TimeSpan.FromMinutes(1)) _revokes.Dequeue();
+            _revokes.Enqueue(now);
+            again = _revokes.Count <= MaximumRevokesPerMinute;
+        }
+        if (again) await AttachAsync(slot).ConfigureAwait(false);
+        else slot.Page.Empty(slot.Name, Bridge.HostedRegionEmptyReason.Detached);
+    });
+
+    // A drop onto the attached frame (D059.3): the guest's files-dropped, under the host's policy, as for a window.
+    private void OnFrameDrop(HostedRegionSlot slot, DesktopFileDropEventArgs drop)
+    {
+        bool attached;
+        lock (_stateGate) attached = ReferenceEquals(_attachedSlot, slot) && !_ended;
+        _application.ForwardRegionDrop(Window, drop, attached);
+    }
+
+    private void ReleaseFrameRoute()
+    {
+        IDisposable? route;
+        lock (_stateGate)
+        {
+            route = _frameRoute;
+            _frameRoute = null;
+        }
+        route?.Dispose();
+    }
+
     // ----- Attach and detach (host-protocol.md, region-attach and region-detach), one at a time and in order.
 
     private Task Enqueue(Func<Task> work)
@@ -465,6 +512,18 @@ public sealed class RunicHostedRegion
             }
         }
         lock (_directory.Gate) _attachedOnce = true;
+        // The host window's engine routes the frame to this guest (RegionFrames), until the detach.
+        var route = Uri.TryCreate(url, UriKind.Absolute, out var frameUrl)
+            ? slot.Page.NativeWindow?.AttachRegionFrame(new Runic.Desktop.Internal.RegionFrameRoute(frameUrl, _grant,
+                drop => OnFrameDrop(slot, drop), hostPage => OnFrameCrashed(slot, hostPage)))
+            : null;
+        IDisposable? replaced;
+        lock (_stateGate)
+        {
+            replaced = _frameRoute;
+            _frameRoute = route;
+        }
+        replaced?.Dispose();
         // The page removed the region while the guest answered: the detach that follows in the queue tells the guest.
         if (!IsCurrent(slot)) return;
         string? title;
@@ -482,6 +541,7 @@ public sealed class RunicHostedRegion
 
     private async Task DetachGuestAsync(string reason)
     {
+        ReleaseFrameRoute();
         bool attached;
         lock (_stateGate)
         {
@@ -513,6 +573,7 @@ public sealed class RunicHostedRegion
         }
         Opened.TrySetResult();
         _directory.Close(this);
+        ReleaseFrameRoute();
         return Enqueue(() =>
         {
             bool attached;

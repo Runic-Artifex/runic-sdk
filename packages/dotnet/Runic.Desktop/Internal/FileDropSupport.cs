@@ -41,8 +41,9 @@ internal static class FileDropSupport
 
     // For WebKitGTK and WKWebView, in an isolated script world, where the page cannot reach the handler. It lets every
     // file drag drop, so WebKit never navigates to a dropped file, and reports the drop's target as JSON:
-    // {"label", "effect", "origin"}, where origin is null in the top-level document and the frame's origin in a
-    // subframe, so the native side can refuse frames of another origin. A label is only ever attached to a drop the
+    // {"label", "effect", "origin", "path"}, where origin and path are null in the top-level document and the frame's
+    // origin and path in a subframe, so the native side can refuse frames of another origin, or route a drop onto an
+    // attached region's frame to its guest (RegionFrames). A label is only ever attached to a drop the
     // native window reported, with the native paths. Capture-phase listeners on window run before the page's own
     // handlers, which still receive every event. WebKitGTK lists a file drag as text/uri-list until the drop, so a
     // dragged link is held on the page too; the native side ignores drops without file paths.
@@ -64,7 +65,8 @@ internal static class FileDropSupport
             event.preventDefault();
             const effect = marked(event);
             if (effect === "none") return;
-            post(stringify({ label: label(event), effect: performed(event, effect), origin }));
+            const path = origin === null ? null : String(globalThis.location?.pathname ?? "");
+            post(stringify({ label: label(event), effect: performed(event, effect), origin, path }));
           }, true);
         })();
         """;
@@ -109,7 +111,10 @@ internal static class FileDropSupport
             using var document = System.Text.Json.JsonDocument.Parse(message);
             var root = document.RootElement;
             if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return new(null, DesktopDragEffects.Copy, null);
-            return new(ReadString(root, "label"), ParseEffect(ReadString(root, "effect")), ReadString(root, "origin"));
+            return new(ReadString(root, "label"), ParseEffect(ReadString(root, "effect")), ReadString(root, "origin"))
+            {
+                Path = ReadString(root, "path"),
+            };
         }
         catch (System.Text.Json.JsonException)
         {
@@ -196,8 +201,10 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
 
     // A label without a pending native drop is ignored: the page cannot make a drop of its own. A refused report, from
     // a frame of another origin, discards the drop it belongs to. The reported effect counts only for a drop whose
-    // native side passed the effects it offers.
-    internal void PageReport(string? label, bool refused = false, DesktopDragEffects reported = DesktopDragEffects.None)
+    // native side passed the effects it offers. A report from an attached region's frame goes to deliverTo, the
+    // region's guest, instead of the window's receiver (RegionFrames).
+    internal void PageReport(string? label, bool refused = false, DesktopDragEffects reported = DesktopDragEffects.None,
+        Action<DesktopFileDropEventArgs>? deliverTo = null)
     {
         Pending pending;
         lock (_gate)
@@ -205,7 +212,7 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
             if (_disposed || !_pending.TryDequeue(out pending!)) return;
             pending.Timer?.Dispose();
             if (refused) pending.Discard();
-            else Deliver(pending, label, reported);
+            else Deliver(pending, label, reported, deliverTo);
         }
     }
 
@@ -225,11 +232,12 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     }
 
     // Under the gate, so drops are delivered in order; the receiver only queues them.
-    private void Deliver(Pending pending, string? label, DesktopDragEffects reported = DesktopDragEffects.None)
+    private void Deliver(Pending pending, string? label, DesktopDragEffects reported = DesktopDragEffects.None,
+        Action<DesktopFileDropEventArgs>? deliverTo = null)
     {
         var effect = reported is DesktopDragEffects.Copy or DesktopDragEffects.Move or DesktopDragEffects.Link
             && pending.Offered.HasFlag(reported) ? reported : pending.Effect;
-        try { deliver(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label) { Effect = effect }); }
+        try { (deliverTo ?? deliver)(new DesktopFileDropEventArgs(pending.Paths, pending.PromisedFiles, label) { Effect = effect }); }
         catch (Exception error) when (error is not OutOfMemoryException) { pending.Discard(); }
     }
 
@@ -265,8 +273,15 @@ internal sealed class FileDropPairing(Action<DesktopFileDropEventArgs> deliver, 
     }
 }
 
-// The WebKit script's report: the page's label and effect, and the frame's origin (null in the top-level document).
-internal sealed record FileDropReport(string? Label, DesktopDragEffects Effect, string? Origin);
+// The WebKit script's report: the page's label and effect, and the frame's origin and path (null in the top-level
+// document).
+internal sealed record FileDropReport(string? Label, DesktopDragEffects Effect, string? Origin)
+{
+    internal string? Path { get; init; }
+
+    // The frame's address without query and fragment, for RegionFrames.Find; null in the top-level document.
+    internal string? FrameAddress => Origin is null ? null : Origin + (Path is { Length: > 0 } path && path[0] == '/' ? path : "/");
+}
 
 // The WebView2 script's message: {"runicFileDrop": token, "target": label or null, "effect": dropEffect}. Anything else
 // is not a drop.

@@ -564,6 +564,14 @@ public sealed partial class RunicHostedApplication
             _ = ForwardDropAsync(window, drop);
         };
 
+    // A drop onto an attached region's frame (D059.3), which the host window's engine routed to this guest: files-dropped
+    // for the region window, as for a window of its own; a drop that arrives after the detach is released.
+    internal void ForwardRegionDrop(RunicHostedWindow window, DesktopFileDropEventArgs drop, bool attached)
+    {
+        if (attached) window.NoteUserInteraction();
+        _ = ForwardDropAsync(window, attached ? drop : new DesktopFileDropEventArgs([], drop.PromisedFiles, null));
+    }
+
     private async Task ForwardDropAsync(RunicHostedWindow window, DesktopFileDropEventArgs drop)
     {
         foreach (var promised in drop.PromisedFiles)

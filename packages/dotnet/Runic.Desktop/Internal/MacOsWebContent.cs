@@ -139,6 +139,21 @@ internal static class MacOsWebContent
             ? PermissionGrant
             : PermissionDeny;
 
+    // The same request from an attached region's frame (host-protocol.md, Features in a region): granted by the guest's
+    // grant, when the requesting origin and the frame are the region's guest origin and the top-level document is the
+    // presented page, never by the host window's own grant.
+    internal static nint ForRegionMediaCapture(RegionFrameRoute route, Uri presented, string? requestingOrigin, string? frameOrigin,
+        string? topLevelUrl, nint type) =>
+        route.AllowsMediaCapture && type is 0 or 1 or 2 &&
+        string.Equals(Normalize(requestingOrigin), route.Origin, StringComparison.Ordinal) &&
+        string.Equals(Normalize(frameOrigin), route.Origin, StringComparison.Ordinal) &&
+        PresentationSecurityPolicy.IsSameOrigin(presented, topLevelUrl)
+            ? PermissionGrant
+            : PermissionDeny;
+
+    private static string? Normalize(string? origin) =>
+        origin is not null && Uri.TryCreate(origin, UriKind.Absolute, out var url) ? RegionFrames.Origin(url) : null;
+
     // A WKSecurityOrigin's protocol, host and port (0 for the scheme's default) as an origin URL, or null.
     internal static string? OriginUrl(string? protocol, string? host, long port)
     {
