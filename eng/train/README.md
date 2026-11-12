@@ -62,7 +62,7 @@ A template change that a scenario's edits no longer fit fails with "The template
 
 S2 reads the first `text-keys.json` in the `Runic.CommandLine` package. It accepts an array or `{ "keys": [...] }`;
 each item is a key string or an object with `key` (or `id`, `name`), optionally `removed: true` or `removedIn`
-(the adapter must not have a message for it) and `message: false` (a key without a catalog message, like
+(the adapter must not have a message for it) and `message: false` or `null` (a key without a catalog message, like
 `faults.RCLI4001`). Command Line 0.11.0 and earlier ship no `text-keys.json`: for them S2 reads the key table of
 `docs/guides/command-line/text-keys.md` at the release tag (or a run's commit) and says so in its notes. From
 Command Line 0.12.0 a package without `text-keys.json` fails S2.

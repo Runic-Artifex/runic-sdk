@@ -67,6 +67,13 @@ test('key coverage reads text-keys.json or the Markdown table and the packed Ger
   expect(keyCoverage(markdown, messages)).toEqual({ missing: ['hints.usage'], stale: [], unknown: ['hints.more'] });
   const json = keysFromJson(JSON.stringify({ keys: [{ key: 'help.usage' }, 'help.options', { key: 'hints.more', removedIn: '0.12.0' }, { key: 'diagnostics.prompt-required', arguments: [] }] }));
   expect(keyCoverage(json, messages)).toEqual({ missing: [], stale: ['hints.more'], unknown: [] });
+  // Command Line 0.12's writer: `arguments` and `message`, with `message: null` for a key without a catalog message.
+  const written = keysFromJson(JSON.stringify({ keys: [
+    { key: 'help.usage', arguments: [], message: 'help.usage' },
+    { key: 'faults.RCLI4001', arguments: [], message: null },
+  ] }));
+  expect([...written.required]).toEqual(['help.usage']);
+  expect([...written.withoutMessage]).toEqual(['faults.RCLI4001']);
   expect(() => keysFromJson('{"keys":[{}]}')).toThrow();
 });
 

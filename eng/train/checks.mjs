@@ -10,7 +10,7 @@ export const keysWithoutMessage = new Set(['faults.RCLI4001']);
 
 // Command Line's machine-readable key list (D061.19). Accepted shapes: an array, or an object with `keys`; each
 // item a key string or an object with `key` (or `id`/`name`) and optionally `removed`/`removedIn` and
-// `message: false` for a key without a catalog message.
+// `message: false` or `message: null` (what Command Line 0.12's writer emits) for a key without a catalog message.
 export function keysFromJson(text) {
   const document = JSON.parse(text);
   const items = Array.isArray(document) ? document : document.keys;
@@ -20,7 +20,7 @@ export function keysFromJson(text) {
     const key = typeof item === 'string' ? item : item?.key ?? item?.id ?? item?.name;
     if (typeof key !== 'string' || !key) throw new Error(`text-keys.json has an item without a key: ${JSON.stringify(item)}`);
     if (typeof item === 'object' && (item.removed === true || typeof item.removedIn === 'string' || typeof item.removed === 'string')) removed.add(key);
-    else if (typeof item === 'object' && item.message === false) withoutMessage.add(key);
+    else if (typeof item === 'object' && (item.message === false || item.message === null)) withoutMessage.add(key);
     else required.add(key);
   }
   return { required, removed, withoutMessage };
