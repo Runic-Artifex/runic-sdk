@@ -530,7 +530,7 @@ internal sealed class HostedGuest : IAsyncDisposable
             : HostFeatures.GuestImplemented;
 
     // An elevated guest's component would run in its host page's realm with the guest's token: only with elevated-peer
-    // admission on its listeners (D059.13), which region mode's R5 builds.
+    // admission on its listeners (D059.13). HOOK for R5 (#878): becomes `!RefusesEmbedding` (see ElevatedPeerAdmission).
     internal static bool ComponentModeAvailable => !Environment.IsPrivilegedProcess || Runic.Desktop.Internal.ElevatedPeerAdmission.Enforced;
 
     internal bool InUse(string feature) => Session.Features.Contains(feature, StringComparer.Ordinal);

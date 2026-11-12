@@ -86,9 +86,14 @@ internal sealed class ComponentBinding
 // serves it, the component token, and whether that listener is of the host page's own site.
 internal sealed record DesktopComponentLaunch(Uri Listener, string Token, bool SameSite);
 
-// Elevated-peer admission (host-protocol.md, Elevated-peer admission; D059.13) is built once, in region mode's R5, for
-// every listener of an elevated guest. Until it is, Enforced is false and an elevated guest refuses component mode, in
-// which the host page's realm holds the guest's token (HostedRegion.AttachAsync). R5 replaces this with its check.
+// HOOK for region mode's R5 (#878, elevated-peer admission; host-protocol.md, Elevated-peer admission; D059.13). Until R5
+// is merged, Enforced is false, and an elevated guest neither lists region-component/1 nor accepts a component attach
+// (HostedGuest.ComponentModeAvailable): its token would sit in a host page's realm with no peer check on its listeners.
+// Component mode adds no listener of its own; it serves from the surface's listeners, which R5's
+// PresentationHostCore.PeerAdmission already covers, and R5's HostedGuest.RefusesEmbedding refuses every region-attach,
+// component included, where peers cannot be checked (macOS). When R5 is merged, delete this class and make
+// HostedGuest.ComponentModeAvailable `!RefusesEmbedding`, so an elevated pair that checks its peers allows component
+// mode (D059.8).
 internal static class ElevatedPeerAdmission
 {
     internal static bool Enforced => false;
