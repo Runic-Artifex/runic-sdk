@@ -10,14 +10,15 @@ import { BridgeError } from "./errors.js";
 import { hostedRegionsFeature, isHostedRegionName, maximumHostedRegions, type HostedRegionPush, type HostedRegionPushKind } from "./hosted-region-wire.js";
 import type { Push } from "./protocol.js";
 import { sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
-import { reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
+import { pageInstance, slotsOf } from "./scope.js";
+import { reportBridgeError, waitForBridgeIn, type RunicBridgeClient } from "./transport.js";
 
-// The page's Views connection: the only place this module reaches the page runtime, so instance-scoped runtimes (TC1,
-// #871) change these three functions only. A host page's regions belong to the page instance.
+// The page's Views connection: the only place this module reaches the page runtime. A host page's regions belong to the
+// page instance (specs/application/README.md, "Runic instances"), whose slots these three functions use.
 const pageConnection = {
-  waitForBridge: (): Promise<RunicBridgeClient> => waitForBridge(),
-  runtime: (bridge: RunicBridgeClient): SharedRuntime => sharedRuntimeFor(bridge),
-  reportError: (error: unknown): void => reportBridgeError(error),
+  waitForBridge: (): Promise<RunicBridgeClient> => waitForBridgeIn(slotsOf(pageInstance())),
+  runtime: (bridge: RunicBridgeClient): SharedRuntime => sharedRuntimeFor(slotsOf(pageInstance()), bridge),
+  reportError: (error: unknown): void => reportBridgeError(slotsOf(pageInstance()), error),
 };
 
 /** The tag of the element. */
