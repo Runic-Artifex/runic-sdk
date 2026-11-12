@@ -301,6 +301,19 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     // An announcement to WebUiBridge's reserved raw-data function: "polite" or "assertive", NUL and the message as
     // UTF-8. The page's bridge adds the message to its live region of that politeness, without evaluating script.
+    // Region mode: WebUiBridge's reserved raw-data function for the region, with the direction in which the keyboard
+    // focus enters the frame's page ("forward", "backward" or "programmatic"), as ASCII. No script is evaluated.
+    public Task SendRegionAsync(string direction, CancellationToken cancellationToken)
+    {
+        if (!IsAuthenticated) return Task.CompletedTask;
+        const string function = WebUiBridge.RegionFunction;
+        var packet = new byte[WebUiProtocol.DataOffset + function.Length + 1 + direction.Length + 1];
+        WebUiProtocol.WriteHeader(packet, 0, WebUiProtocol.SendRaw);
+        Encoding.ASCII.GetBytes(function, packet.AsSpan(WebUiProtocol.DataOffset));
+        Encoding.ASCII.GetBytes(direction, packet.AsSpan(WebUiProtocol.DataOffset + function.Length + 1));
+        return SendPacketAsync(packet, cancellationToken);
+    }
+
     public Task AnnounceAsync(string message, bool assertive, CancellationToken cancellationToken)
         => IsAuthenticated ? SendPacketAsync(AnnouncementPacket(message, assertive), cancellationToken) : Task.CompletedTask;
 

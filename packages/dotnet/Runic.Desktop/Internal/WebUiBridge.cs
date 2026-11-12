@@ -11,6 +11,10 @@ internal static class WebUiBridge
     // Keep it in sync with ANNOUNCE below.
     internal const string AnnounceFunction = "__runicAnnounce";
 
+    // The reserved raw-data function of a region's focus (WebUiSession.SendRegionAsync): the direction in which the
+    // keyboard focus enters the frame's page. Keep it in sync with REGION below.
+    internal const string RegionFunction = "__runicRegion";
+
     // Implements the wire and public browser contract of webui-dev/webui's
     // MIT-licensed TypeScript bridge at the pinned upstream revision. One difference: raw data for a name that is not
     // a page function is dropped instead of being evaluated as a call expression, so no host-to-page traffic but
@@ -39,6 +43,11 @@ internal static class WebUiBridge
           const BASE_PATH = "__BASE_PATH__";
           const SESSION_CREDENTIAL = __SESSION_CREDENTIAL__;
           const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
+          // Region mode (runic-host/1 region/1): a host page shows this page in a frame, and SESSION_CREDENTIAL is the
+          // frame token; MEASURE_HEIGHT reports the content height for the region's "content-height" sizing.
+          const FRAME = __FRAME__;
+          const MEASURE_HEIGHT = __MEASURE_HEIGHT__;
+          const REGION = "__runicRegion";
           const VIEWS_PUSH = "__runicViewsPush";
           const ANNOUNCE = "__runicAnnounce";
           const encoder = new TextEncoder();
@@ -348,6 +357,12 @@ internal static class WebUiBridge
                 resolveConnectionWaiters();
                 notifyConnectionEvent(webui.event.CONNECTED);
                 reportViewsConnection(true);
+                if (FRAME) {
+                  // A new connection reports the page again.
+                  reportedTitle = undefined;
+                  reportedHeight = undefined;
+                  scheduleRegionReport();
+                }
                 return;
               }
               case CMD_JS:
@@ -378,6 +393,10 @@ internal static class WebUiBridge
                   announce(packet.subarray(start, end));
                   return;
                 }
+                if (functionName === REGION) {
+                  if (FRAME) focusRegion(decoder.decode(packet.subarray(start, end)));
+                  return;
+                }
                 const handler = globalThis[functionName];
                 if (typeof handler === "function") handler(packet.slice(start, end));
                 else if (logging) console.warn(`WebUI bridge: no page function ${functionName} receives raw data`);
@@ -406,6 +425,8 @@ internal static class WebUiBridge
 
           function connect() {
             clearTimeout(reconnectTimer);
+            // A frame without its token is not admitted: it does not try.
+            if (FRAME && SESSION_CREDENTIAL.length === 0) return;
             tokenAccepted = false;
             tokenSent = false;
             const endpoint = new URL(`${BASE_PATH}/_webui_ws_connect`, window.location.href);
@@ -435,6 +456,69 @@ internal static class WebUiBridge
               reportViewsConnection(false);
               if (reconnect) reconnectTimer = setTimeout(connect, 500);
             });
+          }
+
+          // Region mode: the page's title and, for "content-height" sizing, its content height go to the guest's backend
+          // (the core call "region"), coalesced and only when they changed; the guest sends them to its host.
+          let reportedTitle;
+          let reportedHeight;
+          let regionReportTimer;
+          let lastFocused = null;
+
+          function scheduleRegionReport() {
+            if (regionReportTimer === undefined) regionReportTimer = setTimeout(sendRegionReport, 50);
+          }
+
+          function sendRegionReport() {
+            regionReportTimer = undefined;
+            if (!tokenAccepted) return;
+            const report = {};
+            const title = document.title;
+            if (title !== reportedTitle) report.title = reportedTitle = title;
+            if (MEASURE_HEIGHT) {
+              const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
+              if (height !== reportedHeight) report.height = reportedHeight = height;
+            }
+            if ("title" in report || "height" in report) {
+              callCore("region", JSON.stringify(report)).catch(() => {});
+            }
+          }
+
+          function focusables() {
+            const candidates = document.querySelectorAll(
+              "a[href], area[href], button, input, select, textarea, iframe, summary, [tabindex], [contenteditable]");
+            return Array.prototype.filter.call(candidates, element =>
+              element.tabIndex >= 0 && !element.disabled && element.getAttribute("contenteditable") !== "false" &&
+              !(element instanceof HTMLInputElement && element.type === "hidden") && element.getClientRects().length > 0);
+          }
+
+          // The host moved the keyboard focus into the region: the first focusable element for Tab, the last for
+          // Shift+Tab, the one focused last for the host's own move. A focused element other than the body stays.
+          function focusRegion(direction) {
+            const active = document.activeElement;
+            if (active && active !== document.body && active !== document.documentElement) return;
+            let target = direction === "programmatic" && lastFocused?.isConnected ? lastFocused : undefined;
+            if (!target) {
+              const elements = focusables();
+              target = direction === "backward" ? elements[elements.length - 1] : elements[0];
+            }
+            target?.focus();
+          }
+
+          function installRegion() {
+            if (!FRAME) return;
+            // Scrolling at the frame's end does not scroll the host page. No beforeunload: a region guards its close
+            // with close-request.
+            document.documentElement.style.overscrollBehavior = "contain";
+            document.addEventListener("focusin", event => {
+              if (event.target instanceof Element && event.target !== document.body) lastFocused = event.target;
+            });
+            new MutationObserver(scheduleRegionReport).observe(document.head ?? document.documentElement,
+              { childList: true, subtree: true, characterData: true });
+            if (MEASURE_HEIGHT && typeof ResizeObserver === "function") {
+              new ResizeObserver(scheduleRegionReport).observe(document.documentElement);
+            }
+            document.addEventListener("DOMContentLoaded", scheduleRegionReport);
           }
 
           function handleDocumentClick(event) {
@@ -528,6 +612,7 @@ internal static class WebUiBridge
           });
           document.addEventListener("click", handleDocumentClick);
           installCustomWindowDrag();
+          installRegion();
           if (hasNavigationApi) {
             globalThis.navigation.addEventListener("navigate", event => {
               if (allEvents && !allowNavigation && tokenAccepted) {
