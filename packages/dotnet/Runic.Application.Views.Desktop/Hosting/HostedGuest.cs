@@ -17,6 +17,10 @@ internal sealed record HostedWindowRequest(string Type, Uri Url, int Width, int 
     // Where the Window's dropped files go (window-services/1, files-dropped); null when it takes none. Set before the
     // request goes, so a drop right after the reply is not lost.
     internal Action<DesktopFileDropEventArgs>? Drop { get; init; }
+
+    // The Window's surface, which serves its page in a host page's frame when the host shows the window in a region
+    // (region/1); null when the Window cannot show in one.
+    internal DesktopSurface? Surface { get; init; }
 }
 
 // One Window of the guest on the channel.
@@ -48,6 +52,12 @@ internal sealed class HostedWindow
     // menus/1: the window's menu bar, once the window opened with the feature in use.
     internal HostedWindowMenus? Menus { get; private set; }
 
+    // region/1: the region that shows the window, when its window-open reply named presentation "region".
+    internal HostedRegion? Region { get; private set; }
+
+    // Completes with whether the window opened, when its window-open reply arrived.
+    internal Task<bool> WhenOpened => _opened.Task;
+
     // Starts the window's menu bar; a window that closed meanwhile disposes it.
     internal void UseMenus(HostedWindowMenus menus)
     {
@@ -72,9 +82,10 @@ internal sealed class HostedWindow
 
     private readonly TaskCompletionSource _finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal void Opened(HostedWindowPresentation presentation)
+    internal void Opened(HostedWindowPresentation presentation, HostedRegion? region = null)
     {
         Presentation = presentation;
+        Region = region;
         _opened.TrySetResult(true);
     }
 
@@ -119,6 +130,7 @@ internal sealed class HostedWindow
         HostedWindowMenus? menus;
         lock (_gate) (menus, Menus) = (Menus, null);
         menus?.Dispose();
+        Region?.Dispose();
         Interlocked.Exchange(ref _closing, 1);
         try
         {
@@ -250,11 +262,11 @@ internal sealed class HostedGuest : IAsyncDisposable
         }
 
         // The key is spent: nothing listens any more. A feature is in use when both hellos list it (host-protocol.md, Features).
-        var features = new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]);
+        var features = new JsonArray([.. HostFeatures.GuestImplemented.Select(static name => (JsonNode)name)]);
         var offered = hello["features"] is JsonArray list
             ? list.Select(static item => item is JsonValue value && value.TryGetValue<string>(out var name) ? name : null).ToHashSet(StringComparer.Ordinal)
             : [];
-        Session = new RunicGuestSession(host, HostProtocol.Version, [.. HostFeatures.Implemented.Where(offered.Contains)], _hostGone.Token);
+        Session = new RunicGuestSession(host, HostProtocol.Version, [.. HostFeatures.GuestImplemented.Where(offered.Contains)], _hostGone.Token);
         // The host's appearance and locale (host-protocol.md, Handshake); members that are not valid read as unknown.
         _appearance = HostServices.ReadAppearance(hello["appearance"]);
         var (hostLocale, languages) = HostServices.ReadLocale(hello);
@@ -442,12 +454,25 @@ internal sealed class HostedGuest : IAsyncDisposable
                     : $"The host application could not open the window{(detail is null ? "." : ": " + detail)}",
                 refused ? "The host's window policy decides which windows a guest may open." : null)]);
         }
+        // presentation: "window" by default, or "region" with region/1 in use. A value the guest does not know closes the
+        // Window, as an open it gave up (host-protocol.md, Presentation of a window).
+        var shownIn = HostProtocol.String(reply, "presentation");
+        if (reply["presentation"] is not null && shownIn is not ("window" or "region") ||
+            shownIn == "region" && (!InUse(HostFeatures.Region) || request.Surface is null))
+        {
+            Forget(window);
+            await PushAsync(new JsonObject { ["kind"] = "window-closed", ["window"] = id }).ConfigureAwait(false);
+            throw new RunicWindowConfigurationException([new RunicWindowDiagnostic("hosted-window-failed",
+                "The host application opened the window with a presentation this application does not implement.",
+                "The host is newer than this application, or did not check the features in use.")]);
+        }
+        var region = shownIn == "region" ? new HostedRegion(this, id, request.Surface!) : null;
         var presentation = new HostedWindowPresentation(
             HostedWindowPresentation.FeaturesOf(reply["features"] as JsonArray),
             HostedWindowPresentation.ActivityOf(reply["activity"] as JsonObject) ?? RunicWindowActivity.Assumed,
             HostedWindowPresentation.ColorSchemeOf(HostProtocol.String(reply, "colorScheme")) ?? DesktopColorScheme.NoPreference,
             (presentationRequest, token) => WindowRequestAsync(id, presentationRequest, token), LogFailure);
-        window.Opened(presentation);
+        window.Opened(presentation, region);
         return window;
     }
 
@@ -483,6 +508,10 @@ internal sealed class HostedGuest : IAsyncDisposable
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<IRunicWindow, HostedWindow> _byWindow = [];
 
     internal void Track(IRunicWindow window, HostedWindow hosted) => _byWindow.AddOrUpdate(window, hosted);
+
+    // region/1: the region of an open Window that its host shows in one, or null.
+    internal HostedRegion? RegionOf(IRunicWindow window) =>
+        _byWindow.TryGetValue(window, out var hosted) && !hosted.IsClosed ? hosted.Region : null;
 
     internal string? WindowId(IRunicWindow window) =>
         _byWindow.TryGetValue(window, out var hosted) && !hosted.IsClosed ? hosted.Id : null;
@@ -560,6 +589,13 @@ internal sealed class HostedGuest : IAsyncDisposable
                 await request.ReplyAsync().ConfigureAwait(false);
                 BeginShutdown("the host asked to shut down");
                 return;
+            case "region-attach" when InUse(HostFeatures.Region):
+                // The host may attach as soon as it answered window-open, before the guest finished reading the reply.
+                if (await RegionOfAsync(request.Message).ConfigureAwait(false) is { } attached)
+                    await attached.AttachAsync(request).ConfigureAwait(false);
+                else
+                    await request.FailAsync("rejected", "invalid-request", "The request names no region window of this channel.").ConfigureAwait(false);
+                return;
             default:
                 await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request this guest serves.").ConfigureAwait(false);
                 return;
@@ -601,6 +637,16 @@ internal sealed class HostedGuest : IAsyncDisposable
                 return;
             case "monitors-changed" when InUse(HostServices.Feature):
                 FindWindow(push)?.OnMonitorsChanged();
+                return;
+            // region/1: a push for a window that is not a region window of the channel is ignored.
+            case "region-detach" when InUse(HostFeatures.Region):
+                FindWindow(push)?.Region?.Detach();
+                return;
+            case "region-bounds" when InUse(HostFeatures.Region):
+                FindWindow(push)?.Region?.OnBounds(push);
+                return;
+            case "region-focus" when InUse(HostFeatures.Region):
+                FindWindow(push)?.Region?.OnFocus(push);
                 return;
             // placement and unknown pushes: ignored.
         }
@@ -692,6 +738,18 @@ internal sealed class HostedGuest : IAsyncDisposable
             try { _localeSwitch.Release(); }
             catch (ObjectDisposedException) { }
         }
+    }
+
+    // The region of the window a request names, once its window-open reply was read; null for another window.
+    private async Task<HostedRegion?> RegionOfAsync(JsonObject message)
+    {
+        if (FindWindow(message) is not { } window) return null;
+        try
+        {
+            if (!await window.WhenOpened.WaitAsync(_options.RequestTimeout).ConfigureAwait(false)) return null;
+        }
+        catch (TimeoutException) { return null; }
+        return window.IsClosed ? null : window.Region;
     }
 
     private HostedWindow? FindWindow(JsonObject message) =>

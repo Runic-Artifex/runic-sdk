@@ -248,6 +248,8 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
                     "provider-not-configured" => PlatformUnavailableReason.ProviderNotConfigured,
                     "owner-unavailable" => PlatformUnavailableReason.OwnerUnavailable,
                     "owner-closed" => PlatformUnavailableReason.OwnerClosed,
+                    // "embedded": a region window, where the request does not apply (host-protocol.md, Presentation in a
+                    // region), reads as backend-unavailable, as for any reason this guest does not know.
                     _ => PlatformUnavailableReason.BackendUnavailable,
                 });
             default:
