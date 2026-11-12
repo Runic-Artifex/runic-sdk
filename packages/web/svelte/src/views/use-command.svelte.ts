@@ -1,5 +1,6 @@
 import { createCommandController, type BridgeOutcomeFailure } from "@runic-artifex/views";
 import { derivedFields } from "./derived-fields.svelte.js";
+import { getRunicInstance } from "./instance.js";
 
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**
@@ -36,7 +37,7 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
 export function useCommand<TArgs extends readonly unknown[], TReturn>(
   command: (...args: TArgs) => TReturn,
 ): CommandHandle<TArgs, Awaited<TReturn>> {
-  const controller = createCommandController(command);
+  const controller = getRunicInstance().run(() => createCommandController(command));
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // Registered before the first flush, so a destroyed owner never leaks the controller (see useOperation).

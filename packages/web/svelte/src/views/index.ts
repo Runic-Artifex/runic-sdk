@@ -19,6 +19,8 @@ export {
   useText, useTextLocale, useWindowLocale, type TextHandle, type TextLocaleHandle, type WindowLocaleHandle,
 } from "./use-text.svelte.js";
 export { useAppearance, type AppearanceHandle } from "./use-appearance.svelte.js";
+export { getRunicInstance, setRunicInstance } from "./instance.js";
+export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstanceOptions } from "@runic-artifex/views";
 export {
   configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,
   windowLocale, type DocumentLocaleOptions, type FieldErrorArguments, type FieldErrorReason, type FieldErrorText,

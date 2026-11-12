@@ -4,6 +4,7 @@ import {
   type LatestOperationState,
 } from "@runic-artifex/views";
 import { derivedFields } from "./derived-fields.svelte.js";
+import { getRunicInstance } from "./instance.js";
 
 export interface LatestOperationHandle<TResult, TFailure = never>
   extends LatestOperationState<TResult, TFailure>, Pick<LatestOperationController<TResult, TFailure>, "run" | "clear"> {}
@@ -18,7 +19,7 @@ export interface LatestOperationHandle<TResult, TFailure = never>
  * settles run promises without cancelling accepted work.
  */
 export function useLatestOperation<TResult = void, TFailure = never>(): LatestOperationHandle<TResult, TFailure> {
-  const controller = createLatestOperationController<TResult, TFailure>();
+  const controller = getRunicInstance().run(() => createLatestOperationController<TResult, TFailure>());
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // Registered before the first flush, so a destroyed owner never leaks the controller (see useOperation).

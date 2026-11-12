@@ -1,6 +1,7 @@
 import { assertInInjectionContext, computed, DestroyRef, effect, inject, Injector, isSignal, signal, untracked, type Signal } from "@angular/core";
 import { createViewController, type ViewClient, type ViewSource } from "@runic-artifex/views";
 import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
+import { instanceOf } from "./instance.js";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -46,10 +47,12 @@ export function injectView<TClient extends ViewClient>(source: Signal<ViewSource
   options: InjectViewOptions<TClient> = {}): ViewHandle<TClient> {
   if (!options.injector) assertInInjectionContext(injectView);
   const injector = options.injector ?? inject(Injector);
-  const controller = createViewController<TClient>({
+  // The controller connects in the injection context's Runic instance, also when the source changes or it retries.
+  const instance = instanceOf(injector);
+  const controller = instance.run(() => createViewController<TClient>({
     ...(options.release ? { release: options.release } : {}),
     ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
-  });
+  }));
   const current = signal(controller.current);
   controller.subscribe(() => current.set(controller.current));
   const read = (): ViewSource<TClient> => isSignal(source) ? source() : source;
@@ -74,8 +77,8 @@ export function injectView<TClient extends ViewClient>(source: Signal<ViewSource
   // (keep-alive), so a component that is created again shows its View at once.
   const preview = computed(() => {
     const value = observed();
-    if (value) return value === current().client ? undefined : viewSourcePreview(value);
-    return fresh() ? undefined : viewSourcePreview(read());
+    if (value) return value === current().client ? undefined : instance.run(() => viewSourcePreview(value));
+    return fresh() ? undefined : instance.run(() => viewSourcePreview(read()));
   });
   return {
     state: computed(() => preview()?.state ?? (fresh() ? current().state : undefined)),

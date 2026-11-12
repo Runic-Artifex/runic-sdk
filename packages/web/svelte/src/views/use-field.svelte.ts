@@ -10,6 +10,7 @@ import {
   type FieldState,
 } from "@runic-artifex/views";
 import { derivedFields } from "./derived-fields.svelte.js";
+import { getRunicInstance } from "./instance.js";
 import type { TextFieldView } from "./use-text-field.svelte.js";
 
 /** The elements {@link FieldHandle.attach} wires. */
@@ -83,7 +84,7 @@ export function useField<TClient extends ViewClient, TValue>(
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
   options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
-  const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
+  const controller = getRunicInstance().run(() => createFieldController<TClient["snapshot"], TClient, TValue>(field, options));
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // A pre effect runs when it is created, so the teardown exists even if the owner is destroyed before its first

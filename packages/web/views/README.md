@@ -1713,3 +1713,37 @@ framework packages wrap it for components: `useBridgeConnection` in
 `injectBridgeConnection` in `@runic-artifex/angular`. During `vite dev`,
 `@runic-artifex/vite-plugin-runic` shows the page's state on its DevTools dock from
 page load.
+
+## Runic instances
+
+The runtime of a page belongs to a Runic instance. A page that does nothing about
+instances uses the **page instance**: its Bridge is `window.__runicBridge`, which the
+.NET host's script installs, and everything works as in earlier releases.
+
+`createRunicInstance({ bridge })` creates another instance on a Bridge you give it.
+Two instances share nothing: not the connection, Views, connection state,
+diagnostics, translated text and window locale, appearance, fields or kept clients.
+This is the base for running several Runic guests, or a guest inside a host page, in
+one document.
+
+```ts
+import { createRunicInstance } from "@runic-artifex/views";
+
+const instance = createRunicInstance({ bridge });
+const editor = await instance.run(() => connectEditor());
+const stop = instance.run(() => onBridgeConnection(state => { banner.hidden = state !== "lost"; }));
+// Later: ends its connection and releases its Views.
+instance.dispose();
+```
+
+`instance.run(fn)` makes the instance current while `fn` runs synchronously. What
+`fn` calls, including generated `connect*` functions, controllers and the text,
+locale, appearance and connection functions, belongs to the instance, and what it
+starts keeps the instance. Code after an `await` inside `fn` does not, so call
+`run` again there. Framework packages provide an instance to a subtree:
+`RunicInstanceProvider` in `@runic-artifex/react`, `provideRunicInstance` in
+`@runic-artifex/vue` and `@runic-artifex/angular`, `setRunicInstance` in
+`@runic-artifex/svelte`, and `CurrentRunicInstance` in `@runic-artifex/views-effect`.
+The page's history (`installNavigationPath`, `installBackNavigation`) and its
+uncaught errors (`installErrorReporting`) stay with the page instance. See
+[Runic instances](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#runic-instances).

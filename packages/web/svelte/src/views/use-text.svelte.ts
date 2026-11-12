@@ -1,5 +1,8 @@
 import { createSubscriber } from "svelte/reactivity";
-import { onWindowLocale, resolveText, subscribeText, textLocale, windowLocale, type FieldError, type TextReference } from "@runic-artifex/views";
+import {
+  onWindowLocale, resolveText, subscribeText, textLocale, windowLocale, type FieldError, type RunicInstance, type TextReference,
+} from "@runic-artifex/views";
+import { getRunicInstance } from "./instance.js";
 
 export interface TextHandle {
   /** The text in the window's language. A reactive property. */
@@ -30,35 +33,47 @@ export interface WindowLocaleHandle {
  * ```
  */
 export function useText(source: () => TextReference | FieldError | string | null | undefined, fallback?: () => string | undefined): TextHandle {
+  const instance = getRunicInstance();
   let version = $state(0);
-  $effect.pre(() => subscribeText(() => { version++; }));
+  $effect.pre(() => instance.run(() => subscribeText(() => { version++; })));
   const current = $derived.by(() => {
     void version;
-    return resolveText(source(), fallback?.());
+    const value = source(), text = fallback?.();
+    return instance.run(() => resolveText(value, text));
   });
   return { get current() { return current; } };
 }
 
 /** Follows the window's locale (`windowLocale`) while its owner lives, for example to set `lang`. */
 export function useWindowLocale(): WindowLocaleHandle {
-  let current = $state<string | null>(windowLocale());
-  $effect.pre(() => onWindowLocale(next => { current = next; }));
+  const instance = getRunicInstance();
+  let current = $state<string | null>(instance.run(windowLocale));
+  $effect.pre(() => instance.run(() => onWindowLocale(next => { current = next; })));
   return { get current() { return current; } };
 }
 
-const subscribeTextLocale = createSubscriber(update => subscribeText(update));
-const textLocaleHandle: TextLocaleHandle = {
-  get current() {
-    subscribeTextLocale();
-    return textLocale();
-  },
-};
+// One handle per Runic instance, created when it is first asked for.
+const textLocaleHandles = new WeakMap<RunicInstance, TextLocaleHandle>();
+
+function textLocaleHandle(instance: RunicInstance): TextLocaleHandle {
+  let handle = textLocaleHandles.get(instance);
+  if (!handle) {
+    const subscribe = createSubscriber(update => instance.run(() => subscribeText(update)));
+    textLocaleHandles.set(instance, handle = {
+      get current() {
+        subscribe();
+        return instance.run(textLocale);
+      },
+    });
+  }
+  return handle;
+}
 
 /**
  * Follows the locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's
  * locale). Reading `current` in a template, `$derived` or `$effect` runs it again when the locale changes. It is one
- * handle for the page and needs no component, so the page's locale resolver can read it: a template that calls
- * `m.*()` then renders again on a language switch. `undefined` while the page has no Translations runtime and the
+ * handle for each Runic instance and needs no component (outside one it is the page instance's), so the page's locale
+ * resolver can read it: a template that calls `m.*()` then renders again on a language switch. `undefined` while the page has no Translations runtime and the
  * application sets no window locale.
  *
  * ```ts
@@ -67,5 +82,5 @@ const textLocaleHandle: TextLocaleHandle = {
  * ```
  */
 export function useTextLocale(): TextLocaleHandle {
-  return textLocaleHandle;
+  return textLocaleHandle(getRunicInstance());
 }

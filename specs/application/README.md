@@ -140,6 +140,32 @@ Another client implementation for the web SHOULD use the same keys.
 | `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |
 | `runic.views.BridgeOutcome` | An outcome | A non-enumerable `true` that `isBridgeOutcome` checks. |
 | `runic.views.mockFailure` | An error | The declared failure of an error from `mockFailure()` (`@runic-artifex/views/mock`). |
+| `runic.views.current-instance` | `globalThis` | While `RunicInstance.run` of an instance other than the page instance runs synchronously, that instance's slots; otherwise absent. Every copy reads it, so a generated client of another bundle connects in the same instance. Since 0.18. |
+| `runic.views.instance` | A `RunicInstance` | A non-enumerable property: the instance's slots, so a copy that did not create the instance finds them. Since 0.18. |
+| `runic.views.client-languages` | `globalThis` | `false` while `configureClientLanguages({ send: false })` is in effect. Since 0.18. |
+
+#### Runic instances
+
+Since 0.18 the page runtime belongs to a **Runic instance**, so that several Runic guests, or a guest inside a host page,
+can share one document.
+
+- The **page instance** is the document's own. Its slots are `globalThis`: its Bridge is `__runicBridge`, which the served
+  host script installs, and its state is at the keys above. A page that never creates another instance behaves exactly
+  as before, and the Vite development client reads the page instance.
+- `createRunicInstance({ bridge })` creates another instance from a module export, with a Bridge it is given instead of
+  `__runicBridge`. Its slots are a plain object of its own: every key of this section that is set on `globalThis` for the
+  page instance is set there for it, with the same shape. Two instances share no runtime, connection, connection state,
+  diagnostics, translated text and window locale, appearance, fields, kept clients or reported missing views.
+- Code runs in an instance through `RunicInstance.run(fn)`: what `fn` calls synchronously, including a generated
+  `connect{View}`, belongs to that instance, and what it starts (a View, a controller, a subscription) keeps it. Outside
+  `run` the current instance is the page instance. The framework bindings provide an instance to a subtree
+  (`RunicInstanceProvider` in React, `provideRunicInstance` in Vue and Angular, `setRunicInstance` in Svelte,
+  `CurrentRunicInstance` in `@runic-artifex/views-effect`).
+- `RunicInstance.dispose()` ends an instance other than the page instance: its runtime stops listening to its Bridge,
+  and its Views report `disconnected`.
+- Document-level resources stay with the document: `installNavigationPath` and `installBackNavigation` own the page's
+  history, and `installErrorReporting` in an instance other than the page instance reports only the errors its runtime
+  catches, not the document's uncaught errors.
 
 ## Handshake
 

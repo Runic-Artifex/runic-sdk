@@ -3,6 +3,7 @@
   import type { PageReference } from "@runic-artifex/views";
   import { missingViewMessage, reportMissingView } from "@runic-artifex/views/bindings";
   import { isDevelopment } from "./development.js";
+  import { getRunicInstance } from "./instance.js";
   import type { ViewRegistry } from "./view-registry.js";
 
   let { content, registry, fallback, missing }: {
@@ -19,8 +20,11 @@
   } = $props();
   let Resolved = $derived(content ? registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined : undefined);
   const development = isDevelopment();
+  // A missing kind is reported to the component's Runic instance.
+  const instance = getRunicInstance();
   $effect.pre(() => {
-    if (content && !Resolved && !missing && !development) reportMissingView(content.kind);
+    const kind = content && !Resolved && !missing && !development ? content.kind : undefined;
+    if (kind !== undefined) instance.run(() => reportMissingView(kind));
   });
 </script>
 

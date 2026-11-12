@@ -1,4 +1,4 @@
-import type { FieldError } from "@runic-artifex/views";
+import type { FieldError, RunicInstance } from "@runic-artifex/views";
 import type { m } from "./dist/translations/runic-views.esm-v5/messages.js";
 import type * as transport from "./dist/translations/runic-views.esm-v5/transport.js";
 
@@ -30,6 +30,7 @@ export declare function runicViewsFieldErrorText(error: FieldError, locale: stri
 
 /**
  * Shows field errors (`FieldState.error`, `resolveText`, `describeBridgeError`) with the runic-views text in the window's
- * language: `configureFieldErrorText(runicViewsFieldErrorText)`. Returns a function that removes it.
+ * language: `configureFieldErrorText(runicViewsFieldErrorText)` in `instance`, or in the current Runic instance (the
+ * page's unless called inside `RunicInstance.run`). Returns a function that removes it.
  */
-export declare function configureRunicViewsText(): () => void;
+export declare function configureRunicViewsText(instance?: RunicInstance): () => void;

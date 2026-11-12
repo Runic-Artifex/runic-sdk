@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  FieldError, configureTranslatedText, createFieldController, fieldErrorText, type FieldErrorArguments, type FieldErrorReason,
+  FieldError, configureTranslatedText, createFieldController, createRunicInstance, fieldErrorText, type FieldErrorArguments, type FieldErrorReason,
 } from "@runic-artifex/views";
 import {
   configureRunicViewsText, resolveRunicViewsText, runicViewsCatalog, runicViewsFieldErrorText, runicViewsMessages, runicViewsTransport,
@@ -99,5 +99,24 @@ describe("runic-views references", () => {
     expect(resolve(reference, { locale: "de" }).text).toBe("Name ist erforderlich.");
     expect(runicViewsTransport.catalog).toBe("runic-views");
     expect(runicViewsMessages.platform_untitled_file_name({ locale: "de" })).toBe("Unbenannt");
+  });
+});
+
+describe("Runic instances", () => {
+  it("configures the field error text of one instance only", () => {
+    const bridge = { isConnected: () => false, request: () => Promise.reject(new Error("unused")), onMessage: () => () => {},
+      onConnectionChange: () => () => {} };
+    const a = createRunicInstance({ bridge }), b = createRunicInstance({ bridge });
+    const error = invalid("not-a-number", { text: "1e" });
+    const stop = configureRunicViewsText(a);
+    try {
+      expect(a.run(() => fieldErrorText(error))).toBe("1e is not a number.");
+      expect(b.run(() => fieldErrorText(error))).toBe("English");
+      expect(fieldErrorText(error)).toBe("English");
+    } finally {
+      stop();
+      a.dispose();
+      b.dispose();
+    }
   });
 });

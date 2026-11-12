@@ -22,6 +22,7 @@ export {
   command,
   connect,
   connectionStates,
+  CurrentRunicInstance,
   followViewport,
   indexOfKey,
   operation,
