@@ -325,6 +325,9 @@ function createElementClass(): CustomElementConstructor {
     #state: HostedRegionState = "waiting";
     #registered: { readonly name: string; readonly sizing: HostedRegionSizing } | undefined;
     #frame: HTMLIFrameElement | undefined;
+    // region-component/1: the guest's component element, and the content push it loads for, which a later push replaces.
+    #component: HTMLElement | undefined;
+    #componentLoad = 0;
     #guestTitle: string | null = null;
     #height: number | undefined;
     #focused = false;
@@ -487,6 +490,11 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
     receive(push: HostedRegionPush): void {
       switch (push.kind) {
         case "hosted-region-content":
+          if (push["embedding"] === "component") {
+            this.#guestTitle = null;
+            void this.#showComponent(push["module"] as string, push["url"] as string, push["token"] as string);
+            return;
+          }
           if (push["embedding"] !== "frame") {
             this.#removeFrame();
             this.#setState("unsupported");
@@ -516,6 +524,7 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
         case "hosted-region-focus": {
           // The host moves the focus into the region only while the page holds none (host-protocol.md, "Focus in a
           // region"); such focus counts as the guest's.
+          // A component is part of the page's own focus order: the page moves the focus into it.
           const active = document.activeElement;
           if (!this.#frame || active !== null && active !== document.body && active !== this) return;
           this.#programmatic = true;
@@ -579,9 +588,46 @@ iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height:
       this.#schedule();
     }
 
+    // region-component/1: imports the guest's module from the guest's origin, which defines its element and exports the
+    // tag it defined (the same build from a second origin gets another tag), and connects a new element with the
+    // component token. The host page's Content-Security-Policy must allow the guest's origin for scripts and
+    // connections; a module that does not load or define a component leaves the region unsupported.
+    async #showComponent(module: string, url: string, token: string): Promise<void> {
+      this.#removeFrame();
+      const load = ++this.#componentLoad;
+      this.#setState("loading");
+      let element: HTMLElement & { connect?: unknown };
+      try {
+        const exports = await import(/* @vite-ignore */ module) as { tag?: unknown };
+        if (load !== this.#componentLoad) return;
+        const tag = exports.tag;
+        if (typeof tag !== "string" || customElements.get(tag) === undefined)
+          throw new TypeError("The guest's module defines no component: it exports no tag of a defined element.");
+        element = document.createElement(tag);
+        if (typeof element.connect !== "function") throw new TypeError(`<${tag}> is not a Runic component.`);
+      } catch (error) {
+        if (load !== this.#componentLoad) return;
+        console.error(`Runic: the hosted region "${this.regionName}" could not load its guest's component from ${module}. ` +
+          "Check that the page's Content-Security-Policy allows the guest's origin in script-src and connect-src.", error);
+        this.#setState("unsupported");
+        return;
+      }
+      element.setAttribute("part", "component");
+      this.#component = element;
+      this.#content.append(element);
+      (element.connect as (connection: { url: string; token: string }) => void).call(element, { url, token });
+      this.#setState("attached");
+      this.#schedule();
+    }
+
     #removeFrame(): void {
+      // A component's content ends too: removing its element disposes its instance and closes its connection.
+      this.#componentLoad += 1;
+      const component = this.#component;
+      this.#component = undefined;
+      component?.remove();
       const frame = this.#frame;
-      if (!frame) return;
+      if (!frame) { if (component) this.#schedule(); return; }
       this.#frame = undefined;
       frame.remove();
       this.#schedule();
