@@ -58,7 +58,11 @@ application: the Window gets SIGTERM on Linux and macOS, or Ctrl+C on Windows,
 and up to 5 seconds to close its windows and finish its work before `dev` kills
 it. A restart after a C# or frontend compiler edit gets the same grace;
 `dev` sets `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS=5000` for `dotnet watch`
-unless you set it yourself.
+unless you set it yourself. On Linux and macOS, `dev` also stops when the
+`dotnet` command that started it exits (0.18): the .NET 11 SDK's `dotnet runic`
+dies on SIGTERM without passing it to the tool, so an IDE or script that sends
+SIGTERM to `dotnet runic dev` would otherwise leave the development server,
+`dotnet watch` and the application running.
 
 `dev` picks a free loopback port for the development server, and on a shared
 machine another process could take that port first. Since 0.11, `dev` passes
@@ -143,6 +147,18 @@ tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
+The .NET SDK passes at a certified version: SDK 10.0.403, or SDK 11.0.100,
+which builds `net10.0` applications too (0.18). It warns for any other SDK from
+10.0.403 on, such as a newer patch or an uncertified newer major version, and
+fails for an older SDK or one that cannot build the target framework. A newer
+major SDK does not bring the runtime that a `net10.0` application runs on, so
+`dotnet-runtime` checks with `dotnet --list-runtimes` that the .NET 10 runtime
+(`Microsoft.NETCore.App` 10.0, and `Microsoft.AspNetCore.App` 10.0 for Runic
+Desktop on Kestrel) is installed, unless the project is self-contained or rolls
+forward to a newer major version (`RollForward` or `DOTNET_ROLL_FORWARD` set to
+`Major` or `LatestMajor`). Without it, the application builds but exits with
+code 150 when it starts; `dotnet runic dev` stops before it starts the
+application instead ([`RAPPDEV1013`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#rappdev1013)).
 The JavaScript runtime passes at the certified version and warns for a newer
 release of the same major version. Node 26 is supported as well, with a
 warning, since the starters and the Runic npm packages that run in Node declare
@@ -319,12 +335,12 @@ diagnostics are warnings. The envelope replaces the message and drops the
 `arguments` (`[id]`) of a diagnostic whose text contains a path, but it never
 redacts the message key, which always names the check. `payload.checks` is the
 complete list.
-Check identifiers are `dotnet-sdk`, `views-window`, `javascript-runtime`,
+Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `compatibility-set`, `views-package-versions`,
 `application-id`, `frontend-dev-server`, `vite-config`, `vite-entry`,
 `browser`, `views-hosts`, `desktop-runtime`, `wpf-runtime`, `gtk4-profile` and
 `platform-services`; `views-package-versions` and `application-id` were added
-in 0.11. New identifiers may appear in later releases. With `--runtime`, the payload also lists
+in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 

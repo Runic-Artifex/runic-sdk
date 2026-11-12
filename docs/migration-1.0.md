@@ -86,7 +86,8 @@ that `Runic.Assets` runs during the build) are built with Runic Command Line
 references Command Line, so an application may use any Command Line version
 itself (0.11.0 is current).
 
-The toolchain floor is .NET SDK 10.0.403 or later (runtime 10.0.14) and, for a
+The toolchain floor is .NET SDK 10.0.403 or later (runtime 10.0.14), or since
+0.18 the .NET 11 SDK with the .NET 10 runtime installed, and, for a
 Bun frontend, Bun 1.4.4 or later, each within its major version (0.12.1); for
 an npm or pnpm frontend, `dotnet runic doctor` also wants Node 24.22.1 or a
 later Node 24, or Node 26. On an older SDK or Bun, such as SDK 10.0.401 or Bun

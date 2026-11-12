@@ -169,7 +169,7 @@ internal static class DoctorChecks
         ArgumentException.ThrowIfNullOrWhiteSpace(dotnetHost);
         ArgumentNullException.ThrowIfNull(runtime);
         var checks = new List<DoctorCheck>();
-        await CheckDotNetAsync(checks, project, dotnetHost, runtime, cancellationToken).ConfigureAwait(false);
+        await CheckDotNetAsync(checks, project, dotnetHost, runtime, target, cancellationToken).ConfigureAwait(false);
         CheckViewsWindow(checks, project);
         CheckViewsHosts(checks, project, runtime, target);
         _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
@@ -195,7 +195,7 @@ internal static class DoctorChecks
     }
 
     private static async Task CheckDotNetAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
-        string dotnetHost, IDoctorRuntime runtime, CancellationToken cancellationToken)
+        string dotnetHost, IDoctorRuntime runtime, DoctorTargetRid? target, CancellationToken cancellationToken)
     {
         string? executable = runtime.FindExecutable(dotnetHost);
         if (executable is null)
@@ -210,21 +210,79 @@ internal static class DoctorChecks
             checks.Add(Fail("dotnet-sdk", $"Could not read a usable .NET SDK version from '{Path.GetFileName(executable)}'.", "Run dotnet --info and install the SDK selected by global.json."));
             return;
         }
-        int? targetMajor = ParseTargetFrameworkMajor(project.TargetFramework);
-        if (targetMajor is not null && sdk.Major < targetMajor)
-        {
-            checks.Add(Fail("dotnet-sdk", $".NET SDK {version} cannot build {project.TargetFramework}.", $"Install a .NET {targetMajor} SDK."));
-            return;
-        }
-        if (!IsCompatibleToolVersion(version, Authority.Toolchain.DotNetSdk))
-        {
-            checks.Add(Fail("dotnet-sdk", $".NET SDK {version} is outside the supported range beginning at {Authority.Toolchain.DotNetSdk}.", $"Install SDK {Authority.Toolchain.DotNetSdk} or a newer release in the same major version."));
-            return;
-        }
-        checks.Add(StringComparer.Ordinal.Equals(version, Authority.Toolchain.DotNetSdk)
-            ? Pass("dotnet-sdk", $".NET SDK {version} matches certified baseline {Authority.Id} and can build {project.TargetFramework}.")
-            : Warn("dotnet-sdk", $".NET SDK {version} is compatible with {project.TargetFramework}; certification used {Authority.Toolchain.DotNetSdk}.", "No change is required."));
+        checks.Add(EvaluateDotNetSdk(version, project.TargetFramework, Authority.Toolchain, Authority.Id));
+        if (checks[^1].Status == DoctorStatus.Failure) return;
+        checks.Add(await CheckDotNetRuntimeAsync(project, executable, version, sdk, runtime, target, cancellationToken).ConfigureAwait(false));
     }
+
+    /// <summary>
+    /// The dotnet-sdk decision (D059.17). An SDK older than the baseline, or one that cannot build the target framework,
+    /// fails. A certified SDK passes: the baseline, or a certified SDK of a newer major version, such as SDK 11 for a
+    /// net10.0 project. Any other SDK at or above the baseline, a newer patch or an uncertified newer major, warns.
+    /// </summary>
+    internal static DoctorCheck EvaluateDotNetSdk(string version, string targetFramework, CompatibilityToolchain toolchain, string authorityId)
+    {
+        const string id = "dotnet-sdk";
+        if (!Version.TryParse(NormalizeVersion(version), out Version? sdk))
+            return Fail(id, $"Could not read a usable .NET SDK version from '{version}'.", "Run dotnet --info and install the SDK selected by global.json.");
+        string[] certified = [toolchain.DotNetSdk, .. toolchain.AdditionalDotNetSdks];
+        string certifiedList = JoinAlternatives(certified);
+        int? targetMajor = ParseTargetFrameworkMajor(targetFramework);
+        if (targetMajor is not null && sdk.Major < targetMajor)
+            return Fail(id, $".NET SDK {version} cannot build {targetFramework}.", $"Install .NET SDK {certifiedList}.");
+        if (Version.TryParse(NormalizeVersion(toolchain.DotNetSdk), out Version? baseline) && sdk < baseline)
+        {
+            return Fail(id, $".NET SDK {version} is older than {toolchain.DotNetSdk}, the oldest SDK this release supports.",
+                $"Install SDK {toolchain.DotNetSdk} or a newer {baseline.Major}.0 release" +
+                (toolchain.AdditionalDotNetSdks.Count == 0 ? "." : $", or SDK {JoinAlternatives(toolchain.AdditionalDotNetSdks)}."));
+        }
+        if (certified.Contains(version, StringComparer.Ordinal))
+            return Pass(id, $".NET SDK {version} is certified by {authorityId} and can build {targetFramework}.");
+        return Warn(id, $".NET SDK {version} is compatible with {targetFramework}; certified with SDK {certifiedList}.", "No change is required.");
+    }
+
+    /// <summary>
+    /// Whether the runtime of the target framework is installed. An SDK of the target's major version brings it; a
+    /// newer-major SDK builds the application, which then exits with code 150 when it starts without that runtime.
+    /// </summary>
+    private static async Task<DoctorCheck> CheckDotNetRuntimeAsync(DoctorProjectConfiguration project, string executable,
+        string version, Version sdk, IDoctorRuntime runtime, DoctorTargetRid? target, CancellationToken cancellationToken)
+    {
+        const string id = "dotnet-runtime";
+        int? targetMajor = ParseTargetFrameworkMajor(project.TargetFramework);
+        if (targetMajor is null)
+            return Pass(id, $"{project.TargetFramework} names no .NET runtime version to check.");
+        // Without --rid, SelfContained describes the build that dev and dotnet run start.
+        if (target is null && project.SelfContained)
+            return Pass(id, $"The project is self-contained, so the application carries its .NET {targetMajor} runtime.");
+        if (sdk.Major == targetMajor)
+            return Pass(id, $".NET SDK {version} includes the .NET {targetMajor} runtime that {project.TargetFramework} applications run on.");
+        CommandResult result = await runtime.RunAsync(executable, project.ProjectDirectory, DotNetRuntimes.ListArguments, cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode != 0)
+        {
+            return Warn(id, $"Could not list the installed .NET runtimes, so doctor cannot tell whether the .NET {targetMajor} runtime is installed.",
+                "Run 'dotnet --list-runtimes' and check that it lists Microsoft.NETCore.App " + targetMajor + ".0.");
+        }
+        IReadOnlyList<InstalledRuntime> installed = DotNetRuntimes.Parse(result.StandardOutput);
+        string? rollForward = runtime.GetEnvironmentVariable("DOTNET_ROLL_FORWARD") is { Length: > 0 } environment ? environment : project.RollForward;
+        List<string> frameworks = [DotNetRuntimes.NetCoreApp];
+        if (project.Hosts.Contains(RunicViewsHost.Desktop) && StringComparer.OrdinalIgnoreCase.Equals(project.DesktopServer, "Kestrel"))
+            frameworks.Add(DotNetRuntimes.AspNetCoreApp);
+        string[] missing = [.. frameworks.Where(name =>
+            !DotNetRuntimes.IsSatisfied(installed, new RequiredRuntime(name, $"{targetMajor}.0.0"), rollForward))];
+        if (missing.Length == 0)
+        {
+            return Pass(id, $"The .NET {targetMajor} runtime that {project.TargetFramework} applications run on is installed ({DotNetRuntimes.Describe(installed, DotNetRuntimes.NetCoreApp)}).");
+        }
+        string names = string.Join(" and ", missing.Select(name => $"{name} {targetMajor}.0"));
+        return Fail(id,
+            $".NET SDK {version} builds {project.TargetFramework}, but the application needs the {names} runtime to start, and {DotNetRuntimes.Describe(installed, missing[0])}. Without it the application exits with code 150.",
+            $"Install the .NET {targetMajor} runtime{(missing.Contains(DotNetRuntimes.AspNetCoreApp) ? $" and the ASP.NET Core {targetMajor} runtime" : string.Empty)} next to SDK {version}, " +
+            $"for example with dotnet-install (--runtime dotnet --channel {targetMajor}.0) or your package manager, or install .NET SDK {Authority.Toolchain.DotNetSdk}, which includes it.");
+    }
+
+    private static string JoinAlternatives(IReadOnlyList<string> values) =>
+        values.Count <= 1 ? string.Join(string.Empty, values) : $"{string.Join(", ", values.Take(values.Count - 1))} or {values[^1]}";
 
     private static void CheckViewsWindow(List<DoctorCheck> checks, DoctorProjectConfiguration project)
     {

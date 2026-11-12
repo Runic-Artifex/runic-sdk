@@ -622,7 +622,7 @@ NativeAOT package embeds the runtime of the SDK. Under Nix,
 packages older ones. Since 0.14.
 
 **Fix:** install .NET SDK 10.0.403 or a newer 10.0 release (runtime 10.0.14),
-and Bun 1.4.4 or a newer 1.x release, then rebuild and republish. Until you
+or the .NET 11 SDK with the .NET 10 runtime, and Bun 1.4.4 or a newer 1.x release, then rebuild and republish. Until you
 can, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE033</NoWarn>`.
 
 ### RUNICBRIDGE034
@@ -993,6 +993,21 @@ Exit code 2. Since 0.11.
 
 **Fix:** remove the variable; `dev` describes the development server and the
 frontend output to the Window with them.
+
+### RAPPDEV1013
+
+The application that `dev` built needs a .NET runtime that is not installed,
+such as the .NET 10 runtime of a `net10.0` application built with the .NET 11
+SDK. `dev` reads the build's `runtimeconfig.json` and the output of
+`dotnet --list-runtimes` before it starts the application, which would
+otherwise exit with code 150 ("You must install or update .NET"). The message
+names the missing runtime and the installed versions. Exit code 1. Since 0.18.
+
+**Fix:** install that runtime next to the SDK, for example the .NET 10 runtime
+with `dotnet-install --runtime dotnet --channel 10.0` (add `--runtime aspnetcore`
+for Runic Desktop on Kestrel) or your package manager, or install .NET SDK
+10.0.403 or later 10.0, which includes it. `dotnet runic doctor` reports the
+same problem in its `dotnet-runtime` check.
 
 ### RAPPPKG1001
 

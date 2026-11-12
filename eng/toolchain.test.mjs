@@ -3,8 +3,17 @@ import { test } from "node:test";
 import { checkToolchainCopies, parseToolchain, readToolchain } from "./toolchain.mjs";
 const inputs = () => ({global:{sdk:{version:"10.0.400"}},node:"24.20.0\n",workspace:{packageManager:"bun@1.4.2"},setup:"bun-version: 1.4.2\nrun: npm install --global npm@12.0.2 pnpm@12.3.4 --allow-scripts=pnpm\n"});
 test("toolchain reads maintained pins without a historical authority", () => {
-  assert.deepEqual(parseToolchain(inputs()),{dotnetSdk:"10.0.400",node:"24.20.0",bun:"1.4.2",npm:"12.0.2",pnpm:"12.3.4"});
-  assert.equal(Object.keys(readToolchain()).length,5);
+  assert.deepEqual(parseToolchain(inputs()),{dotnetSdk:"10.0.400",node:"24.20.0",bun:"1.4.2",npm:"12.0.2",pnpm:"12.3.4",additionalDotnetSdks:[]});
+  assert.equal(Object.keys(readToolchain()).length,6);
+});
+test("setup-sdk's additional SDK step certifies one newer-major SDK per major (D059.17)", () => {
+  const value = inputs(); value.setup += "        global-json-file: global.json\n        dotnet-version: 11.0.100\n";
+  assert.deepEqual(parseToolchain(value).additionalDotnetSdks, ["11.0.100"]);
+  assert.deepEqual(readToolchain().additionalDotnetSdks, ["11.0.100"]);
+  for (const extra of ["dotnet-version: 10.0.500\n", "dotnet-version: 11.0.101\n"]) {
+    const invalid = inputs(); invalid.setup += "dotnet-version: 11.0.100\n" + extra;
+    assert.throws(() => parseToolchain(invalid));
+  }
 });
 test("missing or ambiguous pins and differing Bun setup fail", () => {
   for(const edit of [x=>x.setup=x.setup.replace("npm@12.0.2", "npm@latest"), x=>x.setup+="npm@12.0.3\n", x=>x.setup=x.setup.replace("bun-version: 1.4.2", "bun-version: 1.4.1"),x=>x.node="24", x=>delete x.global.sdk, x=>x.workspace.packageManager="pnpm@12.3.4"]) {
