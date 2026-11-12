@@ -36,7 +36,7 @@ internal sealed class HostedRegionBrowserHostTests
     public async Task AServeOnlyHostShowsAGuestsWindowInARegionOfABrowserPage()
     {
         await using var fixture = await HostFixture.StartAsync(serveOnly: true);
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         // The host's page in the user's browser: no native window shows it.
         var page = new HostedRegionTestPage(fixture.Host.RegionDirectory, nativeWindow: null, browser: true);
         page.Declare("check");
@@ -76,7 +76,7 @@ internal sealed class HostedRegionBrowserHostTests
     public async Task ABrowserHostRefusesAWindowOfTheGuestsOwn()
     {
         await using var fixture = await HostFixture.StartAsync(serveOnly: true);
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var policy = new AllowPolicy();
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("refused"), new RunicHostedApplicationOptions { Policy = policy });
         Check(await application.Exited.WaitScaledAsync(Timeout) == HostedGuestProgram.RefusedExitCode, "A browser host opened a window of the guest's own.");
@@ -93,7 +93,7 @@ internal sealed class HostedRegionBrowserHostTests
     public async Task AWindowModeHostTellsThePolicyThatItCanOpenAWindow()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var policy = new AllowPolicy();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"), new RunicHostedApplicationOptions { Policy = policy });
