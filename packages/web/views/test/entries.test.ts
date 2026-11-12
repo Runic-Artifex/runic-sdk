@@ -17,18 +17,20 @@ test("every entry resolves for import, require-style default and types", () => {
     assert.equal(conditions["default"], conditions["import"], `${entry}: default is the ESM file`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
-    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./package.json"]);
+    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./package.json"]);
 });
 
 test("binding and generator APIs are not in the application entries; graduated APIs are", async () => {
   const root = await import("@runic-artifex/views");
   for (const name of ["viewSourceIdentity", "isViewClient"])
     assert.equal(name in root, false, `${name} must not be exported from the root entry`);
-  // Graduated from ./experimental in 0.10, which removed that entry (docs/experimental.md).
+  // Graduated from ./experimental in 0.10 (docs/experimental.md).
   for (const name of ["collectionViewport", "createCollectionViewportController", "createLatestOperationController"])
     assert.equal(typeof (root as Record<string, unknown>)[name], "function", `${name} is a root export`);
-  // Node reports ERR_PACKAGE_PATH_NOT_EXPORTED and Bun "Cannot find module"; the exports test pins the map.
-  await assert.rejects(import(["@runic-artifex/views", "experimental"].join("/")));
+  // Hosted regions (0.18) are experimental: only ./experimental exports them.
+  const experimental = await import("@runic-artifex/views/experimental");
+  assert.deepEqual(Object.keys(experimental).sort(), ["defineHostedRegion", "hostedRegionTag"]);
+  for (const name of Object.keys(experimental)) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   const bindings = await import("@runic-artifex/views/bindings");
   assert.deepEqual(Object.keys(bindings).sort(), [
     "checkKeepAlive", "defaultKeepAlive", "isViewClient", "missingViewMessage", "reportMissingView", "viewSourceIdentity", "viewSourcePreview",
