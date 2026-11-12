@@ -202,6 +202,22 @@
             },
             "userStarted": {
               "type": "boolean"
+            },
+            "embed": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            },
+            "embedOptions": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "focusOnAttach": {
+                  "type": "boolean"
+                },
+                "reattachOnReload": {
+                  "type": "boolean"
+                }
+              }
             }
           }
         }
@@ -1116,7 +1132,15 @@
                     "setLocale",
                     "setAppearance",
                     "dropFiles",
-                    "changeMonitors"
+                    "changeMonitors",
+                    "declareRegion",
+                    "removeRegion",
+                    "resizeRegion",
+                    "focusRegion",
+                    "focusHost",
+                    "departRegion",
+                    "detachRegion",
+                    "moveRegion"
                   ]
                 },
                 "window": {
@@ -1202,6 +1226,55 @@
                       ]
                     }
                   }
+                },
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                },
+                "sizing": {
+                  "enum": [
+                    "fill",
+                    "content-height"
+                  ]
+                },
+                "reason": {
+                  "enum": [
+                    "removed",
+                    "reload"
+                  ]
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 32767
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 32767
+                },
+                "scale": {
+                  "type": "number",
+                  "minimum": 0.25,
+                  "maximum": 8
+                },
+                "source": {
+                  "enum": [
+                    "tab",
+                    "shift-tab",
+                    "pointer",
+                    "script"
+                  ]
+                },
+                "focused": {
+                  "type": "boolean"
+                },
+                "visible": {
+                  "type": "boolean"
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "allOf": [
@@ -1370,6 +1443,105 @@
                     "required": [
                       "window",
                       "paths"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "declareRegion",
+                          "removeRegion"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "name"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "resizeRegion"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "name",
+                      "width",
+                      "height",
+                      "scale"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "focusRegion"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "name",
+                      "source"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "focusHost"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "departRegion",
+                          "detachRegion"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "moveRegion"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "to",
+                      "name"
                     ]
                   }
                 }
@@ -1614,6 +1786,147 @@
                           }
                         ]
                       }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "window",
+                    "region"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "window": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "region": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "waiting",
+                            "loading",
+                            "attached",
+                            "detached",
+                            "ended"
+                          ]
+                        },
+                        "title": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "focused": {
+                          "type": "boolean"
+                        },
+                        "documentEdited": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "window",
+                    "page"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "window": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "page": {
+                      "type": "object",
+                      "required": [
+                        "name"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                        },
+                        "shows": {
+                          "enum": [
+                            "content",
+                            "waiting",
+                            "detached",
+                            "ended",
+                            null
+                          ]
+                        },
+                        "src": {
+                          "oneOf": [
+                            {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "$any"
+                              ],
+                              "additionalProperties": false,
+                              "properties": {
+                                "$any": {}
+                              }
+                            }
+                          ]
+                        },
+                        "title": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "allow": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "height": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "dialogOwner"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "dialogOwner": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "departure"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "departure": {
+                      "type": "boolean"
                     }
                   }
                 }

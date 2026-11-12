@@ -1,5 +1,90 @@
 #nullable enable
+[RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedApplications.RegionAttached -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.IRunicHostedApplications.RegionDetached -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowElevatedHost.get -> bool
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowElevatedHost.init -> void
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.AllowElevatedGuest.get -> bool
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.AllowElevatedGuest.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.AsDepartureGuard() -> Runic.Navigation.INavigationDepartureGuard!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Attached -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DetachAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Detached -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DocumentEditedChanged -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.HostWindow.get -> Runic.Application.Views.IRunicWindow?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.IsDocumentEdited.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.IsFocused.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.MoveToAsync(Runic.Application.Views.IRunicWindow! window, string! region, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Name.get -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Options.get -> Runic.Application.Views.Desktop.RunicHostedRegionOptions!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.PreferredHeight.get -> int?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.PreferredSizeChanged -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.PreferredWidth.get -> int?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.RequestCloseAsync(bool force = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Size.get -> Runic.Application.Views.Desktop.RunicHostedRegionSize?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.State.get -> Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.StateChanged -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Title.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.TitleChanged -> System.EventHandler<Runic.Application.Views.Desktop.RunicHostedRegionEventArgs!>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Window.get -> Runic.Application.Views.Desktop.RunicHostedWindow!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Reason.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Region.get -> Runic.Application.Views.Desktop.RunicHostedRegion!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.RunicHostedRegionEventArgs(Runic.Application.Views.Desktop.RunicHostedRegion! region, string? reason = null) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedRegionOptions!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Equals(Runic.Application.Views.Desktop.RunicHostedRegionOptions? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.FocusOnAttach.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.FocusOnAttach.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.MaximumHeight.get -> int?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.MaximumHeight.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.MinimumHeight.get -> int?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.MinimumHeight.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Permissions.get -> Runic.Desktop.DesktopPermissionGrant?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Permissions.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.ReattachOnReload.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.ReattachOnReload.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.RunicHostedRegionOptions() -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Deconstruct(out int Width, out int Height, out double Scale) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Equals(Runic.Application.Views.Desktop.RunicHostedRegionSize other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Height.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Height.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.RunicHostedRegionSize() -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.RunicHostedRegionSize(int Width, int Height, double Scale) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Scale.get -> double
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Scale.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Width.get -> int
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionSize.Width.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState.Attached = 2 -> Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState.Detached = 3 -> Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState.Ended = 4 -> Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState.Loading = 1 -> Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionState.Waiting = 0 -> Runic.Application.Views.Desktop.RunicHostedRegionState
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.IsDocumentEdited.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.PresentationKind.get -> Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.Region.get -> Runic.Application.Views.Desktop.RunicHostedRegion?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.Title.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowDecision.HostWindow.get -> Runic.Application.Views.IRunicWindow?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowDecision.Region.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowDecision.RegionOptions.get -> Runic.Application.Views.Desktop.RunicHostedRegionOptions?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind.Region = 1 -> Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind.Window = 0 -> Runic.Application.Views.Desktop.RunicHostedWindowPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.CanEmbed.get -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionOptions.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionOptions.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionOptions.ToString() -> string!
+~[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionSize.Equals(object obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionSize.GetHashCode() -> int
+~[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionSize.ToString() -> string
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedRegionOptions.Default.get -> Runic.Application.Views.Desktop.RunicHostedRegionOptions!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedRegionOptions.operator !=(Runic.Application.Views.Desktop.RunicHostedRegionOptions? left, Runic.Application.Views.Desktop.RunicHostedRegionOptions? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedRegionOptions.operator ==(Runic.Application.Views.Desktop.RunicHostedRegionOptions? left, Runic.Application.Views.Desktop.RunicHostedRegionOptions? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedRegionSize.operator !=(Runic.Application.Views.Desktop.RunicHostedRegionSize left, Runic.Application.Views.Desktop.RunicHostedRegionSize right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedRegionSize.operator ==(Runic.Application.Views.Desktop.RunicHostedRegionSize left, Runic.Application.Views.Desktop.RunicHostedRegionSize right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.Embed(Runic.Application.Views.IRunicWindow! hostWindow, string! region) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.Embed(Runic.Application.Views.IRunicWindow! hostWindow, string! region, Runic.Application.Views.Desktop.RunicHostedRegionOptions! options) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.Embed(string! region) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.Embed(string! region, Runic.Application.Views.Desktop.RunicHostedRegionOptions! options) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!

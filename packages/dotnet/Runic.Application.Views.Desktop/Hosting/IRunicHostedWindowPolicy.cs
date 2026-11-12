@@ -738,6 +738,13 @@ public sealed class RunicHostedWindowRequest
     /// data store.
     /// </remarks>
     public DesktopWindowOptions WindowOptions { get; }
+
+    /// <summary>
+    /// Whether the window can show in a region of one of the host's pages (<see cref="RunicHostedWindowDecision.Embed(string)"/>):
+    /// the guest implements <c>region/1</c>. A guest of an older release cannot be embedded; the policy opens its window
+    /// or refuses it.
+    /// </summary>
+    public bool CanEmbed { get; internal init; }
 }
 
 /// <summary>A host policy's decision about a window a guest asked for.</summary>
@@ -745,21 +752,87 @@ public sealed class RunicHostedWindowRequest
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class RunicHostedWindowDecision
 {
-    private RunicHostedWindowDecision(bool allowed, DesktopWindowOptions? windowOptions, string? message)
+    private RunicHostedWindowDecision(bool allowed, DesktopWindowOptions? windowOptions, string? message,
+        string? region = null, IRunicWindow? hostWindow = null, RunicHostedRegionOptions? regionOptions = null)
     {
         IsAllowed = allowed;
         WindowOptions = windowOptions;
         Message = message;
+        Region = region;
+        HostWindow = hostWindow;
+        RegionOptions = regionOptions;
     }
 
-    /// <summary>Whether the window opens.</summary>
+    /// <summary>Whether the window opens, in a window of its own or in a region.</summary>
     public bool IsAllowed { get; }
 
-    /// <summary>The options the window opens with, or <see langword="null"/> for the request's.</summary>
+    /// <summary>The options the window opens with, or <see langword="null"/> for the request's. Not used in a region.</summary>
     public DesktopWindowOptions? WindowOptions { get; }
+
+    /// <summary>
+    /// The name of the region of a host page that shows the window (<see cref="Embed(string)"/>),
+    /// or <see langword="null"/> for a window of its own.
+    /// </summary>
+    public string? Region { get; }
+
+    /// <summary>The host's Window whose page shows the region, or <see langword="null"/> for the one that declares it.</summary>
+    public IRunicWindow? HostWindow { get; }
+
+    /// <summary>How the region shows the window, or <see langword="null"/> for the defaults.</summary>
+    public RunicHostedRegionOptions? RegionOptions { get; }
 
     /// <summary>For a refusal, why, as the guest's failure message; it must not carry a secret.</summary>
     public string? Message { get; }
+
+    /// <summary>
+    /// Shows the window in the region <paramref name="region"/> of a host page (<c>region/1</c>), such as an installer's
+    /// content area between its header and footer, instead of in a window of its own: the page's
+    /// <c>&lt;runic-hosted-region name="…"&gt;</c> shows the guest's page in a frame. Exactly one of the host's windows
+    /// must declare the region, now or later; when two declare it now, the guest's open fails with <c>region-ambiguous</c>.
+    /// </summary>
+    /// <param name="region">The region's name: 1 to 64 ASCII letters, digits, dots, underscores or hyphens.</param>
+    /// <returns>The decision.</returns>
+    /// <remarks>
+    /// Only for a request whose <see cref="RunicHostedWindowRequest.CanEmbed"/> is <see langword="true"/> and that is not
+    /// modal; otherwise the guest's open fails with <c>hosted-window-failed</c>. The window is open when the decision
+    /// applies, whether or not a region shows it yet (<see cref="RunicHostedWindow.Region"/>).
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision Embed(string region) => Embed(region, RunicHostedRegionOptions.Default);
+
+    /// <summary>Shows the window in the region <paramref name="region"/> of a host page, as <see cref="Embed(string)"/> does, with options.</summary>
+    /// <param name="region">The region's name.</param>
+    /// <param name="options">How the region shows the window.</param>
+    /// <returns>The decision.</returns>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision Embed(string region, RunicHostedRegionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new(true, null, null, RunicHostedRegion.RequireName(region, nameof(region)), null, options);
+    }
+
+    /// <summary>
+    /// Shows the window in the region <paramref name="region"/> of the page of <paramref name="hostWindow"/>, one of
+    /// this application's Windows, as <see cref="Embed(string)"/> does.
+    /// </summary>
+    /// <param name="hostWindow">The host's Window whose page declares the region, now or later.</param>
+    /// <param name="region">The region's name.</param>
+    /// <returns>The decision.</returns>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision Embed(IRunicWindow hostWindow, string region) => Embed(hostWindow, region, RunicHostedRegionOptions.Default);
+
+    /// <summary>Shows the window in the region <paramref name="region"/> of the page of <paramref name="hostWindow"/>, with options.</summary>
+    /// <param name="hostWindow">The host's Window whose page declares the region, now or later.</param>
+    /// <param name="region">The region's name.</param>
+    /// <param name="options">How the region shows the window.</param>
+    /// <returns>The decision.</returns>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision Embed(IRunicWindow hostWindow, string region, RunicHostedRegionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(hostWindow);
+        ArgumentNullException.ThrowIfNull(options);
+        return new(true, null, null, RunicHostedRegion.RequireName(region, nameof(region)), hostWindow, options);
+    }
 
     /// <summary>Opens the window.</summary>
     /// <param name="windowOptions">

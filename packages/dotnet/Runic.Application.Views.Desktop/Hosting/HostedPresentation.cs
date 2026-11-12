@@ -49,7 +49,7 @@ internal static class HostedPresentation
     }
 
     // DesktopWindow throws where a presentation reports results: a window closed meanwhile, a capability it lacks.
-    private static async Task<PlatformResult<PlatformUnit>> RunAsync(DesktopWindow window, Func<ValueTask> request)
+    internal static async Task<PlatformResult<PlatformUnit>> RunAsync(DesktopWindow window, Func<ValueTask> request)
     {
         if (!window.IsOpen) return Closed;
         try

@@ -72,6 +72,12 @@ public sealed partial class RunicHostedApplication
             await request.FailAsync("rejected", "capacity", "The window's menu requests are over the host's rate.").ConfigureAwait(false);
             return true;
         }
+        // A region shows no menu bar of the guest (host-protocol.md, Features in a region).
+        if (window.Region is not null && request.Kind is "set-menu-bar" or "update-menu-items")
+        {
+            await request.ReplyAsync(Embedded()).ConfigureAwait(false);
+            return true;
+        }
         switch (request.Kind)
         {
             case "set-menu-bar":
@@ -265,7 +271,8 @@ public sealed partial class RunicHostedApplication
         var dialog = request.Kind != "show-context-menu";
         // A context menu shows only in the active window, the one the user works in (host-protocol.md, Context menus); a
         // new one replaces the window's open one natively.
-        if (!dialog && window.PresentationOrNull?.Activity is not { IsActive: true })
+        // In a region: the host window is active and the focus is in the region (host-protocol.md, Features in a region).
+        if (!dialog && !(window.Region is null ? window.PresentationOrNull?.Activity is { IsActive: true } : window.Activation.Active))
         {
             await request.FailAsync("rejected", "refused", "The window is not active: a context menu shows only in the active window.").ConfigureAwait(false);
             return;
@@ -379,7 +386,14 @@ public sealed partial class RunicHostedApplication
             }
             (entries, position) = (applied.Entries, applied.Position);
         }
-        var presentation = window.PresentationOrNull!;
+        // A region's menu shows in its host window, at the frame's point in the host page, inside the region.
+        if (window.NativeWindow is not { } presentation)
+            return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+        if (window.Region is { } region && position is { X: { } x, Y: { } y })
+        {
+            if (region.PagePoint(x, y) is not { } pagePoint) return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
+            position = position with { X = pagePoint.X, Y = pagePoint.Y };
+        }
         // A choice in a menu shown while the user works in the window is the user's work in it; in one the guest showed
         // in a window it activated itself, it is an answer to the guest, as a dialog's is (window-services/1).
         var shownToUser = window.Activation.UserActive;

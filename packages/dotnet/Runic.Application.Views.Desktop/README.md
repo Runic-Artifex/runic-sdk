@@ -1024,6 +1024,61 @@ store lives for the whole session. HTTP authentication, client certificates and 
 trust settings are the engine's and the user's, not the store's. A custom `IDesktopWindowHostFactory` shows hosted
 windows only if its window host implements `IDesktopEphemeralDataStoreWindowHost`.
 
+### Showing a guest's window in a region
+
+With `region/1`, which Runic's guests of 0.18 and later implement (`RunicHostedWindowRequest.CanEmbed`), the policy
+can show a guest's Window in a region of one of the host's own pages instead of in a window of its own, such as an
+installer whose step page shows a check tool between its header and footer. The page declares the region with Runic's
+`<runic-hosted-region name="check">` element, and the region shows the guest's page in a frame from the guest's own
+loopback origin ([specification](../../../specs/desktop/host-protocol.md#regions-region1)):
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+sealed class CheckPolicy : IRunicHostedWindowPolicy
+{
+    public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken) =>
+        ValueTask.FromResult(request.Owner is null && request.CanEmbed
+            ? RunicHostedWindowDecision.Embed("check")
+            : RunicHostedWindowDecision.Refuse("The installer shows the check in its step page."));
+}
+```
+
+- **Attach.** `Embed(name)` needs one host window to declare the region, now or later; `Embed(hostWindow, name)` names
+  the host's Window. Two host windows that declare the name when the window opens fail the guest's open with
+  `region-ambiguous`. The window is open at once (`RunicHostedWindow.PresentationKind` is `Region`, and
+  `Presentation` throws), and `RunicHostedWindow.Region` follows it: `Waiting` until a page declares the region,
+  `Loading` while the guest's page loads, `Attached` once it connected, `Detached` and `Ended`. Its events, and
+  `IRunicHostedApplications.RegionAttached` and `RegionDetached`, are raised in order with the window events.
+- **Detach and attach again.** When the page removes the region, reloads or navigates, the window is detached and stays
+  open; it attaches again with a new frame launch address when a region of the same name appears in the same host
+  window (`RunicHostedRegionOptions.ReattachOnReload`, on by default). `DetachAsync` and `MoveToAsync(window, name)` let
+  the host detach the window or move it to another region. When the host window closes, its region windows close.
+- **Departures.** A departure the host decides, such as a wizard's Back or Next, asks the guest first: register
+  `region.AsDepartureGuard()` with the step's navigation entry, or call `RequestCloseAsync`. The guard lets the departure
+  go ahead once the guest allowed the close and its Window closed.
+- **Ended and empty.** When the guest closes its Window or goes away, the region is `Ended` and the page shows the
+  element's fallback content; showing a "run the check again" button that starts a new guest is the host's choice
+  (`RunicHostedApplication.Exited` has the exit code).
+- **In a region.** `present` brings the host window forward and moves the focus into the region only when the host
+  page holds no focus; `RegionOptions.FocusOnAttach` does the same when the window attaches. The guest's `resize` is a
+  preferred size (`PreferredWidth`, `PreferredHeight`), which a region declared with `sizing="content-height"` takes
+  within `MinimumHeight` and `MaximumHeight`; the title of the guest's page (`Title`, `TitleChanged`) names the frame,
+  and `IsDocumentEdited` can mark the step. Minimize, visibility, full screen, maximize, moves, colour schemes and the
+  represented file do not apply (`embedded`). The guest's menu bar is not shown; its context menus, dialogs, monitors
+  and announcements are the host window's, and a detached window's dialogs report `OwnerUnavailable`.
+- **Window services.** The guest works in the window when the host window is active and the user moved the focus into
+  the region with Tab, Shift+Tab or a click; focus that `present`, the host or the guest's own script moved there is the
+  guest's (`IsGuestActivated`).
+- **Permissions.** The frame gets the camera and microphone only as the window would (`RegionOptions.Permissions`
+  widens it).
+- **Origins.** The guest serves the frame from the loopback family the host page does not use, so no cookie of the host
+  page reaches it. An embedded host allows the guest to fall back to the same family where the other cannot be bound,
+  and logs it (event 2027). The guest's storage in a region lives in the host window's profile: treat it as
+  session-scoped. A refused or failed attach leaves the window detached (event 2026).
+
+Drops into a region's frame, the frame's permission requests and menu keys reach the guest from 0.18's native routing
+(`Runic.Desktop/README.md`). Browser (serve-only) hosts cannot host guests yet.
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

@@ -184,7 +184,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         }
         var channel = HostLaunch.Channel(line, [HostProtocol.Version], ExitCodeText, Failure);
         // The guest starts with this application's locale and appearance (host-protocol.md, Appearance and locale).
-        var environment = await HelloEnvironmentAsync(new JsonArray([.. HostFeatures.Implemented.Select(static name => (JsonNode)name)]),
+        var environment = await HelloEnvironmentAsync(new JsonArray([.. HostFeatures.HostImplemented.Select(static name => (JsonNode)name)]),
             cancellationToken).ConfigureAwait(false);
         var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, environment, Failure,
             () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
@@ -350,6 +350,11 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             OnCancel(push);
             return;
         }
+        if (HostProtocol.String(push, "kind") == "region-page")
+        {
+            OnRegionPage(push);
+            return;
+        }
         if (HostProtocol.String(push, "kind") != "window-closed") return;
         RunicHostedWindow? window;
         lock (_gate) window = HostProtocol.String(push, "window") is { } id ? _windows.GetValueOrDefault(id) : null;
@@ -374,6 +379,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         }
         if (await OnFeatureRequestAsync(request).ConfigureAwait(false)) return;
         if (await OnServiceRequestAsync(request).ConfigureAwait(false)) return;
+        if (await OnRegionRequestAsync(request).ConfigureAwait(false)) return;
         if (PresentationKind(request.Kind) is not { } kind)
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of this host.").ConfigureAwait(false);
@@ -402,8 +408,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             await request.ReplyAsync(Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable))).ConfigureAwait(false);
             return;
         }
-        // The guest's requests that can activate a window, and its announcements, have rates of their own (Limits).
-        if ((CanActivate(presentation.Kind) && !PresentRate.TryTake()) || (kind == RunicHostedPresentationKind.Announce && !AnnouncementRate.TryTake()))
+        // Requests that do not apply in a region (host-protocol.md, Presentation in a region).
+        if (window.Region is not null && kind is RunicHostedPresentationKind.ToggleMaximized or RunicHostedPresentationKind.Move
+            or RunicHostedPresentationKind.SetRepresentedFile)
+        {
+            await request.ReplyAsync(Embedded()).ConfigureAwait(false);
+            return;
+        }
+        // The guest's requests that can activate a window, and its announcements, have rates of their own (Limits); a
+        // region window's resize counts with them.
+        if (((CanActivate(presentation.Kind) || (window.Region is not null && kind == RunicHostedPresentationKind.Resize)) && !PresentRate.TryTake()) || (kind == RunicHostedPresentationKind.Announce && !AnnouncementRate.TryTake()))
         {
             await request.FailAsync("rejected", "capacity", kind == RunicHostedPresentationKind.Announce
                 ? "The application's announcements are over the host's rate."
@@ -441,8 +455,15 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         if (activates) NoteGuestActivation();
         try
         {
-            var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
-            await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+            if (applied.Window.Region is not null)
+                await request.ReplyAsync(await ApplyRegionPresentationAsync(applied).ConfigureAwait(false)).ConfigureAwait(false);
+            else
+            {
+                var result = await HostedPresentation.ApplyAsync(applied.Window, applied, _ending.Token).ConfigureAwait(false);
+                if (applied.Kind == RunicHostedPresentationKind.SetDocumentEdited && result is PlatformResult<PlatformUnit>.Success)
+                    applied.Window.NoteDocumentEdited(applied.Value ?? false);
+                await request.ReplyAsync(Outcome(result)).ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -555,7 +576,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             Height = height ?? defaults.Height,
             MinimumWidth = minimumWidth ?? defaults.MinimumWidth,
             MinimumHeight = minimumHeight ?? defaults.MinimumHeight,
-            Owner = owner?.PresentationOrNull is { IsOpen: true } ownerWindow ? DesktopWindowOwner.FromWindow(ownerWindow) : null,
+            Owner = owner?.OwnerWindow is { IsOpen: true } ownerWindow ? DesktopWindowOwner.FromWindow(ownerWindow) : null,
             Modality = owner is not null && modality == "window" ? DesktopWindowModality.Window : DesktopWindowModality.None,
             AllowedPermissions = permissions & defaults.AllowedPermissions,
         };
@@ -567,6 +588,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         var windowRequest = new RunicHostedWindowRequest(this, id!, type, title, owner, window.IsModal, guardClose, permissions, proposed)
         {
             Locale = locale,
+            CanEmbed = InUse(HostFeatures.Region),
         };
         RunicHostedWindowDecision decision;
         try { decision = await Policy.OpenWindowAsync(windowRequest, _ending.Token).ConfigureAwait(false); }
@@ -579,6 +601,12 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         if (!decision.IsAllowed)
         {
             await request.FailAsync("rejected", "refused", decision.Message ?? "The host's window policy refused the window.").ConfigureAwait(false);
+            return;
+        }
+        // region/1: the window shows in a region of a host page instead (host-protocol.md, Regions).
+        if (decision.Region is not null)
+        {
+            await OpenRegionWindowAsync(request, window, decision, permissions).ConfigureAwait(false);
             return;
         }
         // Whatever the policy chose: an embedded window without fallbacks, whose close the guest decides.
@@ -687,7 +715,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
 
     // The native window closed, for any reason. A window the guest did not close, such as one the host's shutdown
     // closed, closes the guest's Window too.
-    private async Task OnWindowClosedAsync(RunicHostedWindow window, DesktopSurface surface)
+    private async Task OnWindowClosedAsync(RunicHostedWindow window, DesktopSurface? surface)
     {
         lock (_gate)
         {
@@ -703,8 +731,11 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
                 try { _ = await CloseRequestAsync(window, force: true, CancellationToken.None).ConfigureAwait(false); }
                 catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedApplicationChannelFailed(_logger, error, error.GetType().Name); }
             }
-            try { await surface.DisposeAsync().ConfigureAwait(false); }
-            catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
+            if (surface is not null)
+            {
+                try { await surface.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
+            }
         }
         finally
         {

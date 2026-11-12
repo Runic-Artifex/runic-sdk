@@ -113,6 +113,19 @@ internal static partial class DesktopLog
         Message = "{FileName} (standard error): {Line}")]
     internal static partial void HostedGuestError(ILogger logger, string fileName, string line);
 
+    // region/1: a guest's window in a region of a host page.
+    [LoggerMessage(EventId = 2026, EventName = "DesktopHostedRegionAttachFailed", Level = LogLevel.Warning,
+        Message = "{Name} did not attach its window to the region '{Region}' ({Reason}); the window stays open and detached.")]
+    internal static partial void HostedRegionAttachFailed(ILogger logger, string name, string region, string reason);
+
+    [LoggerMessage(EventId = 2027, EventName = "DesktopHostedRegionSameSite", Level = LogLevel.Warning,
+        Message = "{Name} serves the region '{Region}' same-site to the host page, since it cannot listen on the other loopback family: the frame receives the cookies of the host page's origin.")]
+    internal static partial void HostedRegionSameSite(ILogger logger, string name, string region);
+
+    [LoggerMessage(EventId = 2028, EventName = "DesktopHostedRegionFailed", Level = LogLevel.Warning,
+        Message = "A region of a hosted application failed with {ErrorType}.")]
+    internal static partial void HostedRegionFailed(ILogger logger, Exception? exception, string errorType);
+
     [LoggerMessage(EventId = 2023, EventName = "DesktopHostedLocaleFailed", Level = LogLevel.Warning,
         Message = "The application's locale could not follow the host's locale: {ErrorType}.")]
     internal static partial void HostedLocaleFailed(ILogger logger, Exception? exception, string errorType);
