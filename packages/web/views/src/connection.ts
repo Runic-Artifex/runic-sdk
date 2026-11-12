@@ -5,8 +5,9 @@ import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import {
   epochOf, fieldPathsFeature, isObject, presentationEpochFeature, presentedFeature, queryCollectionsFeature, replyError, viewRequestsFeature, type Change, type Message, type Push, type Reply,
 } from "./protocol.js";
-import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
-import { reportBridgeError, waitForBridge } from "./transport.js";
+import { currentRuntime, errorMessage, runtimeSlots, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
+import { reportBridgeError, waitForBridgeIn } from "./transport.js";
+import { currentSlots, type Slots } from "./scope.js";
 import { publishConnectionState } from "./connection-state.js";
 import { reportToInspector } from "./inspector.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
@@ -282,16 +283,19 @@ class RouteEntry {
       runtime.onPush("failure", route, push => {
         const failure = push as Extract<Push, { kind: "failure" }>;
         // The producer withholds the route until its keys are valid; the client keeps its last state.
-        reportBridgeError(replyError(failure.error, route, `The Bridge cannot publish the state of ${route}.`), route);
+        reportBridgeError(this.slots, replyError(failure.error, route, `The Bridge cannot publish the state of ${route}.`), route);
       }),
       runtime.onInvalidPush(route, reading => {
         if (reading.kind !== "state" && reading.kind !== "frame") return;
-        reportBridgeError(new BridgeError("failed", `The Bridge pushed an invalid ${reading.kind} for ${route}: ${reading.reason}`, { route }), route);
+        reportBridgeError(this.slots, new BridgeError("failed", `The Bridge pushed an invalid ${reading.kind} for ${route}: ${reading.reason}`, { route }), route);
         this.recover();
       }),
       runtime.onConnection(connected => { if (connected) this.reopen(); else this.connectionLost(); }),
     ];
   }
+
+  /** The slots of the route's instance. */
+  get slots(): Slots { return runtimeSlots(this.runtime); }
 
   live(): boolean { return this.active && this.runtime.routes.get(this.route) === this; }
 
@@ -306,7 +310,7 @@ class RouteEntry {
     this.waiters.clear();
     this.buffered = [];
     this.endPresent();
-    reportToInspector(() => ({ kind: "closed", route: this.route }));
+    reportToInspector(this.slots, () => ({ kind: "closed", route: this.route }));
   }
 
   /* ------------------------------------------------------------ states */
@@ -355,7 +359,7 @@ class RouteEntry {
     if (!this.live()) return;
     try { this.accept(push.revision, push.state, push.fields, epochOf(push)); }
     catch (cause) {
-      reportBridgeError(new BridgeError("failed", `The Bridge pushed an invalid state for ${this.route}: ${errorMessage(cause)}`,
+      reportBridgeError(this.slots, new BridgeError("failed", `The Bridge pushed an invalid state for ${this.route}: ${errorMessage(cause)}`,
         { cause, route: this.route }), this.route);
     }
   }
@@ -375,7 +379,7 @@ class RouteEntry {
     let next: { state: State; versions: Map<string, number> };
     try { next = this.applyChanges(this.state, push.changes); }
     catch (cause) {
-      reportBridgeError(new BridgeError("failed", `A frame for ${this.route} could not be applied: ${errorMessage(cause)}`,
+      reportBridgeError(this.slots, new BridgeError("failed", `A frame for ${this.route} could not be applied: ${errorMessage(cause)}`,
         { cause, route: this.route }), this.route);
       this.recover();
       return;
@@ -478,10 +482,10 @@ class RouteEntry {
         // connection opens every route again.
         if (!this.live() || error instanceof BridgeError && error.kind === "released") return false;
         if (!this.runtime.connected || error instanceof BridgeError && error.kind === "disconnected" || attempt === recoveryAttempts) {
-          reportBridgeError(error, this.route);
+          reportBridgeError(this.slots, error, this.route);
           return false;
         }
-        emitErrorDiagnostic(error, this.route);
+        emitErrorDiagnostic(this.slots, error, this.route);
         const wait = delay(recoveryDelay * 2 ** (attempt - 1));
         this.backoff = wait;
         await wait.promise;
@@ -534,7 +538,7 @@ class RouteEntry {
     for (const lease of this.presentations) {
       if (lease.disposed) continue;
       void this.open(lease).catch(error => {
-        if (!lease.disposed && this.live()) reportBridgeError(error instanceof BridgeError ? error
+        if (!lease.disposed && this.live()) reportBridgeError(this.slots, error instanceof BridgeError ? error
           : new BridgeError("failed", "The View could not be opened again after a reconnect.", { cause: error, route: this.route }), this.route);
       });
     }
@@ -564,7 +568,7 @@ class RouteEntry {
       const waiter: Waiter = { revision, resolve, timer: undefined };
       waiter.timer = clock.set(() => {
         if (!this.waiters.has(waiter)) return;
-        emitBridgeDiagnostic({
+        emitBridgeDiagnostic(this.slots, {
           kind: "error", code: "revision-timeout", route: this.route,
           message: `The route ${this.route} did not reach revision ${revision} within ${revisionTimeout} ms of the reply that named it; ` +
             "the client reads its state again. A producer that publishes every revision it replies with never causes this.",
@@ -616,7 +620,7 @@ class RouteEntry {
       if (previous === undefined || !Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) {
         this.exposed = next;
         deferNotification(this.deliver);
-        reportToInspector(() => ({
+        reportToInspector(this.slots, () => ({
           kind: "state", route: this.route, revision: this.revision, epoch: this.exposedEpoch,
           presentations: this.presentations.size, state: next,
         }));
@@ -639,10 +643,10 @@ class RouteEntry {
       if (lease.current === exposed) continue;
       lease.current = exposed;
       for (const listener of [...lease.listeners]) {
-        try { listener(exposed); } catch (error) { reportBridgeError(error, this.route); }
+        try { listener(exposed); } catch (error) { reportBridgeError(this.slots, error, this.route); }
       }
       for (const observer of [...lease.observers]) {
-        try { observer(); } catch (error) { reportBridgeError(error, this.route); }
+        try { observer(); } catch (error) { reportBridgeError(this.slots, error, this.route); }
       }
     }
   }
@@ -778,28 +782,30 @@ export function refreshPresentation(client: ViewClient): void {
  * its own subscribers and interaction handlers.
  */
 export async function connectView<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
-  try { return await connectRoute(options); }
+  // The View belongs to the current instance: the page's, or that of the `RunicInstance.run` this call is made in.
+  const slots = currentSlots();
+  try { return await connectRoute(slots, options); }
   catch (error) {
     // The caller aborted the connection; that is not a Bridge failure.
-    if (!isAbort(error, options.signal)) emitErrorDiagnostic(error, options.route);
+    if (!isAbort(error, options.signal)) emitErrorDiagnostic(slots, error, options.route);
     throw error;
   }
 }
 
 // Reports a failure that leaves a client method once, with its route, then rethrows it.
-async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
+async function observed<T>(slots: Slots, route: string, run: () => Promise<T>): Promise<T> {
   try { return await run(); }
-  catch (error) { emitErrorDiagnostic(error, route); throw error; }
+  catch (error) { emitErrorDiagnostic(slots, error, route); throw error; }
 }
 
 const receiptKinds = new Set(["applied", "committed-with-error", "conflict", "rejected"]);
 
-async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
+async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
   const { route, signal } = options;
   throwIfAborted(signal);
-  publishConnectionState();
-  const bridge = await waitForBridge({ ...(options.timeout === undefined ? {} : { timeout: options.timeout }), signal });
-  const runtime = sharedRuntimeFor(bridge);
+  publishConnectionState(slots);
+  const bridge = await waitForBridgeIn(slots, { ...(options.timeout === undefined ? {} : { timeout: options.timeout }), signal });
+  const runtime = sharedRuntimeFor(slots, bridge);
   const existing = runtime.routes.get(route) as RouteEntry | undefined;
   if (existing && existing.contract !== options.contract)
     throw new BridgeError("failed", "This route already has an incompatible Bridge contract.", { route });
@@ -813,7 +819,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   };
   entry.presentations.add(lease);
 
-  const live = () => !lease.disposed && entry.live() && currentRuntime() === runtime;
+  const live = () => !lease.disposed && entry.live() && currentRuntime(slots) === runtime;
   function assertConnected(): void {
     if (!runtime.connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", { route });
     if (!live()) throw new BridgeError("released", "This View was released. Connect its current reference for the current state.", { route });
@@ -824,10 +830,10 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   };
   // The interaction handlers are created before `open`, so a reconnect can send them with it.
   if (options.interactions) lease.interactions = options.interactions({
-    route, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
+    route, slots, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
   });
   if (options.requests) lease.requests = options.requests({
-    route, presentation: lease.id, live, request,
+    route, slots, presentation: lease.id, live, request,
     enabled: () => runtime.features?.has(viewRequestsFeature) === true,
     connection: () => runtime.connection,
     onPush: (kind, handler) => runtime.onPush(kind, route, handler),
@@ -852,7 +858,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     if (lease.registered && runtime.connected) {
       // The producer also closes the presentation with the connection, so a closed transport is expected here.
       void runtime.request({ kind: "close", route, presentation: lease.id }, route).catch(cause => {
-        if (runtime.connected) reportBridgeError(new BridgeError("failed", "The View could not be closed.", { cause, route }), route);
+        if (runtime.connected) reportBridgeError(slots, new BridgeError("failed", "The View could not be closed.", { cause, route }), route);
       });
     }
     lease.registered = false;
@@ -905,7 +911,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     const reply = await request({ kind: "command", route, member, ...(input === undefined ? {} : { input }), ...(epoch === undefined ? {} : { epoch }) });
     // The call resolves like one that ran; the development state inspector shows that it did not (D053.25).
     if (reply.ok && reply["superseded"] === true) {
-      reportToInspector(() => ({ kind: "superseded", route, member, epoch, revision: reply.revision }));
+      reportToInspector(slots, () => ({ kind: "superseded", route, member, epoch, revision: reply.revision }));
     }
     return reply;
   }
@@ -926,7 +932,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     dispose,
     interactions: lease.interactions?.surface ?? {},
     requests: lease.requests?.surface ?? {},
-    set: (member, value) => observed(route, async () => {
+    set: (member, value) => observed(slots, route, async () => {
       assertConnected();
       // The splice is computed against what the page shows before this edit.
       const splice = entry.spliceFor(member, value);
@@ -953,14 +959,14 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       await settled(reply);
       return current();
     }),
-    command: (member, input) => observed(route, async () => {
+    command: (member, input) => observed(slots, route, async () => {
       const reply = await command(member, input);
       if (!reply.ok) return failure(reply, "The command failed.");
       await settled(reply);
       return current();
     }),
     commandOutcome<TFailure>(member: string, decodeFailure: (value: unknown) => TFailure, input?: unknown) {
-      return observed(route, async (): Promise<BridgeOutcome<TState, TFailure>> => {
+      return observed(slots, route, async (): Promise<BridgeOutcome<TState, TFailure>> => {
         const reply = await command(member, input);
         if (!reply.ok && reply.error?.kind === "domain-failed") {
           await settled(reply);
@@ -969,7 +975,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
           catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid failure: ${errorMessage(cause)}`, { cause, route }); }
           // The command failed as declared, but its effects could not be published: report it, so the key
           // problem is not lost behind a resolved outcome.
-          if (reply.error.reason === "state-withheld") reportBridgeError(replyError(reply.error, route), route);
+          if (reply.error.reason === "state-withheld") reportBridgeError(slots, replyError(reply.error, route), route);
           return bridgeFailure(declared);
         }
         if (!reply.ok) return failure(reply, "The command failed.");
@@ -977,7 +983,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         return bridgeSuccess(current());
       });
     },
-    region: (member, action, key) => observed(route, async () => {
+    region: (member, action, key) => observed(slots, route, async () => {
       assertConnected();
       // The features describe the current connection only once its hello succeeded: a call right after a reconnect
       // waits for the new hello instead of reading the empty set of a connection that is still greeting.
@@ -996,12 +1002,12 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       try { return regionOutcome(reply["outcome"]); }
       catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid region outcome: ${errorMessage(cause)}`, { cause, route }); }
     }),
-    can: (member, input) => observed(route, async () => {
+    can: (member, input) => observed(slots, route, async () => {
       const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) });
       if (!reply.ok) throw replyError(reply.error, route, "The command availability could not be read.");
       return reply["value"] as boolean;
     }),
-    write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(route, async (): Promise<FieldWriteReceipt<T>> => {
+    write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(slots, route, async (): Promise<FieldWriteReceipt<T>> => {
       if (write.path !== undefined && runtime.features?.has(fieldPathsFeature) !== true)
         throw new BridgeError("failed", `The .NET host does not accept writes below ${member} (field-paths/1); use the Runic packages of one release.`, { route });
       const identity = { kind: "write", route, member, ...write.path === undefined ? {} : { path: write.path },
@@ -1053,11 +1059,11 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         throw runtime.connected ? new BridgeError("released", "This View was released.", { route }) : new BridgeError("disconnected", "The Bridge is disconnected.", { route });
       return entry.revision;
     },
-    start: (member, operation, input, codec) => observed(route, () => {
+    start: (member, operation, input, codec) => observed(slots, route, () => {
       if (operation.length === 0) throw new RangeError("An operation id is required.");
       return operations().start(operationScope, member, operation, input, codec);
     }),
-    recover: (member, operation, codec) => observed(route, () => operations().recover(operationScope, member, operation, codec)),
+    recover: (member, operation, codec) => observed(slots, route, () => operations().recover(operationScope, member, operation, codec)),
     queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow> {
       // query-collections/1: a producer that completed its hello without the feature does not know the request kinds.
       const supported = () => {
@@ -1070,7 +1076,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         state: () => (isObject(lease.current) ? lease.current[member] : undefined) as QueryCollectionState | undefined,
         onState: observer => { lease.observers.add(observer); return () => { lease.observers.delete(observer); }; },
         request: async message => { supported(); return request(message); },
-        setQuery: query => observed(route, async () => {
+        setQuery: query => observed(slots, route, async () => {
           supported();
           const reply = await request({ kind: "query-set", route, member, query });
           if (!reply.ok) return failure(reply, "The query could not be set.");

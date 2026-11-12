@@ -4,6 +4,7 @@ import {
   type LatestOperationController,
   type LatestOperationState,
 } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 /** Each field of the latest-operation feedback as a signal, with `run` and `clear`. */
 export type LatestOperationHandle<TResult, TFailure = never> =
@@ -34,7 +35,7 @@ export function injectLatestOperation<TResult = void, TFailure = never>(
 ): LatestOperationHandle<TResult, TFailure> {
   if (!provided) assertInInjectionContext(injectLatestOperation);
   const injector = provided ?? inject(Injector);
-  const controller = createLatestOperationController<TResult, TFailure>();
+  const controller = instanceOf(injector).run(() => createLatestOperationController<TResult, TFailure>());
   const state = signal(controller.current);
   controller.subscribe(() => state.set(controller.current));
   injector.get(DestroyRef).onDestroy(() => controller.dispose());

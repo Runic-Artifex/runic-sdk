@@ -10,6 +10,8 @@ import { createMockBridge, installMockBridge } from "../dist/mock.js";
 
 const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
+// The page instance's slots, which internal functions take.
+const page = globalThis as never;
 const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
 // The page's window events: Node has no window, so the test gives globalThis an EventTarget's listeners. Bun runs every
@@ -67,7 +69,7 @@ function installBridge(features: readonly string[]) {
   (host[runtimeKey] as { dispose?: () => void } | undefined)?.dispose?.();
   delete host[runtimeKey];
   host["__runicBridge"] = bridge;
-  sharedRuntimeFor(bridge);
+  sharedRuntimeFor(page, bridge);
   return reports;
 }
 
@@ -84,7 +86,7 @@ test("uncaught errors, rejections and runtime errors are reported with the page 
 
   events.dispatchEvent(errorEvent(thrown));
   events.dispatchEvent(rejection("plain reason"));
-  reportBridgeError(new Error("subscriber failed"), "editor");
+  reportBridgeError(page, new Error("subscriber failed"), "editor");
   await settle(reports, 3);
 
   assert.equal(reports.length, 3);
@@ -100,7 +102,7 @@ test("a runtime error the browser raises again as an error event is reported onc
   const reports = installBridge(["client-errors/1"]);
   uninstall = installErrorReporting();
   const error = new Error("once");
-  reportBridgeError(error);
+  reportBridgeError(page, error);
   events.dispatchEvent(errorEvent(error));
   await settle(reports, 1);
   assert.equal(reports.length, 1);
@@ -154,7 +156,7 @@ test("uninstalling stops reporting", async () => {
   const reports = installBridge(["client-errors/1"]);
   installErrorReporting()();
   events.dispatchEvent(errorEvent(new Error("after")));
-  reportBridgeError(new Error("after"));
+  reportBridgeError(page, new Error("after"));
   await tick(20);
   assert.equal(reports.length, 0);
 });
@@ -164,7 +166,7 @@ test("the mock bridge records client errors", async () => {
   delete host[runtimeKey];
   const mock = installMockBridge(createMockBridge());
   try {
-    sharedRuntimeFor(mock);
+    sharedRuntimeFor(page, mock);
     uninstall = installErrorReporting();
     events.dispatchEvent(errorEvent(new RangeError("out of range")));
     for (let round = 0; round < 50 && mock.clientErrors.length === 0; round++) { await mock.flush(); await tick(1); }

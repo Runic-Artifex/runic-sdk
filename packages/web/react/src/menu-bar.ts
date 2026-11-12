@@ -1,4 +1,5 @@
 import { useEffect, useInsertionEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRunicInstance } from "./instance.js";
 import {
   BridgeError,
   createMenuBarController,
@@ -101,19 +102,21 @@ export function useMenuBar(options: UseMenuBarOptions = {}): MenuBarHandle {
   const { shortcuts, keyboard } = options;
   const onRequest = useRef(options.onRequest);
   useInsertionEffect(() => { onRequest.current = options.onRequest; });
+  const instance = useRunicInstance();
   const [store] = useState(() => createMenuBarStore(shortcuts));
   useEffect(() => {
-    const controller = createMenuBarController({
+    // The menu bar of the component's Runic instance.
+    const controller = instance.run(() => createMenuBarController({
       ...(shortcuts === undefined ? {} : { shortcuts }),
       ...(keyboard === undefined ? {} : { keyboard }),
-    });
+    }));
     controller.onRequest(request => onRequest.current?.(request));
     const detach = store.attach(controller);
     return () => {
       detach();
       controller.dispose();
     };
-  }, [store, shortcuts, keyboard]);
+  }, [instance, store, shortcuts, keyboard]);
   const state = useSyncExternalStore(store.subscribe, store.read, () => store.initial);
   return { state, invoke: store.invoke, handleKeyDown: store.handleKeyDown };
 }

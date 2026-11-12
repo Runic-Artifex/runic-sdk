@@ -17,6 +17,7 @@ export type {
   MenuBarSeparator,
   MenuBarState,
 } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 export interface MenuBarHandle {
   /** The menu bar as the page renders it; render a bar only when `placement` is `"page"`. */
@@ -62,7 +63,7 @@ export function injectMenuBar({ injector: provided, onRequest, ...options }: Inj
       handleKeyDown: () => false,
     };
   }
-  const controller = createMenuBarController(options);
+  const controller = instanceOf(injector).run(() => createMenuBarController(options));
   const state = signal(controller.current);
   controller.subscribe(() => state.set(controller.current));
   if (onRequest) controller.onRequest(onRequest);

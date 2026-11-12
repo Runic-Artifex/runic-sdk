@@ -1,4 +1,5 @@
-import { hostCallbacks, reportBridgeError, type RunicBridgeClient } from "./transport.js";
+import { reportBridgeError, type RunicBridgeClient } from "./transport.js";
+import { bridgeOf, currentSlots, onInstanceDisposed, type Slots } from "./scope.js";
 
 /**
  * The connection between this page and its .NET host.
@@ -22,14 +23,13 @@ export interface BridgeConnectionOptions {
   readonly lostAfter?: number;
 }
 
-type BridgeHost = { __runicBridge?: RunicBridgeClient };
-
 const defaultLostAfter = 5_000;
 // While no Bridge is installed, or a host without `onConnectionChange` has not connected yet.
 const pollInterval = 50;
 
 /**
- * Observes the connection to the .NET host. Calls `listener` with the current state at once,
+ * Observes the current instance's connection to its .NET host (the page's, outside `RunicInstance.run`). Calls
+ * `listener` with the current state at once,
  * then after each change, until the returned function is called.
  *
  * A host script reports a dropped transport as it happens (Runic Desktop and CS-WebUI within
@@ -40,9 +40,13 @@ const pollInterval = 50;
  */
 export function onBridgeConnection(listener: (state: BridgeConnectionState) => void,
   options: BridgeConnectionOptions = {}): () => void {
+  return onBridgeConnectionIn(currentSlots(), listener, options);
+}
+
+function onBridgeConnectionIn(slots: Slots, listener: (state: BridgeConnectionState) => void,
+  options: BridgeConnectionOptions = {}): () => void {
   const lostAfter = options.lostAfter ?? defaultLostAfter;
   if (!Number.isFinite(lostAfter) || lostAfter < 0) throw new RangeError("lostAfter must be a non-negative number of milliseconds.");
-  const host = hostCallbacks() as BridgeHost;
   let state: BridgeConnectionState | undefined;
   let stopped = false;
   // The listener gets the state once the subscription has read it, not each step of reading it.
@@ -54,13 +58,13 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
   // What the host last reported, for when the window's `closed` state ends.
   let connectedNow = false;
   const subscriptions: (() => void)[] = [];
-  const channel = connectionChannel();
+  const channel = connectionChannel(slots);
 
   function publish(next: BridgeConnectionState): void {
     if (stopped || next === state) return;
     state = next;
     if (hidden) return;
-    try { listener(next); } catch (error) { reportBridgeError(error); }
+    try { listener(next); } catch (error) { reportBridgeError(slots, error); }
   }
   function startLostTimer(): void {
     if (lostTimer !== undefined) return;
@@ -94,7 +98,8 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
   function poll(): void {
     pollTimer = undefined;
     if (stopped) return;
-    if (bridge === undefined && host.__runicBridge !== undefined) attach(host.__runicBridge);
+    const installed = bridgeOf(slots);
+    if (bridge === undefined && installed !== undefined) attach(installed);
     if (typeof bridge?.onConnectionChange === "function" || everConnected) return;
     if (bridge?.isConnected()) connectedChanged(true);
     else pollTimer = setTimeout(poll, pollInterval);
@@ -124,8 +129,12 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
   connectedChanged(false);
   poll();
   pageShow();
-  return () => {
+  // A disposed instance stops listening to its Bridge; the listener keeps the last state.
+  const stopWithInstance = onInstanceDisposed(slots, () => stop());
+  return stop;
+  function stop(): void {
     if (stopped) return;
+    stopWithInstance();
     stopped = true;
     clearTimeout(lostTimer);
     clearTimeout(pollTimer);
@@ -133,7 +142,7 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
     channel.closedListeners?.delete(closedChanged);
     target.removeEventListener?.("pagehide", pageHide);
     target.removeEventListener?.("pageshow", pageShow);
-  };
+  }
 }
 
 // The page's connection state on a registered channel, which copies of this package and
@@ -156,36 +165,38 @@ interface ConnectionChannel {
   closedListeners?: Set<(closed: boolean) => void>;
 }
 
-function connectionChannel(): ConnectionChannel {
-  const host = globalThis as unknown as Record<symbol, ConnectionChannel | undefined>;
-  return host[connectionChannelKey] ??= { listeners: new Set() };
+function connectionChannel(slots: Slots): ConnectionChannel {
+  return (slots[connectionChannelKey] ??= { listeners: new Set() }) as ConnectionChannel;
 }
 
-/** @internal The page runtime reports that the application closed the window, and that a new connection opened. */
-export function reportWindowClosed(closed: boolean): void {
-  const channel = connectionChannel();
+/** @internal An instance's runtime reports that the application closed the window, and that a new connection opened. */
+export function reportWindowClosed(slots: Slots, closed: boolean): void {
+  const channel = connectionChannel(slots);
   if ((channel.closed === true) === closed) return;
   channel.closed = closed;
   for (const listener of [...channel.closedListeners ?? []]) {
-    try { listener(closed); } catch (error) { reportBridgeError(error); }
+    try { listener(closed); } catch (error) { reportBridgeError(slots, error); }
   }
 }
 
-export function publishConnectionState(): void {
-  const channel = connectionChannel();
+/** @internal Starts the connection state channel of the instance with `slots`, once. */
+export function publishConnectionState(slots: Slots): void {
+  const channel = connectionChannel(slots);
   if (channel.started) return;
   channel.started = true;
-  onBridgeConnection(state => {
+  onBridgeConnectionIn(slots, state => {
     channel.state = state;
     for (const listener of [...channel.listeners]) {
-      try { listener(state); } catch (error) { reportBridgeError(error); }
+      try { listener(state); } catch (error) { reportBridgeError(slots, error); }
     }
   });
 }
 
-// A development client that loaded first has set `requested`; one that loads later calls `start`.
+// A development client that loaded first has set `requested`; one that loads later calls `start`. Only on the page:
+// another instance's channel is started by its first View.
 {
-  const channel = connectionChannel();
-  channel.start ??= publishConnectionState;
-  if (channel.requested) publishConnectionState();
+  const page = globalThis as unknown as Slots;
+  const channel = connectionChannel(page);
+  channel.start ??= () => publishConnectionState(page);
+  if (channel.requested) publishConnectionState(page);
 }

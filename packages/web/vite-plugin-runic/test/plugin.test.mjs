@@ -812,6 +812,7 @@ async function load(path, identifier, meta) {
 }
 const views = "../views/dist/";
 const errors = await load(views + "errors.js", "views/errors");
+await load(views + "scope.js", "views/scope");
 const diagnosticsModule = await load(views + "diagnostics.js", "views/diagnostics");
 const lifetime = await load(views + "lifetime.js", "views/lifetime");
 const version = await load(views + "version.js", "views/version");
@@ -839,7 +840,7 @@ await client.link(link("plugin"));
 await client.evaluate();
 await transport.evaluate();
 const { BridgeError } = errors.namespace;
-diagnosticsModule.namespace.emitErrorDiagnostic(new BridgeError("failed", "Save failed.", {
+diagnosticsModule.namespace.emitErrorDiagnostic(context, new BridgeError("failed", "Save failed.", {
   route: "editorSave",
   detail: {
     type: "System.InvalidOperationException",
@@ -855,7 +856,7 @@ context.__runicBridge = {
   onConnectionChange(listener) { listener(true); return () => {}; },
 };
 await connectionState.evaluate();
-connectionState.namespace.publishConnectionState();
+connectionState.namespace.publishConnectionState(context);
 process.stdout.write(JSON.stringify(sent));
 `;
   const { stdout } = await execFile(process.execPath, [
@@ -890,6 +891,7 @@ async function load(path, identifier, meta) {
 const views = "../views/dist/";
 const loaded = [
   await load(views + "errors.js", "views/errors"),
+  await load(views + "scope.js", "views/scope"),
   await load(views + "diagnostics.js", "views/diagnostics"),
   await load(views + "lifetime.js", "views/lifetime"),
   await load(views + "version.js", "views/version"),

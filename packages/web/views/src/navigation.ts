@@ -5,7 +5,8 @@ import { navigationPathFeature } from "./navigation-feature.js";
 import { replyError, type Push } from "./protocol.js";
 import { regionOutcome, type RegionOutcome } from "./regions.js";
 import { sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
-import { reportBridgeError, waitForBridge } from "./transport.js";
+import { reportBridgeError, waitForBridgeIn } from "./transport.js";
+import { currentSlots, runInSlots, type Slots } from "./scope.js";
 
 export { navigationPathFeature };
 
@@ -29,16 +30,21 @@ export interface NavigationPathChange {
   readonly operation: NavigationPathOperation;
 }
 
-async function greetedRuntime(signal?: AbortSignal): Promise<SharedRuntime> {
-  const runtime = sharedRuntimeFor(await waitForBridge(signal ? { signal } : {}));
+async function greetedRuntime(slots: Slots, signal?: AbortSignal): Promise<SharedRuntime> {
+  const runtime = sharedRuntimeFor(slots, await waitForBridgeIn(slots, signal ? { signal } : {}));
   await runtime.whenGreeted?.();
   if (runtime.features?.has(navigationPathFeature) !== true)
     throw new BridgeError("failed", "The .NET host does not implement navigation-path/1. Use the Runic packages of one release.");
   return runtime;
 }
 
-async function navigation(message: Record<string, unknown>): Promise<NavigationReply> {
-  const runtime = await greetedRuntime();
+// A request of the current instance's window.
+function navigation(message: Record<string, unknown>): Promise<NavigationReply> {
+  return navigationIn(currentSlots(), message);
+}
+
+async function navigationIn(slots: Slots, message: Record<string, unknown>): Promise<NavigationReply> {
+  const runtime = await greetedRuntime(slots);
   const reply = await runtime.request({ kind: "navigation", ...message });
   if (!reply.ok) throw replyError(reply.error, undefined, "The navigation request failed.");
   const path = reply["path"];
@@ -72,16 +78,17 @@ export function openNavigationPath(path: string): Promise<NavigationReply> {
  * that stops listening.
  */
 export function onNavigationPath(listener: (change: NavigationPathChange) => void): () => void {
+  const slots = currentSlots();
   const lifetime = new AbortController();
   const stops: (() => void)[] = [];
   const call = (change: NavigationPathChange) => {
-    try { listener(change); } catch (error) { reportBridgeError(error); }
+    try { listener(change); } catch (error) { reportBridgeError(slots, error); }
   };
   void (async () => {
     let runtime: SharedRuntime;
-    try { runtime = await greetedRuntime(lifetime.signal); }
+    try { runtime = await greetedRuntime(slots, lifetime.signal); }
     catch (error) {
-      if (!lifetime.signal.aborted) reportBridgeError(error);
+      if (!lifetime.signal.aborted) reportBridgeError(slots, error);
       return;
     }
     if (lifetime.signal.aborted) return;
@@ -171,9 +178,10 @@ export function installBackNavigation(options: BackNavigationOptions = {}): () =
   const page = options.window ?? (globalThis as unknown as { window?: NavigationWindow }).window;
   if (!page) return () => {};
   const macOS = options.macOS ?? detectMacOS();
+  const slots = currentSlots();
   const back = () => {
     if (historyBack?.()) return;
-    void navigateBack().catch(reportBridgeError);
+    void navigationIn(slots, { action: "back" }).catch(error => reportBridgeError(slots, error));
   };
   const onKey = (event: BackKeyEvent) => {
     if (event.defaultPrevented) return;
@@ -248,6 +256,8 @@ export function installNavigationPath(options: NavigationPathOptions = {}): () =
   const page = options.window ?? (globalThis as unknown as { window?: NavigationWindow }).window;
   if (!page) return () => {};
   const prefix = options.prefix ?? "#/";
+  const slots = currentSlots();
+  const report = (error: unknown) => reportBridgeError(slots, error);
   // The path each entry shows, by index, as far as this page knows.
   const paths = new Map<number, string | null>();
   const loaded = recordOf(page.history.state);
@@ -334,8 +344,8 @@ export function installNavigationPath(options: NavigationPathOptions = {}): () =
       else replace(reply.path);
     };
     // An entry without a route path, such as a home page without a route: the window goes back to it.
-    const request = path === null ? navigateBack() : openNavigationPath(path);
-    void request.then(settle, reportBridgeError);
+    const request = navigationIn(slots, path === null ? { action: "back" } : { action: "open", path });
+    void request.then(settle, report);
   };
 
   // The window reports its path: when the connection starts, or when its path region becomes available later. The first
@@ -347,11 +357,11 @@ export function installNavigationPath(options: NavigationPathOptions = {}): () =
     first = false;
     if (loaded || linked === undefined || linked === null || linked === change.path) return replace(change.path);
     paths.set(index, linked);
-    void openNavigationPath(linked).then(reply => {
+    void navigationIn(slots, { action: "open", path: linked }).then(reply => {
       if (disposed || reply.path === undefined) return;
       if (reply.path !== linked) replace(reply.path);
       else confirmed = index;
-    }, reportBridgeError);
+    }, report);
   };
 
   page.addEventListener("popstate", onPop);

@@ -5,6 +5,7 @@
 import { BridgeError } from "./errors.js";
 import type { Message, Push, Reply } from "./protocol.js";
 import { reportBridgeError } from "./transport.js";
+import type { Slots } from "./scope.js";
 
 /** What a view request handler receives besides its input. */
 export interface BridgeViewRequestContext {
@@ -43,6 +44,8 @@ export interface ViewRequestDefinition {
 /** The presentation one set of view request handlers belongs to. Created by `connectView`. */
 export interface ViewRequestScope {
   readonly route: string;
+  /** @internal The slots of the View's Runic instance. */
+  readonly slots: Slots;
   /** The presentation id, which stays the same across reconnects. */
   readonly presentation: string;
   /** The presentation is not disposed and its route is open. */
@@ -187,19 +190,19 @@ class ViewRequestRuntime implements ViewRequestSession {
         reply = await this.scope.request({ kind: "view-requests", route: this.scope.route, presentation: this.scope.presentation, generation, requests });
       } catch (cause) {
         if (cause instanceof BridgeError && (cause.kind === "disconnected" || cause.kind === "released") || !this.isOpen()) return;
-        reportBridgeError(cause instanceof BridgeError ? cause
+        reportBridgeError(this.scope.slots, cause instanceof BridgeError ? cause
           : new BridgeError("failed", "The view request handlers could not be registered.", { cause, route: this.scope.route }), this.scope.route);
         return;
       }
       if (!reply.ok) {
         if (reply.error?.kind !== "released" && this.isOpen())
-          reportBridgeError(new BridgeError("failed", reply.error?.message ?? "The view request handlers could not be registered.",
+          reportBridgeError(this.scope.slots, new BridgeError("failed", reply.error?.message ?? "The view request handlers could not be registered.",
             { route: this.scope.route }), this.scope.route);
         return;
       }
       // `stale`: a newer registration is on its way; `ignored`: the presentation closed on this connection meanwhile.
       if (reply["registration"] === "unsupported")
-        reportBridgeError(new BridgeError("failed",
+        reportBridgeError(this.scope.slots, new BridgeError("failed",
           `The producer does not support the view requests ${requests.map(request => request.name).join(", ")} of ${this.scope.route}: ` +
           "the page and the .NET host were generated from different contracts.", { route: this.scope.route }), this.scope.route);
     });
@@ -229,7 +232,7 @@ class ViewRequestRuntime implements ViewRequestSession {
     let input: unknown;
     try { input = definition.decodeInput(wire); }
     catch (cause) {
-      reportBridgeError(new BridgeError("failed", `The ${handler.name} view request has an invalid input: ${cause instanceof Error ? cause.message : String(cause)}`,
+      reportBridgeError(this.scope.slots, new BridgeError("failed", `The ${handler.name} view request has an invalid input: ${cause instanceof Error ? cause.message : String(cause)}`,
         { cause, route: this.scope.route }), this.scope.route);
       return;
     }
@@ -243,11 +246,11 @@ class ViewRequestRuntime implements ViewRequestSession {
     };
     let result: unknown;
     try { result = handler.handle(input, { signal: controller.signal }); }
-    catch (error) { done(); reportBridgeError(error, this.scope.route); return; }
+    catch (error) { done(); reportBridgeError(this.scope.slots, error, this.scope.route); return; }
     if (result !== null && typeof result === "object" && typeof (result as PromiseLike<unknown>).then === "function")
       Promise.resolve(result).then(done, error => {
         // A handler that stops because its signal aborted is not a failure.
-        if (!controller.signal.aborted) reportBridgeError(error, this.scope.route);
+        if (!controller.signal.aborted) reportBridgeError(this.scope.slots, error, this.scope.route);
         done();
       });
     else done();

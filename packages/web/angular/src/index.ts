@@ -26,6 +26,10 @@ export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeC
 export { injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal, type InjectTextOptions } from "./inject-text.js";
 export { injectAppearance, type InjectAppearanceOptions } from "./inject-appearance.js";
 export {
+  injectRunicInstance, provideRunicInstance, RUNIC_INSTANCE, type InjectRunicInstanceOptions,
+} from "./instance.js";
+export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstanceOptions } from "@runic-artifex/views";
+export {
   configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, syncDocumentLocale, textDirection,
   windowLocale, type DocumentLocaleOptions, type FieldErrorArguments, type FieldErrorReason, type FieldErrorText,
   type TextReference, type TextTranslations,
