@@ -999,12 +999,13 @@ listener of the loopback family that the [guest origin](#guest-origin) rule choo
    a `Referer`.
 3. **The page keeps it.** The guest's page script reads the token before any other script of the page runs, removes
    it from the address (`history.replaceState`), and keeps it in `sessionStorage` under a key that names its surface's
-   path, so a reload of the frame, or of its crashed content process, reconnects. It offers the token where a page
-   bound by a launch code offers its binding cookie: with its bootstrap request and its Bridge WebSocket upgrade, never
-   in a URL's path or query.
-4. **One page at a time.** A token admits one connected page at a time: a bootstrap request or a WebSocket upgrade
-   with the token, while a page that it admitted is connected, is refused with 403. A reload, whose page connects after
-   the old connection closed, is admitted.
+   path, so a reload of the frame, or of its crashed content process, reconnects. It offers the token only with its
+   Bridge WebSocket upgrade, as the subprotocol `Sec-WebSocket-Protocol: runic-desktop.<token>`, never in a URL's path
+   or query. A frame surface's bootstrap script carries no credential and needs no token: a `<script src>` cannot send
+   a header, and the surface's session credential never leaves the guest process.
+4. **One page at a time.** A token admits one connected page at a time: a WebSocket upgrade with the token, while a
+   page that it admitted is connected, is refused with 403. A reload, whose page connects after the old connection
+   closed, is admitted.
 5. **Launch conflict.** When a spent code is presented again, the guest revokes the token: it closes the page's
    connections, refuses the token from then on, answers 403, pushes `region-page` `revoked` and reports
    `frame-launch-conflict` to its diagnostics. Neither client keeps the surface, as with a browser launch conflict.
