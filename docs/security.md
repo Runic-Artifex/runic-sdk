@@ -286,7 +286,8 @@ experimental (`RUNICDESK103`). What Runic enforces:
 - **No elevated guests, no orphans.** A guest refuses hosted mode when it runs elevated, or when it cannot show that
   it runs as the same user as its parent: it compares real and effective user ids on Linux and macOS and the token's
   user on Windows, also checking that its parent is not a newer process that reused a gone parent's id, and refuses
-  when it cannot read its parent's. It exits when its host goes away and never shows a window of its own; the host
+  when it cannot read its parent's. The one exception, the elevated pair, needs both sides to opt in; see
+  [elevated hosts and guests](#elevated-hosts-and-guests). It exits when its host goes away and never shows a window of its own; the host
   ends the guest's process tree when it stops. On Windows that tree is a job object that ends with the host, also when
   the host crashes; on Linux and macOS a host that crashes leaves its guests to exit on the end of their standard
   input.
@@ -470,6 +471,54 @@ and opens them with its own rights. Where the operating system grants access thr
 guest (an App Sandbox on macOS, a Flatpak or Snap on Linux) can receive paths it cannot open, or a host can return
 paths that only it could open; the guest then reports the error of the open. Run hosts and guests that use dialogs
 unsandboxed, or with the same file access.
+
+### Elevated hosts and guests
+
+Administrative tools whose host and guest both need administrator rights, such as an installer that hosts a check
+tool, can opt into the **elevated pair**: the host sets `RunicGuestStartInfo.AllowElevatedGuest` and the guest
+`RunicGuestOptions.AllowElevatedHost`. A guest started by an elevated process inherits its elevation. What Runic
+enforces:
+
+- **Only this pair.** An elevated guest is hosted only when its parent process, the one that started it and not a newer
+  process that reused its id, runs as the same user and runs elevated itself: on Windows its token is elevated or has
+  an integrity level of High or above, on Linux and macOS its effective user id is 0. The guest reads this from its
+  parent's token or user ids; the offer's opt-in only says that the host allows it, and never counts as evidence. An
+  elevated guest without its own opt-in, or whose host did not allow it, refuses with `guest-elevated` as before; one
+  whose parent does not run elevated refuses with `guest-elevated-host-not-elevated`; one whose parent is another
+  user, or cannot be read, with `guest-other-user`. The guest logs the accepted pair as event 2025.
+- **Only an elevated host.** A host that does not run elevated cannot allow an elevated guest: the start fails with
+  `host-not-elevated` before any process starts. The host starts an elevated guest only from a fully qualified path,
+  never by looking it up in `PATH` or the current directory.
+
+What the user's processes that do not run elevated can still do, and what they cannot:
+
+- **Read the pair's secrets: no.** The nonce, the channel key and the Windows' launch codes travel only on the pipes
+  between the two elevated processes and over the authenticated channel. On Windows a process of Medium integrity
+  cannot read the memory of a High-integrity process or duplicate its handles, and UIPI keeps it from sending most
+  window messages or input to the elevated windows. On Linux and macOS a process that does not run as root cannot
+  trace a root process or read its memory, open file descriptors or environment; it can still see its command line
+  and that it runs, so never pass a secret there.
+- **Reach the guest's listeners: yes, without effect.** Any local process can connect to the guest's loopback channel
+  listener and its surfaces. The channel refuses a connection without the key and the host proof, and stops listening
+  once the host connected; a surface admits only the client that used a launch code, and on Linux refuses another
+  user's process outright. Such a process can occupy the channel's unauthenticated connections until the host
+  connects, as another user can (threat T12).
+- **See and copy: yes.** It can capture the screen the elevated windows draw on and read the clipboard, which the host
+  serves the guest as for any guest.
+- **Become the host through a launcher: only with the user's consent.** The guest checks who its parent is, not where
+  its standard input and output lead. An elevating launcher that relays another process's pipes, such as `sudo` in a
+  pipeline on Linux and macOS, or Windows `sudo` in inline mode, makes the launcher the elevated parent and the
+  unelevated process at the other end of the pipes the host. Starting it takes the user's authentication, as any
+  elevation does.
+- **Replace what the host starts: only if the location allows it.** The elevated guest runs whatever the executable,
+  and the libraries its runtime loads from its directory, contain. Install host and guest where only administrators or
+  root can write, such as `Program Files` or a root-owned directory, never in the user's profile, `Downloads` or a
+  temporary directory: a process that can replace the guest's files runs code with the guest's rights. Runic checks
+  that the path is fully qualified, not who can write to it.
+- **Read the guest's pages in the host's web view: as far as the engine prevents it.** The elevated host's web view
+  starts its processes from the host's token; the engine's own sandboxed processes, such as WebView2's renderers, run
+  with fewer rights than the host, and how far the operating system keeps unelevated processes out of them is the
+  engine's design, not Runic's.
 
 ## CS-WebUI windows
 

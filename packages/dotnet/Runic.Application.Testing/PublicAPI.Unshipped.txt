@@ -29,3 +29,5 @@
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.AttachComponentAsync(string! embedder, bool allowSameSite = true, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestComponent!>!
 [RUNICDESK103]static Runic.Application.Testing.RunicTestComponent.operator !=(Runic.Application.Testing.RunicTestComponent? left, Runic.Application.Testing.RunicTestComponent? right) -> bool
 [RUNICDESK103]static Runic.Application.Testing.RunicTestComponent.operator ==(Runic.Application.Testing.RunicTestComponent? left, Runic.Application.Testing.RunicTestComponent? right) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.init -> void

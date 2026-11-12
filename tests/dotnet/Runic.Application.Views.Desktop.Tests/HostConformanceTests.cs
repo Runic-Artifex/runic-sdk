@@ -352,7 +352,7 @@ internal sealed class HostConformanceTests
                 RequestTimeout = Limit("requestTimeout", HostProtocol.RequestTimeout),
                 MaximumWaitingRequests = Limits["waitingRequests"]?.GetValue<int>() ?? HostProtocol.MaximumWaitingRequests,
                 ExitProcess = code => _exits.Enqueue(code),
-                CheckPrivileges = static () => null,
+                ReadPrivileges = static () => GuestPrivilegeFacts.StandardUser,
                 // region-component/1: the test application allows component embedding only when the scenario says so.
                 AllowComponentEmbedding = application["allowComponentEmbedding"]?.GetValue<bool>() == true ? static _ => true : null,
             };

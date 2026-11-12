@@ -29,8 +29,15 @@ internal static class HostedGuestProgram
         if (string.Equals(Path.GetFileNameWithoutExtension(path), "dotnet", StringComparison.OrdinalIgnoreCase))
             all.Add(typeof(HostedGuestProgram).Assembly.Location);
         all.AddRange(arguments);
-        return new RunicGuestStartInfo(path, all) { WorkingDirectory = AppContext.BaseDirectory };
+        return new RunicGuestStartInfo(path, all) { WorkingDirectory = AppContext.BaseDirectory, AllowElevatedGuest = ElevatedPair };
     }
+
+    // RUNIC_TEST_ELEVATED_PAIR=1, in the elevated Windows CI step (ElevatedHostedApplicationTests): the host cases run as an
+    // elevated host that allows its elevated guests, which allow an elevated host. Test code only: the guest's own check
+    // of its parent decides, as always.
+    internal const string ElevatedPairVariable = "RUNIC_TEST_ELEVATED_PAIR";
+
+    internal static bool ElevatedPair => Environment.GetEnvironmentVariable(ElevatedPairVariable) == "1";
 
     internal static RunicGuestStartInfo Guest(string mode) => StartInfo(Argument, mode);
 
@@ -96,6 +103,9 @@ internal static class HostedGuestProgram
                         ApplicationId = ApplicationId,
                         // The component mode allows component embedding by every host.
                         AllowComponentEmbedding = mode == "component" ? static _ => true : null,
+                        // Every mode but "no-elevated-host" allows an elevated host: an elevated guest is then hosted only
+                        // by an elevated parent of its user whose offer allows it.
+                        AllowElevatedHost = mode != "no-elevated-host",
                     },
                 },
                 host => BodyAsync(host, mode));
@@ -114,6 +124,7 @@ internal static class HostedGuestProgram
             case "main":
             case "media":
             case "component":
+            case "no-elevated-host":
             {
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
                 await window.WaitForCloseAsync();

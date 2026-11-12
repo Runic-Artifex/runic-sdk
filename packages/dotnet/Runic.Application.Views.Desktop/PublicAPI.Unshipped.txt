@@ -93,3 +93,7 @@
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(Runic.Application.Views.IRunicWindow! hostWindow, string! region) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(string! region, Runic.Application.Views.Desktop.RunicHostedRegionOptions! options) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(string! region) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowElevatedHost.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowElevatedHost.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.AllowElevatedGuest.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestStartInfo.AllowElevatedGuest.init -> void

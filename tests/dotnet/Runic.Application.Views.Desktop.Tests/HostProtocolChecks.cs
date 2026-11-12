@@ -52,6 +52,50 @@ internal sealed class HostProtocolChecks
         Check(HostProtocol.ReadOffer(Offer(new JsonArray([.. Enumerable.Range(1, 17).Select(static v => (JsonNode)v)]))) is null, "17 versions");
         Check(HostProtocol.ParseLine("RUNIC_HOST_OFFER=[1]", HostProtocol.OfferPrefix) is null, "an array instead of an object");
         Check(HostProtocol.ParseLine(" RUNIC_HOST_OFFER={}", HostProtocol.OfferPrefix) is null, "a prefix not at the start of the line");
+
+        // elevatedGuest, the host's opt-in to an elevated guest: only true opts in.
+        static JsonObject With(JsonNode? elevatedGuest)
+        {
+            var offer = Offer(new JsonArray(1));
+            offer["elevatedGuest"] = elevatedGuest;
+            return offer;
+        }
+        Check(HostProtocol.ReadOffer(Offer(new JsonArray(1))) is { ElevatedGuest: false }, "an offer without elevatedGuest");
+        Check(HostProtocol.ReadOffer(With(true)) is { ElevatedGuest: true }, "elevatedGuest true");
+        Check(HostProtocol.ReadOffer(With(false)) is { ElevatedGuest: false }, "elevatedGuest false");
+        Check(HostProtocol.ReadOffer(With("true")) is { ElevatedGuest: false }, "elevatedGuest as a string");
+        Check(HostProtocol.ReadOffer(With(1)) is { ElevatedGuest: false }, "elevatedGuest as a number");
+        Check(HostProtocol.ReadOffer(With(null)) is { ElevatedGuest: false }, "elevatedGuest null");
+        Check(!HostProtocol.Offer([1], Key, "Host", "1.0").ContainsKey("elevatedGuest"), "an offer that does not opt in names no elevatedGuest");
+        Check(HostProtocol.ReadOffer(HostProtocol.Offer([1], Key, "Host", "1.0", elevatedGuest: true)) is { ElevatedGuest: true },
+            "an offer that opts in");
+    }
+
+    // host-protocol.md, Elevated host: the one elevated pair both sides allowed is hosted; every other combination keeps
+    // its refusal.
+    [Test]
+    public void OnlyTheElevatedPairBothSidesAllowIsHosted()
+    {
+        static string? Code(bool elevated, bool sameUser, bool parentElevated, bool guestAllows, bool hostAllows) =>
+            GuestPrivileges.Decide(new GuestPrivilegeFacts(elevated, sameUser, parentElevated), guestAllows, hostAllows).Code;
+        // Not elevated: as before, whatever the opt-ins say.
+        Check(Code(false, true, false, false, false) is null, "a standard user's guest");
+        Check(Code(false, true, false, true, true) is null, "a standard user's guest that allows an elevated host");
+        Check(Code(false, true, true, true, true) is null, "a standard user's guest of an elevated parent");
+        Check(Code(false, false, false, true, true) == "guest-other-user", "a standard user's guest of another user's parent");
+        // Elevated without both opt-ins.
+        Check(Code(true, true, true, false, false) == "guest-elevated", "an elevated pair without opt-ins");
+        Check(Code(true, true, true, false, true) == "guest-elevated", "an elevated guest that does not allow an elevated host");
+        Check(Code(true, true, true, true, false) == "guest-elevated", "a host whose offer does not allow an elevated guest");
+        Check(Code(true, false, false, false, false) == "guest-elevated", "an elevated guest of another user's parent, without opt-ins");
+        // Elevated with both opt-ins: the parent decides.
+        Check(Code(true, false, false, true, true) == "guest-other-user", "another user's parent, or one that reused the gone parent's id");
+        Check(Code(true, false, true, true, true) == "guest-other-user", "another user's elevated parent");
+        Check(Code(true, true, false, true, true) == "guest-elevated-host-not-elevated", "an unelevated parent of the same user");
+        Check(Code(true, true, true, true, true) is null, "the elevated pair");
+        Check(GuestPrivileges.Decide(new GuestPrivilegeFacts(true, true, true), true, true).Message is { Length: > 0 },
+            "the elevated pair's decision for event 2025");
+        Check(GuestPrivileges.Decide(GuestPrivilegeFacts.StandardUser, true, true).Message is null, "a standard user's guest logs no elevation decision");
     }
 
     [Test]
@@ -90,7 +134,55 @@ internal sealed class HostProtocolChecks
         Check(!GuestPrivileges.SameUserOnLinux(Proc(null, null)), "no /proc");
         Check(!GuestPrivileges.SameUserOnLinux(Proc(Self, "Name:\thost\nUid:\t1000")), "a parent status without an effective uid");
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-            Check(GuestPrivileges.Check() is null || Environment.IsPrivilegedProcess, "this test process, started by its own user, passes");
+            Check(GuestPrivileges.Decide(GuestPrivileges.Read(), false, false).Code is null || Environment.IsPrivilegedProcess,
+                "this test process, started by its own user, passes");
+    }
+
+    // host-protocol.md, Elevated host, on Linux: the parent of the same read runs elevated when its effective uid is 0;
+    // the same-user rules still apply, so a setuid guest or parent fails.
+    [Test]
+    public void TheLinuxParentElevationComesFromTheSameUserCheck()
+    {
+        static Func<string, string[]?> Proc(string? self, string? parent) => path => path switch
+        {
+            "/proc/self/status" => self?.Split('\n'),
+            "/proc/4242/status" => parent?.Split('\n'),
+            _ => null,
+        };
+        const string Root = "Name:\tguest\nPPid:\t4242\nUid:\t0\t0\t0\t0";
+        Check(GuestPrivileges.ParentOnLinux(Proc(Root, "Name:\thost\nUid:\t0\t0\t0\t0")) == new GuestPrivileges.ParentFacts(true, true),
+            "a root guest of a root parent");
+        Check(GuestPrivileges.ParentOnLinux(Proc(Root, "Name:\thost\nUid:\t1000\t1000\t1000\t1000")) == default,
+            "a root guest of a standard user's parent");
+        Check(GuestPrivileges.ParentOnLinux(Proc(Root, "Name:\thost\nUid:\t1000\t0\t0\t0")) == default,
+            "a root guest of a setuid parent (its real uid is a standard user's)");
+        Check(GuestPrivileges.ParentOnLinux(Proc("PPid:\t4242\nUid:\t1000\t0\t0\t0", "Uid:\t0\t0\t0\t0")) == default,
+            "a setuid guest of a root parent");
+        Check(GuestPrivileges.ParentOnLinux(Proc("PPid:\t1\nUid:\t0\t0\t0\t0", "Uid:\t0\t0\t0\t0")) == default,
+            "a root guest whose parent is gone (reparented to init)");
+        Check(GuestPrivileges.ParentOnLinux(Proc(Root, null)) == default, "a parent that cannot be read");
+        Check(GuestPrivileges.ParentOnLinux(Proc("PPid:\t4242\nUid:\t1000\t1000\t1000\t1000", "Uid:\t1000\t1000\t1000\t1000")) ==
+            new GuestPrivileges.ParentFacts(true, false), "a standard user's pair");
+    }
+
+    // host-protocol.md, Elevated host, on Windows: the elevation of the verified parent, read while it was held open.
+    [Test]
+    public void TheWindowsParentElevationIsTheVerifiedParents()
+    {
+        byte[] user = [1, 5, 0, 0, 0, 0, 0, 5, 21, 0, 0, 0, 1, 2, 3, 4];
+        byte[] other = [1, 5, 0, 0, 0, 0, 0, 5, 21, 0, 0, 0, 9, 9, 9, 9];
+        var self = new GuestPrivileges.WindowsProcessIdentity(1_000, user, Elevated: true);
+        static Func<int, GuestPrivileges.WindowsProcessIdentity?> Parent(GuestPrivileges.WindowsProcessIdentity? identity) => id => id == 4242 ? identity : null;
+        GuestPrivileges.ParentFacts Facts(GuestPrivileges.WindowsProcessIdentity? parent) => GuestPrivileges.ParentOnWindows(() => self, () => 4242, Parent(parent));
+        Check(Facts(new(900, [.. user], Elevated: true)) == new GuestPrivileges.ParentFacts(true, true), "an elevated parent of the same user");
+        Check(Facts(new(900, [.. user], Elevated: false)) == new GuestPrivileges.ParentFacts(true, false),
+            "an unelevated parent of the same user (the elevated token's user is the unelevated one's)");
+        Check(Facts(new(1_100, [.. user], Elevated: true)) == default, "an elevated process that reused the gone parent's id");
+        Check(Facts(new(900, other, Elevated: true)) == default, "another user's elevated parent");
+        Check(Facts(null) == default, "a parent that is gone or whose token cannot be read");
+        if (OperatingSystem.IsWindows())
+            Check(Runic.Application.Views.Desktop.Hosting.WindowsProcesses.Self() is { } own && own.Elevated == Environment.IsPrivilegedProcess,
+                "this process's own token elevation, as .NET sees it");
     }
 
     // host-protocol.md, Same user, on Windows: equal TokenUser SIDs, a parent created before this process (else its id

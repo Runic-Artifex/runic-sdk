@@ -360,8 +360,12 @@ internal static class HostedSmoke
         if (string.Equals(Path.GetFileNameWithoutExtension(path), "dotnet", StringComparison.OrdinalIgnoreCase))
             arguments.Add(Path.GetFullPath(Environment.GetCommandLineArgs()[0]));
         arguments.AddRange([GuestArgument, name, behaviour]);
-        return new RunicGuestStartInfo(path, arguments) { WorkingDirectory = AppContext.BaseDirectory };
+        // --elevated-pair: an elevated host allows its guests to run elevated, as they inherit its elevation.
+        return new RunicGuestStartInfo(path, arguments) { WorkingDirectory = AppContext.BaseDirectory, AllowElevatedGuest = ElevatedPair };
     }
+
+    // Whether the smoke runs as an elevated host of elevated guests (--elevated-pair, Program.cs).
+    internal static bool ElevatedPair { get; set; }
 
     // A guest: one Window, whose open waits for its page to connect in the host's window. It reports what the page sees
     // on its standard output, which the host logs.
@@ -382,6 +386,8 @@ internal static class HostedSmoke
                         ApplicationName = "Hosted smoke " + name,
                         ApplicationVersion = "1.0.0",
                         ApplicationId = "dev.runic.smoke.hosted-" + name,
+                        // An elevated guest is hosted only by an elevated parent of its user that allows it.
+                        AllowElevatedHost = true,
                     },
                 },
                 async host =>
