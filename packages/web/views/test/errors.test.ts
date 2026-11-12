@@ -222,12 +222,12 @@ test("an error is reported once across copies of the package", async () => {
     const a = await import(pathToFileURL(join(directory, "a/diagnostics.js")).href) as Diagnostics;
     const b = await import(pathToFileURL(join(directory, "b/diagnostics.js")).href) as Diagnostics;
     const error = new BridgeError("failed", "once", { route: "counter" });
-    a.emitErrorDiagnostic(error);
-    b.emitErrorDiagnostic(error);
+    a.emitErrorDiagnostic(globalThis as never, error);
+    b.emitErrorDiagnostic(globalThis as never, error);
     assert.equal(diagnostics.filter(diagnostic => diagnostic.error === error).length, 1);
     const frozen = Object.freeze(new Error("frozen"));
-    a.emitErrorDiagnostic(frozen);
-    a.emitErrorDiagnostic(frozen);
+    a.emitErrorDiagnostic(globalThis as never, frozen);
+    a.emitErrorDiagnostic(globalThis as never, frozen);
     assert.equal(diagnostics.filter(diagnostic => diagnostic.error === frozen).length, 1);
   } finally {
     restore();

@@ -5,6 +5,7 @@ import { clock } from "./clock.js";
 import { BridgeError } from "./errors.js";
 import type { Message, Push, Reply } from "./protocol.js";
 import { reportBridgeError } from "./transport.js";
+import type { Slots } from "./scope.js";
 
 export interface BridgeInteractionContext {
   /** Aborts when the producer cancels the request, the handler is replaced, or the View is disposed. */
@@ -25,6 +26,8 @@ export interface InteractionSurface {
 /** The presentation one set of interaction handlers belongs to. Created by `connectView`. */
 export interface InteractionScope {
   readonly route: string;
+  /** @internal The slots of the View's Runic instance. */
+  readonly slots: Slots;
   /** The presentation id, which stays the same across reconnects. */
   readonly presentation: string;
   /** The presentation is not disposed and its route is open. */
@@ -208,12 +211,12 @@ class InteractionRuntime implements InteractionSession {
         ...(outcome === "answered" ? { output } : {}),
       });
       if (reply.ok && reply["result"] === "invalid-output")
-        reportBridgeError(new BridgeError("failed", `The ${request.name} interaction answered with an output the producer could not read.`,
+        reportBridgeError(this.scope.slots, new BridgeError("failed", `The ${request.name} interaction answered with an output the producer could not read.`,
           { route: this.scope.route }), this.scope.route);
     } catch (cause) {
       // The presentation's connection closing cancels the request on the producer; a closed transport is expected.
       if (!(cause instanceof BridgeError && (cause.kind === "disconnected" || cause.kind === "released")))
-        reportBridgeError(new BridgeError("failed", `The ${request.name} interaction reply could not be delivered.`,
+        reportBridgeError(this.scope.slots, new BridgeError("failed", `The ${request.name} interaction reply could not be delivered.`,
           { cause, route: this.scope.route }), this.scope.route);
     }
   }
@@ -244,7 +247,7 @@ class InteractionRuntime implements InteractionSession {
       else await this.reply(request, "answered", definition.encodeOutput(output));
     } catch (error) {
       // The producer receives only "failed"; the handler's error stays local.
-      if (!controller.signal.aborted) reportBridgeError(error, this.scope.route);
+      if (!controller.signal.aborted) reportBridgeError(this.scope.slots, error, this.scope.route);
       await this.reply(request, controller.signal.aborted ? "cancelled" : "failed");
     } finally {
       handler.controller.signal.removeEventListener("abort", abortFromHandler);

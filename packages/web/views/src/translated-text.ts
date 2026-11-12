@@ -3,9 +3,11 @@
 // application's Translations runtime. The producer pushes the window's locale; the page sets its Translations locale to
 // it and resolves every reference again, without a call per string.
 //
-// The state is page-wide and shared by every copy of this package on the page, like the connection state.
+// The state belongs to one Runic instance (the page's, outside `RunicInstance.run`) and is shared by every copy of this
+// package on the page, like the connection state.
 import { isFieldError, type FieldError, type FieldErrorArguments } from "./field-error.js";
 import { reportBridgeError } from "./transport.js";
+import { currentSlots, runInSlots, type Slots } from "./scope.js";
 import type { TextReference } from "./wire.js";
 
 export type { TextReference } from "./wire.js";
@@ -93,33 +95,33 @@ interface TranslatedTextChannel {
 
 const channelKey = Symbol.for("runic.views.translated-text");
 
-function channel(): TranslatedTextChannel {
-  const host = globalThis as unknown as Record<symbol, TranslatedTextChannel | undefined>;
-  return host[channelKey] ??= { windowLocale: null, listeners: new Set(), localeListeners: new Set(), version: 0 };
+function channel(slots: Slots = currentSlots()): TranslatedTextChannel {
+  return (slots[channelKey] ??= { windowLocale: null, listeners: new Set(), localeListeners: new Set(), version: 0 }) as TranslatedTextChannel;
 }
 
-function changed(): void {
-  const state = channel();
+function changed(slots: Slots): void {
+  const state = channel(slots);
   state.version++;
   for (const listener of [...state.listeners]) {
-    try { listener(); } catch (error) { reportBridgeError(error); }
+    try { listener(); } catch (error) { reportBridgeError(slots, error); }
   }
 }
 
 /**
- * Connects the page's Translations runtime: `resolveText`, `useText` and the framework helpers format references with
- * it, and the window's locale, when the application sets one, is passed to its `setLocale`. Returns a function that
- * disconnects it. A later call replaces an earlier one, so a page with several catalogs passes one `resolve` for all of
+ * Connects the Translations runtime of the current instance (the page's, outside `RunicInstance.run`): `resolveText`,
+ * `useText` and the framework helpers format references with it, and the window's locale, when the application sets
+ * one, is passed to its `setLocale`. Returns a function that disconnects it. A later call replaces an earlier one, so a page with several catalogs passes one `resolve` for all of
  * them, such as the generated `createReferenceResolver`'s.
  */
 export function configureTranslatedText(translations: TextTranslations): () => void {
   if (typeof translations?.resolve !== "function" || typeof translations.getLocale !== "function")
     throw new TypeError("configureTranslatedText needs resolve(reference, locale) and getLocale().");
-  const state = channel();
+  const slots = currentSlots();
+  const state = channel(slots);
   state.stopTranslations?.();
   state.translations = translations;
   let stopped = false;
-  const stopLocale = translations.subscribe?.(() => { if (!stopped) changed(); });
+  const stopLocale = translations.subscribe?.(() => { if (!stopped) changed(slots); });
   const stop = () => {
     if (stopped) return;
     stopped = true;
@@ -127,13 +129,13 @@ export function configureTranslatedText(translations: TextTranslations): () => v
     if (state.translations === translations) {
       state.translations = undefined;
       state.stopTranslations = undefined;
-      changed();
+      changed(slots);
     }
   };
   state.stopTranslations = stop;
   // A locale the window pushed before the runtime was connected.
-  if (state.windowLocale !== null) followWindowLocale(translations, state.windowLocale);
-  changed();
+  if (state.windowLocale !== null) followWindowLocale(slots, translations, state.windowLocale);
+  changed(slots);
   return stop;
 }
 
@@ -142,7 +144,7 @@ export function configureTranslatedText(translations: TextTranslations): () => v
 // language it has, and its references follow the window's language instead of staying in the previous one. A parent
 // that would show another script is skipped: `zh-Hant-TW` never falls back to `zh` (Simplified), nor `sr-Latn` to `sr`
 // (Cyrillic).
-function followWindowLocale(translations: TextTranslations, locale: string): void {
+function followWindowLocale(slots: Slots, translations: TextTranslations, locale: string): void {
   if (!translations.setLocale) return;
   let failure: { readonly error: unknown } | undefined;
   for (const candidate of localeParents(locale)) {
@@ -151,7 +153,7 @@ function followWindowLocale(translations: TextTranslations, locale: string): voi
       return;
     } catch (error) { failure ??= { error }; }
   }
-  if (failure) reportBridgeError(failure.error);
+  if (failure) reportBridgeError(slots, failure.error);
 }
 
 // A locale and its parents with the same implied script, most specific first: zh-Hant-TW, zh-Hant (not zh, which is
@@ -223,6 +225,11 @@ export function windowLocale(): string | null {
   return channel().windowLocale;
 }
 
+/** @internal The window locale of the instance with `slots`. */
+export function windowLocaleIn(slots: Slots): string | null {
+  return channel(slots).windowLocale;
+}
+
 /** Calls `listener` with the window's locale each time the application changes it, until the returned function is called. */
 export function onWindowLocale(listener: (locale: string | null) => void): () => void {
   const listeners = channel().localeListeners;
@@ -262,18 +269,19 @@ export type FieldErrorText = (error: FieldError, locale: string | undefined) => 
 /**
  * Sets the application's text for field errors (`FieldState.error`): {@link resolveText}, the framework packages'
  * `useText` and `runicText`, and `describeBridgeError` show a `FieldError` with it, in the window's language. Returns
- * a function that removes it. A later call replaces an earlier one. Page-wide, like `configureTranslatedText`.
+ * a function that removes it. A later call replaces an earlier one. Per instance, like `configureTranslatedText`.
  */
 export function configureFieldErrorText(text: FieldErrorText): () => void {
   if (typeof text !== "function") throw new TypeError("configureFieldErrorText needs a function (error, locale) => text.");
-  const state = channel();
+  const slots = currentSlots();
+  const state = channel(slots);
   state.fieldErrorText = text;
   state.fieldErrorFailures = new WeakMap();
-  changed();
+  changed(slots);
   return () => {
     if (state.fieldErrorText !== text) return;
     state.fieldErrorText = undefined;
-    changed();
+    changed(slots);
   };
 }
 
@@ -291,7 +299,8 @@ function hookView(error: FieldError): FieldError {
  * `undefined` for it falls back to the message. A throwing hook is reported once per error and locale.
  */
 export function fieldErrorText(error: FieldError): string {
-  const state = channel();
+  const slots = currentSlots();
+  const state = channel(slots);
   const text = state.fieldErrorText;
   if (text !== undefined) {
     const locale = textLocale();
@@ -304,7 +313,7 @@ export function fieldErrorText(error: FieldError): string {
       if (locales === undefined) failures.set(error, locales = new Set());
       if (!locales.has(locale)) {
         locales.add(locale);
-        reportBridgeError(failure);
+        reportBridgeError(slots, failure);
       }
     }
   }
@@ -324,13 +333,14 @@ export function resolveText(value: TextReference | FieldError | string | null | 
   if (value === null || value === undefined) return fallback ?? "";
   if (typeof value === "string") return value;
   if (isFieldError(value)) return fieldErrorText(value);
-  const { translations } = channel();
+  const slots = currentSlots();
+  const { translations } = channel(slots);
   const locale = textLocale();
   if (translations && locale !== undefined) {
     try {
       const text = translations.resolve(value, locale);
       if (typeof text === "string") return text;
-    } catch (error) { reportBridgeError(error); }
+    } catch (error) { reportBridgeError(slots, error); }
   }
   return value.fallbackText ?? fallback ?? value.key;
 }
@@ -340,7 +350,12 @@ export function resolveText(value: TextReference | FieldError | string | null | 
  * or a runtime or the field error text was configured. Returns a function that stops it. Framework helpers render again on it.
  */
 export function subscribeText(listener: () => void): () => void {
-  const listeners = channel().listeners;
+  return subscribeTextIn(currentSlots(), listener);
+}
+
+/** @internal `subscribeText` in the instance with `slots`. */
+export function subscribeTextIn(slots: Slots, listener: () => void): () => void {
+  const listeners = channel(slots).listeners;
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
@@ -355,15 +370,15 @@ export function textVersion(): number {
  * Translations runtime, also one that repeats the last value: the page may have changed its runtime's locale itself
  * since, and a push after a reconnect restores the window's. Listeners hear only changes.
  */
-export function reportWindowLocale(locale: string | null): void {
-  const state = channel();
-  if (locale !== null && state.translations) followWindowLocale(state.translations, locale);
+export function reportWindowLocale(slots: Slots, locale: string | null): void {
+  const state = channel(slots);
+  if (locale !== null && state.translations) followWindowLocale(slots, state.translations, locale);
   if (state.windowLocale === locale) return;
   state.windowLocale = locale;
   for (const listener of [...state.localeListeners]) {
-    try { listener(locale); } catch (error) { reportBridgeError(error); }
+    try { listener(locale); } catch (error) { reportBridgeError(slots, error); }
   }
-  changed();
+  changed(slots);
 }
 
 // Scripts written right to left (CLDR), for a runtime without `direction` and a browser without `Intl.Locale` text info.
@@ -390,12 +405,13 @@ function scriptDirection(locale: string): "ltr" | "rtl" {
 export function textDirection(): "ltr" | "rtl" | undefined {
   const locale = textLocale();
   if (locale === undefined || locale === "") return undefined;
-  const direction = channel().translations?.direction;
+  const slots = currentSlots();
+  const direction = channel(slots).translations?.direction;
   if (typeof direction === "function") {
     try {
       const value = direction(locale);
       if (value === "ltr" || value === "rtl") return value;
-    } catch (error) { reportBridgeError(error); }
+    } catch (error) { reportBridgeError(slots, error); }
   }
   return scriptDirection(locale);
 }
@@ -419,13 +435,14 @@ export function syncDocumentLocale(options: DocumentLocaleOptions = {}): () => v
   const element = options.element ?? (typeof document === "undefined" ? undefined : document.documentElement);
   if (!element) return () => {};
   const withDirection = options.direction !== false;
-  const apply = () => {
+  const slots = currentSlots();
+  const apply = () => runInSlots(slots, () => {
     const locale = textLocale();
     if (locale === undefined || locale === "") return;
     if (element.getAttribute("lang") !== locale) element.setAttribute("lang", locale);
     const direction = withDirection ? textDirection() : undefined;
     if (direction !== undefined && element.getAttribute("dir") !== direction) element.setAttribute("dir", direction);
-  };
+  });
   apply();
-  return subscribeText(apply);
+  return subscribeTextIn(slots, apply);
 }

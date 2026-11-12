@@ -4,10 +4,11 @@
 // The store reports both, and combines them: the latest change of a member wins.
 //
 // The page runtime keeps only the raw push (appearance-push.ts); this module reads it when a page asks, so a page that
-// never reads the appearance does not bundle it. The state is page-wide and shared by every copy of this package on the
-// page, like the connection state.
+// never reads the appearance does not bundle it. The state belongs to one Runic instance and is shared by every copy of
+// this package on the page, like the connection state.
 import { appearancePushChannel, type AppearancePushChannel } from "./appearance-push.js";
 import { reportBridgeError } from "./transport.js";
+import { currentSlots, type Slots } from "./scope.js";
 
 export { appearanceFeature } from "./appearance-push.js";
 
@@ -122,12 +123,12 @@ interface AppearanceStore {
 
 type AppearanceChannel = AppearancePushChannel & { store?: AppearanceStore };
 
-// The store, which from now on hears each push the runtime receives.
-function channel(): AppearanceChannel & { store: AppearanceStore } {
-  const state = appearancePushChannel() as AppearanceChannel;
+// The store of the instance with `slots`, which from now on hears each push its runtime receives.
+function channel(slots: Slots): AppearanceChannel & { store: AppearanceStore } {
+  const state = appearancePushChannel(slots) as AppearanceChannel;
   if (!state.store) {
     state.store = { seen: undefined, host: null, contrast: undefined, reducedMotion: undefined, current: undefined, listeners: new Set() };
-    state.received = () => notify(state as AppearanceChannel & { store: AppearanceStore });
+    state.received = () => notify(slots, state as AppearanceChannel & { store: AppearanceStore });
   }
   return state as AppearanceChannel & { store: AppearanceStore };
 }
@@ -204,21 +205,21 @@ function compute(channel: AppearanceChannel & { store: AppearanceStore }): Appea
   return state.current = Object.freeze(next);
 }
 
-function notify(state: AppearanceChannel & { store: AppearanceStore }): void {
+function notify(slots: Slots, state: AppearanceChannel & { store: AppearanceStore }): void {
   const previous = state.store.current;
   const next = compute(state);
   if (next === previous) return;
   for (const listener of [...state.store.listeners]) {
-    try { listener(next); } catch (error) { reportBridgeError(error); }
+    try { listener(next); } catch (error) { reportBridgeError(slots, error); }
   }
 }
 
-function watchQueries(channel: AppearanceChannel & { store: AppearanceStore }): void {
+function watchQueries(slots: Slots, channel: AppearanceChannel & { store: AppearanceStore }): void {
   const state = channel.store;
   const match = matchMediaOf();
   if (!match || state.queries) return;
   const lists = new Map<QueryText, MediaQuery>();
-  const changed = () => notify(channel);
+  const changed = () => notify(slots, channel);
   for (const query of queryTexts) {
     try {
       const list = match(query);
@@ -248,24 +249,25 @@ export const unknownAppearance: Appearance = Object.freeze({
 });
 
 /**
- * The page's appearance now: the colour scheme, contrast and reduced motion of the page's engine combined with the
+ * The appearance of the current instance (the page's, outside `RunicInstance.run`) now: the colour scheme, contrast and reduced motion of the page's engine combined with the
  * desktop's appearance that a Runic host pushes (`appearance/1`, `RunicDesktopHost` in .NET), which also carries the
  * text scale, the accent colour and the forced-colours palette; `engine` and `host` report each source alone. The same
  * frozen object until something changes. Under server rendering every member is `null`.
  */
 export function appearance(): Appearance {
-  return compute(channel());
+  return compute(channel(currentSlots()));
 }
 
 /**
- * Calls `listener` with the page's appearance each time it changes, from the engine's media queries or a host push,
- * until the returned function is called.
+ * Calls `listener` with the current instance's appearance each time it changes, from the engine's media queries or a
+ * host push, until the returned function is called.
  */
 export function onAppearance(listener: (appearance: Appearance) => void): () => void {
-  const state = channel();
+  const slots = currentSlots();
+  const state = channel(slots);
   compute(state);
   state.store.listeners.add(listener);
-  watchQueries(state);
+  watchQueries(slots, state);
   let stopped = false;
   return () => {
     if (stopped) return;
