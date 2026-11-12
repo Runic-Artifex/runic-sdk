@@ -103,10 +103,15 @@ experimental type. Graduation moves the export to the package's root entry.
 Before 1.0 it is removed from `./experimental` in the same minor release; from
 1.0 the experimental export remains as a deprecated alias until the next major.
 
-No npm API is experimental, and no package has an `./experimental` entry. The
-APIs below graduated in 0.10.0, which removed the `./experimental` entries of all
-six packages. Import them from the package root: an `./experimental` import fails
-with `ERR_PACKAGE_PATH_NOT_EXPORTED` (Node) or TS2307 (TypeScript).
+Experimental npm APIs:
+
+| Package | `./experimental` exports | Since |
+|---|---|---|
+| `@runic-artifex/views` | Hosted regions: `defineHostedRegion`, `hostedRegionTag`, `HostedRegionSizing`, `HostedRegionState`, `HostedRegionStateChangeDetail`, `HostedRegionTitleChangeDetail` and `RunicHostedRegionElement`, the `<runic-hosted-region>` element that shows a hosted guest's Window in a region of a host page ([hosted regions](../specs/application/README.md#hosted-regions), feature `hosted-regions/1`). Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 |
+| `@runic-artifex/react`, `@runic-artifex/vue`, `@runic-artifex/svelte`, `@runic-artifex/angular` | `RunicHostedRegion`, the framework's component for `<runic-hosted-region>`, and the element's types (Angular also `HostedRegionStateChange`) | 0.18.0 |
+
+The APIs below graduated in 0.10.0, which removed the `./experimental` entries of
+all six packages then. Import them from the package root.
 
 | Package | Graduated exports | Graduated in |
 |---|---|---|

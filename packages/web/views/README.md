@@ -273,10 +273,13 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
+| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental) |
 
 Every entry has `types`, `import` and `default` conditions; the package is ESM
 only. Application code imports the root entry and `/mock`. The `/experimental`
-entry of 0.9 was removed in 0.10: its APIs graduated to the root entry. The
+entry holds APIs that may change in a minor release; importing it is the opt-in.
+The `/experimental` entry of 0.9 was removed in 0.10, when its APIs graduated to
+the root entry, and 0.18 added it again for hosted regions. The
 `/bindings` and `/generated*` entries are versioned with the generator and the
 .NET packages: code that a release generated keeps working with the runtime of
 any later release of the same major, but their shape is not for hand-written
@@ -1785,3 +1788,59 @@ provider. A component calls none of the document-level installers
 Connecting with a component token (`{ url, token }`) is not available yet:
 `connectComponentBridge` throws until the component attach of `region-component/1`
 ships.
+
+## Hosted regions (experimental)
+
+A host application can show another Runic application's Window, a **guest**, in a
+region of its own page instead of in a window of its own
+([regions](../../../specs/desktop/host-protocol.md#regions-region1) of the Runic host
+protocol). The page marks the region with `<runic-hosted-region>`, from
+`@runic-artifex/views/experimental`; the host's .NET policy decides what shows in it
+(`RunicHostedWindowDecision.Embed`, experimental family `RUNICDESK103`):
+
+```html
+<runic-hosted-region name="check" style="height: 420px">
+  <p slot="fallback">Starting the system check…</p>
+  <p slot="ended">The system check has ended.</p>
+</runic-hosted-region>
+<script type="module">
+  import { defineHostedRegion } from "@runic-artifex/views/experimental";
+  defineHostedRegion();
+</script>
+```
+
+The framework packages wrap it as `RunicHostedRegion` in their own `./experimental`
+entries, which define the element themselves.
+
+- **What it shows.** The guest's page, in a sandboxed `<iframe>` from the guest's own
+  loopback origin, inside the element's closed shadow root. The page never gets a
+  reference to the frame and cannot read or script it; style its border with
+  `::part(frame)`. Children with `slot="fallback"` show while no guest page shows; a
+  child whose `slot` names a state (`waiting`, `loading`, `detached`, `ended`,
+  `unsupported`) shows instead in that state.
+- **Attributes.** `name` (required, 1 to 64 ASCII letters, digits, `.`, `_` or `-`),
+  `sizing` (`fill`, the default, where the page's layout sets the height and the guest
+  scrolls inside, or `content-height`, where the guest's content sets it) and `label`,
+  the region's accessible name, which overrides the guest page's title. Give a `fill`
+  region a height. The element reflects `state` and `focused` as attributes, and
+  dispatches `runicregionstatechange` (`detail: {state, previous}`) and
+  `runicregiontitlechange` (`detail: {title}`).
+- **What it tells the host.** Its size, device pixel ratio, place in the viewport,
+  visibility and focus, over the page's own Bridge (`hosted-regions/1`), never to the
+  guest. Its place stays with the host, which uses it for context menus.
+- **Focus.** Tab and Shift+Tab move through the frame in document order, as through
+  any frame. The element reports how the focus entered (`tab`, `shift-tab`, a click,
+  or `script`); the host lets the guest use the clipboard and launches only after the
+  user moved the focus in. A guest page cannot take the focus away from the host page
+  through the host: the host moves the focus into a region only while the page holds
+  none.
+- **One name, one region.** A page declares a name once; the latest connected element
+  of a name shows the region, and an earlier one shows its fallback.
+- **Moving the element** in the document removes its frame and declares the region
+  again: a frame's address is good for one load, so the host attaches the guest anew.
+- **Without a host.** On a page whose host does not implement hosted regions, or
+  without a Bridge, the element is `unsupported` and shows its fallback.
+- **The guest.** A guest's page in a region is its served build, not a development
+  server, and a guest whose own `Content-Security-Policy` sets
+  `frame-ancestors 'none'` blocks its own region. Treat its `localStorage` and
+  IndexedDB as session-scoped: they live in the host's browser profile.
