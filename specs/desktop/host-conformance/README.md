@@ -110,11 +110,20 @@ Messages are compared by JSON value, never by bytes or member order.
 | `launch-url` | Matches a launch address of the [`window-open`](../host-protocol.md#window-open) form |
 | `frame-url` | Matches a new frame launch address of the [`region-attach`](../host-protocol.md#region-attach) form, on the loopback family that the embedder of the latest `region-attach` the runner sent does not use, and binds it for `frame` steps |
 | `frame-token` | The frame token of the latest `frame` `launch` (only written, as a `frame` step's `token`) |
+| `component-module` | Matches the module address of a component attach ([`region-component/1`](../host-protocol.md#component-mode-region-component1)): `http://`, a loopback literal and a port, ending in `/_runic_component/component.js`, on `127.0.0.1`, or on `[::1]` when the latest `region-attach` the runner sent named a `127.0.0.1` embedder without `allowSameSite`; it binds it for `component` steps |
+| `component-url` | Matches the component's WebSocket address, `ws://` on the module's authority ending in `/_webui_ws_connect`, and binds it |
+| `component-token` | Matches a new component token, 43 characters of base64url, and binds it; written as a `component` step's `token` |
 
 ## Test application
 
 A guest runner starts a guest application with these Windows and actions. The Windows' pages are not loaded: the
 runner checks the protocol, not the page. A guest application under test opens no Window on its own.
+
+For [`region-component/1`](../host-protocol.md#component-mode-region-component1), `arrange.application` has two optional
+members: `allowComponentEmbedding: true` makes the application allow component embedding for every host, and
+`componentBuild: true` gives its content a component build, `_runic_component/runic-component.json`
+(`{"version":1,"name":"conformance-guest","module":"component.js","tag":"conformance-guest-00000000"}`) and the module
+`_runic_component/component.js`.
 
 | Window type | Guards its close |
 | --- | --- |
@@ -226,7 +235,9 @@ files the host opened for the guest, in order (a link's absolute URI, a file's p
 The scenarios of [`region/1`](../host-protocol.md#regions-region1) are in `scenarios/region/`, with `requires:
 ["region/1"]`. The host role's are named `region.host-*`. A host scenario's `arrange.host.embed` names the region in which
 the host's policy shows each window of the guest that can show in a region and has no owner, and `embedOptions` its
-`focusOnAttach` and `reattachOnReload`.
+`focusOnAttach` and `reattachOnReload`; with `embedComponent: true` the policy decides `EmbedComponent` instead of `Embed`,
+also for a guest that does not allow it. The scenarios of component mode (`region-component/1`) are `region.component-*`
+and `region.host-component*`, and require it as well, except those that check its absence.
 
 | Scenario | Roles | Checks |
 | --- | --- | --- |
@@ -257,6 +268,13 @@ the host's policy shows each window of the guest that can show in a region and h
 | `region.host-host-window-closes` | host | The host window's close detaches the region window and closes it with a forced `close-request` |
 | `region.host-move` | host | The host moves a region window to another host window's region, and detaches it |
 | `region.host-embed-options` | host | Focus on attach, and no re-attach on reload |
+| `region.component-attach` | guest | With both opt-ins, a component attach answers the module, the WebSocket address and a new token, from the guest's own `127.0.0.1` listener for an embedder of that site that allows it; the module is served to the embedder alone with CORS; the WebSocket is admitted only from the embedder's `Origin` with the token, one page at a time; after `region-detach` both are refused |
+| `region.component-cross-site` | guest | A component attach that does not allow the embedder's own site is served from `[::1]` with `sameSite: false` |
+| `region.component-not-allowed` | guest | Without the application's opt-in, the guest does not list `region-component/1` even when the host does, and refuses a component attach with `embedding-unsupported` |
+| `region.component-no-build` | guest | A guest without a component build refuses a component attach with `embedding-unsupported`; a frame attach still works |
+| `region.host-component` | host | `EmbedComponent` sends `embedding: "component"` and pushes the reply's module, address and token to the page; `region-page` drives the state |
+| `region.host-component-invalid-reply` | host | A component reply out of form is a failed attach: the window stays detached and the page shows its fallback |
+| `region.host-component-not-allowed` | host | `EmbedComponent` for a guest without `region-component/1` fails its open |
 
 New steps and actions the runners need:
 
@@ -270,6 +288,15 @@ New steps and actions the runners need:
   | `launch` | `GET` of the frame launch address, without following the redirect or sending a cookie. A `303` must redirect to the frame surface with `#runic-frame=<token>`, which binds `frame-token`, and carry `Content-Security-Policy: frame-ancestors <embedder>`, `Referrer-Policy: no-referrer` and no `X-Frame-Options` or `Set-Cookie` |
   | `bootstrap` | `GET` of the frame surface's `webui.js`, which must carry no session credential |
   | `upgrade` | The Bridge WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner sends the Bridge's token check, so the guest counts the page, and keeps the connection until the scenario ends |
+
+  For [`region-component/1`](../host-protocol.md#component-mode-region-component1), the step `component` makes one
+  request of the latest component attach, with `origin` as its `Origin`: `"embedder"`, the default, for the latest
+  `region-attach`'s embedder, or another origin. It expects its `status`, or with `refused: true` any 4xx status:
+
+  | `request` | The request |
+  | --- | --- |
+  | `module` | `GET` of the bound `component-module`, without a cookie. A `200` must carry `Access-Control-Allow-Origin` with exactly the request's `Origin` and no `Set-Cookie` |
+  | `upgrade` | The WebSocket upgrade of the bound `component-url`, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "component-token"}`). After `101` the runner sends the token check with a packet token of 0, so the guest counts the page, and keeps the connection until the scenario ends |
 - **The host's user and the host application (host runner).** Actions that play the host page's
   [`hosted-regions/1`](../../application/README.md#hosted-regions) reports, with `window` naming a host window, which the
   runner opens with the page's first region: `declareRegion` (`name`, `sizing`), `removeRegion` (`name`, and `reason`
@@ -279,5 +306,6 @@ New steps and actions the runners need:
   reports it as the script's. Actions of the host application, with `window` naming the guest's window:
   `departRegion` (the region's departure guard), `detachRegion` and `moveRegion` (`to`: a host window, `name`). `expect`
   with `window` and `region` checks the region's `state`, `title`, `focused` and `documentEdited`; with `window` (a host
-  window) and `page` what the host shows in the page's region `name` (`shows`, `src`, `title`, `allow`, `height`); with
+  window) and `page` what the host shows in the page's region `name` (`shows`, `src`, `title`, `allow`, `height`, and for
+  a component `module` and `token`, with `src` its WebSocket address); with
   `dialogOwner` the host window that owns the latest dialogs; with `departure` whether the oldest departure went ahead.

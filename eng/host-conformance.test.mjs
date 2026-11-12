@@ -19,11 +19,11 @@ const scenarioFiles = readdirSync(join(corpus, "scenarios"), { withFileTypes: tr
   .sort();
 
 const secrets = new Set(["nonce", "key", "other-key", "host-proof", "host-proof-other-nonce", "guest-proof",
-  "guest-proof-other-nonce", "launch-url", "frame-url", "frame-token"]);
+  "guest-proof-other-nonce", "launch-url", "frame-url", "frame-token", "component-module", "component-url", "component-token"]);
 const jsonTypes = new Set(["string", "number", "integer", "boolean", "object", "array", "null"]);
 const roleSteps = {
   guest: new Set(["start", "line", "connect", "send", "sendRaw", "receive", "receiveAll", "closed", "disconnect", "closeInput",
-    "advance", "guest", "expect", "frame"]),
+    "advance", "guest", "expect", "frame", "component"]),
   host: new Set(["start", "offer", "line", "accept", "send", "sendRaw", "receive", "receiveAll", "closed", "disconnect", "exit",
     "advance", "user", "expect"]),
 };

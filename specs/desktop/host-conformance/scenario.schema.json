@@ -207,6 +207,10 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9._-]{1,64}$"
             },
+            "embedComponent": {
+              "type": "boolean",
+              "description": "region-component/1: the policy shows the windows it embeds as components (RunicHostedWindowDecision.EmbedComponent)."
+            },
             "embedOptions": {
               "type": "object",
               "additionalProperties": false,
@@ -260,6 +264,14 @@
             "string",
             "null"
           ]
+        },
+        "allowComponentEmbedding": {
+          "type": "boolean",
+          "description": "region-component/1: the test application allows component embedding (RunicGuestOptions.AllowComponentEmbedding)."
+        },
+        "componentBuild": {
+          "type": "boolean",
+          "description": "region-component/1: the test application's content has a component build (_runic_component/)."
         }
       }
     },
@@ -1104,6 +1116,76 @@
         {
           "type": "object",
           "required": [
+            "component"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "component": {
+              "type": "object",
+              "required": [
+                "request"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "request": {
+                  "enum": [
+                    "module",
+                    "upgrade"
+                  ]
+                },
+                "origin": {
+                  "type": "string",
+                  "description": "The request's Origin: \"embedder\" (the default) for the latest region-attach's, or an origin."
+                },
+                "token": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "$secret"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "$secret": {
+                          "const": "component-token"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "status": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                },
+                "refused": {
+                  "const": true
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "status"
+                  ]
+                },
+                {
+                  "required": [
+                    "refused"
+                  ]
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "user"
           ],
           "additionalProperties": false,
@@ -1857,6 +1939,7 @@
                         "shows": {
                           "enum": [
                             "content",
+                            "component",
                             "waiting",
                             "detached",
                             "ended",
@@ -1864,6 +1947,32 @@
                           ]
                         },
                         "src": {
+                          "oneOf": [
+                            {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "$any"
+                              ],
+                              "additionalProperties": false,
+                              "properties": {
+                                "$any": {}
+                              }
+                            }
+                          ]
+                        },
+                        "module": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "token": {
                           "oneOf": [
                             {
                               "type": [

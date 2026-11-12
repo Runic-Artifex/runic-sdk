@@ -76,6 +76,11 @@ internal sealed class HostConformanceTests
         private readonly List<Uri> _frameUrls = [];
         private string? _frameToken;
         private readonly List<WebSocket> _framePages = [];
+        // region-component/1: the component's module, WebSocket address and token of the latest component attach.
+        private Uri? _componentModule;
+        private Uri? _componentUrl;
+        private string? _componentToken;
+        private bool _allowSameSite;
 
         private JsonObject Limits => scenario["arrange"]?["limits"] as JsonObject ?? [];
 
@@ -115,6 +120,7 @@ internal sealed class HostConformanceTests
             else if (step["guest"] is JsonObject guest) await GuestAsync(guest, step["as"]?.GetValue<string>());
             else if (step["expect"] is JsonObject expect) await ExpectAsync(expect);
             else if (step["frame"] is JsonObject frame) await FrameAsync(frame);
+            else if (step["component"] is JsonObject component) await ComponentAsync(component);
             else throw new InvalidOperationException("Unknown step.");
         }
 
@@ -122,7 +128,11 @@ internal sealed class HostConformanceTests
 
         private Task SendAsync(string connection, JsonObject message)
         {
-            if (HostProtocol.String(message, "kind") == "region-attach") _embedder = HostProtocol.String(message, "embedder");
+            if (HostProtocol.String(message, "kind") == "region-attach")
+            {
+                _embedder = HostProtocol.String(message, "embedder");
+                _allowSameSite = HostProtocol.Boolean(message, "allowSameSite") == true;
+            }
             return _connections[connection].SendAsync(message);
         }
 
@@ -183,6 +193,81 @@ internal sealed class HostConformanceTests
             }
             Check(refused ? status is >= 400 and < 500 : status == expected,
                 $"The frame {request} was answered {status}, not {(refused ? "refused" : expected)}.");
+        }
+
+        // ----- region-component/1: requests of the component's surface (README, Region scenarios)
+
+        // The module of the latest component attach (with the embedder's or another Origin), or the component's WebSocket
+        // upgrade from an origin with a token. "embedder" names the latest region-attach's embedder.
+        private async Task ComponentAsync(JsonObject component)
+        {
+            var request = component["request"]!.GetValue<string>();
+            var origin = component["origin"]?.GetValue<string>() is { } named ? named == "embedder" ? _embedder! : named : _embedder!;
+            var refused = component["refused"] is not null;
+            int? expected = component["status"]?.GetValue<int>();
+            int status;
+            switch (request)
+            {
+                case "module":
+                {
+                    using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+                    using var message = new HttpRequestMessage(HttpMethod.Get, _componentModule);
+                    message.Headers.Add("Origin", origin);
+                    using var response = await http.SendAsync(message);
+                    status = (int)response.StatusCode;
+                    Check(!response.Headers.Contains("Set-Cookie"), "The component's module set a cookie.");
+                    if (status == 200)
+                        Check(response.Headers.TryGetValues("Access-Control-Allow-Origin", out var allowed) && allowed.Single() == origin,
+                            "The component's module carries no CORS grant for exactly its origin.");
+                    break;
+                }
+                case "upgrade":
+                {
+                    var token = component["token"] is { } value ? Resolve(value)!.GetValue<string>() : null;
+                    (status, var page) = await ComponentPageAsync(_componentUrl!, origin, token);
+                    if (page is not null) _framePages.Add(page);
+                    break;
+                }
+                default: throw new InvalidOperationException($"Unknown component request {request}.");
+            }
+            Check(refused ? status is >= 400 and < 500 : status == expected,
+                $"The component {request} was answered {status}, not {(refused ? "refused" : expected)}.");
+        }
+
+        // A component's upgrade: from origin, with the token as its subprotocol; after 101 its token check, whose packet
+        // token is 0, so the guest counts the page.
+        private static async Task<(int Status, WebSocket? Page)> ComponentPageAsync(Uri url, string origin, string? token)
+        {
+            var client = new TcpClient(url.HostNameType == UriHostNameType.IPv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork);
+            try
+            {
+                await client.ConnectAsync(url.IdnHost.Trim('[', ']'), url.Port);
+                var stream = client.GetStream();
+                var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+                var upgrade = new StringBuilder()
+                    .Append("GET " + url.AbsolutePath + " HTTP/1.1\r\nHost: " + url.Authority + "\r\n")
+                    .Append("Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n")
+                    .Append("Sec-WebSocket-Key: " + key + "\r\nOrigin: " + origin + "\r\n");
+                if (token is not null) upgrade.Append("Sec-WebSocket-Protocol: runic-desktop." + token + "\r\n");
+                await stream.WriteAsync(Encoding.ASCII.GetBytes(upgrade.Append("\r\n").ToString()));
+                var (status, _) = await ReadStatusAsync(stream);
+                if (status != 101)
+                {
+                    client.Dispose();
+                    return (status ?? 0, null);
+                }
+                var socket = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = false, KeepAliveInterval = TimeSpan.Zero });
+                var packet = new byte[9];
+                packet[0] = 0xDD;
+                packet[7] = 0xF5;
+                await socket.SendAsync(packet, WebSocketMessageType.Binary, true, CancellationToken.None);
+                return (101, socket);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
         }
 
         private static string FrameLaunchRedacted(string text) => Regex.Replace(text, "[A-Za-z0-9_-]{43}", "…");
@@ -268,7 +353,10 @@ internal sealed class HostConformanceTests
                 MaximumWaitingRequests = Limits["waitingRequests"]?.GetValue<int>() ?? HostProtocol.MaximumWaitingRequests,
                 ExitProcess = code => _exits.Enqueue(code),
                 CheckPrivileges = static () => null,
+                // region-component/1: the test application allows component embedding only when the scenario says so.
+                AllowComponentEmbedding = application["allowComponentEmbedding"]?.GetValue<bool>() == true ? static _ => true : null,
             };
+            var componentBuild = application["componentBuild"]?.GetValue<bool>() == true;
             var services = new ServiceCollection();
             // The Windows' IWindowPlatformServices: their context menus, file dialogs and message boxes.
             services.AddRunicPlatformServices();
@@ -284,7 +372,18 @@ internal sealed class HostConformanceTests
             _run = Task.Factory.StartNew(() => RunicDesktopHost.Run(provider, new DesktopHostOptions { WaitForConnection = false },
                 new RunicDesktopHostOptions
                 {
-                    SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+                    SurfaceOptions = new DesktopSurfaceOptions
+                    {
+                        Content = new DesktopContent.Html("<!doctype html>"),
+                        // With componentBuild, the output of the component build target (README, Test application).
+                        Resources = (request, _) => ValueTask.FromResult<ContentResponse?>(!componentBuild ? null : request.Path switch
+                        {
+                            "/_runic_component/runic-component.json" => ContentResponse.Text(
+                                """{"version":1,"name":"conformance-guest","module":"component.js","tag":"conformance-guest-00000000"}""", "application/json"),
+                            "/_runic_component/component.js" => ContentResponse.Text("export const tag = \"conformance-guest-00000000\";", "text/javascript"),
+                            _ => null,
+                        }),
+                    },
                     Guest = guest,
                 },
                 async host =>
@@ -883,10 +982,41 @@ internal sealed class HostConformanceTests
             "guest-proof" => HostProtocol.Proof(_nonce, HostProtocol.GuestProofLabel, _key!),
             "guest-proof-other-nonce" => HostProtocol.Proof(RandomNumberGenerator.GetBytes(32), HostProtocol.GuestProofLabel, _key!),
             "frame-token" => _frameToken ?? throw new InvalidOperationException("No frame launch gave a token yet."),
+            "component-token" => _componentToken ?? throw new InvalidOperationException("No component attach gave a token yet."),
             _ => throw new InvalidOperationException($"The runner cannot write the secret {name}."),
         };
 
         private static readonly Regex FrameUrl = new(@"^http://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_runic_frame/[A-Za-z0-9_-]{43}$");
+
+        private static readonly Regex ComponentModule = new(@"^http://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_runic_component/component\.js$");
+
+        private static readonly Regex ComponentUrl = new(@"^ws://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_webui_ws_connect$");
+
+        // A component attach's reply: its module, on the host the scenario expects (README, Region scenarios), its
+        // WebSocket address on the same authority, and a new token; each binds for component steps.
+        private bool MatchComponent(string secret, string text)
+        {
+            switch (secret)
+            {
+                case "component-module":
+                    if (!ComponentModule.IsMatch(text) || new Uri(text).Host != ComponentHost()) return false;
+                    _componentModule = new Uri(text);
+                    return true;
+                case "component-url":
+                    if (!ComponentUrl.IsMatch(text) || _componentModule is null || new Uri(text).Authority != _componentModule.Authority) return false;
+                    _componentUrl = new Uri(text);
+                    return true;
+                default:
+                    if (!Regex.IsMatch(text, "^[A-Za-z0-9_-]{43}$") || text == _componentToken) return false;
+                    _componentToken = text;
+                    return true;
+            }
+        }
+
+        // The host a component of the latest region-attach must come from: the surface's own 127.0.0.1, unless that is
+        // the embedder's own site and the attach did not allow it; then [::1].
+        private string ComponentHost() =>
+            new Uri(_embedder!).Host == "127.0.0.1" && !_allowSameSite ? "[::1]" : "127.0.0.1";
 
         private static readonly Regex LaunchUrl = new(@"^http://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_runic_launch/[A-Za-z0-9_-]{43}$");
 
@@ -908,6 +1038,11 @@ internal sealed class HostConformanceTests
                 case JsonObject placeholder when placeholder.ContainsKey("$secret"):
                     var secret = placeholder["$secret"]!.GetValue<string>();
                     var text = actual?.GetValueKind() == JsonValueKind.String ? actual.GetValue<string>() : null;
+                    if (secret is "component-module" or "component-url" or "component-token")
+                    {
+                        Check(text is not null && MatchComponent(secret, text), $"{path}: {FrameLaunchRedacted(actual?.ToJsonString() ?? "null")} is not a new {secret}.");
+                        return;
+                    }
                     if (secret == "frame-url")
                     {
                         // A new frame launch address, on the loopback family that the embedder does not use.
