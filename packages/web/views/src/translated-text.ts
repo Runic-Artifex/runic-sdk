@@ -6,6 +6,7 @@
 // The state belongs to one Runic instance (the page's, outside `RunicInstance.run`) and is shared by every copy of this
 // package on the page, like the connection state.
 import { isFieldError, type FieldError, type FieldErrorArguments } from "./field-error.js";
+import { englishRunicText, type RunicTextKey } from "./runic-text.js";
 import { reportBridgeError } from "./transport.js";
 import { currentSlots, runInSlots, type Slots } from "./scope.js";
 import type { TextReference } from "./wire.js";
@@ -87,6 +88,9 @@ interface TranslatedTextChannel {
   fieldErrorText?: FieldErrorText | undefined;
   // The locales each field error's throwing hook has been reported for; replaced with each configured hook.
   fieldErrorFailures?: WeakMap<object, Set<string | undefined>> | undefined;
+  runicText?: RunicText | undefined;
+  // The key and locale pairs the throwing Runic text hook has been reported for; replaced with each configured hook.
+  runicTextFailures?: Set<string> | undefined;
   readonly listeners: Set<() => void>;
   readonly localeListeners: Set<(locale: string | null) => void>;
   // Changes with every change of the text: listeners compare it to skip work.
@@ -283,6 +287,67 @@ export function configureFieldErrorText(text: FieldErrorText): () => void {
     state.fieldErrorText = undefined;
     changed(slots);
   };
+}
+
+/**
+ * The application's text for Runic's own page text, as `configureRunicText` takes it: the text of `key` in `locale`
+ * (the locale references are shown in, {@link textLocale}), or `undefined` for Runic's English text. The keys are the
+ * messages of the `runic-views` catalog, which `configureRunicViewsText()` of `@runic-artifex/views-translations`
+ * installs in English and German. With messages of the application's own catalog:
+ *
+ * ```ts
+ * configureRunicText((key, locale) => {
+ *   const options = locale === undefined ? {} : { locale };
+ *   if (key === "bridge.disconnected") return m.connection_lost(options);
+ *   return undefined;
+ * });
+ * ```
+ */
+export type RunicText = (key: RunicTextKey, locale: string | undefined) => string | undefined;
+
+/**
+ * Sets the text of Runic's own page text (`RunicTextKey`): the sentences `describeBridgeError` writes and the key names
+ * `formatShortcut` writes, in the window's language. Returns a function that removes it. A later call replaces an
+ * earlier one. Per instance, like `configureTranslatedText`. A hook that throws is reported once per key and locale,
+ * and the English text is shown.
+ */
+export function configureRunicText(text: RunicText): () => void {
+  if (typeof text !== "function") throw new TypeError("configureRunicText needs a function (key, locale) => text.");
+  const slots = currentSlots();
+  const state = channel(slots);
+  state.runicText = text;
+  state.runicTextFailures = new Set();
+  changed(slots);
+  return () => {
+    if (state.runicText !== text) return;
+    state.runicText = undefined;
+    changed(slots);
+  };
+}
+
+/**
+ * Runic's text for `key` in {@link textLocale}: the text `configureRunicText` gives it, or Runic's English text. The
+ * framework helpers that subscribe to text (`useText`, `subscribeText`) render it again after a language switch.
+ */
+export function runicText(key: RunicTextKey): string {
+  const slots = currentSlots();
+  const state = channel(slots);
+  const text = state.runicText;
+  if (text !== undefined) {
+    const locale = textLocale();
+    try {
+      const shown = text(key, locale);
+      if (typeof shown === "string") return shown;
+    } catch (failure) {
+      const failures = state.runicTextFailures ??= new Set();
+      const id = `${key}\u0000${locale ?? ""}`;
+      if (!failures.has(id)) {
+        failures.add(id);
+        reportBridgeError(slots, failure);
+      }
+    }
+  }
+  return englishRunicText(key);
 }
 
 const emptyArguments: FieldErrorArguments = Object.freeze({});

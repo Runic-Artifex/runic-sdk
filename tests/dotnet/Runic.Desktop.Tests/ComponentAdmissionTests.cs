@@ -19,7 +19,7 @@ public sealed class ComponentAdmissionTests
         await using var guest = await ComponentSurface.StartAsync();
         var embedder = "http://127.0.0.1:38200";
 
-        var launch = await guest.Surface.BeginComponentAsync(embedder, allowSameSite: true, CancellationToken.None);
+        var launch = await guest.Surface.BeginComponentAsync(embedder, allowSameSite: true, browser: false, CancellationToken.None);
 
         Assert.Equal(guest.Surface.Url.Authority, launch.Listener.Authority);
         Assert.True(launch.SameSite);
@@ -34,14 +34,33 @@ public sealed class ComponentAdmissionTests
         if (!Ipv6Loopback) return;
         await using var guest = await ComponentSurface.StartAsync();
 
-        var launch = await guest.Surface.BeginComponentAsync("http://127.0.0.1:38200", allowSameSite: false, CancellationToken.None);
+        var launch = await guest.Surface.BeginComponentAsync("http://127.0.0.1:38200", allowSameSite: false, browser: false, CancellationToken.None);
 
         Assert.Equal("[::1]", launch.Listener.Host);
         Assert.False(launch.SameSite);
         // A localhost or [::1] host page is another site than the surface's 127.0.0.1 listener.
-        var other = await guest.Surface.BeginComponentAsync("http://localhost:38200", allowSameSite: false, CancellationToken.None);
+        var other = await guest.Surface.BeginComponentAsync("http://localhost:38200", allowSameSite: false, browser: false, CancellationToken.None);
         Assert.Equal(guest.Surface.Url.Authority, other.Listener.Authority);
         Assert.False(other.SameSite);
+    }
+
+    // D059.18: a browser host's page runs in the user's browser, which sends the 127.0.0.1 cookies of other local
+    // applications: its component comes from [::1], also for a localhost page, and from 127.0.0.1 only for a [::1] page.
+    [Test]
+    public async Task ABrowserHostsComponentComesFromTheIpv6Listener()
+    {
+        if (!Ipv6Loopback) return;
+        await using var guest = await ComponentSurface.StartAsync();
+
+        foreach (var embedder in (string[])["http://localhost:38200", "http://127.0.0.1:38200"])
+        {
+            var launch = await guest.Surface.BeginComponentAsync(embedder, allowSameSite: false, browser: true, CancellationToken.None);
+            Assert.Equal("[::1]", launch.Listener.Host);
+            Assert.False(launch.SameSite);
+        }
+        var ipv6Page = await guest.Surface.BeginComponentAsync("http://[::1]:38200", allowSameSite: false, browser: true, CancellationToken.None);
+        Assert.Equal(guest.Surface.Url.Authority, ipv6Page.Listener.Authority);
+        Assert.False(ipv6Page.SameSite);
     }
 
     [Test]
@@ -49,7 +68,7 @@ public sealed class ComponentAdmissionTests
     {
         await using var guest = await ComponentSurface.StartAsync();
         var hostPage = "http://127.0.0.1:38200";
-        var launch = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, CancellationToken.None);
+        var launch = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, browser: false, CancellationToken.None);
         var listener = launch.Listener;
 
         // Another origin, even with the token: a browser cannot forge Origin.
@@ -79,11 +98,11 @@ public sealed class ComponentAdmissionTests
     {
         await using var guest = await ComponentSurface.StartAsync();
         var hostPage = "http://127.0.0.1:38200";
-        var first = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, CancellationToken.None);
+        var first = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, browser: false, CancellationToken.None);
         using var page = await ComponentPageAsync(first.Listener, hostPage, first.Token);
         await WaitUntilAsync(() => guest.Surface.ConnectionCount == 1);
 
-        var second = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, CancellationToken.None);
+        var second = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, browser: false, CancellationToken.None);
         Assert.NotEqual(first.Token, second.Token);
         await WaitUntilAsync(() => guest.Surface.ConnectionCount == 0);
         Assert.Equal(HttpStatusCode.Unauthorized, await RefusedAsync(second.Listener, hostPage, first.Token));
@@ -102,7 +121,7 @@ public sealed class ComponentAdmissionTests
     {
         await using var guest = await ComponentSurface.StartAsync();
         var hostPage = "http://127.0.0.1:38200";
-        var launch = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, CancellationToken.None);
+        var launch = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, browser: false, CancellationToken.None);
         // The component token admits nothing on a frame of the guest's own origin, and no frame launch is pending.
         Assert.Equal(HttpStatusCode.Forbidden, await RefusedAsync(launch.Listener, launch.Listener.GetLeftPart(UriPartial.Authority), launch.Token));
         using var http = Http();
@@ -124,7 +143,7 @@ public sealed class ComponentAdmissionTests
             context.StatusCode = (int)HttpStatusCode.OK;
             return Task.CompletedTask;
         });
-        var launch = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, CancellationToken.None);
+        var launch = await guest.Surface.BeginComponentAsync(hostPage, allowSameSite: true, browser: false, CancellationToken.None);
         using var http = Http();
         var blob = new Uri(launch.Listener, "_runic/blobs/b1");
         var upload = new Uri(launch.Listener, "_runic/upload");
@@ -240,7 +259,7 @@ public sealed class ComponentAdmissionTests
             }
             await using (hostPage)
             {
-                launch = await guest.Surface.BeginComponentAsync(hostPage.Url.GetLeftPart(UriPartial.Authority), allowSameSite: true, CancellationToken.None);
+                launch = await guest.Surface.BeginComponentAsync(hostPage.Url.GetLeftPart(UriPartial.Authority), allowSameSite: true, browser: false, CancellationToken.None);
                 await using var window = await hostPage.OpenWindowAsync(new DesktopWindowOptions
                 {
                     Browser = BrowserKind.Chrome,

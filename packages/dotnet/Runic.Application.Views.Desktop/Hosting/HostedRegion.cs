@@ -91,9 +91,18 @@ internal sealed class HostedRegion : IDisposable
         if (Bounded(message) is not { } bounds ||
             HostProtocol.String(message, "embedder") is not { } embedder || WebUiWindow.FrameEmbedderHost(embedder) is null ||
             message["sizing"] is { } sizing && HostProtocol.String(message, "sizing") is null ||
-            message["allowSameSite"] is { } allow && HostProtocol.Boolean(message, "allowSameSite") is null)
+            message["allowSameSite"] is { } allow && HostProtocol.Boolean(message, "allowSameSite") is null ||
+            message["browser"] is { } browser && HostProtocol.Boolean(message, "browser") is null)
         {
             await request.FailAsync("rejected", "invalid-request", "A member of the region-attach is missing or out of range.").ConfigureAwait(false);
+            return;
+        }
+        // A browser host's page runs in the user's browser, a process that does not run elevated: an elevated guest's page
+        // is never shown there (host-protocol.md, Browser hosts; elevated-peer admission). The window stays open.
+        if (HostProtocol.Boolean(message, "browser") == true && _guest.RunsElevated)
+        {
+            await request.FailAsync("rejected", "guest-elevated",
+                "The application runs elevated, so it does not show its page in a region of a browser host's page.").ConfigureAwait(false);
             return;
         }
         if (component && !HostedGuest.ComponentModeAvailable)
@@ -114,7 +123,7 @@ internal sealed class HostedRegion : IDisposable
             try
             {
                 if (!component) reply = await BeginFrameAsync(embedder, allowSameSite, measuresHeight).ConfigureAwait(false);
-                else if (await BeginComponentAsync(embedder, allowSameSite).ConfigureAwait(false) is { } content)
+                else if (await BeginComponentAsync(embedder, allowSameSite, HostProtocol.Boolean(message, "browser") == true).ConfigureAwait(false) is { } content)
                     reply = new JsonObject { ["component"] = content };
                 else reply = null;
             }
@@ -162,9 +171,9 @@ internal sealed class HostedRegion : IDisposable
     // Component mode: a new component token, and the address of the component build's module, which its manifest names
     // (_runic_component/runic-component.json, written by the component build target). Null, with the attach ended,
     // when the content has no component build.
-    private async Task<JsonObject?> BeginComponentAsync(string embedder, bool allowSameSite)
+    private async Task<JsonObject?> BeginComponentAsync(string embedder, bool allowSameSite, bool browser)
     {
-        var launch = await _surface.BeginComponentAsync(embedder, allowSameSite, CancellationToken.None).ConfigureAwait(false);
+        var launch = await _surface.BeginComponentAsync(embedder, allowSameSite, browser, CancellationToken.None).ConfigureAwait(false);
         var root = new Uri(launch.Listener, WebUiWindow.ComponentPath.TrimStart('/') + "/");
         if (await ReadComponentModuleAsync(root, embedder).ConfigureAwait(false) is not { } module)
         {

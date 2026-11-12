@@ -3527,6 +3527,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 WebUiApplication.BridgeHandshakeTimeout,
                 TimeProvider)
             {
+                Origin = _securityPolicy is null ? string.Empty : context.GetRequestHeader("Origin"),
                 // A component cannot read this window's packet token, which only its served bootstrap carries: the
                 // component token on the upgrade admitted it instead (ComponentBinding).
                 AdmittedByComponentToken = _componentBinding.Embedder is not null &&
@@ -3927,9 +3928,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // served from the surface's own listener, whose origin a host page's Content-Security-Policy can name
     // (http://127.0.0.1:*; CSP host sources cannot name an IPv6 literal), unless that listener is of the embedder's own
     // site and the host did not allow the same site: then from the IPv6 loopback listener, else
-    // DesktopFrameCrossSiteUnavailableException. A new attachment replaces the earlier one, frame or component, whose
-    // token is revoked and whose page is disconnected.
-    internal async Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, CancellationToken cancellationToken)
+    // DesktopFrameCrossSiteUnavailableException. A browser host's page (browser) runs in the user's browser, whose
+    // 127.0.0.1 cookies other local applications set, so its component comes from the IPv6 loopback listener whatever its
+    // host, and from 127.0.0.1 only for a [::1] page, as its frames do (D059.18). A new attachment replaces the earlier
+    // one, frame or component, whose token is revoked and whose page is disconnected.
+    internal async Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, bool browser,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(embedder);
         var url = Url ?? throw new InvalidOperationException("The surface must be started before a component attach.");
@@ -3950,7 +3954,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var listener = url;
         // Hosts are compared as written: 127.0.0.1, [::1] and localhost are three sites.
         var sameSite = string.Equals(url.Host, host, StringComparison.OrdinalIgnoreCase);
-        if (sameSite && !allowSameSite)
+        if (browser && host != "[::1]")
+        {
+            listener = await _host.GetIpv6LoopbackUrlAsync(_surface, cancellationToken).ConfigureAwait(false)
+                ?? throw new DesktopFrameCrossSiteUnavailableException(
+                    "The IPv6 loopback address cannot be bound, so the component cannot be served apart from the 127.0.0.1 cookies of the user's browser.");
+            sameSite = false;
+        }
+        else if (sameSite && !allowSameSite)
         {
             listener = (url.Host == "127.0.0.1" ? await _host.GetIpv6LoopbackUrlAsync(_surface, cancellationToken).ConfigureAwait(false) : null)
                 ?? throw new DesktopFrameCrossSiteUnavailableException(
@@ -4074,6 +4085,17 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _clients[cookie] = clientId;
         context.AppendResponseHeader("Set-Cookie", PresentationCookies.StrictHttpOnly(AuthCookieName, cookie, $"{_surface?.PathBase}/"));
         return clientId;
+    }
+
+    // The admitted Origin of the page connected as connectionId (DesktopConnectionEvent.SessionId), or null when no such
+    // page is connected or its upgrade carried none.
+    internal string? ConnectionOrigin(ulong connectionId)
+    {
+        foreach (var session in _sessions.Values)
+        {
+            if ((ulong)session.ConnectionId == connectionId) return session.Origin.Length == 0 ? null : session.Origin;
+        }
+        return null;
     }
 
     private string? ValidateWebSocketAdmission(PresentationExchange context)

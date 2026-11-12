@@ -41,6 +41,13 @@ internal static class HostedGuestProgram
 
     internal static RunicGuestStartInfo Guest(string mode) => StartInfo(Argument, mode);
 
+    // The page of the region-page mode, which a browser host's region shows (hosted-region-browser-smoke.mjs): a title for
+    // set-title, and two fields that Tab moves through.
+    private const string RegionPage = """
+        <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Check</title><script src="webui.js"></script></head>
+        <body><label>Name <input id="name"></label> <label>Code <input id="code"></label></body></html>
+        """;
+
     public static int Run(string mode)
     {
         if (mode == "exit") return StartFailedExitCode;
@@ -82,7 +89,7 @@ internal static class HostedGuestProgram
                 {
                     SurfaceOptions = new DesktopSurfaceOptions
                     {
-                        Content = new DesktopContent.Html("<!doctype html>"),
+                        Content = new DesktopContent.Html(mode == "region-page" ? RegionPage : "<!doctype html>"),
                         // The component mode's component build (region-component/1), as the component build target writes it.
                         Resources = (request, _) => ValueTask.FromResult<ContentResponse?>(mode != "component" ? null : request.Path switch
                         {
@@ -124,6 +131,7 @@ internal static class HostedGuestProgram
             case "main":
             case "media":
             case "component":
+            case "region-page":
             case "no-elevated-host":
             {
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();

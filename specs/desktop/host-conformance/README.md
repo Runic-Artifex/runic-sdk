@@ -110,7 +110,7 @@ Messages are compared by JSON value, never by bytes or member order.
 | `launch-url` | Matches a launch address of the [`window-open`](../host-protocol.md#window-open) form |
 | `frame-url` | Matches a new frame launch address of the [`region-attach`](../host-protocol.md#region-attach) form, on the loopback family that the embedder of the latest `region-attach` the runner sent does not use, and binds it for `frame` steps |
 | `frame-token` | The frame token of the latest `frame` `launch` (only written, as a `frame` step's `token`) |
-| `component-module` | Matches the module address of a component attach ([`region-component/1`](../host-protocol.md#component-mode-region-component1)): `http://`, a loopback literal and a port, ending in `/_runic_component/component.js`, on `127.0.0.1`, or on `[::1]` when the latest `region-attach` the runner sent named a `127.0.0.1` embedder without `allowSameSite`; it binds it for `component` steps |
+| `component-module` | Matches the module address of a component attach ([`region-component/1`](../host-protocol.md#component-mode-region-component1)): `http://`, a loopback literal and a port, ending in `/_runic_component/component.js`, on `127.0.0.1`, or on `[::1]` when the latest `region-attach` the runner sent named a `127.0.0.1` embedder without `allowSameSite`, or with `browser: true` named an embedder other than `[::1]`; it binds it for `component` steps |
 | `component-url` | Matches the component's WebSocket address, `ws://` on the module's authority ending in `/_webui_ws_connect`, and binds it |
 | `component-token` | Matches a new component token, 43 characters of base64url, and binds it; written as a `component` step's `token` |
 
@@ -237,7 +237,9 @@ The scenarios of [`region/1`](../host-protocol.md#regions-region1) are in `scena
 the host's policy shows each window of the guest that can show in a region and has no owner, and `embedOptions` its
 `focusOnAttach` and `reattachOnReload`; with `embedComponent: true` the policy decides `EmbedComponent` instead of `Embed`,
 also for a guest that does not allow it. The scenarios of component mode (`region-component/1`) are `region.component-*`
-and `region.host-component*`, and require it as well, except those that check its absence.
+and `region.host-component*`, and require it as well, except those that check its absence. `arrange.host.browser`
+makes the host a browser (serve-only) host, whose pages no native window shows, and a guest scenario's
+`arrange.application.elevated` plays a guest that runs elevated.
 
 | Scenario | Roles | Checks |
 | --- | --- | --- |
@@ -268,8 +270,12 @@ and `region.host-component*`, and require it as well, except those that check it
 | `region.host-host-window-closes` | host | The host window's close detaches the region window and closes it with a forced `close-request` |
 | `region.host-move` | host | The host moves a region window to another host window's region, and detaches it |
 | `region.host-embed-options` | host | Focus on attach, and no re-attach on reload |
+| `region.browser-attach` | guest | A `region-attach` with `browser: true` and `allowSameSite: false` answers a frame launch address cross-site to the embedder; a `browser` that is not a boolean is `rejected` with `invalid-request` |
+| `region.browser-elevated` | guest | An elevated guest refuses a `region-attach` with `browser: true` with `rejected` and `guest-elevated`, and its Window stays open |
+| `region.host-browser` | host | A [browser host](../host-protocol.md#browser-hosts) lists only `region/1` and `region-component/1`, opens region windows without `present` and `owned-windows`, attaches them with `browser: true` and `allowSameSite: false`, answers `present` and `announce` `unavailable` with `backend-unavailable`, and refuses a window of the guest's own |
 | `region.component-attach` | guest | With both opt-ins, a component attach answers the module, the WebSocket address and a new token, from the guest's own `127.0.0.1` listener for an embedder of that site that allows it; the module is served to the embedder alone with CORS; the WebSocket is admitted only from the embedder's `Origin` with the token, one page at a time; after `region-detach` both are refused |
 | `region.component-cross-site` | guest | A component attach that does not allow the embedder's own site is served from `[::1]` with `sameSite: false` |
+| `region.component-browser` | guest | A component attach with `browser: true` for a `localhost` host page is served from `[::1]` with `sameSite: false` |
 | `region.component-not-allowed` | guest | Without the application's opt-in, the guest does not list `region-component/1` even when the host does, and refuses a component attach with `embedding-unsupported` |
 | `region.component-no-build` | guest | A guest without a component build refuses a component attach with `embedding-unsupported`; a frame attach still works |
 | `region.host-component` | host | `EmbedComponent` sends `embedding: "component"` and pushes the reply's module, address and token to the page; `region-page` drives the state |

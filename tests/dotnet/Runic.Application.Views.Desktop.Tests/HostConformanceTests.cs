@@ -81,6 +81,7 @@ internal sealed class HostConformanceTests
         private Uri? _componentUrl;
         private string? _componentToken;
         private bool _allowSameSite;
+        private bool _browser;
 
         private JsonObject Limits => scenario["arrange"]?["limits"] as JsonObject ?? [];
 
@@ -132,6 +133,7 @@ internal sealed class HostConformanceTests
             {
                 _embedder = HostProtocol.String(message, "embedder");
                 _allowSameSite = HostProtocol.Boolean(message, "allowSameSite") == true;
+                _browser = HostProtocol.Boolean(message, "browser") == true;
             }
             return _connections[connection].SendAsync(message);
         }
@@ -355,6 +357,8 @@ internal sealed class HostConformanceTests
                 ReadPrivileges = static () => GuestPrivilegeFacts.StandardUser,
                 // region-component/1: the test application allows component embedding only when the scenario says so.
                 AllowComponentEmbedding = application["allowComponentEmbedding"]?.GetValue<bool>() == true ? static _ => true : null,
+                // An elevated guest, which the runner plays without running elevated.
+                RunsElevated = application["elevated"]?.GetValue<bool>() == true ? static () => true : static () => false,
             };
             var componentBuild = application["componentBuild"]?.GetValue<bool>() == true;
             var services = new ServiceCollection();
@@ -1014,9 +1018,14 @@ internal sealed class HostConformanceTests
         }
 
         // The host a component of the latest region-attach must come from: the surface's own 127.0.0.1, unless that is
-        // the embedder's own site and the attach did not allow it; then [::1].
-        private string ComponentHost() =>
-            new Uri(_embedder!).Host == "127.0.0.1" && !_allowSameSite ? "[::1]" : "127.0.0.1";
+        // the embedder's own site and the attach did not allow it, or the host page runs in a browser (browser: true),
+        // whose components come from [::1] unless the page is on [::1].
+        private string ComponentHost()
+        {
+            var embedder = new Uri(_embedder!).Host;
+            if (_browser) return embedder == "[::1]" ? "127.0.0.1" : "[::1]";
+            return embedder == "127.0.0.1" && !_allowSameSite ? "[::1]" : "127.0.0.1";
+        }
 
         private static readonly Regex LaunchUrl = new(@"^http://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_runic_launch/[A-Za-z0-9_-]{43}$");
 

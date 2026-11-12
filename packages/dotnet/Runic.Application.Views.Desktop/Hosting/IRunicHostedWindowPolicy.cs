@@ -752,6 +752,16 @@ public sealed class RunicHostedWindowRequest
     /// and its application allowed component embedding for this host (<see cref="RunicGuestOptions.AllowComponentEmbedding"/>).
     /// </summary>
     public bool CanEmbedComponent { get; internal init; }
+
+    /// <summary>
+    /// Whether the window can open as a window of its own (<see cref="RunicHostedWindowDecision.Allow"/>):
+    /// <see langword="false"/> in a browser host, an application that runs serve-only
+    /// (<see cref="RunicDesktopHostOptions.ServeOnly"/>) and shows its pages in the user's browser. There only
+    /// <see cref="RunicHostedWindowDecision.Embed(string)"/> and <see cref="RunicHostedWindowDecision.EmbedComponent(string)"/>
+    /// show the window, and any other decision that allows it fails
+    /// the guest's open with <c>hosted-window-refused</c>.
+    /// </summary>
+    public bool CanOpenWindow { get; internal init; } = true;
 }
 
 /// <summary>A host policy's decision about a window a guest asked for.</summary>

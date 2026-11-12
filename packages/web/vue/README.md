@@ -610,7 +610,7 @@ const fontSize = computed(() => `${look.value.textScale ?? 1}rem`);
 The `error` of `useView` and of a command or operation handle is typed
 `unknown`: it holds whatever the connection or the call rejected with. A Bridge
 failure is a `BridgeError` from `@runic-artifex/views`. Show it with
-`describeBridgeError(error)`, one English sentence, instead of `String(error)`,
+`describeBridgeError(error)`, one sentence (in the window's language with `configureRunicViewsText()`), instead of `String(error)`,
 and narrow it with `isBridgeError` (or `instanceof`) before reading `kind`,
 `route` or `detail`:
 

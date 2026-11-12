@@ -184,7 +184,10 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         }
         var channel = HostLaunch.Channel(line, [HostProtocol.Version], ExitCodeText, Failure);
         // The guest starts with this application's locale and appearance (host-protocol.md, Appearance and locale).
-        var environment = await HelloEnvironmentAsync(new JsonArray([.. HostFeatures.HostImplemented.Select(static name => (JsonNode)name)]),
+        // A browser (serve-only) host has no native window to own dialogs, menus or the window services' work, and lists
+        // region/1 alone (host-protocol.md, Browser hosts).
+        var implemented = _host.ServeOnly ? HostFeatures.BrowserHostImplemented : HostFeatures.HostImplemented;
+        var environment = await HelloEnvironmentAsync(new JsonArray([.. implemented.Select(static name => (JsonNode)name)]),
             cancellationToken).ConfigureAwait(false);
         var hello = await HostLaunch.HandshakeAsync(channel, nonce, hostName, hostVersion, environment, Failure,
             () => _process.Exited.IsCompleted, ExitCodeText, deadline.Token, cancellationToken).ConfigureAwait(false);
@@ -590,6 +593,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             Locale = locale,
             CanEmbed = InUse(HostFeatures.Region),
             CanEmbedComponent = InUse(HostFeatures.Region) && InUse(HostFeatures.RegionComponent),
+            CanOpenWindow = !_host.ServeOnly,
         };
         RunicHostedWindowDecision decision;
         try { decision = await Policy.OpenWindowAsync(windowRequest, _ending.Token).ConfigureAwait(false); }
@@ -608,6 +612,16 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         if (decision.Region is not null)
         {
             await OpenRegionWindowAsync(request, window, decision, permissions).ConfigureAwait(false);
+            return;
+        }
+        // A browser (serve-only) host shows no window of its own: only a region can show the guest's (host-protocol.md,
+        // Browser hosts).
+        if (_host.ServeOnly)
+        {
+            DesktopLog.HostedWindowPolicyFailed(_logger, null, "WindowModeUnavailable");
+            await request.FailAsync("rejected", "refused",
+                "The host runs serve-only, in a browser, and shows no window of its own; its window policy must embed the window in a region.")
+                .ConfigureAwait(false);
             return;
         }
         // Whatever the policy chose: an embedded window without fallbacks, whose close the guest decides.

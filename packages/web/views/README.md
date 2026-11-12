@@ -739,8 +739,8 @@ so an application can show its own text (`FieldErrorReason`, open):
 | `no-text-form` | `This field has no text form.` | none |
 
 `text` is the trimmed text the user typed, and `patterns` the forms a text may take, the locale's first. A `number`
-field with `integer` (an `int` member) reports `required` with `expected: whole-number`, so a translated text can say
-"a whole number"; its English `message` stays `Enter a number.`. A field's own `parse` that throws, and the `rejected`,
+field with `integer` (an `int` member) reports `required` with `expected: whole-number` and the English `message`
+`Enter a whole number.` (`Enter a number.` before 0.18). A field's own `parse` that throws, and the `rejected`,
 `conflict` and `committed-with-error` receipts, have no `reason`: `kind` says what happened, and `message` is the parse
 error's or the producer's text. A `FieldError` of an older copy of this package has no `arguments` and may have no
 `reason` either; the hook then receives empty `arguments`, and its `undefined` `reason` falls back to the message.
@@ -999,7 +999,11 @@ The text is the same as Runic.Platform's `DesktopShortcut`, which Runic
 Desktop's macOS menu items use, and both are checked against the cases in
 [specs/desktop/fixtures/shortcuts.json](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/fixtures/shortcuts.json).
 Pass `{ apple: true }` or `{ apple: false }` to choose the platform rule
-instead of detecting it from `navigator`. See the
+instead of detecting it from `navigator`. Key and modifier names (`Ctrl`,
+`Page Up`, `Del`, and `Space` on Apple platforms) follow the window's language
+with Runic's text (`configureRunicViewsText()` gives `Strg+Umschalt+Bild-ab` in
+German; `configureRunicText` takes your own for the `shortcut.*` and
+`platform.*_key` keys). See the
 [shortcut guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#keyboard-shortcuts-in-the-page)
 for which keys to leave to text fields and the web view.
 
@@ -1439,10 +1443,16 @@ take the method's typed failure.
 
 ## Errors and diagnostics
 
-`describeBridgeError(error)` turns anything a binding reports as `error` into one English sentence for a status line
-or an alert, instead of `String(error)` ("BridgeError: …"): a `rejected` or `failed` error shows the producer's
-message, such as a setter's validation text; `disconnected`, `released`, `timeout` and `unavailable` name the
-condition; a `FieldError` shows its message. Development `detail` is never included. `isBridgeError(error, kind?)`
+`describeBridgeError(error)` turns anything a binding reports as `error` into one sentence for a status line or an
+alert, instead of `String(error)` ("BridgeError: …"): a `BridgeError` gets Runic's sentence for its reason, such as
+`invalid-input` ("The input is not valid.") or `capacity`, or else for its kind (`disconnected`, `released`,
+`failed`, …); a `FieldError` shows the application's text for it, such as a setter's validation message. A
+`BridgeError`'s own `message` is the producer's diagnostic text, such as `Count has an invalid value.`, and is not
+shown (since 0.18; before, a `rejected` or `failed` error showed it). Development `detail` is never included. The
+sentences are English unless the page has Runic's text in its language: `configureRunicViewsText()` of
+[`@runic-artifex/views-translations`](../views-translations/README.md) adds English and German, and
+`configureRunicText((key, locale) => …)` takes the application's own text for each `RunicTextKey` (`bridge.failed`,
+`bridge.disconnected`, …; `runicTextKeys` lists them). `isBridgeError(error, kind?)`
 tells a `BridgeError`, of one kind or a list of kinds, and narrows `error.kind`:
 
 ```tsx

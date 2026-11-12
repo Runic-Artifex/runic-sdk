@@ -192,6 +192,35 @@ public sealed class FrameLaunchBindingTests
         Assert.Equal(HttpStatusCode.Unauthorized, await RefusedAsync(frame, origin, token));
     }
 
+    // The surface records the Origin it admitted for each connected page, which a host uses as a region's embedder: the
+    // origin the page has in its browser, such as a development server's, rather than the surface's own.
+    [Test]
+    public async Task TheSurfaceRecordsTheOriginItAdmittedForEachPage()
+    {
+        await using var guest = await RegionSurface.StartAsync();
+        var surface = guest.Surface;
+        surface.EnterRegionMode();
+        var connected = new TaskCompletionSource<ulong>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var events = surface.SubscribeConnectionEvents(e =>
+        {
+            if (e.Kind == DesktopConnectionEventKind.Connected) connected.TrySetResult(e.SessionId);
+        });
+        using var http = Http();
+        var launch = await surface.BeginFrameLaunchAsync(Embedder, allowSameSite: true, measuresHeight: false, CancellationToken.None);
+        var frame = new Uri(launch.Url, "../");
+        var origin = frame.GetLeftPart(UriPartial.Authority);
+        var token = await SpendAsync(http, launch.Url);
+        using (var page = await PageAsync(http, frame, origin, token))
+        {
+            var session = await connected.Task.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
+            Assert.Equal(origin, surface.ConnectionOrigin(session));
+            Assert.Null(surface.ConnectionOrigin(session + 1));
+            await page.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            await WaitUntilAsync(() => surface.ConnectionCount == 0);
+            Assert.Null(surface.ConnectionOrigin(session));
+        }
+    }
+
     [Test]
     public async Task AReloadedPageReconnectsWithItsTokenUntilTheRegionDetaches()
     {

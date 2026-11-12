@@ -639,7 +639,7 @@ function Shell({ children }: { readonly children: ReactNode }) {
 
 The `error` of `useView` and of a command or operation handle is typed
 `unknown`: it holds whatever the connection or the call rejected with. Show it
-with `describeBridgeError(error)`, one English sentence, instead of
+with `describeBridgeError(error)`, one sentence (in the window's language with `configureRunicViewsText()`), instead of
 `String(error)`. A Bridge failure is a `BridgeError` from
 `@runic-artifex/views`; narrow it with `isBridgeError` (or `instanceof`) before
 reading `kind`, `route` or `detail`:

@@ -50,13 +50,13 @@ const spec: MockTypedViewSpec = {
   commands: {
     showEditor: { member: "showEditor", available: "canShowEditor" },
     showPreview: { member: "showPreview", available: "canShowPreview" },
-    saveAndClose: { member: "saveAndClose", available: "canSaveAndClose", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    saveAndClose: { member: "saveAndClose", available: "canSaveAndClose", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: SaveFailure = typed; bridgeWire.encodeUnion(bridgeUnion0); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     close: { member: "close", available: "canClose" },
   },
   operations: {
     showEditor: { member: "showEditor" },
     showPreview: { member: "showPreview" },
-    saveAndClose: { member: "saveAndClose", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["arrival"]: typed["arrival"] }; }, encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    saveAndClose: { member: "saveAndClose", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["arrival"]: typed["arrival"] }; }, encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: SaveFailure = typed; bridgeWire.encodeUnion(bridgeUnion0); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     close: { member: "close", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["arrival"]: typed["arrival"] }; } },
   },
   interactions: {

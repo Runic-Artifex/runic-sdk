@@ -122,7 +122,7 @@ platform {
   launch_link_invalid = This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.
   resource_unavailable_title = Resource Not Available
   resource_unavailable = The requested resource is not available.
-  # The title of a Windows window while WebView2 starts, until the page has one; a screen reader reads it.
+  # The title of a window until the page has one (Windows while WebView2 starts, Linux with GTK 4); a screen reader reads it.
   loading_title = Loading…
 }
 
@@ -153,4 +153,60 @@ menu {
   minimize = Minimize
   zoom = Zoom
   bring_all_to_front = Bring All to Front
+}
+
+# describeBridgeError (@runic-artifex/views): the sentence a page shows in a status line or an alert when a call to the
+# application fails. A Bridge error's own message is diagnostic text and is never shown.
+bridge {
+  # Kind unavailable: the page runs outside a Runic window, such as from a plain Vite server.
+  unavailable = This page is not running in a Runic host, so it cannot reach the application.
+  # Kind timeout: the host did not connect in time.
+  timeout = The application did not answer in time.
+  # Kind disconnected: the connection to .NET dropped; the page reconnects by itself.
+  disconnected = The connection to the application was lost. It is restored automatically.
+  # Kind released: the view behind the page's binding was closed or replaced, such as by navigation.
+  released = This view was closed or replaced.
+  # Kind cancelled.
+  cancelled = The request was cancelled.
+  # Kind rejected, without a reason of its own: nothing ran.
+  rejected = The application rejected the request.
+  # Kind failed, without a reason of its own: the setter or command failed in the application.
+  failed = The request failed.
+  # Reason unavailable: a command that cannot run now (its CanExecute is false).
+  action_unavailable = This action is not available right now.
+  # Reasons capacity and busy: a limit of the window or connection; trying again later works.
+  busy = The application is busy. Try again in a moment.
+  # Reason invalid-input: a value or command input the application does not accept.
+  invalid_input = The input is not valid.
+  # Reason unresolved-key: the object a command names, such as a row, is gone.
+  item_not_found = The item no longer exists.
+  # Reason protocol-mismatch: the page and the application come from different Runic releases.
+  protocol_mismatch = This page and the application use different Runic versions. Rebuild the frontend.
+  # Reason state-withheld: the call ran, but its result cannot be shown; do not run it again blindly.
+  state_withheld = The change was made, but the page cannot show it yet.
+  # An operation whose outcome the page could not observe.
+  outcome_unknown = It is not known whether the operation finished. Check its result before you try again.
+  # A field write that failed without a text of its own.
+  value_not_saved = The value was not saved.
+}
+
+# formatShortcut (@runic-artifex/views): key names in shortcut labels the page writes, such as Ctrl+Shift+Page Up,
+# outside Apple platforms; Apple platforms show symbols and name only the space key. The modifiers are
+# platform.control_key, platform.shift_key and platform.alt_key.
+shortcut {
+  enter = Enter
+  escape = Esc
+  tab = Tab
+  space = Space
+  backspace = Backspace
+  delete = Del
+  # The arrow keys.
+  up = Up
+  down = Down
+  left = Left
+  right = Right
+  home = Home
+  end = End
+  page_up = Page Up
+  page_down = Page Down
 }

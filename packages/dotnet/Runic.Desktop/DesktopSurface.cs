@@ -70,10 +70,11 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     // runic-host/1 region-component/1: a new component token for a component in the host page of embedder
     // (WebUiWindow.BeginComponentAsync).
-    internal Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, CancellationToken cancellationToken)
+    internal Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, bool browser,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        return _engine.BeginComponentAsync(embedder, allowSameSite, cancellationToken);
+        return _engine.BeginComponentAsync(embedder, allowSameSite, browser, cancellationToken);
     }
 
     // runic-host/1 region-detach of a component: its token is revoked and its page disconnected.
@@ -159,6 +160,10 @@ public sealed class DesktopSurface : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(handler);
         return _engine.ObserveConnections(webUiEvent => handler(new DesktopConnectionEvent(this, webUiEvent)));
     }
+
+    // The admitted Origin of the connected page whose DesktopConnectionEvent.SessionId this is, or null: the origin a page
+    // has in the browser, such as a development server's, which a region's frame must name as its embedder (region/1).
+    internal string? ConnectionOrigin(ulong sessionId) => _engine.ConnectionOrigin(sessionId);
 
     /// <summary>Gets the number of pages connected to this surface.</summary>
     /// <remarks>

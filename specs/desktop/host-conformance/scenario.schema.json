@@ -211,6 +211,10 @@
               "type": "boolean",
               "description": "region-component/1: the policy shows the windows it embeds as components (RunicHostedWindowDecision.EmbedComponent)."
             },
+            "browser": {
+              "type": "boolean",
+              "description": "A browser (serve-only) host: its pages run in the user's browser, and no native window shows them."
+            },
             "embedOptions": {
               "type": "object",
               "additionalProperties": false,
@@ -272,6 +276,10 @@
         "componentBuild": {
           "type": "boolean",
           "description": "region-component/1: the test application's content has a component build (_runic_component/)."
+        },
+        "elevated": {
+          "type": "boolean",
+          "description": "The guest runs elevated, as the runner plays it."
         }
       }
     },

@@ -128,7 +128,7 @@ internal sealed class HostRoleConformanceTests
         private async Task StartAsync()
         {
             _control.Start();
-            _fixture = await HostFixture.StartAsync();
+            _fixture = await HostFixture.StartAsync(serveOnly: BrowserHost);
             _fixture.Applications.WindowOpened += (_, e) => { lock (_opened) _opened.Add(e.Window); };
             _fixture.Factory.ContextMenu = _user.ContextMenuAsync;
             _dialogs.Answer = _user.DialogAsync;
@@ -281,24 +281,37 @@ internal sealed class HostRoleConformanceTests
         // native windows in the order they open: the guest's windows of their own and the host's windows.
         private HostedWindowHost Native(string id)
         {
-            if (_pages.TryGetValue(id, out var page)) return page.Host;
+            if (_pages.TryGetValue(id, out var page))
+                return page.Host ?? throw new InvalidOperationException($"The browser host's page {id} has no native window.");
             int index;
             lock (_opened) index = _opened.Where(static window => window.PresentationKind == RunicHostedWindowPresentationKind.Window).ToList()
                 .FindLastIndex(window => window.Id == id);
             if (index < 0) throw new InvalidOperationException($"The host opened no window {id} of its own.");
-            var hostWindows = _pages.Values.Select(static page => page.Host).ToHashSet();
+            var hostWindows = _pages.Values.Select(static page => page.Host).OfType<HostedWindowHost>().ToHashSet();
             return _fixture!.Factory.Hosts.Where(host => !hostWindows.Contains(host)).ElementAt(index);
         }
 
-        private DesktopWindow NativeWindow(string id) => _pages.TryGetValue(id, out var page) ? page.Window : Window(id).Presentation;
+        private DesktopWindow NativeWindow(string id) => _pages.TryGetValue(id, out var page)
+            ? page.Window ?? throw new InvalidOperationException($"The browser host's page {id} has no native window.")
+            : Window(id).Presentation;
 
-        // A host window whose page the scenario plays (HostedRegionTestPage), opened at its first region.
-        private sealed record HostPage(HostedRegionTestPage Page, DesktopSurface Surface, DesktopWindow Window, HostedWindowHost Host);
+        // A host window whose page the scenario plays (HostedRegionTestPage), opened at its first region. In a browser
+        // (serve-only) host the page runs in the user's browser, and no native window shows it.
+        private sealed record HostPage(HostedRegionTestPage Page, DesktopSurface Surface, DesktopWindow? Window, HostedWindowHost? Host);
+
+        private bool BrowserHost => scenario["arrange"]!["host"]!["browser"]?.GetValue<bool>() == true;
 
         private async Task<HostPage> PageAsync(string name)
         {
             if (_pages.TryGetValue(name, out var existing)) return existing;
             var surface = await _fixture!.Desktop.CreateSurfaceAsync();
+            if (BrowserHost)
+            {
+                var served = new HostPage(new HostedRegionTestPage(_fixture.Host.RegionDirectory, null, DesktopHostedRegionPage.Origin(surface.Url),
+                    new HostedMenuWindow(), browser: true), surface, null, null);
+                _pages[name] = served;
+                return served;
+            }
             var window = await surface.OpenWindowAsync(RunicDesktopHost.DefaultWindowOptions);
             var host = _fixture.Factory.Hosts[^1];
             // A Window that never opens stands for the host's Window of the page (RunicHostedRegion.MoveToAsync names it).
