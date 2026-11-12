@@ -1,5 +1,5 @@
 import { createContext, createElement, useContext, type ReactNode } from "react";
-import { pageInstance, type RunicInstance } from "@runic-artifex/views";
+import { defaultInstance, type RunicInstance } from "@runic-artifex/views";
 
 // The Runic instance of a subtree (`createRunicInstance` in @runic-artifex/views). Without a provider it is the page
 // instance, on `globalThis.__runicBridge`, as before instances existed.
@@ -25,7 +25,7 @@ export function RunicInstanceProvider({ instance, children }: RunicInstanceProvi
   return createElement(RunicInstanceContext.Provider, { value: instance }, children);
 }
 
-/** The Runic instance of the calling component: that of the nearest `RunicInstanceProvider`, or the page instance. */
+/** The Runic instance of the calling component: that of the nearest `RunicInstanceProvider`, or the default instance (`defaultInstance()`): the page instance, or in a component bundle its element's. */
 export function useRunicInstance(): RunicInstance {
-  return useContext(RunicInstanceContext) ?? pageInstance();
+  return useContext(RunicInstanceContext) ?? defaultInstance();
 }

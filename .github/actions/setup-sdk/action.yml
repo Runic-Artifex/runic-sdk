@@ -4,6 +4,12 @@ inputs:
   dotnet:
     description: Install the pinned .NET SDK
     default: "true"
+  additional-dotnet:
+    description: >-
+      Also install the certified newer-major .NET SDK next to the pinned one, in a directory of its own that comes
+      first on PATH. The repository still builds with the global.json SDK; projects outside it, which have no
+      global.json, use the newer SDK and run on the pinned SDK's runtime.
+    default: "false"
   nuget:
     description: >-
       NuGet package cache to restore: core (the locked RunicSdk.Core.slnx restore),
@@ -43,6 +49,29 @@ runs:
           exit 1
         fi
         echo "Outside the repository, dotnet resolves the pinned SDK $pinned."
+    # The certified additional SDKs of eng/toolchain.mjs are the dotnet-version of this step. Both SDKs share one
+    # directory, so the newer one finds the pinned SDK's runtime, which net10.0 applications need.
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      if: inputs.dotnet == 'true' && inputs.additional-dotnet == 'true'
+      env:
+        DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet-additional
+      with:
+        global-json-file: global.json
+        dotnet-version: 11.0.100
+    - name: Check that projects outside the repository resolve the additional SDK
+      if: inputs.dotnet == 'true' && inputs.additional-dotnet == 'true'
+      shell: bash
+      run: |
+        pinned=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' global.json)
+        additional=$(ls "$RUNNER_TOOL_CACHE/runic-dotnet-additional/sdk" | sort -V | tail -n 1)
+        repository=$(dotnet --version)
+        resolved=$(cd "$RUNNER_TEMP" && dotnet --version)
+        if [ "$repository" != "$pinned" ] || [ "$resolved" != "$additional" ]; then
+          echo "::error title=Additional .NET SDK::The repository resolves SDK $repository (expected $pinned); a project outside it resolves $resolved (expected $additional)."
+          exit 1
+        fi
+        echo "Outside the repository, dotnet resolves SDK $resolved; the repository keeps $pinned."
+        dotnet --list-runtimes
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: 1.4.4

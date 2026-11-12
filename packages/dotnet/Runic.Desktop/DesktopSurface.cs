@@ -383,6 +383,10 @@ public sealed class DesktopSurface : IAsyncDisposable
     // The surface URL, or null before the surface is attached or after it closed.
     internal Uri? CurrentUrl => _engine.Url;
 
+    // region-component/1: lets the host page at embedder load the surface's component build (WebUiWindow.ComponentPath)
+    // with CORS, or, with null, refuses it to everyone.
+    internal void SetComponentEmbedder(Uri? embedder) => _engine.SetComponentEmbedder(embedder);
+
     private sealed class BlobLease(WebUiWindow engine, Func<Internal.PresentationExchange, string?, Task> handler) : IDisposable
     {
         private int _disposed;
