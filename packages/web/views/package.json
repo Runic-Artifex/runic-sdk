@@ -49,6 +49,11 @@
       "import": "./dist/mock.js",
       "default": "./dist/mock.js"
     },
+    "./experimental": {
+      "types": "./dist/experimental.d.ts",
+      "import": "./dist/experimental.js",
+      "default": "./dist/experimental.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
