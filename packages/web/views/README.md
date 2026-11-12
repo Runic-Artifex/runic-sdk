@@ -1785,9 +1785,13 @@ connect call rejects as `unavailable`; call it inside `instance.run` or under th
 provider. A component calls none of the document-level installers
 (`installNavigationPath`, `installBackNavigation`, `installErrorReporting`), uses
 `createMenuBarController` with `keyboard: false`, and shows no title of its own.
-Connecting with a component token (`{ url, token }`) is not available yet:
-`connectComponentBridge` throws until the component attach of `region-component/1`
-ships.
+An element connected with `{ url, token }` connects to its guest itself with
+`connectComponentBridge`: the component token that the host page received for the
+region is its WebSocket subprotocol, and the guest admits it only from the host
+page's origin ([component mode](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/host-protocol.md#component-mode-region-component1)).
+The connection never runs script that its guest sends and never navigates the host
+page; it closes when the element is removed. `<runic-hosted-region>` does all this
+when the host shows a guest as a component.
 
 ## Hosted regions (experimental)
 
@@ -1838,6 +1842,16 @@ entries, which define the element themselves.
   of a name shows the region, and an earlier one shows its fallback.
 - **Moving the element** in the document removes its frame and declares the region
   again: a frame's address is good for one load, so the host attaches the guest anew.
+- **Components.** When the host shows the guest as a component
+  (`RunicHostedWindowDecision.EmbedComponent`, trusted component mode), the element
+  imports the guest's component module from the guest's origin and shows its element
+  instead of a frame, in the page's own document: the page's CSS custom properties
+  reach it, and Tab moves through it as through the page. The page's
+  Content-Security-Policy must allow the guest's origin in `script-src` and
+  `connect-src` (`http://127.0.0.1:*` and `ws://127.0.0.1:*` in a Runic window);
+  without it the element shows its fallback as `unsupported`. The guest's code runs
+  in the page's realm: embed components only of applications you trust as your own
+  page.
 - **Without a host.** On a page whose host does not implement hosted regions, or
   without a Bridge, the element is `unsupported` and shows its fallback.
 - **The guest.** A guest's page in a region is its served build, not a development
