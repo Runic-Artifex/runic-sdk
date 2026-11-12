@@ -15,9 +15,9 @@ use axum::response::Response;
 use axum::serve::IncomingStream;
 use bytes::Bytes;
 use futures_util::{StreamExt, stream};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Runtime;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{Semaphore, mpsc, oneshot, watch};
 
 use crate::files;
 use crate::host;
@@ -77,6 +77,13 @@ pub trait Handler: Send + Sync + 'static {
     fn completed(&self, token: u64, accepted: bool);
     /// The result of [`Server::read`] with `token`.
     fn received(&self, token: u64, read: BodyRead<'_>);
+    /// With [`ServerConfig::check_peers`]: whether to serve a connection the listener accepted, from its peer's address
+    /// and the listener's, before the server reads anything from it. Called on a blocking thread, so it may look the
+    /// peer up; a refused connection is closed without a response.
+    fn admit(&self, remote: SocketAddr, local: SocketAddr) -> bool {
+        let _ = (remote, local);
+        true
+    }
 }
 
 /// The listener and its limits.
@@ -96,6 +103,8 @@ pub struct ServerConfig {
     pub max_message_bytes: usize,
     /// Messages a connection may deliver before the host consumed earlier ones.
     pub receive_window: usize,
+    /// Ask [`Handler::admit`] about every accepted connection before serving it.
+    pub check_peers: bool,
 }
 
 impl Default for ServerConfig {
@@ -107,6 +116,7 @@ impl Default for ServerConfig {
             worker_threads: 1,
             max_message_bytes: 64 << 20,
             receive_window: 64,
+            check_peers: false,
         }
     }
 }
@@ -195,6 +205,12 @@ impl Inner {
         }
     }
 
+    // Handler::admit unless the server stopped, which refuses. A stop waits for checks in progress.
+    fn admit(&self, remote: SocketAddr, local: SocketAddr) -> bool {
+        let stopped = self.stopped.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+        !*stopped && self.handler.admit(remote, local)
+    }
+
     pub(crate) fn spawn<F>(&self, future: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
@@ -204,6 +220,92 @@ impl Inner {
 
     fn is_stopped(&self) -> bool {
         *self.stopped.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+// Connections checked at once: more wait for a check to end before the listener accepts again, so a flood of connections
+// cannot take every blocking thread.
+const PEER_CHECKS: usize = 8;
+
+/// The listener under axum. With [`ServerConfig::check_peers`] each accepted connection is served only once
+/// [`Handler::admit`] allowed it, on a blocking thread, before anything is read from it; a refused one is closed. Checks
+/// run concurrently, so a slow one does not hold the others, and admitted connections are served in the order their
+/// checks ended.
+pub(crate) struct AdmittingListener {
+    listener: TcpListener,
+    inner: Arc<Inner>,
+    checks: Arc<Semaphore>,
+    sender: mpsc::Sender<(TcpStream, SocketAddr)>,
+    admitted: mpsc::Receiver<(TcpStream, SocketAddr)>,
+}
+
+impl AdmittingListener {
+    fn new(listener: TcpListener, inner: Arc<Inner>) -> Self {
+        let (sender, admitted) = mpsc::channel(PEER_CHECKS);
+        Self { listener, inner, checks: Arc::new(Semaphore::new(PEER_CHECKS)), sender, admitted }
+    }
+
+    fn check(&self, stream: TcpStream, remote: SocketAddr, permit: tokio::sync::OwnedSemaphorePermit) {
+        let inner = self.inner.clone();
+        let sender = self.sender.clone();
+        self.inner.spawn(async move {
+            let _permit = permit;
+            let Ok(local) = stream.local_addr() else {
+                return;
+            };
+            let admitted = tokio::task::spawn_blocking(move || inner.admit(remote, local)).await.unwrap_or(false);
+            if admitted {
+                let _ = sender.send((stream, remote)).await;
+            }
+            // A refused stream is dropped here: closed without a response.
+        });
+    }
+}
+
+impl axum::serve::Listener for AdmittingListener {
+    type Io = TcpStream;
+    type Addr = SocketAddr;
+
+    async fn accept(&mut self) -> (TcpStream, SocketAddr) {
+        loop {
+            if !self.inner.config.check_peers {
+                match self.listener.accept().await {
+                    Ok(accepted) => return accepted,
+                    Err(error) => accept_failed(error).await,
+                }
+                continue;
+            }
+            tokio::select! {
+                Some(admitted) = self.admitted.recv() => return admitted,
+                permit = self.checks.clone().acquire_owned() => {
+                    let Ok(permit) = permit else { continue };
+                    tokio::select! {
+                        Some(admitted) = self.admitted.recv() => {
+                            drop(permit);
+                            return admitted;
+                        }
+                        accepted = self.listener.accept() => match accepted {
+                            Ok((stream, remote)) => self.check(stream, remote, permit),
+                            Err(error) => accept_failed(error).await,
+                        },
+                    }
+                }
+            }
+        }
+    }
+
+    fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.listener.local_addr()
+    }
+}
+
+// As axum's listener: a failed connection is skipped, any other error (such as too many open files) waits a moment.
+async fn accept_failed(error: io::Error) {
+    if !matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionRefused | io::ErrorKind::ConnectionAborted | io::ErrorKind::ConnectionReset
+    ) {
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 
@@ -220,8 +322,8 @@ pub(crate) struct Peer {
     local: SocketAddr,
 }
 
-impl Connected<IncomingStream<'_, TcpListener>> for Peer {
-    fn connect_info(stream: IncomingStream<'_, TcpListener>) -> Self {
+impl Connected<IncomingStream<'_, AdmittingListener>> for Peer {
+    fn connect_info(stream: IncomingStream<'_, AdmittingListener>) -> Self {
         // Called once per accepted connection, before it is served. Without TCP_NODELAY a response written as head and
         // body waits for the client's delayed acknowledgement (about 40 ms on Linux); Kestrel sets it too.
         let _ = stream.io().set_nodelay(true);
@@ -275,6 +377,7 @@ impl Server {
             let _entered = runtime.enter();
             TcpListener::from_std(listener).map_err(ServerError::Bind)?
         };
+        let listener = AdmittingListener::new(listener, inner.clone());
         let app = Router::new().fallback(handle).with_state(inner.clone());
         runtime.spawn(async move {
             let service = app.into_make_service_with_connect_info::<Peer>();

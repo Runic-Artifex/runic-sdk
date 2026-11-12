@@ -641,3 +641,90 @@ async fn a_request_body_is_read_chunk_by_chunk_until_its_end() {
     // The request completed: its body is gone.
     assert!(server.read(id, 1000).is_err());
 }
+
+// Delegates to a Recorder, and admits connections only while `allow` is set, recording each peer it was asked about.
+struct Gate {
+    recorder: Recorder,
+    allow: std::sync::atomic::AtomicBool,
+    asked: Mutex<Vec<(std::net::SocketAddr, std::net::SocketAddr)>>,
+}
+
+impl Handler for Gate {
+    fn request(&self, head: &RequestHead<'_>) {
+        self.recorder.request(head);
+    }
+    fn request_aborted(&self, id: u64) {
+        self.recorder.request_aborted(id);
+    }
+    fn message(&self, connection: u64, message: u64, kind: MessageKind, data: &[u8]) {
+        self.recorder.message(connection, message, kind, data);
+    }
+    fn closed(&self, connection: u64, close: Option<WebSocketClose<'_>>) {
+        self.recorder.closed(connection, close);
+    }
+    fn completed(&self, token: u64, accepted: bool) {
+        self.recorder.completed(token, accepted);
+    }
+    fn received(&self, token: u64, read: BodyRead<'_>) {
+        self.recorder.received(token, read);
+    }
+    fn admit(&self, remote: std::net::SocketAddr, local: std::net::SocketAddr) -> bool {
+        self.asked.lock().unwrap().push((remote, local));
+        self.allow.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[tokio::test]
+async fn a_refused_peer_is_closed_before_its_request_is_read() {
+    let (sender, mut events) = mpsc::unbounded_channel();
+    let gate = Arc::new(Gate {
+        recorder: Recorder(Mutex::new(sender), Mutex::default()),
+        allow: std::sync::atomic::AtomicBool::new(false),
+        asked: Mutex::default(),
+    });
+    let server = Server::start(ServerConfig { check_peers: true, ..ServerConfig::default() }, gate.clone()).unwrap();
+    let port = server.port();
+
+    // Refused: closed without a response, and the handler never sees the request.
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let client = stream.local_addr().unwrap();
+    let _ = stream.write_all(get(port, "/refused", "").as_bytes()).await;
+    let mut response = Vec::new();
+    let read =
+        tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut response)).await.expect("closed in time");
+    assert!(read.is_err() || response.is_empty(), "no response: {}", String::from_utf8_lossy(&response));
+    let asked = gate.asked.lock().unwrap().clone();
+    assert!(
+        asked.iter().any(|(remote, local)| *remote == client && local.port() == port),
+        "the check saw the client's end and the listener's: {asked:?}"
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), events.recv()).await.is_err(),
+        "the handler saw no request"
+    );
+
+    // Admitted: served as usual.
+    gate.allow.store(true, std::sync::atomic::Ordering::SeqCst);
+    let client = tokio::spawn(exchange(port, get(port, "/admitted", "")));
+    let Event::Request { id, target, .. } = next(&mut events).await else { panic!("a request") };
+    assert_eq!(target, "/admitted");
+    server.respond(id, StatusCode::NO_CONTENT, HeaderMap::new(), Body::Empty).unwrap();
+    assert!(client.await.unwrap().starts_with("HTTP/1.1 204"));
+}
+
+#[tokio::test]
+async fn without_peer_checks_admit_is_never_asked() {
+    let (sender, mut events) = mpsc::unbounded_channel();
+    let gate = Arc::new(Gate {
+        recorder: Recorder(Mutex::new(sender), Mutex::default()),
+        allow: std::sync::atomic::AtomicBool::new(false),
+        asked: Mutex::default(),
+    });
+    let server = Server::start(ServerConfig::default(), gate.clone()).unwrap();
+    let port = server.port();
+    let client = tokio::spawn(exchange(port, get(port, "/", "")));
+    let Event::Request { id, .. } = next(&mut events).await else { panic!("a request") };
+    server.respond(id, StatusCode::NO_CONTENT, HeaderMap::new(), Body::Empty).unwrap();
+    assert!(client.await.unwrap().starts_with("HTTP/1.1 204"));
+    assert!(gate.asked.lock().unwrap().is_empty());
+}
