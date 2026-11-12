@@ -54,7 +54,7 @@ const spec: MockTypedViewSpec = {
   },
   commands: {
     reserve: { member: "reserve", decodeInput: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647), encodeFailure: (value: unknown) => { const typed = value as NoteQuotaExceeded; return { ["limit"]: typed["limit"], ["requested"]: typed["requested"] }; } },
-    save: { member: "save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as NoteSaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    save: { member: "save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as NoteSaveFailure; return (() => { const bridgeUnion0: NoteSaveFailure = typed; bridgeWire.encodeUnion(bridgeUnion0); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     publish: { member: "publish", available: "canPublish", encodeFailure: (value: unknown) => { const typed = value as NotePublishBlock; return typed; } },
     discard: { member: "discard", available: "canDiscard" },
   },
