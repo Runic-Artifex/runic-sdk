@@ -604,6 +604,10 @@ internal sealed class WindowsWebView2Controller : IDisposable
         finally { WindowsWebView2Interop.Release(args2); }
     }
 
+    // Native smokes only: every message the top-level WebMessageReceived hears, with its source, set before the window
+    // opens. A region's guest frame must not reach it (Runic.Desktop.WebViewSmoke --region).
+    internal static Action<string?, string?>? TopLevelMessageObserver { get; set; }
+
     internal void RegisterEvents(
         Action<string> titleChanged,
         Action closeRequested,
@@ -618,6 +622,14 @@ internal sealed class WindowsWebView2Controller : IDisposable
             finally { Marshal.FreeCoTaskMem(title); }
         }));
         AddEvent<IWebViewCloseRequested>(WindowsWebView2Interop.WindowCloseRequestedSlot, new WebViewEvent(_ => closeRequested()));
+        if (TopLevelMessageObserver is { } observe)
+            AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+            {
+                string? text;
+                try { text = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
+                catch (ArgumentException) { text = null; }
+                observe(GetString(args, WindowsWebView2Interop.WebMessageSourceSlot), text);
+            }));
         AddEvent<IWebViewPermissionRequested>(WindowsWebView2Interop.PermissionRequestedSlot, new WebViewEvent(args =>
         {
             // Microphone (1) and camera (2), only for the presented origin; the URI names the requesting frame. An

@@ -96,7 +96,7 @@ internal static partial class FileDropSmoke
     }
 
     // A GTK 3 window that offers text/uri-list when dragged.
-    private static unsafe partial class DragSource
+    internal static unsafe partial class DragSource
     {
         internal const int Copy = 1 << 1;
         internal const int Move = 1 << 2;

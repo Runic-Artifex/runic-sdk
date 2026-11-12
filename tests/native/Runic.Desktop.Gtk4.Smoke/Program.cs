@@ -37,7 +37,8 @@ if (args.Contains("--web-content", StringComparer.Ordinal))
 if (Array.IndexOf(args, "--announcement") is var announcement and >= 0)
     return AnnouncementSmoke.Run(announcement + 1 < args.Length ? args[announcement + 1] : "gtk4");
 
-// --accessibility gtk3|gtk4 --probe <command>: the page read and changed through AT-SPI by the accessibility probe.
+// --accessibility gtk3|gtk4 [--region] --probe <command>: the page read and changed through AT-SPI by the accessibility
+// probe; with --region, a guest's controls inside a region's frame (#866).
 if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
 {
     var toolkit = accessibility + 1 < args.Length ? args[accessibility + 1] : "gtk4";
@@ -48,7 +49,8 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
         _ => throw new ArgumentException($"Unknown toolkit '{toolkit}'; use gtk3 or gtk4."),
     };
     var probe = AccessibilitySmoke.ProbeCommand(args);
-    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe));
+    var region = args.TakeWhile(static argument => argument != "--probe").Contains("--region", StringComparer.Ordinal);
+    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe, region: region));
 }
 
 // --menus gtk3|gtk4 [--rtl] (B10): the in-window menu bar, its shortcuts and context menus.

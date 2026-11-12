@@ -129,7 +129,7 @@ internal static partial class WindowsFileDropSmoke
     }
 
     // The shell's OLE drag of the paths onto a client point of the window, from an STA thread; null without desktop input.
-    private static async Task<int?> DragOntoAsync(nint window, string[] paths, (int X, int Y) clientPoint)
+    internal static async Task<int?> DragOntoAsync(nint window, string[] paths, (int X, int Y) clientPoint)
     {
         var drag = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>

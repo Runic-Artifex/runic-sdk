@@ -8,7 +8,9 @@ using System.IO;
 // reader, VoiceOver on macOS, NVDA on Windows or Orca on Linux, and checks what it speaks (SpeechScenario.cs).
 //
 //   Runic.Desktop.AccessibilityProbe --pid <pid> --host gtk3|gtk4|webview2|wkwebview|wpf [--receipt <file>]
-//       [--screen-reader voiceover|nvda|orca] [--nvda <nvda.exe>] [--survey]
+//       [--screen-reader voiceover|nvda|orca] [--nvda <nvda.exe>] [--survey] [--region]
+//
+// --region reads the region fixture instead (RegionScenario): a guest's button inside a region's frame.
 //
 // --survey reports every check without failing, to learn what a new host or engine version exposes. The screen
 // reader's own log goes beside the receipt.
@@ -28,11 +30,19 @@ try
     if (screenReader is not null) await screenReader.StartAsync(deadline.Token);
     await using var client = await CreateClientAsync(pid, deadline.Token);
     report.Api = client.Api;
-    var expectations = Expectations.For(host, screenReaderName);
-    using var scenario = new Scenario(client, report, expectations);
-    await scenario.RunAsync(deadline.Token);
-    if (screenReader is not null) await new SpeechScenario(client, report, expectations, screenReader, scenario.Kept).RunAsync(deadline.Token);
-    await scenario.FinishAsync(deadline.Token);
+    if (args.Contains("--region", StringComparer.Ordinal))
+    {
+        // The region fixture (RegionScenario): the guest's controls inside the region, through the same API.
+        await new RegionScenario(client, report).RunAsync(deadline.Token);
+    }
+    else
+    {
+        var expectations = Expectations.For(host, screenReaderName);
+        using var scenario = new Scenario(client, report, expectations);
+        await scenario.RunAsync(deadline.Token);
+        if (screenReader is not null) await new SpeechScenario(client, report, expectations, screenReader, scenario.Kept).RunAsync(deadline.Token);
+        await scenario.FinishAsync(deadline.Token);
+    }
 }
 catch (Exception error)
 {

@@ -80,9 +80,12 @@ internal sealed class Pointer : IDisposable
     internal void Release() => Button(false);
 
     // Escape on the test display's keyboard.
-    internal unsafe void Escape()
+    internal void Escape() => Key(0xff1b);
+
+    // A press and release of the key with this keysym (0xff09 Tab), on the test display's keyboard.
+    internal unsafe void Key(nuint keysym)
     {
-        var keycode = ((delegate* unmanaged[Cdecl]<nint, nuint, byte>)NativeLibrary.GetExport(_x11, "XKeysymToKeycode"))(_display, 0xff1b);
+        var keycode = ((delegate* unmanaged[Cdecl]<nint, nuint, byte>)NativeLibrary.GetExport(_x11, "XKeysymToKeycode"))(_display, keysym);
         var key = (delegate* unmanaged[Cdecl]<nint, uint, int, nuint, int>)NativeLibrary.GetExport(_xtest, "XTestFakeKeyEvent");
         key(_display, keycode, 1, 0);
         Flush();
