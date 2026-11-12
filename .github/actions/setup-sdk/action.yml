@@ -23,10 +23,26 @@ runs:
   steps:
     # Every job that runs tests sets up the SDK; native-musl, which does not, uses the action itself.
     - uses: ./.github/actions/test-timeout-scale
+    # The pinned SDK goes into its own directory, which setup-dotnet puts first on PATH and in DOTNET_ROOT.
+    # In the image's directory, a newer preinstalled SDK (11.0.100 since ubuntu-24.04 20261111.370.1) is what
+    # projects outside the repo resolve, such as the template and consumer projects, which have no global.json.
     - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       if: inputs.dotnet == 'true'
+      env:
+        DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/runic-dotnet
       with:
         global-json-file: global.json
+    - name: Check that projects outside the repository resolve the pinned SDK
+      if: inputs.dotnet == 'true'
+      shell: bash
+      run: |
+        pinned=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' global.json)
+        resolved=$(cd "$RUNNER_TEMP" && dotnet --version)
+        if [ "$resolved" != "$pinned" ]; then
+          echo "::error title=Unpinned .NET SDK::A project outside the repository resolves SDK $resolved, not the pinned $pinned."
+          exit 1
+        fi
+        echo "Outside the repository, dotnet resolves the pinned SDK $pinned."
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: 1.4.4
