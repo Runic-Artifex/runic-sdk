@@ -70,6 +70,12 @@ internal sealed class HostConformanceTests
         private string? _key;
         private long _nextRequest;
         private bool _inputClosed;
+        // region/1: the embedder of the latest region-attach the runner sent, the frame launch addresses the guest
+        // answered, in order, the token of the latest frame launch, and the pages the runner connected with a token.
+        private string? _embedder;
+        private readonly List<Uri> _frameUrls = [];
+        private string? _frameToken;
+        private readonly List<WebSocket> _framePages = [];
 
         private JsonObject Limits => scenario["arrange"]?["limits"] as JsonObject ?? [];
 
@@ -97,7 +103,7 @@ internal sealed class HostConformanceTests
             if (step["start"] is { } start) Start(start);
             else if (step["line"] is { } line) await LineAsync(line);
             else if (step["connect"] is { } connect) await ConnectAsync(connect.GetValue<string>(), step);
-            else if (step["send"] is JsonObject send) await _connections[Name(step["connection"])].SendAsync(Resolve(send)!.AsObject());
+            else if (step["send"] is JsonObject send) await SendAsync(Name(step["connection"]), Resolve(send)!.AsObject());
             else if (step["sendRaw"] is JsonObject raw) await _connections[Name(step["connection"])].SendRawAsync(raw);
             else if (step["receive"] is JsonObject receive) await ReceiveAsync(Name(step["connection"]), receive);
             else if (step["receiveAll"] is JsonArray all) await ReceiveAllAsync(Name(step["connection"]), all);
@@ -108,10 +114,137 @@ internal sealed class HostConformanceTests
                 await Task.Delay(TimeSpan.FromMilliseconds(Limits[advance.GetValue<string>()]!.GetValue<int>()) + TimeSpan.FromMilliseconds(500));
             else if (step["guest"] is JsonObject guest) await GuestAsync(guest, step["as"]?.GetValue<string>());
             else if (step["expect"] is JsonObject expect) await ExpectAsync(expect);
+            else if (step["frame"] is JsonObject frame) await FrameAsync(frame);
             else throw new InvalidOperationException("Unknown step.");
         }
 
         private static string Name(JsonNode? node) => node!.GetValue<string>();
+
+        private Task SendAsync(string connection, JsonObject message)
+        {
+            if (HostProtocol.String(message, "kind") == "region-attach") _embedder = HostProtocol.String(message, "embedder");
+            return _connections[connection].SendAsync(message);
+        }
+
+        // ----- region/1: requests of the frame surface (README, Region scenarios)
+
+        // launch: the latest frame launch address (or with "url": "previous", the one before it), as the host page's frame
+        // opens it; bootstrap: the frame surface's bootstrap script; upgrade: the Bridge WebSocket from the frame's origin,
+        // with the token as its subprotocol, which then sends its token check, so the surface counts the page.
+        private async Task FrameAsync(JsonObject frame)
+        {
+            var request = frame["request"]!.GetValue<string>();
+            var launch = frame["url"]?.GetValue<string>() == "previous" ? _frameUrls[^2] : _frameUrls[^1];
+            var surface = new Uri(launch, "../");
+            var refused = frame["refused"] is not null;
+            int? expected = frame["status"]?.GetValue<int>();
+            int status;
+            using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+            switch (request)
+            {
+                case "launch":
+                {
+                    using var response = await http.GetAsync(launch);
+                    status = (int)response.StatusCode;
+                    Check(!response.Headers.Contains("Set-Cookie"), "The frame launch set a cookie.");
+                    if (status == 303)
+                    {
+                        var location = response.Headers.Location!.OriginalString;
+                        var fragment = Regex.Match(location, "#runic-frame=([A-Za-z0-9_-]{43})$");
+                        Check(fragment.Success && location.StartsWith(surface.AbsoluteUri, StringComparison.Ordinal),
+                            $"The frame launch redirected to {FrameLaunchRedacted(location)}.");
+                        _frameToken = fragment.Groups[1].Value;
+                        Check(response.Headers.GetValues("Content-Security-Policy").Contains("frame-ancestors " + _embedder),
+                            $"The frame launch's policy is {string.Join("; ", response.Headers.GetValues("Content-Security-Policy"))}.");
+                        Check(!response.Headers.Contains("X-Frame-Options"), "The frame launch sent X-Frame-Options.");
+                        Check(response.Headers.TryGetValues("Referrer-Policy", out var referrer) && referrer.Single() == "no-referrer",
+                            "The frame launch sent no Referrer-Policy: no-referrer.");
+                    }
+                    break;
+                }
+                case "bootstrap":
+                {
+                    using var response = await http.GetAsync(new Uri(surface, "webui.js"));
+                    status = (int)response.StatusCode;
+                    // The frame surface's bootstrap carries no credential: the page offers its frame token.
+                    if (status == 200)
+                        Check(!(await response.Content.ReadAsStringAsync()).Contains("const SESSION_CREDENTIAL = \"", StringComparison.Ordinal),
+                            "The frame surface's bootstrap carries the session credential.");
+                    break;
+                }
+                case "upgrade":
+                {
+                    var token = frame["token"] is { } value ? Resolve(value)!.GetValue<string>() : null;
+                    (status, var page) = await FramePageAsync(surface, token);
+                    if (page is not null) _framePages.Add(page);
+                    break;
+                }
+                default: throw new InvalidOperationException($"Unknown frame request {request}.");
+            }
+            Check(refused ? status is >= 400 and < 500 : status == expected,
+                $"The frame {request} was answered {status}, not {(refused ? "refused" : expected)}.");
+        }
+
+        private static string FrameLaunchRedacted(string text) => Regex.Replace(text, "[A-Za-z0-9_-]{43}", "…");
+
+        private static async Task<(int Status, WebSocket? Page)> FramePageAsync(Uri surface, string? token)
+        {
+            // The page's bootstrap names the Bridge's token check; a surface that no longer serves the frame answers neither.
+            using var http = new HttpClient();
+            using var bootstrap = await http.GetAsync(new Uri(surface, "webui.js"));
+            if (!bootstrap.IsSuccessStatusCode) return ((int)bootstrap.StatusCode, null);
+            var check = uint.Parse(Regex.Match(await bootstrap.Content.ReadAsStringAsync(), @"const TOKEN = (\d+);").Groups[1].Value,
+                System.Globalization.CultureInfo.InvariantCulture);
+            var client = new TcpClient(surface.HostNameType == UriHostNameType.IPv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork);
+            try
+            {
+                await client.ConnectAsync(surface.IdnHost.Trim('[', ']'), surface.Port);
+                var stream = client.GetStream();
+                var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
+                var upgrade = new StringBuilder()
+                    .Append("GET " + surface.AbsolutePath + "_webui_ws_connect HTTP/1.1\r\nHost: " + surface.Authority + "\r\n")
+                    .Append("Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n")
+                    .Append("Sec-WebSocket-Key: " + key + "\r\nOrigin: " + surface.GetLeftPart(UriPartial.Authority) + "\r\n");
+                if (token is not null) upgrade.Append("Sec-WebSocket-Protocol: runic-desktop." + token + "\r\n");
+                await stream.WriteAsync(Encoding.ASCII.GetBytes(upgrade.Append("\r\n").ToString()));
+                var (status, _) = await ReadStatusAsync(stream);
+                if (status != 101)
+                {
+                    client.Dispose();
+                    return (status ?? 0, null);
+                }
+                var socket = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = false, KeepAliveInterval = TimeSpan.Zero });
+                var packet = new byte[9];
+                packet[0] = 0xDD;
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(packet.AsSpan(1, 4), check);
+                packet[7] = 0xF5;
+                await socket.SendAsync(packet, WebSocketMessageType.Binary, true, CancellationToken.None);
+                return (101, socket);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
+        }
+
+        // The loopback family that a frame of the latest region-attach's embedder must use: the other one, where this
+        // machine can listen on [::1].
+        private string FrameHost()
+        {
+            var embedderHost = new Uri(_embedder!).Host;
+            if (embedderHost == "[::1]") return "127.0.0.1";
+            try
+            {
+                using var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+                socket.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.IPv6Loopback, 0));
+                return "[::1]";
+            }
+            catch (SocketException)
+            {
+                return embedderHost == "localhost" ? "127.0.0.1" : "[::1]";
+            }
+        }
 
         // ----- The guest under test
 
@@ -359,6 +492,15 @@ internal sealed class HostConformanceTests
                 case "drops":
                     result = Task.FromResult<object?>(new ConformanceDropModel());
                     break;
+                case "setTitle":
+                {
+                    // The Window's page is not loaded: its title reaches the guest as the page would report it.
+                    var title = guest["value"]!.GetValue<string>();
+                    var region = host.HostedRegionOf(await Window()) ?? throw new InvalidOperationException("The Window is not in a region.");
+                    region.Report(new Runic.Desktop.Internal.DesktopFrameReport(title, null));
+                    result = Task.FromResult<object?>(null);
+                    break;
+                }
                 case "cancelDialog":
                     if (_dialogCancellations.Remove(guest["window"]!.GetValue<string>(), out var dialogCancellation))
                     {
@@ -740,8 +882,11 @@ internal sealed class HostConformanceTests
             "host-proof-other-nonce" => HostProtocol.Proof(RandomNumberGenerator.GetBytes(32), HostProtocol.HostProofLabel, _key!),
             "guest-proof" => HostProtocol.Proof(_nonce, HostProtocol.GuestProofLabel, _key!),
             "guest-proof-other-nonce" => HostProtocol.Proof(RandomNumberGenerator.GetBytes(32), HostProtocol.GuestProofLabel, _key!),
+            "frame-token" => _frameToken ?? throw new InvalidOperationException("No frame launch gave a token yet."),
             _ => throw new InvalidOperationException($"The runner cannot write the secret {name}."),
         };
+
+        private static readonly Regex FrameUrl = new(@"^http://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_runic_frame/[A-Za-z0-9_-]{43}$");
 
         private static readonly Regex LaunchUrl = new(@"^http://(127\.0\.0\.1|\[::1\]):\d+(/[A-Za-z0-9._~-]+)*/_runic_launch/[A-Za-z0-9_-]{43}$");
 
@@ -763,6 +908,14 @@ internal sealed class HostConformanceTests
                 case JsonObject placeholder when placeholder.ContainsKey("$secret"):
                     var secret = placeholder["$secret"]!.GetValue<string>();
                     var text = actual?.GetValueKind() == JsonValueKind.String ? actual.GetValue<string>() : null;
+                    if (secret == "frame-url")
+                    {
+                        // A new frame launch address, on the loopback family that the embedder does not use.
+                        Check(text is not null && FrameUrl.IsMatch(text) && new Uri(text).Host == FrameHost() &&
+                            !_frameUrls.Contains(new Uri(text)), $"{path}: {FrameLaunchRedacted(actual?.ToJsonString() ?? "null")} is not a new frame-url.");
+                        _frameUrls.Add(new Uri(text!));
+                        return;
+                    }
                     Check(secret == "launch-url" ? text is not null && LaunchUrl.IsMatch(text) : text == Secret(secret),
                         $"{path}: {actual?.ToJsonString()} is not the {secret}.");
                     return;
@@ -807,6 +960,7 @@ internal sealed class HostConformanceTests
             ConformanceGuardedWindow.Reset();
             CloseInput();
             foreach (var connection in _connections.Values) await connection.DisposeAsync();
+            foreach (var page in _framePages) page.Dispose();
             if (_run is not null)
             {
                 try { await _run.WaitScaledAsync(TimeSpan.FromSeconds(15)); }

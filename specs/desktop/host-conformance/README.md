@@ -108,6 +108,8 @@ Messages are compared by JSON value, never by bytes or member order.
 | `guest-proof` | The guest proof for the nonce and the key |
 | `guest-proof-other-nonce` | A guest proof computed with another random nonce |
 | `launch-url` | Matches a launch address of the [`window-open`](../host-protocol.md#window-open) form |
+| `frame-url` | Matches a new frame launch address of the [`region-attach`](../host-protocol.md#region-attach) form, on the loopback family that the embedder of the latest `region-attach` the runner sent does not use, and binds it for `frame` steps |
+| `frame-token` | The frame token of the latest `frame` `launch` (only written, as a `frame` step's `token`) |
 
 ## Test application
 
@@ -153,6 +155,7 @@ action.
 | `monitors` | `window` | The Window's monitors (`IDesktopMonitors.ListAsync`): `monitors`, their ids in order, or an `outcome` |
 | `launch` | `window`, `value`: an absolute URI, or a `$file` path | A platform outcome: `IDesktopFileLauncher.LaunchUriAsync` for a URI, `LaunchAsync` with `reveal` for a path |
 | `drops` | `window` | `dropped`: the file names of the files dropped onto the application's `Drop` Windows, in order; the runner waits until they are the expected ones |
+| `setTitle` | `window`, `value`: the title | — (the title of the Window's page changes, as its page reports it in a [region](../host-protocol.md#set-title)) |
 
 `expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start, or the host's start
 of the guest, failed with a code), `exited` (the guest process exited; a code when given), `running` (the guest still
@@ -220,10 +223,9 @@ files the host opened for the guest, in order (a link's absolute URI, a file's p
 
 ## Region scenarios
 
-The scenarios of [`region/1`](../host-protocol.md#regions-region1) are planned, not yet in the corpus: the runners run
-every scenario of their role, and neither implements regions yet. They go in `scenarios/region/`, with `requires:
-["region/1"]`, together with the guest's implementation for the `guest` role and the host's for the `host` role, which
-also add the runner steps below and their schema.
+The scenarios of [`region/1`](../host-protocol.md#regions-region1) are in `scenarios/region/`, with `requires:
+["region/1"]`. The guest role's are in the corpus; the host role's come with the host's implementation, which also adds
+the host runner's steps below and their schema.
 
 | Scenario | Roles | Checks |
 | --- | --- | --- |
@@ -248,12 +250,16 @@ also add the runner steps below and their schema.
 
 New steps and actions the runners need:
 
-- **Test application (guest runner).** An action `setTitle` (`window`, `value`), which sets the title of the Window's
-  page, since the pages are not loaded; `frame` (`window`, `request`: `"launch"`, `"bootstrap"` or `"upgrade"`, and for
-  the latter two a token), which makes a request of the frame surface named by the bound `frame.url` and expects its
-  status, so a scenario checks the one-time code, the fragment redirect, one page per token and revocation without a
-  browser; `$secret` values `frame-url`, which matches a frame launch address, and `frame-token`, the token of the last
-  launch.
+- **Test application (guest runner).** The action `setTitle` ([test application](#test-application)), and the step
+  `frame`, which makes one request of the frame surface of the latest bound `frame-url` (with `url: "previous"`, the one
+  bound before it) and expects its `status`, or with `refused: true` any 4xx status, so a scenario checks the one-time
+  code, the fragment redirect, one page per token and revocation without a browser:
+
+  | `request` | The request |
+  | --- | --- |
+  | `launch` | `GET` of the frame launch address, without following the redirect or sending a cookie. A `303` must redirect to the frame surface with `#runic-frame=<token>`, which binds `frame-token`, and carry `Content-Security-Policy: frame-ancestors <embedder>`, `Referrer-Policy: no-referrer` and no `X-Frame-Options` or `Set-Cookie` |
+  | `bootstrap` | `GET` of the frame surface's `webui.js`, which must carry no session credential |
+  | `upgrade` | The Bridge WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner sends the Bridge's token check, so the guest counts the page, and keeps the connection until the scenario ends |
 - **The host's user (host runner).** Actions `declareRegion` (`window`: the host window, `name`, `sizing`),
   `removeRegion`, `resizeRegion` (`width`, `height`, `scale`), `focusRegion` (`source`: `tab`, `shift-tab`, `pointer`
   or `script`) and `focusHost`, which play the host page's

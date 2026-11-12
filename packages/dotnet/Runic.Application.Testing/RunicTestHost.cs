@@ -398,6 +398,9 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         ["set-represented-file"] = Views.RunicWindowPresentationFeatures.None,
         ["set-layout-direction"] = Views.RunicWindowPresentationFeatures.None,
         ["announce"] = Views.RunicWindowPresentationFeatures.None,
+        // region/1: the page title of a region window, and a move of the focus out of a region.
+        ["set-title"] = Views.RunicWindowPresentationFeatures.None,
+        ["region-focus"] = Views.RunicWindowPresentationFeatures.None,
     };
 
     private async Task OnRequestAsync(HostRequest request)
@@ -415,13 +418,19 @@ public sealed partial class RunicTestHost : IAsyncDisposable
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of the base protocol.").ConfigureAwait(false);
             return;
         }
-        if (FindWindow(id) is not { Refused: false } target)
+        if (FindWindow(id) is not { Refused: false } target ||
+            request.Kind is "set-title" or "region-focus" && !target.IsRegion)
         {
-            await request.FailAsync("rejected", "invalid-request", "The request names no window of this channel.").ConfigureAwait(false);
+            await request.FailAsync("rejected", "invalid-request", "The request names no window of this channel that it applies to.").ConfigureAwait(false);
             return;
         }
         var presentation = new RunicTestPresentationRequest(target.Id, request.Kind, JsonDocument.Parse(request.Message.ToJsonString()).RootElement.Clone());
         target.Record(presentation);
+        if (!target.IsClosed && RegionOutcome(target, request.Kind) is { } regionOutcome)
+        {
+            await request.ReplyAsync(regionOutcome).ConfigureAwait(false);
+            return;
+        }
         if (target.IsClosed)
         {
             await request.ReplyAsync(new JsonObject { ["outcome"] = "unavailable", ["reason"] = "owner-closed" }).ConfigureAwait(false);
@@ -469,6 +478,11 @@ public sealed partial class RunicTestHost : IAsyncDisposable
             Locale = HostProtocol.String(request.Message, "locale"),
             AcceptsFileDrops = HostProtocol.Boolean(request.Message, "fileDrops") == true && Features.Contains(HostServices.Feature, StringComparer.Ordinal),
         };
+        if (Embeds(window))
+        {
+            window.IsRegion = true;
+            window.Features &= ~RegionlessFeatures;
+        }
         var allowed = _options.OpenWindow?.Invoke(window) ?? true;
         window.Refused = !allowed;
         lock (_windows) _known[window.Id] = window;
@@ -480,7 +494,7 @@ public sealed partial class RunicTestHost : IAsyncDisposable
                 await request.FailAsync("rejected", "refused", "The test host's policy refused the window.").ConfigureAwait(false);
                 return;
             }
-            await request.ReplyAsync(new JsonObject
+            await request.ReplyAsync(window.IsRegion ? RegionReply(window.Features) : new JsonObject
             {
                 ["features"] = new JsonArray([.. FeatureNames(_options.WindowFeatures).Select(static name => (JsonNode)name)]),
                 ["activity"] = new JsonObject { ["active"] = true, ["minimized"] = false, ["visible"] = true },
@@ -509,6 +523,7 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         }
         if (HostProtocol.String(push, "kind") == "window-closed" && FindWindow(HostProtocol.String(push, "window")) is { } window)
             window.MarkClosed();
+        if (HostProtocol.String(push, "kind") == "region-page") OnRegionPage(push);
     }
 
     private RunicTestHostedWindow? FindWindow(string? id)
@@ -638,6 +653,15 @@ public sealed record RunicTestHostOptions
     /// <see langword="null"/>, the default, allows every window.
     /// </summary>
     public Func<RunicTestHostedWindow, bool>? OpenWindow { get; init; }
+
+    /// <summary>
+    /// Chooses the windows that show in a region of a host page instead of a window of their own (<c>region/1</c>),
+    /// as a host's policy does: their <c>window-open</c> reply names <c>presentation: "region"</c>, and
+    /// <see cref="RunicTestHostedWindow.AttachRegionAsync"/> attaches them. Needs <c>region/1</c> in
+    /// <see cref="Features"/> and in the guest's <c>hello</c>. <see langword="null"/>, the default, shows every window in
+    /// a window.
+    /// </summary>
+    public Func<RunicTestHostedWindow, bool>? EmbedWindow { get; init; }
 
     /// <summary>
     /// Answers each presentation request with a platform outcome; <see langword="null"/>, the default, answers success.
@@ -952,7 +976,7 @@ public sealed partial class RunicTestHostedWindow
     /// What the window can do, as its <c>window-open</c> reply listed it (<see cref="RunicTestHostOptions.WindowFeatures"/>).
     /// A presentation request whose feature is missing is answered unavailable.
     /// </summary>
-    public Views.RunicWindowPresentationFeatures Features { get; }
+    public Views.RunicWindowPresentationFeatures Features { get; internal set; }
 
     /// <summary>
     /// Completes when the test host sent the successful <c>window-open</c> reply, after which the guest treats the window

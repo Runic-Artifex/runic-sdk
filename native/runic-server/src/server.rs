@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener as StdListener};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener as StdListener};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -84,6 +84,10 @@ pub trait Handler: Send + Sync + 'static {
 pub struct ServerConfig {
     /// Listen on every interface instead of loopback. The `Host` check applies only to loopback listeners.
     pub all_interfaces: bool,
+    /// Listen on the IPv6 loopback address `[::1]` instead of `127.0.0.1`. A host that serves a page framed by a page
+    /// of an IPv4 loopback origin listens here too, so the frame is cross-site and receives none of that page's cookies.
+    /// Ignored with `all_interfaces`.
+    pub ipv6_loopback: bool,
     /// The port, or 0 for one the system chooses.
     pub port: u16,
     /// Worker threads of the server's runtime.
@@ -96,7 +100,14 @@ pub struct ServerConfig {
 
 impl Default for ServerConfig {
     fn default() -> Self {
-        Self { all_interfaces: false, port: 0, worker_threads: 1, max_message_bytes: 64 << 20, receive_window: 64 }
+        Self {
+            all_interfaces: false,
+            ipv6_loopback: false,
+            port: 0,
+            worker_threads: 1,
+            max_message_bytes: 64 << 20,
+            receive_window: 64,
+        }
     }
 }
 
@@ -229,8 +240,13 @@ impl Server {
         if config.max_message_bytes == 0 || config.receive_window == 0 {
             return Err(ServerError::InvalidArgument("max_message_bytes and receive_window must be positive"));
         }
-        let address =
-            if config.all_interfaces { IpAddr::V4(Ipv4Addr::UNSPECIFIED) } else { IpAddr::V4(Ipv4Addr::LOCALHOST) };
+        let address = if config.all_interfaces {
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+        } else if config.ipv6_loopback {
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        } else {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        };
         let listener = StdListener::bind(SocketAddr::new(address, config.port)).map_err(ServerError::Bind)?;
         listener.set_nonblocking(true).map_err(ServerError::Bind)?;
         let port = listener.local_addr().map_err(ServerError::Bind)?.port();
@@ -277,7 +293,8 @@ impl Server {
     }
 
     /// Answers request `id` with a response. Headers are sent as given, after the server's defaults for the ones
-    /// missing (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`).
+    /// missing (`X-Content-Type-Options: nosniff`, and `X-Frame-Options: SAMEORIGIN` unless a
+    /// `Content-Security-Policy` names `frame-ancestors`, which then decides alone).
     pub fn respond(&self, id: u64, status: StatusCode, headers: HeaderMap, body: Body) -> Result<(), ServerError> {
         self.inner.respond(id, status, headers, body)
     }
@@ -514,7 +531,25 @@ impl Drop for RequestGuard {
 
 fn defaults(headers: &mut HeaderMap) {
     headers.entry(header::X_CONTENT_TYPE_OPTIONS).or_insert(HeaderValue::from_static("nosniff"));
-    headers.entry(header::X_FRAME_OPTIONS).or_insert(HeaderValue::from_static("SAMEORIGIN"));
+    // A response that names its framers with frame-ancestors, such as a page a host frames from another origin, gets no
+    // X-Frame-Options: browsers that apply frame-ancestors ignore it (CSP 3), and SAMEORIGIN would refuse that framer
+    // in those that do not.
+    if !names_frame_ancestors(headers) {
+        headers.entry(header::X_FRAME_OPTIONS).or_insert(HeaderValue::from_static("SAMEORIGIN"));
+    }
+}
+
+fn names_frame_ancestors(headers: &HeaderMap) -> bool {
+    headers.get_all(header::CONTENT_SECURITY_POLICY).iter().any(|value| {
+        value.to_str().is_ok_and(|policy| {
+            policy.split(';').any(|directive| {
+                directive
+                    .split_ascii_whitespace()
+                    .next()
+                    .is_some_and(|name| name.eq_ignore_ascii_case("frame-ancestors"))
+            })
+        })
+    })
 }
 
 fn status_only(status: StatusCode) -> Response {
