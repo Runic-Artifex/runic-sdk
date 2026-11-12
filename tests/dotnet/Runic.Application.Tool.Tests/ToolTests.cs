@@ -862,6 +862,126 @@ internal sealed partial class ToolTests
         Contains(Runtime("27.0.0").Remediation ?? string.Empty, "Node 26");
     }
 
+    // D059.17: an SDK older than the baseline fails; the baseline and a certified newer-major SDK pass; a newer patch
+    // and an uncertified newer major warn.
+    [Test, DisplayName("doctor certifies SDK 11 for net10.0 beside the 10.0 baseline")]
+    public void DoctorEvaluatesDotNetSdkVersions()
+    {
+        var toolchain = new CompatibilityToolchain("10.0.403", "24.22.1", "1.4.4", "12.2.0", "12.9.1") { AdditionalDotNetSdks = ["11.0.100"] };
+        DoctorCheck Sdk(string version, string framework = "net10.0") =>
+            DoctorChecks.EvaluateDotNetSdk(version, framework, toolchain, "runic-sdk-test");
+        DoctorCheck old = Sdk("10.0.401");
+        Equal(DoctorStatus.Failure, old.Status);
+        Contains(old.Message, "older than 10.0.403");
+        Contains(old.Remediation ?? string.Empty, "SDK 11.0.100");
+        Equal(DoctorStatus.Failure, Sdk("9.0.300").Status);
+        Contains(Sdk("10.0.403", "net11.0").Message, "cannot build net11.0");
+        DoctorCheck baseline = Sdk("10.0.403");
+        Equal(DoctorStatus.Pass, baseline.Status);
+        Contains(baseline.Message, ".NET SDK 10.0.403 is certified by runic-sdk-test");
+        DoctorCheck patch = Sdk("10.0.404");
+        Equal(DoctorStatus.Warning, patch.Status);
+        Contains(patch.Message, "certified with SDK 10.0.403 or 11.0.100");
+        DoctorCheck sdk11 = Sdk("11.0.100");
+        Equal(DoctorStatus.Pass, sdk11.Status);
+        Contains(sdk11.Message, ".NET SDK 11.0.100 is certified");
+        Equal(DoctorStatus.Warning, Sdk("11.0.101").Status);
+        Equal(DoctorStatus.Warning, Sdk("11.0.100-rc.1.26425.128").Status);
+        DoctorCheck sdk12 = Sdk("12.0.100");
+        Equal(DoctorStatus.Warning, sdk12.Status);
+        Contains(sdk12.Message, "compatible with net10.0");
+        Equal("No change is required.", sdk12.Remediation);
+        // The embedded compatibility set certifies the .NET 11 SDK of the Templates CI lane.
+        Contains(string.Join(" ", CompatibilitySetAuthority.Current.Toolchain.AdditionalDotNetSdks), "11.0.100");
+    }
+
+    [Test, DisplayName("doctor requires the .NET 10 runtime when a newer SDK builds net10.0")]
+    public void DoctorChecksTargetRuntimeWithNewerSdk()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, null, out CompatibilitySetAuthority authority);
+        const string sdk11Only = "Microsoft.AspNetCore.App 11.0.0 [/dotnet/shared/Microsoft.AspNetCore.App]\nMicrosoft.NETCore.App 11.0.0 [/dotnet/shared/Microsoft.NETCore.App]\n";
+        const string withNet10 = sdk11Only + "Microsoft.NETCore.App 10.0.14 [/dotnet/shared/Microsoft.NETCore.App]\n";
+        DoctorReport Inspect(DoctorProjectConfiguration inspected, string sdk, string? runtimes, Dictionary<string, string>? environment = null) =>
+            DoctorChecks.InspectAsync(inspected, "dotnet",
+                new FakeDoctorRuntime(authority.Toolchain) { DotNetSdkVersion = sdk, DotNetRuntimes = runtimes, Environment = environment ?? [] },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+        // An SDK of the target's major version brings the runtime; doctor does not list runtimes for it.
+        DoctorCheck baseline = Check(Inspect(project, authority.Toolchain.DotNetSdk, null), "dotnet-runtime");
+        Equal(DoctorStatus.Pass, baseline.Status);
+        Contains(baseline.Message, "includes the .NET 10 runtime");
+
+        DoctorReport installed = Inspect(project, "11.0.100", withNet10);
+        Equal(DoctorStatus.Pass, Check(installed, "dotnet-sdk").Status);
+        DoctorCheck present = Check(installed, "dotnet-runtime");
+        Equal(DoctorStatus.Pass, present.Status);
+        Contains(present.Message, "10.0.14");
+
+        DoctorReport missingReport = Inspect(project, "11.0.100", sdk11Only);
+        False(missingReport.IsHealthy, "A missing .NET 10 runtime fails doctor.");
+        DoctorCheck missing = Check(missingReport, "dotnet-runtime");
+        Equal(DoctorStatus.Failure, missing.Status);
+        Contains(missing.Message, "Microsoft.NETCore.App 10.0 runtime");
+        Contains(missing.Message, "exits with code 150");
+        Contains(missing.Remediation ?? string.Empty, "Install the .NET 10 runtime next to SDK 11.0.100");
+        // An uncertified newer major warns, and the runtime check still applies.
+        DoctorReport sdk12 = Inspect(project, "12.0.100", sdk11Only);
+        Equal(DoctorStatus.Warning, Check(sdk12, "dotnet-sdk").Status);
+        Equal(DoctorStatus.Failure, Check(sdk12, "dotnet-runtime").Status);
+
+        // Runic Desktop on Kestrel also needs the ASP.NET Core runtime.
+        DoctorProjectConfiguration kestrel = CreateDoctorProject(workspace, DoctorProjectConfiguration.DesktopPackage, out _) with { DesktopServer = "Kestrel" };
+        DoctorCheck aspNetCore = Check(Inspect(kestrel, "11.0.100", withNet10), "dotnet-runtime");
+        Equal(DoctorStatus.Failure, aspNetCore.Status);
+        Contains(aspNetCore.Message, "Microsoft.AspNetCore.App 10.0");
+
+        // RollForward=Major, in the project or DOTNET_ROLL_FORWARD, lets a net10.0 application run on the .NET 11 runtime.
+        Equal(DoctorStatus.Pass, Check(Inspect(project with { RollForward = "Major" }, "11.0.100", sdk11Only), "dotnet-runtime").Status);
+        Equal(DoctorStatus.Pass, Check(Inspect(project, "11.0.100", sdk11Only, new() { ["DOTNET_ROLL_FORWARD"] = "LatestMajor" }), "dotnet-runtime").Status);
+        // A self-contained application carries its runtime.
+        Equal(DoctorStatus.Pass, Check(Inspect(project with { SelfContained = true }, "11.0.100", sdk11Only), "dotnet-runtime").Status);
+        Equal(DoctorStatus.Warning, Check(Inspect(project, "11.0.100", null), "dotnet-runtime").Status);
+        // An SDK older than the baseline stops at dotnet-sdk.
+        DoctorReport old = Inspect(project, "10.0.401", null);
+        Equal(DoctorStatus.Failure, Check(old, "dotnet-sdk").Status);
+        False(old.Checks.Any(check => check.Name == "dotnet-runtime"), "doctor checks the runtime only for a usable SDK.");
+    }
+
+    [Test, DisplayName("dev reports a missing application runtime before it starts the application")]
+    public void DevFindsMissingApplicationRuntime()
+    {
+        using var workspace = new TestWorkspace();
+        string config = Path.Combine(workspace.Root, "bin", "App.runtimeconfig.json");
+        Write(config, """
+            {
+              "runtimeOptions": {
+                "tfm": "net10.0",
+                "frameworks": [
+                  { "name": "Microsoft.NETCore.App", "version": "10.0.0" },
+                  { "name": "Microsoft.AspNetCore.App", "version": "10.0.0" }
+                ]
+              }
+            }
+            """);
+        var required = DotNetRuntimes.ReadRuntimeConfig(config) ?? throw new InvalidOperationException("runtimeconfig.json was not read.");
+        Equal(2, required.Frameworks.Count);
+        Equal(null, required.RollForward);
+        const string net11 = "Microsoft.AspNetCore.App 11.0.0 [/d]\nMicrosoft.NETCore.App 11.0.0 [/d]\n";
+        const string net10 = "Microsoft.AspNetCore.App 10.0.14 [/d]\nMicrosoft.NETCore.App 10.0.14 [/d]\n";
+        string message = DevApplication.FindMissingRuntime(required.Frameworks, required.RollForward, net11, null)
+            ?? throw new InvalidOperationException("The missing .NET 10 runtime was not reported.");
+        Contains(message, ".NET 10 runtime (Microsoft.NETCore.App 10.0.0)");
+        Contains(message, "installed Microsoft.NETCore.App runtimes: 11.0.0");
+        Equal(null, DevApplication.FindMissingRuntime(required.Frameworks, required.RollForward, net11 + net10, null));
+        Equal(null, DevApplication.FindMissingRuntime(required.Frameworks, "Major", net11, null));
+        Equal(null, DevApplication.FindMissingRuntime(required.Frameworks, null, net11, "LatestMajor"));
+        // A self-contained build's runtimeconfig.json lists includedFrameworks, which dev does not check.
+        Write(config, """{ "runtimeOptions": { "includedFrameworks": [ { "name": "Microsoft.NETCore.App", "version": "10.0.14" } ] } }""");
+        Equal(null, DotNetRuntimes.ReadRuntimeConfig(config));
+        Equal(null, DotNetRuntimes.ReadRuntimeConfig(Path.Combine(workspace.Root, "missing.runtimeconfig.json")));
+    }
+
     private static DoctorProjectConfiguration CreateDoctorProject(
         TestWorkspace workspace, string? hostPackage, out CompatibilitySetAuthority authority)
     {
@@ -1951,6 +2071,9 @@ internal sealed partial class ToolTests
         public string? WebView2Version { get; init; }
         public string? Gtk4Version { get; init; }
         public string? NodeVersion { get; init; }
+        public string? DotNetSdkVersion { get; init; }
+        /// <summary>The output of dotnet --list-runtimes; null makes the command fail.</summary>
+        public string? DotNetRuntimes { get; init; }
         public HashSet<string> VisualStudioComponents { get; init; } = [];
         // No os-release by default, so remediation does not depend on the machine running the tests.
         public string OsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
@@ -1988,9 +2111,15 @@ internal sealed partial class ToolTests
                 return Task.FromResult(new CommandResult(0,
                     VisualStudioComponents.Contains(component) ? @"C:\VS" : string.Empty, string.Empty));
             }
+            if (executable == "dotnet" && arguments.SequenceEqual(["--list-runtimes"]))
+            {
+                return Task.FromResult(DotNetRuntimes is null
+                    ? new CommandResult(1, string.Empty, "failed")
+                    : new CommandResult(0, DotNetRuntimes, string.Empty));
+            }
             string version = executable switch
             {
-                "dotnet" => toolchain.DotNetSdk,
+                "dotnet" => DotNetSdkVersion ?? toolchain.DotNetSdk,
                 "node" => NodeVersion ?? toolchain.Node,
                 "npm" => toolchain.Npm,
                 _ => throw new InvalidOperationException($"Unexpected executable {executable}"),

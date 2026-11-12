@@ -47,8 +47,13 @@ the Window's ViewModels and generated Bridges in memory with
 builds the app without its frontend, and a `global.json` selects
 Microsoft.Testing.Platform for `dotnet test`.
 
-You need the .NET 10 SDK and either Node.js 24 or 26 with npm or pnpm, or
-Bun 1.4. Runic is tested with .NET 10; its build tools (the Bridge generator,
+You need .NET SDK 10.0.403 or later, or the .NET 11 SDK, and either Node.js 24
+or 26 with npm or pnpm, or Bun 1.4. The application targets `net10.0`, so it
+runs on the .NET 10 runtime: an SDK 10 includes it, but with only the .NET 11
+SDK installed, install the .NET 10 runtime too, or the application exits with
+code 150 when it starts. `dotnet runic doctor` checks both. The generated
+project has no `global.json` that selects an SDK, so it builds with the newest
+one installed. Runic is tested with .NET 10; its build tools (the Bridge generator,
 the assets packer, `dotnet-runic` and `runic-create`) also start on a newer
 .NET runtime when the 10.0 runtime is not installed. Each generated project contains only the selected package manager's
 lock file and a local `dotnet-runic` tool manifest. The project sets

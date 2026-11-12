@@ -323,9 +323,13 @@ test('template lanes cover every framework once and run the creator check in one
     { first: 'react', second: 'svelte', creator: '1' },
     { first: 'vue', second: 'angular', 'desktop-smoke': '1' },
     { first: 'sveltekit', node: '26.12.1' },
+    { first: 'react', 'additional-dotnet': 'true' },
   ]);
-  assert.deepEqual(strategy.matrix.include.flatMap(lane => [lane.first, lane.second]).filter(Boolean).sort(),
-    ['angular', 'react', 'svelte', 'sveltekit', 'vue']);
+  assert.deepEqual(strategy.matrix.include.filter(lane => !lane['additional-dotnet'])
+    .flatMap(lane => [lane.first, lane.second]).filter(Boolean).sort(), ['angular', 'react', 'svelte', 'sveltekit', 'vue']);
+  // D059.17: one lane builds the generated projects with the certified .NET 11 SDK, without a global.json.
+  const setup = steps.find(item => item.uses === './.github/actions/setup-sdk');
+  assert.equal(setup.with['additional-dotnet'], "${{ matrix.additional-dotnet || 'false' }}");
   // The starters admit Node 24 and 26 (D031.3): one lane builds them on Node 26, with the pinned package managers.
   const node = steps.findIndex(item => item.uses?.startsWith('actions/setup-node@'));
   assert.equal(steps[node].if, 'matrix.node');
@@ -338,6 +342,7 @@ test('template lanes cover every framework once and run the creator check in one
   assert.equal(step?.env.RUNIC_TEMPLATE_CREATOR, "${{ matrix.creator || '0' }}");
   // The vue step owns the --linux-gtk 4 variant; its GTK 4 smoke needs the runtime installed first.
   assert.equal(step?.env.RUNIC_TEMPLATE_DESKTOP_SMOKE, "${{ matrix.desktop-smoke || '0' }}");
+  assert.equal(step?.env.RUNIC_TEMPLATE_DOTNET_SDK_MAJOR, "${{ matrix.additional-dotnet && '11' || '' }}");
   // The second framework also runs after the first failed, without the creator and desktop smoke.
   assert.equal(second?.name, 'Verify generated ${{ matrix.second }} template applications');
   assert.deepEqual(second?.env, { RUNIC_TEMPLATE_FRAMEWORKS: '${{ matrix.second }}', RUNIC_TEMPLATE_CREATOR: '0', RUNIC_TEMPLATE_DESKTOP_SMOKE: '0' });
