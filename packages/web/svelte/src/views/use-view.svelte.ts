@@ -1,6 +1,7 @@
 import { untrack } from "svelte";
 import { createViewController, type ViewClient, type ViewConnector, type ViewSource } from "@runic-artifex/views";
 import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
+import { getRunicInstance } from "./instance.js";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -44,10 +45,12 @@ export interface UseViewOptions<TClient extends ViewClient> {
 }
 
 export function useView<TClient extends ViewClient>(source: () => ViewSource<TClient>, options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
-  const controller = createViewController<TClient>({
+  const instance = getRunicInstance();
+  // The controller connects in the component's Runic instance, also when it retries.
+  const controller = instance.run(() => createViewController<TClient>({
     ...(options.release ? { release: options.release } : {}),
     ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
-  });
+  }));
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // A pre effect runs when it is created, so the teardown exists even if the
@@ -67,8 +70,8 @@ export function useView<TClient extends ViewClient>(source: () => ViewSource<TCl
   // previous one until the effect follows it, but a client kept for it (keep-alive) instead.
   const preview = () => {
     const value = source();
-    if (value && isViewClient(value)) return value === current.client ? undefined : viewSourcePreview(value);
-    return fresh() ? undefined : viewSourcePreview(value);
+    if (value && isViewClient(value)) return value === current.client ? undefined : instance.run(() => viewSourcePreview(value));
+    return fresh() ? undefined : instance.run(() => viewSourcePreview(value));
   };
   const fresh = () => viewSourceIdentity(current.source) === identity;
   // `current` is replaced with every published state, which only `state` follows. The other members are derived, so

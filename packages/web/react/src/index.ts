@@ -54,8 +54,10 @@ import {
   type ViewController,
   type ViewControllerState,
   type ViewSource,
+  type RunicInstance,
 } from "@runic-artifex/views";
 import { isViewClient, missingViewMessage, reportMissingView, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
+import { useRunicInstance } from "./instance.js";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
@@ -159,12 +161,14 @@ export interface UseViewOptions<TClient extends ViewClient> {
  * `connect` function recreated on every render logs a warning.
  */
 export function useView<TClient extends ViewClient>(source: ViewSource<TClient>, options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
+  const instance = useRunicInstance();
   const release = useRef(options.release);
   useInsertionEffect(() => { release.current = options.release; });
-  const [controller] = useState(() => createViewController<TClient>({
+  // The controller connects in the component's Runic instance, also when it retries.
+  const [controller] = useState(() => instance.run(() => createViewController<TClient>({
     release: client => { if (release.current) release.current(client); else client.dispose(); },
     ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
-  }));
+  })));
   const [store] = useState(() => createViewStore(controller));
   const tracker = useRef<InlineConnectTracker>({ connect: undefined, text: "", times: [], warned: false });
   const identity = viewSourceIdentity(source);
@@ -186,7 +190,7 @@ export function useView<TClient extends ViewClient>(source: ViewSource<TClient>,
     return { state: observed.snapshot, client: observed, error: undefined, pending: false, retry };
   // Until the effect follows a changed reference, do not show the previous one; show a client kept for it instead.
   if (viewSourceIdentity(current.source) !== identity) {
-    const preview = viewSourcePreview(source);
+    const preview = instance.run(() => viewSourcePreview(source));
     if (preview) return { state: preview.state, client: preview.client, error: undefined, pending: false, retry };
     return { state: undefined, client: undefined, error: undefined, pending: source !== null && source !== undefined, retry };
   }
@@ -282,12 +286,13 @@ function referenceKey(reference: object): number {
  * nothing in production, where the kind is reported (`installErrorReporting`, `onBridgeDiagnostic`).
  */
 export function ViewOutlet<R extends PageReference>({ content, registry, fallback = null, missing }: ViewOutletProps<R>): ReactNode {
+  const instance = useRunicInstance();
   if (!content) return fallback;
   const component = registry[content.kind as R["kind"]] as ComponentType<{ readonly page: R }> | undefined;
   if (!component) {
     if (missing) return missing(content);
     if (process.env.NODE_ENV !== "production") return createElement("p", { role: "alert" }, missingViewMessage(content.kind));
-    reportMissingView(content.kind);
+    instance.run(() => reportMissingView(content.kind));
     return null;
   }
   return createElement(component, { key: referenceKey(content), page: content });
@@ -350,7 +355,10 @@ export function RegionOutlets<R extends PageReference>({ collection, registry, f
 // mount once more with a fresh controller, so feedback of runs started before the unmount ends.
 const disposedControllers = new WeakSet<object>();
 
-function useMountedController<T extends { dispose(): void }>(create: () => T): T {
+// It is created in the component's Runic instance.
+function useMountedController<T extends { dispose(): void }>(createIn: () => T): T {
+  const instance = useRunicInstance();
+  const create = () => instance.run(createIn);
   const controller = useRef<T | null>(null);
   if (controller.current === null) controller.current = create();
   const [, remount] = useReducer((count: number) => count + 1, 0);
@@ -702,9 +710,9 @@ export interface BridgeConnectionHandle {
 }
 
 // The state before the component subscribes: a subscription reports it at once.
-function currentBridgeConnection(options: BridgeConnectionOptions): BridgeConnectionState {
+function currentBridgeConnection(instance: RunicInstance, options: BridgeConnectionOptions): BridgeConnectionState {
   let current: BridgeConnectionState = "connecting";
-  onBridgeConnection(state => { current = state; }, options)();
+  instance.run(() => onBridgeConnection(state => { current = state; }, options))();
   return current;
 }
 
@@ -720,12 +728,14 @@ function currentBridgeConnection(options: BridgeConnectionOptions): BridgeConnec
  */
 export function useBridgeConnection(options: BridgeConnectionOptions = {}): BridgeConnectionHandle {
   const { lostAfter } = options;
+  const instance = useRunicInstance();
   const [store] = useState(() => ({ state: undefined as BridgeConnectionState | undefined }));
-  const subscribe = useCallback((onChange: () => void) => onBridgeConnection(state => {
+  const subscribe = useCallback((onChange: () => void) => instance.run(() => onBridgeConnection(state => {
     store.state = state;
     onChange();
-  }, lostAfter === undefined ? {} : { lostAfter }), [store, lostAfter]);
-  const read = useCallback(() => store.state ??= currentBridgeConnection(lostAfter === undefined ? {} : { lostAfter }), [store, lostAfter]);
+  }, lostAfter === undefined ? {} : { lostAfter })), [instance, store, lostAfter]);
+  const read = useCallback(() => store.state ??= currentBridgeConnection(instance, lostAfter === undefined ? {} : { lostAfter }),
+    [instance, store, lostAfter]);
   const state = useSyncExternalStore(subscribe, read, serverConnectionState);
   return { state };
 }
@@ -747,9 +757,41 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
  * ```
  */
 export function useText(value: TextReference | FieldError | string | null | undefined, fallback?: string): string {
-  const version = useSyncExternalStore(subscribeText, textVersion, textVersion);
+  const instance = useRunicInstance();
+  const text = instanceText(instance);
+  const version = useSyncExternalStore(text.subscribe, text.version, text.version);
   // version is the language the text resolves in.
-  return useMemo(() => resolveText(value, fallback), [value, fallback, version]);
+  return useMemo(() => instance.run(() => resolveText(value, fallback)), [instance, value, fallback, version]);
+}
+
+// The text, locale and appearance functions of an instance, created once per instance so that their identities are
+// stable for useSyncExternalStore.
+interface InstanceText {
+  readonly subscribe: (onChange: () => void) => () => void;
+  readonly version: () => number;
+  readonly locale: () => string | undefined;
+  readonly subscribeWindowLocale: (onChange: () => void) => () => void;
+  readonly windowLocale: () => string | null;
+  readonly subscribeAppearance: (onChange: () => void) => () => void;
+  readonly appearance: () => Appearance;
+}
+const instanceTexts = new WeakMap<RunicInstance, InstanceText>();
+
+function instanceText(instance: RunicInstance): InstanceText {
+  let text = instanceTexts.get(instance);
+  if (!text) {
+    const run = instance.run;
+    instanceTexts.set(instance, text = {
+      subscribe: onChange => run(() => subscribeText(onChange)),
+      version: () => run(textVersion),
+      locale: () => run(textLocale),
+      subscribeWindowLocale: onChange => run(() => onWindowLocale(() => onChange())),
+      windowLocale: () => run(windowLocale),
+      subscribeAppearance: onChange => run(() => onAppearance(() => onChange())),
+      appearance: () => run(appearance),
+    });
+  }
+  return text;
 }
 
 /**
@@ -757,10 +799,10 @@ export function useText(value: TextReference | FieldError | string | null | unde
  * for example to set `lang` on an element. The server snapshot is `null`.
  */
 export function useWindowLocale(): string | null {
-  return useSyncExternalStore(subscribeWindowLocale, windowLocale, serverWindowLocale);
+  const text = instanceText(useRunicInstance());
+  return useSyncExternalStore(text.subscribeWindowLocale, text.windowLocale, serverWindowLocale);
 }
 
-const subscribeWindowLocale = (onChange: () => void) => onWindowLocale(() => onChange());
 const serverWindowLocale = (): string | null => null;
 
 /**
@@ -774,10 +816,10 @@ const serverWindowLocale = (): string | null => null;
  * ```
  */
 export function useAppearance(): Appearance {
-  return useSyncExternalStore(subscribeAppearance, appearance, serverAppearance);
+  const text = instanceText(useRunicInstance());
+  return useSyncExternalStore(text.subscribeAppearance, text.appearance, serverAppearance);
 }
 
-const subscribeAppearance = (onChange: () => void) => onAppearance(() => onChange());
 const serverAppearance = (): Appearance => unknownAppearance;
 
 /**
@@ -794,9 +836,12 @@ const serverAppearance = (): Appearance => unknownAppearance;
  * ```
  */
 export function useTextLocale(): string | undefined {
-  return useSyncExternalStore(subscribeText, textLocale, textLocale);
+  const text = instanceText(useRunicInstance());
+  return useSyncExternalStore(text.subscribe, text.locale, text.locale);
 }
 
+export { RunicInstanceProvider, useRunicInstance, type RunicInstanceProviderProps } from "./instance.js";
+export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstanceOptions } from "@runic-artifex/views";
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";

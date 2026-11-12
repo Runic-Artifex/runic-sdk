@@ -4,7 +4,8 @@
 import { BridgeError } from "./errors.js";
 import { throwIfAborted } from "./lifetime.js";
 import { sharedRuntimeFor } from "./runtime.js";
-import { waitForBridge } from "./transport.js";
+import { waitForBridgeIn } from "./transport.js";
+import { currentSlots } from "./scope.js";
 import { blobRef, type BlobGrant, type BlobRef } from "./blob-wire.js";
 
 export { blobsFeature, type BlobGrant, type BlobRef, type RunicBlob } from "./blob-wire.js";
@@ -51,7 +52,8 @@ export interface HostUploads {
 }
 
 /**
- * Uploads a file to the window's .NET host and resolves with its reference, which a command whose .NET parameter is a
+ * Uploads a file to the .NET host of the current instance (the page's window, outside `RunicInstance.run`) and resolves
+ * with its reference, which a command whose .NET parameter is a
  * `RunicUpload` takes. The content streams over HTTP, not over the Bridge, so the Bridge input limit does not apply;
  * the window's upload limit does.
  *
@@ -61,9 +63,10 @@ export interface HostUploads {
  */
 export async function upload(content: Blob, options: UploadOptions = {}): Promise<BlobRef> {
   const { signal } = options;
+  const slots = currentSlots();
   throwIfAborted(signal);
-  // The runtime of the installed host bridge, as generated clients use it.
-  const runtime = sharedRuntimeFor(await waitForBridge({ signal }));
+  // The runtime of the instance's host bridge, as generated clients use it.
+  const runtime = sharedRuntimeFor(slots, await waitForBridgeIn(slots, { signal }));
   const grant = await runtime.blobGrant?.();
   throwIfAborted(signal);
   if (grant === undefined) {

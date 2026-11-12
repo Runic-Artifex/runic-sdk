@@ -4,8 +4,9 @@ import {
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
   upload as uploadBlob, type BlobRef, type UploadOptions,
+  defaultInstance, type RunicInstance,
 } from "@runic-artifex/views";
-import type * as Context from "effect/Context";
+import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -28,6 +29,20 @@ function attempt<A, E>(run: () => PromiseLike<A>, map: (cause: unknown) => E | u
   );
 }
 
+/**
+ * The Runic instance that the Effects and streams of this package connect and read through: the default instance
+ * (`defaultInstance()` from `@runic-artifex/views`, the page instance or in a component bundle its element's) unless
+ * one is provided. A guest that runs inside another page provides
+ * its own:
+ *
+ * ```ts
+ * const instance = createRunicInstance({ bridge });
+ * program.pipe(Effect.provideService(CurrentRunicInstance, instance));
+ * ```
+ */
+export const CurrentRunicInstance: Context.Reference<RunicInstance> =
+  Context.Reference<RunicInstance>("@runic-artifex/views-effect/CurrentRunicInstance", { defaultValue: () => defaultInstance() });
+
 const viewFailure = (cause: unknown): ViewError | undefined => {
   const failure = bridgeFailure(cause);
   return failure?._tag === "ViewOperationUncertain" ? undefined : failure;
@@ -44,7 +59,8 @@ const viewFailure = (cause: unknown): ViewError | undefined => {
  */
 export function connect<C extends ViewClient>(source: ViewConnector<C> | (() => PromiseLike<C>)): Effect.Effect<C, ViewError, Scope.Scope> {
   const open = typeof source === "function" ? source : () => source.connect();
-  return Effect.acquireRelease(attempt(open, viewFailure), client => Effect.sync(() => client.dispose()));
+  return Effect.flatMap(CurrentRunicInstance, instance =>
+    Effect.acquireRelease(attempt(() => instance.run(open), viewFailure), client => Effect.sync(() => client.dispose())));
 }
 
 /**
@@ -96,10 +112,10 @@ export function states<S>(client: ViewClient<S>, options: StatesOptions = {}): S
  * ```
  */
 export function connectionStates(options: BridgeConnectionOptions = {}): Stream.Stream<BridgeConnectionState> {
-  return Stream.callback<BridgeConnectionState>(queue => Effect.acquireRelease(
-    Effect.sync(() => onBridgeConnection(state => { Queue.offerUnsafe(queue, state); }, options)),
+  return Stream.callback<BridgeConnectionState>(queue => Effect.flatMap(CurrentRunicInstance, instance => Effect.acquireRelease(
+    Effect.sync(() => instance.run(() => onBridgeConnection(state => { Queue.offerUnsafe(queue, state); }, options))),
     unsubscribe => Effect.sync(unsubscribe),
-  ), { bufferSize: 1, strategy: "sliding" });
+  )), { bufferSize: 1, strategy: "sliding" });
 }
 
 /**
@@ -108,10 +124,10 @@ export function connectionStates(options: BridgeConnectionOptions = {}): Stream.
  * latest change. It never ends on its own; interrupting it unsubscribes.
  */
 export function textChanges(): Stream.Stream<void> {
-  return Stream.callback<void>(queue => Effect.acquireRelease(
-    Effect.sync(() => subscribeText(() => { Queue.offerUnsafe(queue, undefined); })),
+  return Stream.callback<void>(queue => Effect.flatMap(CurrentRunicInstance, instance => Effect.acquireRelease(
+    Effect.sync(() => instance.run(() => subscribeText(() => { Queue.offerUnsafe(queue, undefined); }))),
     unsubscribe => Effect.sync(unsubscribe),
-  ), { bufferSize: 1, strategy: "sliding" });
+  )), { bufferSize: 1, strategy: "sliding" });
 }
 
 /**
@@ -127,14 +143,14 @@ export function textChanges(): Stream.Stream<void> {
  * ```
  */
 export function appearances(): Stream.Stream<Appearance> {
-  return Stream.callback<Appearance>(queue => Effect.acquireRelease(
-    Effect.sync(() => {
+  return Stream.callback<Appearance>(queue => Effect.flatMap(CurrentRunicInstance, instance => Effect.acquireRelease(
+    Effect.sync(() => instance.run(() => {
       const stop = onAppearance(next => { Queue.offerUnsafe(queue, next); });
       Queue.offerUnsafe(queue, appearance());
       return stop;
-    }),
+    })),
     stop => Effect.sync(stop),
-  ), { bufferSize: 1, strategy: "sliding" });
+  )), { bufferSize: 1, strategy: "sliding" });
 }
 
 /**
@@ -147,15 +163,16 @@ export function appearances(): Stream.Stream<Appearance> {
  * ```
  */
 export function textLocales(): Stream.Stream<string | undefined> {
-  return textNowAndChanges().pipe(Stream.map(() => textLocale()), Stream.changes);
+  return Stream.unwrap(Effect.map(CurrentRunicInstance, instance =>
+    textNowAndChanges(instance).pipe(Stream.map(() => instance.run(textLocale)), Stream.changes)));
 }
 
 // One signal now, then one for each change. It subscribes before the first signal, so a switch while the consumer
 // handles that signal is not lost; a slow consumer skips to the latest change, and each reads the language when pulled.
-function textNowAndChanges(): Stream.Stream<void> {
+function textNowAndChanges(instance: RunicInstance): Stream.Stream<void> {
   return Stream.callback<void>(queue => Effect.acquireRelease(
     Effect.sync(() => {
-      const unsubscribe = subscribeText(() => { Queue.offerUnsafe(queue, undefined); });
+      const unsubscribe = instance.run(() => subscribeText(() => { Queue.offerUnsafe(queue, undefined); }));
       Queue.offerUnsafe(queue, undefined);
       return unsubscribe;
     }),
@@ -173,7 +190,8 @@ function textNowAndChanges(): Stream.Stream<void> {
  * ```
  */
 export function texts(value: TextReference | FieldError | string | null | undefined, fallback?: string): Stream.Stream<string> {
-  return textNowAndChanges().pipe(Stream.map(() => resolveText(value, fallback)));
+  return Stream.unwrap(Effect.map(CurrentRunicInstance, instance =>
+    textNowAndChanges(instance).pipe(Stream.map(() => instance.run(() => resolveText(value, fallback))))));
 }
 
 /**
@@ -216,7 +234,8 @@ export function command<A>(run: () => PromiseLike<A>):
  * ```
  */
 export function upload(content: Blob, options: Omit<UploadOptions, "signal"> = {}): Effect.Effect<BlobRef, ViewError> {
-  return Effect.tryPromise({ try: signal => uploadBlob(content, { ...options, signal }), catch: cause => cause }).pipe(
+  return Effect.flatMap(CurrentRunicInstance, instance =>
+    Effect.tryPromise({ try: signal => instance.run(() => uploadBlob(content, { ...options, signal })), catch: cause => cause })).pipe(
     Effect.catch(cause => {
       const failure = viewFailure(cause);
       return failure === undefined ? Effect.die(cause) : Effect.fail(failure);

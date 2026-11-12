@@ -10,6 +10,9 @@ import { connectView } from "../dist/generated.js";
 import { createMockBridge, installMockBridge } from "../dist/mock.js";
 import * as bridgeWire from "../dist/wire.js";
 
+// The page instance's slots, which internal functions take.
+const page = globalThis as never;
+
 const channelKey = Symbol.for("runic.views.appearance");
 const globals = globalThis as unknown as Record<string | symbol, unknown>;
 
@@ -82,7 +85,7 @@ test("the host's values: text scale, accent and palette alone; the engine's sche
   const stop = onAppearance(next => seen.push(next));
   const palette = { canvas: "#000000", canvasText: "#ffffff", linkText: "#ffff00", grayText: "#3ff23f", highlight: "#1aebff",
     highlightText: "#000000", buttonFace: "#000000", buttonText: "#ffffff" };
-  receiveAppearancePush({ kind: "appearance", colorScheme: "dark", contrast: "forced-colors", reducedMotion: true,
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "forced-colors", reducedMotion: true,
     textScale: 1.25, accentColor: "#0078d4", systemColors: palette });
   const value = appearance();
   assert.equal(seen.length, 1);
@@ -91,14 +94,14 @@ test("the host's values: text scale, accent and palette alone; the engine's sche
   assert.deepEqual(value.systemColors, palette);
   assert.deepEqual([value.engine.contrast, value.host?.contrast], ["no-preference", "forced-colors"], "each source alone");
   // The same values again change nothing.
-  receiveAppearancePush({ kind: "appearance", colorScheme: "dark", contrast: "forced-colors", reducedMotion: true,
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "forced-colors", reducedMotion: true,
     textScale: 1.25, accentColor: "#0078d4", systemColors: palette });
   assert.equal(seen.length, 1);
   // Without the engine's queries the host's values apply.
   stop();
   delete globals["matchMedia"];
   assert.deepEqual([appearance().colorScheme, appearance().contrast, appearance().reducedMotion], ["dark", "forced-colors", true]);
-  receiveAppearancePush(undefined);
+  receiveAppearancePush(page, undefined);
   assert.equal(appearance().host, null);
 });
 
@@ -107,31 +110,31 @@ test("the latest change wins: a host's change applies until the engine's media q
   const media = fakeMedia({ ...light, "(prefers-reduced-motion: no-preference)": false, "(prefers-reduced-motion: reduce)": true });
   const seen: Appearance[] = [];
   const stop = onAppearance(next => seen.push(next));
-  receiveAppearancePush({ kind: "appearance", contrast: "no-preference", reducedMotion: true });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "no-preference", reducedMotion: true });
   assert.deepEqual([appearance().contrast, appearance().reducedMotion], ["no-preference", true]);
   // The desktop turns animations back on: the host's change wins over the engine's stale reduce.
-  receiveAppearancePush({ kind: "appearance", contrast: "no-preference", reducedMotion: false });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "no-preference", reducedMotion: false });
   assert.deepEqual([appearance().reducedMotion, appearance().engine.reducedMotion, appearance().host?.reducedMotion], [false, true, false]);
   // A contrast theme turned on while the page is open, then off again: the store follows the host both ways, and no
   // palette stays.
   const palette = { canvas: "#000000", canvasText: "#ffffff", linkText: "#ffff00", grayText: "#3ff23f", highlight: "#1aebff",
     highlightText: "#000000", buttonFace: "#000000", buttonText: "#ffffff" };
-  receiveAppearancePush({ kind: "appearance", contrast: "forced-colors", reducedMotion: false, systemColors: palette });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "forced-colors", reducedMotion: false, systemColors: palette });
   assert.deepEqual([appearance().contrast, appearance().engine.contrast], ["forced-colors", "no-preference"]);
-  receiveAppearancePush({ kind: "appearance", contrast: "no-preference", reducedMotion: false });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "no-preference", reducedMotion: false });
   assert.deepEqual([appearance().contrast, appearance().systemColors], ["no-preference", null], "the switch-off direction");
   // The engine's own change is the latest again.
   media.set({ "(prefers-reduced-motion: reduce)": false, "(prefers-reduced-motion: no-preference)": true });
   media.set({ "(prefers-reduced-motion: no-preference)": false, "(prefers-reduced-motion: reduce)": true });
   assert.deepEqual([appearance().reducedMotion, appearance().host?.reducedMotion], [true, false], "the engine changed after the host");
   // The host no longer knows the member: the engine's value.
-  receiveAppearancePush({ kind: "appearance", contrast: "more" });
-  receiveAppearancePush({ kind: "appearance" });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "more" });
+  receiveAppearancePush(page, { kind: "appearance" });
   assert.deepEqual([appearance().contrast, appearance().reducedMotion], ["no-preference", true]);
   stop();
   // Without a listener the store still notices the engine's change, by reading the queries.
-  receiveAppearancePush({ kind: "appearance", contrast: "more" });
-  receiveAppearancePush({ kind: "appearance", contrast: "forced-colors" });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "more" });
+  receiveAppearancePush(page, { kind: "appearance", contrast: "forced-colors" });
   assert.equal(appearance().contrast, "forced-colors");
   media.set({ "(prefers-contrast: no-preference)": false, "(prefers-contrast: more)": true });
   assert.equal(appearance().contrast, "more");

@@ -4,6 +4,7 @@ import { clock } from "./clock.js";
 import { FieldError, type FieldState } from "./field-controller.js";
 import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
+import { currentSlots } from "./scope.js";
 
 /** The state of a form: what its fields show, combined. */
 export interface FormState {
@@ -177,6 +178,7 @@ export type FormFieldController = FormField & {
 export function createFormController(fields: FormFields<FormFieldController>, options: FormOptions = {}): FormController & Disposable {
   const list = formFieldList(fields);
   const listeners = new Set<() => void>();
+  const slots = currentSlots();
   let submitting = false;
   let disposed = false;
   let last: FormState | undefined;
@@ -190,7 +192,7 @@ export function createFormController(fields: FormFields<FormFieldController>, op
   const notify = () => {
     if (disposed) return;
     for (const listener of [...listeners]) {
-      try { listener(); } catch (failure) { reportBridgeError(failure); }
+      try { listener(); } catch (failure) { reportBridgeError(slots, failure); }
     }
   };
   const unsubscribe = list.map(field => field.subscribe(notify));

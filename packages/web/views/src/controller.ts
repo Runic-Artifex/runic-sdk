@@ -3,6 +3,7 @@ import type { ViewClient } from "./connection.js";
 import { disposable } from "./lifetime.js";
 import { isBridgeOutcome, type BridgeOutcome } from "./outcome.js";
 import { adoptConnection, checkKeepAlive, keepConnection, peekConnection } from "./keep-alive.js";
+import { currentSlots, runInSlots } from "./scope.js";
 
 /** Anything that connects a client: a generated page reference or `{ connect: connect<Name> }`. */
 export interface ViewConnector<TClient> {
@@ -101,7 +102,7 @@ export function viewSourceIdentity<TClient extends ViewClient>(source: ViewSourc
 export function viewSourcePreview<TClient extends ViewClient>(source: ViewSource<TClient>):
   { readonly client: TClient; readonly state: TClient["snapshot"] } | undefined {
   if (!source) return undefined;
-  const client = isViewClient(source) ? source : peekConnection<TClient>(source);
+  const client = isViewClient(source) ? source : peekConnection<TClient>(currentSlots(), source);
   return client ? { client, state: client.snapshot } : undefined;
 }
 
@@ -125,8 +126,10 @@ export interface PreloadViewOptions {
  */
 export async function preloadView<TSource extends ViewConnector<ViewClient>>(source: TSource, options: PreloadViewOptions = {}): Promise<TSource> {
   const keepAlive = checkKeepAlive(options.keepAlive);
-  const client = await source.connect();
-  keepConnection(source, Promise.resolve(client), client, keepAlive === 0 ? 1 : keepAlive, connected => connected.dispose());
+  // Kept for the bindings of the current instance.
+  const slots = currentSlots();
+  const client = await runInSlots(slots, () => source.connect());
+  keepConnection(slots, source, Promise.resolve(client), client, keepAlive === 0 ? 1 : keepAlive, connected => connected.dispose());
   return source;
 }
 
@@ -137,6 +140,8 @@ export async function preloadView<TSource extends ViewConnector<ViewClient>>(sou
 export function createViewController<TClient extends ViewClient>(options: ViewControllerOptions<TClient> = {}): ViewController<TClient> & Disposable {
   const release = options.release ?? ((client: TClient) => client.dispose());
   const keepAlive = checkKeepAlive(options.keepAlive);
+  // The controller connects its sources in the instance it was created in, also on a retry.
+  const slots = currentSlots();
   const listeners = new Set<() => void>();
   let current: ViewControllerState<TClient> = { source: undefined, client: undefined, state: undefined, error: undefined, pending: false };
   let identity: object | undefined;
@@ -175,11 +180,11 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
       observe(source);
       return;
     }
-    const kept = adoptConnection<TClient>(source);
+    const kept = adoptConnection<TClient>(slots, source);
     let connecting: Promise<TClient>;
     if (kept) connecting = kept.connecting;
     else {
-      try { connecting = source.connect(); }
+      try { connecting = runInSlots(slots, () => source.connect()); }
       catch (cause) { connecting = Promise.reject(cause); }
     }
     let connected = kept?.client;
@@ -188,7 +193,7 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
       active = false;
       unsubscribe?.();
       // Kept for the next controller that follows this connector; a failed connection has nothing to keep.
-      if (connected || !settled) keepConnection(source, connecting, connected, keepAlive, release);
+      if (connected || !settled) keepConnection(slots, source, connecting, connected, keepAlive, release);
     };
     if (connected) { observe(connected); return; }
     // The same source connecting again keeps showing its last state.

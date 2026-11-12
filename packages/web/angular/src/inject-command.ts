@@ -1,5 +1,6 @@
 import { assertInInjectionContext, DestroyRef, inject, Injector, signal, type Signal } from "@angular/core";
 import { createCommandController, type BridgeOutcomeFailure } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**
@@ -41,7 +42,7 @@ export function injectCommand<TArgs extends readonly unknown[], TReturn>(
 ): CommandHandle<TArgs, Awaited<TReturn>> {
   if (!options.injector) assertInInjectionContext(injectCommand);
   const injector = options.injector ?? inject(Injector);
-  const controller = createCommandController(command);
+  const controller = instanceOf(injector).run(() => createCommandController(command));
   const pending = signal(false);
   const error = signal<unknown>(undefined);
   const failure = signal<BridgeOutcomeFailure<Awaited<TReturn>> | undefined>(undefined);

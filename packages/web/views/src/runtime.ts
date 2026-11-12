@@ -1,5 +1,6 @@
-// The page-wide Views runtime (specs/application, "Shared globals"): one per page and `__runicBridge`, shared by
-// every generated module and every copy of this package through `runic.views.generated-client-runtime`. It owns
+// The Views runtime of one Runic instance (specs/application, "Shared globals" and "Runic instances"): one per instance
+// and Bridge — on the page, per `__runicBridge` — shared by every generated module and every copy of this package
+// through the instance's `runic.views.generated-client-runtime` slot. It owns
 // the connection (`hello` per connection, its features, and the requests sent with it), the only `onMessage`
 // listener, which dispatches pushes by kind and route, the page's edit numbers and the reconnect of open routes.
 import { clock, randomId } from "./clock.js";
@@ -9,7 +10,8 @@ import {
   clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, invalidResponse, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush,
   viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
-import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
+import { protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
+import { onInstanceDisposed, type Slots } from "./scope.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
@@ -20,7 +22,7 @@ import { navigationPathFeature } from "./navigation-feature.js";
 import { clientLanguages, clientLanguagesFeature } from "./client-languages.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
-import { commitAllFields, commitDrafts } from "./field-controller.js";
+import { commitDrafts } from "./field-controller.js";
 import { blobsFeature, readBlobGrant, type BlobGrant } from "./blob-wire.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
@@ -34,7 +36,7 @@ const flushLimit = 800;
  * (a key with Ctrl, Cmd or Alt that produces no character, seen before the page's own handlers) or the window losing
  * focus, as when a native menu opens. It helps hosts and pages without field-flush/1 too. Returns the function that removes the listeners.
  */
-function flushOnDeparture(): () => void {
+function flushOnDeparture(slots: Slots): () => void {
   const page = globalThis as { readonly addEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void;
     readonly removeEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void };
   if (typeof page.addEventListener !== "function" || typeof page.removeEventListener !== "function") return () => {};
@@ -49,11 +51,11 @@ function flushOnDeparture(): () => void {
     if (typeof key.getModifierState === "function" && key.getModifierState("AltGraph")) return;
     const character = typeof key.key === "string" && [...key.key].length === 1;
     if (character && (key.metaKey !== true && key.ctrlKey !== true || key.ctrlKey === true && key.altKey === true && key.metaKey !== true)) return;
-    void commitAllFields();
+    void commitDrafts(slots);
   };
   const blur = (event: unknown) => {
     // The window's own blur, not one of an element inside it.
-    if ((event as { readonly target?: unknown }).target === globalThis) void commitAllFields();
+    if ((event as { readonly target?: unknown }).target === globalThis) void commitDrafts(slots);
   };
   page.addEventListener("keydown", keydown, true);
   page.addEventListener("blur", blur, true);
@@ -94,6 +96,11 @@ export interface SharedRuntime {
   /** The protocol this runtime speaks; a runtime of another protocol at the shared key is replaced. */
   readonly protocol: 4;
   readonly bridge: RunicBridgeClient;
+  /**
+   * The slots of the instance the runtime belongs to (`globalThis` for the page instance). A runtime of an earlier
+   * release does not have it; it is always the page's.
+   */
+  readonly slots?: Slots;
   /** Whether the host connection is open, as `onConnectionChange` last reported it. */
   readonly connected: boolean;
   /** Increments with each new connection. */
@@ -149,23 +156,27 @@ export interface SharedRuntime {
 
 const sharedRuntimeKey = Symbol.for("runic.views.generated-client-runtime");
 
-/** The page runtime, without creating one. */
-export function currentRuntime(): SharedRuntime | undefined {
-  return hostCallbacks()[sharedRuntimeKey] as SharedRuntime | undefined;
+/** The runtime of the instance with `slots`, without creating one. */
+export function currentRuntime(slots: Slots): SharedRuntime | undefined {
+  return slots[sharedRuntimeKey] as SharedRuntime | undefined;
 }
 
-/** Returns the page runtime for a Bridge, replacing one of another Bridge or protocol. */
-export function sharedRuntimeFor(bridge: RunicBridgeClient): SharedRuntime {
-  const host = hostCallbacks();
-  const existing = host[sharedRuntimeKey] as Partial<SharedRuntime> | undefined;
+/** The slots of the instance `runtime` belongs to. */
+export function runtimeSlots(runtime: SharedRuntime): Slots {
+  return runtime.slots ?? globalThis as unknown as Slots;
+}
+
+/** Returns the runtime of the instance with `slots` for a Bridge, replacing one of another Bridge or protocol. */
+export function sharedRuntimeFor(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
+  const existing = slots[sharedRuntimeKey] as Partial<SharedRuntime> | undefined;
   if (existing?.protocol === bridgeProtocol && existing.bridge === bridge) return existing as SharedRuntime;
   if (existing?.protocol === bridgeProtocol) existing.dispose?.();
-  const runtime = createRuntime(bridge);
-  host[sharedRuntimeKey] = runtime;
+  const runtime = createRuntime(slots, bridge);
+  slots[sharedRuntimeKey] = runtime;
   return runtime;
 }
 
-function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
+function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
   const pushHandlers = new Map<string, Set<PushHandler>>();
   const windowHandlers = new Map<string, Set<PushHandler>>();
   const invalidHandlers = new Map<string, Set<InvalidPushHandler>>();
@@ -202,7 +213,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       const handlers = reading.route === undefined ? undefined : invalidHandlers.get(reading.route);
       if (!handlers) return;
       for (const handler of [...handlers]) {
-        try { handler(reading); } catch (error) { reportBridgeError(error, reading.route); }
+        try { handler(reading); } catch (error) { reportBridgeError(slots, error, reading.route); }
       }
       return;
     }
@@ -210,7 +221,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     const handlers = push.route === undefined ? windowHandlers.get(push.kind) : pushHandlers.get(key(push.kind, push.route));
     if (!handlers) return;
     for (const handler of [...handlers]) {
-      try { handler(push); } catch (error) { reportBridgeError(error, push.route); }
+      try { handler(push); } catch (error) { reportBridgeError(slots, error, push.route); }
     }
   }
 
@@ -225,7 +236,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   async function flush(id: string): Promise<void> {
     if (!features.has(fieldFlushFeature)) return;
     const current = connection;
-    const drafts = commitDrafts();
+    const drafts = commitDrafts(slots);
     if (drafts !== undefined) await firstOf(drafts, flushLimit);
     if (disposed || connection !== current || !connected) return;
     await runtime.request({ kind: "flush-reply", id }).catch(() => undefined);
@@ -236,7 +247,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     const current = connection;
     flushNotifications();
     // Drafts that wait, such as commit: "pause" ones, are written before the close is acknowledged (C2).
-    const drafts = commitDrafts();
+    const drafts = commitDrafts(slots);
     if (drafts !== undefined) {
       await firstOf(drafts, closingFlushLimit);
       flushNotifications();
@@ -246,7 +257,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     if (disposed || connection !== current) return;
     const reply = connected ? runtime.request({ kind: "closing-reply" }) : undefined;
     // Reported as the reply is sent: the host may end the connection before its answer arrives.
-    reportWindowClosed(true);
+    reportWindowClosed(slots, true);
     await reply?.catch(() => undefined);
   }
 
@@ -281,12 +292,12 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
         kind: "hello", protocol: bridgeProtocol, session,
         client: { name: clientName, version: viewsVersion }, features: clientFeatures,
         // client-languages/1: sent before the reply tells whether the producer uses it; a producer without it ignores it.
-        languages: clientLanguages(),
+        languages: clientLanguages(slots),
       }, undefined);
       if (reply["protocol"] !== bridgeProtocol && (reply["protocol"] !== undefined || reply.ok)) {
         refused = reply["protocol"] === undefined ? "does not state a Views protocol" : `uses Views protocol ${String(reply["protocol"])}`;
         const error = protocolMismatchError(refused);
-        reportProtocolMismatch(error, bridge);
+        reportProtocolMismatch(slots, error, bridge);
         throw error;
       }
       if (!reply.ok) throw replyError(reply.error, undefined, "The Bridge refused the connection.");
@@ -301,7 +312,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
       if (implementation.name === runicProducerName && implementation.version !== viewsVersion && !versionReported) {
         versionReported = true;
-        emitBridgeDiagnostic({
+        emitBridgeDiagnostic(slots, {
           kind: "error", code: "version",
           message: `The .NET host runs ${runicProducerName} ${implementation.version}, but this page uses @runic-artifex/views ${viewsVersion}. ` +
             "Use the .NET and npm packages of one release.",
@@ -318,6 +329,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   const runtime: SharedRuntime = {
     protocol: 4,
     bridge,
+    slots,
     get connected() { return connected; },
     get connection() { return connection; },
     routes: new Map(),
@@ -397,10 +409,12 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       stopFallback();
       stopLocale();
       stopAppearance();
+      stopInstance();
+      if (slots[sharedRuntimeKey] === runtime) slots[sharedRuntimeKey] = undefined;
       connected = false;
-      reportWindowClosed(false);
+      reportWindowClosed(slots, false);
       for (const listener of [...connectionListeners]) {
-        try { listener(false); } catch (error) { reportBridgeError(error); }
+        try { listener(false); } catch (error) { reportBridgeError(slots, error); }
       }
       connectionListeners.clear();
     },
@@ -408,19 +422,21 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
 
   const stopClosing = add(windowHandlers, "closing", () => { void closing(); });
   const stopFlush = add(windowHandlers, "flush", push => { void flush((push as { readonly id: string }).id); });
-  const stopFallback = flushOnDeparture();
+  const stopFallback = flushOnDeparture(slots);
   // translation-text/1: the producer sends `locale` only to connections that list the feature, also right after the
   // hello, before its reply may have arrived, so it is applied whatever the features read so far.
   const stopLocale = add(windowHandlers, "locale", push => {
-    reportWindowLocale((push as Extract<Push, { kind: "locale" }>).locale);
+    reportWindowLocale(slots, (push as Extract<Push, { kind: "locale" }>).locale);
   });
   // appearance/1: likewise the window's appearance, which the page keeps across a reconnect until the next push. Only
   // the raw push: the store reads it when the page reads the appearance.
   const stopAppearance = add(windowHandlers, "appearance", push => {
-    receiveAppearancePush(push as unknown as Readonly<Record<string, unknown>>);
+    receiveAppearancePush(slots, push as unknown as Readonly<Record<string, unknown>>);
   });
+  // Disposing the instance ends its runtime.
+  const stopInstance = onInstanceDisposed(slots, () => runtime.dispose());
   // A closed window of an earlier Bridge does not close this one.
-  reportWindowClosed(false);
+  reportWindowClosed(slots, false);
   const stopMessages = bridge.onMessage(message => dispatch(message));
   const stopConnection = bridge.onConnectionChange(next => {
     if (disposed || reported && next === connected) return;
@@ -429,7 +445,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     connected = next;
     if (next) connection++;
     // A new connection ends the `closed` state of a window the application closed.
-    if (next && !first) reportWindowClosed(false);
+    if (next && !first) reportWindowClosed(slots, false);
     hello = undefined;
     features = new Set<string>();
     navigationPath = undefined;
@@ -439,7 +455,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     // The first report states the connection the page starts on; routes open on it themselves.
     if (first && next) return;
     for (const listener of [...connectionListeners]) {
-      try { listener(next); } catch (error) { reportBridgeError(error); }
+      try { listener(next); } catch (error) { reportBridgeError(slots, error); }
     }
   });
   return runtime;

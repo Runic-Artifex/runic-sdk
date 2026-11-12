@@ -15,7 +15,14 @@ internal sealed record CompatibilityToolchain(
     string Node,
     string Bun,
     string Npm,
-    string Pnpm);
+    string Pnpm)
+{
+    /// <summary>
+    /// Certified SDKs of newer major versions than <see cref="DotNetSdk"/>, which builds the repository; applications
+    /// may build with them too, and run on the runtime of their target framework (D059.17).
+    /// </summary>
+    internal IReadOnlyList<string> AdditionalDotNetSdks { get; init; } = [];
+}
 
 /// <summary>How well Runic supports a Window host on a runtime identifier (eng/support.json).</summary>
 internal enum SupportStatus
@@ -153,7 +160,12 @@ internal sealed class CompatibilitySetAuthority
                 toolchain.GetProperty("node").GetString() ?? string.Empty,
                 toolchain.GetProperty("bun").GetString() ?? string.Empty,
                 toolchain.GetProperty("npm").GetString() ?? string.Empty,
-                toolchain.GetProperty("pnpm").GetString() ?? string.Empty),
+                toolchain.GetProperty("pnpm").GetString() ?? string.Empty)
+            {
+                AdditionalDotNetSdks = toolchain.TryGetProperty("additionalDotnetSdks", out JsonElement additional)
+                    ? [.. additional.EnumerateArray().Select(static sdk => sdk.GetString() ?? string.Empty)]
+                    : [],
+            },
             nuget.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
             npm.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
             SupportMatrix.Parse(root.GetProperty("support")));

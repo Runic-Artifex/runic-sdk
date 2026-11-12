@@ -6,6 +6,7 @@ import {
   type OperationState,
 } from "@runic-artifex/views";
 import { derivedFields } from "./derived-fields.svelte.js";
+import { getRunicInstance } from "./instance.js";
 
 export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFailure = never>
   extends OperationState<TResult, TFailure>, Pick<OperationController<TArgs, TResult, TFailure>, "run" | "cancel" | "reset"> {}
@@ -20,7 +21,7 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   start: (...args: TArgs) => BridgeOperation<TResult, TFailure> | undefined | PromiseLike<BridgeOperation<TResult, TFailure> | undefined>,
   options: OperationControllerOptions<TResult, TFailure> = {},
 ): OperationHandle<TArgs, TResult, TFailure> {
-  const controller = createOperationController(start, options);
+  const controller = getRunicInstance().run(() => createOperationController(start, options));
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // Svelte runs a pre effect when it is created, during owner initialization,

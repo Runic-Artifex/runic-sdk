@@ -9,6 +9,7 @@ import {
   type FieldState,
   type ViewClient,
 } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 /** The View a field binds to: an {@link injectView} handle, or any pair of state and client signals. */
 export interface FieldView<TClient extends ViewClient> {
@@ -90,7 +91,7 @@ export function injectField<TClient extends ViewClient, TValue>(
 ): FieldHandle<TValue> {
   if (!provided) assertInInjectionContext(injectField);
   const injector = provided ?? inject(Injector);
-  const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
+  const controller = instanceOf(injector).run(() => createFieldController<TClient["snapshot"], TClient, TValue>(field, options));
   const current = signal(controller.current);
   controller.subscribe(() => current.set(controller.current));
   effect(() => {

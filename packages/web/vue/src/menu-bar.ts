@@ -8,6 +8,7 @@ import {
   type MenuBarState,
 } from "@runic-artifex/views";
 import { releaseWithScope } from "./scope.js";
+import { useRunicInstance } from "./instance.js";
 
 export type {
   MenuBarEntry,
@@ -62,7 +63,8 @@ export function useMenuBar(options: UseMenuBarOptions = {}): MenuBarHandle {
       handleKeyDown: () => false,
     };
   }
-  const controller = createMenuBarController(controllerOptions);
+  // The menu bar of the component's Runic instance.
+  const controller = useRunicInstance().run(() => createMenuBarController(controllerOptions));
   const state = shallowRef(controller.current);
   controller.subscribe(() => { state.value = controller.current; });
   if (onRequest) controller.onRequest(onRequest);

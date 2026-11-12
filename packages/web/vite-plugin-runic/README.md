@@ -99,6 +99,63 @@ The inspector runs only where the development client does: never in a build.
 (`runic.views.inspector` in the
 [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)).
 
+## Component build target
+
+Trusted component mode embeds a guest's Views as a custom element in a host
+page's own document instead of a frame. `component` adds that build next to the
+page:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  base: "./",
+  plugins: [react(), runic({ desktop: true, component: { entry: "src/component.tsx" } })],
+});
+```
+
+The entry's default export is the mount function of
+[`@runic-artifex/views/component`](../views/README.md#components). `vite build`
+then builds every environment, as `vite build --app` does, and after them the
+`runic_component` environment into `_runic_component/` of the build output:
+
+| File | Content |
+| --- | --- |
+| `component.js` | An ES module that defines the element when it loads and exports `tag`, the name it defined, and the element class as default. It bundles the framework runtime and its own copy of `@runic-artifex/views`: import maps are document-global, so a component cannot share the host page's. |
+| `runic-component-meta.js` | The tag and the CSS, which the module imports. |
+| `runic-component.json` | `{ version: 1, name, module, tag }`, which the guest reads to answer a component attach. |
+| `assets/` | Chunks and assets above the inline limit. |
+
+- **Tags.** The tag is `<name>-<hash>`: `component.name` (by default the root
+  `package.json`'s `name`, made a valid prefix: `@acme/check-tool` becomes
+  `acme-check-tool`) and the first 8 hex digits of a hash of the build. Two
+  guests, and two builds of one guest, therefore never define the same tag. The
+  same build loaded from a second origin, such as two running instances of one
+  application, is defined as `<tag>-2`; read the module's `tag` export. Tags are
+  prefixed in every engine: scoped custom element registries would let a
+  component keep plain names, but WebKitGTK 2.54 does not implement them, and
+  one naming rule for every engine is what the host page, tests and devtools see.
+  A component that defines custom elements of its own should prefix them with
+  the `tag` its mount function gets.
+- **CSS.** The build's CSS, in one stylesheet, becomes constructable stylesheets
+  that every element adopts in its shadow root; nothing is added to the
+  document. Theme variables of the host page inherit into the shadow root.
+  `:root` and `html` rules match nothing there; use `:host`. `@font-face` rules in
+  a shadow root have no effect in Chromium: use the host page's fonts.
+- **Addresses.** Chunks, assets and the CSS's `url()` references resolve against
+  the module's own URL, so they load from the guest's origin, absolutely, in the
+  host page's document. Runic Desktop serves the guest's `_runic_component/` with
+  CORS for exactly the origin of the host page that embeds it, and refuses it to
+  every other origin. This requires base `./`, which
+  `component` sets when the configuration has none.
+- **No document state.** The element touches no history, title, global listener,
+  `<html lang dir>` or document stylesheet; its own `lang` and `dir` follow its
+  instance's text locale.
+
+The development server serves the page only: develop the component's Views on the
+page, where they run in the page instance, and build the component with
+`vite build`. The development client and the dock observe the page instance, not
+a component's.
+
 ## SvelteKit and Angular
 
 SvelteKit renders its pages itself and warns about every plugin with a
