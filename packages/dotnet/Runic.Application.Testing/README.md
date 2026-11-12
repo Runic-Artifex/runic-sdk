@@ -1281,6 +1281,28 @@ public async Task ClosesWhenTheHostAsks()
   await window.DropFilesAsync([Path.GetFullPath("data/notes.txt")]);
   await host.SetLocaleAsync("fr");
   ```
+- Regions (`region/1`, from 0.18.0; add it to `Features`): the windows that
+  `RunicTestHostOptions.EmbedWindow` chooses show in a region of a host page
+  instead of a window of their own (`IsRegion`). `AttachRegionAsync(embedder)`
+  attaches one and returns the guest's one-time frame launch address: load it
+  once, in an `<iframe>` of a page whose origin is `embedder`, such as
+  `http://127.0.0.1:<port>` of a test page your Playwright fixture serves; the
+  guest lets no other origin frame its page. The page's title arrives in
+  `Titles`, its content height as a `resize` in `PresentationRequests` when the
+  region was attached with `sizing: "content-height"`, and what happened to the
+  page in `RegionPages`. `FocusRegionAsync`, `SetRegionBoundsAsync` and
+  `DetachRegionAsync` play the host page's focus, size and removal.
+
+  ```csharp
+  await using var host = await RunicTestHost.StartGuestAsync(start, new RunicTestHostOptions
+  {
+      Features = ["menus/1", "dialogs/1", "window-services/1", "region/1"],
+      EmbedWindow = _ => true,
+  });
+  var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+  var frame = await window.AttachRegionAsync($"http://127.0.0.1:{hostPagePort}");
+  await page.GotoAsync($"http://127.0.0.1:{hostPagePort}/region.html?src={Uri.EscapeDataString(frame.AbsoluteUri)}");
+  ```
 - The application's `OpenWindowAsync` waits for the page to connect when its
   `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
   real host. Load `LaunchUrl` in the browser under test, or start the

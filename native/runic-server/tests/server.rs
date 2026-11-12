@@ -171,6 +171,52 @@ async fn a_streamed_body_arrives_in_order_and_the_host_headers_are_kept() {
 }
 
 #[tokio::test]
+async fn a_response_that_names_frame_ancestors_gets_no_default_frame_options() {
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    for (policy, framed_by_others) in [
+        (Some("default-src 'self'; frame-ancestors http://127.0.0.1:8080"), true),
+        (Some("FRAME-ANCESTORS 'self'"), true),
+        (Some("default-src 'self'"), false),
+        (None, false),
+    ] {
+        let client = tokio::spawn(exchange(port, get(port, "/", "")));
+        let Event::Request { id, .. } = next(&mut events).await else { panic!("a request") };
+        let mut headers = HeaderMap::new();
+        if let Some(policy) = policy {
+            headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(policy));
+        }
+        server.respond(id, StatusCode::NO_CONTENT, headers, Body::Empty).unwrap();
+        let lower = client.await.unwrap().to_ascii_lowercase();
+        assert!(lower.contains("x-content-type-options: nosniff"), "{lower}");
+        assert_eq!(!lower.contains("x-frame-options"), framed_by_others, "{policy:?}: {lower}");
+    }
+}
+
+#[tokio::test]
+async fn an_ipv6_loopback_listener_serves_on_the_ipv6_loopback_address() {
+    // A machine without IPv6 cannot bind [::1]: the host then falls back to its IPv4 listener.
+    if std::net::TcpListener::bind("[::1]:0").is_err() {
+        eprintln!("skipped: [::1] cannot be bound here");
+        return;
+    }
+    let (server, mut events) = start(ServerConfig { ipv6_loopback: true, ..ServerConfig::default() });
+    let port = server.port();
+    let request = format!("GET / HTTP/1.1\r\nHost: [::1]:{port}\r\nConnection: close\r\nX-Runic-Test: 1\r\n\r\n");
+    let client = tokio::spawn(async move {
+        let mut stream = TcpStream::connect(("::1", port)).await.unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+        String::from_utf8_lossy(&response).into_owned()
+    });
+    let Event::Request { id, headers, .. } = next(&mut events).await else { panic!("a request") };
+    assert_eq!(headers.get(header::HOST).unwrap(), &format!("[::1]:{port}"));
+    server.respond(id, StatusCode::NO_CONTENT, HeaderMap::new(), Body::Empty).unwrap();
+    assert!(client.await.unwrap().starts_with("HTTP/1.1 204"));
+}
+
+#[tokio::test]
 async fn a_full_body_queue_reports_pending_writes() {
     let (server, mut events) = start(ServerConfig::default());
     let port = server.port();

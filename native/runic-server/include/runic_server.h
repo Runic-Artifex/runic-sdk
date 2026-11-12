@@ -1,5 +1,5 @@
 /*
- * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 3.
+ * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 4.
  *
  * Threading: every function may be called from any thread. Callbacks run on the server's threads, never while a
  * caller waits inside a runic_server_* function, and none starts after runic_server_stop returned. A callback must
@@ -20,6 +20,9 @@
  * Request bodies (ABI 3): runic_server_read reads the next chunk of a request's body; on_received reports it with the
  * token: RUNIC_SERVER_BODY_READ_DATA with the chunk, valid during the callback, RUNIC_SERVER_BODY_READ_END or
  * RUNIC_SERVER_BODY_READ_FAILED. One read of a request is in progress at a time; reads work until the request completes.
+ *
+ * IPv6 loopback (ABI 4): RUNIC_SERVER_FLAG_IPV6_LOOPBACK listens on [::1] instead of 127.0.0.1, with the same Host
+ * check. A response whose Content-Security-Policy names frame-ancestors gets no default X-Frame-Options.
  */
 #ifndef RUNIC_SERVER_H
 #define RUNIC_SERVER_H
@@ -31,7 +34,7 @@
 extern "C" {
 #endif
 
-#define RUNIC_SERVER_ABI_VERSION 3u
+#define RUNIC_SERVER_ABI_VERSION 4u
 #define RUNIC_SERVER_BODY_READ_DATA 1u
 #define RUNIC_SERVER_BODY_READ_END 2u
 #define RUNIC_SERVER_BODY_READ_FAILED 3u
@@ -47,6 +50,7 @@ extern "C" {
 #define RUNIC_SERVER_INTERNAL (-6)
 
 #define RUNIC_SERVER_FLAG_ALL_INTERFACES 1u
+#define RUNIC_SERVER_FLAG_IPV6_LOOPBACK 2u
 #define RUNIC_SERVER_REQUEST_WEBSOCKET 1u
 
 #define RUNIC_SERVER_BODY_EMPTY 0u
@@ -83,7 +87,7 @@ typedef struct RunicRequest {
 
 typedef struct RunicServerOptions {
     uint32_t abi_version; /* RUNIC_SERVER_ABI_VERSION */
-    uint32_t flags;       /* RUNIC_SERVER_FLAG_ALL_INTERFACES; loopback otherwise, with the Host check */
+    uint32_t flags;       /* RUNIC_SERVER_FLAG_ALL_INTERFACES, or loopback with the Host check: RUNIC_SERVER_FLAG_IPV6_LOOPBACK for [::1] */
     uint16_t port;        /* 0 for a port the system chooses */
     uint16_t reserved;
     uint32_t worker_threads;

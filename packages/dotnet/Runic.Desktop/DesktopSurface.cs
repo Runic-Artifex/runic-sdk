@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 using Runic.Platform;
+using Runic.Desktop.Internal;
 
 namespace Runic.Desktop;
 
@@ -44,6 +45,45 @@ public sealed class DesktopSurface : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         return _engine.BeginHostedLaunch();
+    }
+
+    // runic-host/1 region/1: the window shows in a region of a host page, in a frame (WebUiWindow.EnterRegionMode).
+    internal void EnterRegionMode()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _engine.EnterRegionMode();
+    }
+
+    // runic-host/1 region-attach: a new frame launch address for a frame of embedder (WebUiWindow.BeginFrameLaunchAsync).
+    internal Task<DesktopFrameLaunch> BeginFrameLaunchAsync(string embedder, bool allowSameSite, bool measuresHeight,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.BeginFrameLaunchAsync(embedder, allowSameSite, measuresHeight, cancellationToken);
+    }
+
+    // runic-host/1 region-detach: the frame's code and token are revoked and its page disconnected.
+    internal void EndFrameLaunch()
+    {
+        if (Volatile.Read(ref _disposed) == 0) _engine.EndFrameLaunch();
+    }
+
+    // runic-host/1 region-focus enter: the frame's page focuses an element; false without a connected page.
+    internal Task<bool> FocusFrameAsync(string direction, CancellationToken cancellationToken) =>
+        Volatile.Read(ref _disposed) != 0 ? Task.FromResult(false) : _engine.FocusFrameAsync(direction, cancellationToken);
+
+    // What the frame's page reports of itself: its title and content height.
+    internal event Action<DesktopFrameReport>? FrameReported
+    {
+        add => _engine.FrameReported += value;
+        remove => _engine.FrameReported -= value;
+    }
+
+    // A launch conflict revoked the frame token.
+    internal event Action? FrameRevoked
+    {
+        add => _engine.FrameRevoked += value;
+        remove => _engine.FrameRevoked -= value;
     }
 
     /// <summary>Registers or replaces a named presentation capability.</summary>

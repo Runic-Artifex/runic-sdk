@@ -122,6 +122,35 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
 
     internal void RaiseWindowClosed(RunicHostedWindow window) => Raise(WindowClosed, window);
 
+    public event EventHandler<RunicHostedRegionEventArgs>? RegionAttached;
+
+    public event EventHandler<RunicHostedRegionEventArgs>? RegionDetached;
+
+    internal void RaiseRegionAttached(RunicHostedRegion region)
+    {
+        var handler = RegionAttached;
+        if (handler is not null) Post(() => handler(this, new RunicHostedRegionEventArgs(region)));
+    }
+
+    internal void RaiseRegionDetached(RunicHostedRegion region, string reason)
+    {
+        var handler = RegionDetached;
+        if (handler is not null) Post(() => handler(this, new RunicHostedRegionEventArgs(region, reason)));
+    }
+
+    // A region's event, in the same order as the window events (Raise).
+    internal void Post(Action action)
+    {
+        lock (_eventGate)
+        {
+            _events = _events.ContinueWith(_ =>
+            {
+                try { action(); }
+                catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowPolicyFailed(_logger, error, error.GetType().Name); }
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
+    }
+
     // On a thread-pool thread, so a handler never runs in the channel's receive loop or a native callback, and one event
     // after the other, so a window's WindowClosed follows its WindowOpened.
     private void Raise(EventHandler<RunicHostedWindowEventArgs>? handler, RunicHostedWindow window)

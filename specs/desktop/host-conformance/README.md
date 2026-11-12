@@ -108,6 +108,8 @@ Messages are compared by JSON value, never by bytes or member order.
 | `guest-proof` | The guest proof for the nonce and the key |
 | `guest-proof-other-nonce` | A guest proof computed with another random nonce |
 | `launch-url` | Matches a launch address of the [`window-open`](../host-protocol.md#window-open) form |
+| `frame-url` | Matches a new frame launch address of the [`region-attach`](../host-protocol.md#region-attach) form, on the loopback family that the embedder of the latest `region-attach` the runner sent does not use, and binds it for `frame` steps |
+| `frame-token` | The frame token of the latest `frame` `launch` (only written, as a `frame` step's `token`) |
 
 ## Test application
 
@@ -153,6 +155,7 @@ action.
 | `monitors` | `window` | The Window's monitors (`IDesktopMonitors.ListAsync`): `monitors`, their ids in order, or an `outcome` |
 | `launch` | `window`, `value`: an absolute URI, or a `$file` path | A platform outcome: `IDesktopFileLauncher.LaunchUriAsync` for a URI, `LaunchAsync` with `reveal` for a path |
 | `drops` | `window` | `dropped`: the file names of the files dropped onto the application's `Drop` Windows, in order; the runner waits until they are the expected ones |
+| `setTitle` | `window`, `value`: the title | — (the title of the Window's page changes, as its page reports it in a [region](../host-protocol.md#set-title)) |
 
 `expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start, or the host's start
 of the guest, failed with a code), `exited` (the guest process exited; a code when given), `running` (the guest still
@@ -217,3 +220,64 @@ runner's: their ids are not part of a scenario.
 without their `id` members (the host's own items are part of it), waiting until they match; or `closed: true`, that the
 window closed. `expect` with `clipboard` checks the text on the host's clipboard, and with `launched` the links and
 files the host opened for the guest, in order (a link's absolute URI, a file's path), each waiting until they match.
+
+## Region scenarios
+
+The scenarios of [`region/1`](../host-protocol.md#regions-region1) are in `scenarios/region/`, with `requires:
+["region/1"]`. The host role's are named `region.host-*`. A host scenario's `arrange.host.embed` names the region in which
+the host's policy shows each window of the guest that can show in a region and has no owner, and `embedOptions` its
+`focusOnAttach` and `reattachOnReload`.
+
+| Scenario | Roles | Checks |
+| --- | --- | --- |
+| `region.open-without-a-page` | guest | A `window-open` answered `presentation: "region"` completes the Window's open without a page connection, and its launch address is revoked |
+| `region.attach` | guest | `region-attach` answers a `frame.url` of the frame form on the loopback family the `embedder` does not use, with `sameSite: false` |
+| `region.attach-not-a-region` | guest | `region-attach` for a window shown in a window is `rejected` with `invalid-request` |
+| `region.embedding-unsupported` | guest | `embedding: "component"` without `region-component/1` is `rejected` with `embedding-unsupported` |
+| `region.embedder-invalid` | guest | An `embedder` with a path, another scheme, a host other than a loopback literal or `localhost`, no port, or over 256 characters, is `rejected` with `invalid-request` |
+| `region.detach-revokes` | guest | After `region-detach`, the window's code and token are refused, `activity` of the Window reports `visible: false`, and a new `region-attach` answers a new code |
+| `region.reattach-replaces` | guest | A `region-attach` for an attached window revokes the earlier code |
+| `region.set-title` | guest | The Window's page title changes are sent as `set-title`; a `capacity` rejection is followed by the latest title |
+| `region.presentation-mapping` | guest | Each presentation request of a region window gets its reply from [presentation in a region](../host-protocol.md#presentation-in-a-region): `minimize`, `set-visible`, `set-full-screen`, `set-color-scheme` `unavailable` with `backend-unavailable` without being sent, `toggle-maximized`, `move`, `set-represented-file` `unavailable` with `embedded` |
+| `region.host-lifecycle` | host | A region window opens without a page, attaches when a page declares its region, detaches with `removed` or `reload` and attaches again by name with a new code; its close empties the region |
+| `region.host-presentation-mapping` | host | The host's replies of [presentation in a region](../host-protocol.md#presentation-in-a-region), `resize` while the region's height follows the page included |
+| `region.host-content-height` | host | With `sizing: "content-height"`, the region takes the height of the guest's `resize` |
+| `region.host-window-mode-title` | host | `set-title` for a window shown in a window is `rejected` with `invalid-request` |
+| `region.host-set-title-rate` | host | `set-title` names the region's frame; the 11th within a second after a burst of 10 is `rejected` with `capacity` |
+| `region.host-bounds-coalesced` | host | Several size changes of the region within one frame reach the guest as one `region-bounds` with the latest size |
+| `region.host-activity` | host | `activity` follows the region: `visible` with the region shown and in view, `active` with the host window active and the focus in the region; Tab and Shift+Tab into it push `region-focus` |
+| `region.host-present-keeps-host-focus` | host | `present` while the host page has a focused element answers `success` and leaves the focus; with no focused element it pushes `region-focus` `programmatic` |
+| `region.host-menus-embedded` | host | `set-menu-bar` and `update-menu-items` are answered `unavailable` with `embedded`; context menus show while the focus is in the region |
+| `region.host-dialog-owned-by-host-window` | host | A region window's dialog is owned by its host window; while no region shows it, it is `unavailable` with `owner-unavailable` |
+| `region.host-services-guest-focus` | host | Clipboard reads are refused while the focus entered the region by `present` or script, also after a click into a frame that had it, and allowed after the user's Tab into it |
+| `region.host-page-revoked` | host | `region-page` `revoked` makes the host detach the window and attach it again with a new code |
+| `region.host-region-ambiguous` | host | A name-only embed fails the open with `region-ambiguous` while two host windows declare the region |
+| `region.host-attach-refused` | host | A refused or failed `region-attach` leaves the window open and detached, and the page shows its fallback |
+| `region.host-departure` | host | A departure the host decides asks the guest with `close-request` first |
+| `region.host-host-window-closes` | host | The host window's close detaches the region window and closes it with a forced `close-request` |
+| `region.host-move` | host | The host moves a region window to another host window's region, and detaches it |
+| `region.host-embed-options` | host | Focus on attach, and no re-attach on reload |
+
+New steps and actions the runners need:
+
+- **Test application (guest runner).** The action `setTitle` ([test application](#test-application)), and the step
+  `frame`, which makes one request of the frame surface of the latest bound `frame-url` (with `url: "previous"`, the one
+  bound before it) and expects its `status`, or with `refused: true` any 4xx status, so a scenario checks the one-time
+  code, the fragment redirect, one page per token and revocation without a browser:
+
+  | `request` | The request |
+  | --- | --- |
+  | `launch` | `GET` of the frame launch address, without following the redirect or sending a cookie. A `303` must redirect to the frame surface with `#runic-frame=<token>`, which binds `frame-token`, and carry `Content-Security-Policy: frame-ancestors <embedder>`, `Referrer-Policy: no-referrer` and no `X-Frame-Options` or `Set-Cookie` |
+  | `bootstrap` | `GET` of the frame surface's `webui.js`, which must carry no session credential |
+  | `upgrade` | The Bridge WebSocket upgrade from the frame surface's origin, with `runic-desktop.<token>` as its subprotocol when the step names a `token` (a string, or `{"$secret": "frame-token"}`). After `101` the runner sends the Bridge's token check, so the guest counts the page, and keeps the connection until the scenario ends |
+- **The host's user and the host application (host runner).** Actions that play the host page's
+  [`hosted-regions/1`](../../application/README.md#hosted-regions) reports, with `window` naming a host window, which the
+  runner opens with the page's first region: `declareRegion` (`name`, `sizing`), `removeRegion` (`name`, and `reason`
+  `reload` for a page that reloads), `resizeRegion` (`name`, `width`, `height`, `scale`, optional `visible`),
+  `focusRegion` (`name`, `source`: `tab`, `shift-tab`, `pointer` or `script`) and `focusHost` (`focused: false` for a page
+  that holds no focus). The page moves the focus into a region at the host's request only while it holds none, and then
+  reports it as the script's. Actions of the host application, with `window` naming the guest's window:
+  `departRegion` (the region's departure guard), `detachRegion` and `moveRegion` (`to`: a host window, `name`). `expect`
+  with `window` and `region` checks the region's `state`, `title`, `focused` and `documentEdited`; with `window` (a host
+  window) and `page` what the host shows in the page's region `name` (`shows`, `src`, `title`, `allow`, `height`); with
+  `dialogOwner` the host window that owns the latest dialogs; with `departure` whether the oldest departure went ahead.

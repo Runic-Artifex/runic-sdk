@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 3. Every struct mirrors its
+// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 4. Every struct mirrors its
 // #[repr(C)] counterpart field by field.
 internal static unsafe partial class NativeServerInterop
 {
     internal const string Library = "runic_server";
-    internal const uint AbiVersion = 3;
+    internal const uint AbiVersion = 4;
 
     internal const int Ok = 0;
     internal const int Pending = 1;
@@ -18,6 +18,7 @@ internal static unsafe partial class NativeServerInterop
     internal const int BindFailed = -4;
 
     internal const uint FlagAllInterfaces = 1;
+    internal const uint FlagIpv6Loopback = 2;
     internal const uint RequestWebSocket = 1;
 
     internal const uint BodyEmpty = 0;

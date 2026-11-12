@@ -432,7 +432,9 @@ public sealed partial class RunicHostedApplication
     private async Task<JsonObject> MonitorsAsync(RunicHostedWindow window, CancellationToken cancellationToken)
     {
         _ = await DecideServiceAsync(ServiceRequest(window, RunicHostedServiceKind.Monitors, static _ => true), cancellationToken).ConfigureAwait(false);
-        var presentation = window.Presentation;
+        // A region window's monitors are its host window's (host-protocol.md, Features in a region).
+        if (window.NativeWindow is not { } presentation)
+            return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
         var monitors = presentation.Monitors;
         WatchMonitors(window, monitors);
         var result = await monitors.ListAsync(cancellationToken).ConfigureAwait(false);

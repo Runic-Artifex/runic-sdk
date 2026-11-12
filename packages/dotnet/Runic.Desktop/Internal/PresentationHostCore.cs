@@ -24,6 +24,11 @@ internal sealed class PresentationHostCore : IAsyncDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private IPresentationServer? _server;
     private Uri? _baseUrl;
+    // The IPv6 loopback listener that serves the frames of regions whose host page has an IPv4 loopback origin, started
+    // on the first such frame (GetIpv6LoopbackUrlAsync); whether [::1] could not be bound.
+    private IPresentationServer? _ipv6Server;
+    private Uri? _ipv6BaseUrl;
+    private bool _ipv6Unavailable;
     private int _disposed;
 
     internal PresentationHostCore(PresentationHostCoreOptions options)
@@ -85,6 +90,47 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         }
     }
 
+    // The URL of a surface on the IPv6 loopback listener, which starts with the first call, or null when [::1] cannot be
+    // bound, such as with IPv6 turned off; a failed bind is not retried. A page of an IPv4 loopback origin that frames a
+    // page from it frames another site: the frame receives none of that page's cookies, and Chromium renders it in a
+    // process of its own (region mode, D059.1).
+    internal async ValueTask<Uri?> GetIpv6LoopbackUrlAsync(PresentationSurfaceRegistration registration, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (IsPublic) throw new InvalidOperationException("A listener on every interface serves no loopback frames.");
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            if (_ipv6BaseUrl is null && !_ipv6Unavailable)
+            {
+                var server = PresentationServers.Create(_options.ConfigureServices);
+                try
+                {
+                    var port = await server.StartAsync(IPAddress.IPv6Loopback, 0, exchange => DispatchAsync(exchange, Volatile.Read(ref _ipv6BaseUrl)),
+                        cancellationToken).ConfigureAwait(false);
+                    _ipv6Server = server;
+                    Volatile.Write(ref _ipv6BaseUrl, new Uri($"http://[::1]:{port}/"));
+                }
+                catch (Exception error) when (error is IOException or System.Net.Sockets.SocketException)
+                {
+                    await server.DisposeAsync().ConfigureAwait(false);
+                    _ipv6Unavailable = true;
+                }
+                catch
+                {
+                    await server.DisposeAsync().ConfigureAwait(false);
+                    throw;
+                }
+            }
+            return _ipv6BaseUrl is { } baseUrl ? CreateSurfaceUrl(baseUrl, registration.PathBase) : null;
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
     internal void Detach(PresentationSurfaceRegistration registration)
     {
         if (_surfaces.TryGetValue(registration.PathBase, out var current) && ReferenceEquals(current, registration))
@@ -110,16 +156,25 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             }
             _surfaces.Clear();
 
-            if (_server is not null)
+            try
             {
-                try
+                if (_ipv6Server is not null) await _ipv6Server.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _ipv6Server = null;
+                _ipv6BaseUrl = null;
+                if (_server is not null)
                 {
-                    await _server.DisposeAsync().ConfigureAwait(false);
-                }
-                finally
-                {
-                    _server = null;
-                    _baseUrl = null;
+                    try
+                    {
+                        await _server.DisposeAsync().ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        _server = null;
+                        _baseUrl = null;
+                    }
                 }
             }
         }
@@ -145,7 +200,8 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         int port;
         try
         {
-            port = await server.StartAsync(address, _options.Port, DispatchAsync, cancellationToken).ConfigureAwait(false);
+            port = await server.StartAsync(address, _options.Port, exchange => DispatchAsync(exchange, Volatile.Read(ref _baseUrl)),
+                cancellationToken).ConfigureAwait(false);
         }
         catch
         {
@@ -155,17 +211,19 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         // Neither UriBuilder, which lowercases the scheme through TextInfo, nor CultureInfo.InvariantCulture: both load
         // ICU (≈1.9 ms and ≈4.8 MiB) before the first window opens (S1, D053.25). A port formats the same in every
         // culture, and the integer formatter needs none for it.
-        _baseUrl = new Uri($"http://127.0.0.1:{port}/");
+        Volatile.Write(ref _baseUrl, new Uri($"http://127.0.0.1:{port}/"));
         _server = server;
     }
 
-    private async Task DispatchAsync(PresentationExchange exchange)
+    // listener is the base URL of the listener the request arrived on, null while it is starting.
+    private async Task DispatchAsync(PresentationExchange exchange, Uri? listener)
     {
-        if (!AcceptsHost(exchange.GetHost()))
+        if (listener is null || !AcceptsHost(exchange.GetHost(), listener.Port))
         {
             exchange.StatusCode = PresentationStatus.MisdirectedRequest;
             return;
         }
+        exchange.Listener = listener;
 
         var registration = FindSurface(exchange.Path, out var remainingPath);
         if (registration is null)
@@ -193,14 +251,14 @@ internal sealed class PresentationHostCore : IAsyncDisposable
     // and would otherwise read credential-bearing bootstrap scripts same-origin.
     // A non-loopback listener is reachable by any network peer and is protected
     // only by its explicit origin and credential policy.
-    private bool AcceptsHost((string Host, int? Port) host)
+    private bool AcceptsHost((string Host, int? Port) host, int port)
     {
         if (IsPublic)
         {
             return true;
         }
 
-        if (host.Port != Port)
+        if (host.Port != port)
         {
             return false;
         }
@@ -230,10 +288,12 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         return null;
     }
 
-    private Uri CreateSurfaceUrl(string pathBase) =>
+    private Uri CreateSurfaceUrl(string pathBase) => CreateSurfaceUrl(_baseUrl!, pathBase);
+
+    private static Uri CreateSurfaceUrl(Uri baseUrl, string pathBase) =>
         pathBase.Length == 0
-            ? _baseUrl!
-            : new Uri(_baseUrl!, $"{pathBase.TrimStart('/')}/");
+            ? baseUrl
+            : new Uri(baseUrl, $"{pathBase.TrimStart('/')}/");
 
     private static string NormalizePathBase(string pathBase)
     {
