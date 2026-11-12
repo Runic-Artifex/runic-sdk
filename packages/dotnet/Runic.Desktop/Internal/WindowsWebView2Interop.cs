@@ -89,6 +89,12 @@ internal static partial class WindowsWebView2Interop
     internal const int FrameNestedFrameCreatedSlot = 30;
     internal static readonly Guid Frame2Interface = new("7a6a5834-d185-4dbf-b63f-4a9bc43107d4");
     internal static readonly Guid Frame7Interface = new("3598cfa2-d85d-5a9f-9228-4dde1f59ec64");
+    // ICoreWebView2Frame2::add_NavigationStarting and ICoreWebView2Frame3::add_PermissionRequested, which a frame raises
+    // for its own and its descendants' requests before the WebView does.
+    internal const int FrameNavigationStartingSlot = 11;
+    internal static readonly Guid Frame3Interface = new("b50d82cc-cc28-481d-9614-cb048895e6a0");
+    internal const int FramePermissionRequestedSlot = 24;
+    internal static readonly Guid PermissionRequestedEventArgs2 = new("74d7127f-9de6-4200-8734-42d6fb4ff741");
     internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
     internal static readonly Guid WebView4Interface = new("20d02d59-6df2-42dc-bd06-f98a694b1302");
     // ICoreWebView2_13::get_Profile and ICoreWebView2Profile::put_PreferredColorScheme (COREWEBVIEW2_PREFERRED_COLOR_SCHEME
@@ -307,6 +313,8 @@ internal sealed class WindowsWebView2Controller : IDisposable
     private bool _framesUnavailable;
     // What the window hears from its subframes (ICoreWebView2Frame2's WebMessageReceived), in order: drops, menu keys.
     private readonly List<Action<nint>> _frameReceivers = [];
+    // The regions whose frames' permission requests their guests' grants decide (RegisterEvents).
+    private RegionFrames? _permissionRegions;
     private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
     private readonly List<nint> _receivers = [];
 
@@ -435,7 +443,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
         _frames = new WebViewFrames(args =>
         {
             foreach (var receive in _frameReceivers) receive(args);
-        });
+        }, _permissionRegions is { } regions ? (args, frameUrl) => DecideRegionPermission(args, regions.Find(frameUrl)) : null);
         try { AddEvent<IWebViewFrameCreated>(webView4, WindowsWebView2Interop.FrameCreatedSlot, new WebViewEvent(_frames.Created)); }
         finally { _framesSource = webView4; }
         return true;
@@ -641,10 +649,30 @@ internal sealed class WindowsWebView2Controller : IDisposable
                 ? (permissions & DesktopPermissionGrant.MediaCapture) != 0
                 : regions?.Find(uri) is { AllowsMediaCapture: true });
             WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.PermissionStateSlot, allowed ? 1 : 2);
-            var args2 = WindowsWebView2Interop.Query(args, new Guid("74d7127f-9de6-4200-8734-42d6fb4ff741"));
+            var args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.PermissionRequestedEventArgs2);
             try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.PermissionHandledSlot, 1); }
             finally { WindowsWebView2Interop.Release(args2); }
         }));
+        if (regions is not null)
+        {
+            _permissionRegions = regions;
+            _ = EnsureFrames();
+        }
+    }
+
+    // A request from a region's frame or its descendants (ICoreWebView2Frame3): microphone and camera by the guest's
+    // grant, everything else denied, and handled, so the WebView's own event, which may name the top-level page as the
+    // requester, does not decide it. A frame that is no region's is left to that event.
+    private static void DecideRegionPermission(nint args, RegionFrameRoute? region)
+    {
+        if (region is null) return;
+        var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.PermissionKindSlot);
+        WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.PermissionStateSlot, kind is 1 or 2 && region.AllowsMediaCapture ? 1 : 2);
+        nint args2;
+        try { args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.PermissionRequestedEventArgs2); }
+        catch (InvalidCastException) { return; }
+        try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.PermissionHandledSlot, 1); }
+        finally { WindowsWebView2Interop.Release(args2); }
     }
 
     // Whether the developer tools are enabled, for native checks.
@@ -1060,7 +1088,9 @@ internal sealed partial class WebViewEnvironmentOptions(string? arguments, strin
 
 // The frames of a WebView2 document, each listened to for Runic's drop messages until it is destroyed or the window
 // closes. Nested frames arrive through ICoreWebView2Frame7 where the runtime has it. Window thread only.
-internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
+// permissionRequested: a frame's PermissionRequested (ICoreWebView2Frame3) with the frame's address, as its latest
+// navigation named it; the handler may set the request's state and Handled.
+internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>? permissionRequested = null) : IDisposable
 {
     private readonly List<Frame> _frames = [];
     private bool _disposed;
@@ -1080,6 +1110,20 @@ internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
             _frames.Add(entry);
             entry.Add(frame2, WindowsWebView2Interop.FrameWebMessageReceivedSlot, new WebViewComReference<IWebViewFrameWebMessageReceived>(new WebViewEvent(receive)));
             entry.Add(frame2, WindowsWebView2Interop.FrameDestroyedSlot, new WebViewComReference<IWebViewFrameDestroyed>(new WebViewFrameDestroyed(() => Destroyed(entry))));
+            if (permissionRequested is { } decide)
+            {
+                // A region frame's requests are decided by its guest's grant (RegionFrames): Chromium may attribute a
+                // request that the frame's allow attribute delegated to the top-level page's origin.
+                entry.Add(frame2, WindowsWebView2Interop.FrameNavigationStartingSlot, new WebViewComReference<IWebViewNavigationStarting>(
+                    new WebViewEvent(args => entry.Url = GetString(args, WindowsWebView2Interop.NavigationStartingUriSlot))));
+                try
+                {
+                    entry.Permissions = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame3Interface);
+                    entry.Add(entry.Permissions, WindowsWebView2Interop.FramePermissionRequestedSlot, new WebViewComReference<IWebViewPermissionRequested>(
+                        new WebViewEvent(args => decide(args, entry.Url))));
+                }
+                catch (InvalidCastException) { } // A runtime without frame permission events: the WebView's event decides.
+            }
             try
             {
                 entry.Nested = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame7Interface);
@@ -1105,10 +1149,20 @@ internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
         _frames.Clear();
     }
 
+    private static string? GetString(nint instance, int slot)
+    {
+        var value = WindowsWebView2Interop.GetPointer(instance, slot);
+        try { return Marshal.PtrToStringUni(value); }
+        finally { Marshal.FreeCoTaskMem(value); }
+    }
+
     private sealed class Frame(nint frame2) : IDisposable
     {
         private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
         internal nint Nested { get; set; }
+        internal nint Permissions { get; set; }
+        // The address of the frame's latest navigation, the frame launch address or the page it redirected to.
+        internal string? Url { get; set; }
 
         internal void Add<T>(nint source, int slot, WebViewComReference<T> handler) where T : class
         {
@@ -1128,6 +1182,8 @@ internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
             _events.Clear();
             WindowsWebView2Interop.Release(Nested);
             Nested = 0;
+            WindowsWebView2Interop.Release(Permissions);
+            Permissions = 0;
             WindowsWebView2Interop.Release(frame2);
         }
     }
