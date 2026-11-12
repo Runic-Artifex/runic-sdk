@@ -39,9 +39,9 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     public unsafe Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!address.Equals(IPAddress.Loopback) && !address.Equals(IPAddress.Any))
+        if (!address.Equals(IPAddress.Loopback) && !address.Equals(IPAddress.IPv6Loopback) && !address.Equals(IPAddress.Any))
         {
-            throw new ArgumentException("The native server listens on loopback or on every interface.", nameof(address));
+            throw new ArgumentException("The native server listens on a loopback address or on every interface.", nameof(address));
         }
         EnsureLibrary();
         var services = new ServiceCollection();
@@ -53,7 +53,9 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
         var options = new RunicServerOptions
         {
             AbiVersion = NativeServerInterop.AbiVersion,
-            Flags = address.Equals(IPAddress.Any) ? FlagAllInterfaces : 0,
+            Flags = address.Equals(IPAddress.Any) ? FlagAllInterfaces
+                : address.Equals(IPAddress.IPv6Loopback) ? FlagIpv6Loopback
+                : 0,
             Port = checked((ushort)port),
             WorkerThreads = 1,
             MaxMessageBytes = MaximumMessageBytes,
