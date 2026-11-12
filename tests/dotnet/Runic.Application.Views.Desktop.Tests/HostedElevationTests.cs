@@ -21,7 +21,8 @@ internal sealed class HostedElevationTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     // The guest, in this process, against an offer that does or does not allow an elevated guest: the refusal line and
-    // event 2010 name the code, and the accepted elevated pair logs event 2025.
+    // event 2010 name the code, and the accepted elevated pair logs event 2025. The guest's start runs on a Desktop host
+    // of its own, not through RunicDesktopHost.Run, which on macOS must be called from the process's main thread.
     [Test, NotInParallel(Order = 45)]
     [Arguments(false, true, false, false, false, null)]
     [Arguments(false, true, false, true, true, null)]
@@ -43,25 +44,30 @@ internal sealed class HostedElevationTests
         {
             AllowElevatedHost = guestAllows,
             ReadPrivileges = () => new GuestPrivilegeFacts(elevated, sameUser, parentElevated),
+            // A backstop: the case ends the start itself by closing standard input.
+            StartTimeout = TestTimeouts.Scale(StepTimeout),
             ExitProcess = static _ => { },
         };
-        var services = new ServiceCollection();
-        services.AddSingleton<ILoggerFactory>(logs);
-        await using var provider = services.BuildServiceProvider();
-        var run = Task.Factory.StartNew(() => RunicDesktopHost.Run(provider, new DesktopHostOptions { WaitForConnection = false },
-            new RunicDesktopHostOptions
-            {
-                SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-                Guest = guest,
-            },
-            static _ => Task.FromResult(0)), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WaitForConnection = false });
         var offer = HostProtocol.Line(HostProtocol.OfferPrefix,
             HostProtocol.Offer([HostProtocol.Version], HostProtocol.Base64Url(RandomNumberGenerator.GetBytes(32)), "Elevation host", "1.0", offerAllows));
         input.Write(Encoding.UTF8.GetBytes(offer));
         input.Flush();
+        var start = HostedGuest.StartAsync(guest, desktop, logs.CreateLogger("Runic.Application.Views.Desktop"));
 
-        var line = await output.NextAsync(static text => text.StartsWith(HostProtocol.ChannelPrefix, StringComparison.Ordinal) ||
-            text.StartsWith(HostProtocol.RefusedPrefix, StringComparison.Ordinal), TestTimeouts.Scale(Timeout));
+        // The start writes its line before it fails; one that fails without a line fails the case at once, with its error.
+        var next = output.NextAsync(static text => text.StartsWith(HostProtocol.ChannelPrefix, StringComparison.Ordinal) ||
+            text.StartsWith(HostProtocol.RefusedPrefix, StringComparison.Ordinal), TestTimeouts.Scale(StepTimeout));
+        if (await Task.WhenAny(next, start) == start && !next.IsCompleted)
+        {
+            try { await next.WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (TimeoutException)
+            {
+                await start; // Throws the start's failure.
+                throw new InvalidOperationException("The guest's start completed without a channel or refusal line.");
+            }
+        }
+        var line = await next;
         if (refusal is null)
         {
             Check(line.StartsWith(HostProtocol.ChannelPrefix, StringComparison.Ordinal), $"The guest refused: {line}");
@@ -69,24 +75,30 @@ internal sealed class HostedElevationTests
                 $"Event 2025 was {(elevated ? "not " : "")}logged for {(elevated ? "the elevated pair" : "a standard user's guest")}.");
             // The host goes away before it connects: the start fails with host-gone.
             input.Dispose();
-            var gone = await FailureOf(run);
+            var gone = await FailureOf(start);
             Check(gone.Code == "host-gone", $"The start ended with {gone.Code}.");
             return;
         }
         var content = HostProtocol.ParseLine(line, HostProtocol.RefusedPrefix);
         Check(content?["code"]?.GetValue<string>() == refusal, $"The guest wrote '{line}', not the refusal {refusal}.");
-        var failure = await FailureOf(run);
-        Check(failure.Code == refusal, $"Run threw {failure.Code}, not {refusal}.");
+        var failure = await FailureOf(start);
+        Check(failure.Code == refusal, $"The start threw {failure.Code}, not {refusal}.");
         Check(logs.Entries.Any(entry => entry.EventId == 2010 && entry.Level == LogLevel.Error && entry.Message.Contains($"({refusal})", StringComparison.Ordinal)),
             $"Event 2010 does not name {refusal}.");
         Check(logs.Entries.All(static entry => entry.EventId != 2025), "A refused start logged event 2025.");
     }
 
-    private static async Task<RunicHostedApplicationException> FailureOf(Task<int> run)
+    private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(10);
+
+    private static async Task<RunicHostedApplicationException> FailureOf(Task<HostedGuest> start)
     {
-        try { await run.WaitScaledAsync(Timeout); }
+        try
+        {
+            var started = await start.WaitScaledAsync(StepTimeout);
+            await started.DisposeAsync();
+        }
         catch (RunicHostedApplicationException error) { return error; }
-        throw new InvalidOperationException("Run returned without a hosted start failure.");
+        throw new InvalidOperationException("The guest's start succeeded without a host.");
     }
 
     // Only an elevated host may allow an elevated guest; the start fails before the guest's process starts.
