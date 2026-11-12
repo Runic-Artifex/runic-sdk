@@ -129,6 +129,9 @@ public sealed class PanelConnectionSlotTests
         var surface = window.Surface;
         var credential = surface.OpenSidePanelSlot();
         surface.EnterRegionMode();
+        // Entering region mode revoked the slot, and a region opens none.
+        Assert.Null(surface.SidePanelDocumentStartScript);
+        Assert.False(surface.CloseSidePanelSlot());
         Assert.Throws<InvalidOperationException>(() => surface.OpenSidePanelSlot());
 
         // The frame alone is admitted in region mode: from the frame's origin, the panel credential is a wrong one.

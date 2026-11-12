@@ -3845,6 +3845,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         _frameBinding.Enter();
         _launchBinding.Revoke();
+        // A region has no side panel (D062.8): its credential is revoked with every other page.
+        _panelSlot.Close();
         CloseSessions();
     }
 
@@ -4089,16 +4091,19 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // The slot of a WebSocket that ValidateWebSocketAdmission admitted with accepted, and for the side panel the
     // generation it holds the slot at. Null when it offered the side panel's credential and the panel closed or opened
-    // again since: the WebSocket is then admitted to no slot.
+    // again since: the WebSocket is then admitted to no slot. The panel credential is matched first, so a panel page
+    // that raced the surface into region mode never takes the frame's slot; its generation is then stale.
     private DesktopConnectionSlot? SlotOf(string accepted, out long panelGeneration)
     {
         panelGeneration = 0;
-        if (accepted.Length == 0 || _frameBinding.IsActive ||
-            string.Equals(accepted, $"runic-desktop.{_sessionCredential}", StringComparison.Ordinal))
+        if (accepted.Length != 0 && _panelSlot.Admit([accepted], out panelGeneration) is not null)
         {
-            return DesktopConnectionSlot.Page;
+            return DesktopConnectionSlot.SidePanel;
         }
-        return _panelSlot.Admit([accepted], out panelGeneration) is not null ? DesktopConnectionSlot.SidePanel : null;
+        return accepted.Length == 0 || _frameBinding.IsActive ||
+            string.Equals(accepted, $"runic-desktop.{_sessionCredential}", StringComparison.Ordinal)
+            ? DesktopConnectionSlot.Page
+            : null;
     }
 
     // The sessions of one slot, which YieldSilentConnections looks through for that slot's one connection.
