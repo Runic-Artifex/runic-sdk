@@ -1,5 +1,6 @@
 import { assertInInjectionContext, DestroyRef, inject, Injector, PLATFORM_ID, signal, type Signal } from "@angular/core";
 import { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 export interface BridgeConnectionHandle {
   /** The connection to the .NET host, as `onBridgeConnection` reports it. */
@@ -12,7 +13,7 @@ export interface InjectBridgeConnectionOptions extends BridgeConnectionOptions {
 }
 
 /**
- * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`,
+ * Follows the connection of the injection context's Runic instance to its .NET host (`connecting`, `connected`, `reconnecting`,
  * `lost` or `closed`) as a signal through `onBridgeConnection`, for the lifetime of the injection context.
  * Destruction unsubscribes. Under server rendering (`PLATFORM_ID` `"server"`) it does not
  * observe and stays `connecting`.
@@ -29,7 +30,7 @@ export function injectBridgeConnection(
   const injector = provided ?? inject(Injector);
   const state = signal<BridgeConnectionState>("connecting");
   if (injector.get(PLATFORM_ID, null) !== "server") {
-    const stop = onBridgeConnection(next => state.set(next), options);
+    const stop = instanceOf(injector).run(() => onBridgeConnection(next => state.set(next), options));
     injector.get(DestroyRef).onDestroy(stop);
   }
   return { state: state.asReadonly() };

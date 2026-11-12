@@ -6,6 +6,8 @@ import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { replyError, type Reply } from "./protocol.js";
 import { reportBridgeError } from "./transport.js";
 import type { RouteOperationScope } from "./connection.js";
+import { runtimeSlots } from "./runtime.js";
+import type { Slots } from "./scope.js";
 
 /**
  * `domain-failed` means the command failed with its declared failure type.
@@ -240,6 +242,9 @@ class OperationChannel<TResult, TFailure> {
     this.contract = scope.contract;
   }
 
+  /** The slots of the operation's instance. */
+  get slots(): Slots { return runtimeSlots(this.scope.runtime); }
+
   /** Reads a status object; without `decodeFailure` the operation declares no failure, so `domain-failed` is `failed`. */
   parse(wire: Readonly<Record<string, unknown>>): { readonly status: Status<TResult, TFailure>; readonly revision: number | undefined } {
     if (typeof wire["kind"] !== "string" || !statusKinds.includes(wire["kind"]))
@@ -352,7 +357,7 @@ class OperationWatch {
   }
 
   private emitTo(listener: (status: AnyStatus) => void, status: AnyStatus): void {
-    try { listener(status); } catch (error) { reportBridgeError(error, this.channel.route); }
+    try { listener(status); } catch (error) { reportBridgeError(this.channel.slots, error, this.channel.route); }
   }
 
   private ensure(): void {
@@ -398,7 +403,7 @@ class OperationWatch {
     catch (error) {
       for (const waiter of [...this.waiters]) waiter.reject(error);
       this.waiters.clear();
-      reportBridgeError(error, this.channel.route);
+      reportBridgeError(this.channel.slots, error, this.channel.route);
       return;
     }
     // Statuses are delivered in order; a terminal one once the route reached its revision.
@@ -480,7 +485,7 @@ function handle<TResult, TFailure>(channel: OperationChannel<TResult, TFailure>,
     cancel: () => channel.cancel(),
     subscribe(listener: (status: Status<TResult, TFailure>) => void): () => void {
       if (terminal !== undefined) {
-        try { listener(terminal); } catch (error) { reportBridgeError(error, channel.route); }
+        try { listener(terminal); } catch (error) { reportBridgeError(channel.slots, error, channel.route); }
         return () => {};
       }
       return watchOf(channel).observe(listener as (status: AnyStatus) => void);
@@ -499,7 +504,7 @@ async function timeOut<TResult, TFailure>(channel: OperationChannel<TResult, TFa
   let cancellation: BridgeOperationCancelKind | "unobserved";
   try { cancellation = (await channel.cancel()).kind; }
   catch (error) {
-    emitErrorDiagnostic(error, channel.route);
+    emitErrorDiagnostic(channel.slots, error, channel.route);
     cancellation = "unobserved";
   }
   if (cancellation === "not-running") {
@@ -510,12 +515,12 @@ async function timeOut<TResult, TFailure>(channel: OperationChannel<TResult, TFa
       const status = await channel.status();
       if (status.kind !== "running") return status;
     } catch (error) {
-      emitErrorDiagnostic(error, channel.route);
+      emitErrorDiagnostic(channel.slots, error, channel.route);
       const late = await settledNow(pending);
       if (late !== undefined) return late;
     }
   }
-  emitBridgeDiagnostic({
+  emitBridgeDiagnostic(channel.slots, {
     kind: "operation", code: "timed-out", route: channel.route, member: channel.member, requestId: channel.operation,
     message: `The operation ${channel.member} (${channel.operation}) did not complete within ${timeout} ms; cancellation: ${cancellation}.`,
   });

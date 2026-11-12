@@ -56,10 +56,12 @@ export function runicViewsFieldErrorText(error, locale) {
 }
 
 /**
- * Shows field errors (`FieldState.error`, `describeBridgeError`) with the runic-views text in the window's language.
- * Returns a function that removes it. Replaces an earlier `configureFieldErrorText`; an application with texts of its own
- * calls `runicViewsFieldErrorText` from its hook instead.
+ * Shows field errors (`FieldState.error`, `describeBridgeError`) with the runic-views text in the window's language, in
+ * `instance` or the current Runic instance (the page's by default). Returns a function that removes it. Replaces an
+ * earlier `configureFieldErrorText` of that instance; an application with texts of its own calls
+ * `runicViewsFieldErrorText` from its hook instead.
  */
-export function configureRunicViewsText() {
-  return configureFieldErrorText(runicViewsFieldErrorText);
+export function configureRunicViewsText(instance) {
+  const configure = () => configureFieldErrorText(runicViewsFieldErrorText);
+  return instance === undefined ? configure() : instance.run(configure);
 }

@@ -1,4 +1,5 @@
 import { appearance, onAppearance, unknownAppearance, type Appearance } from "@runic-artifex/views";
+import { getRunicInstance } from "./instance.js";
 
 export interface AppearanceHandle {
   /** The page's appearance. A reactive property; every member is `null` under server rendering. */
@@ -18,11 +19,12 @@ export interface AppearanceHandle {
  * ```
  */
 export function useAppearance(): AppearanceHandle {
-  let current = $state.raw<Appearance>(typeof window === "undefined" ? unknownAppearance : appearance());
-  $effect.pre(() => {
+  const instance = getRunicInstance();
+  let current = $state.raw<Appearance>(typeof window === "undefined" ? unknownAppearance : instance.run(appearance));
+  $effect.pre(() => instance.run(() => {
     const stop = onAppearance(next => { current = next; });
     current = appearance();
     return stop;
-  });
+  }));
   return { get current() { return current; } };
 }

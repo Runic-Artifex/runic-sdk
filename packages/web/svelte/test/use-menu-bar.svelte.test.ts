@@ -118,8 +118,8 @@ describe("useMenuBar", () => {
   test("is a root export (0.11)", () => {
     expect(Object.keys(root).sort()).toEqual([
       "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
-      "configureTranslatedText", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
-      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "preloadView", "regionEntries", "resolveText", "selectedRegion",
+      "configureTranslatedText", "createRunicInstance", "fieldErrorText", "getRunicInstance", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "preloadView", "regionEntries", "resolveText", "selectedRegion", "setRunicInstance",
       "syncDocumentLocale", "textDirection", "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand",
       "useField", "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText",
       "useTextField", "useTextLocale", "useView", "useWindowLocale", "windowLocale",

@@ -1,4 +1,5 @@
 import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind, type BridgeFailureDetail } from "./errors.js";
+import { currentSlots, type Slots } from "./scope.js";
 
 /**
  * What a {@link BridgeDiagnostic} reports: a `BridgeErrorKind` other than `released`
@@ -36,24 +37,23 @@ export interface BridgeDiagnostic {
 
 export type BridgeDiagnosticListener = (diagnostic: BridgeDiagnostic) => void;
 
-// One listener set per page, shared by every copy of this package and read by
-// `@runic-artifex/vite-plugin-runic/client` through the same registered symbol.
+// One listener set per instance, shared by every copy of this package and, for the page instance, read by
+// `@runic-artifex/vite-plugin-runic/client` through the same registered symbol on `globalThis`.
 // The key and the Set shape are a compatibility contract between the packages.
 const channelKey = Symbol.for("runic.views.diagnostics");
 
-function listeners(): Set<BridgeDiagnosticListener> {
-  const host = globalThis as unknown as Record<symbol, Set<BridgeDiagnosticListener> | undefined>;
-  return host[channelKey] ??= new Set();
+function listeners(slots: Slots): Set<BridgeDiagnosticListener> {
+  return (slots[channelKey] ??= new Set()) as Set<BridgeDiagnosticListener>;
 }
 
 /**
- * Observes Views runtime failures: failed routes (with their .NET detail in
- * development), a missing or unconnected Bridge, operation timeouts and
- * errors the runtime caught from listeners. The Vite plugin forwards these to
- * the Runic DevTools dock. Returns a function that stops observing.
+ * Observes Views runtime failures of the current instance (the page's, outside `RunicInstance.run`): failed routes
+ * (with their .NET detail in development), a missing or unconnected Bridge, operation timeouts and errors the runtime
+ * caught from listeners. The Vite plugin forwards the page's to the Runic DevTools dock. Returns a function that stops
+ * observing.
  */
 export function onBridgeDiagnostic(listener: BridgeDiagnosticListener): () => void {
-  const set = listeners();
+  const set = listeners(currentSlots());
   set.add(listener);
   return () => { set.delete(listener); };
 }
@@ -76,33 +76,34 @@ export function suppressErrorDiagnostic(error: object): void {
   markReported(error);
 }
 
-export function emitBridgeDiagnostic(diagnostic: BridgeDiagnostic): void {
+/** @internal Reports `diagnostic` to the listeners of the instance with `slots`. */
+export function emitBridgeDiagnostic(slots: Slots, diagnostic: BridgeDiagnostic): void {
   const error = diagnostic.error;
   if (typeof error === "object" && error !== null && !markReported(error)) return;
-  for (const listener of [...listeners()]) {
+  for (const listener of [...listeners(slots)]) {
     try { listener(diagnostic); } catch (failure) { console.error(failure); }
   }
 }
 
 /** Emits a diagnostic for an error that leaves the runtime. A `released` BridgeError is not reported. */
-export function emitErrorDiagnostic(error: unknown, route?: string): void {
+export function emitErrorDiagnostic(slots: Slots, error: unknown, route?: string): void {
   if (error instanceof BridgeError) {
     if (error.kind === "released") return;
     const errorRoute = error.route ?? route;
-    emitBridgeDiagnostic({
+    emitBridgeDiagnostic(slots, {
       kind: "error", code: error.kind, message: error.message, error,
       ...(errorRoute === undefined ? {} : { route: errorRoute }),
       ...(error.detail === undefined ? {} : { detail: error.detail }),
     });
   } else if (error instanceof BridgeOperationUncertainError) {
     const errorRoute = error.route ?? route;
-    emitBridgeDiagnostic({ kind: "error", code: "uncertain", message: error.message, error, ...(errorRoute === undefined ? {} : { route: errorRoute }) });
+    emitBridgeDiagnostic(slots, { kind: "error", code: "uncertain", message: error.message, error, ...(errorRoute === undefined ? {} : { route: errorRoute }) });
   } else {
     // A browser error already has its stack; DevTools shows it like .NET detail.
     const detail = error instanceof Error
       ? { type: error.name, message: error.message, ...(typeof error.stack === "string" ? { stack: error.stack } : {}) }
       : undefined;
-    emitBridgeDiagnostic({
+    emitBridgeDiagnostic(slots, {
       kind: "error", code: "reported", message: error instanceof Error ? error.message : String(error), error,
       ...(route === undefined ? {} : { route }),
       ...(detail === undefined ? {} : { detail }),
