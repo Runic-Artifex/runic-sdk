@@ -47,7 +47,8 @@ internal static partial class Unelevated
     private static unsafe Dictionary<string, string> UserEnvironment(string user, string password)
     {
         if (!LogonUserW(user, ".", password, 2 /* LOGON32_LOGON_INTERACTIVE */, 0, out var token))
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), $"The user {user} could not log on.");
+            throw new Win32Exception(Marshal.GetLastPInvokeError(),
+                $"The user {user} could not log on (LOGON32_LOGON_INTERACTIVE, a password of {password.Length} characters).");
         try
         {
             fixed (char* name = user)

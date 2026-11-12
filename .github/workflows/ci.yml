@@ -1163,7 +1163,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'Aa1!'
+          # Hexadecimal, not base64: Git Bash (MSYS2) rewrites an environment value that starts with '/' as a path, such
+          # as C:/Program Files/Git/..., before it starts a native program, so the bash step's logon failed (1326) for
+          # one password in 64.
+          $password = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'Aa1!'
           Write-Output "::add-mask::$password"
           $secure = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name runic-hosted -Password $secure -PasswordNeverExpires -AccountNeverExpires | Out-Null
