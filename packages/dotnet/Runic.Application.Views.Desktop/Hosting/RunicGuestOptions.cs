@@ -93,6 +93,30 @@ public sealed record RunicGuestOptions
     public Func<RunicHostInfo, bool>? AcceptHost { get; init; }
 
     /// <summary>
+    /// Decides whether the host the offer names may show this application's Windows as <b>components</b> in its own
+    /// pages (trusted component mode, <c>region-component/1</c>); <see langword="null"/>, the default, allows no host.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// In component mode the host page loads the guest's component build, an ES module that the <c>component</c> build
+    /// target of <c>@runic-artifex/vite-plugin-runic</c> writes to <c>_runic_component/</c>, into its own document, and
+    /// the component connects to this application with a token that the host hands to its page. Host page and
+    /// component then share one JavaScript realm: the guest's code can read the host page and use its Bridge, and the
+    /// host page holds the guest's token and can act as the guest's page. Allow it only for hosts of the same vendor,
+    /// whose pages you trust as your own. The host must opt in too, with
+    /// <c>RunicHostedWindowDecision.EmbedComponent</c>.
+    /// </para>
+    /// <para>
+    /// Like <see cref="AcceptHost"/>, the decision reads what the host says about itself: it is a filter for the
+    /// product, not a security boundary. When it returns <see langword="false"/>, the guest does not list
+    /// <c>region-component/1</c>, and a component attach is refused with <c>embedding-unsupported</c>; the host can
+    /// still show the Window in a frame. An application that runs elevated never offers component mode until Runic
+    /// checks that its loopback peers are elevated too.
+    /// </para>
+    /// </remarks>
+    public Func<RunicHostInfo, bool>? AllowComponentEmbedding { get; init; }
+
+    /// <summary>
     /// How long the hosted start may take, from <c>Run</c> to the host's authenticated <c>hello</c>: 30 seconds by default.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is not positive.</exception>

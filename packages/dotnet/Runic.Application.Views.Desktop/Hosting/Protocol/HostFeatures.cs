@@ -11,6 +11,9 @@ internal static class HostFeatures
     internal const string Dialogs = "dialogs/1";
     // A Window shown in a region of a host page (host-protocol.md, Regions).
     internal const string Region = "region/1";
+    // A Window shown in a region as a component in the host page's own document (host-protocol.md, Component mode). A
+    // guest lists it only when its application opted in (RunicGuestOptions.AllowComponentEmbedding).
+    internal const string RegionComponent = "region-component/1";
 
     // What Runic's guest and host implement, in the order their hellos list them.
     internal static readonly string[] Implemented = [Menus, Dialogs, HostServices.Feature];
@@ -18,7 +21,7 @@ internal static class HostFeatures
     // What Runic's guest implements, in the order its hello lists them, and what its host implements, in the order its
     // hello lists them: the shared features and region/1, whose two sides are Runic's guest's and host's alone.
     internal static readonly string[] GuestImplemented = [.. Implemented, Region];
-    internal static readonly string[] HostImplemented = [.. Implemented, Region];
+    internal static readonly string[] HostImplemented = [.. Implemented, Region, RegionComponent];
 
     // A menu bar: at most 8 levels of entry lists and 1,000 entries in all. A context menu: at most 5 levels (four nested
     // submenus) and 256 entries, as IWindowPlatformServices.ShowContextMenuAsync allows.

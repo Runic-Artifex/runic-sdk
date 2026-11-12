@@ -84,3 +84,12 @@
 [RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.Embed(string! region, Runic.Application.Views.Desktop.RunicHostedRegionOptions! options) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
 ~[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionSize.Equals(object obj) -> bool
 ~[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedRegionSize.ToString() -> string
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowComponentEmbedding.get -> System.Func<Runic.Application.Views.Desktop.RunicHostInfo!, bool>?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicGuestOptions.AllowComponentEmbedding.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.IsComponent.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowDecision.IsComponent.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.CanEmbedComponent.get -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(Runic.Application.Views.IRunicWindow! hostWindow, string! region, Runic.Application.Views.Desktop.RunicHostedRegionOptions! options) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(Runic.Application.Views.IRunicWindow! hostWindow, string! region) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(string! region, Runic.Application.Views.Desktop.RunicHostedRegionOptions! options) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedWindowDecision.EmbedComponent(string! region) -> Runic.Application.Views.Desktop.RunicHostedWindowDecision!

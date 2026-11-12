@@ -28,10 +28,13 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
         internal bool Focused { get; set; }
         internal HostedRegionFocusSource? Source { get; set; }
 
-        // The host's last push: content, waiting, detached or ended; null before the first.
+        // The host's last push: content, component, waiting, detached or ended; null before the first.
         internal string? Shows { get; set; }
         internal string? Src { get; set; }
         internal string? Allow { get; set; }
+        // A component's module and token (region-component/1); Src is then its WebSocket address.
+        internal string? Module { get; set; }
+        internal string? Token { get; set; }
         internal string? Title { get; set; }
         internal int? AppliedHeight { get; set; }
         internal int FocusRequests { get; set; }
@@ -123,6 +126,14 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
         region.Src = src;
         region.Title = title;
         region.Allow = allow;
+    });
+
+    public bool ShowComponent(string name, string module, string url, string token) => Push(name, region =>
+    {
+        region.Shows = "component";
+        region.Src = url;
+        region.Module = module;
+        region.Token = token;
     });
 
     public bool Update(string name, HostedRegionTitle title, int? height) => Push(name, region =>

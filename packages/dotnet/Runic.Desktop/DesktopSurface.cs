@@ -68,6 +68,20 @@ public sealed class DesktopSurface : IAsyncDisposable
         if (Volatile.Read(ref _disposed) == 0) _engine.EndFrameLaunch();
     }
 
+    // runic-host/1 region-component/1: a new component token for a component in the host page of embedder
+    // (WebUiWindow.BeginComponentAsync).
+    internal Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.BeginComponentAsync(embedder, allowSameSite, cancellationToken);
+    }
+
+    // runic-host/1 region-detach of a component: its token is revoked and its page disconnected.
+    internal void EndComponent()
+    {
+        if (Volatile.Read(ref _disposed) == 0) _engine.EndComponent();
+    }
+
     // runic-host/1 region-focus enter: the frame's page focuses an element; false without a connected page.
     internal Task<bool> FocusFrameAsync(string direction, CancellationToken cancellationToken) =>
         Volatile.Read(ref _disposed) != 0 ? Task.FromResult(false) : _engine.FocusFrameAsync(direction, cancellationToken);
@@ -380,8 +394,9 @@ public sealed class DesktopSurface : IAsyncDisposable
         return new BlobLease(_engine, handler);
     }
 
-    // The surface URL, or null before the surface is attached or after it closed.
-    internal Uri? CurrentUrl => _engine.Url;
+    // The base URL that the surface's page requests from, or null before the surface is attached or after it closed:
+    // the surface URL, or in region mode the listener of the frame or component that shows it (blobs/1 addresses).
+    internal Uri? CurrentUrl => _engine.Url is null ? null : _engine.PageUrl;
 
     // region-component/1: lets the host page at embedder load the surface's component build (WebUiWindow.ComponentPath)
     // with CORS, or, with null, refuses it to everyone.

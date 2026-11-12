@@ -745,6 +745,13 @@ public sealed class RunicHostedWindowRequest
     /// or refuses it.
     /// </summary>
     public bool CanEmbed { get; internal init; }
+
+    /// <summary>
+    /// Whether the window can show as a component in one of the host's pages
+    /// (<see cref="RunicHostedWindowDecision.EmbedComponent(string)"/>): the guest implements <c>region-component/1</c>
+    /// and its application allowed component embedding for this host (<see cref="RunicGuestOptions.AllowComponentEmbedding"/>).
+    /// </summary>
+    public bool CanEmbedComponent { get; internal init; }
 }
 
 /// <summary>A host policy's decision about a window a guest asked for.</summary>
@@ -753,7 +760,8 @@ public sealed class RunicHostedWindowRequest
 public sealed class RunicHostedWindowDecision
 {
     private RunicHostedWindowDecision(bool allowed, DesktopWindowOptions? windowOptions, string? message,
-        string? region = null, IRunicWindow? hostWindow = null, RunicHostedRegionOptions? regionOptions = null)
+        string? region = null, IRunicWindow? hostWindow = null, RunicHostedRegionOptions? regionOptions = null,
+        bool component = false)
     {
         IsAllowed = allowed;
         WindowOptions = windowOptions;
@@ -761,6 +769,7 @@ public sealed class RunicHostedWindowDecision
         Region = region;
         HostWindow = hostWindow;
         RegionOptions = regionOptions;
+        IsComponent = component;
     }
 
     /// <summary>Whether the window opens, in a window of its own or in a region.</summary>
@@ -780,6 +789,12 @@ public sealed class RunicHostedWindowDecision
 
     /// <summary>How the region shows the window, or <see langword="null"/> for the defaults.</summary>
     public RunicHostedRegionOptions? RegionOptions { get; }
+
+    /// <summary>
+    /// Whether the region shows the window as a component in the host page's own document
+    /// (<see cref="EmbedComponent(string)"/>) instead of in a frame.
+    /// </summary>
+    public bool IsComponent { get; }
 
     /// <summary>For a refusal, why, as the guest's failure message; it must not carry a secret.</summary>
     public string? Message { get; }
@@ -832,6 +847,68 @@ public sealed class RunicHostedWindowDecision
         ArgumentNullException.ThrowIfNull(hostWindow);
         ArgumentNullException.ThrowIfNull(options);
         return new(true, null, null, RunicHostedRegion.RequireName(region, nameof(region)), hostWindow, options);
+    }
+
+    /// <summary>
+    /// Shows the window in the region <paramref name="region"/> of a host page as a <b>component</b> in the page's own
+    /// document (trusted component mode, <c>region-component/1</c>) instead of in a frame: the page loads the guest's
+    /// component build, an ES module from the guest's loopback origin, and the guest's Views render in the page with its
+    /// theme and layout. Otherwise as <see cref="Embed(string)"/>.
+    /// </summary>
+    /// <param name="region">The region's name: 1 to 64 ASCII letters, digits, dots, underscores or hyphens.</param>
+    /// <returns>The decision.</returns>
+    /// <remarks>
+    /// <para>
+    /// The host page and the guest's component share one JavaScript realm. The guest's code can read the page and use
+    /// its Bridge, and the page holds the guest's component token and can act as the guest's page. Embed components only
+    /// of applications of your own vendor, whose code you trust as your own page's. The guest must allow it too
+    /// (<see cref="RunicHostedWindowRequest.CanEmbedComponent"/>); for a request where it is <see langword="false"/>, or
+    /// a modal one, the guest's open fails with <c>hosted-window-failed</c>, so decide
+    /// <see cref="Embed(string)"/> instead.
+    /// </para>
+    /// <para>
+    /// A host page with a <c>Content-Security-Policy</c> must allow the guest's origin for its scripts and its
+    /// connection. Runic serves an embedded host's components from <c>127.0.0.1</c> on a port that changes with each
+    /// run, so such a policy names <c>http://127.0.0.1:*</c> in <c>script-src</c> and <c>ws://127.0.0.1:*</c> in
+    /// <c>connect-src</c>. The component also has every permission of the host page.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision EmbedComponent(string region) => EmbedComponent(region, RunicHostedRegionOptions.Default);
+
+    /// <summary>Shows the window as a component in the region <paramref name="region"/> of a host page, as <see cref="EmbedComponent(string)"/> does, with options.</summary>
+    /// <param name="region">The region's name.</param>
+    /// <param name="options">How the region shows the window; a component has no frame, so <see cref="RunicHostedRegionOptions.Permissions"/> does not apply.</param>
+    /// <returns>The decision.</returns>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision EmbedComponent(string region, RunicHostedRegionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new(true, null, null, RunicHostedRegion.RequireName(region, nameof(region)), null, options, component: true);
+    }
+
+    /// <summary>
+    /// Shows the window as a component in the region <paramref name="region"/> of the page of
+    /// <paramref name="hostWindow"/>, as <see cref="EmbedComponent(string)"/> does.
+    /// </summary>
+    /// <param name="hostWindow">The host's Window whose page declares the region, now or later.</param>
+    /// <param name="region">The region's name.</param>
+    /// <returns>The decision.</returns>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision EmbedComponent(IRunicWindow hostWindow, string region) =>
+        EmbedComponent(hostWindow, region, RunicHostedRegionOptions.Default);
+
+    /// <summary>Shows the window as a component in the region <paramref name="region"/> of the page of <paramref name="hostWindow"/>, with options.</summary>
+    /// <param name="hostWindow">The host's Window whose page declares the region, now or later.</param>
+    /// <param name="region">The region's name.</param>
+    /// <param name="options">How the region shows the window.</param>
+    /// <returns>The decision.</returns>
+    /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
+    public static RunicHostedWindowDecision EmbedComponent(IRunicWindow hostWindow, string region, RunicHostedRegionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(hostWindow);
+        ArgumentNullException.ThrowIfNull(options);
+        return new(true, null, null, RunicHostedRegion.RequireName(region, nameof(region)), hostWindow, options, component: true);
     }
 
     /// <summary>Opens the window.</summary>

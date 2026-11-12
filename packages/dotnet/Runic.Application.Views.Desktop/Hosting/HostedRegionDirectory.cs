@@ -22,6 +22,9 @@ internal interface IHostedRegionPage
 
     bool ShowFrame(string name, string src, string? title, string allow);
 
+    // region-component/1: shows the guest's component in the region: its module, its WebSocket address and its token.
+    bool ShowComponent(string name, string module, string url, string token);
+
     bool Update(string name, Runic.Application.Views.HostedRegionTitle title, int? height);
 
     bool Empty(string name, Runic.Application.Views.HostedRegionEmptyReason reason);
