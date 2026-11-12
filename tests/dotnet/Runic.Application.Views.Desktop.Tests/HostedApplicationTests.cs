@@ -15,7 +15,7 @@ using TUnit.Core;
 // this suite's executable in hosted mode (HostedGuestProgram). The host's windows are headless (HostedWindowHost); the
 // native legs check the web views (tests/native/Runic.Desktop.WebViewSmoke --hosted). A guest refuses hosted mode when
 // it runs elevated: an elevated developer run checks that refusal and skips the case, under CI it fails the case
-// (HostFixture.RequireUnelevatedAsync).
+// (HostFixture.RequireHostableAsync).
 internal sealed class HostedApplicationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
@@ -24,7 +24,7 @@ internal sealed class HostedApplicationTests
     public async Task OpensTheGuestsWindowInAWindowOfTheHostAndClosesItThroughTheGuest()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var closed = fixture.Next(opened: false);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
@@ -60,7 +60,7 @@ internal sealed class HostedApplicationTests
     public async Task AUserCloseClosesTheWindowThroughTheGuest()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
         var window = await opened.WaitScaledAsync(Timeout);
@@ -75,7 +75,7 @@ internal sealed class HostedApplicationTests
     public async Task AUserCloseAsksTheGuestsGuardAndAForcedCloseSkipsIt()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("guarded"));
         var window = await opened.WaitScaledAsync(Timeout);
@@ -97,7 +97,7 @@ internal sealed class HostedApplicationTests
     public async Task ClosesTheWindowsAndReportsTheExitCodeWhenTheGuestCrashes()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var closed = fixture.Next(opened: false);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("crash"));
@@ -112,7 +112,7 @@ internal sealed class HostedApplicationTests
     public async Task StopAsksTheGuestToShutDown()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("guarded"));
         var window = await opened.WaitScaledAsync(Timeout);
@@ -126,7 +126,7 @@ internal sealed class HostedApplicationTests
     public async Task RequestStopAsksTheWindowsFirst()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("guarded"));
         var window = await opened.WaitScaledAsync(Timeout);
@@ -140,7 +140,7 @@ internal sealed class HostedApplicationTests
     public async Task TheHostsShutdownStopsItsGuests()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
         var window = await opened.WaitScaledAsync(Timeout);
@@ -154,7 +154,7 @@ internal sealed class HostedApplicationTests
     public async Task TheEndOfRunStopsTheGuests()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
         _ = await opened.WaitScaledAsync(Timeout);
@@ -166,7 +166,7 @@ internal sealed class HostedApplicationTests
     public async Task AnOwnedWindowIsOwnedByTheGuestsOtherWindow()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var windows = new List<RunicHostedWindow>();
         var both = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Applications.WindowOpened += (_, e) =>
@@ -193,7 +193,7 @@ internal sealed class HostedApplicationTests
     public async Task ThePolicyRefusesAWindow()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var policy = new RecordingPolicy { RefuseWindows = true };
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("refused"), new RunicHostedApplicationOptions { Policy = policy });
         Check(await application.Exited.WaitScaledAsync(Timeout) == HostedGuestProgram.RefusedExitCode, "The guest opened a window the policy refused.");
@@ -208,7 +208,7 @@ internal sealed class HostedApplicationTests
     public async Task ThePolicyDecidesPresentationRequests()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         // Present, minimize, set-visible and set-full-screen all count toward the rate of requests that can activate a
         // window; the guest sends four at once, over the default burst.
@@ -293,7 +293,7 @@ internal sealed class HostedApplicationTests
     public async Task AWindowThatOpensAfterTheGuestEndedIsClosed()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var events = new List<string>();
         fixture.Applications.WindowOpened += (_, e) => { lock (events) events.Add("opened " + e.Window.Id); };
         fixture.Applications.WindowClosed += (_, e) => { lock (events) events.Add("closed " + e.Window.Id); };
@@ -321,7 +321,7 @@ internal sealed class HostedApplicationTests
     public async Task WindowClosedFollowsWindowOpened()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var events = new List<string>();
         var closed = fixture.Next(opened: false);
         fixture.Applications.WindowOpened += (_, e) =>
@@ -347,7 +347,7 @@ internal sealed class HostedApplicationTests
         // A host whose windows are granted nothing: the request is not granted.
         await using (var fixture = await HostFixture.StartAsync())
         {
-            await fixture.RequireUnelevatedAsync();
+            await fixture.RequireHostableAsync();
             var policy = new RecordingPolicy();
             var opened = fixture.Next(opened: true);
             var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("media"), new RunicHostedApplicationOptions { Policy = policy });
@@ -413,7 +413,7 @@ internal sealed class HostedApplicationTests
     public async Task KillingTheGuestEndsTheProcessesItStarted()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("grandchild"));
         _ = await opened.WaitScaledAsync(Timeout);
@@ -446,7 +446,7 @@ internal sealed class HostedApplicationTests
     {
         if (!OperatingSystem.IsWindows()) return;
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         using var unrelated = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.Out, HandleInheritability.Inheritable);
         var inheritable = unrelated.ClientSafePipeHandle;
 
@@ -524,7 +524,7 @@ internal sealed class HostedApplicationTests
     {
         if (!OperatingSystem.IsLinux()) return;
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         var opened = fixture.Next(opened: true);
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main") with
         {
@@ -574,7 +574,7 @@ internal sealed class HostedApplicationTests
         url is { Scheme: "http", Host: "127.0.0.1" or "[::1]", IsDefaultPort: false } &&
         url.AbsolutePath.Contains("/_runic_launch/", StringComparison.Ordinal);
 
-    private static async Task<RunicHostedApplicationException> StartFailureAsync(HostFixture fixture, RunicGuestStartInfo start,
+    internal static async Task<RunicHostedApplicationException> StartFailureAsync(HostFixture fixture, RunicGuestStartInfo start,
         RunicHostedApplicationOptions? options)
     {
         try
@@ -684,12 +684,13 @@ internal sealed class HostFixture : IAsyncDisposable
     }
 
     // An elevated test process starts elevated guests, which refuse hosted mode (host-protocol.md, Refusal line), so the
-    // host cases need a standard user. Under CI (CI=true), and in the relaunch as the standard user
-    // (RUNIC_TEST_UNELEVATED=1), an elevated test process fails the case: it would otherwise pass without checking the
-    // host. A developer's elevated run checks the refusal and skips the case, with the reason in the report.
-    public async Task RequireUnelevatedAsync()
+    // host cases need a standard user, or the elevated pair (HostedGuestProgram.ElevatedPair), where the host allows its
+    // elevated guests and they allow it. Under CI (CI=true), and in the relaunch as the standard user
+    // (RUNIC_TEST_UNELEVATED=1), an elevated test process outside the pair fails the case: it would otherwise pass without
+    // checking the host. A developer's elevated run checks the refusal and skips the case, with the reason in the report.
+    public async Task RequireHostableAsync()
     {
-        if (!Environment.IsPrivilegedProcess) return;
+        if (!Environment.IsPrivilegedProcess || HostedGuestProgram.ElevatedPair) return;
         if (Environment.GetEnvironmentVariable("RUNIC_TEST_UNELEVATED") == "1" ||
             string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(

@@ -13,8 +13,19 @@ if (Array.IndexOf(args, HostedSmoke.GuestArgument) is var guest and >= 0 && gues
 if (args is ["--run-unelevated", .. var command])
     return OperatingSystem.IsWindows() ? Unelevated.Run(command) : throw new PlatformNotSupportedException("--run-unelevated is for Windows.");
 
-// The smoke itself runs unelevated on an elevated Windows runner.
-if (OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess)
+// --elevated-pair: the smoke runs as it is, an elevated host of elevated guests that both allow it
+// (RunicGuestStartInfo.AllowElevatedGuest, RunicGuestOptions.AllowElevatedHost); it must run elevated.
+if (args.Contains("--elevated-pair", StringComparer.Ordinal))
+{
+    if (!Environment.IsPrivilegedProcess)
+    {
+        Console.Error.WriteLine("--elevated-pair needs an elevated process.");
+        return 1;
+    }
+    HostedSmoke.ElevatedPair = true;
+}
+// Otherwise the smoke itself runs unelevated on an elevated Windows runner.
+else if (OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess)
 {
     var self = new List<string> { Environment.ProcessPath ?? throw new InvalidOperationException("The smoke has no process path.") };
     if (string.Equals(Path.GetFileNameWithoutExtension(self[0]), "dotnet", StringComparison.OrdinalIgnoreCase))
@@ -43,7 +54,7 @@ try
 {
     // Before any await: on macOS the AppKit loop owns the main thread.
     var result = HostedSmoke.Run(options, toolkit);
-    if (result == 0) Console.WriteLine($"Runic hosted windows smoke passed ({toolkit}).");
+    if (result == 0) Console.WriteLine($"Runic hosted windows smoke passed ({toolkit}{(HostedSmoke.ElevatedPair ? ", elevated pair" : "")}).");
     return result;
 }
 catch (Exception error)

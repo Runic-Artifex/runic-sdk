@@ -1,1 +1,3 @@
 #nullable enable
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.init -> void

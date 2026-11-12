@@ -48,6 +48,9 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
     private readonly HashSet<string> _usedIds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RunicHostedWindow> _windows = new(StringComparer.Ordinal);
     private readonly List<RunicHostedWindow> _open = [];
+    // Windows whose native window closed and that left _open, while they finish closing (OnWindowClosedAsync): Exited
+    // waits for their Closed as for the open ones.
+    private readonly List<RunicHostedWindow> _closing = [];
     private readonly Queue<string> _errorTail = new();
     private readonly TaskCompletionSource<string?> _launchLine = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<int> _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -102,6 +105,21 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
     internal static async Task<RunicHostedApplication> StartAsync(RunicHostedApplications owner, RunicDesktopHost host,
         RunicGuestStartInfo startInfo, RunicHostedApplicationOptions options, ILogger logger, CancellationToken cancellationToken)
     {
+        if (startInfo.AllowElevatedGuest)
+        {
+            // An elevated guest is never looked up in PATH or relative to the current directory.
+            if (!Path.IsPathFullyQualified(startInfo.FileName))
+                throw new ArgumentException($"The guest '{startInfo.FileName}' must be a fully qualified path when AllowElevatedGuest is set.", nameof(startInfo));
+            if (startInfo.WorkingDirectory is { } directory && !Path.IsPathFullyQualified(directory))
+                throw new ArgumentException($"The working directory '{directory}' must be a fully qualified path when AllowElevatedGuest is set.", nameof(startInfo));
+            if (!options.IsHostElevated())
+            {
+                var refused = new RunicHostedApplicationException("host-not-elevated",
+                    $"'{startInfo.FileName}': AllowElevatedGuest is set, but this process does not run elevated; only an elevated host may allow an elevated guest.");
+                DesktopLog.HostedApplicationStartFailed(logger, startInfo.FileName, refused.Code, refused.Message);
+                throw refused;
+            }
+        }
         GuestProcess process;
         try { process = GuestProcess.Start(startInfo); }
         catch (Exception error) when (error is Win32Exception or IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -115,6 +133,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         var application = new RunicHostedApplication(owner, host, options, process, logger, startInfo.FileName)
         {
             _firstWindowUserStarted = startInfo.UserStarted ? 1 : 0,
+            _allowElevatedGuest = startInfo.AllowElevatedGuest,
         };
         try
         {
@@ -147,7 +166,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         {
             // The offer carries the nonce: it is written to the guest's standard input only, never logged.
             var offer = Encoding.UTF8.GetBytes(HostProtocol.Line(HostProtocol.OfferPrefix,
-                HostProtocol.Offer([HostProtocol.Version], HostProtocol.Base64Url(nonce), hostName, hostVersion)));
+                HostProtocol.Offer([HostProtocol.Version], HostProtocol.Base64Url(nonce), hostName, hostVersion, _allowElevatedGuest)));
             await _process.StandardInput.WriteAsync(offer, deadline.Token).ConfigureAwait(false);
             await _process.StandardInput.FlushAsync(deadline.Token).ConfigureAwait(false);
         }
@@ -200,11 +219,13 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
     private async Task EndAsync()
     {
         RunicHostedWindow[] open;
+        RunicHostedWindow[] closing;
         lock (_gate)
         {
             if (_ended) return;
             _ended = true;
             open = [.. _open];
+            closing = [.. _closing];
         }
         await _ending.CancelAsync().ConfigureAwait(false);
         StopFollowingEnvironment();
@@ -226,7 +247,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         try { code = await _process.Exited.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
         catch (TimeoutException) { code = -1; }
         // Each closed window's Closed handler finishes the window; wait for them, briefly, before Exited.
-        try { await Task.WhenAll(open.Select(static window => window.Closed)).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
+        // A window that was still closing when the guest ended counts too: its Closed completes after it left _open.
+        try { await Task.WhenAll(open.Concat(closing).Select(static window => window.Closed)).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false); }
         catch (TimeoutException) { }
         if (_dataStore is { } dataStore) Runic.Desktop.Internal.EphemeralDataStores.End(dataStore);
         _owner.Remove(this);
@@ -452,6 +474,10 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
     // 1 until the guest's first window opened, when the user started the guest (RunicGuestStartInfo.UserStarted).
     private int _firstWindowUserStarted;
 
+    // Whether the offer allows an elevated guest (RunicGuestStartInfo.AllowElevatedGuest); StartAsync checked that this
+    // process runs elevated.
+    private bool _allowElevatedGuest;
+
     internal void BeginGuestPrompt() => _owner.BeginGuestPrompt();
 
     internal void EndGuestPrompt() => _owner.EndGuestPrompt();
@@ -666,17 +692,25 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         lock (_gate)
         {
             if (!_open.Remove(window)) return;
+            _closing.Add(window);
         }
-        // Its dialogs and context menus end with it (host-protocol.md, Dialogs).
-        await window.EndUserRequestsAsync().ConfigureAwait(false);
-        if (!window.IsClosedByGuest)
+        try
         {
-            try { _ = await CloseRequestAsync(window, force: true, CancellationToken.None).ConfigureAwait(false); }
-            catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedApplicationChannelFailed(_logger, error, error.GetType().Name); }
+            // Its dialogs and context menus end with it (host-protocol.md, Dialogs).
+            await window.EndUserRequestsAsync().ConfigureAwait(false);
+            if (!window.IsClosedByGuest)
+            {
+                try { _ = await CloseRequestAsync(window, force: true, CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedApplicationChannelFailed(_logger, error, error.GetType().Name); }
+            }
+            try { await surface.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
         }
-        try { await surface.DisposeAsync().ConfigureAwait(false); }
-        catch (Exception error) when (error is not OutOfMemoryException) { DesktopLog.HostedWindowFailed(_logger, error, Guest.Name, error.GetType().Name); }
-        window.MarkClosed();
+        finally
+        {
+            window.MarkClosed();
+            lock (_gate) _closing.Remove(window);
+        }
         _owner.RaiseWindowClosed(window);
     }
 
