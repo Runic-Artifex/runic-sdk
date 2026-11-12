@@ -1,5 +1,6 @@
 /// <reference lib="esnext.disposable" preserve="true" />
 import { emitErrorDiagnostic } from "./diagnostics.js";
+import { currentSlots } from "./scope.js";
 import { disposable } from "./lifetime.js";
 import { BridgeError, uncertainOperation } from "./errors.js";
 import type { BridgeOutcome } from "./outcome.js";
@@ -68,7 +69,9 @@ function initial<TResult, TFailure>(): OperationState<TResult, TFailure> {
     failure: undefined, error: undefined, cancelled: false, cancellationRequested: false, cancelling: false, cancellation: undefined, cancelError: undefined };
 }
 
+// Listeners' failures go to the diagnostics of the instance the controller was created in.
 function publisher<T>(value: T) {
+  const slots = currentSlots();
   let current = value;
   const listeners = new Set<() => void>();
   return {
@@ -76,7 +79,7 @@ function publisher<T>(value: T) {
     publish(next: Partial<T>) {
       current = { ...current, ...next };
       for (const listener of [...listeners]) {
-        try { listener(); } catch (error) { emitErrorDiagnostic(error); }
+        try { listener(); } catch (error) { emitErrorDiagnostic(slots, error); }
       }
     },
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },

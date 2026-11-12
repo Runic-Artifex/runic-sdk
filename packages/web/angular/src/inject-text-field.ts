@@ -1,5 +1,6 @@
 import { assertInInjectionContext, computed, DestroyRef, effect, inject, Injector, signal, untracked, type Signal } from "@angular/core";
 import { createTextFieldController, type ViewClient } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 /** A text input bound to one View member. */
 export interface TextFieldHandle {
@@ -70,7 +71,7 @@ export function injectTextField<TClient extends ViewClient>(
 ): TextFieldHandle {
   if (!provided) assertInInjectionContext(injectTextField);
   const injector = provided ?? inject(Injector);
-  const controller = createTextFieldController<TClient["snapshot"], TClient>({ read, write, ...options });
+  const controller = instanceOf(injector).run(() => createTextFieldController<TClient["snapshot"], TClient>({ read, write, ...options }));
   const current = signal(controller.current);
   controller.subscribe(() => current.set(controller.current));
   effect(() => {

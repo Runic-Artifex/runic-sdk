@@ -57,10 +57,12 @@ import {
   type ViewConnector,
   type ViewControllerOptions,
   type ViewSource,
+  type RunicInstance,
 } from "@runic-artifex/views";
 import { missingViewMessage, reportMissingView, viewSourceIdentity } from "@runic-artifex/views/bindings";
 import { isDevelopment } from "./development.js";
 import { releaseWithScope } from "./scope.js";
+import { useRunicInstance } from "./instance.js";
 
 
 export interface ViewHandle<TClient extends ViewClient> {
@@ -104,7 +106,8 @@ function controllerOptions<TClient extends ViewClient>(options: UseViewOptions<T
 
 export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<ViewSource<TClient>>,
   options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
-  const controller = createViewController<TClient>(controllerOptions(options));
+  // The controller connects in the component's Runic instance, also when its source changes or it retries.
+  const controller = useRunicInstance().run(() => createViewController<TClient>(controllerOptions(options)));
   const state = shallowRef<TClient["snapshot"] | undefined>();
   const client = shallowRef<TClient | undefined>();
   const error = shallowRef<unknown>();
@@ -202,18 +205,23 @@ function referenceKey(reference: object): number {
  * </ViewOutlet>
  * ```
  */
-export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewOutletProps<R>, { slots }: SetupContext) => (): VNodeChild => {
+export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewOutletProps<R>, { slots }: SetupContext) => {
+  const instance = useRunicInstance();
+  return (): VNodeChild => outletContent(instance, props, slots);
+}, { name: "ViewOutlet", props: ["content", "registry"] });
+
+function outletContent<R extends PageReference>(instance: RunicInstance, props: ViewOutletProps<R>, slots: SetupContext["slots"]): VNodeChild {
   const content = props.content;
   if (!content) return slots.default?.();
   const component = props.registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined;
   if (!component) {
     if (slots["missing"]) return slots["missing"]({ content });
     if (isDevelopment()) return h("p", { role: "alert" }, missingViewMessage(content.kind));
-    reportMissingView(content.kind);
+    instance.run(() => reportMissingView(content.kind));
     return null;
   }
   return h(component, { key: referenceKey(content), page: content });
-}, { name: "ViewOutlet", props: ["content", "registry"] });
+}
 
 /** How {@link RegionOutlets} renders the regions of a collection. */
 export type RegionOutletsMode = "keep-mounted" | "selected";
@@ -300,7 +308,7 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
 export function useCommand<TArgs extends readonly unknown[], TReturn>(
   command: (...args: TArgs) => TReturn,
 ): CommandHandle<TArgs, Awaited<TReturn>> {
-  const controller = createCommandController(command);
+  const controller = useRunicInstance().run(() => createCommandController(command));
   const pending = shallowRef(controller.current.pending);
   const error = shallowRef<unknown>(controller.current.error);
   type Failure = BridgeOutcomeFailure<Awaited<TReturn>>;
@@ -338,7 +346,7 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   start: (...args: TArgs) => BridgeOperation<TResult, TFailure> | undefined | PromiseLike<BridgeOperation<TResult, TFailure> | undefined>,
   options: OperationControllerOptions<TResult, TFailure> = {},
 ): OperationHandle<TArgs, TResult, TFailure> {
-  const controller = createOperationController(start, options);
+  const controller = useRunicInstance().run(() => createOperationController(start, options));
   type State = OperationState<TResult, TFailure>;
   const refs = {} as { [K in keyof State]-?: Ref<State[K]> };
   const keys = Object.keys(controller.current) as (keyof State)[];
@@ -373,7 +381,7 @@ export type LatestOperationHandle<TResult, TFailure = never> = {
  * ```
  */
 export function useLatestOperation<TResult = void, TFailure = never>(): LatestOperationHandle<TResult, TFailure> {
-  const controller = createLatestOperationController<TResult, TFailure>();
+  const controller = useRunicInstance().run(() => createLatestOperationController<TResult, TFailure>());
   type State = LatestOperationState<TResult, TFailure>;
   const refs = {} as { [K in keyof State]-?: Ref<State[K]> };
   const keys = Object.keys(controller.current) as (keyof State)[];
@@ -444,7 +452,7 @@ export function useTextField<TClient extends ViewClient>(
   write: (client: TClient, value: string) => Promise<unknown>,
   options: UseTextFieldOptions = {},
 ): TextFieldHandle {
-  const controller = createTextFieldController<TClient["snapshot"], TClient>({ read, write, ...options });
+  const controller = useRunicInstance().run(() => createTextFieldController<TClient["snapshot"], TClient>({ read, write, ...options }));
   const current = shallowRef(controller.current);
   controller.subscribe(() => { current.value = controller.current; });
   watch([view.state, view.client], ([state, client]) => {
@@ -530,7 +538,7 @@ export function useField<TClient extends ViewClient, TValue>(
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
   options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
-  const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
+  const controller = useRunicInstance().run(() => createFieldController<TClient["snapshot"], TClient, TValue>(field, options));
   const current = shallowRef(controller.current);
   controller.subscribe(() => { current.value = controller.current; });
   watch([view.state, view.client], ([state, client]) => {
@@ -584,7 +592,7 @@ export interface BridgeConnectionHandle {
  */
 export function useBridgeConnection(options: BridgeConnectionOptions = {}): BridgeConnectionHandle {
   const state = shallowRef<BridgeConnectionState>("connecting");
-  const stop = onBridgeConnection(next => { state.value = next; }, options);
+  const stop = useRunicInstance().run(() => onBridgeConnection(next => { state.value = next; }, options));
   releaseWithScope("useBridgeConnection", stop);
   return { state };
 }
@@ -606,18 +614,21 @@ export function useText(
   source: MaybeRefOrGetter<TextReference | FieldError | string | null | undefined>,
   fallback?: MaybeRefOrGetter<string | undefined>,
 ): ComputedRef<string> {
+  const instance = useRunicInstance();
   const version = shallowRef(0);
-  releaseWithScope("useText", subscribeText(() => { version.value++; }));
+  releaseWithScope("useText", instance.run(() => subscribeText(() => { version.value++; })));
   return computed(() => {
     void version.value;
-    return resolveText(toValue(source), toValue(fallback));
+    const value = toValue(source), fallbackText = toValue(fallback);
+    return instance.run(() => resolveText(value, fallbackText));
   });
 }
 
 /** The window's locale that the application set, or `null` while it sets none, as a ref, until the effect scope stops. */
 export function useWindowLocale(): Readonly<Ref<string | null>> {
-  const locale = shallowRef<string | null>(windowLocale());
-  releaseWithScope("useWindowLocale", onWindowLocale(next => { locale.value = next; }));
+  const instance = useRunicInstance();
+  const locale = shallowRef<string | null>(instance.run(windowLocale));
+  releaseWithScope("useWindowLocale", instance.run(() => onWindowLocale(next => { locale.value = next; })));
   return locale;
 }
 
@@ -634,18 +645,20 @@ export function useWindowLocale(): Readonly<Ref<string | null>> {
  * ```
  */
 export function useAppearance(): Readonly<Ref<Appearance>> {
-  const current = shallowRef<Appearance>(appearance());
-  releaseWithScope("useAppearance", onAppearance(next => { current.value = next; }));
-  current.value = appearance();
+  const instance = useRunicInstance();
+  const current = shallowRef<Appearance>(instance.run(appearance));
+  releaseWithScope("useAppearance", instance.run(() => onAppearance(next => { current.value = next; })));
+  current.value = instance.run(appearance);
   return current;
 }
 
-let pageTextLocale: Readonly<Ref<string | undefined>> | undefined;
+// One text locale ref per Runic instance.
+const textLocales = new WeakMap<RunicInstance, Readonly<Ref<string | undefined>>>();
 
 /**
  * The locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's locale),
- * as a ref that renders, computes and watches again when it changes. It is one ref for the page and needs no effect
- * scope, so the page's locale resolver can read it: a template that calls `m.*()` then renders again on a language
+ * as a ref that renders, computes and watches again when it changes. It is one ref for the page (for each Runic instance)
+ * and needs no effect scope, so the page's locale resolver can read it: a template that calls `m.*()` then renders again on a language
  * switch. `undefined` while the page has no Translations runtime and the application sets no window locale.
  *
  * ```ts
@@ -654,19 +667,24 @@ let pageTextLocale: Readonly<Ref<string | undefined>> | undefined;
  * ```
  */
 export function useTextLocale(): Readonly<Ref<string | undefined>> {
-  return pageTextLocale ??= customRef<string | undefined>((track, trigger) => {
+  const instance = useRunicInstance();
+  let locale = textLocales.get(instance);
+  if (!locale) textLocales.set(instance, locale = customRef<string | undefined>((track, trigger) => {
     let subscribed = false;
     return {
       get() {
-        if (!subscribed) { subscribed = true; subscribeText(trigger); }
+        if (!subscribed) { subscribed = true; instance.run(() => subscribeText(trigger)); }
         track();
-        return textLocale();
+        return instance.run(textLocale);
       },
       set() { /* Read-only: the window's locale and the page's Translations runtime own it. */ },
     };
-  });
+  }));
+  return locale;
 }
 
+export { provideRunicInstance, runicInstanceKey, useRunicInstance } from "./instance.js";
+export { createRunicInstance, pageInstance, type RunicInstance, type RunicInstanceOptions } from "@runic-artifex/views";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";

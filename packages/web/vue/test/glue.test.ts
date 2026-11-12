@@ -640,15 +640,16 @@ describe("useBridgeConnection", () => {
     expect(connection.state.value).toBe("connected");
   });
 
-  test("is a root export (0.11)", () => {
+  test("is a root export (0.11), next to the Runic instance exports (0.18)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
       "FieldError", "RegionOutlets", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText", "configureTranslatedText",
-      "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection",
-      "onNavigationPath", "openNavigationPath", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection",
+      "createRunicInstance", "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onAppearance",
+      "onBridgeConnection", "onNavigationPath", "openNavigationPath", "pageInstance", "provideRunicInstance", "regionEntries",
+      "resolveText", "runicInstanceKey", "selectedRegion", "syncDocumentLocale", "textDirection",
       "upload", "useAppearance", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
-      "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText", "useTextField", "useTextLocale", "useView",
-      "useWindowLocale", "windowLocale",
+      "useMenuBar", "useOperation", "useQueryCollection", "useRunicInstance", "useSuspenseView", "useText", "useTextField",
+      "useTextLocale", "useView", "useWindowLocale", "windowLocale",
     ]);
     // The region helpers a tab bar uses are re-exported (0.16).
     expect(root.regionEntries).toBe(viewsRegionEntries);

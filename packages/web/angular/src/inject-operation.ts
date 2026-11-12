@@ -6,6 +6,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
 } from "@runic-artifex/views";
+import { instanceOf } from "./instance.js";
 
 /** Each field of the operation's feedback as a signal, with `run`, `cancel` and `reset`. */
 export type OperationHandle<TArgs extends readonly unknown[], TResult, TFailure = never> =
@@ -35,7 +36,7 @@ export function injectOperation<TArgs extends readonly unknown[], TResult, TFail
 ): OperationHandle<TArgs, TResult, TFailure> {
   if (!provided) assertInInjectionContext(injectOperation);
   const injector = provided ?? inject(Injector);
-  const controller = createOperationController(start, options);
+  const controller = instanceOf(injector).run(() => createOperationController(start, options));
   const state = signal(controller.current);
   controller.subscribe(() => state.set(controller.current));
   injector.get(DestroyRef).onDestroy(() => controller.dispose());

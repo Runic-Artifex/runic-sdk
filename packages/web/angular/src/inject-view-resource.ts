@@ -5,6 +5,7 @@ import {
 import { createViewController, type ViewClient, type ViewController, type ViewSource } from "@runic-artifex/views";
 import { viewSourceIdentity } from "@runic-artifex/views/bindings";
 import type { InjectViewOptions } from "./inject-view.js";
+import { instanceOf } from "./instance.js";
 
 /**
  * A View connection as an Angular `Resource`: `value()` is the View's state, `status()` is `loading` until the
@@ -51,6 +52,7 @@ export function injectViewResource<TClient extends ViewClient>(source: Signal<Vi
   options: InjectViewResourceOptions<TClient> = {}): ViewResource<TClient> {
   if (!options.injector) assertInInjectionContext(injectViewResource);
   const injector = options.injector ?? inject(Injector);
+  const instance = instanceOf(injector);
   const read = (): ViewSource<TClient> => isSignal(source) ? source() : source;
   const client = signal<TClient | undefined>(undefined);
   const controllerOptions = {
@@ -71,7 +73,8 @@ export function injectViewResource<TClient extends ViewClient>(source: Signal<Vi
     injector,
     params: () => identity(),
     stream: async ({ abortSignal }) => {
-      const controller = createViewController<TClient>(controllerOptions);
+      // Each load connects in the injection context's Runic instance.
+      const controller = instance.run(() => createViewController<TClient>(controllerOptions));
       active = controller;
       abortSignal.addEventListener("abort", () => {
         if (active === controller) active = undefined;

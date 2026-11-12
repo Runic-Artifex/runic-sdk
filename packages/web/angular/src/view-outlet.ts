@@ -5,6 +5,7 @@ import {
 } from "@angular/core";
 import { regionEntries, type PageReference, type RegionCollection, type RegionEntry, type ViewRegistryPage } from "@runic-artifex/views";
 import { missingViewMessage, reportMissingView } from "@runic-artifex/views/bindings";
+import { injectRunicInstance } from "./instance.js";
 
 /**
  * A build-known map checks each generated reference against its component input. A nullable
@@ -63,6 +64,7 @@ export class ViewOutlet<R extends PageReference = PageReference> {
   });
 
   constructor() {
+    const instance = injectRunicInstance();
     effect(() => {
       const container = this.mount();
       const selection = this.selected();
@@ -78,7 +80,7 @@ export class ViewOutlet<R extends PageReference = PageReference> {
             return;
           }
           if (isDevMode()) this.error.set(missingViewMessage(selection.reference.kind));
-          else reportMissingView(selection.reference.kind);
+          else instance.run(() => reportMissingView(selection.reference.kind));
           return;
         }
         const component = container.createComponent(selection.component);
