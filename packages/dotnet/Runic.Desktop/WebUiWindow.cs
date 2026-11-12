@@ -3471,7 +3471,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 connectionId,
                 context.GetRequestHeader("Cookie"),
                 WebUiApplication.BridgeHandshakeTimeout,
-                TimeProvider);
+                TimeProvider)
+            {
+                Origin = _securityPolicy is null ? string.Empty : context.GetRequestHeader("Origin"),
+            };
             if (!_sessions.TryAdd(session.Id, session))
             {
                 await session.DisposeAsync().ConfigureAwait(false);
@@ -3959,6 +3962,17 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _clients[cookie] = clientId;
         context.AppendResponseHeader("Set-Cookie", PresentationCookies.StrictHttpOnly(AuthCookieName, cookie, $"{_surface?.PathBase}/"));
         return clientId;
+    }
+
+    // The admitted Origin of the page connected as connectionId (DesktopConnectionEvent.SessionId), or null when no such
+    // page is connected or its upgrade carried none.
+    internal string? ConnectionOrigin(ulong connectionId)
+    {
+        foreach (var session in _sessions.Values)
+        {
+            if ((ulong)session.ConnectionId == connectionId) return session.Origin.Length == 0 ? null : session.Origin;
+        }
+        return null;
     }
 
     private string? ValidateWebSocketAdmission(PresentationExchange context)

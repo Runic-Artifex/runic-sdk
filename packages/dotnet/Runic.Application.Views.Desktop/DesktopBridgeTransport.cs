@@ -117,6 +117,15 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IBridge
         }
     }
 
+    // The origin the page of the Bridge connection connectionKey has in its browser, as the surface admitted it, or null
+    // for an unknown or closed connection (region/1: the embedder of a region that the connection declared).
+    internal string? ConnectionOrigin(string connectionKey)
+    {
+        if (!ulong.TryParse(connectionKey, NumberStyles.None, CultureInfo.InvariantCulture, out var connection)) return null;
+        try { return _surface.ConnectionOrigin(connection); }
+        catch (ObjectDisposedException) { return null; }
+    }
+
     /// <inheritdoc />
     public async ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message,
         CancellationToken cancellationToken = default)

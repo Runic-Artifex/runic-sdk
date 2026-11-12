@@ -175,6 +175,9 @@ internal sealed class HostedGuest : IAsyncDisposable
     private int _nextWindow;
     private int _shutdown;
 
+    // Whether this guest runs elevated (RunicGuestOptions.RunsElevated).
+    internal bool RunsElevated => _options.RunsElevated();
+
     private HostedGuest(RunicGuestOptions options, DesktopHost desktop, ILogger logger, IRunicApplicationLocale? locale)
     {
         _options = options;
