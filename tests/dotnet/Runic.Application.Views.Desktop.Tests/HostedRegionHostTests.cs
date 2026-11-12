@@ -22,7 +22,7 @@ internal sealed class HostedRegionHostTests
     public async Task EmbedsTheGuestsWindowInARegionAndAttachesItAgainByName()
     {
         await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireUnelevatedAsync();
+        await fixture.RequireHostableAsync();
         await using var surface = await fixture.Desktop.CreateSurfaceAsync();
         var hostWindow = await surface.OpenWindowAsync(RunicDesktopHost.DefaultWindowOptions);
         var page = new HostedRegionTestPage(fixture.Host.RegionDirectory, hostWindow);

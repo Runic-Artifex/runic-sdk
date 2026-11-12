@@ -267,7 +267,7 @@ internal sealed class HostConformanceTests
                 RequestTimeout = Limit("requestTimeout", HostProtocol.RequestTimeout),
                 MaximumWaitingRequests = Limits["waitingRequests"]?.GetValue<int>() ?? HostProtocol.MaximumWaitingRequests,
                 ExitProcess = code => _exits.Enqueue(code),
-                CheckPrivileges = static () => null,
+                ReadPrivileges = static () => GuestPrivilegeFacts.StandardUser,
                 // An elevated guest, which the runner plays without running elevated.
                 RunsElevated = application["elevated"]?.GetValue<bool>() == true ? static () => true : static () => false,
             };

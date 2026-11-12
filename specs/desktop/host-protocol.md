@@ -90,6 +90,7 @@ RUNIC_HOST_OFFER={"protocols":[1],"nonce":"q2Tz0bB7m5PpY4m1yq3HnN4vL3dQK8bS0w2a6
 | `protocols` | The protocol versions the host implements, an array of 1 to 16 distinct positive integers. |
 | `nonce` | 32 bytes from a cryptographically secure random generator, new for each guest process, in base64url without padding (43 characters). It never crosses the channel; both sides prove that they know it ([proofs](#proofs)). |
 | `host` | `{name, version}`: the host application's name (1 to 128 characters) and version (1 to 64 characters). Informational, and a filter for `AcceptHost`, not a credential. |
+| `elevatedGuest` | Optional. `true` when the host runs elevated and allows an elevated guest (`RunicGuestStartInfo.AllowElevatedGuest`); absent otherwise. Only `true` opts in: another value reads as absent. It is the host's opt-in, not evidence of its elevation, which the guest checks against its parent ([elevated host](#elevated-host)). |
 
 The guest reads the offer before it opens its listener. It waits for it up to its start timeout (30 seconds by
 default): when standard input ends or the time passes first, the guest writes no line and exits with a failure. An
@@ -133,7 +134,8 @@ RUNIC_HOST_REFUSED={"code":"protocol-unsupported","message":"The host offers run
 | `offer-invalid` | The offer is not a JSON object with valid `protocols`, `nonce` and `host`. |
 | `protocol-unsupported` | It implements none of the offer's `protocols`. |
 | `host-not-accepted` | The application's own filter (`RunicGuestOptions.AcceptHost`) declined the offer's `host`. |
-| `guest-elevated` | It runs elevated: as root on Linux or macOS, or with an elevated token on Windows. |
+| `guest-elevated` | It runs elevated: as root on Linux or macOS, or with an elevated token on Windows; and it does not allow an elevated host, or the offer has no `elevatedGuest` ([elevated host](#elevated-host)). |
+| `guest-elevated-host-not-elevated` | It runs elevated and both sides allow an elevated pair, but its parent, of the same user, does not run elevated ([elevated host](#elevated-host)). |
 | `guest-other-user` | It runs as another user than the process that started it, or it cannot tell ([same user](#same-user)). |
 | `network-exposure` | Its Desktop host is configured to listen on other interfaces than loopback (`DesktopHostOptions.NetworkExposure`). |
 
@@ -154,6 +156,32 @@ as the same user. The check fails closed: when the guest cannot determine its pa
 A guest that is setuid to another account fails the check through its effective uid. The check keeps a host from
 controlling a guest that has rights the host does not have; it is not a boundary between processes of one user
 ([security requirements](#security-requirements) 8).
+
+### Elevated host
+
+A guest that runs elevated, as root on Linux and macOS (an effective uid of 0) or with an elevated token on Windows,
+refuses hosted mode with `guest-elevated`, unless both sides opted into the one elevated pair: the guest allows an
+elevated host (`RunicGuestOptions.AllowElevatedHost`) and the offer has `elevatedGuest: true`
+(`RunicGuestStartInfo.AllowElevatedGuest`, which only an elevated host may set). Such a guest is hosted only when its
+parent, as the [same user](#same-user) check finds and verifies it, also runs elevated:
+
+- **Linux.** The parent's effective uid (`Uid:`, second field) is 0, from the same read of `/proc/<ppid>/status` as the
+  same-user check, which already requires its real and effective uids, and the guest's, to be equal.
+- **macOS.** The parent's effective uid (`pbi_uid`) is 0, from the same `proc_pidinfo` call.
+- **Windows.** The parent's token, read while the parent is held open and after its creation time showed that it is
+  the parent and not a newer process that reused its id, is elevated (`TokenElevation`) or has an integrity level of
+  High or above (`TokenIntegrityLevel`). The user SID of an elevated token is that of the unelevated one, so the
+  same-user check alone does not tell them apart.
+
+The guest checks in that order: without its own opt-in, or without `elevatedGuest`, it refuses with `guest-elevated`;
+a parent that fails the same-user check refuses with `guest-other-user`; a parent of the same user that does not run
+elevated refuses with `guest-elevated-host-not-elevated`. Anything it cannot read refuses. The guest never takes the
+host's word for its elevation: `elevatedGuest` only opts in. A guest that does not run elevated ignores
+`elevatedGuest`. Runic's guest logs the accepted pair as event 2025 and a refusal as event 2010 with its code.
+
+The opt-ins allow what the two processes already share: a host that runs elevated as the user controls the guest's
+rights anyway. They do not make same-user processes that do not run elevated part of the pair; what those can still
+reach is in the [threat model](#threats) (T18).
 
 ## Channel listener
 
@@ -1320,6 +1348,7 @@ The vocabulary is open.
 | `guest-exited` | The guest exited before the `hello` reply. |
 | `guest-not-hostable` | The guest wrote an invalid channel line, a reply carried no matching guest proof, or a proven reply failed for another reason than `protocol-mismatch`. |
 | `guest-refused` | The guest wrote a refusal line; the failure names the guest's `code`, also one the host does not know. |
+| `host-not-elevated` | The host allows an elevated guest (`elevatedGuest`) but does not run elevated itself. It starts no guest. |
 | `protocol-unsupported` | The guest refused with `protocol-unsupported`, or answered `hello` with a proven `protocol-mismatch`. |
 
 A guest reports a hosted start that failed with the same exception type, before its application body runs: the code
@@ -1364,9 +1393,12 @@ application is in the [security guide](../../docs/security.md#hosted-application
    that was closed before a reply.
 7. **No web pages.** The guest refuses an upgrade with an `Origin` header and one whose `Host` is not its loopback
    address and port.
-8. **No elevated guests.** A guest refuses hosted mode when it runs elevated, or when it cannot show that it runs as
-   the same user as its parent ([same user](#same-user), fail closed), because a host controls what it does with the
-   user's answers.
+8. **No elevated guests, except the elevated pair.** A guest refuses hosted mode when it runs elevated, or when it
+   cannot show that it runs as the same user as its parent ([same user](#same-user), fail closed), because a host
+   controls what it does with the user's answers. The one exception is an elevated guest whose verified parent runs
+   elevated as the same user, when both sides opted in ([elevated host](#elevated-host)); the guest checks the parent's
+   elevation itself and refuses when it cannot. A host allows an elevated guest only when it runs elevated, and starts
+   it only from a fully qualified path.
 9. **Least privilege.** The channel gives a guest its own windows only: no list of the host's windows, no script in
    the host's pages, no navigation outside its own origin. Window ids are scoped to the channel, and `owner` names only
    the guest's own windows. The host validates every message and applies its policy and limits.
@@ -1404,7 +1436,7 @@ application is in the [security guide](../../docs/security.md#hosted-application
 | T4 | A malicious guest takes the host's credential or cookies | No credential injection; a data store per host session; the guest's origin is not one of the host's |
 | T5 | A malicious guest escapes its window (navigates away, opens pop-ups, spoofs other windows) | The host's web content policy; window ids per channel; the host's policy; context menus only in the active window and inside it. A guest can still draw convincing UI in its own window, as any application can, and words its dialogs' and menus' texts, which nothing marks as the guest's: a host that does not trust a guest marks or refuses them in its policy. |
 | T6 | A guest floods the host with windows, dialogs, menus or messages | Message size, waiting requests, menu size, one dialog per window and the host's dialogs per guest at once and per ten seconds, the host's menu request rates per window and per guest and coalesced menu rebuilds, context menus only in the active window, the host's window limits |
-| T7 | A malicious host forges dialog results or close decisions | Inherent to hosting: a guest trusts its host as it trusts its own native dialogs, so elevated guests refuse hosted mode and a guest acts only on what a dialog returned, as always |
+| T7 | A malicious host forges dialog results or close decisions | Inherent to hosting: a guest trusts its host as it trusts its own native dialogs, so elevated guests refuse hosted mode unless their verified parent runs elevated as the same user and both opted in, and a guest acts only on what a dialog returned, as always |
 | T8 | Orphaned guests | Standard input end or channel loss shut the guest down, which exits within 10 seconds; job object or process group; the host's stop timeout |
 | T9 | Another process takes the port after the guest exited, and the host connects to it | The guest proof, which needs the nonce the host never sends |
 | T10 | Version skew or downgrade | The offer's `protocols` and the guest's highest common choice; features negotiated; unknown members ignored and unknown kinds `invalid-request` |
@@ -1415,9 +1447,12 @@ application is in the [security guide](../../docs/security.md#hosted-application
 | T15 | A malicious guest opens files or links to run programs, phish or flood the desktop | Only `http`, `https` and `mailto` links and files the user gave the guest, only for the window the user works in and not one the guest activated itself (as for T14), by default; the host's launcher's own rules (no programs, scripts or `mailto` attachments, the `ms-settings` page rule); the launch rate |
 | T16 | Paths in a drop or in the given set lead a guest elsewhere: a page forges a drop, a guest names a path through a given one (`../`), opens a file it wrote at a save dialog's destination, or replaces a given file, or links it to another, before it opens it | Dropped paths come from the host's platform only, never from a page; the page's `target` and `effect` are routing hints; given paths are compared without `.` and `..` segments, only open and folder dialogs and drops give paths, a folder the user chose does not give its contents, and a given path opens only while its file identity and its target with links resolved are the ones it had when given, checked again through the file the host opens for the launch: Linux launches that descriptor, Windows holds it, sharing neither delete nor write, across `ShellExecute`. Residual: macOS checks the path right before the launch, so a guest that wins that race there opens its own file, with the same user's rights and the launcher's rules; a change of content that keeps the file's identity (a rewrite in place, a new mode) passes everywhere; the opened application reads the path after the launch |
 | T17 | A malicious guest speaks through the user's screen reader as the host application, such as a fake security alert, or floods it | Announcements are bounded by a rate, and `assertive` ones, which interrupt, come only from the window the user works in; others are `polite`. Residual: an announcement's text is the guest's, as its dialogs' are (T5); a policy can refuse or reword announcements. |
+| T18 | A process of the same user that does not run elevated drives or reads an elevated guest of the [elevated pair](#elevated-host): it starts the guest itself, poses as its host, opens its channel or its surfaces, or makes the elevated host start another executable | The guest accepts only a parent that runs elevated as its user, verified against id reuse, and checks that itself; the nonce and the key travel only on pipes between the two elevated processes, and launch codes only over the channel, none of which an unelevated process can read (Windows: integrity levels keep a Medium process from reading a High one's memory or duplicating its handles; Linux and macOS: an unprivileged process can neither ptrace nor read the `/proc/<pid>/fd` and `/proc/<pid>/mem` of a root process). The host allows an elevated guest only from a fully qualified path, so it never looks one up in `PATH` or the current directory. Residual: such a process can still connect to the guest's loopback listeners, which refuse it without the key and proof, or without a launch code (on Linux a surface's launch binding also refuses another uid), and can fill their unauthenticated slots as in T12; see the screen, which the pair shows to the desktop, and read the clipboard, which the host serves the guest; and on Windows send the elevated windows only the messages UIPI lets through. An elevating launcher that relays another process's standard input and output, such as `sudo` with a pipe, or a Windows `sudo` that runs inline, makes that process the guest's parent's stand-in: it writes the offer and reads the channel line, so it is the host; the user's authentication for the launcher is the consent. The guest's executable, its directory and the directories above it must be writable only by administrators or root: the host does not check them, and the guest's runtime loads libraries from its own directory. Pages of the elevated guest load in the elevated host's web view, whose processes start from the host's token; how far the engine's own sandboxed processes are kept from unelevated ones is the engine's. |
 
 Same-user processes are outside what Runic protects ([security guide](../../docs/security.md#what-runic-protects-and-what-it-does-not)):
-any process of the user that knows a guest's hosted parameter can host it, see its pages and answer its dialogs.
+any process of the user that knows a guest's hosted parameter can host it, see its pages and answer its dialogs. An
+elevated guest of the [elevated pair](#elevated-host) is the exception: processes of its user that do not run elevated
+can host it only through an elevating launcher (T18).
 `RunicGuestOptions.AcceptHost` filters hosts by their name and version for the product's sake; it is not a security
 boundary.
 

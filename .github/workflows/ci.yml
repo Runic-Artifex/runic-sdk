@@ -1198,7 +1198,7 @@ jobs:
         run: |
           dotnet build tests/dotnet/Runic.Application.Views.Desktop.Tests -c Release
           tests=(dotnet tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll
-            --treenode-filter '/*/*/(HostedApplicationTests)|(HostProtocolChecks)/*' --output detailed)
+            --treenode-filter '/*/*/(HostedApplicationTests)|(HostedElevationTests)|(HostProtocolChecks)/*' --output detailed)
           if [[ "$RUNNER_OS" == Windows ]]; then
             # The tests write their results beside the test assembly; the standard user may write there.
             MSYS2_ARG_CONV_EXCL='*' icacls "$(cygpath -w tests/dotnet/Runic.Application.Views.Desktop.Tests/bin)" /grant 'runic-hosted:(OI)(CI)M' /T /C /Q
@@ -1206,6 +1206,21 @@ jobs:
           else
             "${tests[@]}"
           fi
+      # The elevated pair (RunicGuestStartInfo.AllowElevatedGuest, RunicGuestOptions.AllowElevatedHost) as the runner's
+      # elevated user: an elevated host hosts elevated guests that allow it, against their real check of the parent's
+      # token. The host cases of windows, menus, dialogs and window services, RunicTestHost as an elevated host, and the
+      # refusals without either opt-in (ElevatedHostedApplicationTests, RUNIC_TEST_ELEVATED_PAIR=1); then the hosted
+      # smoke in WebView2 as the pair.
+      - name: Run the elevated hosted application pair on Windows
+        if: runner.os == 'Windows'
+        timeout-minutes: 8
+        shell: bash
+        env:
+          RUNIC_TEST_ELEVATED_PAIR: '1'
+        run: |
+          dotnet tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll \
+            --treenode-filter '/*/*/(ElevatedHostedApplicationTests)|(HostedElevationTests)|(HostProtocolChecks)/*' --output detailed
+          dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --elevated-pair
       # Also after a failure or cancellation: the user's processes, its profile, its access to the workspace and the account.
       - name: Remove the hosted application checks' standard user on Windows
         if: always() && steps.hosted-user.outcome != 'skipped' && runner.os == 'Windows' && runner.environment == 'github-hosted'
