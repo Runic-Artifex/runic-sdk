@@ -69,6 +69,41 @@ Keep release notes focused on changes, installation, migration and meaningful
 known issues. Put logs and internal package metadata in Actions artifacts. Record
 nonblocking limitations as issues rather than introducing custom waiver formats.
 
+## Release trains: the compatibility gate
+
+When Runic Command Line, Runic Translations and Runic SDK release together (a train,
+D060; order Command Line, Translations, SDK), the **Train compatibility** workflow
+(`train-compat.yml`, [eng/train/README.md](../train/README.md)) restores, builds and
+runs consumers of the three repositories' candidate packages together with warnings
+as errors: a German Command Line app with NativeAOT, the adapter's key coverage, both
+template apps with Translations, Hosting, Views.Translations and a Command Line front
+end, the tools, WPF, the Translations editor (informational) and the version ranges
+and pins of every package. Each repository's input is a published version or the
+package artifact of a CI run.
+
+1. When the three release changes are on `main` and their CI runs passed, run row
+   **T** against the Command Line CI run that will be published:
+   `gh workflow run train-compat.yml -f row=T -f cli=run:<id> -f translations=run -f sdk=run`.
+   It must pass before Command Line publishes.
+2. After Command Line is published, Translations refreshes its lock files and runs
+   row **P-tr** (`cli=published:<version>`, `translations=run:<id>`, `sdk=run`)
+   before it publishes.
+3. After Translations is published, refresh runic-sdk's lock files against nuget.org
+   (`RunicUpdateLockFiles`), wait for CI, and run row **P-sdk**
+   (`cli=published:<version>`, `translations=published:<version>`, `sdk=run:<the CI run
+   Publish preview will use>`). Publish only after it passes.
+
+Until each repository's `publish-preview.yml` calls the gate as a reusable workflow
+(eng/train/README.md, "Publish workflows"; runic-sdk's comes with its 0.18.0 release
+PR), the release manager dispatches these rows and links the passing run in the
+release PR. A run lists every package with its SHA-256 in `train-result.json`, so the
+packages it checked can be compared with the ones published. The nightly rows (the
+newest published versions, and the newest `main` runs) only report.
+
+`eng/train/expected-failures.json` names the incompatibilities of published packages
+that a train fixes (0.18: I1 to I7 of the Translations 0.9.x packages); each entry
+applies only below the fixing version, and the release that fixes it removes it.
+
 ## Workflow jobs and dry run
 
 - `preflight` (`contents: read`, `actions: read`) checks the requested version and
