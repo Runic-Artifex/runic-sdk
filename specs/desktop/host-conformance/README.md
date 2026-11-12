@@ -217,3 +217,45 @@ runner's: their ids are not part of a scenario.
 without their `id` members (the host's own items are part of it), waiting until they match; or `closed: true`, that the
 window closed. `expect` with `clipboard` checks the text on the host's clipboard, and with `launched` the links and
 files the host opened for the guest, in order (a link's absolute URI, a file's path), each waiting until they match.
+
+## Region scenarios
+
+The scenarios of [`region/1`](../host-protocol.md#regions-region1) are planned, not yet in the corpus: the runners run
+every scenario of their role, and neither implements regions yet. They go in `scenarios/region/`, with `requires:
+["region/1"]`, together with the guest's implementation for the `guest` role and the host's for the `host` role, which
+also add the runner steps below and their schema.
+
+| Scenario | Roles | Checks |
+| --- | --- | --- |
+| `region.open-without-a-page` | guest | A `window-open` answered `presentation: "region"` completes the Window's open without a page connection, and its launch address is revoked |
+| `region.attach` | guest | `region-attach` answers a `frame.url` of the frame form on the loopback family the `embedder` does not use, with `sameSite: false` |
+| `region.attach-not-a-region` | guest | `region-attach` for a window shown in a window is `rejected` with `invalid-request` |
+| `region.embedding-unsupported` | guest | `embedding: "component"` without `region-component/1` is `rejected` with `embedding-unsupported` |
+| `region.embedder-invalid` | guest | An `embedder` with a path, another scheme, a host other than a loopback literal or `localhost`, no port, or over 256 characters, is `rejected` with `invalid-request` |
+| `region.detach-revokes` | guest | After `region-detach`, the window's code and token are refused, `activity` of the Window reports `visible: false`, and a new `region-attach` answers a new code |
+| `region.reattach-replaces` | guest | A `region-attach` for an attached window revokes the earlier code |
+| `region.set-title` | guest | The Window's page title changes are sent as `set-title`; a `capacity` rejection is followed by the latest title |
+| `region.presentation-mapping` | guest, host | Each presentation request of a region window gets its reply from [presentation in a region](../host-protocol.md#presentation-in-a-region): `minimize`, `set-visible`, `set-full-screen`, `set-color-scheme` `unavailable` with `backend-unavailable` without being sent, `toggle-maximized`, `move`, `set-represented-file` `unavailable` with `embedded` |
+| `region.window-mode-title` | host | `set-title` for a window shown in a window is `rejected` with `invalid-request` |
+| `region.set-title-rate` | host | The 11th `set-title` within a second after a burst of 10 is `rejected` with `capacity` |
+| `region.bounds-coalesced` | host | Several size changes of the region within one frame reach the guest as one `region-bounds` with the latest size |
+| `region.activity` | host | `activity` follows the region: `visible` with the region shown, `active` with the focus in it, `minimized` with the host window |
+| `region.present-keeps-host-focus` | host | `present` while the host page has a focused element answers `success` and leaves the focus; with no focused element it pushes `region-focus` `programmatic` |
+| `region.menus-embedded` | host | `set-menu-bar` and `update-menu-items` are answered `unavailable` with `embedded` |
+| `region.dialog-owned-by-host-window` | host | A region window's dialog is owned by its host window; with the window detached it is `unavailable` with `owner-unavailable` |
+| `region.services-guest-focus` | host | Clipboard reads are refused while the focus entered the region by `present` or script, and allowed after the user's Tab into it |
+| `region.page-revoked` | host | `region-page` `revoked` makes the host detach the window |
+
+New steps and actions the runners need:
+
+- **Test application (guest runner).** An action `setTitle` (`window`, `value`), which sets the title of the Window's
+  page, since the pages are not loaded; `frame` (`window`, `request`: `"launch"`, `"bootstrap"` or `"upgrade"`, and for
+  the latter two a token), which makes a request of the frame surface named by the bound `frame.url` and expects its
+  status, so a scenario checks the one-time code, the fragment redirect, one page per token and revocation without a
+  browser; `$secret` values `frame-url`, which matches a frame launch address, and `frame-token`, the token of the last
+  launch.
+- **The host's user (host runner).** Actions `declareRegion` (`window`: the host window, `name`, `sizing`),
+  `removeRegion`, `resizeRegion` (`width`, `height`, `scale`), `focusRegion` (`source`: `tab`, `shift-tab`, `pointer`
+  or `script`) and `focusHost`, which play the host page's
+  [`hosted-regions/1`](../../application/README.md#hosted-regions) reports; and `expect` with `region`: its state, its
+  title and whether it holds the focus.
