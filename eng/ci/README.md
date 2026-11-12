@@ -264,7 +264,8 @@ Other runs choose legs this way:
   checks generated files; `engineering` lints workflows and runs the contract and Markdown
   link tests.
 - Markdown outside `packages/`, `tools/` and `tests/`, the `*.test.mjs` files the
-  engineering job runs, and workflows other than `ci.yml` are read only by those jobs
+  engineering job runs, workflows other than `ci.yml` and the train gate (`eng/train`,
+  which only `train-compat.yml` and its engineering tests run) are read only by those jobs
   (`engineeringOnly` in `eng/run.mjs`; `bun run affected` uses the same rule).
 - A path that no component owns, such as `Directory.Build.props`, the shared
   `eng/build/application.{props,targets}`, other `eng/` tooling or
