@@ -7,7 +7,9 @@
 // control, WebKit clears the focused element and hands focus to the GTK window, which
 // has nothing else to focus: a silent stop for screen readers. When a Tab or
 // Shift+Tab that the page did not cancel clears the focus this way, the script
-// focuses the first or last control, as a browser window does.
+// focuses the first or last control, as a browser window does. Beside a side panel
+// (sdk#864) the host hands the focus to the other view instead: setHandOff(true)
+// stops the wrap, and the host calls enter() in the view that receives the focus.
 //
 // Wheel: WebKit scrolls on Control and the wheel, so the host cannot wait for the
 // page to leave the event unhandled, as it does for keys. While Control is held, the
@@ -21,6 +23,7 @@ var runicDesktopKeyboard = (() => {
   let tab = null;
   let watching = false;
   let wheel = 0;
+  let handOff = false;
 
   addEventListener("keydown", event => {
     if (!event.isTrusted) return;
@@ -59,6 +62,7 @@ var runicDesktopKeyboard = (() => {
     const pending = tab;
     if (!pending || pending.defaultPrevented) return;
     tab = null;
+    if (handOff) return;
     setTimeout(() => wrap(pending.shiftKey));
   }
 
@@ -100,6 +104,18 @@ var runicDesktopKeyboard = (() => {
       if (!unfocused()) return;
     }
     window.focus();
+  }
+
+  // The host moved the focus into this view from the other one: the first control,
+  // or the last one backward, as Tab into a document does.
+  function enter(backward) {
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== document.documentElement) active.blur();
+    wrap(backward);
+  }
+
+  function setHandOff(on) {
+    handOff = on === true;
   }
 
   function unfocused() {
@@ -178,5 +194,5 @@ var runicDesktopKeyboard = (() => {
     return null;
   }
 
-  return { sequence, wrap };
+  return { sequence, wrap, enter, setHandOff };
 })();

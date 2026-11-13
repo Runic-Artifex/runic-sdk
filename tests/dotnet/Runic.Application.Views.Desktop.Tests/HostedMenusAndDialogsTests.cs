@@ -273,8 +273,10 @@ internal sealed class HostedMenusAndDialogsTests
         Check(await application.Exited.WaitScaledAsync(Timeout) == HostedGuestProgram.CrashExitCode, "The guest did not crash.");
         // Two checks, so a failure tells a dialog that never showed from one that stayed open.
         Check(dialogs.Shown.Count == 1, $"The host showed {dialogs.Shown.Count} dialogs before the guest crashed, not 1.");
-        Check(dialogs.Cancelled.Count == 1, "The host's dialog stayed open after the guest crashed.");
-        Check(window.Closed.IsCompleted, "The guest's window is still open.");
+        // The host cancels the dialog and closes the window when it notices the guest's connection close, which can
+        // come after the guest process has exited.
+        Check(await TestTimeouts.UntilAsync(() => dialogs.Cancelled.Count == 1, Timeout), "The host's dialog stayed open after the guest crashed.");
+        Check(await TestTimeouts.UntilAsync(() => window.Closed.IsCompleted, Timeout), "The guest's window is still open.");
     }
 
     // The shapes of menus/1 and dialogs/1 (HostFeatures), which the guest, the host and RunicTestHost share.

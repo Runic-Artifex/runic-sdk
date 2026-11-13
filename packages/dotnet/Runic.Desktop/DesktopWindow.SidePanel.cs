@@ -47,11 +47,11 @@ public sealed partial class DesktopWindow
     /// width and the page takes the rest.
     /// </para>
     /// <para>
-    /// The panel opens only in a window of its own that a built-in host shows: WebView2 on Windows and WKWebView on
-    /// macOS. Every other presentation refuses with <see cref="DesktopSidePanelRefusal.Unsupported"/>, as Linux does
-    /// for now. The
-    /// other refusals are the window's state (<see cref="CheckSidePanel"/>), a panel that is open already, and a page that
-    /// did not load. Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
+    /// The panel opens only in a window of its own that a built-in host shows: WebView2 on Windows, WKWebView on macOS
+    /// and WebKitGTK on Linux (GTK 3, and GTK 4 with <c>Runic.Desktop.Gtk4</c>; on Wayland only on the right edge). Every
+    /// other presentation refuses with <see cref="DesktopSidePanelRefusal.Unsupported"/>. The other refusals are the
+    /// window's state (<see cref="CheckSidePanel"/>), a panel that is open already, and a page that did not load.
+    /// Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>

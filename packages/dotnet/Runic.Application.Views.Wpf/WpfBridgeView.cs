@@ -309,7 +309,16 @@ public static class WpfBridgeViewExtensions
             if (Runic.Application.Views.Desktop.DesktopWindowLocality.IsLocal(desktop, surface, serveOnly: false))
                 connections = new Pair(connections, Runic.Application.Views.Desktop.DesktopAppearanceFeed.For(services)
                     .Add(content, loggerFactory?.CreateLogger("Runic.Application.Views.Desktop")));
-            var attachment = attachWithContent is not null ? attachWithContent(transport, content, viewModel) : attach!(transport, viewModel);
+            IDisposable attachment;
+            try
+            {
+                attachment = attachWithContent is not null ? attachWithContent(transport, content, viewModel) : attach!(transport, viewModel);
+            }
+            catch (Exception error) when (Runic.Application.Views.Generated.BridgeGeneratedCode.StaleBridge(error,
+                (Delegate?)attachWithContent ?? attach!, typeof(TViewModel)) is { } stale)
+            {
+                throw stale;
+            }
             return new(surface, transport, content, connections, attachment, viewModel, WpfViewsLog.For(loggerFactory));
         }
         catch

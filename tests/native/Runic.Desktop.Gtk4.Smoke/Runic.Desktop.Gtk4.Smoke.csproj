@@ -7,6 +7,8 @@
     <OutputType>Exe</OutputType>
     <!-- AppearanceSmoke.cs leaves out its Windows and macOS checks. -->
     <DefineConstants>$(DefineConstants);RUNIC_GTK4_SMOKE</DefineConstants>
+    <!-- The experimental side panel (sdk#864) of the side panel smoke. -->
+    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
@@ -17,6 +19,8 @@
     <Compile Include="../Runic.Desktop.WebViewSmoke/SurfaceScripts.cs" Link="SurfaceScripts.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WebContentSmoke.cs" Link="WebContentSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WindowBoundsSmoke.cs" Link="WindowBoundsSmoke.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.cs" Link="SidePanelSmoke.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.MacOS.cs" Link="SidePanelSmoke.MacOS.cs" />
     <!-- The clipboard format checks encode and decode small PNG files with the platform tests' helper. -->
     <Compile Include="../../dotnet/Runic.Platform.Windows.Tests/ThumbnailImages.cs" Link="ThumbnailImages.cs" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />

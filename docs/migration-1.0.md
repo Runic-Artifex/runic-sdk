@@ -1310,16 +1310,31 @@ modes.
 
 ## From 0.18 to 0.19
 
+<!-- Draft: the 0.19.0 release PR completes this section. -->
+
+Update every Runic NuGet and npm package to 0.19.0 together and rebuild, so that the generated clients and Bridges are
+regenerated; an assembly with Bridges that a 0.18 generator wrote must be rebuilt (below).
+
 ### Rebuild every assembly with generated Bridges
 
 The Bridge runtime and its descriptors are no longer generic over the ViewModel (#901). NativeAOT used to copy about
 110 KiB of type descriptors into the executable for every bridged ViewModel; one shared runtime now serves them all.
 The Views wire protocol and the generated TypeScript client do not change, so a 0.18 page connects as before.
 
-Bridges that a 0.18 generator wrote do not run on 0.19: the types they derive from and construct are gone, so loading
-one fails with `TypeLoadException` or `MissingMethodException`. Rebuild every assembly that contains generated
-Bridges, including a separate `RunicApplicationFrontendModelAssembly` and a library of ViewModels that another
-application references. The rebuild regenerates them.
+Bridges that a 0.18 generator wrote do not run on 0.19: the types they derive from and construct are gone. When the
+first Window or View attaches such a Bridge, the host reports the `TypeLoadException` or `MissingMethodException` as
+[`RUNICBRIDGE038`](diagnostics.md#runicbridge038), a `RunicBridgeContractException` that names the assembly: "the
+generated Runic Bridge for MyApp.MainViewModel in MyApp.ViewModels was built against another Runic release … Rebuild
+this library against Runic 0.19.0." Rebuild every assembly that contains generated Bridges, including a separate
+`RunicApplicationFrontendModelAssembly` and a library of ViewModels that another application references. The rebuild
+regenerates them.
+
+From 0.19 on, the generated `AddRunicBridges()` (and `AddRunicViews()`, which calls it) first checks the
+generated-code contract version that its generator wrote, so a library whose Bridges another major release generated
+fails there with the same error, before it registers a Bridge. Bridges that an earlier minor release of the same major
+generated keep running. Code that catches the raw `TypeLoadException` of a stale Bridge catches
+`RunicBridgeContractException` (an `InvalidOperationException`) instead; the original exception is its
+`InnerException`.
 
 | 0.18 | 0.19 |
 | --- | --- |
@@ -1334,3 +1349,9 @@ not application API. A hand-written Bridge, for example in a test, follows the g
 (`static vm => ((MyViewModel)vm).Title`). A file that imports both `System.ComponentModel` and
 `Runic.Application.Views.Generated` now has two `PropertyDescriptor` types; qualify the name or add
 `using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;`.
+
+### Side panel
+
+| 0.18 | 0.19 |
+| --- | --- |
+| A panel drawn by the page as an overlay, or a window widened by hand with `MoveAsync` and `ResizeAsync`, which widened the page's viewport too | `IRunicWindowPresentation.OpenSidePanelAsync` shows the panel's own page beside the window's page and grows the window; keep the overlay as the fallback for a refusal. Experimental ([`RUNICDESK104`](experimental.md#RUNICDESK104)); see the [side panel guide](side-panel.md) |

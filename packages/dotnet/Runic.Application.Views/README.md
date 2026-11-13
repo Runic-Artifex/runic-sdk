@@ -1082,13 +1082,17 @@ private async Task ShowDebugAsync()
 | Host | Side panel |
 | --- | --- |
 | Runic Desktop, WebView2 | Yes |
-| Runic Desktop, WKWebView; WebKitGTK (GTK 3, GTK 4) | Not yet: `Unsupported` |
+| Runic Desktop, WKWebView | Yes |
+| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes; on Wayland the right edge only (the left edge refuses with `PositionUnavailable`) |
 | Runic Desktop, an installed browser after a fallback; a serve-only application | `Unsupported` |
-| A custom Runic Desktop window host; WPF | `Unsupported`: the WPF application owns its layout and can place a second `RunicWebView` |
+| A custom Runic Desktop window host (other than `Runic.Desktop.Gtk4`'s); WPF | `Unsupported`: the WPF application owns its layout and can place a second `RunicWebView` |
 | CS-WebUI | `Unsupported` |
 | A hosted application's Window or region (`runic-host/1`) | `Unsupported` |
 
-The [Runic.Desktop README](../Runic.Desktop/README.md#side-panel) describes the
+The [side panel guide](../../../docs/side-panel.md) and the
+[side panel example](../../../examples/side-panel/README.md) show the panel's
+route in the frontend, the overlay fallback and each platform's limits. The
+[Runic.Desktop README](../Runic.Desktop/README.md#side-panel) describes the
 geometry: exact bounds on close, maximize and full screen while open, and what
 `DesktopWindowState` reports. In tests, `RunicTestWindowPresentation` decides
 the panel as a desktop window does
@@ -1724,7 +1728,11 @@ policy keeps them binary compatible within a major release for code that an
 earlier minor release generated, but their source shape may change for
 hand-written code. Generated files name them with `global::`, so regenerating
 is the only migration; hand-written code that names them, such as a test Bridge,
-adds `using Runic.Application.Views.Generated;`.
+adds `using Runic.Application.Views.Generated;`. The generated `AddRunicBridges()`
+first passes the generated-code contract version to
+`BridgeGeneratedCode.RequireContract`, so Bridges that another major release
+generated fail with [`RUNICBRIDGE038`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge038),
+which names the assembly to rebuild, instead of a `TypeLoadException`.
 
 Each ViewModel's generated bridge is an internal class `<Name>Bridge`, such as
 `CounterBridge` for `CounterViewModel`, in the `Runic.Application.Views.Generated.Bridges`
