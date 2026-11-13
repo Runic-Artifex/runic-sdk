@@ -9,15 +9,24 @@ using Runic.Navigation;
 
 // --elevated: the elevated pair (README, "Elevated"). --probe: CI's check on a real desktop (InstallerProbe.cs).
 var elevated = args.Contains("--elevated");
-var failures = args.Contains("--probe") ? new RegionFailures() : null;
+var failures = args.Contains("--probe") ? new ProbeLog() : null;
 
 var services = new ServiceCollection();
 // Warnings reach the console, such as a check that refused its region (event 2026).
 services.AddLogging(logging =>
 {
     logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning);
-    if (failures is not null) logging.AddProvider(failures);
+    if (failures is null) return;
+    // The probe writes the host's log, and the guests' output lines, to standard error at once (ProbeLog).
+    logging.AddProvider(failures);
+    logging.AddFilter<ProbeLog>(null, LogLevel.Debug);
 });
+if (failures is not null)
+{
+    ProbeLog.Write($"start: {string.Join(' ', args)}; elevated: {Environment.IsPrivilegedProcess}; {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}");
+    AppDomain.CurrentDomain.UnhandledException += (_, e) => ProbeLog.Write($"unhandled exception: {e.ExceptionObject}");
+    TaskScheduler.UnobservedTaskException += (_, e) => ProbeLog.Write($"unobserved task exception: {e.Exception}");
+}
 services.AddRunicReactiveModelContext();
 // The wizard's steps: one navigator per window, whose departure guards ask the check (InstallerViewModel).
 services.AddRunicNavigation();

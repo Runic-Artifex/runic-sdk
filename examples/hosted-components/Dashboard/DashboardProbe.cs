@@ -13,7 +13,7 @@ internal static class DashboardProbe
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(90);
 
-    public static async Task<int> RunAsync(RunicDesktopHost host, RunicWindowOptions options, RegionFailures failures, bool elevated)
+    public static async Task<int> RunAsync(RunicDesktopHost host, RunicWindowOptions options, ProbeLog failures, bool elevated)
     {
         try
         {
@@ -25,40 +25,53 @@ internal static class DashboardProbe
         catch (ProbeException error)
         {
             Console.Error.WriteLine($"HOSTED_COMPONENTS_FAILED: {error.Message}");
+            if (error.InnerException is { } inner) Console.Error.WriteLine(inner);
+            return 1;
+        }
+        catch (Exception error)
+        {
+            // Any other failure is the probe's too, and says what happened.
+            Console.Error.WriteLine($"HOSTED_COMPONENTS_FAILED: {error}");
             return 1;
         }
     }
 
-    private static async Task<string> RunCoreAsync(RunicDesktopHost host, RunicWindowOptions options, RegionFailures failures)
+    private static async Task<string> RunCoreAsync(RunicDesktopHost host, RunicWindowOptions options, ProbeLog failures)
     {
         using var timeout = new CancellationTokenSource(Wait);
-        var step = "open the dashboard's window";
+        var step = "";
+        void At(string name)
+        {
+            step = name;
+            ProbeLog.Write($"step: {name}");
+        }
+        At("open the dashboard's window");
         try
         {
             await using var window = await host.OpenWindowAsync<DashboardWindow>(options, timeout.Token);
             var dashboard = window.ViewModel;
 
-            step = "start the widgets";
+            At("start the widgets");
             await dashboard.StartWidgetsAsync(timeout.Token);
             Check(dashboard.Widgets.Count == Guests.Widgets.Count, $"A widget did not start: {dashboard.Indexer}; {dashboard.Sync}.");
 
             // Attached once the page imported the widget's module, created its element and the element connected.
             foreach (var (name, _) in Guests.Widgets)
             {
-                step = $"show the {name} widget as a component";
+                At($"show the {name} widget as a component");
                 var region = await UntilAsync(() => dashboard.Region(name) is { State: RunicHostedRegionState.Attached } attached ? attached : null,
                     failures, timeout.Token);
                 Check(region.IsComponent, $"The {name} widget shows in a frame, not as a component.");
             }
 
-            step = "read the page's engine finding";
+            At("read the page's engine finding");
             var finding = await UntilAsync(() => dashboard.ScopedRegistries is { Length: > 0 } value ? value : null, failures, timeout.Token);
 
-            step = "stop the widgets";
+            At("stop the widgets");
             foreach (var widget in dashboard.Widgets) Check(await widget.StopAsync(timeout.Token) == 0, "A widget did not exit cleanly.");
             foreach (var (name, _) in Guests.Widgets)
             {
-                step = $"end the {name} widget's region";
+                At($"end the {name} widget's region");
                 await UntilAsync(() => dashboard.Region(name) is { State: RunicHostedRegionState.Ended } ended ? ended : null, failures, timeout.Token);
             }
             return finding;
@@ -69,7 +82,7 @@ internal static class DashboardProbe
         }
     }
 
-    private static async Task<T> UntilAsync<T>(Func<T?> read, RegionFailures failures, CancellationToken cancellationToken) where T : class
+    private static async Task<T> UntilAsync<T>(Func<T?> read, ProbeLog failures, CancellationToken cancellationToken) where T : class
     {
         while (true)
         {
@@ -91,28 +104,45 @@ internal static class DashboardProbe
     private sealed class ProbeException(string message, Exception? inner = null) : Exception(message, inner);
 }
 
-// The host reports a region that did not attach (event 2026, DesktopHostedRegionAttachFailed), a region or window that
-// failed (2028, 2019) only in its log. The probe reads the log so it can fail with the reason.
-internal sealed class RegionFailures : ILoggerProvider
+// The probe's log: every message of the host, and the guests' output lines that the host passes on (events 2021 and
+// 2022), written at once to standard error, so a probe that ends abruptly still shows how far it got. It also records
+// the failures that the host reports only in its log: a region that did not attach (event 2026,
+// DesktopHostedRegionAttachFailed) and a region or window that failed (2028, 2019), so the probe fails with the reason.
+internal sealed class ProbeLog : ILoggerProvider
 {
-    private static readonly HashSet<string> Names = ["DesktopHostedRegionAttachFailed", "DesktopHostedRegionFailed", "DesktopHostedWindowFailed"];
+    private static readonly HashSet<string> Failures = ["DesktopHostedRegionAttachFailed", "DesktopHostedRegionFailed", "DesktopHostedWindowFailed"];
+    private static readonly Lock Gate = new();
     private readonly TaskCompletionSource<(string Message, Exception? Exception)> _first = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task<(string Message, Exception? Exception)> First => _first.Task;
 
-    public ILogger CreateLogger(string categoryName) => new Logger(this);
+    public static void Write(string line)
+    {
+        lock (Gate)
+        {
+            Console.Error.WriteLine($"HOSTED_COMPONENTS_PROBE: {line}");
+            Console.Error.Flush();
+        }
+    }
+
+    public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
 
     public void Dispose() { }
 
-    private sealed class Logger(RegionFailures owner) : ILogger
+    private sealed class Logger(ProbeLog owner, string category) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+        // Debug for the hosting category, whose debug events are the guests' output lines.
+        public bool IsEnabled(LogLevel logLevel) =>
+            logLevel >= (category.StartsWith("Runic.Application.Views.Desktop", StringComparison.Ordinal) ? LogLevel.Debug : LogLevel.Information);
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (eventId.Name is { } name && Names.Contains(name)) owner._first.TrySetResult((formatter(state, exception), exception));
+            if (!IsEnabled(logLevel)) return;
+            var message = formatter(state, exception);
+            Write($"{logLevel} {category}[{eventId.Id}]: {message}{(exception is null ? "" : Environment.NewLine + exception)}");
+            if (eventId.Name is { } name && Failures.Contains(name)) owner._first.TrySetResult((message, exception));
         }
     }
 }

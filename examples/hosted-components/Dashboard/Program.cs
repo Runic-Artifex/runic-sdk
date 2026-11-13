@@ -8,14 +8,23 @@ using Runic.Desktop;
 
 // --elevated: the elevated pair. --probe: CI's check on a real desktop (DashboardProbe.cs).
 var elevated = args.Contains("--elevated");
-var failures = args.Contains("--probe") ? new RegionFailures() : null;
+var failures = args.Contains("--probe") ? new ProbeLog() : null;
 
 var services = new ServiceCollection();
 services.AddLogging(logging =>
 {
     logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning);
-    if (failures is not null) logging.AddProvider(failures);
+    if (failures is null) return;
+    // The probe writes the host's log, and the guests' output lines, to standard error at once (ProbeLog).
+    logging.AddProvider(failures);
+    logging.AddFilter<ProbeLog>(null, LogLevel.Debug);
 });
+if (failures is not null)
+{
+    ProbeLog.Write($"start: {string.Join(' ', args)}; elevated: {Environment.IsPrivilegedProcess}; {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}");
+    AppDomain.CurrentDomain.UnhandledException += (_, e) => ProbeLog.Write($"unhandled exception: {e.ExceptionObject}");
+    TaskScheduler.UnobservedTaskException += (_, e) => ProbeLog.Write($"unobserved task exception: {e.Exception}");
+}
 services.AddRunicReactiveModelContext();
 services.AddSingleton(new DashboardOptions(elevated));
 services.AddScoped<DashboardViewModel>();
