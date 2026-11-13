@@ -689,6 +689,29 @@ scope's presentation, and a ViewModel built by hand can take a
 at once on the calling thread, inside the request, and keeps answering after
 the scope ends; a change its own handlers cause is still raised after them.
 
+The fake also decides a side panel (`OpenSidePanelAsync`, experimental under
+`RUNICDESK104`) as a Runic Desktop window on Windows does. It is an 860-wide
+window at `WindowX` 530 on a 1920-wide work area: an open panel grows
+`WindowWidth` on its edge (and moves `WindowX` on the left edge), moving it and
+changing its width move the frame, and closing it shrinks the window back. It
+refuses with `Unsupported` without `RunicWindowPresentationFeatures.SidePanel`
+in `Features`, `AlreadyOpen`, `Minimized` (minimized or hidden), `FullScreen`,
+`Maximized` (`IsMaximized`), `Snapped` (`IsSnapped`) and `NoRoom`, in that
+order. `SetSidePanelRefusal(reason)` makes every side panel request refuse with
+a reason of the test's choice, such as `PositionUnavailable` or `LoadFailed`,
+until it is set to `null`, and `CloseSidePanel(reason)` closes the panel as
+its page, a crash or the window would. The requests are recorded
+(`OpenSidePanel`, `MoveSidePanel`, `SetSidePanelWidth`, `FocusSidePanel`,
+`CloseSidePanel`). A ViewModel that falls back to an overlay is tested like
+this:
+
+```csharp
+host.Presentation!.IsSnapped = true;
+(await host.Root.ExecuteAsync(vm => vm.ShowDebugCommand)).ThrowIfFailed();
+Assert.True(host.ViewModel.ShowDebugOverlay);
+Assert.Null(host.Presentation.SidePanel);
+```
+
 ### Windows and their close decision
 
 `RunicWindowTestHost.Create` drives one ViewModel. To test a Window, its close

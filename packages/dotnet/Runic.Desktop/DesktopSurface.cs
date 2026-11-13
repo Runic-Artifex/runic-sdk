@@ -518,6 +518,9 @@ public sealed class DesktopSurface : IAsyncDisposable
     // The current window, for the shared color schemes.
     internal DesktopWindow? CurrentWindow => Volatile.Read(ref _window);
 
+    // The host that created this surface, for Runic.Application.Views.Desktop (DesktopWindowLocality).
+    internal DesktopHost Host => _host;
+
     internal DesktopColorScheme SharedColorScheme(string scope) => _host.SharedColorScheme(scope);
 
     internal void SharedColorSchemeApplied(string scope, DesktopColorScheme colorScheme) => _host.SharedColorSchemeApplied(scope, colorScheme);
@@ -990,6 +993,9 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     // window host of the application's own.
     internal IDisposable? AttachRegionFrame(Internal.RegionFrameRoute route) =>
         _engine.SupportsRegionFrames ? _engine.RegionFrames.Add(route) : null;
+
+    // The surface that opened this window, for Runic.Application.Views.Desktop (DesktopPlatformServices.AttachWindowServices).
+    internal DesktopSurface Surface => _surface;
 
     internal DesktopWindow(
         DesktopSurface surface,

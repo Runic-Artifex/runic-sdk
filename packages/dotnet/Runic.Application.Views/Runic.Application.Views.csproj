@@ -13,6 +13,8 @@
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <!-- The package uses its own experimental runic-host/1 API. -->
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+    <!-- ...and its experimental side panel API (sdk#864). -->
+    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
     <!-- Published enum members name wire value kinds (String, Int32, Single). -->
     <NoWarn>$(NoWarn);CA1720</NoWarn>
     <!-- buildTransitive/Runic.Application.Views.props: help links for diagnostics of the build targets. -->
@@ -30,6 +32,8 @@
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
     <!-- tests/benchmarks sets the window's minimum unit interval (BridgeDispatcher) to measure the units themselves. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Benchmarks" />
+    <!-- The scaling suite reads the Bridge's cost counters (BridgeCostCounters) and sets the minimum unit interval. -->
+    <InternalsVisibleTo Include="Runic.Application.Scaling.Tests" />
   </ItemGroup>
   <ItemGroup>
     <!-- The generated-code support API (Generated/) is used throughout the runtime. -->

@@ -46,6 +46,9 @@ internal sealed class BridgeCollectionKeyBaseline
 
     public object Rows { get; }
 
+    // The rows tracked; after Scan, the rows it checked.
+    public int Count => _rowKeys.Count;
+
     // Checks every row of a collection. Throws BridgeCollectionKeyException.
     public static BridgeCollectionKeyBaseline Scan(string model, string field, IEnumerable rows, Func<object?, string> keyOf)
     {
