@@ -1099,3 +1099,35 @@ Runic.Application.Testing.RunicWindowTestHostOptions.ApplicationLocale.init -> v
 [RUNICDESK103]Runic.Application.Testing.RunicTestLaunchRequest.WindowId.init -> void
 [RUNICDESK103]static Runic.Application.Testing.RunicTestLaunchRequest.operator !=(Runic.Application.Testing.RunicTestLaunchRequest? left, Runic.Application.Testing.RunicTestLaunchRequest? right) -> bool
 [RUNICDESK103]static Runic.Application.Testing.RunicTestLaunchRequest.operator ==(Runic.Application.Testing.RunicTestLaunchRequest? left, Runic.Application.Testing.RunicTestLaunchRequest? right) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.AllowElevatedGuest.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.EmbedWindow.get -> System.Func<Runic.Application.Testing.RunicTestHostedWindow!, bool>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.EmbedWindow.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.AttachRegionAsync(string! embedder, int width = 800, int height = 600, double scale = 1, string! sizing = "fill", bool allowSameSite = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.DetachRegionAsync(string! reason = "removed", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.FocusRegionAsync(string! direction = "forward", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.FrameIsSameSite.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.IsAttached.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.IsRegion.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.RegionPages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.SetRegionBoundsAsync(int width, int height, double scale = 1, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.Titles.get -> System.Collections.Generic.IReadOnlyList<string!>!
+[RUNICDESK103]override Runic.Application.Testing.RunicTestComponent.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Testing.RunicTestComponent.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Testing.RunicTestComponent.ToString() -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.<Clone>$() -> Runic.Application.Testing.RunicTestComponent!
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Deconstruct(out System.Uri! Module, out System.Uri! Url, out string! Token, out bool SameSite) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Equals(Runic.Application.Testing.RunicTestComponent? other) -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Module.get -> System.Uri!
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Module.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.RunicTestComponent(System.Uri! Module, System.Uri! Url, string! Token, bool SameSite) -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.SameSite.get -> bool
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.SameSite.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Token.get -> string!
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Token.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Url.get -> System.Uri!
+[RUNICDESK103]Runic.Application.Testing.RunicTestComponent.Url.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.AttachComponentAsync(string! embedder, bool allowSameSite = true, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestComponent!>!
+[RUNICDESK103]static Runic.Application.Testing.RunicTestComponent.operator !=(Runic.Application.Testing.RunicTestComponent? left, Runic.Application.Testing.RunicTestComponent? right) -> bool
+[RUNICDESK103]static Runic.Application.Testing.RunicTestComponent.operator ==(Runic.Application.Testing.RunicTestComponent? left, Runic.Application.Testing.RunicTestComponent? right) -> bool
