@@ -1033,6 +1033,57 @@ and a smaller window grows to it. It needs
 `window-capability-unavailable`, whose message names the capability and why the
 presentation lacks it.
 
+### Maximize, restore and placement of an open window
+
+`DesktopWindow.MaximizeAsync` and `RestoreAsync` ask for a state and do nothing
+when the window is in it already, unlike `ToggleMaximizedAsync`, whose result
+depends on the state when the call reaches the window. `MaximizeAsync` leaves
+full screen first and brings a minimized window back maximized. `RestoreAsync`
+leaves full screen, un-maximizes and un-minimizes the window, and a window
+minimized while it was maximized comes back at its normal bounds, not
+maximized; `FocusAsync` keeps the platform's "back to maximized". A hidden
+window stays hidden and shows in the state asked for.
+
+`DesktopWindow.SetPlacementAsync` gives an open window a placement, as
+`DesktopWindowOptions.Placement` gives a window that opens. It takes a
+`DesktopWindowPlacement` in the units `State.Placement` reports, so a placement
+saved there, or reported by another window, passes back as it is:
+
+```csharp
+// Show this window where the user left the other one, maximized if it was.
+await window.SetPlacementAsync(other.State!.Placement);
+await window.ShowAsync();
+```
+
+It sets the bounds the window restores to also while the window is maximized,
+minimized, full-screen or hidden, where `SetBoundsAsync` refuses: a maximized
+window stays maximized with new restored bounds (unless `Maximized` is
+`false`), a minimized window stays minimized and a hidden one hidden, and each
+takes the placement's state when it is next restored or shown. `X` and `Y`
+`null` keep the position, and a `Width` or `Height` of zero or less keeps that
+dimension. The placement is fitted to the monitors that exist now as at open,
+and `State.Placement` then reports it back after that fit: `X` and `Y` exactly,
+the size within one unit on Windows, where it converts with the scale of the
+monitor it lands on. With a [side panel](#side-panel) open the placement is the
+page's, as `State.Placement` reports it, and the window grows by the panel on
+its edge. `MaximizeAsync` keeps the panel.
+
+The calls complete when the window has been asked: macOS animates and a window
+manager decides on Linux, so `StateChanged` reports the result. They need
+`DesktopWindowCapabilities.WindowPlacement`; a `Kiosk` window refuses
+`MaximizeAsync`, `RestoreAsync` and a placement that is not full-screen with
+`InvalidOperationException`.
+
+| Presentation | `MaximizeAsync` | `RestoreAsync` | `SetPlacementAsync` |
+| --- | --- | --- | --- |
+| Windows WebView2 | `SW_MAXIMIZE`, which activates the window, as the user's maximize does | `SW_SHOWNOACTIVATE` for a visible maximized window, which stays inactive; a minimized one comes back normal through `SetWindowPlacement` and is activated | One `SetWindowPlacement` with the restored rectangle; activates a window it maximizes or brings back from minimized |
+| macOS WKWebView | `zoom:`; a miniaturized window is deminiaturized first | Unzooms, also a miniaturized window, which is deminiaturized | One `setFrame:display:`, then `zoom:` for a maximized placement, so a later restore returns to the frame. A sheet takes none (`window-capability-unavailable`) |
+| Linux GTK 3 | `gtk_window_maximize` | Unmaximizes, and on X11 deiconifies | Unmaximize, move and resize, maximize in one main-loop turn |
+| Linux GTK 4 | `gtk_window_maximize` | Unmaximizes; a minimized window comes back by presenting it | Default size, `XMoveResizeWindow` on X11, then the state |
+| Wayland (GTK 3 and GTK 4) | Yes | Yes; Wayland reports no minimized window, so `FocusAsync` brings one back | Size and state; a placement with `X` and `Y` fails as a whole with `window-position-unavailable` and changes nothing |
+| Installed browser, WPF `RunicWebView` | Refused: `window-capability-unavailable` | Same | Same |
+| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowShowStateHost` | Same | Same |
+
 ### Side panel
 
 `DesktopWindow.OpenSidePanelAsync` shows a page of the window's surface beside
@@ -2080,6 +2131,7 @@ The optional interfaces each add one feature:
 | --- | --- | --- |
 | `IDesktopNativeDispatchWindowHost` | `DesktopWindow.InvokeNativeAsync` and the platform services' owner thread | `SupportsNativeDispatch` |
 | `IDesktopWindowStateHost` | `DesktopWindow.State`, `StateChanged` and restoring `DesktopWindowHostOptions.Placement` ([Window state and restore](#window-state-and-restore)) | `DesktopWindowCapabilities.State` |
+| `IDesktopWindowShowStateHost` | `DesktopWindow.MaximizeAsync`, `RestoreAsync` and `SetPlacementAsync` ([Maximize, restore and placement of an open window](#maximize-restore-and-placement-of-an-open-window)) | `DesktopWindowCapabilities.WindowPlacement` |
 | `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
 | `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
@@ -2090,7 +2142,7 @@ The optional interfaces each add one feature:
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 
-The GTK 4 host implements the first three, `IDesktopSpellCheckingWindowHost`, `IDesktopActivityWindowHost` and
+The GTK 4 host implements the first four, `IDesktopSpellCheckingWindowHost`, `IDesktopActivityWindowHost` and
 `IDesktopColorSchemeWindowHost`, and its factory the last two; `RunicWebView` implements `IDesktopFileDropWindowHost`
 and `IDesktopColorSchemeWindowHost`. A host that reports
 `DesktopWindowCapabilities.Announcements` implements `AnnounceAsync`

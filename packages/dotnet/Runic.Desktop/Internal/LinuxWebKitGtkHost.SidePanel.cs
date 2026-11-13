@@ -243,6 +243,8 @@ internal sealed partial class LinuxWebKitGtkHost
     // commit after PanelCommitTimeout when the window manager does not give them.
     private void ApplyPanelBounds(DesktopWindowBounds target)
     {
+        // The panel changes a normal window's frame, which is its restore bounds from now on.
+        ReleaseRestoreBounds();
         if (target is { X: { } x, Y: { } y }) Api.GtkWindowMove(_window, x, y);
         Api.GtkWindowResize(_window, target.Width, target.Height);
         var generation = ++_commitGeneration;
@@ -372,7 +374,12 @@ internal sealed partial class LinuxWebKitGtkHost
     // The size a maximized or full-screen window restores to loses the panel's width: the placement already excludes it.
     // The window manager keeps the geometry a maximized or full-screen window restores to and ignores a resize requested
     // meanwhile, so the bounds apply when the window is restored (ApplyPendingRestore, D062.5).
-    private void ShrinkRestoredBounds() => _pendingRestore = _normal;
+    // The restore bounds tracker (WindowRestoreBounds) holds them too, so it gives the window the same bounds.
+    private void ShrinkRestoredBounds()
+    {
+        _pendingRestore = _normal;
+        if (_normal is { } page) HoldRestoredPage(page);
+    }
 
     // GTK thread, from UpdateState of a window that is neither maximized, full-screen nor minimized: a panel closed while
     // it was gives it the restored bounds without the panel, in one configure request. True when it changed the window,

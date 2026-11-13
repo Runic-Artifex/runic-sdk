@@ -157,6 +157,18 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot change its minimum size."));
 
+    /// <summary>Maximizes the window, idempotently (DesktopWindow.MaximizeAsync); requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot maximize its window on request."));
+
+    /// <summary>Returns the window to its normal bounds (DesktopWindow.RestoreAsync); requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    ValueTask ShowNormalAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot restore its window on request."));
+
+    /// <summary>Gives the open window a placement in the units of DesktopWindowState.Placement; requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot take a placement while it is open."));
+
     /// <summary>Whether the host shows a side panel (sdk#864): a second view of the window's surface beside its page.</summary>
     bool SupportsSidePanel => false;
 

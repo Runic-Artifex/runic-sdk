@@ -306,13 +306,15 @@ public sealed class Gtk4ProfileTests
         // #864 B1: every built-in host changes its minimum size at run time; the bounds come with the state.
         const DesktopWindowCapabilities minimum = DesktopWindowCapabilities.MinimumSize;
         const DesktopWindowCapabilities bounds = DesktopWindowCapabilities.Bounds;
+        // sdk#897 W1a: maximize, restore and placement on request; GTK 3 once it reports its state.
+        const DesktopWindowCapabilities windowPlacement = DesktopWindowCapabilities.WindowPlacement;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
                 DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction |
-                minimum | bounds, advertised);
+                minimum | bounds | windowPlacement, advertised);
         else if (OperatingSystem.IsMacOS())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement
-                | DesktopWindowCapabilities.FileDrag | presentation | ownership | minimum | bounds, advertised);
+                | DesktopWindowCapabilities.FileDrag | presentation | ownership | minimum | bounds | windowPlacement, advertised);
         else if (OperatingSystem.IsLinux())
             Assert.Equal(known | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
                 ownership | minimum, advertised);
@@ -320,7 +322,7 @@ public sealed class Gtk4ProfileTests
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
             known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
             DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction |
-            minimum | bounds);
+            minimum | bounds | windowPlacement);
     }
 
     [Test]

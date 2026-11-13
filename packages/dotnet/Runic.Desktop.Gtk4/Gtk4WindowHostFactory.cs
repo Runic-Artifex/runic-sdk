@@ -436,7 +436,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
         DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds |
-        DesktopWindowCapabilities.MinimumSize;
+        DesktopWindowCapabilities.MinimumSize | DesktopWindowCapabilities.WindowPlacement;
     private DesktopWindowState? _state;
     private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
@@ -692,7 +692,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        return new(Gtk4Dispatcher.Instance.InvokeAsync(() => GetWindow().SetDefaultSize(width, height), cancellationToken));
+        return new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
+        {
+            _settlingFrame = null;
+            ReleaseRestoreBounds();
+            GetWindow().SetDefaultSize(width, height);
+        }, cancellationToken));
     }
 
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default)
@@ -703,6 +708,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         }
         return new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
+            _settlingFrame = null;
+            ReleaseRestoreBounds();
             var window = GetWindow();
             if (!window.IsVisible())
             {
@@ -727,7 +734,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // one keeps the position as the bounds it restores to, which a move would replace.
     private void Present(Gtk.Window window)
     {
-        try { PresentCore(window); }
+        try
+        {
+            PresentCore(window);
+            // A window hidden while maximized and given a normal placement (Gtk4WindowHost.Placement.cs).
+            StartFrameTargetWhenShown(window);
+        }
         finally { BlockOwner(window.Handle.DangerousGetHandle()); }
     }
 
@@ -975,6 +987,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 _pendingPosition = initial;
                 _pendingPositionIsRestoredBounds = options.Kiosk || options.Placement is { Maximized: true } or { FullScreen: true };
                 _normalPosition = initial;
+                var openedAt = new RestoreFrame(initial.X, initial.Y, width, height);
+                if (_pendingPositionIsRestoredBounds) _restore.Set(openedAt, _restoreClock.Elapsed);
+                else _restore.Reset(openedAt);
             }
             finalization = new NativeObjectFinalizationProbe();
             finalization.Track(window.Handle.DangerousGetHandle());
@@ -1813,13 +1828,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         var restoredHeight = Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
         // X11 only, and only once the window is mapped: an unmapped window has no position on screen yet.
         var position = window.IsVisible() ? Gtk4X11Placement.GetPosition(SurfaceOf(window)) : null;
+        // A placement's frame target takes its next step (Gtk4WindowHost.Placement.cs); meanwhile the frames the window
+        // passes through are not the bounds it restores to, and it reports the target's.
+        ContinueFrameTarget(window, maximized, position, width, height);
         // A side panel closed while the window was maximized or full-screen: the restored window loses its width.
         var minimized = window.GetSurface() is { } restoredSurface && (ToplevelGetState(restoredSurface.Handle.DangerousGetHandle()) & GdkToplevelStateMinimized) != 0;
         if (!maximized && !fullScreen && !minimized && ApplyPendingRestore(window, position, width, height)) return;
-        if (position is not null && !maximized && !fullScreen)
-        {
-            _normalPosition = position;
-        }
+        // The restore bounds (WindowRestoreBounds, Gtk4WindowHost.Placement.cs), the window's frame with an open panel.
+        var restore = ObserveRestoreBounds(window, maximized, fullScreen, position, width, height);
+        var pending = PendingPlacement;
         var exact = ReadExactBounds(window, position, width > 0 ? width : restoredWidth, height > 0 ? height : restoredHeight,
             maximized, fullScreen);
         var state = new DesktopWindowState
@@ -1834,11 +1851,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
             Placement = PanelPlacement(new DesktopWindowPlacement
             {
-                X = _normalPosition?.X,
-                Y = _normalPosition?.Y,
-                Width = restoredWidth,
-                Height = restoredHeight,
-                Maximized = maximized,
+                X = pending is { } target ? target.X : _normalPosition?.X,
+                Y = pending is { } targetY ? targetY.Y : _normalPosition?.Y,
+                Width = pending?.Width ?? restore?.Width ?? restoredWidth,
+                Height = pending?.Height ?? restore?.Height ?? restoredHeight,
+                Maximized = pending?.Maximized ?? maximized,
                 FullScreen = fullScreen && _options?.Kiosk != true,
                 Origin = DesktopCoordinateOrigin.TopLeft,
             }, position),

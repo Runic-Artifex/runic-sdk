@@ -55,7 +55,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
-        (Api.CanReportState ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds : DesktopWindowCapabilities.None) |
+        (Api.CanReportState
+            ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.WindowPlacement
+            : DesktopWindowCapabilities.None) |
         DesktopWindowCapabilities.ColorScheme |
         (Api.CanSetDirection ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |
         (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None) |
@@ -249,10 +251,18 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }, cancellationToken);
 
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => Api.GtkWindowResize(_window, checked((int)width), checked((int)height)), cancellationToken);
+        => InvokeWindowAsync(() =>
+        {
+            ReleaseRestoreBounds();
+            Api.GtkWindowResize(_window, checked((int)width), checked((int)height));
+        }, cancellationToken);
 
     public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => Api.GtkWindowMove(_window, x, y), cancellationToken);
+        => InvokeWindowAsync(() =>
+        {
+            ReleaseRestoreBounds();
+            Api.GtkWindowMove(_window, x, y);
+        }, cancellationToken);
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() =>
@@ -263,6 +273,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 // The global menu keeps showing the bar.
                 if (_globalPlacement && _menuBar != 0) Api.GtkWidgetHide(_menuBar);
                 BlockOwner();
+                // A placement, MaximizeAsync or RestoreAsync given while hidden applies to the mapped window.
+                ApplyPlacementWhenShown();
             }
             else
             {
@@ -581,7 +593,17 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // A side panel closed while the window was maximized or full-screen: the restored window loses its width.
         if (!maximized && !fullScreen && ApplyPendingRestore(current)) return;
         var exact = ReadExactBounds(x, y, current.Width, current.Height, flags, maximized, fullScreen);
-        if (!maximized && !fullScreen && !tiled)
+        // A placement given while hidden maximizes the shown window once it has its size (ApplyPlacementWhenShown).
+        if (!maximized) MaximizeAtSize(force: false, current.Width, current.Height);
+        // The restore bounds (WindowRestoreBounds): a hidden window keeps the placement it shows at, and frames the window
+        // passes through on its way to or from maximized do not replace the bounds a placement or a maximize stated.
+        var shownNormal = !maximized && !fullScreen && !tiled && _geometryWhenShown is null && Api.GtkWidgetGetVisible(_window);
+        if (ObserveRestoreBounds(maximized || fullScreen, shownNormal ? new RestoreFrame(x, y, current.Width, current.Height) : null) is { } restore)
+        {
+            // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
+            _normal = ExcludePanel(current with { X = restore.X, Y = restore.Y, Width = restore.Width, Height = restore.Height });
+        }
+        else if (!maximized && !fullScreen && !tiled && _geometryWhenShown is null)
         {
             // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
             _normal = ExcludePanel(current);
@@ -597,7 +619,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
             MonitorId = MonitorIdOf(Api.MonitorOfWindow(_window)),
-            Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !kiosk },
+            // A hidden window, or one that waits for its size to maximize, reports the state it is given (SetPlacementAsync).
+            Placement = (_normal ?? current) with { Maximized = PendingMaximized ?? maximized, FullScreen = fullScreen && !kiosk },
             Bounds = exact.Bounds,
             VisibleBounds = exact.Visible,
             IsSnapped = exact.Snapped,

@@ -2014,7 +2014,11 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// <summary>Maximizes the window, or restores it when it is already maximized.</summary>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window state has changed.</returns>
-    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Maximize"/>.</remarks>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.Maximize"/>. Its result depends on the window's state when the call
+    /// reaches it; <see cref="MaximizeAsync"/> and <see cref="RestoreAsync"/> ask for a state and do nothing when the window
+    /// is in it already.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
