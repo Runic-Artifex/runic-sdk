@@ -8,7 +8,9 @@ using Runic.Desktop;
 //    closes once the work has ended.
 // 2. A termination signal (SIGTERM on Linux and macOS, Ctrl+C in a console of the smoke's own on Windows): ShutdownStarting
 //    is cancelled, the window stays open while it drains (DesktopCloseReason.Shutdown), and ShutdownRequested is cancelled
-//    only after the drain; the process then exits 0.
+//    only after the drain; the process then exits 0. On Windows this phase runs in a child smoke process with a hidden
+//    console of its own (--close-drain-shutdown), as ShutdownSignalTests' fixture does, so the real Ctrl+C reaches no
+//    other process.
 internal static partial class CloseDrainSmoke
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
@@ -19,16 +21,22 @@ internal static partial class CloseDrainSmoke
         </head><body>draining</body></html>
         """;
 
-    internal static int Run(DesktopHostOptions hostOptions, bool gtk4 = false) =>
-        DesktopEventLoop.Run(hostOptions with { HandleShutdownSignals = true, ShutdownDrainTimeout = TimeSpan.FromSeconds(60) },
-            host => RunAsync(host, gtk4));
+    internal const string ShutdownArgument = "--close-drain-shutdown";
 
-    private static async Task<int> RunAsync(DesktopHost host, bool gtk4)
+    internal static int Run(DesktopHostOptions hostOptions, bool gtk4 = false, bool shutdownOnly = false) =>
+        DesktopEventLoop.Run(hostOptions with { HandleShutdownSignals = true, ShutdownDrainTimeout = TimeSpan.FromSeconds(60) },
+            host => RunAsync(host, gtk4, shutdownOnly));
+
+    private static async Task<int> RunAsync(DesktopHost host, bool gtk4, bool shutdownOnly)
     {
         try
         {
-            Console.WriteLine("Close drain: phase 1, the native close.");
-            await RunUserCloseAsync(host, gtk4);
+            if (!shutdownOnly)
+            {
+                Console.WriteLine("Close drain: phase 1, the native close.");
+                await RunUserCloseAsync(host, gtk4);
+                if (OperatingSystem.IsWindows()) return await RunShutdownInChildAsync();
+            }
             Console.WriteLine("Close drain: phase 2, the shutdown.");
             return await RunShutdownAsync(host);
         }
@@ -73,6 +81,38 @@ internal static partial class CloseDrainSmoke
         Console.WriteLine("PASS close drain: the native close waits for the durable work, a second close is ignored, and the window closes after it.");
     }
 
+    // Windows: the shutdown phase in a child smoke process whose hidden console is its own (CreateNoWindow), so its Ctrl+C
+    // reaches neither this process nor the job's shell. Its output is relayed; its exit code is the phase's.
+    private static async Task<int> RunShutdownInChildAsync()
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath ?? "dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) is "dotnet")
+            start.ArgumentList.Add(typeof(CloseDrainSmoke).Assembly.Location);
+        start.ArgumentList.Add(ShutdownArgument);
+        Console.WriteLine("Close drain: phase 2 runs in a child process with a console of its own.");
+        using var child = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("The shutdown phase did not start.");
+        child.OutputDataReceived += static (_, line) => { if (line.Data is { } text) Console.WriteLine("  " + text); };
+        child.ErrorDataReceived += static (_, line) => { if (line.Data is { } text) Console.Error.WriteLine("  " + text); };
+        child.BeginOutputReadLine();
+        child.BeginErrorReadLine();
+        try { await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(120)); }
+        catch (TimeoutException)
+        {
+            child.Kill(entireProcessTree: true);
+            throw new InvalidOperationException("Close drain: the shutdown phase did not exit within 120 seconds.");
+        }
+        child.WaitForExit();
+        Console.WriteLine($"Close drain: the shutdown phase exited with {child.ExitCode}.");
+        Require(child.ExitCode == 0, $"the shutdown phase to exit 0, not {child.ExitCode}");
+        return 0;
+    }
+
     private static async Task<int> RunShutdownAsync(DesktopHost host)
     {
         var drain = new Drain();
@@ -87,9 +127,10 @@ internal static partial class CloseDrainSmoke
         var (signal, unavailable) = SendTerminationSignal();
         if (signal is null)
         {
-            // The console signal itself is unverified on this runner: the shutdown starts through the entry point the
-            // signal handler calls (ShutdownSignals → DesktopHost.RequestShutdownForSignal).
-            Console.WriteLine($"Close drain: Ctrl+C cannot be sent here ({unavailable}); requesting the shutdown as the signal handler does.");
+            // Only where the signal cannot be delivered at all, such as a console this process shares: the console signal
+            // itself is then unverified, and the shutdown starts through the entry point the signal handler calls
+            // (ShutdownSignals → DesktopHost.RequestShutdownForSignal).
+            Console.WriteLine($"UNVERIFIED Ctrl+C delivery: {unavailable}; requesting the shutdown as the signal handler does.");
             signal = "the signal handler's shutdown request";
             Require(host.RequestShutdownForSignal("SIGINT", static () => { }), "the shutdown request to start a shutdown");
         }
@@ -141,8 +182,8 @@ internal static partial class CloseDrainSmoke
         await window.InvokeNativeAsync(gtk4 ? static handle => Gtk4WindowClose(handle) : static handle => Gtk3WindowClose(handle));
     }
 
-    // SIGTERM on Linux and macOS; on Windows Ctrl+C in a console of the smoke's own, which reaches no other process, such
-    // as the shell that runs the smoke. AllocConsole replaces the standard handles, so the job's pipes are put back.
+    // SIGTERM on Linux and macOS; on Windows a real Ctrl+C on the child's own console (RunShutdownInChildAsync), sent only
+    // when this process is the console's only one, as ShutdownSignalFixture does.
     private static (string? Signal, string? Unavailable) SendTerminationSignal()
     {
         if (!OperatingSystem.IsWindows())
@@ -150,15 +191,10 @@ internal static partial class CloseDrainSmoke
             if (Kill(Environment.ProcessId, 15) != 0) throw new InvalidOperationException("The smoke could not send SIGTERM to itself.");
             return ("SIGTERM", null);
         }
-        const int StdInput = -10, StdOutput = -11, StdError = -12;
-        var handles = new[] { StdInput, StdOutput, StdError }.Select(static kind => (kind, GetStdHandle(kind))).ToArray();
-        _ = FreeConsole();
-        var allocated = AllocConsole() != 0;
-        var allocError = Marshal.GetLastPInvokeError();
-        foreach (var (kind, handle) in handles) _ = SetStdHandle(kind, handle);
-        if (!allocated) return (null, $"AllocConsole failed with Win32 error {allocError}");
-        // A process started in a new process group ignores Ctrl+C until it says otherwise.
+        // A process can inherit Ctrl+C disabled; this one must receive it as a console application does.
         _ = SetConsoleCtrlHandler(0, 0);
+        var attached = GetConsoleProcessList(new uint[4], 4);
+        if (attached != 1) return (null, $"the console has {attached} processes, so Ctrl+C would reach other processes");
         if (GenerateConsoleCtrlEvent(0, 0) == 0) return (null, $"GenerateConsoleCtrlEvent failed with Win32 error {Marshal.GetLastPInvokeError()}");
         return ("Ctrl+C", null);
     }
@@ -186,16 +222,7 @@ internal static partial class CloseDrainSmoke
     private static partial int PostMessage(nint window, uint message, nuint wParam, nint lParam);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial int FreeConsole();
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial int AllocConsole();
-
-    [LibraryImport("kernel32.dll")]
-    private static partial nint GetStdHandle(int kind);
-
-    [LibraryImport("kernel32.dll")]
-    private static partial int SetStdHandle(int kind, nint handle);
+    private static partial uint GetConsoleProcessList([Out] uint[] processIds, uint count);
 
     [LibraryImport("kernel32.dll")]
     private static partial int SetConsoleCtrlHandler(nint handler, int add);

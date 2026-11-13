@@ -100,6 +100,11 @@ try
         // B6. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = OwnerSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains(CloseDrainSmoke.ShutdownArgument, StringComparer.Ordinal))
+    {
+        // sdk#900 W4b, Windows: the shutdown phase of --close-drain in a child process with a console of its own.
+        Environment.ExitCode = CloseDrainSmoke.Run(CreateHostOptions(), shutdownOnly: true);
+    }
     else if (args.Contains("--close-drain", StringComparer.Ordinal))
     {
         // sdk#900 W4b. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
