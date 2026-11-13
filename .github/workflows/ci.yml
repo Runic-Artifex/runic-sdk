@@ -1919,6 +1919,26 @@ jobs:
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
             RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
+      # D064.25 (#901): in a pull request run labelled ci:all-platforms, the NativeAOT size per bridged
+      # ViewModel on Windows and macOS, with the mstat files. The managed job's linux-x64 measurement gates the budgets
+      # (D064.5); this one only reports, in the job summary and the artifact.
+      - name: Measure the NativeAOT size per ViewModel
+        id: aot-size
+        if: ${{ matrix.cswebui && runner.os != 'Linux' && contains(needs.plan.outputs.why, 'label ci:all-platforms') }}
+        timeout-minutes: 12
+        shell: bash
+        run: bun tests/scaling/aot-size/measure.mjs --rid ${{ matrix.rid }} --keep
+      - name: Retain the NativeAOT size measurement
+        if: ${{ always() && steps.aot-size.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aot-size-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/scaling/aot-size
+            !artifacts/scaling/aot-size/k*/bin
+          if-no-files-found: ignore
+          retention-days: 30
       # Development tooling, independent of the architecture: Windows x64 runs it.
       - name: Verify Windows View IDE launch and framework reload
         if: runner.os == 'Windows' && runner.arch == 'X64'

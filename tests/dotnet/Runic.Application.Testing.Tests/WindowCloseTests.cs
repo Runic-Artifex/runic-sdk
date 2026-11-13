@@ -131,8 +131,8 @@ public sealed class WindowCloseTests
     }
 
     private sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-        : ViewModelBridge<SlowModel>(transport, model, "slow", [], [], [],
-        [new("Save", vm => vm.Save) { ExecuteAsync = (vm, cancellation, _) => vm.SaveAsync(cancellation), CanExecute = (_, _) => true }],
+        : ViewModelBridge(transport, model, typeof(SlowModel), "slow", [], [], [],
+        [new("Save", vm => ((SlowModel)vm).Save) { ExecuteAsync = (vm, cancellation, _) => ((SlowModel)vm).SaveAsync(cancellation), CanExecute = (_, _) => true }],
         content: content);
 
     private sealed class NoopCommand : ICommand

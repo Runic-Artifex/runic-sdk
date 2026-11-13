@@ -529,4 +529,4 @@ internal sealed class HostedDropModel : IRunicFileDropTarget, System.ComponentMo
 }
 
 internal sealed class HostedDropBridge(IBridgeTransport transport, HostedDropModel model)
-    : ViewModelBridge<HostedDropModel>(transport, model, "hosted-drop", [], [], [], []);
+    : ViewModelBridge(transport, model, typeof(HostedDropModel), "hosted-drop", [], [], [], []);

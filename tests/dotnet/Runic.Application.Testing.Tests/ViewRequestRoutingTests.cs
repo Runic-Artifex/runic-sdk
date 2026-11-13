@@ -177,8 +177,8 @@ public sealed class ViewRequestRoutingTests
         using var window = new RequestWindow();
         // The application's handler, registered first, answers when no page can.
         using var fallback = window.Model.Confirm.RegisterHandler(context => context.SetOutput(false));
-        using var interaction = ReactiveInteractionDescriptor.Create<RequestModel, string, bool>("confirm", "testing.confirm",
-            model => model.Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
+        using var interaction = ReactiveInteractionDescriptor.Create<string, bool>("confirm", "testing.confirm",
+            static model => ((RequestModel)model).Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
             .Attach(window.Session, window.Model, Route);
         window.Open("p-1", "connection-1", handlers: """[{"name":"confirm","contract":"testing.confirm"}]""");
 
@@ -226,7 +226,7 @@ public sealed class ViewRequestRoutingTests
         using var window = new RequestWindow();
         var question = new ViewQuestion<string, bool>((_, _) => ValueTask.FromResult(false));
         var unanswered = new ViewQuestion<string, bool>();
-        using var attached = Views.Generated.ViewQuestionDescriptor.Create<RequestModel, string, bool>("ask", "testing.ask",
+        using var attached = Views.Generated.ViewQuestionDescriptor.Create<string, bool>("ask", "testing.ask",
             _ => question, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
             .Attach(window.Session, window.Model, Route);
         Require(!await question.AskAsync("No page?"), "A question without a page did not use its fallback.");
@@ -256,11 +256,11 @@ public sealed class ViewRequestRoutingTests
         using var window = new RequestWindow();
         window.AddRoute("requests-compact");
         using var fallback = window.Model.Confirm.RegisterHandler(context => context.SetOutput(false));
-        using var main = ReactiveInteractionDescriptor.Create<RequestModel, string, bool>("confirm", "testing.confirm",
-            model => model.Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
+        using var main = ReactiveInteractionDescriptor.Create<string, bool>("confirm", "testing.confirm",
+            static model => ((RequestModel)model).Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
             .Attach(window.Session, window.Model, Route);
-        using var compact = ReactiveInteractionDescriptor.Create<RequestModel, string, bool>("confirm", "testing.confirm",
-            model => model.Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
+        using var compact = ReactiveInteractionDescriptor.Create<string, bool>("confirm", "testing.confirm",
+            static model => ((RequestModel)model).Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
             .Attach(window.Session, window.Model, "requests-compact");
         const string handlers = """[{"name":"confirm","contract":"testing.confirm"}]""";
         window.Open("p-1", "connection-1", handlers: handlers);
@@ -617,18 +617,18 @@ public sealed class ViewRequestRoutingTests
     }
 
     private sealed class RequestBridge(IBridgeTransport transport, RequestModel model, WindowContentSession session, string route = Route)
-        : ViewModelBridge<RequestModel>(transport, model, route,
-            [new("title", (writer, value) => writer.WriteStringValue(value.Title)), new("note", (writer, value) => writer.WriteStringValue(value.Note))],
-            [new("Title", "title", value => value.Title, null), new("Note", "note", value => value.Note, null)], [], [], content: session,
+        : ViewModelBridge(transport, model, typeof(RequestModel), route,
+            [new("title", (writer, value) => writer.WriteStringValue(((RequestModel)value).Title)), new("note", (writer, value) => writer.WriteStringValue(((RequestModel)value).Note))],
+            [new("Title", "title", value => ((RequestModel)value).Title, null), new("Note", "note", value => ((RequestModel)value).Note, null)], [], [], content: session,
             interactions:
             [
-                Views.Generated.ViewRequestDescriptor.Create<RequestModel, FocusTarget>("focus", FocusContract, value => value.Focus,
+                Views.Generated.ViewRequestDescriptor.Create<FocusTarget>("focus", FocusContract, static value => ((RequestModel)value).Focus,
                     static input => JsonSerializer.Serialize(new { member = input.Member })),
-                Views.Generated.ViewRequestDescriptor.Create<RequestModel, int>("reveal", RevealContract, value => value.Reveal,
+                Views.Generated.ViewRequestDescriptor.Create<int>("reveal", RevealContract, static value => ((RequestModel)value).Reveal,
                     static input => JsonSerializer.Serialize(input)),
-                Views.Generated.ViewRequestDescriptor.Create<RequestModel, string>("toast", ToastContract, value => value.Toast,
+                Views.Generated.ViewRequestDescriptor.Create<string>("toast", ToastContract, static value => ((RequestModel)value).Toast,
                     static input => JsonSerializer.Serialize(input)),
-                Views.Generated.ViewRequestDescriptor.Create<RequestModel, int>("broken", "testing.request.broken", value => value.Broken,
+                Views.Generated.ViewRequestDescriptor.Create<int>("broken", "testing.request.broken", static value => ((RequestModel)value).Broken,
                     static input => input >= 0 ? JsonSerializer.Serialize(input) : throw new NotImplementedException("No wire form.")),
             ]);
 

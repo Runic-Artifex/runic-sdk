@@ -275,7 +275,7 @@ internal static class BridgeRequests
 // Serves a root route that has no Bridge of its own, such as a route of interactions only: open, close and the
 // interaction requests go to the window as a generated Bridge's route does.
 internal sealed class RouteServerBridge(IBridgeTransport transport, string route, WindowContentSession session)
-    : ViewModelBridge<RouteServerBridge.Model>(transport, new Model(), route, [], [], [], [], content: session)
+    : ViewModelBridge(transport, new Model(), typeof(RouteServerBridge.Model), route, [], [], [], [], content: session)
 {
     internal sealed class Model : System.ComponentModel.INotifyPropertyChanged
     {

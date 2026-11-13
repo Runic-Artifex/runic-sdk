@@ -188,13 +188,13 @@ sealed class BlobModel : INotifyPropertyChanged
 
 // What the generator writes for the model: the blob as a state member, the upload as the command's input.
 sealed class BlobModelBridge(IBridgeTransport transport, BlobModel model, WindowContentSession content)
-    : ViewModelBridge<BlobModel>(transport, model, "blobs",
-        [new BridgeStateMember<BlobModel>("avatar", static (writer, vm) => BridgeWire.WriteBlob(writer, vm.Avatar))],
-        [new("Avatar", "avatar", vm => vm.Avatar, null)], [],
-        [new("Attach", vm => vm.Attach)
+    : ViewModelBridge(transport, model, typeof(BlobModel), "blobs",
+        [new BridgeStateMember("avatar", static (writer, vm) => BridgeWire.WriteBlob(writer, ((BlobModel)vm).Avatar))],
+        [new("Avatar", "avatar", vm => ((BlobModel)vm).Avatar, null)], [],
+        [new("Attach", vm => ((BlobModel)vm).Attach)
         {
             ReadInput = static element => BridgeWire.ReadUpload(element),
-            ExecuteAsync = static (vm, token, argument) => vm.AttachAsync((RunicUpload)argument!, token),
+            ExecuteAsync = static (vm, token, argument) => ((BlobModel)vm).AttachAsync((RunicUpload)argument!, token),
             CanExecute = static (_, _) => true,
         }],
         content: content);

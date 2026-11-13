@@ -164,8 +164,8 @@ internal sealed class DomainFailureCodegenTests
     }
 
     // The fingerprint the generated bridge was constructed with.
-    private static string? ContractFingerprint<T>(ViewModelBridge<T> bridge) where T : class, System.ComponentModel.INotifyPropertyChanged =>
-        typeof(ViewModelBridge<T>).GetField("_contractFingerprint", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+    private static string? ContractFingerprint(ViewModelBridge bridge) =>
+        typeof(ViewModelBridge).GetField("_contractFingerprint", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
             ?.GetValue(bridge) as string;
 
     private static void RequireFailure<T>(RunicCallReply<T> reply, string failure) where T : class =>

@@ -181,7 +181,7 @@ internal sealed class HostedMenuModel : INotifyPropertyChanged, IRunicMenuComman
 }
 
 internal sealed class HostedMenuBridge(IBridgeTransport transport, HostedMenuModel model)
-    : ViewModelBridge<HostedMenuModel>(transport, model, "hosted-menu", [], [], [], []);
+    : ViewModelBridge(transport, model, typeof(HostedMenuModel), "hosted-menu", [], [], [], []);
 
 internal sealed class HostedTestCommand(Func<bool> canExecute, Action<string?> execute) : ICommand
 {

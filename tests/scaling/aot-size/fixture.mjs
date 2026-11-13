@@ -1,5 +1,5 @@
 // The NativeAOT size fixture's ViewModels (tests/scaling/README.md, "NativeAOT size"): K bridged ViewModels of one
-// shape, the members #901 names plus a view request, whose descriptor is generic over the ViewModel too:
+// shape, the members #901 names plus a view request, whose descriptor was generic over the ViewModel too:
 //   - settable members (checked properties): a number, a text member, a flag and a fraction;
 //   - read-only members: a number and a text member;
 //   - a keyed collection, an observed sub-object, a view request, a synchronous and an asynchronous command.

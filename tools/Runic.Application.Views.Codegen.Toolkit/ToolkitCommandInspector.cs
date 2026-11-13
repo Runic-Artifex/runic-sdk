@@ -82,14 +82,16 @@ public static class ToolkitCommandInspector
 
         var name = contract.Name.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("\"", "\\\"", StringComparison.Ordinal);
-        var prefix = $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{command.Name}";
+        // The Bridge runtime holds the ViewModel as object (#901), so each lambda casts it.
+        var model = $"(({modelType})vm)";
+        var prefix = $"new global::Runic.Application.Views.Generated.CommandDescriptor(\"{name}\", static vm => (object){model}.{command.Name}";
         var extras = JoinNamedArguments(readArgument, encodeArgument, subscribe);
         if (!contract.IsAsync) return prefix + extras + ")";
 
         var commandType = contract.HasInput
             ? $"global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<{inputType}>"
             : "global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand";
-        var typedCommand = $"({commandType})vm.{command.Name}";
+        var typedCommand = $"({commandType}){model}.{command.Name}";
         var argument = contract.HasInput ? $"({inputType})argument!" : "null";
         // Registering a pre-cancelled token invokes Cancel synchronously. Do
         // not then start a fresh Toolkit execution after that cancellation has
@@ -99,10 +101,10 @@ public static class ToolkitCommandInspector
             if (string.IsNullOrWhiteSpace(resultType) || string.IsNullOrWhiteSpace(encodeResult))
                 throw new ArgumentException("A Toolkit command with a result needs its generated C# result type and encoder.", nameof(resultType));
             // ExecuteAsync returns the task of the [RelayCommand] method.
-            var executeResult = $"async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); var execution = command.ExecuteAsync({argument}); await execution.ConfigureAwait(false); var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result; return {encodeResult}; }}";
+            var executeResult = $"static async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); var execution = command.ExecuteAsync({argument}); await execution.ConfigureAwait(false); var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result; return {encodeResult}; }}";
             return prefix + ", ExecuteResultAsync: " + executeResult + extras + ")";
         }
-        var execute = $"async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); await command.ExecuteAsync({argument}).ConfigureAwait(false); }}";
+        var execute = $"static async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); await command.ExecuteAsync({argument}).ConfigureAwait(false); }}";
         return prefix + ", " + execute + extras + ")";
     }
 

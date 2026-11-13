@@ -210,7 +210,7 @@ internal static class InteractionCodeEmitter
     internal static IEnumerable<string> CSharpRequestDescriptors(IEnumerable<GeneratedViewRequestPlan> plans, string modelType)
     {
         foreach (var plan in plans)
-            yield return $"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<{modelType}, {plan.Input.RootCSharpType()}>(\"{LowerFirst(plan.Property.Name)}\", \"{plan.ContractId}\", vm => vm.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {plan.Property.Name}RequestInputCodec.Write(writer, input)))";
+            yield return $"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<{plan.Input.RootCSharpType()}>(\"{LowerFirst(plan.Property.Name)}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {plan.Property.Name}RequestInputCodec.Write(writer, input)))";
     }
 
     /// <summary>Appends the public TypeScript view request types.</summary>

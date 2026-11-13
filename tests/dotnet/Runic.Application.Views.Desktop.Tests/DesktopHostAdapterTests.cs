@@ -549,13 +549,13 @@ sealed class OrderedCollectionModel : INotifyPropertyChanged
 }
 
 sealed class OrderedCollectionBridge(IBridgeTransport transport, OrderedCollectionModel model)
-    : ViewModelBridge<OrderedCollectionModel>(transport, model, "ordered", [new BridgeStateMember<OrderedCollectionModel>("rows", static (writer, vm) =>
+    : ViewModelBridge(transport, model, typeof(OrderedCollectionModel), "ordered", [new BridgeStateMember("rows", static (writer, vm) =>
     {
         writer.WriteStartArray();
-        foreach (var value in vm.Rows) writer.WriteNumberValue(value);
+        foreach (var value in ((OrderedCollectionModel)vm).Rows) writer.WriteNumberValue(value);
         writer.WriteEndArray();
-    })], [new("Rows", "rows", vm => vm.Rows, null)], [], [], collections:
-    [new("rows", vm => vm.Rows, static (writer, item) => writer.WriteNumberValue((int)item!),
+    })], [new("Rows", "rows", vm => ((OrderedCollectionModel)vm).Rows, null)], [], [], collections:
+    [new("rows", vm => ((OrderedCollectionModel)vm).Rows, static (writer, item) => writer.WriteNumberValue((int)item!),
         static item => ((int)item!).ToString(System.Globalization.CultureInfo.InvariantCulture))]);
 
 sealed class SlowModel : INotifyPropertyChanged
@@ -575,8 +575,8 @@ sealed class SlowModel : INotifyPropertyChanged
 }
 
 sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-    : ViewModelBridge<SlowModel>(transport, model, "slow", [], [], [],
-    [new("Save", vm => vm.Save) { ExecuteAsync = (vm, _, _) => vm.SaveAsync(), CanExecute = (_, _) => true }],
+    : ViewModelBridge(transport, model, typeof(SlowModel), "slow", [], [], [],
+    [new("Save", vm => ((SlowModel)vm).Save) { ExecuteAsync = (vm, _, _) => ((SlowModel)vm).SaveAsync(), CanExecute = (_, _) => true }],
     content: content);
 
 sealed class NoopCommand : ICommand

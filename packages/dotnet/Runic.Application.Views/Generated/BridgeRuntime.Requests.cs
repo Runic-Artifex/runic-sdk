@@ -9,9 +9,9 @@ namespace Runic.Application.Views.Generated;
 // A request that changes state runs in one model turn: its effects, then the publication of everything pending on the
 // route, whose revision the reply carries (PublishForReply). The reply then waits, at most 5 seconds, until the pushes
 // the window requested before it was ready were handed to the transport.
-public partial class ViewModelBridge<T>
+public partial class ViewModelBridge
 {
-    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler, IBridgePresentedHandler, IBridgeViewRequestRoute
+    private sealed class RouteHandler(ViewModelBridge owner) : IBridgeRouteHandler, IBridgePresentedHandler, IBridgeViewRequestRoute
     {
         public void Presented(BridgeConnection connection, long revision) => owner.Presented(revision);
 
@@ -217,7 +217,7 @@ public partial class ViewModelBridge<T>
 
     // The value a set's splice applies to: the connection's latest admitted edit of the member, or the member's value
     // in the route's state at a revision. Null when the producer does not have it, or it is not text.
-    private string? SpliceBase(BridgeConnection connection, PropertyDescriptor<T> property, JsonElement splice) =>
+    private string? SpliceBase(BridgeConnection connection, PropertyDescriptor property, JsonElement splice) =>
         splice.TryGetProperty("baseEdit", out var baseEdit)
             ? connection.EditText(_name, property.WireName, Integer(splice, "baseEdit"))
             : PublishedText(property, Integer(splice, "baseRevision"));
@@ -541,7 +541,7 @@ public partial class ViewModelBridge<T>
     }
 
     private static void WriteFieldSnapshot(Utf8JsonWriter writer, string name, BridgeFieldSnapshot<object?> snapshot,
-        CheckedPropertyDescriptor<T> descriptor)
+        CheckedPropertyDescriptor descriptor)
     {
         writer.WritePropertyName(name);
         writer.WriteStartObject();
@@ -554,7 +554,7 @@ public partial class ViewModelBridge<T>
     // The command of a command, can or start request, and its decoded input: null with the reply when the member is not
     // a command, or the input is missing, extra or invalid. Without decode the input is only checked to be present
     // exactly when the command takes one; the caller decodes it later (DecodeInput).
-    private CommandDescriptor<T>? ReadCommand(BridgeRouteRequest request, out object? input, out ReadOnlyMemory<byte> refusal,
+    private CommandDescriptor? ReadCommand(BridgeRouteRequest request, out object? input, out ReadOnlyMemory<byte> refusal,
         bool decode = true)
     {
         input = null;
@@ -582,7 +582,7 @@ public partial class ViewModelBridge<T>
     }
 
     // Decodes a command's input: null, or the invalid-input reply.
-    private byte[]? DecodeInput(CommandDescriptor<T> descriptor, JsonElement element, string connection, out object? input)
+    private byte[]? DecodeInput(CommandDescriptor descriptor, JsonElement element, string connection, out object? input)
     {
         input = null;
         // blobs/1: an upload in the input decodes only for the request's own connection.
@@ -598,7 +598,7 @@ public partial class ViewModelBridge<T>
 
     // Decodes a command's input. An out-of-range number is an invalid input; an OverflowException from the command
     // itself stays a failure.
-    private static object? ReadInput(CommandDescriptor<T> descriptor, JsonElement input)
+    private static object? ReadInput(CommandDescriptor descriptor, JsonElement input)
     {
         try
         {
@@ -607,7 +607,7 @@ public partial class ViewModelBridge<T>
         catch (OverflowException error) { throw new FormatException("The command input is out of range.", error); }
     }
 
-    private static bool IsAsynchronous(CommandDescriptor<T> descriptor) =>
+    private static bool IsAsynchronous(CommandDescriptor descriptor) =>
         descriptor.ExecuteAsync is not null || descriptor.ExecuteResultAsync is not null || descriptor.ExecuteStreamAsync is not null
         || descriptor.ResolveArgumentAsync is not null;
 
@@ -667,12 +667,12 @@ public partial class ViewModelBridge<T>
 
     // In the command's model turn, after the epoch check: decodes a scoped command's input. Null, or the invalid-input
     // reply.
-    private byte[]? DecodeScopedInput(CommandDescriptor<T> descriptor, CommandRequest request, ref object? key) =>
+    private byte[]? DecodeScopedInput(CommandDescriptor descriptor, CommandRequest request, ref object? key) =>
         request.Input is { } element ? DecodeInput(descriptor, element, request.Connection, out key) : null;
 
     // A synchronous command, in the request's model turn. The flag says whether the reply waits for the window's pushes:
     // the command ran, or it was superseded.
-    private (ReadOnlyMemory<byte> Reply, bool Ran) Execute(CommandDescriptor<T> descriptor, object? key, BridgeConnection connection,
+    private (ReadOnlyMemory<byte> Reply, bool Ran) Execute(CommandDescriptor descriptor, object? key, BridgeConnection connection,
         CommandRequest request)
     {
         lock (_modelGate)
@@ -732,7 +732,7 @@ public partial class ViewModelBridge<T>
     }
 
     // An awaited command: admitted in a model turn, awaited outside it, and answered in a new turn.
-    private async ValueTask<(ReadOnlyMemory<byte> Reply, bool Ran)> ExecuteAsync(CommandDescriptor<T> descriptor, object? key,
+    private async ValueTask<(ReadOnlyMemory<byte> Reply, bool Ran)> ExecuteAsync(CommandDescriptor descriptor, object? key,
         BridgeConnection connection, CommandRequest request, CancellationToken token)
     {
         // The awaited command is window work like an admitted operation: closing the window waits for it before the
@@ -900,7 +900,7 @@ public partial class ViewModelBridge<T>
 
     // can of a command with an asynchronous key resolver: an unresolved key, a closing window and a cancelled resolution
     // answer false. The resolution is awaited window work, as an awaited command is.
-    private async ValueTask<bool> QueryAvailabilityAsync(CommandDescriptor<T> descriptor, object? key, CancellationToken token)
+    private async ValueTask<bool> QueryAvailabilityAsync(CommandDescriptor descriptor, object? key, CancellationToken token)
     {
         using var admission = _content?.Operations.TryBeginAwaited(token, out _);
         if (_content is not null && admission is null) return false;
@@ -978,7 +978,7 @@ public partial class ViewModelBridge<T>
 
     // A declared failure is an expected outcome: a Debug log with the exception (D-12) and no failure metric. One that
     // cannot be sent as declared falls back to the failed reply and is logged as an error.
-    private BridgeFailure CommandDomainFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, RunicFailureException domain)
+    private BridgeFailure CommandDomainFailure(ref BridgeCall call, CommandDescriptor descriptor, RunicFailureException domain)
     {
         var failureType = BridgeDomainFailures.TypeName(domain);
         var encoded = BridgeDomainFailures.TryEncode(descriptor.EncodeFailure, domain, out var reason, out var logged);
@@ -994,16 +994,16 @@ public partial class ViewModelBridge<T>
     }
 
     // A command invocation reaches the interactions of the requesting connection's presentation.
-    private RunicInteractionInvocation.InvocationScope? EnterInvocation(CommandDescriptor<T> descriptor, BridgeConnection connection, CancellationToken token) =>
+    private RunicInteractionInvocation.InvocationScope? EnterInvocation(CommandDescriptor descriptor, BridgeConnection connection, CancellationToken token) =>
         _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, connection.ClientKey, connection.Key, descriptor.Name, token);
 
-    private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>
+    private bool IsAvailable(CommandDescriptor descriptor, object? argument) =>
         descriptor.CanExecute?.Invoke(_vm, argument)
         ?? (descriptor.Get(_vm) is ICommand command && command.CanExecute(argument));
 
     // The command's parameter for a decoded input: the input itself, or the object a synchronous key resolver returns
     // for it. False when the key names no object.
-    private bool TryResolve(CommandDescriptor<T> descriptor, object? key, out object? argument)
+    private bool TryResolve(CommandDescriptor descriptor, object? key, out object? argument)
     {
         if (descriptor.ResolveArgument is not { } resolve)
         {
@@ -1014,7 +1014,7 @@ public partial class ViewModelBridge<T>
         return argument is not null;
     }
 
-    private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, object? argument, CancellationToken token)
+    private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor descriptor, object? argument, CancellationToken token)
     {
         // blobs/1: a result's blobs belong to the route. The scope flows through the command's awaits into the
         // generated code that encodes its result.
@@ -1033,7 +1033,7 @@ public partial class ViewModelBridge<T>
         return BridgeOperationResult.None;
     }
 
-    private static object? ReadCheckedValue(JsonElement value, CheckedPropertyDescriptor<T> descriptor) => descriptor.ValueKind switch
+    private static object? ReadCheckedValue(JsonElement value, CheckedPropertyDescriptor descriptor) => descriptor.ValueKind switch
     {
         CheckedFieldValueKind.String when value.ValueKind is JsonValueKind.String => value.GetString(),
         CheckedFieldValueKind.NullableString when value.ValueKind is JsonValueKind.String => value.GetString(),
@@ -1045,13 +1045,13 @@ public partial class ViewModelBridge<T>
         _ => throw new FormatException("The checked field value does not match its generated type."),
     };
 
-    private static string EncodeCheckedValue(object? value, CheckedPropertyDescriptor<T> descriptor) =>
+    private static string EncodeCheckedValue(object? value, CheckedPropertyDescriptor descriptor) =>
         BridgeCanonicalJson.Encode(WriteCheckedValue, (value, descriptor));
 
-    private static void WriteCheckedValue(Utf8JsonWriter writer, (object? Value, CheckedPropertyDescriptor<T> Descriptor) checkedValue) =>
+    private static void WriteCheckedValue(Utf8JsonWriter writer, (object? Value, CheckedPropertyDescriptor Descriptor) checkedValue) =>
         WriteCheckedValue(writer, checkedValue.Value, checkedValue.Descriptor);
 
-    private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedPropertyDescriptor<T> descriptor)
+    private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedPropertyDescriptor descriptor)
     {
         switch (descriptor.ValueKind)
         {

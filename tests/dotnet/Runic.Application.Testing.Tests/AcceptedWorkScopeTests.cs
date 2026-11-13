@@ -352,8 +352,8 @@ internal sealed class AcceptedWorkScopeTests
     }
 
     private sealed class RecoveryBridge(IBridgeTransport transport, RecoveryModel model, WindowContentSession content)
-        : ViewModelBridge<RecoveryModel>(transport, model, "recovery", [], [], [],
-        [new("Save", vm => (System.Windows.Input.ICommand)vm.Save) { ExecuteAsync = (vm, cancellation, _) => ReactiveCommandExecution.ExecuteCompletion(vm.Save, RxVoid.Default, cancellation), CanExecute = (_, _) => true }],
+        : ViewModelBridge(transport, model, typeof(RecoveryModel), "recovery", [], [], [],
+        [new("Save", vm => (System.Windows.Input.ICommand)((RecoveryModel)vm).Save) { ExecuteAsync = (vm, cancellation, _) => ReactiveCommandExecution.ExecuteCompletion(((RecoveryModel)vm).Save, RxVoid.Default, cancellation), CanExecute = (_, _) => true }],
         content: content);
 
     private sealed record LogEntry(LogLevel Level, EventId EventId, Exception? Exception);

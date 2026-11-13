@@ -28,7 +28,7 @@ if (validationError.GetProperty("code").GetString() != "required"
 
 // The operation contract the generated client sends: {ViewModel full name}:{fingerprint}. The generated Bridge holds
 // the fingerprint; computing it again would reflect over the model, which NativeAOT does not keep.
-var fingerprint = (string)typeof(ViewModelBridge<AotProofViewModel>)
+var fingerprint = (string)typeof(ViewModelBridge)
     .GetField("_contractFingerprint", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(bridge)!;
 var contract = JsonEncodedText.Encode($"{typeof(AotProofViewModel).FullName}:{fingerprint}").ToString();
 var input = """{"documentId":"aot","expectedVersion":"9007199254740993","amount":"12.50","when":"2026-09-28T10:11:12.0000000"}""";

@@ -48,14 +48,16 @@ public static class ReactiveCommandInspector
         if (contract is null || contract.Result != typeof(RxVoid)
             || (contract.Input != typeof(RxVoid) && contract.Input != typeof(string))) return null;
         var hasStringArgument = contract.Input == typeof(string);
+        // The Bridge runtime holds the ViewModel as object (#901), so each lambda casts it.
+        var model = $"(({modelType})vm)";
         var execution = hasStringArgument
-            ? $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<string, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, (string)argument!, token)"
-            : $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, global::ReactiveUI.Primitives.RxVoid.Default, token)";
+            ? $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<string, global::ReactiveUI.Primitives.RxVoid>){model}.{command.Name}, (string)argument!, token)"
+            : $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>){model}.{command.Name}, global::ReactiveUI.Primitives.RxVoid.Default, token)";
         var readArgument = hasStringArgument
             ? ", ReadInput: input => global::Runic.Application.Views.Generated.BridgeWire.ReadString(input)"
             : "";
-        var descriptor = $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (global::System.Windows.Input.ICommand)(object)vm.{command.Name}, "
-            + $"async (vm, token, argument) => {{ await {execution}.ConfigureAwait(false); }}{readArgument})";
+        var descriptor = $"new global::Runic.Application.Views.Generated.CommandDescriptor(\"{contract.Name}\", static vm => (global::System.Windows.Input.ICommand)(object){model}.{command.Name}, "
+            + $"static async (vm, token, argument) => {{ await {execution}.ConfigureAwait(false); }}{readArgument})";
         return (hasStringArgument, true, descriptor);
     }
 

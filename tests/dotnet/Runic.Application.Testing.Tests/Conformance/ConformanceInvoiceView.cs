@@ -110,17 +110,17 @@ internal sealed class InvoiceViewModel : ConformanceModel
 }
 
 internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel vm, WindowContentSession content)
-    : ViewModelBridge<InvoiceViewModel>(transport, vm, "invoice",
+    : ViewModelBridge(transport, vm, typeof(InvoiceViewModel), "invoice",
         [
-            new("address", (writer, model) => InvoiceAddress.Write(writer, model.Address)),
-            new("lines", (writer, model) => { writer.WriteStartArray(); foreach (var line in model.Lines) InvoiceLine.Write(writer, line); writer.WriteEndArray(); }),
+            new("address", (writer, model) => InvoiceAddress.Write(writer, ((InvoiceViewModel)model).Address)),
+            new("lines", (writer, model) => { writer.WriteStartArray(); foreach (var line in ((InvoiceViewModel)model).Lines) InvoiceLine.Write(writer, line); writer.WriteEndArray(); }),
         ],
         [
-            new("Address", "address", model => model.Address, (model, value) => model.Address = InvoiceAddress.Read(value)),
-            new("Lines", "lines", model => model.Lines, null),
+            new("Address", "address", model => ((InvoiceViewModel)model).Address, (model, value) => ((InvoiceViewModel)model).Address = InvoiceAddress.Read(value)),
+            new("Lines", "lines", model => ((InvoiceViewModel)model).Lines, null),
         ],
         [
-            new("Address", "address", CheckedFieldValueKind.Json, model => model.Address, (model, value) => model.Address = (InvoiceAddress)value!,
+            new("Address", "address", CheckedFieldValueKind.Json, model => ((InvoiceViewModel)model).Address, (model, value) => ((InvoiceViewModel)model).Address = (InvoiceAddress)value!,
                 readValue: InvoiceAddress.Read, writeValue: (writer, value) => InvoiceAddress.Write(writer, (InvoiceAddress)value!))
             {
                 FieldPaths =
@@ -133,13 +133,13 @@ internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel
         [], "conformance-invoice", content,
         collections:
         [
-            new("lines", model => model.Lines, (writer, row) => InvoiceLine.Write(writer, (InvoiceLine)row!), InvoiceLine.KeyOf)
+            new("lines", model => ((InvoiceViewModel)model).Lines, (writer, row) => InvoiceLine.Write(writer, (InvoiceLine)row!), InvoiceLine.KeyOf)
             {
                 FieldPaths =
                 [
                     new(["label"], (line, value) => (InvoiceLine)line with { Label = ConformanceWire.String(value) }),
                     new(["quantity"], (line, value) => (InvoiceLine)line with { Quantity = InvoiceLine.ReadQuantity(value) }),
                 ],
-                UpdateRow = (model, row, _) => model.UpdateLine(((InvoiceLine)row!).Id, (InvoiceLine)row),
+                UpdateRow = (model, row, _) => ((InvoiceViewModel)model).UpdateLine(((InvoiceLine)row!).Id, (InvoiceLine)row),
             },
         ]);

@@ -389,29 +389,29 @@ internal sealed class SnapshotBatchTests
     }
 
     private sealed class ProbeBridge(IBridgeTransport transport, Model model, string route, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, route, [new BridgeStateMember<Model>("value", (writer, vm) =>
+        : ViewModelBridge(transport, model, typeof(Model), route, [new BridgeStateMember("value", (writer, vm) =>
         {
             counter.Capture();
-            writer.WriteNumberValue(vm.Value);
+            writer.WriteNumberValue(((Model)vm).Value);
         })], [], [], []);
 
     private sealed class ThrowingProbeBridge(IBridgeTransport transport, Model model)
-        : ViewModelBridge<Model>(transport, model, "throwing", [new BridgeStateMember<Model>("value", static (writer, vm) =>
+        : ViewModelBridge(transport, model, typeof(Model), "throwing", [new BridgeStateMember("value", static (writer, vm) =>
         {
-            ObjectDisposedException.ThrowIf(vm.Value == 13, vm);
-            writer.WriteNumberValue(vm.Value);
+            ObjectDisposedException.ThrowIf(((Model)vm).Value == 13, ((Model)vm));
+            writer.WriteNumberValue(((Model)vm).Value);
         })], [], [], []);
 
     private sealed class CheckedProbeBridge(IBridgeTransport transport, Model model,
         WindowContentSession content, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, "checked", [new BridgeStateMember<Model>("value", (writer, vm) =>
+        : ViewModelBridge(transport, model, typeof(Model), "checked", [new BridgeStateMember("value", (writer, vm) =>
         {
             counter.Capture();
-            writer.WriteNumberValue(vm.Value);
+            writer.WriteNumberValue(((Model)vm).Value);
         })], [],
-        [new("Value", "value", CheckedFieldValueKind.Int32, vm => vm.Value,
-            (vm, value) => vm.Value = (int)value!)],
-        [new("Increment", vm => vm.Increment)], contractFingerprint: "snapshot-batch", content: content);
+        [new("Value", "value", CheckedFieldValueKind.Int32, vm => ((Model)vm).Value,
+            (vm, value) => ((Model)vm).Value = (int)value!)],
+        [new("Increment", vm => ((Model)vm).Increment)], contractFingerprint: "snapshot-batch", content: content);
 
     private sealed class DelegateCommand(Action execute) : ICommand
     {

@@ -5,8 +5,8 @@ namespace Runic.Application.Views.Generated;
 // field add in code that already holds the Bridge's model gate, and nothing outside the tests reads them. They are not
 // public API.
 //
-// A1-b (#901, the non-generic Bridge runtime) keeps them as one instance per Bridge (ViewModelBridge.Costs, read through
-// IBridgeCostSource) and keeps each increment at the code it counts: the comments name the methods.
+// One instance per Bridge (ViewModelBridge.Costs, read through IBridgeCostSource), with each increment at the code it
+// counts: the comments name the methods.
 internal sealed class BridgeCostCounters
 {
     // Units that PublishUnitCore ran.

@@ -236,8 +236,8 @@ public sealed class ModelContextTests
         const string route = "scheduledInteraction";
         const string name = "confirm";
         const string contract = "testing.scheduled-interaction.v1";
-        using var descriptor = ReactiveInteractionDescriptor.Create<ScheduledInteractionModel, string, bool>(
-            name, contract, value => value.Confirm,
+        using var descriptor = ReactiveInteractionDescriptor.Create<string, bool>(
+            name, contract, static value => ((ScheduledInteractionModel)value).Confirm,
             static value => JsonSerializer.Serialize(value), static value => value.GetBoolean()).Attach(session, model, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
         using var server = new RouteServerBridge(transport, route, session);
@@ -444,7 +444,7 @@ public sealed class ModelContextTests
 
     private sealed class ProbeBridge(IBridgeTransport transport, NotifyingModel model, string route,
         WindowContentSession content)
-        : ViewModelBridge<NotifyingModel>(transport, model, route, [], [], [], [], content: content);
+        : ViewModelBridge(transport, model, typeof(NotifyingModel), route, [], [], [], [], content: content);
 
     // Implements IRunicView directly so the bridge generator does not treat
     // this private probe as an application View.
