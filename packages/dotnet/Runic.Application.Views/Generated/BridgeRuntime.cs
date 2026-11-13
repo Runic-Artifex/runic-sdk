@@ -706,7 +706,7 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
                     _checkedProperties = [.. checkedBindings];
                 }
             }
-            foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
+            foreach (var descriptor in _incrementalCollections) SetCollectionInstance(descriptor, descriptor.Get(_vm));
             _vm.PropertyChanged += OnChanged;
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
@@ -883,7 +883,7 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
     {
         var rows = descriptor.Get(_vm);
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
-        _collectionInstances[descriptor] = rows;
+        SetCollectionInstance(descriptor, rows);
         // The row index of the previous instance would keep it and its rows alive.
         _collectionIndexes.Remove(descriptor);
         MarkCollectionSet(descriptor);

@@ -35,12 +35,18 @@ public partial class ViewModelBridge
     // Keyed collections whose next publication is a set of the field: reset, replaced, changed in a way indexed changes
     // cannot express, or withheld because of invalid keys.
     private readonly HashSet<BridgeCollectionDescriptor> _collectionSets = [];
-    // The instance of each keyed collection the pending changes describe.
+    // The instance of each keyed collection the pending changes describe, also by the collection's index in
+    // _incrementalCollections, so a collection change finds its collections by reference without reading every getter
+    // (#910). Both change only through SetCollectionInstance.
     private readonly Dictionary<BridgeCollectionDescriptor, object?> _collectionInstances = [];
+    private object?[]? _instancesByIndex;
     // The keys of each frame-publishing collection as of the last full state and the frames since, so a change that
     // adds a duplicate key is found at once.
     private readonly Dictionary<BridgeCollectionDescriptor, BridgeCollectionKeyBaseline> _collectionKeys = [];
     private readonly List<BridgeCollectionChange> _pendingCollectionChanges = [];
+    // The number of pending changes of each keyed collection (by descriptor) that has any, so a change checks the frame's
+    // limit without counting the pending list (#910).
+    private readonly Dictionary<object, int> _pendingCounts = new(ReferenceEqualityComparer.Instance);
     // The row-to-index map of each frame-publishing collection, for the instance it was built from: a row's own change
     // finds its index without a scan of the rows. A collection change drops it.
     private readonly Dictionary<BridgeCollectionDescriptor, (object Rows, Dictionary<object, int> Indexes)> _collectionIndexes = [];
@@ -187,7 +193,7 @@ public partial class ViewModelBridge
         {
             // The requested state shows this unit, at the revision current when it is captured.
             _revision = NextRevision();
-            _pendingCollectionChanges.Clear();
+            ClearPendingChanges();
             _collectionSets.Clear();
             Published(changed);
             return;
@@ -357,7 +363,7 @@ public partial class ViewModelBridge
             _textBaselines[member] = value;
         }
         _publishedRevision = revision;
-        _pendingCollectionChanges.Clear();
+        ClearPendingChanges();
         _collectionSets.Clear();
         _withheld = false;
         _rejectedKeys = null;
@@ -370,7 +376,7 @@ public partial class ViewModelBridge
         _withheld = true;
         _revision = NextRevision();
         foreach (var change in _pendingCollectionChanges) _collectionSets.Add(change.Descriptor);
-        _pendingCollectionChanges.Clear();
+        ClearPendingChanges();
         foreach (var descriptor in _keyedCollections.Where(descriptor => descriptor.Name == keys.Field && descriptor.PublishesChanges))
             _collectionSets.Add(descriptor);
         ReportRejectedKeys(keys);
@@ -385,7 +391,7 @@ public partial class ViewModelBridge
             BridgeTelemetry.RecoverySnapshots.Add(1, new KeyValuePair<string, object?>(BridgeTelemetry.ModelTag, ModelName));
         if (_delivery.StateQueued)
         {
-            _pendingCollectionChanges.Clear();
+            ClearPendingChanges();
             _collectionSets.Clear();
             _delivery.RequestState();
             return;
@@ -396,7 +402,7 @@ public partial class ViewModelBridge
         try { state = WriteStatePush(); }
         catch (Exception) when (!IsInactive)
         {
-            _pendingCollectionChanges.Clear();
+            ClearPendingChanges();
             _collectionSets.Clear();
             _delivery.RequestState();
             return;
@@ -548,7 +554,7 @@ public partial class ViewModelBridge
                 && message.Buffer.SequenceEqual(start, previous)) continue;
             _baselines[name] = message.Buffer.ToArray(start, length);
         }
-        foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
+        foreach (var descriptor in _incrementalCollections) SetCollectionInstance(descriptor, descriptor.Get(_vm));
         Commit([], _revision, fullState: true);
         // The state is a unit that compared every member.
         Published(changed);
@@ -693,9 +699,52 @@ public partial class ViewModelBridge
     {
         if (_baselines is null) return;
         _collectionSets.Add(descriptor);
-        Costs.PendingScans += _pendingCollectionChanges.Count;
-        _pendingCollectionChanges.RemoveAll(change => change.Descriptor == descriptor);
+        // Once per collection and unit at most: changes of a collection that becomes a set are not kept.
+        if (_pendingCounts.Remove(descriptor))
+        {
+            Costs.PendingScans += _pendingCollectionChanges.Count;
+            _pendingCollectionChanges.RemoveAll(change => change.Descriptor == descriptor);
+        }
         _collectionKeys.Remove(descriptor);
+    }
+
+    private void AddPendingChange(BridgeCollectionChange change)
+    {
+        _pendingCollectionChanges.Add(change);
+        _pendingCounts[change.Descriptor] = _pendingCounts.GetValueOrDefault(change.Descriptor) + 1;
+    }
+
+    private void ClearPendingChanges()
+    {
+        _pendingCollectionChanges.Clear();
+        _pendingCounts.Clear();
+    }
+
+    // Makes rows the instance whose changes the pending changes of descriptor describe.
+    private void SetCollectionInstance(BridgeCollectionDescriptor descriptor, object? rows)
+    {
+        _collectionInstances[descriptor] = rows;
+        _instancesByIndex ??= new object?[_incrementalCollections.Length];
+        _instancesByIndex[Array.IndexOf(_incrementalCollections, descriptor)] = rows;
+    }
+
+    // The frame-publishing keyed collections whose getter returns collection, in declaration order: those whose instance
+    // it is, found by reference and confirmed with one getter read each (#910). After a named notification, until the
+    // next unit refreshes every member, a getter may return an instance the Bridge has not read yet (#891), so a
+    // collection that is no confirmed collection's instance is then looked for in every getter.
+    private BridgeCollectionDescriptor[] CollectionsHolding(INotifyCollectionChanged collection)
+    {
+        var instances = _instancesByIndex ?? [];
+        BridgeCollectionDescriptor[]? holding = null;
+        for (var index = 0; index < instances.Length; index++)
+        {
+            if (!ReferenceEquals(instances[index], collection)) continue;
+            var descriptor = _incrementalCollections[index];
+            if (ReferenceEquals(descriptor.Get(_vm), collection)) holding = holding is null ? [descriptor] : [.. holding, descriptor];
+        }
+        if (holding is not null) return holding;
+        if (!_memberRefreshPending) return [];
+        return _incrementalCollections.Where(descriptor => ReferenceEquals(descriptor.Get(_vm), collection)).ToArray();
     }
 
     // A closed model context makes the change one for a released Bridge: handled, nothing published.
@@ -706,7 +755,7 @@ public partial class ViewModelBridge
             lock (_modelGate)
             {
                 if (IsInactive) return true;
-                var descriptors = _incrementalCollections.Where(descriptor => ReferenceEquals(descriptor.Get(_vm), collection)).ToArray();
+                var descriptors = CollectionsHolding(collection);
                 if (descriptors.Length == 0) return false;
                 foreach (var descriptor in descriptors) _collectionIndexes.Remove(descriptor);
                 if (_baselines is null) return true;
@@ -743,15 +792,13 @@ public partial class ViewModelBridge
                             : [];
                         ReleaseRows(descriptor, keys.Where(key => !kept.Contains(key)));
                     }
-                    _pendingCollectionChanges.Add(new(descriptor, kind,
+                    AddPendingChange(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
                         args.OldStartingIndex, keys, items)
                     {
                         ItemKeys = kind == "replace" ? args.NewItems?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [] : kind == "add" ? keys : [],
                     });
-                    Costs.PendingScans += _pendingCollectionChanges.Count;
-                    if (_pendingCollectionChanges.Count(change => change.Descriptor == descriptor) > MaximumChanges)
-                        MarkCollectionSet(descriptor);
+                    if (_pendingCounts[descriptor] > MaximumChanges) MarkCollectionSet(descriptor);
                 }
                 ScheduleUnit();
                 return true;
@@ -786,7 +833,7 @@ public partial class ViewModelBridge
                     if (_baselines is null || _collectionSets.Contains(descriptor) || ReplacedUnnoticed(descriptor, rows)) continue;
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
-                    else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
+                    else AddPendingChange(new(descriptor, "replace", at, at,
                         [key], [WriteValue(writer => WriteItemValue(descriptor, writer, item))]) { ItemKeys = [key] });
                 }
                 if (handled) ScheduleUnit();
@@ -800,7 +847,7 @@ public partial class ViewModelBridge
     private bool ReplacedUnnoticed(BridgeCollectionDescriptor descriptor, object rows)
     {
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return false;
-        _collectionInstances[descriptor] = rows;
+        SetCollectionInstance(descriptor, rows);
         _collectionIndexes.Remove(descriptor);
         MarkCollectionSet(descriptor);
         return true;

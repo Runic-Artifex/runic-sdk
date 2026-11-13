@@ -24,8 +24,8 @@ internal sealed class BridgeCostCounters
     internal long IndexRebuilds;
     internal long IndexRebuildRows;
 
-    // Pending collection changes visited by searches of the pending list: the per-change limit check in
-    // TryPublishCollection, MarkCollectionSet's removal, and Commit's field-path loop (B3, B8).
+    // Pending collection changes visited by searches of the pending list: MarkCollectionSet's removal of a collection's
+    // changes, and Commit's field-path loop (B3, B8). A change checks the frame's limit with a count per collection.
     internal long PendingScans;
 
     // Frames a unit wrote, and their bytes.
