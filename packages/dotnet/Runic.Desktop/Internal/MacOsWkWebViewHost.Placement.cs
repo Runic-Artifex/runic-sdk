@@ -16,9 +16,10 @@ internal sealed partial class MacOsWkWebViewHost
     private bool? _zoomAfterFullScreen;
     private DesktopWindowPlacement? _placementAfterFullScreen;
     private bool _leaveFullScreenAfterTransition;
-    // Main thread only: the frame a placement gave a window that stays or becomes zoomed. zoom: returns to the frame
-    // AppKit saved when the window zoomed, which a frame set while it is zoomed does not replace, so the window takes
-    // this frame once it is unzoomed (QueueRestoreFrame), by RestoreAsync or by the user.
+    // Main thread only: the frame a window that MaximizeAsync zoomed, or a placement left zoomed, restores to. zoom:
+    // returns to a frame AppKit saved, which a frame set while the window is zoomed does not replace and a later zoom:
+    // does not always either (osx-arm64 CI), so the window takes this frame once it is unzoomed (QueueRestoreFrame), by
+    // RestoreAsync or by the user.
     private CGRect? _restoreFrame;
     // Whether the window was seen zoomed since, so a resize during the zoom: animation does not count as unzoomed, and
     // how often the frame was given, as an unzoom animation may still end at AppKit's frame afterwards.
@@ -43,6 +44,8 @@ internal sealed partial class MacOsWkWebViewHost
                 return;
             }
             var miniaturized = Api.SendBool(_window, "isMiniaturized");
+            // The frame the window zooms from is the one it restores to: AppKit may return to a frame it saved earlier.
+            if (!Api.SendBool(_window, "isZoomed")) SetRestoreFrame(Api.SendRect(_window, "frame"), zoomedNow: false);
             if (miniaturized || !Api.SendBool(_window, "isVisible"))
             {
                 (_zoomWhenShown, _unzoomWhenShown) = (true, false);
