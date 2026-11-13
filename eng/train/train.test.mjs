@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { compareVersions, lineUpperBound, parseRange, rangeContains, sameLine } from './versions.mjs';
 import { nugetConfig, parseNuspec, repoOf } from './nuget.mjs';
 import { parseSpec, versionForRelease } from './sources.mjs';
@@ -127,9 +129,18 @@ test('template and tool pins must equal the train versions', () => {
 });
 
 test('expected failures apply only below the fixing release and report entries that no longer reproduce', () => {
-  const entries = loadExpected();
-  expect(entries.map(entry => entry.id)).toEqual(['I1', 'I2', 'I4', 'I7', 'I3']);
-  for (const entry of entries) expect(entry.applies.below).toBe('0.10.0');
+  // Translations 0.10.0 fixed the 0.18 train's entries; these are four of them as they were.
+  expect(loadExpected()).toEqual([]);
+  const directory = mkdtempSync(join(tmpdir(), 'runic-expected-'));
+  const below = { 'Runic.Translations.CommandLine': '0.10.0', 'Runic.Translations': '0.10.0' };
+  const entry = (id, applies, failures) => ({ id, title: id, remove: 'After Translations 0.10.0.', applies: { package: applies, below: below[applies] }, failures });
+  writeFileSync(join(directory, 'expected-failures.json'), JSON.stringify({ entries: [
+    { ...entry('I1', 'Runic.Translations.CommandLine', [{ scenario: 'S1', match: 'NU1608: .*Runic\\.Translations\\.CommandLine \\S+ requires Runic\\.CommandLine' }]), waive: ['NU1608'] },
+    entry('I2', 'Runic.Translations.CommandLine', [{ scenario: 'S1', check: 'german', match: '^English framework text in German output: Run "' }]),
+    entry('I4', 'Runic.Translations', [{ scenario: 'S6', check: 'range-form', match: '^Runic\\.Translations\\.(Hosting|Wpf) ' }]),
+    entry('I3', 'Runic.Translations', [{ scenario: 'S8', match: 'NU1(605|109): .*CsWebUi' }])] }));
+  let entries;
+  try { entries = loadExpected(join(directory, 'expected-failures.json')); } finally { rmSync(directory, { recursive: true, force: true }); }
   const versions = { 'Runic.Translations.CommandLine': '0.9.1', 'Runic.Translations': '0.9.1' };
   const active = activeEntries(entries, id => versions[id] ?? null);
   expect(active).toHaveLength(4);

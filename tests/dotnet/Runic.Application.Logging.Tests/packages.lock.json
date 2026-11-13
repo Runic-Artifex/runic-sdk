@@ -37,7 +37,7 @@
         "type": "Direct",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "xHHJPPeP6Fe2EfC0iqO13Fm5kOxOBEQUESASEY3lrequQWMe4PVIPaKlfNMjpHsClxdayjq1Go1vi8IdqsD/Pg=="
+        "contentHash": "Wp6iDmzesVfupHHCop1XDidQUf/D1uQcn0c4yr8JjtFG8qqRXU5l1qCYLkA63sLsXU9SdR4TlctQbNi2o1E5qQ=="
       },
       "Serilog": {
         "type": "Direct",
