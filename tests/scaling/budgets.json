@@ -228,10 +228,10 @@
     "aot/bridge/executable-bytes": {
       "class": "O(n)",
       "sizes": [1, 9],
-      "limit": 225657,
-      "measured": [20960, 221232],
+      "limit": 229835,
+      "measured": [29136, 225328],
       "slack": 32768,
-      "note": "linux-x64 executable bytes above the build without fixture ViewModels; measured / 9 is the cost per ViewModel, about 24.4 KiB after #901 (118 KiB before): the generated Bridge's constructor, codecs and lambdas and the ViewModel itself. Section alignment makes the size not exactly linear: the slack and the 2 % margin absorb it",
+      "note": "linux-x64 executable bytes above the build without fixture ViewModels; the slope from 1 to 9 is the cost per ViewModel, about 24 KiB after #901 (118 KiB before; win-x64 22.2 KiB, osx-arm64 24.4 KiB in the ci:all-platforms run of #918): the generated Bridge's constructor, codecs and lambdas and the ViewModel itself. Section alignment makes the size not exactly linear: the slack and the 2 % margin absorb it",
       "margin": 0.02
     },
     "aot/bridge/view-model-types": {
@@ -251,8 +251,8 @@
     "aot/executable-bytes": {
       "class": "total",
       "sizes": [0, 9],
-      "limit": 10935363,
-      "measured": [10499712, 10720944],
+      "limit": 10939590,
+      "measured": [10499760, 10725088],
       "margin": 0.02,
       "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %"
     }
