@@ -116,22 +116,20 @@
       "issue": "sdk#911"
     },
     "bridge/collection-burst/getter-reads": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [1, 4],
-      "limit": 1024,
-      "measured": [256, 1024],
-      "target": "O(1)",
-      "known": "O(collections) getter calls per CollectionChanged: TryPublishCollection reads every keyed collection's getter to find the changed one (B3)",
-      "issue": "sdk#910"
+      "limit": 256,
+      "measured": [256, 256],
+      "issue": "sdk#910",
+      "note": "a CollectionChanged finds its keyed collection by the instance and reads only its getter, once (B3)"
     },
     "bridge/collection-burst/pending-scans": {
-      "class": "O(n²)",
+      "class": "O(1)",
       "sizes": [256, 1024],
-      "limit": 524800,
-      "measured": [32896, 524800],
-      "target": "O(n)",
-      "known": "O(n²) per burst: TryPublishCollection counts every pending change on each new one (B3)",
-      "issue": "sdk#910"
+      "limit": 0,
+      "measured": [0, 0],
+      "issue": "sdk#910",
+      "note": "each change checks the frame's limit with its collection's count of pending changes, so a burst visits none (B3)"
     },
     "bridge/row-edit-with-scalar/index-rebuild-rows[toolkit]": {
       "class": "O(1)",

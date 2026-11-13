@@ -325,6 +325,29 @@ internal sealed class NotificationCostTests
             $"The replaced rows were not set: {frame.RootElement.GetRawText()}");
     }
 
+    // #910: a collection change finds its keyed collection by the instance the Bridge last read. A notification by the
+    // wire name makes the data graph observe the replaced rows before the Bridge reads them; their change is then a set of
+    // that field only, not of every keyed collection.
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AChangeOfRowsTheBridgeHasNotReadIsASetOfTheirFieldAsync(bool reactive)
+    {
+        var model = Create(reactive);
+        using var transport = new InMemoryBridgeTransport();
+        using var bridge = Attach(transport, model);
+        await SettleAsync(transport);
+        using (BridgeSnapshotBatch.Begin(model))
+        {
+            model.ReplaceRows([new("b", "two")], "rows");
+            model.Rows.Add(new("c", "three"));
+        }
+        using var frame = await NextAsync(transport);
+        var changes = Changes(frame).Select(change => (Field: change.GetProperty("field").GetString(), Kind: change.GetProperty("kind").GetString())).ToArray();
+        Require(changes.SequenceEqual([("rows", "set")]) && SetOf(frame, "rows") is { } rows && Keys(rows).SequenceEqual(["b", "c"]),
+            $"Expected a set of rows alone: {frame.RootElement.GetRawText()}");
+    }
+
     // An observed sub-object replaced under a named, an unnamed, another member's or an unbridged notification is
     // observed before the unit publishes; a burst that does not name it does not run its accessor.
     [Test]
