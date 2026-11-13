@@ -270,6 +270,11 @@ Other symptoms:
 | The camera does not start in the frame. | WebKitGTK, or `RegionOptions.Permissions` without `MediaCapture`. | Grant it; on Linux show the guest in a window. |
 | `native-server-unavailable`, "implements ABI 4, but Runic.Desktop needs ABI 5". | `Runic.Desktop.NativeServer` of an older version than `Runic.Desktop`. | Use the same version of every Runic package. |
 
+To see what the host's web view does with region frames on Windows, set `RUNIC_DESKTOP_REGION_TRACE=1` before starting
+the host: WebView2 then writes each frame it creates, navigates (launch codes and fragments redacted) and destroys, each
+process failure and each region route change to standard error as `REGION TRACE webview2: …`. It is a diagnostic aid
+for reports, not an interface: its lines may change in any release.
+
 ## Still checked by hand
 
 Automation checks that the guest's controls inside a region's frame appear in the accessibility tree (UI Automation,
