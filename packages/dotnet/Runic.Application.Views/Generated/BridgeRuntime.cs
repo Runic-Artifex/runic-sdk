@@ -884,6 +884,8 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         var rows = descriptor.Get(_vm);
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
         _collectionInstances[descriptor] = rows;
+        // The row index of the previous instance would keep it and its rows alive.
+        _collectionIndexes.Remove(descriptor);
         MarkCollectionSet(descriptor);
         _dataSubscriptions?.Reattach(descriptor.Name);
     }

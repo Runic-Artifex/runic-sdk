@@ -231,6 +231,32 @@ internal sealed class NotificationCostTests
             $"The state differs from the model: {rows.GetRawText()}");
     }
 
+    // #909: the row index of a collection that is replaced does not keep the previous rows alive.
+    [Test]
+    public async Task AReplacedCollectionIsNotKeptByItsRowIndexAsync()
+    {
+        var model = new RowIndexViewModel();
+        using var transport = new InMemoryBridgeTransport();
+        using var bridge = new RowIndexBridge(transport, model, Route);
+        await SettleAsync(transport);
+        var previous = EditThenReplaceRows(model);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Require(!previous.TryGetTarget(out _), "The Bridge kept the replaced rows alive.");
+    }
+
+    // Edits a row, which builds the row index, then replaces the rows under another member's notification; each in a
+    // unit that its batch publishes when it ends. Returns the replaced rows.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<System.Collections.ObjectModel.ObservableCollection<EditableRow>> EditThenReplaceRows(RowIndexViewModel model)
+    {
+        var previous = new WeakReference<System.Collections.ObjectModel.ObservableCollection<EditableRow>>(model.Rows);
+        using (BridgeSnapshotBatch.Begin(model)) model.Rows[0].Label = "edited";
+        using (BridgeSnapshotBatch.Begin(model)) model.ReplaceRows([new("p", "one")], nameof(model.Selected));
+        return previous;
+    }
+
     // A change of a keyed collection is published as one change of that kind at that index.
     private static async Task RequireRowChangeAsync(InMemoryBridgeTransport transport, Action change, string field, string kind, int index)
     {

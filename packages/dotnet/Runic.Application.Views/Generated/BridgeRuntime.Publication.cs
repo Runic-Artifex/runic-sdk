@@ -801,6 +801,7 @@ public partial class ViewModelBridge
     {
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return false;
         _collectionInstances[descriptor] = rows;
+        _collectionIndexes.Remove(descriptor);
         MarkCollectionSet(descriptor);
         return true;
     }
