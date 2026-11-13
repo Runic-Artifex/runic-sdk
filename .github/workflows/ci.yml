@@ -2457,8 +2457,9 @@ jobs:
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --screen-reader orca \
               --receipt "artifacts/screen-reader/$toolkit/$toolkit.json"
-            # #864 P6: the side panel with Orca; not applicable until the WebKitGTK host has the panel (#907).
-            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+            # #864 P6: the side panel with Orca; not applicable until the WebKitGTK host has the panel (#907). A screen wide
+            # enough for the 440-wide window and its 240-wide panel (xvfb-run's default screen is 640 x 480).
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a -s '-screen 0 1600x900x24' dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --side-panel --probe "${probe[@]}" --screen-reader orca \
               --receipt "artifacts/screen-reader/$toolkit/$toolkit-side-panel.json"
           done

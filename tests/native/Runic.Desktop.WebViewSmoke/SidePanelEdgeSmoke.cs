@@ -74,6 +74,8 @@ internal static class SidePanelEdgeSmoke
                     + "(macOS until #905, Linux until #907).");
                 return 0;
             }
+            if (window.CheckSidePanel(DesktopWindowEdge.Right, PanelWidth) is { } refusal)
+                throw new InvalidOperationException($"Side panel edges: the panel would be refused ({refusal}): {await AccessibilitySmoke.DescribeRoomAsync(host, window)}.");
             var start = window.State!;
             // Window units per CSS px of the page, from the window as opened: WebKitGTK's page can be zoomed against the
             // window's logical pixels.
@@ -84,7 +86,7 @@ internal static class SidePanelEdgeSmoke
 
             // window.close() in the panel's page.
             reports.Clear();
-            var panel = await OpenAsync(window, surface, reports, grown);
+            var panel = await OpenAsync(host, window, surface, reports, grown);
             var reason = ClosedReason(panel);
             Volatile.Write(ref command, "close");
             await WaitForAsync(() => reports.Contains("closing"), "the panel's page to call window.close()");
@@ -98,7 +100,7 @@ internal static class SidePanelEdgeSmoke
             Console.WriteLine("Side panel edges: window.close() in the panel closed the panel (Closed), not the window; exact start bounds.");
 
             // Closing the panel of a maximized window.
-            panel = await OpenAsync(window, surface, reports, grown);
+            panel = await OpenAsync(host, window, surface, reports, grown);
             await window.ToggleMaximizedAsync();
             await WaitForAsync(() => window.State!.IsMaximized, "the window maximized");
             await Task.Delay(Settle);
@@ -114,7 +116,7 @@ internal static class SidePanelEdgeSmoke
             Console.WriteLine("Side panel edges: closing a maximized window's panel shrank its restored size; it restored to the start bounds.");
 
             // A full-screen window keeps the panel.
-            panel = await OpenAsync(window, surface, reports, grown);
+            panel = await OpenAsync(host, window, surface, reports, grown);
             await window.SetFullScreenAsync(true);
             await WaitForAsync(() => window.State!.IsFullScreen, "the window full-screen");
             await Task.Delay(Settle);
@@ -132,7 +134,7 @@ internal static class SidePanelEdgeSmoke
             Console.WriteLine("Side panel edges: a full-screen window kept the panel and refused changes; it left full screen at the grown bounds.");
 
             // Closing the panel of a full-screen window.
-            panel = await OpenAsync(window, surface, reports, grown);
+            panel = await OpenAsync(host, window, surface, reports, grown);
             await window.SetFullScreenAsync(true);
             await WaitForAsync(() => window.State!.IsFullScreen, "the window full-screen again");
             await Task.Delay(Settle);
@@ -149,12 +151,13 @@ internal static class SidePanelEdgeSmoke
         return 0;
     }
 
-    private static async Task<DesktopSidePanel> OpenAsync(DesktopWindow window, DesktopSurface surface, ConcurrentQueue<string> reports,
-        DesktopWindowBounds grown)
+    private static async Task<DesktopSidePanel> OpenAsync(DesktopHost host, DesktopWindow window, DesktopSurface surface,
+        ConcurrentQueue<string> reports, DesktopWindowBounds grown)
     {
         reports.Clear();
         var result = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = PanelWidth, Path = "#side-panel" });
-        var panel = (result as DesktopSidePanelResult.Opened)?.Panel ?? throw new InvalidOperationException($"Side panel edges: expected it to open, not {result}.");
+        var panel = (result as DesktopSidePanelResult.Opened)?.Panel ?? throw new InvalidOperationException(
+            $"Side panel edges: expected it to open, not {result}: {await AccessibilitySmoke.DescribeRoomAsync(host, window)}.");
         await WaitForBoundsAsync(window, grown, "the grown bounds");
         await WaitForAsync(() => surface.ConnectionCount == 2 && reports.Contains("loaded"), "the panel's page to connect beside the page");
         await Task.Delay(Settle);

@@ -117,6 +117,20 @@ internal static class AccessibilitySmoke
         </script></body></html>
         """;
 
+    // The panel's width, which the side panel fixture's 440-wide window at x 280 leaves room for in a 1024-wide work area.
+    private const int SidePanelWidth = 240;
+
+    // The window's bounds and the work areas of the monitors, for a refusal's message.
+    internal static async Task<string> DescribeRoomAsync(DesktopHost host, DesktopWindow window)
+    {
+        var state = window.State;
+        var monitors = await host.Monitors.ListAsync();
+        var areas = monitors is Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMonitor>>.Success { Value: var list }
+            ? string.Join("; ", list.Select(monitor => $"{monitor.Id}{(monitor.Id == state?.MonitorId ? " (the window's)" : "")} work area {monitor.WorkArea} at scale {monitor.Scale}"))
+            : $"monitors unavailable ({monitors})";
+        return $"window bounds {state?.Bounds}, visible {state?.VisibleBounds}, maximized {state?.IsMaximized}, snapped {state?.IsSnapped}; {areas}";
+    }
+
     internal const string PoliteAnnouncement = "Runic polite announcement";
     internal const string AssertiveAnnouncement = "Runic assertive announcement";
 
@@ -160,12 +174,11 @@ internal static class AccessibilitySmoke
 
         await using var guest = region ? await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(RegionGuestPage) }) : null;
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(region ? RegionPage : sidePanel ? SidePanelPage : Page) });
-        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
-        {
-            Browser = BrowserKind.Embedded,
-            Width = 720,
-            Height = 640,
-        });
+        // The side panel needs room beside the window in any runner's work area (1024 wide or more): a small window
+        // at an explicit position, as --side-panel opens it.
+        await using var window = await surface.OpenWindowAsync(sidePanel
+            ? new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 440, Height = 360, X = 280, Y = 120 }
+            : new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 720, Height = 640 });
         await window.FocusAsync();
         if (announce is null && !window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements))
             throw new InvalidOperationException("The embedded window does not report announcements.");
@@ -185,7 +198,12 @@ internal static class AccessibilitySmoke
         if (sidePanel)
         {
 #pragma warning disable RUNICDESK104 // The side panel is experimental.
-            if (window.CheckSidePanel(DesktopWindowEdge.Right, 260) == DesktopSidePanelRefusal.Unsupported)
+            // CheckSidePanel answers from the last reported state, which arrives after the window opened.
+            await TestTimeouts.UntilAsync(() => window.State?.Bounds is not null, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(50),
+                CancellationToken.None);
+            await Task.Delay(600);
+            var check = window.CheckSidePanel(DesktopWindowEdge.Right, SidePanelWidth);
+            if (check == DesktopSidePanelRefusal.Unsupported)
             {
                 await surface.ExecuteJavaScriptAsync("""
                     const unsupported = document.createElement('button');
@@ -199,9 +217,12 @@ internal static class AccessibilitySmoke
             }
             else
             {
-                var opened = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = 260, Path = "#side-panel" });
+                // Any other refusal, NoRoom in particular, fails: the fixture must fit the runner's work area.
+                if (check is not null)
+                    throw new InvalidOperationException($"The side panel fixture's panel would be refused ({check}): {await DescribeRoomAsync(host, window)}.");
+                var opened = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = SidePanelWidth, Path = "#side-panel" });
                 if (opened is not DesktopSidePanelResult.Opened)
-                    throw new InvalidOperationException($"The side panel fixture's panel did not open: {opened}.");
+                    throw new InvalidOperationException($"The side panel fixture's panel did not open ({opened}): {await DescribeRoomAsync(host, window)}.");
                 panelOpened = true;
                 Console.WriteLine("ACCESSIBILITY side panel open on the right edge.");
             }
