@@ -89,6 +89,8 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
     private DesktopColorScheme _colorScheme;
     private DesktopColorScheme? _requested;
     private bool _titleBarPending;
+    // The window's HwndSource once the title bar watches WM_SETTINGCHANGE through it.
+    private HwndSource? _settingChanges;
     private volatile bool _closed;
     // Dispatcher only: the frame and state that full screen replaced.
     private (WindowStyle Style, ResizeMode Resize, WindowState State)? _windowed;
@@ -140,6 +142,8 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
         _window.IsVisibleChanged -= OnVisibleChanged;
         _window.SourceInitialized -= OnSourceInitialized;
         _window.Closed -= OnClosed;
+        _settingChanges?.RemoveHook(OnWindowMessage);
+        _settingChanges = null;
         Update(RunicWindowActivity.Closed);
     }
 
@@ -251,7 +255,7 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
     }
 
     // The title bar's dark mode, now or, for a window without a handle yet, once it has one. NoPreference gives it the
-    // system's apps theme as it is now.
+    // system's app mode, and again after each change of it (#888); a window whose scheme was never set keeps WPF's.
     private void ApplyTitleBar()
     {
         var handle = new WindowInteropHelper(_window).Handle;
@@ -262,15 +266,28 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
             _window.SourceInitialized += OnSourceInitialized;
             return;
         }
-        var dark = _requested switch
+        if (_settingChanges is null && HwndSource.FromHwnd(handle) is { } source)
         {
-            DesktopColorScheme.Dark => 1,
-            DesktopColorScheme.Light => 0,
-            _ => WindowsWebView2Host.SystemUsesDarkTheme() ? 1 : 0,
-        };
+            _settingChanges = source;
+            source.AddHook(OnWindowMessage);
+        }
+        var dark = WindowsWebView2Host.TitleBarDarkMode(_requested ?? DesktopColorScheme.NoPreference,
+            WindowsWebView2Host.SystemUsesDarkTheme(), WebUiSystemTheme.IsHighContrast);
         WindowsWebView2Host.SetImmersiveDarkMode(handle, dark);
         // The non-client area repaints with the new mode only after a frame change.
         _ = SetWindowPos(handle, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
+    // WM_SETTINGCHANGE of the app mode or a contrast theme: a window with NoPreference takes the system's new app mode.
+    // Its RunicWebViews' pages follow the system through their WebView2 profiles already.
+    private nint OnWindowMessage(nint window, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        if (message == WmSettingChange && _requested == DesktopColorScheme.NoPreference && !_closed &&
+            WindowsWebView2Host.ChangesSystemTitleBar((nuint)wParam, lParam == 0 ? null : Marshal.PtrToStringUni(lParam)))
+        {
+            ApplyTitleBar();
+        }
+        return 0;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs args)
@@ -305,6 +322,7 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
         }
     }
 
+    private const int WmSettingChange = 0x001A;
     private const uint SwpNoSize = 0x0001, SwpNoMove = 0x0002, SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010, SwpFrameChanged = 0x0020;
 
     [LibraryImport("user32.dll")]

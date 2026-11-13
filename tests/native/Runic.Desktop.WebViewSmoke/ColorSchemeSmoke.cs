@@ -4,7 +4,8 @@ using Runic.Platform;
 
 // DesktopWindowOptions.ColorScheme in the WebView2 and WKWebView windows: for Dark and Light the page's
 // prefers-color-scheme matches, and so does the window: its NSWindow.effectiveAppearance on macOS, its
-// DWMWA_USE_IMMERSIVE_DARK_MODE title bar on Windows. A window without the option leaves both to the system. B2: an open
+// DWMWA_USE_IMMERSIVE_DARK_MODE title bar on Windows. A window without the option leaves both to the system; on Windows
+// its title bar takes the system's app mode, also after a change (#888). B2: an open
 // window switches with DesktopWindow.SetColorSchemeAsync, and with DesktopHost.SetColorSchemeAsync while it has no
 // scheme of its own. S3: DesktopWindow.SetLayoutDirectionAsync mirrors the open WebView2 window (WS_EX_LAYOUTRTL) and
 // returns it; WKWebView reports no LayoutDirection capability. Run with --color-scheme on Windows or macOS.
@@ -38,6 +39,13 @@ internal static partial class ColorSchemeSmoke
                     : scheme == DesktopColorScheme.Dark ? "1" : "0";
                 if (native != expected)
                     throw new InvalidOperationException($"With ColorScheme {scheme} the window reports {native}, expected {expected}.");
+                if (OperatingSystem.IsWindows())
+                {
+                    // A forced scheme keeps its title bar when the system's app mode changes.
+                    await window.InvokeNativeAsync(handle => AnnounceAppModeChange(handle));
+                    if (await NativeAsync(window) is var after && after != expected)
+                        throw new InvalidOperationException($"With ColorScheme {scheme} an app mode change gave the title bar {after}.");
+                }
                 Console.WriteLine($"PASS color scheme: {scheme}: the page's prefers-color-scheme and the window ({native}) follow it.");
             }
             finally { if (window.IsOpen) await window.CloseAsync(); }
@@ -77,6 +85,7 @@ internal static partial class ColorSchemeSmoke
                     await window.InvokeNativeAsync(handle => appearance = Send(handle, Sel("appearance")) == 0 ? "nil" : "set");
                     if (appearance != "nil") throw new InvalidOperationException("Without ColorScheme the macOS window has its own appearance.");
                 }
+                else await SystemTitleBarAsync(window);
                 Console.WriteLine("PASS color scheme: without the option the window follows the system.");
                 await LayoutDirectionAsync(window);
             }
@@ -114,6 +123,37 @@ internal static partial class ColorSchemeSmoke
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static partial long GetWindowLongPtr(nint window, int index);
+
+    // #888: a WebView2 window without a scheme has the system's app mode in its title bar (AppsUseLightTheme, light under a
+    // contrast theme), and takes it again when the system announces a change: the smoke sets the title bar the other way,
+    // then sends the window the WM_SETTINGCHANGE "ImmersiveColorSet" that Windows broadcasts.
+    private static async Task SystemTitleBarAsync(DesktopWindow window)
+    {
+        var system = Runic.Desktop.Internal.WindowsWebView2Host.TitleBarDarkMode(DesktopColorScheme.NoPreference,
+            Runic.Desktop.Internal.WindowsWebView2Host.SystemUsesDarkTheme(), Runic.Desktop.Internal.WebUiSystemTheme.IsHighContrast);
+        var expected = system.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (await NativeAsync(window) is var native && native != expected)
+            throw new InvalidOperationException($"Without ColorScheme the title bar reports {native}, the system's app mode {expected}.");
+        await window.InvokeNativeAsync(handle =>
+        {
+            Runic.Desktop.Internal.WindowsWebView2Host.SetImmersiveDarkMode(handle, 1 - system);
+            AnnounceAppModeChange(handle);
+        });
+        if (await NativeAsync(window) is var after && after != expected)
+            throw new InvalidOperationException($"After an app mode change the title bar reports {after}, the system's app mode {expected}.");
+        Console.WriteLine($"PASS color scheme: without the option the title bar follows the system's app mode ({expected}), also after a change.");
+    }
+
+    // The WM_SETTINGCHANGE that Windows broadcasts when the app mode changes, to this window only.
+    private static void AnnounceAppModeChange(nint handle)
+    {
+        var area = Marshal.StringToHGlobalUni("ImmersiveColorSet");
+        try { _ = SendMessage(handle, 0x001A, 0, area); }
+        finally { Marshal.FreeHGlobal(area); }
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial nint SendMessage(nint window, uint message, nuint wParam, nint lParam);
 
     // GTK has no per-window scheme: DesktopHost.SetColorSchemeAsync sets the process's prefer-dark setting, and WebKitGTK's
     // prefers-color-scheme follows it. Run with --color-scheme under Xvfb.
