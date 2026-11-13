@@ -1219,6 +1219,20 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --side-panel
+      # #864 P6: the side panel cases --side-panel leaves out: window.close() in the panel's page, closing the panel of a
+      # maximized window (its restored size shrinks), and a full-screen window with the panel open and closed. Linux runs
+      # GTK 3 under Openbox. A host without the panel yet reports them as not verified (macOS until #905, Linux until #907).
+      - name: Close a side panel from its page, while maximized and in full screen
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          smoke=tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+              "openbox & exec dotnet $smoke --side-panel-edges"
+          else
+            dotnet "$smoke" --side-panel-edges
+          fi
       # S10: the page's prefers-reduced-motion and forced-colors and IDesktopSettings (Contrast, the palette, a running
       # watch) follow Windows' client area animations and a contrast theme, which the smoke switches and restores
       # (--toggle-desktop); on macOS prefers-contrast, prefers-reduced-motion and IDesktopSettings agree with Increase

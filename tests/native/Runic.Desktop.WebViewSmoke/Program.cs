@@ -105,6 +105,11 @@ try
         // #864 P2. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = SidePanelSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--side-panel-edges", StringComparer.Ordinal))
+    {
+        // #864 P6. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
+        Environment.ExitCode = SidePanelEdgeSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--color-scheme", StringComparer.Ordinal))
     {
         // Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
