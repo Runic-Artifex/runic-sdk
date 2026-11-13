@@ -513,6 +513,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             window.SetDirection(direction);
             _menuBox?.SetDirection(direction);
             _webView?.SetDirection(direction);
+            _panel?.View.SetDirection(direction);
             if (_appliedMenuBar is { } menus) ApplyMenuBar(menus);
         }, cancellationToken));
 
@@ -877,12 +878,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             window.SetDefaultSize(width, height);
             window.SetResizable(options.Resizable);
             window.SetDecorated(!options.Frameless && !options.Kiosk);
-            if (options.MinimumWidth is not null || options.MinimumHeight is not null)
-            {
-                webView.SetSizeRequest(
-                    options.MinimumWidth is { } minimumWidth ? minimumWidth : -1,
-                    options.MinimumHeight is { } minimumHeight ? checked((int)minimumHeight) : -1);
-            }
+            // The minimum size is the overlay's that holds the view (ApplyMinimumSize), so a side panel can add its width.
+            (_minimumWidth, _minimumHeight) = (options.MinimumWidth ?? 0, options.MinimumHeight is { } minimumHeight ? checked((int)minimumHeight) : 0);
             if (options.DocumentStartScript is { } documentStartScript)
             {
                 // The script compares complete origins, including the listener port, itself.
@@ -952,7 +949,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             keys.OnKeyPressed += OnUnhandledKeyPressed;
             window.AddController(keys);
             // The Native menu bar goes above the view in a box (B10); other windows hold the view alone.
-            var content = CreateMenuContent(options, webView);
+            // The view in an overlay that lays it out beside a side panel (sdk#864, Gtk4WindowHost.SidePanel.cs); without a
+            // panel the view fills it, as it filled the window.
+            var overlay = CreateOverlay(webView);
+            ApplyMinimumSize();
+            var content = CreateMenuContent(options, webView, overlay);
             window.SetChild(content);
             // DesktopWindowOptions.LayoutDirection: the window, its header bar and the view; the page keeps its own dir.
             if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
@@ -1045,9 +1046,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             _webView = null;
             _keys = null;
             _contentManager = null;
-            // GirCore's wrapper of the box holds a reference that would keep the view alive.
+            // GirCore's wrapper of the box holds a reference that would keep the view alive, as does the overlay's.
             _menuBox?.Dispose();
             _menuBox = null;
+            _overlay?.Dispose();
+            _overlay = null;
             _pointerMotion?.Dispose();
             _pointerMotion = null;
             Volatile.Write(ref _isOpen, 0);
@@ -1164,7 +1167,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     private bool OnUnhandledKeyPressed(Gtk.EventControllerKey controller, Gtk.EventControllerKey.KeyPressedSignalArgs args)
     {
         var command = GetZoomCommand(controller, args);
-        if (_webView is not { } webView)
+        if (_webView is not { } page)
         {
             return false;
         }
@@ -1173,6 +1176,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             // The menu bar's shortcuts (B10), for every presentation.
             return TryRunShortcut(controller, args);
         }
+        // The page's zoom, or a side panel's while it has the focus: each has its own.
+        var webView = FocusedView(page) ?? page;
         webView.SetZoomLevel(WebKitGtkKeyboard.Apply(command, webView.GetZoomLevel()));
         return true;
     }
@@ -1448,7 +1453,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // Whether this handler decided; WebKit's default handling applies otherwise.
     private bool DecidePolicy(nint webView, nint decision, int type)
     {
-        if (!IsOwnOpenView(webView) || _webContent is not { } content) return false;
+        if (!IsOwnView(webView, out var found) || found is not { } content) return false;
         switch (type)
         {
             case PolicyDecisionNavigationAction:
@@ -1461,7 +1466,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 // Ignored, so WebKit emits no create signal for it.
                 var (url, userGesture) = WebContentSignals.GetNavigation(WebContentSignals.GetNavigationAction(decision));
                 WebContentSignals.IgnorePolicy(decision);
-                OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+                OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url, webView);
                 return true;
             }
             case PolicyDecisionResponse:
@@ -1492,12 +1497,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // window.open, and a target="_blank" WebKit did not ask decide-policy about. Never creates a view.
     private void OnCreate(nint webView, nint navigationAction)
     {
-        if (!IsOwnOpenView(webView) || _webContent is not { } content) return;
+        if (!IsOwnView(webView, out var found) || found is not { } content) return;
         var (url, userGesture) = WebContentSignals.GetNavigation(navigationAction);
-        OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+        OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url, webView);
     }
 
-    private void OpenNewWindow(WebContentRules.Decision decision, string? url)
+    // A navigation in the window goes to the view that asked: the page's, or a side panel's.
+    private void OpenNewWindow(WebContentRules.Decision decision, string? url, nint webView)
     {
         if (decision == WebContentRules.Decision.OpenExternally)
         {
@@ -1510,7 +1516,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             {
                 try
                 {
-                    if (IsOpen) _webView?.LoadUri(url);
+                    if (IsOpen) ViewOf(webView)?.LoadUri(url);
                 }
                 catch
                 {
@@ -1524,7 +1530,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // replace the application's document for a URL the window would not show.
     private bool OnLoadFailed(nint webView, string? url)
     {
-        if (!IsOwnOpenView(webView) || _webContent is not { } content) return false;
+        if (!IsOwnView(webView, out var found) || found is not { } content) return false;
         if (content.ForFailedMainFrameLoad(url, out var suppress) == WebContentRules.Decision.OpenExternally)
         {
             OpenExternally(url);
@@ -1534,7 +1540,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     private void OnDownloadStarted(nint download)
     {
-        if (IsOpen && _webView is { } view && WebContentSignals.GetDownloadWebView(download) == view.Handle.DangerousGetHandle())
+        // A side panel's view shares the page's network session, and so this connection.
+        if (IsOpen && WebContentSignals.GetDownloadWebView(download) is var source and not 0 && ViewOf(source) is not null)
         {
             WebContentSignals.CancelDownload(download);
         }
@@ -1806,6 +1813,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         var restoredHeight = Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
         // X11 only, and only once the window is mapped: an unmapped window has no position on screen yet.
         var position = window.IsVisible() ? Gtk4X11Placement.GetPosition(SurfaceOf(window)) : null;
+        // A side panel closed while the window was maximized or full-screen: the restored window loses its width.
+        var minimized = window.GetSurface() is { } restoredSurface && (ToplevelGetState(restoredSurface.Handle.DangerousGetHandle()) & GdkToplevelStateMinimized) != 0;
+        if (!maximized && !fullScreen && !minimized && ApplyPendingRestore(window, position, width, height)) return;
         if (position is not null && !maximized && !fullScreen)
         {
             _normalPosition = position;
@@ -1821,7 +1831,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
             MonitorId = Gtk4Monitors.IdOf(window.GetSurface()),
-            Placement = new DesktopWindowPlacement
+            // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
+            Placement = PanelPlacement(new DesktopWindowPlacement
             {
                 X = _normalPosition?.X,
                 Y = _normalPosition?.Y,
@@ -1830,11 +1841,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 Maximized = maximized,
                 FullScreen = fullScreen && _options?.Kiosk != true,
                 Origin = DesktopCoordinateOrigin.TopLeft,
-            },
+            }, position),
             Bounds = exact.Bounds,
             VisibleBounds = exact.Visible,
             IsSnapped = exact.Snapped,
         };
+        RecordWorkArea(window);
         if (Equals(state, Volatile.Read(ref _state)))
         {
             return;
@@ -2100,6 +2112,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             return;
         }
         ReleaseOwner();
+        ClosePanelWithWindow();
         ReleaseDragOut();
         _drops?.Dispose();
         Gtk4FileDrops.Disconnect(this);
@@ -2108,6 +2121,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         _moveWatch = default;
         _webContent?.Clear();
         ReleaseMenus(webView);
+        // The overlay's wrapper holds a reference that would keep the view alive.
+        _overlay?.Dispose();
+        _overlay = null;
 
         DetachZoomHandlers(_keys, _contentManager);
         _keys = null;

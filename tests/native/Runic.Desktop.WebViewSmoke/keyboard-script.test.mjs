@@ -170,6 +170,32 @@ describe("wrap", () => {
   });
 });
 
+describe("side panel hand-off", () => {
+  test("enter focuses the first or last control, also from a focused one", async () => {
+    await load(`<button id="first">first</button><button id="middle">middle</button><button id="last">last</button>`);
+    await page.focus("#middle");
+    await page.evaluate(() => runicDesktopKeyboard.enter(false));
+    expect(await deepActive()).toBe("first");
+    await page.evaluate(() => runicDesktopKeyboard.enter(true));
+    expect(await deepActive()).toBe("last");
+  });
+
+  test("a Tab that leaves the page does not wrap while the host hands the focus off", async () => {
+    await load(`<button id="first">first</button><button id="last">last</button>`);
+    await page.evaluate(() => runicDesktopKeyboard.setHandOff(true));
+    await page.focus("#last");
+    // Chromium's Tab past the last control leaves the page as WebKit's does.
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(100);
+    expect(await deepActive()).not.toBe("first");
+    await page.evaluate(() => runicDesktopKeyboard.setHandOff(false));
+    await page.focus("#last");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(100);
+    expect(await deepActive()).toBe("first");
+  });
+});
+
 describe("trusted events only", () => {
   const scrollable = `<button id="first">first</button><button id="last">last</button><div style="height: 300vh"></div>
     <script>window.zoom = []; window.webkit = { messageHandlers: { runicZoom: { postMessage: message => zoom.push(message) } } };</script>`;
