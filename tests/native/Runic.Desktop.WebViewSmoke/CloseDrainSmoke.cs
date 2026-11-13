@@ -92,8 +92,9 @@ internal static partial class CloseDrainSmoke
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        // Under `dotnet <dll>` the child needs the smoke's assembly; a single-file or apphost smoke is its own process path.
         if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) is "dotnet")
-            start.ArgumentList.Add(typeof(CloseDrainSmoke).Assembly.Location);
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, typeof(CloseDrainSmoke).Assembly.GetName().Name + ".dll"));
         start.ArgumentList.Add(ShutdownArgument);
         Console.WriteLine("Close drain: phase 2 runs in a child process with a console of its own.");
         using var child = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("The shutdown phase did not start.");
