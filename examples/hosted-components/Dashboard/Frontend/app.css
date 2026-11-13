@@ -1,0 +1,15 @@
+/* The dashboard's theme. --dashboard-accent reaches the widgets' shadow roots, whose CSS uses it. */
+:root { --dashboard-accent: darkorange; }
+
+body { font-family: system-ui, sans-serif; margin: 1.25rem; background: Canvas; color: CanvasText; }
+
+.widgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+
+.widgets section { border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 6px; padding: .75rem; }
+
+.widgets h2 { margin: 0 0 .5rem; font-size: 1rem; }
+
+.widgets small { font-weight: normal; opacity: .7; }
+
+/* A component takes part in the page's layout: its height is its content's. */
+runic-hosted-region { display: block; min-height: 4rem; }

@@ -1,0 +1,18 @@
+/* In a component, :host is the element in the host page; on the widget's own page it matches nothing, and body rules
+   apply. The host page's custom properties inherit into the shadow root: the dashboard sets --dashboard-accent. */
+:host, body {
+  display: block;
+  font-family: system-ui, sans-serif;
+  color: CanvasText;
+}
+
+body { margin: 1rem; background: Canvas; }
+
+.widget {
+  border-inline-start: 4px solid var(--dashboard-accent, royalblue);
+  padding: .5rem .75rem;
+}
+
+.widget h2 { margin: 0 0 .25rem; font-size: 1rem; }
+
+.widget p { margin: 0 0 .5rem; font-size: .9rem; }

@@ -439,6 +439,8 @@
         "examples/notes-reactive-views",
         "examples/document-tabs",
         "examples/hosted-windows",
+        "examples/hosted-region",
+        "examples/hosted-components",
         "examples/dynamicdata",
         "examples/invoice-grid",
         "examples/query-collections",

@@ -1,0 +1,15 @@
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; font-family: system-ui, sans-serif; background: Canvas; color: CanvasText; }
+header, footer { padding: .75rem 1.25rem; background: color-mix(in srgb, CanvasText 6%, Canvas); }
+header h1 { margin: 0; font-size: 1.1rem; }
+ol.steps { display: flex; gap: 1.5rem; margin: .5rem 0 0; padding: 0; list-style: none; }
+ol.steps li[aria-current="step"] { font-weight: 600; text-decoration: underline; }
+main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 1rem 1.25rem; }
+main > section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+main > section[hidden] { display: none; }
+/* The region fills the content area between header and footer (sizing="fill", the default): the installer's layout
+   sets its size, and the check's page scrolls inside. */
+runic-hosted-region { flex: 1; display: block; min-height: 12rem; }
+runic-hosted-region::part(frame) { border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 6px; }
+footer { display: flex; gap: .5rem; justify-content: flex-end; align-items: center; }
+footer output { margin-inline-end: auto; font-size: .9rem; }

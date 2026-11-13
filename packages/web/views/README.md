@@ -1864,6 +1864,11 @@ entries, which define the element themselves.
   page.
 - **Without a host.** On a page whose host does not implement hosted regions, or
   without a Bridge, the element is `unsupported` and shows its fallback.
+- **The page's Content-Security-Policy.** The element styles its shadow root with a
+  constructed stylesheet, so it needs no `'unsafe-inline'` styles. The guest's frame
+  comes from `[::1]` on a port that changes with each run, which a CSP host source
+  cannot name: a page with a policy allows it with `frame-src http:`, or the frame
+  is blocked and the region stays `loading`.
 - **The guest.** A guest's page in a region is its served build, not a development
   server, and a guest whose own `Content-Security-Policy` sets
   `frame-ancestors 'none'` blocks its own region. Treat its `localStorage` and

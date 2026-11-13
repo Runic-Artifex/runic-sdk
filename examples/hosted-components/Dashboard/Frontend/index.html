@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Hosted components dashboard</title>
+    <!-- A file, not an inline <style>: the page's Content-Security-Policy admits only its own styles (Program.cs). -->
+    <link rel="stylesheet" href="app.css" />
+    <script src="webui.js"></script>
+    <script src="runic-desktop-views.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <h1>Services</h1>
+    <div class="widgets">
+      <!-- Each widget's Views render here as a component, in this document: its element inherits this page's custom
+           properties and fonts, and Tab moves through it as through the page. -->
+      <section aria-labelledby="indexer-heading">
+        <h2 id="indexer-heading">Indexer <small id="indexer-state"></small></h2>
+        <runic-hosted-region name="indexer">
+          <p slot="waiting">Starting the widget…</p>
+          <p slot="unsupported">The widget could not load here. A component needs the widget's origin in the page's
+            Content-Security-Policy.</p>
+          <p slot="ended">The widget has ended.</p>
+          <p slot="fallback">The widget is not shown.</p>
+        </runic-hosted-region>
+      </section>
+      <section aria-labelledby="sync-heading">
+        <h2 id="sync-heading">Sync <small id="sync-state"></small></h2>
+        <runic-hosted-region name="sync">
+          <p slot="waiting">Starting the widget…</p>
+          <p slot="unsupported">The widget could not load here. A component needs the widget's origin in the page's
+            Content-Security-Policy.</p>
+          <p slot="ended">The widget has ended.</p>
+          <p slot="fallback">The widget is not shown.</p>
+        </runic-hosted-region>
+      </section>
+    </div>
+    <p>Scoped custom element registries in this engine: <output id="scoped-registries"></output></p>
+  </body>
+</html>

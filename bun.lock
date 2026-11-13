@@ -7,10 +7,12 @@
       "devDependencies": {
         "@runic-artifex/views": "workspace:*",
         "@runic-artifex/views-effect": "workspace:*",
+        "@runic-artifex/vite-plugin-runic": "workspace:*",
         "effect": "4.0.1",
         "esbuild": "0.28.2",
         "playwright-core": "1.63.0",
         "typescript": "6.0.3",
+        "vite": "8.3.4",
       },
     },
     "packages/web/angular": {

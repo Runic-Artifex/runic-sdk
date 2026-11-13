@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- In a region the page follows the installer window's colour scheme, as in a window of its own. -->
+    <meta name="color-scheme" content="light dark" />
+    <title>System check</title>
+    <!-- No frame-ancestors here: Runic sets the frame's own for the one page that embeds it. A page whose policy says
+         frame-ancestors 'none' blocks its own region. -->
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 1rem 1.25rem; background: Canvas; color: CanvasText; }
+      h1 { font-size: 1.25rem; margin-block: 0 .75rem; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { text-align: start; padding: .4rem .5rem; border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, Canvas); }
+      td[data-status="passed"]::before { content: "✓ "; color: green; }
+      td[data-status="failed"]::before { content: "✗ "; color: crimson; }
+      td[data-status="running"]::before { content: "… "; }
+    </style>
+    <script src="webui.js"></script>
+    <script src="runic-desktop-views.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <h1>System check</h1>
+    <table>
+      <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Detail</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Free disk space</th><td id="space">pending</td><td id="space-detail"></td></tr>
+        <tr><th scope="row">Temporary folder</th><td id="folder">pending</td><td id="folder-detail"></td></tr>
+        <tr><th scope="row">Account</th><td id="account">pending</td><td id="account-detail"></td></tr>
+      </tbody>
+    </table>
+    <p>
+      <button id="run" type="button">Run the check again</button>
+      <output id="outcome" role="status"></output>
+    </p>
+  </body>
+</html>

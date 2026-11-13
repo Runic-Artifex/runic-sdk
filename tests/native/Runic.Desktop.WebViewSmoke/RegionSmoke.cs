@@ -14,7 +14,10 @@ using Runic.Platform;
 // - a click and a Tab into the frame, as the host page sees them (blur, the active element, user activation), and
 //   what a getUserMedia in the frame gets with the guest's grant: reported as REGION FINDING lines;
 // - WebView2: a shortcut the frame leaves unhandled runs the host window's menu item;
-// - WebView2 and WebKitGTK: a drop onto the frame goes to the region's guest, never to the window (D059.3).
+// - WebView2 and WebKitGTK: a drop onto the frame goes to the region's guest, never to the window (D059.3);
+// - a detach and an attach again, as RunicHostedRegion.DetachAsync and MoveToAsync or a page reload do: the route ends,
+//   the page removes its frame, the guest mints a new frame launch code, the same guest origin is routed again and a new
+//   frame loads it; the window survives the first frame's render process ending (#866).
 // With --elevated, in an elevated process (GitHub's Windows runner), every listener of the host admits only elevated
 // peers, as an elevated guest's do (Elevated-peer admission): the page and the frame still load, so the web view's own
 // processes pass.
@@ -36,11 +39,24 @@ internal static partial class RegionSmoke
         <script>
         window.__guest = [];
         window.__events = [];
-        const frame = document.getElementById("region");
+        let frame = document.getElementById("region");
         addEventListener("message", event => { if (event.source === frame.contentWindow) window.__guest.push(event.data); });
         addEventListener("blur", () => window.__events.push("window-blur"));
         addEventListener("focus", () => window.__events.push("window-focus"));
         frame.addEventListener("focus", () => window.__events.push("frame-focus"));
+        // A detach removes the frame; an attach again adds a new one for the new frame launch address, as
+        // <runic-hosted-region> does.
+        window.__removeFrame = () => { frame.remove(); };
+        window.__addFrame = src => {
+          const next = document.createElement("iframe");
+          next.id = "region";
+          next.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+          next.setAttribute("allow", "camera; microphone");
+          next.title = "Region guest";
+          document.body.append(next);
+          frame = next;
+          next.src = src;
+        };
         addEventListener("keydown", event => { if (event.key === "Tab") window.__events.push("host-tab"); }, true);
         addEventListener("drop", () => window.__events.push("host-drop"), true);
         window.__state = () => JSON.stringify({
@@ -93,6 +109,16 @@ internal static partial class RegionSmoke
 
     internal static async Task<int> RunAsync(DesktopHost host, string hostName, bool elevated)
     {
+        // Every region frame event of the window's web view, and the process's own end, so that a window that ends the
+        // process shows its last event (#866: the WebView2 host ended after a second attach).
+        var released = 0;
+        WindowsWebView2Controller.RegionTrace = line =>
+        {
+            if (line == "frame released") Interlocked.Increment(ref released);
+            Console.WriteLine($"REGION TRACE {hostName}: {line}");
+            Console.Out.Flush();
+        };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => Console.WriteLine($"REGION TRACE {hostName}: process exit, exit code {Environment.ExitCode}");
         var refused = 0;
         if (elevated && !Environment.IsPrivilegedProcess)
         {
@@ -128,8 +154,13 @@ internal static partial class RegionSmoke
         var guestOrigin = RegionFrames.Origin(launch.Url);
         Finding(hostName, $"frame origin {guestOrigin} for the page of {embedder}: {(launch.SameSite ? "same-site (no IPv6)" : "cross-site")}");
         var routed = Channel.CreateUnbounded<DesktopFileDropEventArgs>();
-        using var route = window.AttachRegionFrame(new RegionFrameRoute(launch.Url, DesktopPermissionGrant.MediaCapture,
-            drop => routed.Writer.TryWrite(drop), hostPage => Console.WriteLine($"REGION crashed (host page: {hostPage}).")))
+        var crashes = 0;
+        RegionFrameRoute Route(Uri url) => new(url, DesktopPermissionGrant.MediaCapture, drop => routed.Writer.TryWrite(drop), hostPage =>
+        {
+            Interlocked.Increment(ref crashes);
+            Console.WriteLine($"REGION crashed (host page: {hostPage}).");
+        });
+        var route = window.AttachRegionFrame(Route(launch.Url))
             ?? throw new InvalidOperationException($"The {hostName} window routes no region frames.");
         await surface.ExecuteJavaScriptAsync($"document.getElementById('region').src = {System.Text.Json.Nodes.JsonValue.Create(launch.Url.AbsoluteUri).ToJsonString()}; return '';");
 
@@ -163,6 +194,14 @@ internal static partial class RegionSmoke
                 await DropAsync(surface, window, input, hostName, routed.Reader, hostDrops.Reader);
             }
         }
+        route = await AttachAgainAsync(surface, guest, window, embedder, guestOrigin, route, Route, hostName);
+        await Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(3)));
+        Require(Volatile.Read(ref crashes) == 0, "the first frame's end was reported as a crash of the attached region");
+        // WebView2: the destroyed first frame's references are released after its FrameDestroyed returned, not leaked.
+        if (OperatingSystem.IsWindows())
+            Require(Volatile.Read(ref released) >= 1, "the destroyed frame's references were not released");
+        Pass(hostName, "a frame detached and attached again with a new code loaded the guest's page, and the window outlived the first frame");
+        route.Dispose();
         if (elevated)
         {
             Require(Volatile.Read(ref refused) == 0, $"{refused} loopback peers were refused: the elevated window's own processes must pass");
@@ -171,6 +210,28 @@ internal static partial class RegionSmoke
         if (OperatingSystem.IsWindows()) WindowsWebView2Controller.TopLevelMessageObserver = null;
         Console.WriteLine($"PASS {hostName} region smoke.");
         return 0;
+    }
+
+    // A detach and an attach again (RunicHostedRegion.DetachAsync and MoveToAsync): the route ends and the page removes its
+    // frame, then the guest mints a new code, the guest's origin is routed again and a new frame loads it at once, while
+    // the first frame's render process may still be ending.
+    private static async Task<IDisposable> AttachAgainAsync(DesktopSurface surface, DesktopSurface guest, DesktopWindow window, string embedder,
+        string guestOrigin, IDisposable route, Func<Uri, RegionFrameRoute> routeFor, string hostName)
+    {
+        Console.WriteLine($"REGION TRACE {hostName}: detach");
+        route.Dispose();
+        await surface.ExecuteJavaScriptAsync("window.__removeFrame(); return '';", StepTimeout);
+        Console.WriteLine($"REGION TRACE {hostName}: attach again");
+        var again = await guest.BeginFrameLaunchAsync(embedder, allowSameSite: true, measuresHeight: false, CancellationToken.None);
+        Require(RegionFrames.Origin(again.Url) == guestOrigin, $"the second frame launch is on {RegionFrames.Origin(again.Url)}, not {guestOrigin}");
+        var next = window.AttachRegionFrame(routeFor(again.Url))
+            ?? throw new InvalidOperationException($"The {hostName} window routes no region frames.");
+        await surface.ExecuteJavaScriptAsync(
+            $"window.__addFrame({System.Text.Json.Nodes.JsonValue.Create(again.Url.AbsoluteUri).ToJsonString()}); return '';", StepTimeout);
+        var ready = (await GuestMessageAsync(surface, "ready"))!.Value;
+        Require(ready.GetProperty("origin").GetString() == guestOrigin, $"the second frame loaded {ready}, not the guest's page");
+        Console.WriteLine($"REGION TRACE {hostName}: the second frame is ready");
+        return next;
     }
 
     // R4's open findings: a click and a Tab into a cross-origin frame as the host page sees them.

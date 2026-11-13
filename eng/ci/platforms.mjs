@@ -89,6 +89,8 @@ export const platformRules = [
     "packages/dotnet/Runic.Assets", "packages/dotnet/Runic.Assets.Desktop", "tests/dotnet/Runic.Assets.Tests",
     // The CS-WebUI blob endpoint's checks, which the native job's Windows and macOS steps run.
     "tests/dotnet/Runic.Application.Views.Desktop.Tests/CsWebUiBlobEndpointChecks*", "eng/ci/windows-httpsys-*"] },
+  // The region mode examples, whose probes run in the native job's Windows x64 leg as the elevated pair (#865, #866).
+  { platforms: ["win-x64"], paths: ["examples/hosted-region", "examples/hosted-components"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },

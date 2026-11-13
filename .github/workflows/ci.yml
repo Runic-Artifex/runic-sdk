@@ -510,12 +510,13 @@ jobs:
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
           node examples/notes-view-first/window-smoke.mjs
-      - name: Run the Notes, multi-window, document tabs and hosted counter example unit tests
+      - name: Run the Notes, multi-window, document tabs, hosted counter and hosted check example unit tests
         run: |
           dotnet run --project examples/notes-view-first/Tests -c Release --no-build
           dotnet run --project examples/multi-window/Tests -c Release --no-build
           dotnet run --project examples/document-tabs/Tests -c Release --no-build
           dotnet run --project examples/hosted-windows/Counter/Tests -c Release --no-build
+          dotnet run --project examples/hosted-region/Check/Tests -c Release --no-build
           (cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
       # One Runic Translations catalog for the page and C#: RUNIC_LOCALE starts it in German, the page switches to Arabic.
       - name: Exercise the translated multi-window example
@@ -836,10 +837,15 @@ jobs:
           node: "true"
           package-managers: ${{ matrix.rid == 'win-x64' }}
       - uses: ./.github/actions/install-browser
-      # Generated Views clients import the workspace runtime from its build output.
-      - name: Build the shared Views runtime
-        working-directory: packages/web/views
-        run: bun run --bun build
+      # Generated Views clients import the workspace runtime from its build output; the hosted components example's
+      # widget builds its component with the workspace's Vite plugin.
+      - name: Build the shared Views runtime and the Vite plugin
+        # bash on every runner: in PowerShell (Windows' default) "(cd …)" is no subshell, so the second cd would
+        # resolve against the first.
+        shell: bash
+        run: |
+          (cd packages/web/views && bun run --bun build)
+          (cd packages/web/vite-plugin-runic && bun run --bun build)
       - name: Build managed desktop contracts
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       # --timeout bounds the whole session, including test-host startup and exit. MTP resolves a
@@ -984,6 +990,22 @@ jobs:
         run: |
           dotnet build examples/hosted-windows/Shell/HostedShell.csproj -c Release
           GDK_BACKEND=x11 xvfb-run -a dotnet run --project examples/hosted-windows/Shell/HostedShell.csproj -c Release --no-build -- --probe
+      # Region mode (#866): the hosted region example's installer shows its check tool's window in a region of its step
+      # page under its Content-Security-Policy, detaches and attaches it again, and leaves the step through the check's
+      # close guard. The hosted components example's dashboard shows two widget processes as components in its own page
+      # (trusted component mode) and reports whether WebKitGTK has scoped custom element registries (REGION FINDING).
+      # The views job runs the check's unit tests.
+      - name: Exercise the hosted region and hosted components examples in GTK 3
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          dotnet build examples/hosted-region/Installer/HostedInstaller.csproj -c Release
+          dotnet build examples/hosted-components/Dashboard/HostedDashboard.csproj -c Release
+          # Both probes run, also after one failed; each writes its steps and the host's log to standard error.
+          status=0
+          GDK_BACKEND=x11 xvfb-run -a dotnet examples/hosted-region/Installer/bin/Release/net10.0/HostedInstaller.dll --probe || status=$?
+          GDK_BACKEND=x11 xvfb-run -a dotnet examples/hosted-components/Dashboard/bin/Release/net10.0/HostedDashboard.dll --probe || status=$?
+          exit "$status"
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -1301,6 +1323,41 @@ jobs:
           dotnet tests/dotnet/Runic.Application.Views.Desktop.Tests/bin/Release/net10.0/Runic.Application.Views.Desktop.Tests.dll \
             --treenode-filter '/*/*/(ElevatedHostedApplicationTests)|(HostedElevationTests)|(HostProtocolChecks)/*' --output detailed
           dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --elevated-pair
+      # #865 and #866 together, as the issue's installer: the hosted region example's installer and check run as the
+      # elevated pair (the runner's steps run elevated), the check's window shows in a region of the installer's WebView2
+      # page, and its frame passes elevated-peer admission. The dashboard shows its elevated widgets as components, which
+      # checks a dynamic import() of a loopback module under the page's Content-Security-Policy in WebView2.
+      # The installer's probe also runs unelevated, as the standard user created above (Unelevated.cs), to compare.
+      # RUNIC_DESKTOP_REGION_TRACE writes every region frame event of the hosts' WebView2 to standard error.
+      - name: Exercise the hosted region and hosted components examples as the elevated pair on Windows
+        id: region-examples
+        if: runner.os == 'Windows'
+        timeout-minutes: 12
+        shell: bash
+        env:
+          RUNIC_DESKTOP_REGION_TRACE: '1'
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
+        run: |
+          dotnet build examples/hosted-region/Installer/HostedInstaller.csproj -c Release
+          dotnet build examples/hosted-components/Dashboard/HostedDashboard.csproj -c Release
+          # The built hosts run directly, as the elevated hosted smoke does; every probe runs, also after one failed.
+          status=0
+          dotnet examples/hosted-region/Installer/bin/Release/net10.0/HostedInstaller.dll --probe --elevated || status=$?
+          dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll \
+            --run-unelevated dotnet examples/hosted-region/Installer/bin/Release/net10.0/HostedInstaller.dll --probe || status=$?
+          dotnet examples/hosted-components/Dashboard/bin/Release/net10.0/HostedDashboard.dll --probe --elevated || status=$?
+          exit "$status"
+      # A host that ends without a word, such as after a native crash, leaves its reason in the Application event log.
+      - name: Show the Application event log after the region examples failed on Windows
+        if: failure() && runner.os == 'Windows' && steps.region-examples.outcome == 'failure'
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-20) } -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in 'Application Error', '.NET Runtime', 'Windows Error Reporting', 'Application Hang' } |
+            Format-List TimeCreated, ProviderName, Id, Message
       # Also after a failure or cancellation: the user's processes, its profile, its access to the workspace and the account.
       - name: Remove the hosted application checks' standard user on Windows
         if: always() && steps.hosted-user.outcome != 'skipped' && runner.os == 'Windows' && runner.environment == 'github-hosted'

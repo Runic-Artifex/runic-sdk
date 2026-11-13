@@ -141,12 +141,14 @@ public sealed class ElevatedPeerAdmissionTests
     private static async Task<string?> ResponseAsync(Uri url)
     {
         using var client = new TcpClient(url.HostNameType == UriHostNameType.IPv6 ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork);
-        await client.ConnectAsync(IPAddress.Parse(url.DnsSafeHost), url.Port);
-        var stream = client.GetStream();
         var request = $"GET {url.PathAndQuery} HTTP/1.1\r\nHost: {url.Authority}\r\nConnection: close\r\n\r\n";
         using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         try
         {
+            // A refused peer's connection is closed at once, so the reset can reach the client during the connect itself
+            // (macOS) as well as on the write or read.
+            await client.ConnectAsync(IPAddress.Parse(url.DnsSafeHost), url.Port);
+            var stream = client.GetStream();
             await stream.WriteAsync(Encoding.ASCII.GetBytes(request), timeout.Token);
             var buffer = new byte[256];
             var read = await stream.ReadAsync(buffer, timeout.Token);
@@ -154,7 +156,7 @@ public sealed class ElevatedPeerAdmissionTests
             var text = Encoding.ASCII.GetString(buffer, 0, read);
             return text[..Math.Max(0, text.IndexOf('\r'))];
         }
-        catch (IOException) { return null; }
+        catch (Exception error) when (error is IOException or SocketException) { return null; }
     }
 
     private static byte[] Ipv4Table(params (IPEndPoint Local, IPEndPoint Remote, uint Owner)[] rows)

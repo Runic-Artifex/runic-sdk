@@ -63,6 +63,13 @@ the release notes, which give the full detail and the pull requests:
   [Hosted application windows](../eng/release/notes/0.17.0.md#hosted-application-windows-experimental-runicdesk103),
   [Views protocol 4 features](../eng/release/notes/0.17.0.md#views-protocol-4-features),
   [Known issues](../eng/release/notes/0.17.0.md#known-issues)
+- 0.18.0: [Upgrading from 0.17](../eng/release/notes/0.18.0.md#upgrading-from-017),
+  [Elevated hosts and guests](../eng/release/notes/0.18.0.md#elevated-hosts-and-guests-865-experimental),
+  [Region mode](../eng/release/notes/0.18.0.md#region-mode-866-experimental),
+  [Trusted component mode](../eng/release/notes/0.18.0.md#trusted-component-mode-866-d0598-experimental),
+  [Window building blocks](../eng/release/notes/0.18.0.md#window-building-blocks-864),
+  [Runic's own text in German](../eng/release/notes/0.18.0.md#runics-own-text-in-german-881),
+  [Known issues](../eng/release/notes/0.18.0.md#known-issues)
 
 ## Before you start
 
@@ -72,8 +79,10 @@ the release notes, which give the full detail and the pull requests:
    one `protocol` diagnostic). `Runic.Application.Views.CsWebUi` keeps a
    prerelease version of its own; take the one listed in the release notes.
 2. Remove every `RUNICDESK100`, `RUNICDESK101` and `RUNICASSETS001` suppression
-   and every `./experimental` import (see [npm packages](#npm-packages)). No .NET
-   or npm API is experimental.
+   and every `./experimental` import of 0.9 (see [npm packages](#npm-packages)).
+   What is experimental now, hosted applications (`RUNICDESK103`) and from 0.18
+   the npm packages' new `./experimental` entries for hosted regions, is listed
+   in [experimental APIs](experimental.md).
 3. Commit your frontend's lock file (see [MSBuild](#msbuild)).
 4. Builds with `TreatWarningsAsErrors` meet the new warnings `RUNICNAV002`,
    `RUNICBRIDGE029` and `RUNICDBUS013`; see the [diagnostics catalog](diagnostics.md).
@@ -483,8 +492,11 @@ Details: 0.10.0 [Assets](../eng/release/notes/0.10.0.md#assets), 0.11.0
 
 ## npm packages
 
-Every `./experimental` entry is removed and its exports moved to the package
-root (TS2307 or `ERR_PACKAGE_PATH_NOT_EXPORTED` otherwise):
+Every `./experimental` entry of 0.9 is removed and its exports moved to the package
+root (TS2307 or `ERR_PACKAGE_PATH_NOT_EXPORTED` otherwise). 0.18 adds new
+`./experimental` entries for hosted regions (`defineHostedRegion`,
+`RunicHostedRegion`): run the command below before you adopt them, since it
+rewrites every `./experimental` import:
 
 ```sh
 grep -rlE "@runic-artifex/[a-z-]+/experimental" src | xargs sed -i -E 's#(@runic-artifex/[a-z-]+)/experimental#\1#g'
@@ -1255,3 +1267,39 @@ application that does not opt in: an application without a guest code path canno
 | A tool that should show inside such a launcher | A code path of its own, reached by a parameter it defines, that runs `RunicDesktopHost.Run` with `RunicDesktopHostOptions.Guest = RunicGuestOptions.FromStandardInput()`. Its ViewModels, menus, dialogs, clipboard and launcher need no change: hosted, they go to the host |
 | Tests that drove such a tool through serve-only mode and `RunicServeOnlyApplication` | `RunicTestHost.StartGuestAsync` plays the host and answers its menus, dialogs and window services |
 | A custom `IDesktopWindowHostFactory` | Unchanged for the application's own windows. To show hosted windows, its window host implements `IDesktopEphemeralDataStoreWindowHost` |
+
+## From 0.17 to 0.18
+
+0.18.0 adds APIs and changes some behaviour. Its new wire members are features negotiated in `hello` (`region/1`,
+`region-component/1` and the Views protocol's `hosted-regions/1`), so a 0.17 page or guest and a 0.18 host connect and
+behave as in 0.17. Update every Runic NuGet and npm package to 0.18.0 together and rebuild so that the generated
+clients are regenerated. An application that uses Runic Translations moves every Translations package to 0.10.0, and
+one that uses Runic Command Line to 0.12.0.
+
+### Behaviour
+
+| 0.17 | 0.18 |
+| --- | --- |
+| `Runic.Desktop.NativeServer` 0.17 (C ABI 3) | `Runic.Desktop` 0.18 binds ABI 5 only: an older native server fails at the first window with `native-server-unavailable`. Use the same version of every Runic package |
+| `describeBridgeError` showed a `BridgeError`'s `message` when it had no reason | It shows Runic's sentence for the reason or the kind (in German too, with `configureRunicViewsText()`); application text comes through `FieldError` and other `Error`s |
+| An empty `integer` field said "Enter a number." | "Enter a whole number.", as the catalog and `bigint` fields say |
+| A GTK 4 window was titled "Runic Desktop" until the page had a title | `DesktopPlatformTexts.LoadingTitle` ("Loading…"), as on WebView2 |
+| Every `PropertyChanged` read every bridged getter | A notification that names a bridged member refreshes that member; each getter is read about twice per publication unit. A getter with side effects runs less often; frames are unchanged |
+| Generated union encoders typed the case value `any`, and a strict build of the generated folder failed for unions with list or dictionary members | Typed per case: regenerate |
+| A test compared a host's or a guest's `hello` exactly | Runic's hosts and guests list `region/1`, and `region-component/1` where it applies |
+
+Details: 0.18.0 [Upgrading from 0.17](../eng/release/notes/0.18.0.md#upgrading-from-017).
+
+### Hosted applications
+
+Nothing changes for an application that does not opt in. The API stays experimental
+([`RUNICDESK103`](experimental.md#RUNICDESK103)); the [hosted regions guide](hosted-regions.md) covers the new
+modes.
+
+| 0.17 | 0.18 |
+| --- | --- |
+| An elevated host could not host anything: its guests ran elevated and refused (`guest-elevated`) | The elevated pair: `RunicGuestStartInfo.AllowElevatedGuest` in the host and `RunicGuestOptions.AllowElevatedHost` in the guest, which then checks its parent ([security](security.md#elevated-hosts-and-guests)) |
+| A host placed a guest's window over its own and hid its window to show the guest as a step of its flow | `RunicHostedWindowDecision.Embed(region)` and `<runic-hosted-region>` in the host's page; `RunicHostedRegion.AsDepartureGuard()` asks the guest before the step departs ([hosted region example](../examples/hosted-region/README.md)) |
+| A suite that wanted a tool's Views in its own page's theme and layout | `EmbedComponent` with `AllowComponentEmbedding` and the `component` build target, for applications of one vendor ([hosted components example](../examples/hosted-components/README.md)) |
+| A serve-only application could not host | It hosts guests in regions of its pages; `RunicHostedWindowRequest.CanOpenWindow` is `false` |
+| A host page with a Content-Security-Policy | Allows a region's frame with `frame-src http:`, and a component's origin with `script-src … http://127.0.0.1:*` and `connect-src … ws://127.0.0.1:*` |

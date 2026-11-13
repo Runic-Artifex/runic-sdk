@@ -60,6 +60,12 @@ page after 18.7 instead of 33.6 ms, on macOS 8.65 instead of 11.83 MiB):
   `blobs/1`), whose bodies stream to the window chunk by chunk (C ABI 3,
   `runic_server_read`), as Kestrel's do.
 - HTTP/1.1 only, with hyper's default header limits.
+- The library's C ABI must be the one `Runic.Desktop` binds: use the
+  `Runic.Desktop.NativeServer` package of the same version as `Runic.Desktop`.
+  0.18.0 binds ABI 5: a listener on `[::1]` for a hosted region's frames (ABI 4)
+  and an admission check that runs before a connection is read, for an elevated
+  guest's peers (ABI 5). A library of another ABI fails at the first window with
+  `native-server-unavailable`, naming both versions.
 - No ASP.NET Core: a framework-dependent application needs only the .NET
   runtime, and a self-contained one carries no `Microsoft.AspNetCore.*` files.
   An application that resolved `IConfiguration` or `IHostEnvironment` from
