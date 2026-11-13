@@ -29,13 +29,16 @@ internal sealed partial class MacOsWkWebViewHost
     public ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(width, height));
+            // The page's minimum; an open side panel adds its width (ApplyContentMinimum).
+            _pageMinimum = (width, height);
+            ApplyContentMinimum();
             if (IsFullScreen || Api.SendBool(_window, "isZoomed")) return;
             // A window that is smaller grows to the minimum and keeps its top-left corner, as SetSizeAsync does.
+            var panelWidth = _panel is { IsShown: true } panel ? panel.NativeWidth : 0;
             var before = Api.SendRect(_window, "frame");
             var content = Api.SendRectRect(_window, "contentRectForFrameRect:", before);
-            if (content.Width >= width && content.Height >= height) return;
-            Api.SendVoidSize(_window, "setContentSize:", new CGSize(Math.Max(content.Width, width), Math.Max(content.Height, height)));
+            if (content.Width >= width + panelWidth && content.Height >= height) return;
+            Api.SendVoidSize(_window, "setContentSize:", new CGSize(Math.Max(content.Width, width + panelWidth), Math.Max(content.Height, height)));
             var after = Api.SendRect(_window, "frame");
             Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(after.X, before.Y + before.Height - after.Height));
         }, cancellationToken);

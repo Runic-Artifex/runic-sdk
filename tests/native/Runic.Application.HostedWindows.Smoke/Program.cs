@@ -13,6 +13,23 @@ if (Array.IndexOf(args, HostedSmoke.GuestArgument) is var guest and >= 0 && gues
 if (args is ["--run-unelevated", .. var command])
     return OperatingSystem.IsWindows() ? Unelevated.Run(command) : throw new PlatformNotSupportedException("--run-unelevated is for Windows.");
 
+// --direct-services (sdk#896): the per-window services of a window the smoke opens itself; see DirectServicesSmoke. It
+// needs no unelevated run. Before any await: on macOS the AppKit loop owns the main thread.
+if (args.Contains("--direct-services", StringComparer.Ordinal))
+{
+    using var directWatchdog = new Timer(static _ =>
+    {
+        Console.Error.WriteLine("The direct services smoke exceeded its 3-minute deadline.");
+        Environment.Exit(1);
+    }, null, TimeSpan.FromMinutes(3), Timeout.InfiniteTimeSpan);
+    try { return DirectServicesSmoke.Run(); }
+    catch (Exception error)
+    {
+        Console.Error.WriteLine(error);
+        return 1;
+    }
+}
+
 // --elevated-pair: the smoke runs as it is, an elevated host of elevated guests that both allow it
 // (RunicGuestStartInfo.AllowElevatedGuest, RunicGuestOptions.AllowElevatedHost); it must run elevated.
 if (args.Contains("--elevated-pair", StringComparer.Ordinal))

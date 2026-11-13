@@ -1,1 +1,8 @@
 #nullable enable
+Runic.Application.Views.Desktop.DesktopWindowServices
+Runic.Application.Views.Desktop.DesktopWindowServices.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopWindowServices.NativeOwner.get -> Runic.Application.Views.Desktop.DesktopNativeOwner!
+Runic.Application.Views.Desktop.DesktopWindowServices.Presentation.get -> Runic.Application.Views.IRunicWindowPresentation!
+Runic.Application.Views.Desktop.DesktopWindowServices.Window.get -> Runic.Desktop.DesktopWindow!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.AttachWindowServices(Runic.Desktop.DesktopWindow! window, System.IServiceProvider! windowServices, Runic.Application.Views.WindowContentSession? content = null) -> Runic.Application.Views.Desktop.DesktopWindowServices!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.ForWindowPresentation(Runic.Desktop.DesktopWindow! window) -> Runic.Application.Views.IRunicWindowPresentation!

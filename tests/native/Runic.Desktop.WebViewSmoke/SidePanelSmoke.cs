@@ -16,8 +16,11 @@ using Runic.Desktop;
 //   delivers no input to the window, as the arm64 runner's, leaves it unverified).
 // - The placement excludes the panel; a maximized window keeps the panel and the page takes the rest; refusals
 //   (no room, already open, maximized); the minimum width includes the panel; closing the window closes the panel.
-// On macOS and Linux the panel is refused with Unsupported until their engines have one (P3, P4).
-internal static class SidePanelSmoke
+// P3, on macOS (WKWebView) the same, except: no frame capture, but the page's rectangle on the screen read before and
+// after each change (SidePanelSmoke.MacOS.cs); Tab posted to the application's event queue; the accessibility order of
+// the views; the minimum content size; and closing the panel of a zoomed window, which shrinks it once it is restored.
+// On Linux the panel is refused with Unsupported until its engine has one (P4).
+internal static partial class SidePanelSmoke
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(600);
@@ -68,16 +71,17 @@ internal static class SidePanelSmoke
             await surface.ExecuteJavaScriptAsync("return document.readyState;", Deadline);
             await WaitForAsync(() => window.State?.Bounds is not null, "the window's bounds");
             await Task.Delay(Settle);
-            if (!OperatingSystem.IsWindows())
+            if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
             {
                 Require(window.CheckSidePanel(DesktopWindowEdge.End, PanelWidth) == DesktopSidePanelRefusal.Unsupported,
-                    "macOS and Linux to refuse the side panel until P3 and P4");
+                    "Linux to refuse the side panel until P4");
                 var refused = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Width = PanelWidth, Path = "#side-panel" });
                 Require(refused is DesktopSidePanelResult.Refused { Reason: DesktopSidePanelRefusal.Unsupported }, $"Unsupported, not {refused}");
                 Console.WriteLine("PASS side panel: refused with Unsupported on this platform.");
                 return 0;
             }
 
+            if (OperatingSystem.IsMacOS()) await MacOS.FindPageAsync(window);
             var start = window.State!;
             var scale = start.Bounds!.Scale;
             var native = (int)Math.Round(PanelWidth * scale, MidpointRounding.AwayFromZero);
@@ -87,12 +91,14 @@ internal static class SidePanelSmoke
             // The baseline, before any side-panel operation, with the window as opened: where GDI cannot find the page's
             // marker now (the arm64 runner's desktop reads garbage or blank white), frame capture is unverified, and the
             // transitions run with every other check. Found here, it must be found in place later.
-            var marker = FindBaselineMarker(start.VisibleBounds!);
+            // GDI frame capture is Windows only; macOS checks the page's place on the screen instead.
+            var marker = OperatingSystem.IsWindows() ? FindBaselineMarker(start.VisibleBounds!) : null;
 
             await ExerciseRefusalsAsync(window);
             var right = await OpenAsync(window, surface, reports, DesktopWindowEdge.Right, start, native, page);
             Require(window.State!.Placement!.Width == start.Placement!.Width && window.State.Placement.X == start.Placement.X,
                 $"the placement {window.State.Placement} to exclude the panel, as {start.Placement}");
+            if (OperatingSystem.IsMacOS()) await MacOS.RequireReadingOrderAsync(window, "the right edge");
             await ExerciseFocusAsync(window, surface, reports);
             Require(await right.SetWidthAsync(PanelWidth + 20) is null, "the panel to widen");
             var wider = (int)Math.Round((PanelWidth + 20) * scale, MidpointRounding.AwayFromZero);
@@ -118,10 +124,12 @@ internal static class SidePanelSmoke
                 Require(await left!.MoveToEdgeAsync(DesktopWindowEdge.Left) is null, "the panel to move to the left edge");
                 await WaitForAsync(() => window.State!.Bounds!.X == start.Bounds.X - native, "the window moved left by the panel");
             });
+            if (OperatingSystem.IsMacOS()) await MacOS.RequireReadingOrderAsync(window, "the left edge");
             await RequirePageAsync(surface, page, "after the moves");
             await CaptureAsync("close on the left edge", marker, () => CloseAsync(window, surface, left!, start));
 
             await ExerciseMaximizedAsync(window, surface, start);
+            if (OperatingSystem.IsMacOS()) await MacOS.ExerciseZoomedCloseAsync(window, start, native);
             await ExerciseMinimumAndWindowCloseAsync(window, surface, start, native);
         }
         finally { if (window.IsOpen) await window.CloseAsync(); }
@@ -177,20 +185,22 @@ internal static class SidePanelSmoke
     private static async Task ExerciseFocusAsync(DesktopWindow window, DesktopSurface surface, System.Collections.Concurrent.ConcurrentQueue<string> reports)
     {
         await window.FocusAsync();
-        await surface.ExecuteJavaScriptAsync("document.getElementById('last').focus(); return document.activeElement.id;", Deadline);
+        var before = (await surface.ExecuteJavaScriptAsync("document.getElementById('last').focus(); return document.activeElement.id;", Deadline)).Trim('"');
+        Require(before == "last", $"the page's last element focused before Tab, not '{before}'");
         await Task.Delay(Settle);
         reports.Clear();
-        Keyboard.Press(Keyboard.Tab);
+        await PressTabAsync(window, shift: false);
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         while (!reports.Contains("focus-panel-first") && elapsed.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(50);
         if (!reports.Contains("focus-panel-first"))
         {
             var focus = await surface.ExecuteJavaScriptAsync("return document.hasFocus() + ' ' + document.activeElement.id;", Deadline);
-            Require(focus.Trim('"') == "true last", $"Tab past the page's last element to focus the panel's first, but the page has '{focus}'");
-            Console.WriteLine("Side panel: Tab unverified on this runner: its desktop does not deliver SendInput to the window.");
+            var responder = OperatingSystem.IsMacOS() ? $"; the window's first responder is {await MacOS.DescribeFirstResponderAsync(window)}" : "";
+            Require(focus.Trim('"') == "true last", $"Tab past the page's last element to focus the panel's first, but the page has '{focus}'{responder}");
+            Console.WriteLine("Side panel: Tab unverified on this runner: its desktop does not deliver the key to the window.");
             return;
         }
-        Keyboard.Press(Keyboard.Tab, shift: true);
+        await PressTabAsync(window, shift: true);
         await WaitForAsync(async () => (await surface.ExecuteJavaScriptAsync(
             "return document.hasFocus() + ' ' + document.activeElement.id;", Deadline)).Trim('"') == "true last",
             "Shift+Tab from the panel's first element to focus the page's last");
@@ -213,6 +223,12 @@ internal static class SidePanelSmoke
         Require(window.CheckSidePanel(DesktopWindowEdge.Left, PanelWidth) == DesktopSidePanelRefusal.AlreadyOpen, "AlreadyOpen while a panel is open");
         await window.ToggleMaximizedAsync();
         await WaitForAsync(() => !window.State!.IsMaximized, "the window restored");
+        // AppKit animates the zoom; the panel closes once the window is back where it was.
+        if (OperatingSystem.IsMacOS())
+        {
+            var opened = start.Bounds! with { Width = start.Bounds.Width + PanelWidth };
+            await WaitForAsync(() => SameFrame(window.State!.Bounds!, opened), $"the window restored with the panel at {opened}");
+        }
         await panel.CloseAsync();
         await WaitForAsync(() => SameFrame(window.State!.Bounds!, start.Bounds!), "the start bounds after maximize, restore and close");
         Require(window.CheckSidePanel(DesktopWindowEdge.Right, PanelWidth) is null, "a panel to fit again");
@@ -229,19 +245,34 @@ internal static class SidePanelSmoke
     // The minimum width includes the panel; closing the window closes the panel with WindowClosed.
     private static async Task ExerciseMinimumAndWindowCloseAsync(DesktopWindow window, DesktopSurface surface, DesktopWindowState start, int native)
     {
+        var minimum = OperatingSystem.IsMacOS() ? await MacOS.ContentMinimumWidthAsync(window) : 0;
         var panel = await OpenQuietlyAsync(window);
-        await window.InvokeNativeAsync(static handle => Win32.SetWindowPos(handle, 0, 0, 0, 100, 150, 0x0002 | 0x0004 | 0x0010));
-        await Task.Delay(Settle);
-        var bounds = window.State!.Bounds!;
-        Require(bounds.Width > native + 60, $"a window {bounds.Width} px wide, resized to 100 px from outside Runic, to stay wider than the panel ({native} px)");
-        Console.WriteLine($"Side panel: the minimum width with the panel is {bounds.Width} px.");
+        if (OperatingSystem.IsMacOS())
+        {
+            // AppKit applies the content minimum to the user's resize only: the minimum itself is checked.
+            var withPanel = await MacOS.ContentMinimumWidthAsync(window);
+            Require(Math.Abs(withPanel - (minimum + PanelWidth)) < 0.5, $"a minimum content width of {minimum} + {PanelWidth} with the panel, not {withPanel}");
+            Console.WriteLine($"Side panel: the minimum content width with the panel is {withPanel} pt ({minimum} pt without).");
+        }
+        else
+        {
+            await window.InvokeNativeAsync(static handle => Win32.SetWindowPos(handle, 0, 0, 0, 100, 150, 0x0002 | 0x0004 | 0x0010));
+            await Task.Delay(Settle);
+            var bounds = window.State!.Bounds!;
+            Require(bounds.Width > native + 60, $"a window {bounds.Width} px wide, resized to 100 px from outside Runic, to stay wider than the panel ({native} px)");
+            Console.WriteLine($"Side panel: the minimum width with the panel is {bounds.Width} px.");
+        }
 
         var reason = new TaskCompletionSource<DesktopSidePanelCloseReason>(TaskCreationOptions.RunContinuationsAsynchronously);
         panel.Closed += (_, args) => reason.TrySetResult(args.Reason);
         await window.CloseAsync();
         Require(await reason.Task.WaitAsync(Deadline) == DesktopSidePanelCloseReason.WindowClosed, "WindowClosed when the window closes");
         Require(!panel.IsOpen && window.SidePanel is null, "no panel after the window closed");
-        await WaitForAsync(() => surface.ConnectionCount == 0, "both pages to disconnect");
+        try { await WaitForAsync(() => surface.ConnectionCount == 0, "both pages to disconnect"); }
+        catch (TimeoutException error)
+        {
+            throw new TimeoutException($"{error.Message} Still connected: {surface.DescribeConnectedSlots()}.", error);
+        }
         Console.WriteLine("Side panel: closing the window closed the panel (WindowClosed).");
     }
 
@@ -255,6 +286,11 @@ internal static class SidePanelSmoke
     // the edge was not at its place.
     private static async Task CaptureAsync(string what, (int X, int Y)? found, Func<Task> operation)
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            await MacOS.KeepsPageAsync(what, operation);
+            return;
+        }
         if (found is not { } marker)
         {
             await operation();
@@ -354,6 +390,14 @@ internal static class SidePanelSmoke
     private static void Require(bool condition, string what)
     {
         if (!condition) throw new InvalidOperationException("Side panel: expected " + what + ".");
+    }
+
+    // SendInput on Windows; on macOS a key event posted to the application's queue, as the window server delivers one.
+    private static ValueTask PressTabAsync(DesktopWindow window, bool shift)
+    {
+        if (OperatingSystem.IsMacOS()) return MacOS.PressTabAsync(window, shift);
+        Keyboard.Press(Keyboard.Tab, shift);
+        return ValueTask.CompletedTask;
     }
 
     private static class Keyboard

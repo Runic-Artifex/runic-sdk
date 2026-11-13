@@ -420,7 +420,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `useAppearance` sees the desktop's text scale, accent colour, contrast and
   forced-colours palette. A serve-only Window, and every Window of a host with
   `DesktopHostOptions.NetworkExposure = AllInterfaces`, gets none: their pages
-  may run on another machine.
+  may run on another machine. A window the application opens itself gets the
+  same push once `DesktopPlatformServices.AttachWindowServices` attached its
+  content session ([a window the application opens itself](#a-window-the-application-opens-itself)).
 - `AddRunicPlatformServices()` also registers `IDesktopNotifications`, one
   singleton for the application, which `DesktopPlatformServices.CreateNotifications(applicationId)`
   creates when it is first resolved and the service provider disposes. A
@@ -546,7 +548,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `IsAvailable == false`. Examples are an installed browser after an
   embedded-window fallback, or a custom host without a native handle.
   Applications that open a `DesktopWindow` themselves create one with
-  `new DesktopNativeOwner(window)`.
+  `new DesktopNativeOwner(window)`, or attach a scope's services with
+  `DesktopPlatformServices.AttachWindowServices`, whose `NativeOwner` it is.
 - `DesktopBridgeTransport` connects a `DesktopSurface` to a
   `WindowContentSession` directly, for applications that compose a surface
   themselves. It is an `IBridgeConnectionTransport`: `Serve` delivers the
@@ -597,6 +600,67 @@ An exception from the application body passed to `Run` closes the windows,
 disposes the host and is rethrown by `Run`; Runic does not log it. The
 [crash reporting guide](https://docs.runic-artifex.eu/guides/desktop/crash-reporting/)
 shows how to log such crashes, capture a dump and keep NativeAOT symbols.
+
+### A window the application opens itself
+
+An application that opens its `DesktopWindow` itself, with
+`DesktopSurface.OpenWindowAsync`, for example to control its start-up order,
+gives a DI scope's per-window services that window with
+`DesktopPlatformServices.AttachWindowServices` (since 0.19). Its ViewModels
+then take `IRunicWindowPresentation`, `IRunicWindowLocale`,
+`IRunicConnections`, `IRunicWindowContext` and the platform services in their
+constructors, as under `RunicDesktopHost`:
+
+```csharp
+DesktopSurface surface = await desktop.CreateSurfaceAsync(surfaceOptions);
+DesktopWindow window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Browser = BrowserKind.Embedded,
+    ConfirmCloseAsync = confirmClose, // what IRunicWindowContext.RequestCloseAsync asks
+});
+await using var scope = services.CreateAsyncScope(); // AddRunicWindowService(), AddRunicPlatformServices()
+var viewModel = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
+using var transport = new DesktopBridgeTransport(surface);
+using var content = new WindowContentSession(transport, new WindowContentSessionOptions
+{
+    RootModel = viewModel,
+    ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
+});
+// Attach the generated Bridge to transport and content as before.
+await using var windowServices = DesktopPlatformServices.AttachWindowServices(window, scope.ServiceProvider, content);
+await window.WaitForCloseAsync();
+```
+
+- Call it once the window is open. ViewModels the scope resolved before keep
+  their services: the scope's own objects are the ones that are attached, so a
+  ViewModel that sets the window's colour scheme from its constructor's
+  `IRunicWindowPresentation` gets the results of a `RunicDesktopHost` Window.
+- With `content`, the window's locale follows and sets the session's, the
+  native layout direction and the language of the surface's own pages follow
+  it, `IRunicConnections` lists the page's connections, and the page receives
+  the desktop's appearance (`appearance/1`) when only this computer can reach it.
+  Presentation changes then arrive in turns of the session's model context.
+- The direction follows the locale unless the window opened with a direction of
+  its own that is not its locale's. The web view's language is the one
+  `DesktopWindowOptions.Language` gave it when it opened.
+- `IRunicWindowContext.RequestCloseAsync` calls `DesktopWindow.RequestCloseAsync`,
+  so the window's `ConfirmCloseAsync` decides; `IRunicWindowContext.Window` is
+  `null`, because there is no `IRunicWindow`.
+- It throws `InvalidOperationException` for a closed window or a scope that a
+  Window already uses, and `ArgumentException` for a session of another
+  surface. A scope without `AddRunicWindowService()` attaches what it has, and
+  `DesktopWindowServices.Presentation` still presents the window.
+- The binding ends when the window closes or the returned
+  `DesktopWindowServices` is disposed: the presentation reports `OwnerClosed`,
+  the platform services stop, and the locale and appearance no longer reach the
+  window. It never disposes the scope, the session or the window. A new window
+  takes a new scope.
+
+ViewModels without a scope take `DesktopPlatformServices.ForWindowPresentation(window)`,
+one presentation per window, as `WpfPlatformServices.ForWindowPresentation` does
+for a WPF window. The
+[per-window services table](../Runic.Application.Views/README.md#per-window-services-by-way-of-opening)
+lists what each way of opening a window provides.
 
 ## From a command line
 
