@@ -264,11 +264,12 @@ internal sealed class HostedGuest : IAsyncDisposable
         }
 
         // The key is spent: nothing listens any more. A feature is in use when both hellos list it (host-protocol.md, Features).
-        var features = new JsonArray([.. HostFeatures.GuestImplemented.Select(static name => (JsonNode)name)]);
+        var implemented = GuestFeatures(host);
+        var features = new JsonArray([.. implemented.Select(static name => (JsonNode)name)]);
         var offered = hello["features"] is JsonArray list
             ? list.Select(static item => item is JsonValue value && value.TryGetValue<string>(out var name) ? name : null).ToHashSet(StringComparer.Ordinal)
             : [];
-        Session = new RunicGuestSession(host, HostProtocol.Version, [.. HostFeatures.GuestImplemented.Where(offered.Contains)], _hostGone.Token);
+        Session = new RunicGuestSession(host, HostProtocol.Version, [.. implemented.Where(offered.Contains)], _hostGone.Token);
         // The host's appearance and locale (host-protocol.md, Handshake); members that are not valid read as unknown.
         _appearance = HostServices.ReadAppearance(hello["appearance"]);
         var (hostLocale, languages) = HostServices.ReadLocale(hello);
@@ -521,6 +522,18 @@ internal sealed class HostedGuest : IAsyncDisposable
     internal static RunicWindowConfigurationException HostGone() => new([new RunicWindowDiagnostic("hosted-host-gone",
         "The host application has gone away, so the hosted application opens no more windows.",
         "A hosted application never shows a window of its own; end the application.")]);
+
+    // The features this guest lists: region-component/1 only when the application allows component embedding for this
+    // host (RunicGuestOptions.AllowComponentEmbedding), and, in an elevated guest, only once its listeners admit elevated
+    // peers alone (ElevatedPeerAdmission; host-protocol.md, Component mode).
+    private string[] GuestFeatures(RunicHostInfo host) =>
+        _options.AllowComponentEmbedding is { } allow && ComponentModeAvailable && allow(host)
+            ? [.. HostFeatures.GuestImplemented, HostFeatures.RegionComponent]
+            : HostFeatures.GuestImplemented;
+
+    // An elevated guest's component would run in its host page's realm with the guest's token: only with elevated-peer
+    // admission on its listeners (D059.13). HOOK for R5 (#878): becomes `!RefusesEmbedding` (see ElevatedPeerAdmission).
+    internal static bool ComponentModeAvailable => !Environment.IsPrivilegedProcess || Runic.Desktop.Internal.ElevatedPeerAdmission.Enforced;
 
     internal bool InUse(string feature) => Session.Features.Contains(feature, StringComparer.Ordinal);
 

@@ -87,6 +87,94 @@ internal sealed class HostedRegionTests
         Check(await host.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{host.StandardError}");
     }
 
+    // region-component/1 between a real guest process that allows it (HostedGuestProgram "component") and RunicTestHost:
+    // the attach answers the module, the WebSocket address and a token; the module is the embedder's alone, and the
+    // guest admits the component's WebSocket only from the embedder with the token.
+    [Test, NotInParallel(Order = 75)]
+    public async Task AWindowAsAComponentIsAdmittedWithItsTokenFromItsHostPagesOriginOnly()
+    {
+        await using var host = await RunicTestHost.StartGuestAsync(Process(HostedGuestProgram.Guest("component")), new RunicTestHostOptions
+        {
+            StartTimeout = TestTimeouts.Scale(Timeout),
+            Features = ["menus/1", "dialogs/1", "window-services/1", "region/1", "region-component/1"],
+            EmbedWindow = static _ => true,
+        });
+        if (host.Exited.IsCompleted) Skip.Test("The guest refused hosted mode (an elevated test process).");
+        Check(host.Features.Contains("region-component/1"), $"The guest's hello listed [{string.Join(", ", host.Features)}].");
+        var window = await host.WaitForWindowAsync(nameof(ConformanceMainWindow), TestTimeouts.Scale(Timeout));
+        using var cancel = TestTimeouts.Cancellation(Timeout);
+        const string Embedder = "http://127.0.0.1:38200";
+
+        var component = await window.AttachComponentAsync(Embedder, cancellationToken: cancel.Token);
+        Check(component.SameSite && component.Module.Host == "127.0.0.1" && component.Module.AbsolutePath.EndsWith("/_runic_component/component.js", StringComparison.Ordinal),
+            $"The component's module is {component.Module}.");
+        Check(component.Url.Scheme == "ws" && component.Url.Authority == component.Module.Authority, $"The component's address is {component.Url}.");
+
+        using (var http = new HttpClient())
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, component.Module);
+            request.Headers.Add("Origin", Embedder);
+            using var module = await http.SendAsync(request, cancel.Token);
+            Check(module.StatusCode == HttpStatusCode.OK && module.Headers.GetValues("Access-Control-Allow-Origin").Single() == Embedder,
+                $"The module was answered {(int)module.StatusCode}.");
+        }
+        Check(await RefusedAsync(component.Url, "http://127.0.0.1:38201", component.Token, cancel.Token) == HttpStatusCode.Forbidden,
+            "Another origin connected as the component.");
+        Check(await RefusedAsync(component.Url, Embedder, null, cancel.Token) == HttpStatusCode.Unauthorized,
+            "The component connected without its token.");
+        using (var page = await ComponentUpgradeAsync(component.Url, Embedder, component.Token, cancel.Token))
+        {
+            Check(await TestTimeouts.UntilAsync(() => window.RegionPages.SequenceEqual(["connected"]), Timeout),
+                $"The guest reported [{string.Join(", ", window.RegionPages)}].");
+            Check(await RefusedAsync(component.Url, Embedder, component.Token, cancel.Token) == HttpStatusCode.Forbidden,
+                "A second page connected with the component's token.");
+            await window.DetachRegionAsync(cancellationToken: cancel.Token);
+        }
+        Check(await TestTimeouts.UntilAsync(async () => await RefusedAsync(component.Url, Embedder, component.Token, cancel.Token) == HttpStatusCode.Forbidden, Timeout),
+            "The component's token admitted it after the detach.");
+        Check(await window.RequestCloseAsync(cancellationToken: cancel.Token), "The guest refused the close.");
+        Check(await host.Exited.WaitScaledAsync(Timeout) == 0, $"The guest did not exit cleanly:\n{host.StandardError}");
+    }
+
+    // A component's WebSocket from origin with the token, after its token check, whose packet token is 0.
+    private static async Task<System.Net.WebSockets.ClientWebSocket> ComponentUpgradeAsync(Uri url, string origin, string? token,
+        CancellationToken cancellationToken)
+    {
+        var socket = new System.Net.WebSockets.ClientWebSocket();
+        if (token is not null) socket.Options.AddSubProtocol("runic-desktop." + token);
+        socket.Options.SetRequestHeader("Origin", origin);
+        socket.Options.CollectHttpResponseDetails = true;
+        try
+        {
+            await socket.ConnectAsync(url, cancellationToken);
+            var packet = new byte[9];
+            packet[0] = 0xDD;
+            packet[7] = 0xF5;
+            await socket.SendAsync(packet, System.Net.WebSockets.WebSocketMessageType.Binary, true, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    // The status that refused a component's WebSocket, or 101 when it was admitted.
+    private static async Task<HttpStatusCode> RefusedAsync(Uri url, string origin, string? token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var socket = await ComponentUpgradeAsync(url, origin, token, cancellationToken);
+            return HttpStatusCode.SwitchingProtocols;
+        }
+        catch (System.Net.WebSockets.WebSocketException error)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(error.Message, @"'(\d{3})'");
+            return match.Success ? (HttpStatusCode)int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+        }
+    }
+
     private static IEnumerable<(int Width, int Height)> Resizes(RunicTestHostedWindow window) =>
         window.PresentationRequests.Where(static request => request.Kind == "resize")
             .Select(static request => (request.Message.GetProperty("width").GetInt32(), request.Message.GetProperty("height").GetInt32()));
