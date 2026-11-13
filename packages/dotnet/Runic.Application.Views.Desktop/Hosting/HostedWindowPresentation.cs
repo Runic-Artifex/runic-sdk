@@ -24,16 +24,19 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
     private readonly RunicWindowPresentationFeatures _features;
     private RunicWindowActivity _activity;
     private DesktopColorScheme _colorScheme;
+    private RunicWindowPlacement? _placement;
     private volatile bool _closed;
 
     // request sends a presentation request for this window and returns the reply, or null when the channel is gone;
     // onHandlerError receives what an event handler threw.
     internal HostedWindowPresentation(RunicWindowPresentationFeatures features, RunicWindowActivity activity,
         DesktopColorScheme colorScheme, Func<JsonObject, CancellationToken, Task<JsonObject?>> request,
-        Action<Exception>? onHandlerError = null)
+        Action<Exception>? onHandlerError = null, RunicWindowPlacement? placement = null)
     {
         _features = features;
         _activity = activity;
+        // Only a window whose host lists placement reports one (host-protocol.md, window-open).
+        _placement = features.HasFlag(RunicWindowPresentationFeatures.Placement) ? placement : null;
         _colorScheme = colorScheme;
         _request = request;
         _onHandlerError = onHandlerError;
@@ -94,6 +97,8 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
                 "per-window-color-scheme" => RunicWindowPresentationFeatures.PerWindowColorScheme,
                 "activity" => RunicWindowPresentationFeatures.Activity,
                 "owned-windows" => RunicWindowPresentationFeatures.OwnedWindows,
+                "maximize" => RunicWindowPresentationFeatures.Maximize,
+                "placement" => RunicWindowPresentationFeatures.Placement,
                 _ => RunicWindowPresentationFeatures.None,
             } : RunicWindowPresentationFeatures.None;
         }
@@ -106,6 +111,50 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
         HostProtocol.Boolean(message, "minimized") is { } minimized && HostProtocol.Boolean(message, "visible") is { } visible
             ? new RunicWindowActivity(active, minimized, visible)
             : null;
+
+    public RunicWindowPlacement? Placement => Volatile.Read(ref _placement);
+
+    // The placement of a placement push or of the window-open reply: restored when the host sends it, else the current
+    // frame of a host that does not (host-protocol.md, Activity and placement); null when a member is missing.
+    internal static RunicWindowPlacement? PlacementOf(JsonObject? message)
+    {
+        if (message is null || HostProtocol.Boolean(message, "maximized") is not { } maximized ||
+            HostProtocol.Boolean(message, "fullScreen") is not { } fullScreen)
+            return null;
+        var bounds = message["restored"] as JsonObject ?? message["bounds"] as JsonObject;
+        return bounds is not null && Dimension(bounds, "width") is { } width && Dimension(bounds, "height") is { } height &&
+            Position(bounds, out var x, out var y)
+            ? new RunicWindowPlacement { X = x, Y = y, Width = width, Height = height, Maximized = maximized, FullScreen = fullScreen }
+            : null;
+
+        static int? Dimension(JsonObject members, string name) =>
+            HostProtocol.Integer(members, name) is { } value and >= 0 and <= int.MaxValue ? (int)value : null;
+
+        // x and y: both integers, or both absent or null where the host has no position (Wayland).
+        static bool Position(JsonObject members, out int? x, out int? y)
+        {
+            x = y = null;
+            var hasX = members["x"] is not null;
+            if (hasX != members["y"] is not null) return false;
+            if (!hasX) return true;
+            if (HostProtocol.Integer(members, "x") is not (long px and >= int.MinValue and <= int.MaxValue) ||
+                HostProtocol.Integer(members, "y") is not (long py and >= int.MinValue and <= int.MaxValue))
+                return false;
+            (x, y) = ((int)px, (int)py);
+            return true;
+        }
+    }
+
+    // The placement push.
+    internal void OnPlacement(RunicWindowPlacement placement)
+    {
+        lock (_gate)
+        {
+            if (_closed || !_features.HasFlag(RunicWindowPresentationFeatures.Placement) || Equals(_placement, placement)) return;
+            Volatile.Write(ref _placement, placement);
+        }
+        Raise(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Placement))));
+    }
 
     internal static DesktopColorScheme? ColorSchemeOf(string? token) => token switch
     {
@@ -184,6 +233,30 @@ internal sealed class HostedWindowPresentation : IRunicWindowPresentation
             new() { ["colorScheme"] = Token(colorScheme) }, cancellationToken).ConfigureAwait(false);
         if (result.Succeeded) OnColorScheme(colorScheme);
         return result;
+    }
+
+    // sdk#897, W1b (host-protocol.md, Presentation): the host's policy decides, and may clamp a placement.
+    public ValueTask<PlatformResult<PlatformUnit>> MaximizeAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync(RunicWindowPresentationFeatures.Maximize, "maximize", null, cancellationToken);
+
+    public ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync(RunicWindowPresentationFeatures.Maximize, "restore", null, cancellationToken);
+
+    public ValueTask<PlatformResult<PlatformUnit>> SetPlacementAsync(RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        RunicWindowPlacement.Validate(placement);
+        var members = new JsonObject();
+        // A position the protocol cannot carry is kept within its range; the host clamps the bounds to its monitors.
+        if (placement is { X: { } x, Y: { } y })
+        {
+            members["x"] = Math.Clamp(x, -32_768, 32_767);
+            members["y"] = Math.Clamp(y, -32_768, 32_767);
+        }
+        members["width"] = Math.Clamp(placement.Width, 0, 32_767);
+        members["height"] = Math.Clamp(placement.Height, 0, 32_767);
+        members["maximized"] = placement.Maximized;
+        members["fullScreen"] = placement.FullScreen;
+        return RequestAsync(RunicWindowPresentationFeatures.Placement, "set-placement", members, cancellationToken);
     }
 
     // announce: the host's window asks the screen reader to speak the text (at most 1,024 characters are sent).

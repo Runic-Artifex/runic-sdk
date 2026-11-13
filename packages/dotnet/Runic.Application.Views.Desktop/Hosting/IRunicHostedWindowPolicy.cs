@@ -978,6 +978,18 @@ public enum RunicHostedPresentationKind
 
     /// <summary><c>announce</c>: <see cref="RunicHostedPresentationRequest.Text"/> with <see cref="RunicHostedPresentationRequest.Priority"/>.</summary>
     Announce,
+
+    /// <summary><c>maximize</c>: maximize the window; one that already is stays maximized.</summary>
+    Maximize,
+
+    /// <summary><c>restore</c>: return the window to its normal bounds from maximized, minimized or full screen.</summary>
+    Restore,
+
+    /// <summary>
+    /// <c>set-placement</c>: <see cref="RunicHostedPresentationRequest.Placement"/>, the bounds the window restores to and
+    /// whether it is maximized or full-screen.
+    /// </summary>
+    SetPlacement,
 }
 
 /// <summary>
@@ -1029,6 +1041,17 @@ public sealed record RunicHostedPresentationRequest
 
     /// <summary>The priority of <see cref="RunicHostedPresentationKind.Announce"/>.</summary>
     public DesktopAnnouncementPriority? Priority { get; init; }
+
+    /// <summary>
+    /// The placement of <see cref="RunicHostedPresentationKind.SetPlacement"/>, in the units of the host's
+    /// <see cref="DesktopWindowState.Placement"/>, which the guest read from the window's <c>placement</c> pushes.
+    /// </summary>
+    /// <remarks>
+    /// A policy clamps it with <c>request with { Placement = request.Placement! with { Width = Math.Min(request.Placement.Width, 1600) } }</c>,
+    /// or keeps the window where it is with <see langword="null"/> <see cref="DesktopWindowPlacement.X"/> and
+    /// <see cref="DesktopWindowPlacement.Y"/>.
+    /// </remarks>
+    public DesktopWindowPlacement? Placement { get; init; }
 }
 
 /// <summary>A host policy's decision about a guest's presentation request.</summary>

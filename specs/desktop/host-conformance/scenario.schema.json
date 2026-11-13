@@ -197,11 +197,16 @@
             "policy": {
               "enum": [
                 "fails-services",
-                "prompts-launches"
+                "prompts-launches",
+                "limits-placement"
               ]
             },
             "userStarted": {
               "type": "boolean"
+            },
+            "windowPlacement": {
+              "type": "boolean",
+              "description": "The host's windows maximize, restore and take a placement, and report their placement, at 100, 100 with 800 by 600 when they open."
             },
             "embed": {
               "type": "string",
@@ -295,6 +300,43 @@
         "requestTimeout",
         "guestActivation"
       ]
+    },
+    "placement": {
+      "description": "A Window's placement, IRunicWindowPresentation.Placement: the bounds it restores to (x and y null or absent where there is no position) and whether it is maximized or full-screen.",
+      "type": "object",
+      "required": [
+        "width",
+        "height",
+        "maximized",
+        "fullScreen"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "y": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "maximized": {
+          "type": "boolean"
+        },
+        "fullScreen": {
+          "type": "boolean"
+        }
+      }
     },
     "outcome": {
       "oneOf": [
@@ -770,7 +812,11 @@
                     "monitors",
                     "launch",
                     "drops",
-                    "setTitle"
+                    "setTitle",
+                    "maximize",
+                    "restore",
+                    "setPlacement",
+                    "placement"
                   ]
                 },
                 "window": {
@@ -803,6 +849,9 @@
                     },
                     {
                       "$ref": "#/$defs/path"
+                    },
+                    {
+                      "$ref": "#/$defs/placement"
                     }
                   ]
                 },
@@ -1695,6 +1744,16 @@
                     },
                     "cancelled": {
                       "const": true
+                    },
+                    "placement": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/placement"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "invoked": {
                       "type": "array",

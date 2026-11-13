@@ -683,6 +683,21 @@ something (the request then reports `BackendUnavailable` and changes nothing),
 and `Respond` to answer with another result, such as a desktop that refuses the
 focus.
 
+It keeps a placement too, at 100, 100 with 800 by 600 at first (`Placement`).
+`MaximizeAsync` maximizes it and `RestoreAsync` returns it to normal, both
+leaving full screen and bringing a minimized window back active, as on Windows;
+`SetPlacementAsync` takes the placement's bounds and state unchanged (a
+`Width` or `Height` of zero keeps it). The requests are recorded as `Maximize`,
+`Restore` and `SetPlacement` (with `Placement` as passed), and
+`SetPlacement(placement)` moves the window as its user would, without a
+request, so a test checks a ViewModel that saves `Placement`:
+
+```csharp
+fake.SetPlacement(new RunicWindowPlacement { X = 40, Y = 50, Width = 1024, Height = 768, Maximized = true });
+await host.FlushWindowPresentationAsync();
+Assert.Equal(fake.Placement, host.ViewModel.SavedPlacement);
+```
+
 `AddRunicTestWindowPresentation(immediate: true)` makes the fake itself the
 scope's presentation, and a ViewModel built by hand can take a
 `new RunicTestWindowPresentation()`. Used directly, the fake raises its changes
@@ -1305,8 +1320,11 @@ public async Task ClosesWhenTheHostAsks()
   await window.WaitForMenuBarAsync(_ => window.FindMenuItem("File", "Open…") is not null, TimeSpan.FromSeconds(10));
   await window.InvokeMenuItemAsync(window.FindMenuItem("File", "Open…")!);
   ```
-- `SetActivityAsync` and `SetColorSchemeAsync` report a window's activity and
-  colour scheme to the application. The host's locale, its user's languages
+- `SetActivityAsync`, `SetColorSchemeAsync` and `SetPlacementAsync` report a
+  window's activity, colour scheme and placement to the application. The
+  windows list `maximize` and `placement` by default
+  (`RunicTestHostOptions.WindowFeatures`), and a `set-placement` out of form is
+  rejected as `invalid-request`. The host's locale, its user's languages
   and its appearance start as `RunicTestHostOptions.Locale`, `Languages` and
   `Appearance` (none by default) and change with `RunicTestHost.SetLocaleAsync`
   and `SetAppearanceAsync`: the application's locale follows them unless it set

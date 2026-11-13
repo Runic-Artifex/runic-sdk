@@ -274,6 +274,33 @@ static Runic.Application.Views.Generated.BridgeGeneratedCode.StaleBridge(System.
 Runic.Application.Views.RunicBridgeContractException
 Runic.Application.Views.RunicBridgeContractException.AssemblyName.get -> string!
 const Runic.Application.Views.RunicBridgeContractException.DiagnosticId = "RUNICBRIDGE038" -> string!
+Runic.Application.Views.IRunicWindowPresentation.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.Placement.get -> Runic.Application.Views.RunicWindowPlacement?
+Runic.Application.Views.IRunicWindowPresentation.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.SetPlacementAsync(Runic.Application.Views.RunicWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.RunicWindowPlacement
+Runic.Application.Views.RunicWindowPlacement.<Clone>$() -> Runic.Application.Views.RunicWindowPlacement!
+Runic.Application.Views.RunicWindowPlacement.Equals(Runic.Application.Views.RunicWindowPlacement? other) -> bool
+Runic.Application.Views.RunicWindowPlacement.FullScreen.get -> bool
+Runic.Application.Views.RunicWindowPlacement.FullScreen.init -> void
+Runic.Application.Views.RunicWindowPlacement.Height.get -> int
+Runic.Application.Views.RunicWindowPlacement.Height.init -> void
+Runic.Application.Views.RunicWindowPlacement.Maximized.get -> bool
+Runic.Application.Views.RunicWindowPlacement.Maximized.init -> void
+Runic.Application.Views.RunicWindowPlacement.RunicWindowPlacement() -> void
+Runic.Application.Views.RunicWindowPlacement.Width.get -> int
+Runic.Application.Views.RunicWindowPlacement.Width.init -> void
+Runic.Application.Views.RunicWindowPlacement.X.get -> int?
+Runic.Application.Views.RunicWindowPlacement.X.init -> void
+Runic.Application.Views.RunicWindowPlacement.Y.get -> int?
+Runic.Application.Views.RunicWindowPlacement.Y.init -> void
+Runic.Application.Views.RunicWindowPresentationFeatures.Maximize = 1024 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.Placement = 2048 -> Runic.Application.Views.RunicWindowPresentationFeatures
+override Runic.Application.Views.RunicWindowPlacement.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicWindowPlacement.GetHashCode() -> int
+override Runic.Application.Views.RunicWindowPlacement.ToString() -> string!
+static Runic.Application.Views.RunicWindowPlacement.operator !=(Runic.Application.Views.RunicWindowPlacement? left, Runic.Application.Views.RunicWindowPlacement? right) -> bool
+static Runic.Application.Views.RunicWindowPlacement.operator ==(Runic.Application.Views.RunicWindowPlacement? left, Runic.Application.Views.RunicWindowPlacement? right) -> bool
 Runic.Application.Views.AcceptedWorkScope.WaitForAcceptedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 [RUNICDESK105]override Runic.Application.Views.RunicCloseDrain.Equals(object? obj) -> bool
 [RUNICDESK105]override Runic.Application.Views.RunicCloseDrain.GetHashCode() -> int

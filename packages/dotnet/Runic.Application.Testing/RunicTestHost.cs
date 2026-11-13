@@ -399,6 +399,9 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         ["set-represented-file"] = Views.RunicWindowPresentationFeatures.None,
         ["set-layout-direction"] = Views.RunicWindowPresentationFeatures.None,
         ["announce"] = Views.RunicWindowPresentationFeatures.None,
+        ["maximize"] = Views.RunicWindowPresentationFeatures.Maximize,
+        ["restore"] = Views.RunicWindowPresentationFeatures.Maximize,
+        ["set-placement"] = Views.RunicWindowPresentationFeatures.Placement,
         // region/1: the page title of a region window, and a move of the focus out of a region.
         ["set-title"] = Views.RunicWindowPresentationFeatures.None,
         ["region-focus"] = Views.RunicWindowPresentationFeatures.None,
@@ -423,6 +426,11 @@ public sealed partial class RunicTestHost : IAsyncDisposable
             request.Kind is "set-title" or "region-focus" && !target.IsRegion)
         {
             await request.FailAsync("rejected", "invalid-request", "The request names no window of this channel that it applies to.").ConfigureAwait(false);
+            return;
+        }
+        if (request.Kind == "set-placement" && HostProtocol.Placement(request.Message) is null)
+        {
+            await request.FailAsync("rejected", "invalid-request", "The 'set-placement' request is missing a member or has one out of range.").ConfigureAwait(false);
             return;
         }
         var presentation = new RunicTestPresentationRequest(target.Id, request.Kind, JsonDocument.Parse(request.Message.ToJsonString()).RootElement.Clone());
@@ -544,6 +552,8 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         if (features.HasFlag(Views.RunicWindowPresentationFeatures.PerWindowColorScheme)) yield return "per-window-color-scheme";
         if (features.HasFlag(Views.RunicWindowPresentationFeatures.Activity)) yield return "activity";
         if (features.HasFlag(Views.RunicWindowPresentationFeatures.OwnedWindows)) yield return "owned-windows";
+        if (features.HasFlag(Views.RunicWindowPresentationFeatures.Maximize)) yield return "maximize";
+        if (features.HasFlag(Views.RunicWindowPresentationFeatures.Placement)) yield return "placement";
     }
 
     private async Task WatchExitAsync()
@@ -660,7 +670,8 @@ public sealed record RunicTestHostOptions
         Views.RunicWindowPresentationFeatures.Present | Views.RunicWindowPresentationFeatures.Minimize |
         Views.RunicWindowPresentationFeatures.Visibility | Views.RunicWindowPresentationFeatures.FullScreen |
         Views.RunicWindowPresentationFeatures.DocumentEdited | Views.RunicWindowPresentationFeatures.ColorScheme |
-        Views.RunicWindowPresentationFeatures.Activity | Views.RunicWindowPresentationFeatures.OwnedWindows;
+        Views.RunicWindowPresentationFeatures.Activity | Views.RunicWindowPresentationFeatures.OwnedWindows |
+        Views.RunicWindowPresentationFeatures.Maximize | Views.RunicWindowPresentationFeatures.Placement;
 
     /// <summary>
     /// Decides each <c>window-open</c>: <see langword="false"/> refuses the window, as a host's policy does.
@@ -1053,6 +1064,29 @@ public sealed partial class RunicTestHostedWindow
             ["active"] = activity.IsActive,
             ["minimized"] = activity.IsMinimized,
             ["visible"] = activity.IsVisible,
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reports the window's placement to the guest, as the <c>placement</c> push does after the user moved, resized or
+    /// maximized it: the bounds it restores to, which the guest's <see cref="Views.IRunicWindowPresentation.Placement"/>
+    /// reports, also as its current frame.
+    /// </summary>
+    /// <param name="placement">The bounds the window restores to and whether it is maximized or full-screen.</param>
+    /// <param name="cancellationToken">Cancels sending.</param>
+    /// <returns>A task that completes when the push was sent.</returns>
+    public Task SetPlacementAsync(Views.RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        return _host.PushAsync(new JsonObject
+        {
+            ["kind"] = "placement",
+            ["window"] = Id,
+            ["bounds"] = new JsonObject { ["x"] = placement.X ?? 0, ["y"] = placement.Y ?? 0, ["width"] = placement.Width, ["height"] = placement.Height },
+            ["maximized"] = placement.Maximized,
+            ["fullScreen"] = placement.FullScreen,
+            ["monitor"] = null,
+            ["restored"] = new JsonObject { ["x"] = placement.X, ["y"] = placement.Y, ["width"] = placement.Width, ["height"] = placement.Height },
         }, cancellationToken);
     }
 
