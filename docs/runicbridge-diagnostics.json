@@ -187,6 +187,11 @@
       "title": "The build has no Runic Translations ESM for the page, or its directory holds other files"
     },
     {
+      "id": "RUNICBRIDGE038",
+      "severity": "error",
+      "title": "Generated Bridges were built against another Runic release than the running runtime"
+    },
+    {
       "id": "RUNICBRIDGE050",
       "severity": "error",
       "title": "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"

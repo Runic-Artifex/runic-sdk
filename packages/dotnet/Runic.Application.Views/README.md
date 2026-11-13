@@ -1724,7 +1724,11 @@ policy keeps them binary compatible within a major release for code that an
 earlier minor release generated, but their source shape may change for
 hand-written code. Generated files name them with `global::`, so regenerating
 is the only migration; hand-written code that names them, such as a test Bridge,
-adds `using Runic.Application.Views.Generated;`.
+adds `using Runic.Application.Views.Generated;`. The generated `AddRunicBridges()`
+first passes the generated-code contract version to
+`BridgeGeneratedCode.RequireContract`, so Bridges that another major release
+generated fail with [`RUNICBRIDGE038`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge038),
+which names the assembly to rebuild, instead of a `TypeLoadException`.
 
 Each ViewModel's generated bridge is an internal class `<Name>Bridge`, such as
 `CounterBridge` for `CounterViewModel`, in the `Runic.Application.Views.Generated.Bridges`
