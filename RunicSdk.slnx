@@ -6,6 +6,8 @@
     <Project Path="examples/attachments/Attachments.csproj" />
     <Project Path="examples/first-window-desktop/FirstWindowDesktop.csproj" />
     <Project Path="examples/status-icon/StatusIconSample.csproj" />
+    <Project Path="examples/side-panel/SidePanelSample.csproj" />
+    <Project Path="examples/side-panel/Tests/SidePanelSample.Tests.csproj" />
     <Project Path="examples/multi-window/MultiWindow.csproj" />
     <Project Path="examples/multi-window/Tests/MultiWindow.Tests.csproj" />
     <Project Path="examples/notes-view-first/NotesViewFirst.csproj" />
