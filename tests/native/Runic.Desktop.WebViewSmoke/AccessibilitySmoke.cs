@@ -162,8 +162,8 @@ internal static class AccessibilitySmoke
         start.ArgumentList.Add(hostName);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("The probe did not start.");
         var listening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        // "PROBE REQUEST shift-tab": the side panel scenario asks the fixture to press Shift+Tab as a user does (pressTab),
-        // which the probe cannot post to another process's window.
+        // "PROBE REQUEST tab" or "shift-tab": the side panel scenario asks the fixture to press Tab or Shift+Tab as a user
+        // does (pressTab), which the probe cannot post to another process's window.
         var keyRequests = System.Threading.Channels.Channel.CreateUnbounded<bool>();
         var output = Task.Run(async () =>
         {
@@ -171,7 +171,7 @@ internal static class AccessibilitySmoke
             {
                 Console.WriteLine(line);
                 if (line == "PROBE LISTENING") listening.TrySetResult();
-                else if (line == "PROBE REQUEST shift-tab") keyRequests.Writer.TryWrite(true);
+                else if (line is "PROBE REQUEST tab" or "PROBE REQUEST shift-tab") keyRequests.Writer.TryWrite(line.EndsWith("shift-tab", StringComparison.Ordinal));
             }
             listening.TrySetException(new InvalidOperationException("The probe exited before it listened for events."));
         });
@@ -241,9 +241,9 @@ internal static class AccessibilitySmoke
         {
             while (keyRequests.Reader.TryRead(out var shift))
             {
-                if (pressTab is null) throw new InvalidOperationException("The probe asked for Shift+Tab, which this fixture cannot press.");
+                if (pressTab is null) throw new InvalidOperationException("The probe asked for Tab, which this fixture cannot press.");
                 await pressTab(window, shift);
-                Console.WriteLine("ACCESSIBILITY pressed Shift+Tab.");
+                Console.WriteLine($"ACCESSIBILITY pressed {(shift ? "Shift+Tab" : "Tab")}.");
             }
             var request = await surface.ExecuteJavaScriptAsync(
                 "const request = window.__runicRequest || ''; window.__runicRequest = ''; return request;",

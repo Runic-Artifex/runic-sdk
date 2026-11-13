@@ -55,7 +55,7 @@ internal abstract class AccessibilityClient : IAsyncDisposable
     internal virtual Task SelectWithKeysAsync(Control control, string item, CancellationToken cancellationToken)
         => SelectAsync(control, item, cancellationToken);
 
-    /// <summary>Whether focus moves between a window's web views with Shift+Tab, which the fixture presses, rather than
+    /// <summary>Whether focus moves between a window's web views with Tab and Shift+Tab, which the fixture presses, rather than
     /// with <see cref="FocusAsync"/>: macOS, where setting AXFocused on an element of the other web view bypasses the
     /// side panel's focus hand-off, unlike a user's Tab.</summary>
     internal virtual bool MovesBetweenViewsWithKeys => false;

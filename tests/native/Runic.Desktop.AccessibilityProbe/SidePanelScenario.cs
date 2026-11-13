@@ -9,9 +9,10 @@
 //   the button's name and the landmark's name, and focus moved back to the page is spoken with the page's button.
 //   VoiceOver does not speak a landmark when the focus moves into it (its rotor lists landmarks instead), so for it the
 //   landmark check passes when the focused button's nearest AX landmark ancestor is "Debug tools"
-//   (AXLandmarkComplementary), what the rotor and "where am I" report. On macOS the focus goes back to the page with
-//   Shift+Tab, which the fixture presses as a user does: the panel's focus hand-off then focuses the page's last
-//   control (Finish). Setting AXFocused on the page's button from the panel's view bypasses that hand-off.
+//   (AXLandmarkComplementary), what the rotor and "where am I" report. On macOS the focus moves between the views with
+//   Tab from the page's last control (Finish) into the panel and Shift+Tab back, which the fixture presses as a user
+//   does, so the panel's focus hand-off runs. Setting AXFocused on an element of the other web view bypasses it, and
+//   VoiceOver then reads that view's web area rather than the element.
 // A host that refuses the panel (Unsupported) shows the page's "Side panel unsupported" button instead: the checks are
 // then not applicable, because that platform's host has no panel yet (macOS until #905, Linux until #907).
 internal sealed class SidePanelScenario(AccessibilityClient client, Report report, ScreenReader? reader)
@@ -132,18 +133,21 @@ internal sealed class SidePanelScenario(AccessibilityClient client, Report repor
         var listening = reader!.ListenAsync(Heard, stop.Token);
         try
         {
-            await client.FocusAsync(page, cancellationToken);
-            await QuietAsync(cancellationToken);
-            var mark = Mark();
-            await client.FocusAsync(panel, cancellationToken);
-            if (await HeardAsync(mark, PanelButton, cancellationToken) is null)
+            // On macOS the focus starts on the page's last control, from which Tab hands it to the panel's first.
+            var start = client.MovesBetweenViewsWithKeys
+                ? await FindAsync(Fixture.Finish, cancellationToken) ?? throw new InvalidOperationException($"No button named '{Fixture.Finish}'.")
+                : page;
+            var mark = 0;
+            for (var attempt = 0; attempt < 2; attempt++)
             {
                 // A screen reader can miss the first focus change after it read the document; once more from the page.
-                await client.FocusAsync(page, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
+                await client.FocusAsync(start, cancellationToken);
+                await Task.Delay(attempt == 0 ? 0 : 1000, cancellationToken);
                 await QuietAsync(cancellationToken);
                 mark = Mark();
-                await client.FocusAsync(panel, cancellationToken);
+                if (client.MovesBetweenViewsWithKeys) Console.WriteLine("PROBE REQUEST tab");
+                else await client.FocusAsync(panel, cancellationToken);
+                if (await HeardAsync(mark, PanelButton, cancellationToken) is not null) break;
             }
             await RecordAsync("side-panel-focus", PanelButton, mark, cancellationToken);
             Console.WriteLine($"  focused in the panel: {await client.FocusedAsync(cancellationToken) ?? "not reported"}");
