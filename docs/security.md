@@ -181,7 +181,10 @@ default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame
 ```
 
 A host page that shows guests as components also admits the guests' origin
-([components in a host page](#components-in-a-host-page)).
+([components in a host page](#components-in-a-host-page)). A host page that shows
+a guest's window in a region allows the frame with `frame-src http:`: the frame
+comes from `[::1]`, which a CSP host source cannot name
+([hosted windows in a region](#hosted-windows-in-a-region)).
 
 `script-src 'self'` covers the Bridge on every host, in embedded WebViews and
 installed browsers alike. Runic's bridge and bootstrap scripts and the Bridge

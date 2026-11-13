@@ -51,14 +51,18 @@ one's windows over the [Runic host protocol](../specs/desktop/host-protocol.md),
 can change in a minor release, also after 1.0 (D055.8). Suppress the ID in the
 guest application, the host application and their tests. Start with
 [hosted applications](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-applications)
-and the [hosted windows example](../examples/hosted-windows/README.md).
+and the [hosted windows example](../examples/hosted-windows/README.md). Regions (0.18), a
+guest's Window in a region of a host page, are part of the same family: see the
+[hosted regions guide](hosted-regions.md) and the
+[hosted region](../examples/hosted-region/README.md) and
+[hosted components](../examples/hosted-components/README.md) examples.
 
 | Package | API |
 | --- | --- |
 | `Runic.Application.Views` | `RunicHostedApplicationException` |
-| `Runic.Application.Views.Desktop` | The guest: `RunicGuestOptions`, `RunicHostInfo`, `RunicGuestSession`, `RunicDesktopHostOptions.Guest`, `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` ([hosted mode](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-mode)). The host: `IRunicHostedApplications`, `RunicDesktopHost.HostedApplications`, `AddRunicHostedApplications`, `RunicGuestStartInfo`, `RunicHostedApplicationOptions`, `RunicHostedApplication`, `RunicHostedWindow`, `RunicGuestInfo`, `RunicHostedWindowEventArgs`, `IRunicHostedWindowPolicy` and its request and decision types ([hosting another application](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosting-another-application)) |
+| `Runic.Application.Views.Desktop` | The guest: `RunicGuestOptions`, `RunicHostInfo`, `RunicGuestSession`, `RunicDesktopHostOptions.Guest`, `RunicDesktopHost.IsHosted` and `RunicDesktopHost.Guest` ([hosted mode](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosted-mode)). The host: `IRunicHostedApplications`, `RunicDesktopHost.HostedApplications`, `AddRunicHostedApplications`, `RunicGuestStartInfo`, `RunicHostedApplicationOptions`, `RunicHostedApplication`, `RunicHostedWindow`, `RunicGuestInfo`, `RunicHostedWindowEventArgs`, `IRunicHostedWindowPolicy` and its request and decision types ([hosting another application](../packages/dotnet/Runic.Application.Views.Desktop/README.md#hosting-another-application)). From 0.18: the elevated pair (`RunicGuestOptions.AllowElevatedHost`, `RunicGuestStartInfo.AllowElevatedGuest`); regions (`RunicHostedWindowDecision.Embed` and `EmbedComponent`, `RunicHostedWindowRequest.CanEmbed`, `CanEmbedComponent` and `CanOpenWindow`, `RunicHostedRegion`, `RunicHostedRegionOptions`, `RunicHostedRegionState`, `RunicHostedRegionSize`, `RunicHostedRegionEventArgs`, `RunicHostedWindowPresentationKind`, `IRunicHostedApplications.RegionAttached` and `RegionDetached`, `RunicGuestOptions.AllowComponentEmbedding`; [showing a guest's window in a region](../packages/dotnet/Runic.Application.Views.Desktop/README.md#showing-a-guests-window-in-a-region)) |
 | `Runic.Desktop` | `DesktopWindowHostOptions.EphemeralDataStore` and `IDesktopEphemeralDataStoreWindowHost`, which a custom window host implements to show hosted windows |
-| `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest`, `RunicTestPresentationRequest` and `RunicTestLaunchRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)) |
+| `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest`, `RunicTestPresentationRequest` and `RunicTestLaunchRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)). From 0.18: `RunicTestHostOptions.EmbedWindow` and `AllowElevatedGuest`, `RunicTestHostedWindow`'s region members (`AttachRegionAsync`, `AttachComponentAsync`, `DetachRegionAsync`, `SetRegionBoundsAsync`, `FocusRegionAsync`, `IsRegion`, `IsAttached`, `FrameIsSameSite`, `Titles`, `RegionPages`) and `RunicTestComponent` |
 
 
 <a id="experimental-packages"></a>

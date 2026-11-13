@@ -1031,7 +1031,9 @@ With `region/1`, which Runic's guests of 0.18 and later implement (`RunicHostedW
 can show a guest's Window in a region of one of the host's own pages instead of in a window of its own, such as an
 installer whose step page shows a check tool between its header and footer. The page declares the region with Runic's
 `<runic-hosted-region name="check">` element, and the region shows the guest's page in a frame from the guest's own
-loopback origin ([specification](../../../specs/desktop/host-protocol.md#regions-region1)):
+loopback origin ([specification](../../../specs/desktop/host-protocol.md#regions-region1)). The
+[hosted regions guide](../../../docs/hosted-regions.md) covers both sides and troubleshooting, and the
+[hosted region example](../../../examples/hosted-region/README.md) is such an installer:
 
 ```csharp
 #pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
@@ -1077,6 +1079,10 @@ sealed class CheckPolicy : IRunicHostedWindowPolicy
   and logs it (event 2027). The frame's embedder is the origin with which the page connected, such as a development
   server's. The guest's storage in a region lives in the host window's profile: treat it as session-scoped. A refused
   or failed attach leaves the window detached (event 2026).
+- **Content-Security-Policy.** A host page with a policy allows the frame with `frame-src http:`: the frame comes from
+  `[::1]` on a port that changes with each run, which a CSP host source cannot name. A guest page whose own policy sets
+  `frame-ancestors 'none'` blocks its own region, and a guest Window that shows a development server's address cannot be
+  attached: a frame shows only content that the guest serves itself.
 
 - **Drops, permissions and keys.** The host window's web view routes the attached frame to its guest
   (`Runic.Desktop/README.md`): a drop onto the frame reaches the guest as `files-dropped` under the policy
@@ -1142,7 +1148,10 @@ ValueTask.FromResult(request.CanEmbedComponent
 - **In a component.** `RunicHostedRegion.IsComponent` is `true`. The component has the host page's permissions, focus,
   drops and keys; `RegionOptions.Permissions` and `sizing="content-height"` do not apply, and the guest sends no title.
   `State` reaches `Attached` once the component connected, as in frame mode.
-- **Elevated guests** do not offer component mode yet.
+- **Elevated guests** of the elevated pair offer component mode where they check their peers (Windows, Linux); on macOS
+  they refuse it as they refuse frames (event 2026, `refused`).
+- The [hosted components example](../../../examples/hosted-components/README.md) is a dashboard with two widget
+  processes as components, under the policy above.
 
 ## Automation
 

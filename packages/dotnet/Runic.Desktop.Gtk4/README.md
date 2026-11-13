@@ -181,6 +181,14 @@ The window also reports `DesktopWindowCapabilities.FileDrag`:
 drag only when it is dropped where nothing accepts it, not on Escape. See
 [Dragging files out](../Runic.Desktop/README.md#dragging-files-out).
 
+A host page in this window can show a hosted guest's Window in a region
+([hosted regions](../../../docs/hosted-regions.md)), but the window routes
+nothing of the region's frame to the guest: files dropped onto the frame are
+discarded, the frame's camera and microphone requests are denied as for any
+frame of another origin, and the end of the frame's content process detaches
+the region as a reload. Hosts that need drops into a region use the built-in
+GTK 3 window (`LinuxEmbeddedBackend.Gtk3WebKit41`).
+
 The native smoke runs GTK4/WebKit6 under isolated X11: bridge JavaScript,
 close veto/retry, sequential DesktopHost windows, capability reporting, GTK
 window/WebView weak finalization, GTK clipboard round-trip, and X11 portal
