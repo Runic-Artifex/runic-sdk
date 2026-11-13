@@ -854,38 +854,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     // when the web view is created.
     private void FollowLocaleDirection(WindowContentSession content, DesktopWindow presentation, ILogger logger)
     {
-        if (WindowOptions.LayoutDirection != DesktopLayoutDirection.Default || OperatingSystem.IsMacOS() ||
-            !presentation.Capabilities.HasFlag(DesktopWindowCapabilities.LayoutDirection)) return;
-        // One change at a time, each with the direction of the locale it finds, not of the one that raised it: changes
-        // from several threads apply in order, and the window ends with the direction of the last locale.
-        var gate = new SemaphoreSlim(1, 1);
-        void OnLocaleChanged(object? sender, EventArgs args) => _ = ApplyAsync();
-        async Task ApplyAsync()
-        {
-            try
-            {
-                await gate.WaitAsync().ConfigureAwait(false);
-                try
-                {
-                    if (!presentation.IsOpen) return;
-                    var direction = content.Locale is { } locale
-                        ? Runic.Desktop.Internal.WindowLocaleDirection.Of(locale)
-                        : DesktopLayoutDirection.Default;
-                    if (direction != presentation.LayoutDirection)
-                        await presentation.SetLayoutDirectionAsync(direction).ConfigureAwait(false);
-                }
-                finally { gate.Release(); }
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception error) when (error is not OutOfMemoryException)
-            {
-                DesktopLog.LayoutDirectionFailed(logger, error, error.GetType().Name);
-            }
-        }
-        content.LocaleChanged += OnLocaleChanged;
-        presentation.Closed += (_, _) => content.LocaleChanged -= OnLocaleChanged;
-        // A change while the window opened, after its options took the locale, applies now.
-        _ = ApplyAsync();
+        if (WindowOptions.LayoutDirection != DesktopLayoutDirection.Default) return;
+        _ = DesktopWindowLocaleFollow.FollowDirection(content, presentation, logger);
     }
 
     // A guarded Window confirms user closes through ConfirmCloseAsync: first its own guard, then the one of

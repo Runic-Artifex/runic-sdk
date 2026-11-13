@@ -28,9 +28,15 @@ public interface IRunicWindowContext
     /// </summary>
     /// <param name="cancellationToken">Stops this caller's wait; the decision continues for other requests.</param>
     /// <returns><see langword="true"/> when the Window closed; <see langword="false"/> when it stays open.</returns>
+    /// <remarks>
+    /// In the scope of a window the application opened itself, which <c>DesktopPlatformServices.AttachWindowServices</c>
+    /// attached (Runic.Application.Views.Desktop), it asks the window's own close confirmation as its close button
+    /// does, and <see cref="Window"/> stays <see langword="null"/>.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">
-    /// The service was resolved outside the scope of a Window that <c>OpenWindowAsync</c> opened, or the Window has
-    /// not opened yet, for example when the ViewModel's constructor calls it.
+    /// The service was resolved outside the scope of a Window that <c>OpenWindowAsync</c> opened or of an attached
+    /// window, the Window has not opened yet, for example when the ViewModel's constructor calls it, or the attached
+    /// window closed.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
@@ -313,17 +319,82 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
     // Called by OpenWindowAsync in the Window's new scope, before it resolves the ViewModel.
     internal void Bind(IRunicWindow window)
     {
-        if (Interlocked.CompareExchange(ref _window, window, null) is { } bound && !ReferenceEquals(bound, window))
-            throw new InvalidOperationException("The window context is already bound to another Window.");
+        lock (_externalGate)
+        {
+            if (_external is not null || _externalEnded)
+                throw new InvalidOperationException("The window context is already attached to a window the application opened.");
+            if (Interlocked.CompareExchange(ref _window, window, null) is { } bound && !ReferenceEquals(bound, window))
+                throw new InvalidOperationException("The window context is already bound to another Window.");
+        }
+    }
+
+    // A window the application opened itself, without an IRunicWindow (DesktopPlatformServices.AttachWindowServices):
+    // its close request, while it is attached.
+    private readonly object _externalGate = new();
+    private Func<CancellationToken, ValueTask<bool>>? _external;
+    private bool _externalEnded;
+    private WindowContentSession? _externalContent;
+
+    // Attaches this scope to a window that no OpenWindowAsync opened: the scope's presentation forwards to presentation
+    // and raises its changes in the content session's model turns, the locale follows content, and RequestCloseAsync
+    // calls requestClose. Window stays null. Returns the scope's presentation, which DetachExternal closes. Throws when
+    // the scope is bound to a Window or was attached before.
+    internal RunicWindowPresentation AttachExternal(IRunicWindowPresentation presentation, WindowContentSession? content,
+        Func<CancellationToken, ValueTask<bool>> requestClose)
+    {
+        ArgumentNullException.ThrowIfNull(presentation);
+        ArgumentNullException.ThrowIfNull(requestClose);
+        lock (_externalGate)
+        {
+            if (Volatile.Read(ref _window) is not null)
+                throw new InvalidOperationException("The window context is already bound to a Window that OpenWindowAsync opened.");
+            if (_external is not null || _externalEnded)
+                throw new InvalidOperationException("The window context is already attached to a window.");
+            _external = requestClose;
+            _externalContent = content;
+        }
+        var own = (RunicWindowPresentation)Presentation;
+        own.Attach(presentation, () => content?.ModelContext, () => content?.Logger ?? TraceFallbackLogger.Instance);
+        if (content is not null) AttachContent(content);
+        return own;
+    }
+
+    // The window closed or the application detached it: the presentation reports OwnerClosed, the locale no longer
+    // follows the session, and RequestCloseAsync throws. The scope cannot be attached again.
+    internal void DetachExternal()
+    {
+        WindowContentSession? content;
+        lock (_externalGate)
+        {
+            if (_external is null || _externalEnded) return;
+            _externalEnded = true;
+            _external = null;
+            content = _externalContent;
+            _externalContent = null;
+        }
+        (Volatile.Read(ref _unbound))?.Close();
+        if (content is null) return;
+        content.LocaleChanged -= OnContentLocaleChanged;
+        lock (_localeGate)
+        {
+            if (ReferenceEquals(_content, content)) _content = null;
+        }
     }
 
     public IRunicWindow? Window => Volatile.Read(ref _window);
 
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
     {
-        var window = Volatile.Read(ref _window) ?? throw new InvalidOperationException(
+        if (Volatile.Read(ref _window) is { } window) return window.RequestCloseAsync(cancellationToken);
+        Func<CancellationToken, ValueTask<bool>>? external;
+        bool ended;
+        lock (_externalGate) (external, ended) = (_external, _externalEnded);
+        if (external is not null) return external(cancellationToken);
+        if (ended)
+            throw new InvalidOperationException("The window this scope was attached to has closed or was detached (AttachWindowServices).");
+        throw new InvalidOperationException(
             "IRunicWindowContext was resolved outside a Window's scope, so it has no Window to close. Take it in the " +
-            "constructor of a ViewModel that OpenWindowAsync resolves, or of a scoped service that ViewModel uses.");
-        return window.RequestCloseAsync(cancellationToken);
+            "constructor of a ViewModel that OpenWindowAsync resolves, or of a scoped service that ViewModel uses, or " +
+            "attach the scope to a window the application opened (DesktopPlatformServices.AttachWindowServices).");
     }
 }

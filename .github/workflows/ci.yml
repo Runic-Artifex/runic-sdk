@@ -320,6 +320,24 @@ jobs:
             !artifacts/test-results/application/*/_*
           if-no-files-found: ignore
           overwrite: true
+      # The application group runs the scaling suite (tests/scaling/README.md), whose cases fail on a budget. The job
+      # summary lists every metric, the known costs, the improvements and each budget that changed against the base.
+      - name: Report the scaling budgets
+        id: scaling
+        if: ${{ always() && steps.application.outcome != 'skipped' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: bun tests/scaling/report.mjs --require-all ${BASE:+--base "$BASE"}
+      - name: Retain the scaling results
+        if: ${{ always() && steps.scaling.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scaling-results-${{ github.sha }}
+          path: artifacts/scaling
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 30
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   # One job runs the planned web packages' tests (webTests in eng/ci/plan.mjs) and the framework
@@ -957,6 +975,11 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # sdk#896: a directly opened GTK 3 window's ViewModel sets the scheme through its scope's IRunicWindowPresentation.
+      - name: Attach per-window services to a directly opened GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
       # S10: WebKitGTK's prefers-reduced-motion and prefers-contrast follow GTK's gtk-enable-animations and theme name
       # while the window is open.
       - name: Follow the desktop's contrast and motion in the GTK 3 window
@@ -1203,6 +1226,13 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # sdk#896: a window the application opens itself gets its DI scope's per-window services
+      # (DesktopPlatformServices.AttachWindowServices); a ViewModel's IRunicWindowPresentation sets its title bar's scheme,
+      # and its session receives the desktop's appearance.
+      - name: Attach per-window services to a directly opened window on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
       # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one
       # SetWindowPos or setFrame:display: (the page resizes once); the visible frame (DWMWA_EXTENDED_FRAME_BOUNDS on
       # Windows) places a second window flush; a run-time minimum holds against a SetWindowPos from outside Runic
