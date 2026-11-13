@@ -56,6 +56,8 @@ jobs:
       # marker `verify` uploads when it passes. Empty for other runs.
       tested-base: ${{ steps.plan.outputs.tested-base }}
       tested-tree: ${{ steps.plan.outputs.tested-tree }}
+      # true while this run builds against the train feed (eng/ci/train-feed.mjs); setup-sdk then uses it.
+      train-feed: ${{ steps.train-feed.outputs.active }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,6 +151,23 @@ jobs:
             if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request|merge_group)$ ]]; then reason+=" without a usable diff"; fi
             bun eng/ci/plan.mjs --all "$reason" >> "$GITHUB_OUTPUT"
           fi
+      # The train feed (eng/ci/train-feed.mjs, eng/train/README.md "Train feed"): while the Runic Command Line or Runic
+      # Translations release that Directory.Packages.props names is not on nuget.org, every job builds against the
+      # packages of that repository's newest successful main CI run with exactly that version. Such a run restores
+      # without its lock files and uploads the train-feed artifact, and Publish preview refuses it. Once both releases
+      # are published, active is false and nothing else changes.
+      - name: Prepare the train feed
+        id: train-feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun eng/ci/train-feed.mjs prepare --output "$RUNNER_TEMP/train-feed"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.train-feed.outputs.active == 'true'
+        with:
+          name: train-feed
+          path: ${{ runner.temp }}/train-feed
+          if-no-files-found: error
+          retention-days: 30
   # build and engineering run in every plan except a merge queue entry's reuse of a passed pull
   # request run (eng/ci/plan.mjs, reusedSkip).
   # The native Desktop server's libraries for every runtime identifier, which the packages carry
@@ -170,6 +189,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
+        with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
       - name: Restore managed dependencies
         run: dotnet restore RunicSdk.Core.slnx --locked-mode
       - name: Build managed SDK, tools and test executables
@@ -229,6 +250,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
+        with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
       - uses: ./.github/actions/restore-build
         id: restore
       # TRX reports and Cobertura coverage of the TUnit suites (CONTRIBUTING.md), per group. The TRX
@@ -315,6 +338,7 @@ jobs:
       # and the npm consumers need real Node and npm/pnpm.
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: none
           node: "true"
       - uses: ./.github/actions/restore-build
@@ -396,6 +420,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: none
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -432,6 +457,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
       - uses: ./.github/actions/restore-build
       - name: Verify workspace, runtime and CI contracts
@@ -465,6 +491,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
       - uses: ./.github/actions/restore-build
       - uses: ./.github/actions/install-browser
@@ -576,6 +603,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -633,6 +661,7 @@ jobs:
           "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: wpf
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -737,6 +766,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           node: "true"
           additional-dotnet: ${{ matrix.additional-dotnet || 'false' }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -801,6 +831,7 @@ jobs:
       # Only the Windows x64 View IDE check runs npm; the other legs only run node.
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: native
           node: "true"
           package-managers: ${{ matrix.rid == 'win-x64' }}
@@ -1869,6 +1900,7 @@ jobs:
       # node encodes the receipt URLs; nothing here runs npm or pnpm.
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: packaging
           node: "true"
           package-managers: "false"
@@ -2287,6 +2319,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          train-feed: ${{ needs.plan.outputs.train-feed }}
           nuget: native
           install: "false"
       - name: Install Orca and the native WebView prerequisites

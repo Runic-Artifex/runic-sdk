@@ -47,6 +47,17 @@ export async function selectCiRun(runs, {repository, sha}, jobsOf) {
   throw new Error(`No successful CI run for ${sha} ran every Windows and macOS job; ${missing.join('; ')}. ${dispatch}`);
 }
 
+// The marker artifact of a CI run built against the train feed (eng/ci/train-feed.mjs). That run used unpublished
+// Runic Command Line or Runic Translations candidates, which are not the packages nuget.org serves, and restored
+// without its lock files: it is never published.
+export const TRAIN_FEED_ARTIFACT = 'train-feed';
+
+export function refuseTrainFeed(artifacts, run) {
+  if (artifacts.some(artifact => artifact.name === TRAIN_FEED_ARTIFACT))
+    throw new Error(`CI run ${run.html_url} built against the ${TRAIN_FEED_ARTIFACT} (unpublished Runic Command Line or Runic Translations candidates), so it cannot be published. ` +
+      'Publish them first, commit the lock files written again against nuget.org (eng/train/README.md, "Train feed"), and publish the commit whose CI ran without the train feed.');
+}
+
 export function selectArtifact(artifacts, run) {
   const name = artifactName(run.id);
   const found = artifacts.filter(a => a.name === name);
@@ -71,6 +82,7 @@ export async function findCiPackages({repository, sha, token, fetchImpl = fetch}
   // The latest attempt's jobs; a full run has fewer than 100.
   const jobsOf = async run => (await api(`actions/runs/${run.id}/jobs?per_page=100`)).jobs;
   const run = await selectCiRun((await api(`actions/workflows/ci.yml/runs?${query}`)).workflow_runs, {repository, sha}, jobsOf);
+  refuseTrainFeed((await api(`actions/runs/${run.id}/artifacts?name=${TRAIN_FEED_ARTIFACT}`)).artifacts, run);
   const artifact = selectArtifact((await api(`actions/runs/${run.id}/artifacts?name=${artifactName(run.id)}`)).artifacts, run);
   // Download by id: re-uploading under the same name creates a new id, so the bytes
   // downloaded later are exactly the artifact selected here.

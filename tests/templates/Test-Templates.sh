@@ -12,6 +12,8 @@ npm_archives=()
 for archive in "${@:3}"; do npm_archives+=("$(realpath "$archive")"); done
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "$script_directory/../.." && pwd)"
+# The Runic Translations release the template pins literally (--translations): the repository's own pin.
+translations_version="$(sed -n 's:.*<PackageVersion Include="Runic.Translations" Version="\([^"]*\)".*:\1:p' "$repository_root/Directory.Packages.props")"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-views-templates.XXXXXXXXXX)"
 registry_pid=""
@@ -97,6 +99,12 @@ if [[ -n "${NUGET_CONFIG_FILE:-}" ]]; then
 elif [[ -n "${RUNIC_VERIFICATION_FEED:-}" ]]; then
   restore_sources=(--source "$RUNIC_VERIFICATION_FEED" "${restore_sources[@]}")
 fi
+# During a train, the unpublished Command Line and Translations releases come from the train feed
+# (eng/ci/train-feed.mjs): an extra source next to the others, which also serves dotnet tool restore.
+if [[ -z "${NUGET_CONFIG_FILE:-}" && -n "${RUNIC_TRAIN_FEED:-}" ]]; then
+  restore_sources=(--source "$RUNIC_TRAIN_FEED" "${restore_sources[@]}")
+  tool_source_options+=(--add-source "$RUNIC_TRAIN_FEED")
+fi
 
 # The documented commands take no source options. A NuGet.config above the
 # generated projects supplies the candidate feed to dotnet tool restore,
@@ -113,6 +121,9 @@ else
       echo "    <add key=\"runic-verification\" value=\"$RUNIC_VERIFICATION_FEED\" />"
     fi
     echo "    <add key=\"runic-candidate\" value=\"$package_directory\" />"
+    if [[ -n "${RUNIC_TRAIN_FEED:-}" ]]; then
+      echo "    <add key=\"runic-train-feed\" value=\"$RUNIC_TRAIN_FEED\" />"
+    fi
     echo '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />'
     echo '  </packageSources>'
     echo '</configuration>'
@@ -368,7 +379,7 @@ verify_template() {
   if ! grep -Fq "\"version\": \"$package_version\"" "$output/.config/dotnet-tools.json" \
     || grep -E 'Include="Runic\.[^"]*" Version=' "$output/$project_name.csproj" \
       | grep -vF "Version=\"$package_version\"" | grep -vF "Include=\"Runic.Application.Views.CsWebUi\" Version=\"$cswebui_version\"" \
-      | grep -vE 'Include="Runic\.Translations(\.Build)?" Version="0\.9\.1"'; then
+      | grep -vE "Include=\"Runic\\.Translations(\\.Build)?\" Version=\"${translations_version//./\\.}\""; then
     echo "The template does not reference the Runic $package_version packages; pack it with -p:RunicNuGetTemplateVersion=$package_version." >&2
     exit 1
   fi

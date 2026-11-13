@@ -35,9 +35,9 @@
       },
       "Runic.Translations.Build": {
         "type": "Direct",
-        "requested": "[0.9.1, )",
-        "resolved": "0.9.1",
-        "contentHash": "uAZvEb/NiBVWYmi8pTVm2VTtbquU0gpWAesGGmk/yzWjHAqn3J114gvU+w3jY6y4x2moaDO1lIbscCucdr1KAg=="
+        "requested": "[0.10.0, )",
+        "resolved": "0.10.0",
+        "contentHash": "CN4LvK+kufI76IO0jPYlIFudhBFuUU6/hfBDYBX2bT6SeFtt6pTLwGaFJTnwl8TnLB/bolkKhkxZvpxL4J1t/w=="
       },
       "TUnit.Core": {
         "type": "Direct",
@@ -114,8 +114,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Application.Views": "[0.17.1, )",
-          "Runic.Translations": "[0.9.1, )",
-          "Runic.Translations.Hosting": "[0.9.1, )"
+          "Runic.Translations": "[0.10.0, )",
+          "Runic.Translations.Hosting": "[0.10.0, )"
         }
       },
       "runic.desktop": {
@@ -181,18 +181,18 @@
       },
       "Runic.Translations": {
         "type": "CentralTransitive",
-        "requested": "[0.9.1, )",
-        "resolved": "0.9.1",
-        "contentHash": "Mn8Eo7XEyfHNEa7v8qsTH2hqsh0pNpffcWictp7V6cQWCbbixpYNhzeLNAcizw85r6IpNTW0p8UEMXPXqFx3tg=="
+        "requested": "[0.10.0, )",
+        "resolved": "0.10.0",
+        "contentHash": "QJaDNzOdRD6pienIHd7+xYnJYgIZSUgG5B+qAOjFerSBt8g5rdECe6UxxV5EafgWvwD/JJVtKqdkPD7DjKrvsQ=="
       },
       "Runic.Translations.Hosting": {
         "type": "CentralTransitive",
-        "requested": "[0.9.1, )",
-        "resolved": "0.9.1",
-        "contentHash": "gbWwTNzo7eUfkTYTs8BdHxsr+sRDkPJN6O9UFPAHJ0OjqwfGBj8acIOzL96Tny9mOFuvSHbJ4bs7qMJmIaOckQ==",
+        "requested": "[0.10.0, )",
+        "resolved": "0.10.0",
+        "contentHash": "yRRf8SQxWPVQgYLvhHvPMaTyhftKlFMJ5pNltPOOUwZ8ymMg6E//QEH0iH3pKa+vgmGsrJ9a9i767DwTRRamFQ==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
-          "Runic.Translations": "0.9.1"
+          "Runic.Translations": "[0.10.0, 0.11.0-0.0)"
         }
       },
       "Tmds.DBus.Protocol": {

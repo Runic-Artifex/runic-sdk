@@ -16,6 +16,7 @@ import { root, workspace, run, configuration, packedNuget } from "./run.mjs";
 import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText } from "./nupkg.mjs";
 import { packageVersion } from "./version.mjs";
 import { npmReleaseAgeArguments } from "./dependencies/release-age.mjs";
+import { trainFeedNpmSpec, trainFeedSource } from "./ci/train-feed.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -103,7 +104,7 @@ export const packageLayouts = {
     dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions",
       "Runic.Application.Views", "Runic.Translations", "Runic.Translations.Hosting"],
     exactDependencies: ["Runic.Application.Views"],
-    // Runic.Translations.Build stamps the range when packing; Hosting keeps 0.9.1 and later, and a Hosting of another minor
+    // Runic.Translations.Build stamps the range when packing; Hosting keeps the floor and no upper bound, and a Hosting of another minor
     // needs a Runic.Translations outside that range.
     minorBounded: ["Runic.Translations"],
   },
@@ -368,12 +369,14 @@ async function verifyConsumers(directory, packageName) {
     assert.ok(readdirSync(npm).includes(file), `Pack ${p.name} first`);
     return [p.name, resolve(npm, file)];
   });
-  // The temporary tree has no parent workspace, source references, or reusable Runic package cache.
+  // The temporary tree has no parent workspace, source references, or reusable Runic package cache. During a train,
+  // the Command Line and Translations candidates come from the train feed (eng/ci/train-feed.mjs).
+  const train = trainFeedSource();
   writeFileSync(
     join(directory, "NuGet.config"),
     `<?xml version="1.0" encoding="utf-8"?>
-<configuration><packageSources><clear/><add key="candidate" value="${nuget}"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources>
-<packageSourceMapping><clear/><packageSource key="candidate">${workspace.nuget.map(packageEntry => `<package pattern="${packageEntry.name}"/>`).join("")}</packageSource><packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping>
+<configuration><packageSources><clear/><add key="candidate" value="${nuget}"/>${train.source}<add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources>
+<packageSourceMapping><clear/><packageSource key="candidate">${workspace.nuget.map(packageEntry => `<package pattern="${packageEntry.name}"/>`).join("")}</packageSource>${train.mapping}<packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping>
 </configuration>`,
   );
   const env = {
@@ -476,7 +479,9 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           "@sveltejs/adapter-static": "4.0.0",
           "@sveltejs/vite-plugin-svelte": "7.3.1",
           // The release of the compiler that builds the runic-views catalog (one pin, eng/workspace.test.mjs).
-          "@runic-artifex/vite-plugin-runic-translations": pinnedPackageVersion("Runic.Translations.Build"),
+          // During a train, the candidate tarball of the train feed (eng/ci/train-feed.mjs) until npm has it.
+          "@runic-artifex/vite-plugin-runic-translations": trainFeedNpmSpec("@runic-artifex/vite-plugin-runic-translations",
+            pinnedPackageVersion("Runic.Translations.Build")),
         },
       },
       null,

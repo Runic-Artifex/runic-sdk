@@ -31,9 +31,16 @@ let
         ++ extra
       );
     };
+  # Every SDK package's lock file except Runic.Application.Views.Translations': it is the only one with Runic
+  # Translations, which no example here uses and which releases on its own. A train builds the SDK against a Translations
+  # release before nuget.org has it (eng/train/README.md, "Train feed"), and these fetches come from nuget.org.
   sdkLockFiles =
     lib.filter lib.pathExists (
-      map (name: ../packages/dotnet/${name}/packages.lock.json) (lib.attrNames (builtins.readDir ../packages/dotnet))
+      map (name: ../packages/dotnet/${name}/packages.lock.json) (
+        lib.filter (name: name != "Runic.Application.Views.Translations") (
+          lib.attrNames (builtins.readDir ../packages/dotnet)
+        )
+      )
     )
     ++ [
       ../tools/Runic.Application.Views.Codegen/packages.lock.json
