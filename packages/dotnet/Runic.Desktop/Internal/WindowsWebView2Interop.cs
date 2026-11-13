@@ -455,10 +455,16 @@ internal sealed class WindowsWebView2Controller : IDisposable
     internal void EnableRegionCrashes(RegionFrames regions) =>
         AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
         {
-            if (regions.IsEmpty) return;
             var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot);
+            RegionTrace?.Invoke($"process failed: kind {kind}, regions {(regions.IsEmpty ? "none" : "attached")}");
+            if (regions.IsEmpty) return;
             if (kind == WindowsWebView2Interop.RenderProcessExited) regions.HostPageProcessEnded();
-            else if (kind == WindowsWebView2Interop.FrameRenderProcessExited) regions.FrameProcessEnded(FailedFrameSources(args));
+            else if (kind == WindowsWebView2Interop.FrameRenderProcessExited)
+            {
+                var sources = FailedFrameSources(args);
+                RegionTrace?.Invoke($"frame render process ended: {string.Join(", ", sources.Select(source => RegionFrames.Redact(source)))}");
+                regions.FrameProcessEnded(sources);
+            }
         }));
 
     private static List<string?> FailedFrameSources(nint args)
@@ -615,6 +621,14 @@ internal sealed class WindowsWebView2Controller : IDisposable
     // Native smokes only: every message the top-level WebMessageReceived hears, with its source, set before the window
     // opens. A region's guest frame must not reach it (Runic.Desktop.WebViewSmoke --region).
     internal static Action<string?, string?>? TopLevelMessageObserver { get; set; }
+
+    // Diagnostics of region frames (host-protocol.md, Regions): each frame, navigation, destruction and process end the
+    // window's WebView2 reports while regions are routed. Native smokes set it; RUNIC_DESKTOP_REGION_TRACE=1 writes it to
+    // standard error at once, so a process that ends abruptly still shows the last event.
+    internal static Action<string>? RegionTrace { get; set; } =
+        Environment.GetEnvironmentVariable("RUNIC_DESKTOP_REGION_TRACE") == "1"
+            ? static line => { Console.Error.WriteLine("RUNIC REGION TRACE: " + line); Console.Error.Flush(); }
+            : null;
 
     internal void RegisterEvents(
         Action<string> titleChanged,
@@ -1100,6 +1114,7 @@ internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>?
     {
         if (_disposed) return;
         var frame = WindowsWebView2Interop.GetPointer(args, WindowsWebView2Interop.FrameCreatedFrameSlot);
+        WindowsWebView2Controller.RegionTrace?.Invoke($"frame created ({_frames.Count} known)");
         if (frame == 0) return;
         try
         {
@@ -1115,7 +1130,11 @@ internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>?
                 // A region frame's requests are decided by its guest's grant (RegionFrames): Chromium may attribute a
                 // request that the frame's allow attribute delegated to the top-level page's origin.
                 entry.Add(frame2, WindowsWebView2Interop.FrameNavigationStartingSlot, new WebViewComReference<IWebViewNavigationStarting>(
-                    new WebViewEvent(args => entry.Url = GetString(args, WindowsWebView2Interop.NavigationStartingUriSlot))));
+                    new WebViewEvent(args =>
+                    {
+                        entry.Url = GetString(args, WindowsWebView2Interop.NavigationStartingUriSlot);
+                        WindowsWebView2Controller.RegionTrace?.Invoke($"frame navigation: {RegionFrames.Redact(entry.Url)}");
+                    })));
                 try
                 {
                     entry.Permissions = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame3Interface);
@@ -1139,7 +1158,9 @@ internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>?
 
     private void Destroyed(Frame entry)
     {
+        WindowsWebView2Controller.RegionTrace?.Invoke($"frame destroyed: {RegionFrames.Redact(entry.Url)}");
         if (_frames.Remove(entry)) entry.Dispose();
+        WindowsWebView2Controller.RegionTrace?.Invoke("frame released");
     }
 
     public void Dispose()

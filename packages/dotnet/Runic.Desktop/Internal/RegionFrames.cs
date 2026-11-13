@@ -16,6 +16,7 @@ internal sealed class RegionFrames
     // Routes a frame until the returned value is disposed, such as at the region's detach.
     internal IDisposable Add(RegionFrameRoute route)
     {
+        WindowsWebView2Controller.RegionTrace?.Invoke($"route added: {route.Origin}{route.PathBase}");
         lock (_gate) Volatile.Write(ref _routes, [.. _routes, route]);
         return new Removal(this, route);
     }
@@ -68,8 +69,20 @@ internal sealed class RegionFrames
     // scheme://host:port as browsers serialize an http origin; ports are always explicit on loopback surfaces.
     internal static string Origin(Uri address) => $"{address.Scheme}://{address.Authority}";
 
+    // An address for diagnostics: its origin and path, without a frame launch code (/_runic_frame/<code>) or a fragment,
+    // which can carry a frame token.
+    internal static string Redact(string? address)
+    {
+        if (address is null || !Uri.TryCreate(address, UriKind.Absolute, out var uri)) return address is null ? "(none)" : "(not an address)";
+        var path = uri.AbsolutePath;
+        var marker = path.IndexOf(FrameLaunchBinding.PathSegment + "/", StringComparison.Ordinal);
+        if (marker >= 0) path = path[..(marker + FrameLaunchBinding.PathSegment.Length + 1)] + "…";
+        return $"{uri.Scheme}://{uri.Authority}{path}";
+    }
+
     private void Remove(RegionFrameRoute route)
     {
+        WindowsWebView2Controller.RegionTrace?.Invoke($"route removed: {route.Origin}{route.PathBase}");
         lock (_gate) Volatile.Write(ref _routes, [.. _routes.Where(other => !ReferenceEquals(other, route))]);
     }
 
@@ -114,6 +127,7 @@ internal sealed class RegionFrameRoute
 
     internal void Crash(bool hostPage)
     {
+        WindowsWebView2Controller.RegionTrace?.Invoke($"route crashed: {Origin}{PathBase} (host page: {hostPage})");
         try { Crashed(hostPage); }
         catch (Exception error) when (error is not OutOfMemoryException) { }
     }

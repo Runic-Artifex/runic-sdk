@@ -24,6 +24,8 @@ if (failures is not null)
     ProbeLog.Write($"start: {string.Join(' ', args)}; elevated: {Environment.IsPrivilegedProcess}; {System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier}");
     AppDomain.CurrentDomain.UnhandledException += (_, e) => ProbeLog.Write($"unhandled exception: {e.ExceptionObject}");
     TaskScheduler.UnobservedTaskException += (_, e) => ProbeLog.Write($"unobserved task exception: {e.Exception}");
+    // Only an end through the runtime raises it: a process that something else ends shows no such line.
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => ProbeLog.Write($"process exit, exit code {Environment.ExitCode}");
 }
 services.AddRunicReactiveModelContext();
 services.AddSingleton(new DashboardOptions(elevated));

@@ -1327,17 +1327,25 @@ jobs:
       # elevated pair (the runner's steps run elevated), the check's window shows in a region of the installer's WebView2
       # page, and its frame passes elevated-peer admission. The dashboard shows its elevated widgets as components, which
       # checks a dynamic import() of a loopback module under the page's Content-Security-Policy in WebView2.
+      # The installer's probe also runs unelevated, as the standard user created above (Unelevated.cs), to compare.
+      # RUNIC_DESKTOP_REGION_TRACE writes every region frame event of the hosts' WebView2 to standard error.
       - name: Exercise the hosted region and hosted components examples as the elevated pair on Windows
         id: region-examples
         if: runner.os == 'Windows'
-        timeout-minutes: 10
+        timeout-minutes: 12
         shell: bash
+        env:
+          RUNIC_DESKTOP_REGION_TRACE: '1'
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
         run: |
           dotnet build examples/hosted-region/Installer/HostedInstaller.csproj -c Release
           dotnet build examples/hosted-components/Dashboard/HostedDashboard.csproj -c Release
-          # The built hosts run directly, as the elevated hosted smoke does; both probes run, also after one failed.
+          # The built hosts run directly, as the elevated hosted smoke does; every probe runs, also after one failed.
           status=0
           dotnet examples/hosted-region/Installer/bin/Release/net10.0/HostedInstaller.dll --probe --elevated || status=$?
+          dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll \
+            --run-unelevated dotnet examples/hosted-region/Installer/bin/Release/net10.0/HostedInstaller.dll --probe || status=$?
           dotnet examples/hosted-components/Dashboard/bin/Release/net10.0/HostedDashboard.dll --probe --elevated || status=$?
           exit "$status"
       # A host that ends without a word, such as after a native crash, leaves its reason in the Application event log.
