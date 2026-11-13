@@ -24,7 +24,9 @@ before(() => {
   directory = mkdtempSync(join(tmpdir(), "runic-views-translations-"));
   mkdirSync(join(directory, ".config"));
   cpSync(resolve(root, ".config/dotnet-tools.json"), join(directory, ".config/dotnet-tools.json"));
-  const restoredTool = run("dotnet", ["tool", "restore"], directory);
+  // During a train, Runic Translations' release comes from the train feed (eng/ci/train-feed.mjs).
+  const feed = process.env.RUNIC_TRAIN_FEED ? ["--add-source", process.env.RUNIC_TRAIN_FEED] : [];
+  const restoredTool = run("dotnet", ["tool", "restore", ...feed], directory);
   assert.equal(restoredTool.status, 0, restoredTool.output);
   const packages = process.env.NUGET_PACKAGES || join(homedir(), ".nuget/packages");
   buildPackage = join(packages, "runic.translations.build", version);
@@ -37,7 +39,8 @@ before(() => {
   <ItemGroup><PackageReference Include="Runic.Translations.Build" Version="${version}" /></ItemGroup>
 </Project>
 `);
-    const restored = run("dotnet", ["restore", "Restore.csproj"], restore);
+    const restored = run("dotnet", ["restore", "Restore.csproj", ...feed.map(item => item === "--add-source" ? "--source" : item),
+      ...(feed.length ? ["--source", "https://api.nuget.org/v3/index.json"] : [])], restore);
     assert.equal(restored.status, 0, restored.output);
   }
   assert.ok(existsSync(buildPackage), `Runic.Translations.Build ${version} is in ${packages}`);

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { successfulCiRuns, selectCiRun, missingReleaseJobs, selectArtifact, findCiPackages } from './ci-run.mjs';
+import { successfulCiRuns, selectCiRun, missingReleaseJobs, selectArtifact, findCiPackages, refuseTrainFeed } from './ci-run.mjs';
 import { releaseJobs } from '../ci/platforms.mjs';
 const repository = 'Runic-Artifex/runic-sdk', sha = 'a'.repeat(40);
 const run = (id, extra = {}) => ({id, head_sha: sha, event: 'push', head_branch: 'main', path: '.github/workflows/ci.yml',
@@ -52,7 +52,8 @@ test('queries GitHub for runs of the commit, their jobs, and reports the run and
   const requests = [];
   const fetchImpl = async (url, init) => {
     requests.push({url: new URL(url), auth: init.headers.authorization});
-    return Response.json(url.includes('/artifacts') ? {artifacts: [{id: 80, name: 'runic-sdk-8', expired: false, workflow_run: {id: 8, head_sha: sha}}]}
+    const artifacts = [{id: 80, name: 'runic-sdk-8', expired: false, workflow_run: {id: 8, head_sha: sha}}];
+    return Response.json(url.includes('/artifacts') ? {artifacts: artifacts.filter(a => a.name === new URL(url).searchParams.get('name'))}
       : url.includes('/jobs') ? {jobs: complete()} : {workflow_runs: [run(8)]});
   };
   expect(await findCiPackages({repository, sha, token: 't', fetchImpl})).toEqual({runId: '8', runUrl: run(8).html_url, artifact: 'runic-sdk-8', artifactId: '80'});
@@ -60,7 +61,15 @@ test('queries GitHub for runs of the commit, their jobs, and reports the run and
   expect(Object.fromEntries(requests[0].url.searchParams)).toMatchObject({head_sha: sha, branch: 'main'});
   expect(requests[0].url.searchParams.has('event')).toBe(false);
   expect(requests[1].url.pathname).toBe(`/repos/${repository}/actions/runs/8/jobs`);
+  expect(Object.fromEntries(requests[2].url.searchParams)).toEqual({name: 'train-feed'});
   expect(requests.every(r => r.auth === 'Bearer t')).toBe(true);
   await expect(findCiPackages({repository, sha, token: 't', fetchImpl: async () => new Response('', {status: 403})})).rejects.toThrow('failed: 403');
   await expect(findCiPackages({repository, sha: 'main', token: 't', fetchImpl})).rejects.toThrow('full commit SHA');
+});
+test('refuses a CI run built against the train feed', async () => {
+  expect(() => refuseTrainFeed([{name: 'runic-sdk-8'}], run(8))).not.toThrow();
+  expect(() => refuseTrainFeed([{name: 'train-feed'}], run(8))).toThrow('cannot be published');
+  const fetchImpl = async url => Response.json(url.includes('/artifacts') ? {artifacts: [{id: 81, name: 'train-feed'}]}
+    : url.includes('/jobs') ? {jobs: complete()} : {workflow_runs: [run(8)]});
+  await expect(findCiPackages({repository, sha, token: 't', fetchImpl})).rejects.toThrow('built against the train-feed');
 });

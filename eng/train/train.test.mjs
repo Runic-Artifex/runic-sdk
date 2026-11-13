@@ -41,11 +41,12 @@ test('package ids map to their repository by the longest source-mapping pattern'
   expect(config).toMatch(/<packageSource key="train-sdk">\s*<package pattern="Runic.\*" \/>/);
 });
 
-test('inputs are published[:version] or run[:id], and a release includes its own prerelease line', () => {
+test('inputs are published[:version], run[:id] or local:<dir>, and a release includes its own prerelease line', () => {
   expect(parseSpec('published')).toEqual({ kind: 'published', argument: null, text: 'published' });
   expect(parseSpec('published:0.12.0').argument).toBe('0.12.0');
   expect(parseSpec('run:43302549984')).toMatchObject({ kind: 'run', argument: '43302549984' });
-  for (const bad of ['main', 'run:abc', 'published:x', '']) expect(() => parseSpec(bad)).toThrow();
+  expect(parseSpec('local:artifacts/packages')).toMatchObject({ kind: 'local', argument: 'artifacts/packages' });
+  for (const bad of ['main', 'run:abc', 'published:x', 'local', '']) expect(() => parseSpec(bad)).toThrow();
   expect(versionForRelease(['0.16.0-preview.1', '0.17.1-preview.1', '0.17.1-preview.2'], '0.17.1')).toBe('0.17.1-preview.2');
   expect(versionForRelease(['0.17.0', '0.17.1'], '0.17.1')).toBe('0.17.1');
   expect(versionForRelease(['0.7.0-preview.6'], '0.17.1')).toBe(null);

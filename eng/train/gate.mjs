@@ -3,7 +3,7 @@
 //   bun eng/train/gate.mjs --cli <input> --translations <input> --sdk <input> [--row <name>] [--out <dir>]
 //                          [--only S1,S2] [--keep]
 //
-// Each input is `published`, `published:<version>`, `run` or `run:<ci run id>`. CI artifacts are read with
+// Each input is `published`, `published:<version>`, `run`, `run:<ci run id>` or, locally, `local:<dir>`. CI artifacts are read with
 // GH_TOKEN (GITHUB_TOKEN in Actions). Writes <out>/train-result.json, <out>/summary.md and the logs; exits 1 when a
 // required scenario has a failure that expected-failures.json does not name, and 3 when an artifact was refused.
 import { spawn, spawnSync } from 'node:child_process';
@@ -42,7 +42,7 @@ function summary(result) {
   const lines = [`## Train compatibility: ${result.verdict === 'pass' ? 'pass' : 'FAIL'} (${result.row})`, '',
     '| Repository | Input | Version | Source |', '| --- | --- | --- | --- |'];
   for (const input of Object.values(result.inputs))
-    lines.push(`| ${input.repository} | \`${input.input}\` | ${input.version} | ${input.run ? `[run ${input.run.id}](${input.run.url}) (${input.run.headSha.slice(0, 9)})` : 'nuget.org'} |`);
+    lines.push(`| ${input.repository} | \`${input.input}\` | ${input.version} | ${input.run ? `[run ${input.run.id}](${input.run.url}) (${input.run.headSha.slice(0, 9)})` : input.kind === 'local' ? 'local packages' : 'nuget.org'} |`);
   lines.push('', '| Scenario | Result | Details |', '| --- | --- | --- |');
   for (const scenario of result.scenarios) {
     const details = [...scenario.failures.map(item => `${item.expected ? `expected ${item.expected}: ` : ''}${item.check}: ${item.message}`), ...scenario.notes]
@@ -100,14 +100,14 @@ export async function runGate(values) {
   console.log(Object.values(sources).map(source => `${repos[source.repo].title}: ${source.input} -> ${source.version}${source.run ? ` (run ${source.run.id})` : ''}`).join('\n'));
 
   // Candidates carry final release versions, so they must never reach a shared NuGet, npm or tool cache.
-  const hasRun = Object.values(sources).some(source => source.kind === 'run');
+  const hasRun = Object.values(sources).some(source => source.kind !== 'published');
   const shared = !hasRun && process.env.RUNIC_TRAIN_NUGET_PACKAGES;
   const env = { ...process.env, DOTNET_CLI_HOME: join(work, 'dotnet-home'), NUGET_PACKAGES: shared || join(work, 'nuget-packages'),
     NUGET_HTTP_CACHE_PATH: join(work, 'nuget-http-cache'), npm_config_cache: join(work, 'npm-cache'), DOTNET_NOLOGO: '1',
     DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1', MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER: '1',
     UseSharedCompilation: 'false' };
   for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'RUNIC_TRAIN_TOKEN']) delete env[key];
-  const feeds = Object.fromEntries(repoKeys.map(key => [key, sources[key].kind === 'run' ? join(work, 'candidates', key, 'nuget') : null]));
+  const feeds = Object.fromEntries(repoKeys.map(key => [key, sources[key].kind !== 'published' ? join(work, 'candidates', key, 'nuget') : null]));
   const nugetConfig = join(work, 'nuget.config');
   writeNugetConfig(nugetConfig, feeds);
   // Every consumer below the work directory restores through nuget.config and builds with warnings as errors;
@@ -128,7 +128,7 @@ export async function runGate(values) {
     packageFile: (repo, id) => packageFile(sources[repo], id, join(work, 'candidates'), {}),
   };
   context.run = createRunner(context);
-  if (sources.sdk.kind === 'run') context.npmRegistry = await startNpmRegistry(context, sources.sdk.npm.map(item => item.file));
+  if (sources.sdk.kind !== 'published') context.npmRegistry = await startNpmRegistry(context, sources.sdk.npm.map(item => item.file));
 
   const selected = values.only ? new Set(values.only.split(',').map(item => item.trim())) : null;
   try {
