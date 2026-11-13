@@ -1,1 +1,30 @@
 #nullable enable
+*REMOVED*const Runic.Application.Testing.RunicTestWindowPresentation.AllFeatures = Runic.Application.Views.RunicWindowPresentationFeatures.Present | Runic.Application.Views.RunicWindowPresentationFeatures.Minimize | Runic.Application.Views.RunicWindowPresentationFeatures.Visibility | Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen | Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited | Runic.Application.Views.RunicWindowPresentationFeatures.ColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.Activity | Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.OwnedWindows -> Runic.Application.Views.RunicWindowPresentationFeatures
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.CloseSidePanel(Runic.Application.Views.RunicSidePanelCloseReason reason) -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.IsMaximized.get -> bool
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.IsMaximized.set -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.IsRightToLeft.get -> bool
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.IsRightToLeft.set -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.IsSnapped.get -> bool
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.IsSnapped.set -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.OpenSidePanelAsync(Runic.Application.Views.RunicSidePanelOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicSidePanelResult!>
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.SetSidePanelRefusal(Runic.Application.Views.RunicSidePanelRefusal? reason) -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.SidePanel.get -> Runic.Application.Views.IRunicSidePanel?
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.WindowWidth.get -> int
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.WindowWidth.set -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.WindowX.get -> int
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.WindowX.set -> void
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.WorkAreaWidth.get -> int
+[RUNICDESK104]Runic.Application.Testing.RunicTestWindowPresentation.WorkAreaWidth.set -> void
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequest.Edge.get -> Runic.Application.Views.RunicSidePanelEdge?
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequest.Edge.init -> void
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequest.SidePanel.get -> Runic.Application.Views.RunicSidePanelOptions?
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequest.SidePanel.init -> void
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequest.Width.get -> int?
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequest.Width.init -> void
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequestKind.CloseSidePanel = 10 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequestKind.FocusSidePanel = 9 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequestKind.MoveSidePanel = 7 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequestKind.OpenSidePanel = 6 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+[RUNICDESK104]Runic.Application.Testing.RunicWindowPresentationRequestKind.SetSidePanelWidth = 8 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+const Runic.Application.Testing.RunicTestWindowPresentation.AllFeatures = Runic.Application.Views.RunicWindowPresentationFeatures.Present | Runic.Application.Views.RunicWindowPresentationFeatures.Minimize | Runic.Application.Views.RunicWindowPresentationFeatures.Visibility | Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen | Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited | Runic.Application.Views.RunicWindowPresentationFeatures.ColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.Activity | Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.OwnedWindows | Runic.Application.Views.RunicWindowPresentationFeatures.SidePanel -> Runic.Application.Views.RunicWindowPresentationFeatures
