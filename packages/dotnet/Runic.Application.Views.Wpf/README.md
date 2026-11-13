@@ -365,8 +365,9 @@ had. `SetColorSchemeAsync` sets the title bar's dark mode, once the window has a
 handle if it has none yet, and the page's `prefers-color-scheme` of every
 `RunicViewHost` in the window, including one added later or still starting; the
 application's WPF controls keep the theme the application gives them.
-`NoPreference` gives the title bar the system's apps theme as it is at the time
-of the call. `SetDocumentEditedAsync` reports `Unavailable(BackendUnavailable)`,
+`NoPreference` gives the title bar the system's app mode and follows it when the
+user switches it while the window is open; a window whose scheme was never set
+keeps WPF's default title bar. `SetDocumentEditedAsync` reports `Unavailable(BackendUnavailable)`,
 as on Windows generally. `IsActive`, `IsMinimized` and `IsVisible` follow
 `Activated`, `Deactivated`, `StateChanged` and `IsVisibleChanged`, and the
 changes are raised on the window's dispatcher, the ViewModels' thread in WPF. A

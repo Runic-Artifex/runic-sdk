@@ -796,7 +796,9 @@ public sealed record DesktopWindowOptions
     /// The page's <c>prefers-color-scheme</c> and the window's own title bar and controls follow it. The macOS window sets
     /// <c>NSWindow.appearance</c> to Aqua or Dark Aqua. The Windows window sets the WebView2 profile's preferred color
     /// scheme and the title bar's dark mode; WebView2 applies the scheme to the whole profile, so windows that share a
-    /// <see cref="ProfilePath"/> show the last one opened with a scheme. Without the option a Windows title bar stays light.
+    /// <see cref="ProfilePath"/> show the last one opened with a scheme. Without the option a Windows title bar follows the
+    /// system's app mode (Settings &gt; Personalization &gt; Colors), also when it changes while the window is open, and a
+    /// contrast theme's colours, while the page's <c>prefers-color-scheme</c> follows the system.
     /// </para>
     /// <para>
     /// The GTK windows and installed browsers cannot set it per window: they ignore it, and
