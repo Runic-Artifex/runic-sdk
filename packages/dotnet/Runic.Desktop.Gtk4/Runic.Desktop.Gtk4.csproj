@@ -29,6 +29,7 @@
     <Compile Include="../Runic.Desktop/Internal/SpellingLanguages.cs" Link="Shared/SpellingLanguages.cs" />
     <Compile Include="../Runic.Desktop/Internal/WindowPlacementClamp.cs" Link="Shared/WindowPlacementClamp.cs" />
     <Compile Include="../Runic.Desktop/Internal/WindowBoundsSupport.cs" Link="Shared/WindowBoundsSupport.cs" />
+    <Compile Include="../Runic.Desktop/Internal/WindowRestoreBounds.cs" Link="Shared/WindowRestoreBounds.cs" />
     <Compile Include="../Runic.Desktop/Internal/GtkColorScheme.cs" Link="Shared/GtkColorScheme.cs" />
     <Compile Include="../Runic.Desktop/Internal/ModalOwners.cs" Link="Shared/ModalOwners.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMonitorSource.cs" Link="Shared/DesktopMonitorSource.cs" />

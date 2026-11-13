@@ -16,20 +16,20 @@ internal sealed partial class MacOsWkWebViewHost
     private bool? _zoomAfterFullScreen;
     private DesktopWindowPlacement? _placementAfterFullScreen;
     private bool _leaveFullScreenAfterTransition;
-    // Main thread only: the frame a window that MaximizeAsync zoomed, or a placement left zoomed, restores to. zoom:
-    // returns to a frame AppKit saved, which a frame set while the window is zoomed does not replace and a later zoom:
-    // does not always either (osx-arm64 CI), so the window takes this frame once it is unzoomed (QueueRestoreFrame), by
-    // RestoreAsync or by the user.
-    private CGRect? _restoreFrame;
-    // Whether the window was seen zoomed since, so a resize during the zoom: animation does not count as unzoomed, and
-    // how often the frame was given, as an unzoom animation may still end at AppKit's frame afterwards.
-    private bool _restoreFrameArmed;
-    private int _restoreFrameTries;
+    // Main thread only: the frame the window restores to (WindowRestoreBounds), in AppKit's coordinates. zoom: returns to
+    // a frame AppKit saved, which a frame set while the window is zoomed does not replace and a later zoom: does not
+    // always either (osx-arm64 CI), so each placement and MaximizeAsync states the frame, and the window is given it once
+    // it is unzoomed elsewhere (QueueRestoreFrame), by RestoreAsync or by the user.
+    private readonly WindowRestoreBounds _restore = new();
+    private readonly System.Diagnostics.Stopwatch _restoreClock = System.Diagnostics.Stopwatch.StartNew();
 
-    // Main thread only.
-    private void SetRestoreFrame(CGRect? frame, bool zoomedNow)
+    private static RestoreFrame ToRestore(CGRect frame) =>
+        new((int)Math.Round(frame.X), (int)Math.Round(frame.Y), (int)Math.Round(frame.Width), (int)Math.Round(frame.Height));
+
+    // Main thread only: frame is the restore frame from now on, replacing any earlier one.
+    private void SetRestoreFrame(CGRect frame, bool zoomedNow)
     {
-        (_restoreFrame, _restoreFrameArmed, _restoreFrameTries) = (frame, frame is not null && zoomedNow, 0);
+        _restore.Set(ToRestore(frame), _restoreClock.Elapsed, zoomedNow);
     }
 
     public ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default)
@@ -103,7 +103,8 @@ internal sealed partial class MacOsWkWebViewHost
             Api.SendVoidRectBool(_window, "setFrame:display:", frame, shown);
             _normal = PlacementOf(frame);
             var stillZoomed = Api.SendBool(_window, "isZoomed");
-            SetRestoreFrame(placement.Maximized || stillZoomed ? frame : null, stillZoomed);
+            // Also a normal placement: it replaces the frame an earlier placement or MaximizeAsync stated.
+            SetRestoreFrame(frame, stillZoomed);
             if (shown)
             {
                 (_zoomWhenShown, _unzoomWhenShown) = (false, false);
@@ -130,7 +131,7 @@ internal sealed partial class MacOsWkWebViewHost
     // not run inside the delegate callback.
     private void QueueRestoreFrame()
     {
-        if (_restoreFrame is null) return;
+        if (!_restore.IsHeld) return;
         MacOsMainThread.Post(TryRestoreFrame);
     }
 
@@ -138,27 +139,19 @@ internal sealed partial class MacOsWkWebViewHost
     {
         try
         {
-            if (!IsOpen || _window == 0 || _restoreFrame is not { } frame || IsFullScreen || _fullScreenTransition) return;
-            if (Api.SendBool(_window, "isMiniaturized") || !Api.SendBool(_window, "isVisible")) return;
-            if (Api.SendBool(_window, "isZoomed"))
+            if (!IsOpen || _window == 0 || !_restore.IsHeld || IsFullScreen || _fullScreenTransition) return;
+            var shown = !Api.SendBool(_window, "isMiniaturized") && Api.SendBool(_window, "isVisible");
+            var zoomed = Api.SendBool(_window, "isZoomed");
+            var frame = Api.SendRect(_window, "frame");
+            var observation = _restore.Observe(zoomed, shown && !zoomed ? ToRestore(frame) : null, _restoreClock.Elapsed);
+            if (observation.Apply is not { } apply)
             {
-                _restoreFrameArmed = true;
+                // Released: the frame the window is at is the restore frame again.
+                if (!_restore.IsHeld) UpdateState();
                 return;
             }
-            if (!_restoreFrameArmed) return;
-            var current = Api.SendRect(_window, "frame");
-            if (current.X == frame.X && current.Y == frame.Y && current.Width == frame.Width && current.Height == frame.Height)
-            {
-                SetRestoreFrame(null, zoomedNow: false);
-                return;
-            }
-            if (_restoreFrameTries++ >= 4)
-            {
-                SetRestoreFrame(null, zoomedNow: false);
-                return;
-            }
-            Api.SendVoidRectBool(_window, "setFrame:display:", frame, true);
-            _normal = PlacementOf(frame);
+            Api.SendVoidRectBool(_window, "setFrame:display:", new CGRect(apply.X!.Value, apply.Y!.Value, apply.Width, apply.Height), true);
+            _normal = PlacementOf(Api.SendRect(_window, "frame"));
             UpdateState();
             // Checked again once an unzoom animation that was still running has ended.
             MacOsMainThread.PostAfter(TimeSpan.FromMilliseconds(300), TryRestoreFrame);
@@ -208,7 +201,7 @@ internal sealed partial class MacOsWkWebViewHost
             var frame = PlacementFrame(placement);
             Api.SendVoidRectBool(_window, "setFrame:display:", frame, true);
             _normal = PlacementOf(frame);
-            SetRestoreFrame(placement.Maximized ? frame : null, zoomedNow: false);
+            SetRestoreFrame(frame, zoomedNow: false);
         }
         if (zoom is { } zoomed && zoomed != Api.SendBool(_window, "isZoomed")) Api.SendVoidNint(_window, "zoom:", 0);
         UpdateState();

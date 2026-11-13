@@ -742,7 +742,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         var maximized = !fullScreen && Api.SendBool(_window, "isZoomed");
         var current = ReadBounds();
         var exact = ReadExactBounds(maximized, fullScreen);
-        if (!maximized && !fullScreen)
+        // While a placement or MaximizeAsync holds the restore frame (WindowRestoreBounds), the frames the window passes
+        // through on its way to or from zoom are not the bounds it restores to.
+        if (!maximized && !fullScreen && !_restore.IsHeld)
         {
             _normal = current;
         }

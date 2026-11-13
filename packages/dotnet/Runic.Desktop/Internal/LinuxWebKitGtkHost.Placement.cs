@@ -17,6 +17,17 @@ internal sealed partial class LinuxWebKitGtkHost
     private (int? X, int? Y, int Width, int Height)? _geometryWhenShown;
     private bool? _maximizedWhenShown;
     private (int Width, int Height)? _maximizeAtSize;
+    // GTK thread only: the bounds the window restores to (WindowRestoreBounds), which UpdateState reports and gives the
+    // window again when the window manager returns it from maximized elsewhere.
+    private readonly WindowRestoreBounds _restore = new();
+    private readonly System.Diagnostics.Stopwatch _restoreClock = System.Diagnostics.Stopwatch.StartNew();
+
+    // GTK thread only: the restore bounds now.
+    private RestoreFrame? CurrentRestore() =>
+        _restore.Current ?? (_normal is { } normal ? new RestoreFrame(normal.X, normal.Y, normal.Width, normal.Height) : null);
+
+    // GTK thread only: SetBoundsAsync, MoveAsync and ResizeAsync of a normal window, whose frame is the restore bounds.
+    private void ReleaseRestoreBounds() => _restore.Reset(_restore.Current);
     // Which wait the one-second fallback belongs to, so an earlier wait's fallback cannot end a later one.
     private int _maximizeAtSizeWait;
 
@@ -26,6 +37,8 @@ internal sealed partial class LinuxWebKitGtkHost
             if (_options?.Kiosk == true) return;
             var flags = Api.GetWindowStateFlags(_window);
             if ((flags & GdkWindowStateFullscreen) != 0 && Api.CanUseFullScreen) Api.GtkWindowUnfullscreen(_window);
+            // The bounds the window maximizes from are the ones it restores to (WindowRestoreBounds).
+            if ((flags & GdkWindowStateMaximized) == 0 && CurrentRestore() is { } bounds) _restore.Set(bounds, _restoreClock.Elapsed);
             if (!Api.GtkWidgetGetVisible(_window))
             {
                 _maximizedWhenShown = true;
@@ -43,7 +56,12 @@ internal sealed partial class LinuxWebKitGtkHost
         {
             if (_options?.Kiosk == true) return;
             _maximizeAtSize = null;
+            // The window manager restores the frame it saved; the window is given the restore bounds (UpdateState).
             var flags = Api.GetWindowStateFlags(_window);
+            if (CurrentRestore() is { } bounds)
+            {
+                _restore.Set(bounds, _restoreClock.Elapsed, (flags & (GdkWindowStateMaximized | GdkWindowStateIconified)) != 0);
+            }
             if ((flags & GdkWindowStateFullscreen) != 0 && Api.CanUseFullScreen) Api.GtkWindowUnfullscreen(_window);
             if (!Api.GtkWidgetGetVisible(_window))
             {
@@ -86,6 +104,8 @@ internal sealed partial class LinuxWebKitGtkHost
                 (width, height) = WindowPlacementClamp.ClampSize(width, height, WindowPlacementClamp.Largest(workAreas));
             }
             _maximizeAtSize = null;
+            // The placement's bounds replace any earlier restore bounds (WindowRestoreBounds).
+            _restore.Set(new RestoreFrame(x, y, width, height), _restoreClock.Elapsed);
             if (fullScreen && !placement.FullScreen && Api.CanUseFullScreen) Api.GtkWindowUnfullscreen(_window);
             if (!Api.GtkWidgetGetVisible(_window))
             {
@@ -163,6 +183,19 @@ internal sealed partial class LinuxWebKitGtkHost
         if (!force && (width, height) != size) return;
         _maximizeAtSize = null;
         Api.GtkWindowMaximize(_window);
+    }
+
+    // GTK thread only, from UpdateState: the restore bounds after a report of the window, which a window back from
+    // maximized at other bounds is given again. frame is the normal frame of a shown window, null otherwise.
+    private RestoreFrame? ObserveRestoreBounds(bool maximized, RestoreFrame? frame)
+    {
+        var observation = _restore.Observe(maximized, frame, _restoreClock.Elapsed);
+        if (observation.Apply is { } apply)
+        {
+            if (apply is { X: { } x, Y: { } y }) Api.GtkWindowMove(_window, x, y);
+            Api.GtkWindowResize(_window, apply.Width, apply.Height);
+        }
+        return observation.Restore;
     }
 
     // GTK thread only.

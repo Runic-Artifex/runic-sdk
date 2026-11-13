@@ -229,6 +229,98 @@ public sealed class WindowPlacementTests
         Assert.Equal(page with { X = null, Y = null, Width = 1451 }, SidePanelPlanner.IncludePanel(page with { X = null, Y = null }, true, 450));
     }
 
+    private static readonly RestoreFrame MaximizedPlacement = new(220, 190, 540, 450);
+    private static readonly RestoreFrame NormalPlacement = new(240, 170, 580, 420);
+    private static readonly TimeSpan Now = TimeSpan.FromSeconds(10);
+
+    [Test]
+    public void ALaterNormalPlacementReplacesTheRestoreBoundsOfAnEarlierMaximizedOne()
+    {
+        // CI on #915 (linux-x64 GTK 4, osx-arm64): maximized placement while maximized → normal placement while
+        // maximized → maximize → minimize → restore ended at the earlier placement's bounds.
+        var restore = new WindowRestoreBounds();
+        restore.Reset(new RestoreFrame(200, 140, 520, 380));
+        restore.Observe(maximized: true, null, Now);
+
+        // A maximized placement while maximized: the window stays maximized and restores to its bounds.
+        restore.Set(MaximizedPlacement, Now, maximized: true);
+        Assert.Equal(MaximizedPlacement, restore.Observe(maximized: true, null, Now).Restore);
+        // RestoreAsync: the window manager returns the window to the frame it saved; it is given the placement's bounds.
+        var back = restore.Observe(maximized: false, new RestoreFrame(200, 140, 520, 380), Now);
+        Assert.Equal(MaximizedPlacement, back.Apply);
+        Assert.Null(restore.Observe(maximized: false, MaximizedPlacement, Now).Apply);
+        Assert.False(restore.IsHeld);
+
+        // MaximizeAsync, then a normal placement while maximized: it replaces the restore bounds.
+        restore.Set(MaximizedPlacement, Now);
+        restore.Observe(maximized: true, null, Now);
+        restore.Set(NormalPlacement, Now, maximized: true);
+        // The window unmaximizes at the window manager's saved frame, the earlier placement, and is given the new one.
+        Assert.Equal(NormalPlacement, restore.Observe(maximized: false, MaximizedPlacement, Now).Apply);
+        Assert.Equal(NormalPlacement, restore.Observe(maximized: false, NormalPlacement, Now).Restore);
+
+        // MaximizeAsync from there, minimize while maximized, RestoreAsync: back at the normal placement.
+        restore.Set(restore.Current!.Value, Now);
+        restore.Observe(maximized: true, null, Now);
+        restore.Observe(maximized: true, null, Now); // minimized: no normal frame
+        restore.Set(restore.Current!.Value, Now, maximized: true);
+        var restored = restore.Observe(maximized: false, MaximizedPlacement, Now);
+        Assert.Equal(NormalPlacement, restored.Apply);
+        Assert.Equal(NormalPlacement, restored.Restore);
+        Assert.Equal(NormalPlacement, restore.Observe(maximized: false, NormalPlacement, Now).Restore);
+        Assert.False(restore.IsHeld);
+        Assert.Equal(NormalPlacement, restore.Current);
+    }
+
+    [Test]
+    public void FramesInTransitDoNotReplaceHeldRestoreBounds()
+    {
+        var restore = new WindowRestoreBounds();
+        restore.Reset(NormalPlacement);
+        // MaximizeAsync: the window is reported on its way to the maximized frame before it reports being maximized.
+        restore.Set(NormalPlacement, Now);
+        var transit = restore.Observe(maximized: false, new RestoreFrame(-1, -1, 1600, 881), Now);
+        Assert.Null(transit.Apply);
+        Assert.Equal(NormalPlacement, transit.Restore);
+        Assert.True(restore.IsHeld);
+        // A window that never maximized and stays elsewhere for longer than the hold time was moved by the user.
+        var moved = new RestoreFrame(400, 300, 580, 420);
+        Assert.Equal(moved, restore.Observe(maximized: false, moved, Now + WindowRestoreBounds.HoldTime + TimeSpan.FromSeconds(1)).Restore);
+        Assert.False(restore.IsHeld);
+        Assert.Equal(moved, restore.Current);
+    }
+
+    [Test]
+    public void TheRestoreBoundsAreGivenAFewTimesThenTheWindowManagerWins()
+    {
+        var restore = new WindowRestoreBounds();
+        restore.Set(NormalPlacement, Now, maximized: true);
+        var elsewhere = new RestoreFrame(10, 10, 300, 200);
+        var at = Now;
+        for (var i = 0; i < WindowRestoreBounds.MaximumTries; i++)
+        {
+            Assert.Equal(NormalPlacement, restore.Observe(maximized: false, elsewhere, at).Apply);
+            // A burst of reports before the window manager acted gives them no more often than every RetryInterval.
+            Assert.Null(restore.Observe(maximized: false, elsewhere, at + TimeSpan.FromMilliseconds(10)).Apply);
+            at += WindowRestoreBounds.RetryInterval;
+        }
+        var given = restore.Observe(maximized: false, elsewhere, at);
+        Assert.Null(given.Apply);
+        Assert.Equal(elsewhere, given.Restore);
+        Assert.False(restore.IsHeld);
+    }
+
+    [Test]
+    public void WithoutAPositionOnlyTheSizeIsCompared()
+    {
+        // Wayland reports no position.
+        var restore = new WindowRestoreBounds();
+        restore.Set(new RestoreFrame(null, null, 580, 420), Now, maximized: true);
+        Assert.Equal(new RestoreFrame(null, null, 580, 420), restore.Observe(maximized: false, new RestoreFrame(null, null, 540, 450), Now).Apply);
+        Assert.Null(restore.Observe(maximized: false, new RestoreFrame(null, null, 580, 420), Now).Apply);
+        Assert.False(restore.IsHeld);
+    }
+
     private sealed class ShowStateFactory : IDesktopWindowHostFactory
     {
         internal List<ShowStateHost> Hosts { get; } = [];

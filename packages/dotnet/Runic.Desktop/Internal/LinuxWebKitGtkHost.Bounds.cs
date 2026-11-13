@@ -28,6 +28,7 @@ internal sealed partial class LinuxWebKitGtkHost
             {
                 throw WindowBoundsSupport.NotRestored();
             }
+            ReleaseRestoreBounds();
             if (bounds is { X: { } x, Y: { } y })
             {
                 if (Api.IsWaylandDisplay()) throw WindowBoundsSupport.PositionUnavailable();

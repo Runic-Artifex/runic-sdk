@@ -250,10 +250,18 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }, cancellationToken);
 
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => Api.GtkWindowResize(_window, checked((int)width), checked((int)height)), cancellationToken);
+        => InvokeWindowAsync(() =>
+        {
+            ReleaseRestoreBounds();
+            Api.GtkWindowResize(_window, checked((int)width), checked((int)height));
+        }, cancellationToken);
 
     public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => Api.GtkWindowMove(_window, x, y), cancellationToken);
+        => InvokeWindowAsync(() =>
+        {
+            ReleaseRestoreBounds();
+            Api.GtkWindowMove(_window, x, y);
+        }, cancellationToken);
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() =>
@@ -580,8 +588,14 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         var exact = ReadExactBounds(x, y, current.Width, current.Height, flags, maximized, fullScreen);
         // A placement given while hidden maximizes the shown window once it has its size (ApplyPlacementWhenShown).
         if (!maximized) MaximizeAtSize(force: false, current.Width, current.Height);
-        // A hidden window keeps the placement it shows at (SetPlacementAsync).
-        if (!maximized && !fullScreen && !tiled && _geometryWhenShown is null)
+        // The restore bounds (WindowRestoreBounds): a hidden window keeps the placement it shows at, and frames the window
+        // passes through on its way to or from maximized do not replace the bounds a placement or a maximize stated.
+        var shownNormal = !maximized && !fullScreen && !tiled && _geometryWhenShown is null && Api.GtkWidgetGetVisible(_window);
+        if (ObserveRestoreBounds(maximized || fullScreen, shownNormal ? new RestoreFrame(x, y, current.Width, current.Height) : null) is { } restore)
+        {
+            _normal = current with { X = restore.X, Y = restore.Y, Width = restore.Width, Height = restore.Height };
+        }
+        else if (!maximized && !fullScreen && !tiled && _geometryWhenShown is null)
         {
             _normal = current;
         }
