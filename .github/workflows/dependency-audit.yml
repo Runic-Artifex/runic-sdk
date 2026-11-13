@@ -18,11 +18,18 @@ jobs:
   audit:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # The train feed reads the upstream repositories' CI artifacts.
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # During a train, the unpublished Command Line and Translations releases (eng/ci/train-feed.mjs).
       - uses: ./.github/actions/setup-sdk
+        with:
+          train-feed: prepare
       - name: Review available dependency versions
         env:
           GH_TOKEN: ${{ github.token }}

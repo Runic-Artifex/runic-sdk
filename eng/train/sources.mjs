@@ -1,8 +1,8 @@
 // Resolves each repository's input (a published version or a CI run's package artifact) into the candidate
 // packages of one gate run: their ids, versions, nuspecs and, for CI runs, local files with SHA-256 values.
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { zipEntries } from '../nupkg.mjs';
 import { repos, repoOf, npmRepoOf, parseNuspec, nupkgNuspec } from './nuget.mjs';
@@ -18,14 +18,15 @@ const CI_EVENTS = ['push', 'schedule', 'workflow_dispatch'];
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // `published` (the newest version on nuget.org), `published:<version>`, `run` (the newest successful ci.yml run on
-// main) or `run:<run id>`.
+// main), `run:<run id>` or, locally, `local:<dir>` (packages packed in a checkout, <dir>/nuget and <dir>/npm).
 export function parseSpec(text) {
   const value = String(text ?? '').trim();
-  const match = /^(published|run)(?::(.+))?$/.exec(value);
-  if (!match) throw new Error(`Expected published, published:<version>, run or run:<ci run id>, not '${value}'`);
+  const match = /^(published|run|local)(?::(.+))?$/.exec(value);
+  if (!match) throw new Error(`Expected published, published:<version>, run, run:<ci run id> or local:<dir>, not '${value}'`);
   const [, kind, argument] = match;
   if (kind === 'published' && argument !== undefined) parseVersion(argument);
   if (kind === 'run' && argument !== undefined && !/^[1-9]\d*$/.test(argument)) throw new Error(`Not a run id: ${argument}`);
+  if (kind === 'local' && !argument) throw new Error('local needs a directory: local:<dir>');
   return { kind, argument: argument ?? null, text: value };
 }
 
@@ -93,6 +94,10 @@ async function resolvePublished(repo, spec, owned, options) {
 
 const isCiRun = (run, repo) => run.path?.split('@')[0] === `.github/workflows/${CI_WORKFLOW}`
   && run.repository?.full_name === repo.repository && CI_EVENTS.includes(run.event);
+// A named run may also be a pull request's, from a branch of the same repository (a fork's run could upload
+// anything): a train candidate checked before it merges. Publish workflows only pass main runs.
+const isNamedCiRun = (run, repo) => isCiRun(run, repo) || (run.path?.split('@')[0] === `.github/workflows/${CI_WORKFLOW}`
+  && run.repository?.full_name === repo.repository && run.event === 'pull_request' && run.head_repository?.full_name === repo.repository);
 
 async function runArtifact(repo, run, options) {
   const name = repo.artifact(run.id);
@@ -128,11 +133,51 @@ export async function downloadArtifact(repo, artifact, directory, options = {}) 
 
 const npmManifest = file => JSON.parse(execFileSync('tar', ['-xOzf', file, 'package/package.json'], { encoding: 'utf8' }));
 
-async function resolveRun(repo, spec, directory, options) {
+// The NuGet packages and npm archives of one repository among candidate files.
+function readCandidates(repo, files, origin) {
+  const packages = [], npm = [];
+  for (const file of files) {
+    const bytes = readFileSync(file);
+    if (file.endsWith('.nupkg')) {
+      const nuspec = parseNuspec(nupkgNuspec(file));
+      if (repoOf(nuspec.id) !== repo.key) throw new Error(`${origin} contains ${nuspec.id}, which another repository owns`);
+      packages.push({ id: nuspec.id, version: nuspec.version, source: 'run', file, sha256: sha256(bytes), nuspec });
+    } else {
+      const manifest = npmManifest(file);
+      if (npmRepoOf(manifest.name) !== repo.key) continue;
+      npm.push({ name: manifest.name, version: manifest.version, file, sha256: sha256(bytes) });
+    }
+  }
+  return { packages, npm };
+}
+
+// Packages packed in a checkout (`bun eng/run.mjs pack` writes artifacts/packages/nuget and npm), for a local run of
+// the gate before CI has run. Its result names no CI run, so no publish workflow accepts it.
+async function resolveLocal(repo, spec, directory) {
+  const from = resolve(spec.argument);
+  const files = [];
+  for (const [kind, pattern] of [['nuget', /\.nupkg$/], ['npm', /\.tgz$/]]) {
+    const source = join(from, kind);
+    if (!existsSync(source)) continue;
+    mkdirSync(join(directory, repo.key, kind), { recursive: true });
+    for (const name of readdirSync(source).filter(item => pattern.test(item) && !item.endsWith('.symbols.nupkg'))) {
+      const target = join(directory, repo.key, kind, name);
+      copyFileSync(join(source, name), target);
+      files.push(target);
+    }
+  }
+  const { packages, npm } = readCandidates(repo, files, from);
+  const anchor = packages.find(item => item.id === repo.anchor);
+  if (!anchor) throw new Error(`${from}/nuget has no ${repo.anchor} package`);
+  return { version: anchor.version, packages, npm, run: null };
+}
+
+// A CI run's package artifact of one repository (exported for eng/ci/train-feed.mjs).
+export async function resolveRun(repo, spec, directory, options) {
   let run;
   if (spec.argument) {
     run = await json(`${GITHUB}/repos/${repo.repository}/actions/runs/${spec.argument}`, options);
-    if (!isCiRun(run, repo)) throw new Error(`Run ${spec.argument} is not a ${CI_WORKFLOW} run of ${repo.repository}`);
+    if (!isNamedCiRun(run, repo)) throw new Error(`Run ${spec.argument} is not a ${CI_WORKFLOW} run of ${repo.repository}`);
     if (run.status !== 'completed' || run.conclusion !== 'success') throw new Error(`CI run ${run.html_url} is ${run.status}/${run.conclusion}, not a success`);
   } else {
     const query = new URLSearchParams({ branch: 'main', status: 'success', per_page: '30' });
@@ -144,19 +189,7 @@ async function resolveRun(repo, spec, directory, options) {
   const artifact = await runArtifact(repo, run, options);
   if (!artifact) throw new Error(`CI run ${run.html_url} has no unexpired ${repo.artifact(run.id)} artifact`);
   const files = await downloadArtifact(repo, artifact, join(directory, repo.key), options);
-  const packages = [], npm = [];
-  for (const file of files) {
-    const bytes = readFileSync(file);
-    if (file.endsWith('.nupkg')) {
-      const nuspec = parseNuspec(nupkgNuspec(file));
-      if (repoOf(nuspec.id) !== repo.key) throw new Error(`${repo.repository}'s artifact contains ${nuspec.id}, which another repository owns`);
-      packages.push({ id: nuspec.id, version: nuspec.version, source: 'run', file, sha256: sha256(bytes), nuspec });
-    } else {
-      const manifest = npmManifest(file);
-      if (npmRepoOf(manifest.name) !== repo.key) continue;
-      npm.push({ name: manifest.name, version: manifest.version, file, sha256: sha256(bytes) });
-    }
-  }
+  const { packages, npm } = readCandidates(repo, files, `CI run ${run.html_url}`);
   const anchor = packages.find(item => item.id === repo.anchor);
   if (!anchor) throw new Error(`CI run ${run.html_url} has no ${repo.anchor} package`);
   return {
@@ -174,9 +207,9 @@ export async function resolveSources(specs, directory, options = {}) {
     const repo = repos[key];
     const spec = parseSpec(text);
     if (spec.kind === 'published') owned ??= await ownedPackages(options);
-    const resolved = spec.kind === 'published'
-      ? await resolvePublished(repo, spec, owned, options)
-      : await resolveRun(repo, spec, directory, options);
+    const resolved = spec.kind === 'published' ? await resolvePublished(repo, spec, owned, options)
+      : spec.kind === 'local' ? await resolveLocal(repo, spec, directory)
+        : await resolveRun(repo, spec, directory, options);
     result[key] = { repo: key, repository: repo.repository, input: spec.text, kind: spec.kind, ...resolved };
   }
   return result;

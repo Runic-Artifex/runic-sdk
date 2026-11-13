@@ -24,6 +24,12 @@ inputs:
   install:
     description: Install the Bun workspace dependencies
     default: "true"
+  train-feed:
+    description: >-
+      The train feed (eng/ci/train-feed.mjs): the unpublished Runic Command Line and Runic Translations releases of
+      this train, which restores then add and run unlocked. "true": the plan job's train-feed output, download its
+      artifact; "prepare": a workflow without that job prepares it here (it needs actions: read); "false": none.
+    default: "false"
 runs:
   using: composite
   steps:
@@ -95,15 +101,43 @@ runs:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
         restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+    # The train feed: outside the workspace, so the source-state check never sees it. RUNIC_TRAIN_FEED adds it to every
+    # restore in the repository (eng/build/nuget-lock.targets) and to the NuGet.config of the consumers outside it.
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      if: inputs.train-feed == 'true'
+      with:
+        name: train-feed
+        path: ${{ runner.temp }}/train-feed
+    - name: Prepare the train feed
+      id: train-feed
+      if: inputs.train-feed == 'prepare'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bun eng/ci/train-feed.mjs prepare --output "$RUNNER_TEMP/train-feed"
+    - name: Use the train feed
+      if: inputs.train-feed == 'true' || steps.train-feed.outputs.active == 'true'
+      shell: bash
+      run: |
+        echo "RUNIC_TRAIN_FEED=$RUNNER_TEMP/train-feed/nuget" >> "$GITHUB_ENV"
+        echo "::notice title=Train feed::Built against unpublished Runic Command Line or Runic Translations candidates ($(jq -r '[.upstreams[] | "\(.repository) \(.version) run \(.run.id)"] | join(", ")' "$RUNNER_TEMP/train-feed/train-feed.json")); Publish preview refuses this run."
     # NuGet lock files pin the core restore. Jobs whose restores differ, such as
     # RID-specific and NativeAOT publishes, use a separate cache name so a smaller
     # package set is never saved under the core key. A partial match seeds a changed restore.
+    # A train-feed run caches under nuget-train-*: its candidates have the versions nuget.org will publish with other
+    # bytes, and must never seed a later locked restore.
     - uses: ./.github/actions/dependency-cache
       if: inputs.dotnet == 'true' && inputs.nuget != 'none'
       with:
         path: .cache/nuget
-        key: nuget-${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/packages.lock.json', '**/packages.*.lock.json', '**/Directory.Packages.props', 'global.json', 'NuGet.config') }}
-        restore-keys: nuget-${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-
+        key: nuget-${{ env.RUNIC_TRAIN_FEED && 'train-' || '' }}${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/packages.lock.json', '**/packages.*.lock.json', '**/Directory.Packages.props', 'global.json', 'NuGet.config') }}
+        restore-keys: nuget-${{ env.RUNIC_TRAIN_FEED && 'train-' || '' }}${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-
+    # dotnet tool restore reads only NuGet.config. Restored once from the feed, the repository's tools are in the package
+    # folder, and every later `dotnet tool restore` of the manifest finds them there.
+    - name: Restore the repository's tools from the train feed
+      if: env.RUNIC_TRAIN_FEED && inputs.dotnet == 'true'
+      shell: bash
+      run: dotnet tool restore --add-source "$RUNIC_TRAIN_FEED"
     # On Windows, Bun 1.4.2 sometimes fails to link a package's bins into a fresh
     # node_modules with EBUSY (#291), while the same lockfile installs on the rerun.
     # Only that failure is retried, once, as a full reinstall.

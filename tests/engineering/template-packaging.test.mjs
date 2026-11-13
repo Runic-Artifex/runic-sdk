@@ -269,7 +269,7 @@ test("--translations scaffolds a translated application for every frontend", () 
         assert.match(translated[`Frontend/${files[0]}`], /export const languages = locales\.map/);
         for (const file of files.slice(1, -1)) assert.doesNotMatch(translated[`Frontend/${file}`], /"English"|>Counter<|Connecting to the/, `${label}: ${file}`);
         // The C# side: the packages, the catalog and the generated API.
-        assert.match(translated["Translated.csproj"], /<PackageReference Include="Runic\.Translations" Version="0\.9\.1" \/>/);
+        assert.match(translated["Translated.csproj"], /<PackageReference Include="Runic\.Translations" Version="0\.10\.0" \/>/);
         assert.match(translated["Translated.csproj"], /<RunicTranslationProject Include="Frontend\/translations\/runic\.json" \/>/);
         assert.doesNotMatch(plain["Translated.csproj"], /Translations/);
         assert.match(translated["WorkspaceViewModel.cs"], /AppText\.References\.welcome_greeting\(\)/);
@@ -282,7 +282,7 @@ test("--translations scaffolds a translated application for every frontend", () 
         // The tool manifest stays JSON and gains the Translations tool.
         const tools = JSON.parse(translated[".config/dotnet-tools.json"]).tools;
         assert.deepEqual(Object.keys(tools), ["dotnet-runic", "dotnet-runic-translations"]);
-        assert.equal(tools["dotnet-runic-translations"].version, "0.9.1");
+        assert.equal(tools["dotnet-runic-translations"].version, "0.10.0");
         assert.deepEqual(Object.keys(JSON.parse(plain[".config/dotnet-tools.json"]).tools), ["dotnet-runic"]);
         assert.match(translated[".gitignore"], /Frontend\/\.runic\//);
         for (const [path, text] of Object.entries(translated))

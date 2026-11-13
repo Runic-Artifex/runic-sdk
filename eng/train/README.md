@@ -23,6 +23,10 @@ Each repository gets one input:
 | `published:<version>` | That version on nuget.org. A package on its own prerelease line joins with its newest prerelease of that release (`Runic.Application.Views.CsWebUi` 0.17.1-preview.1 for 0.17.1). |
 | `run` | The package artifact of the newest successful `ci.yml` run on `main` |
 | `run:<ci run id>` | The package artifact of that successful `ci.yml` run |
+| `local:<dir>` | Packages packed in a checkout (`bun eng/run.mjs pack` writes `artifacts/packages`, with `nuget/` and `npm/`); for a local run before CI. Its result names no CI run, so no publish workflow accepts it. |
+
+A `run:<ci run id>` is a push, scheduled or manual run on `main`, or a pull request's run from a branch of the same
+repository, to check a train candidate before it merges (publish workflows only pass `main` runs).
 
 The artifacts are `command-line-packages` (runic-cli-sdk), `runic-translations-packages` (runic-translations-sdk)
 and `runic-sdk-<run id>` (runic-sdk). The gate downloads them through the REST API with `GH_TOKEN`, records each
@@ -38,6 +42,49 @@ everything else to nuget.org. A repository whose input is `published` maps to nu
 never be replaced by a nuget.org package with the same id and version. runic-sdk's npm candidates are served by
 `tests/templates/template-npm-registry.mjs`, and the template's `package-lock.json` is bound to their integrities as
 in runic-sdk's template tests. Translations' npm packages have no `@runic-artifex` peers and no consumer here.
+
+## Train feed
+
+Before the first publish of a train, runic-sdk's `main` builds and tests against the Command Line and Translations
+releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `Directory.Packages.props` names them
+(`Runic.CommandLine`, `Runic.Translations`); the template's pins and `.config/dotnet-tools.json` follow.
+
+- **`eng/ci/train-feed.mjs prepare`** (the `plan` job of `ci.yml`; `setup-sdk` with `train-feed: prepare` in
+  `nix.yml` and `dependency-audit.yml`) checks nuget.org for each of the two versions. For a missing one it downloads
+  the package artifact of the newest successful `ci.yml` run on that repository's `main` with exactly that version
+  (`--cli run:<id>`, `--translations run:<id>` pick a run), with `GITHUB_TOKEN` as the gate does, and uploads it with
+  `train-feed.json` (each run and package SHA-256) as the **`train-feed`** artifact. The artifact's npm packages
+  whose version the npm registry lacks (Translations' `@runic-artifex/*-translations*`) go into its `npm/` folder. With both published it does
+  nothing, and nothing else changes.
+- **Restores** (`setup-sdk` sets `RUNIC_TRAIN_FEED`): `eng/build/nuget-lock.targets` adds the feed as a source and
+  restores unlocked against a lock path in `obj/`, because nuget.org re-signs packages, so no lock file can hash a
+  candidate (NU1403 after publication). `setup-sdk` restores the repository's tools once with `--add-source`, caches
+  NuGet packages under `nuget-train-*` so candidates never seed a later locked restore, and the consumers outside
+  the repository (`tests/templates/Test-Templates.sh`, `eng/verify-packages.mjs`) add the feed to their
+  `NuGet.config`. `eng/verify-packages.mjs`, the only npm consumer of a Translations package
+  (`@runic-artifex/vite-plugin-runic-translations`), installs its tarball (`file:`) while npm lacks that version
+  (`trainFeedNpmSpec()`).
+- **Not publishable.** `eng/release/ci-run.mjs` refuses a CI run with a `train-feed` artifact, so Publish preview
+  never publishes packages built on candidates.
+- **Locally:** `GH_TOKEN=$(gh auth token) bun eng/ci/train-feed.mjs prepare`, then
+  `export RUNIC_TRAIN_FEED=$PWD/artifacts/train-feed/nuget` and `dotnet tool restore --add-source "$RUNIC_TRAIN_FEED"`
+  once. Candidates enter `.cache/nuget` under their release versions; delete those folders
+  (`.cache/nuget/runic.commandline*/<version>`, `runic.translations*/<version>`, `dotnet-runic-translations/<version>`)
+  after the publication, and the tool resolver cache entry (`~/.dotnet/toolResolverCache/1/dotnet-runic-translations`)
+  that points at them.
+- The committed lock files name the train versions and hash the candidates (`bun run lock:nuget` with
+  `RUNIC_TRAIN_FEED` set), so their diff shows the new graph. `nix/tests/completions.nix`' fixture
+  (`tests/fixtures/nix/completions/App`) stays on the published Command Line, because Nix fetches by lock-file hash
+  from nuget.org; `nix/examples.nix` leaves out `Runic.Application.Views.Translations`' lock file for the same reason.
+
+**Once Command Line and Translations are published** (D043.7 steps 2 and 3), before runic-sdk's publish:
+
+1. Delete the candidates from the NuGet cache (above), unset `RUNIC_TRAIN_FEED`, and run `bun run lock:nuget`: the
+   lock files now hash nuget.org's packages (only `contentHash` lines change). Until then CI without the feed fails
+   the locked restore with NU1403.
+2. Move `tests/fixtures/nix/completions/App` to the new Command Line (`App.csproj`, then `dotnet restore` its lock
+   file).
+3. Merge that; its CI has no `train-feed` artifact. Row **P-sdk** then runs on it.
 
 ## Scenarios
 
@@ -120,6 +167,10 @@ scenario records it and continues with the warning waived, so the rest of the sc
 
 With the newest published versions of 2026-11-12 (Command Line 0.11.0, Translations 0.9.1, SDK 0.17.1) every
 scenario's failures are these, S4 and S7 pass, and the verdict is pass.
+
+The train's candidates (Command Line 0.12.0, Translations 0.10.0) fix all five, and none of the entries applies to
+rows T, P-tr and P-sdk. They stay while N-pub combines the published 0.9.1 Translations packages, which still have
+these failures, and go in the 0.18.0 release PR once Translations 0.10.0 is the newest published version.
 
 ## Cross-repository artifacts
 

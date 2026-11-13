@@ -7,9 +7,18 @@
        unlocked; Directory.Packages.props still pins their direct versions. So do
        builds with -p:RunicDesktopServer=Native, whose executables leave out
        their Runic.Desktop.Kestrel reference.
-       CI (CI=true) restores in locked mode. -->
+       CI (CI=true) restores in locked mode.
+       The train feed (eng/ci/train-feed.mjs, RUNIC_TRAIN_FEED) holds the Runic Command Line and Runic Translations
+       releases of this train before they are on nuget.org. Its CI candidates are not the bytes nuget.org will serve,
+       and a later candidate of one version differs again, so a lock file cannot hash them (NU1403): those restores
+       add the feed as a source and stay unlocked like the RID-specific ones, against a lock path in obj/. A CI run
+       built that way cannot be published (eng/release/ci-run.mjs). `bun run lock:nuget` with the feed still writes
+       the committed lock files; they must be written again once the releases are on nuget.org (eng/train/README.md). -->
+  <PropertyGroup Condition="'$(RUNIC_TRAIN_FEED)' != ''">
+    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(RUNIC_TRAIN_FEED)</RestoreAdditionalProjectSources>
+  </PropertyGroup>
   <PropertyGroup>
-    <_RunicLockable Condition="'$(RuntimeIdentifier)' == '' and '$(PublishAot)' != 'true' and '$(RunicDesktopServer)' != 'Native'">true</_RunicLockable>
+    <_RunicLockable Condition="'$(RuntimeIdentifier)' == '' and '$(PublishAot)' != 'true' and '$(RunicDesktopServer)' != 'Native' and ('$(RUNIC_TRAIN_FEED)' == '' or '$(RunicUpdateLockFiles)' == 'true')">true</_RunicLockable>
     <_RunicLockFile>$(NuGetLockFilePath)</_RunicLockFile>
     <_RunicLockFile Condition="'$(_RunicLockFile)' == ''">packages.lock.json</_RunicLockFile>
     <RestorePackagesWithLockFile Condition="'$(_RunicLockable)' == 'true' and ('$(RunicUpdateLockFiles)' == 'true' or Exists('$(MSBuildProjectDirectory)/$(_RunicLockFile)'))">true</RestorePackagesWithLockFile>
