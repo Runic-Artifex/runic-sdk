@@ -69,8 +69,9 @@ interface Opened {
   readonly guestLoads: string[];
 }
 
-// Serves the host page, `dist` and the guest's pages without a server; each guest address counts its loads.
-async function open(features = `["hosted-regions/1"]`, declares = true): Promise<Opened> {
+// Serves the host page, `dist` and the guest's pages without a server; each guest address counts its loads. `policy` is
+// the host page's Content-Security-Policy.
+async function open(features = `["hosted-regions/1"]`, declares = true, policy?: string): Promise<Opened> {
   const context = await browser!.newContext();
   const tab = await context.newPage();
   const errors: string[] = [];
@@ -78,7 +79,8 @@ async function open(features = `["hosted-regions/1"]`, declares = true): Promise
   tab.on("pageerror", error => errors.push(String(error)));
   await context.route(`${hostOrigin}/**`, async route => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/") return route.fulfill({ contentType: "text/html", body: hostPage(features) });
+    if (path === "/")
+      return route.fulfill({ contentType: "text/html", body: hostPage(features), headers: policy ? { "content-security-policy": policy } : {} });
     if (path.startsWith("/dist/") && !path.includes(".."))
       return route.fulfill({ contentType: "text/javascript", body: await readFile(new URL(path.slice("/dist/".length), dist), "utf8") });
     return route.fulfill({ status: 404, body: "" });
@@ -210,6 +212,23 @@ test("Chromium: a frame push shows the guest's page in a sandboxed cross-origin 
     // An embedding this page does not know shows the fallback as unsupported.
     await push(tab, { kind: "hosted-region-content", name: "check", embedding: "native", handle: 1 });
     assert.equal(await state(tab), "unsupported");
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test("Chromium: the frame fills the region under a page policy without inline styles", { timeout: 60_000, skip }, async () => {
+  // style-src falls back to 'self': a <style> element in the element's shadow root would be blocked, and the frame would
+  // keep an iframe's default 300 x 150. The test page's own inline script is allowed; its inline style attributes are not.
+  const { context, tab, errors } = await open(undefined, true,
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; frame-src http:; object-src 'none'; base-uri 'self'");
+  try {
+    await tab.evaluate(() => { document.getElementById("region")!.style.height = "240px"; });
+    const frame = await attach(tab);
+    const element = (await frame.frameElement()) as import("playwright-core").ElementHandle<HTMLIFrameElement>;
+    const [width, height, regionWidth] = await element.evaluate(frame => [frame.offsetWidth, frame.offsetHeight,
+      document.getElementById("region")!.clientWidth]);
+    assert.deepEqual([width, height], [regionWidth, 240], "The frame does not fill the region.");
+    assert.ok(width > 300, `The region is only ${width} px wide.`);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

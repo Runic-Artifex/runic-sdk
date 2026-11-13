@@ -308,6 +308,34 @@ class HostedRegions {
   }
 }
 
+const shadowStyles = `
+:host { display: block; position: relative; }
+:host([hidden]) { display: none; }
+.content { display: contents; }
+iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height: 100%; }
+.content.loading iframe { visibility: hidden; }
+.fallback.over { position: absolute; inset: 0; }
+`;
+
+// The shadow root's styles as a constructed stylesheet: a page's Content-Security-Policy without 'unsafe-inline' styles,
+// such as `default-src 'self'`, blocks a <style> element in the shadow root, and the frame would keep the 300 x 150
+// default size of an iframe. Engines without constructable stylesheets get the <style> element.
+function adoptShadowStyles(shadow: ShadowRoot): void {
+  if (typeof CSSStyleSheet === "function" && "adoptedStyleSheets" in shadow) {
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(shadowStyles);
+      shadow.adoptedStyleSheets = [sheet];
+      return;
+    } catch {
+      // An engine whose stylesheets cannot be constructed: the element below.
+    }
+  }
+  const style = document.createElement("style");
+  style.textContent = shadowStyles;
+  shadow.append(style);
+}
+
 let pageClient: HostedRegions | undefined;
 
 // The client of the page, one per copy of this package; the runtime it uses is the page's.
@@ -340,21 +368,13 @@ function createElementClass(): CustomElementConstructor {
     constructor() {
       super();
       this.#shadow = this.attachShadow({ mode: "closed" });
-      const style = document.createElement("style");
-      style.textContent = `
-:host { display: block; position: relative; }
-:host([hidden]) { display: none; }
-.content { display: contents; }
-iframe { display: block; box-sizing: border-box; border: 0; width: 100%; height: 100%; }
-.content.loading iframe { visibility: hidden; }
-.fallback.over { position: absolute; inset: 0; }
-`;
+      adoptShadowStyles(this.#shadow);
       this.#content = document.createElement("div");
       this.#content.className = "content";
       this.#fallback = document.createElement("div");
       this.#fallback.className = "fallback";
       this.#fallback.setAttribute("part", "fallback");
-      this.#shadow.append(style, this.#content, this.#fallback);
+      this.#shadow.append(this.#content, this.#fallback);
       // Attributes only from connectedCallback on: a constructor that document.createElement runs may not add any.
       this.#renderShadow();
     }
