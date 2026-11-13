@@ -1,0 +1,17 @@
+:root { color-scheme: light dark; font: 15px/1.4 system-ui, sans-serif; }
+body { margin: 0; }
+main { padding: 24px 32px; }
+.quantity { display: flex; align-items: center; gap: 12px; }
+output.count { min-width: 2ch; text-align: center; font-size: 1.4em; }
+.debug { box-sizing: border-box; padding: 16px; background: Canvas; overflow: auto; }
+.debug h2 { margin-top: 0; font-size: 1.1em; }
+.debug ol { padding-left: 1.2em; font: 12px/1.5 ui-monospace, monospace; }
+.debug dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+.debug dd { margin: 0; }
+/* The panel's own page fills its view. */
+.debug.page { min-height: 100vh; }
+/* The fallback: the same panel over the page, which it covers. */
+.debug.overlay { position: fixed; top: 0; bottom: 0; width: min(372px, 60vw); border: solid 1px GrayText; box-shadow: 0 0 24px #0004; }
+.debug.overlay.right { right: 0; }
+.debug.overlay.left { left: 0; }
+.notice { padding: 8px; border-left: 4px solid Highlight; }

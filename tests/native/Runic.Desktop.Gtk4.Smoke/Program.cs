@@ -37,8 +37,9 @@ if (args.Contains("--web-content", StringComparer.Ordinal))
 if (Array.IndexOf(args, "--announcement") is var announcement and >= 0)
     return AnnouncementSmoke.Run(announcement + 1 < args.Length ? args[announcement + 1] : "gtk4");
 
-// --accessibility gtk3|gtk4 [--region] --probe <command>: the page read and changed through AT-SPI by the accessibility
-// probe; with --region, a guest's controls inside a region's frame (#866).
+// --accessibility gtk3|gtk4 [--region | --side-panel] --probe <command>: the page read and changed through AT-SPI by the
+// accessibility probe; with --region, a guest's controls inside a region's frame (#866); with --side-panel, a side panel
+// beside the page (#864).
 if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
 {
     var toolkit = accessibility + 1 < args.Length ? args[accessibility + 1] : "gtk4";
@@ -49,8 +50,10 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
         _ => throw new ArgumentException($"Unknown toolkit '{toolkit}'; use gtk3 or gtk4."),
     };
     var probe = AccessibilitySmoke.ProbeCommand(args);
-    var region = args.TakeWhile(static argument => argument != "--probe").Contains("--region", StringComparer.Ordinal);
-    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe, region: region));
+    var own = args.TakeWhile(static argument => argument != "--probe").ToArray();
+    var region = own.Contains("--region", StringComparer.Ordinal);
+    var sidePanel = own.Contains("--side-panel", StringComparer.Ordinal);
+    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe, region: region, sidePanel: sidePanel));
 }
 
 // --menus gtk3|gtk4 [--rtl] (B10): the in-window menu bar, its shortcuts and context menus.
@@ -81,6 +84,10 @@ if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
 if (args.Contains("--window-bounds", StringComparer.Ordinal))
     return WindowBoundsSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
         args.Contains("--window-manager", StringComparer.Ordinal), gtk4: true);
+
+// --side-panel (#864 P4): the side panel beside the page under a window manager; see SidePanelSmoke.cs.
+if (args.Contains("--side-panel", StringComparer.Ordinal))
+    return SidePanelSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true }, gtk4: true);
 
 // --placement [--window-manager] (#663): a restored placement's position on X11, also under a window manager.
 if (args.Contains("--placement", StringComparer.Ordinal)) return PlacementSmoke.Run(args.Contains("--window-manager", StringComparer.Ordinal));

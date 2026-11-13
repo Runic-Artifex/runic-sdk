@@ -48,6 +48,9 @@
     <!-- The macOS native tests report how the event loop served the main thread (MacOsApplication). -->
     <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <InternalsVisibleTo Include="Runic.Desktop.Gtk4.Smoke" />
+    <!-- The GTK 4 window host implements the internal side panel seam (IDesktopSidePanelWindowHost, sdk#864); packing pins
+         the exact version (eng/build/README.md). -->
+    <InternalsVisibleTo Include="Runic.Desktop.Gtk4" />
     <EmbeddedResource Include="Internal/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />
     <EmbeddedResource Include="Internal/MacOsWindowChrome.js" LogicalName="Runic.Desktop.MacOsWindowChrome.js" />
     <!-- The optional WPF presentation reuses our native WebView2 controller. -->

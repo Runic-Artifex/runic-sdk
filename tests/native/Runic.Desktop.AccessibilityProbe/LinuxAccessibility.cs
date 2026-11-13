@@ -170,6 +170,15 @@ internal sealed class LinuxAccessibility : AccessibilityClient
         }
     }
 
+    // The application's tree, as Orca's flat review and structural navigation walk it; the overlay's children follow
+    // the edge, which puts the side panel's view before or after the page's.
+    internal override async Task<IReadOnlyList<Element>> ElementsAsync(CancellationToken cancellationToken)
+    {
+        var elements = new List<Element>();
+        await WalkAsync(_application, 0, [], async node => elements.Add(new Element(await RoleAsync(node), await NameAsync(node))), cancellationToken);
+        return elements;
+    }
+
     internal override async Task<string> DumpAsync(CancellationToken cancellationToken)
     {
         var lines = new List<string>();

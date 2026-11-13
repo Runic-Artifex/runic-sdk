@@ -163,8 +163,8 @@ repository's `global.json` does not opt in to the MTP mode of `dotnet test`.
   several are timing-sensitive, so its `AssemblyInfo.cs` runs the suite `[NotInParallel]`.
   Most other suites came from sequential runners and run `[NotInParallel]` too; each
   `AssemblyInfo.cs` names the shared state. `Runic.Create.Tests`, `Runic.Assets.Desktop.Tests`
-  and the `notes-view-first` and `wpf-hybrid-editor` example tests share no such state and
-  run in parallel.
+  and the `notes-view-first`, `wpf-hybrid-editor` and `side-panel` example tests share no
+  such state and run in parallel.
 - **WPF.** The Windows WPF suites run their cases on one STA thread with a WPF `Application`, through
   the `WpfDispatcherExecutor` in each suite, and keep the former order with
   `[NotInParallel("WpfSuite", Order = n)]`.

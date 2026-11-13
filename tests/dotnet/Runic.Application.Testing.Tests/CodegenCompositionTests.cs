@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -25,6 +26,8 @@ internal sealed partial class CodegenDiagnosticsTests
             "public static class RunicViewsComposition",
             "/// <summary>Registers only the generated Bridges",
             "/// <summary>Registers the generated Bridges, every non-Window View as transient",
+            // RUNICBRIDGE038: the contract check comes before the first Bridge registration.
+            $"global::Runic.Application.Views.Generated.BridgeGeneratedCode.RequireContract({BridgeGeneratedCode.ContractVersion}, typeof(RunicViewsComposition).Assembly);",
         })
             Require(composition.Contains(text, StringComparison.Ordinal), $"The composition lacks '{text}':\n{composition}");
         var version = System.Text.RegularExpressions.Regex.Match(composition, "GeneratedCode\\(\"Runic\\.Application\\.Views\\.Codegen\", \"([^\"]+)\"\\)").Groups[1].Value;
@@ -34,6 +37,10 @@ internal sealed partial class CodegenDiagnosticsTests
                 CSharpSyntaxTree.ParseText(File.ReadAllText(path), new CSharpParseOptions(LanguageVersion.Latest), path)))
             .GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).ToArray();
         Require(compiled.Length == 0, $"The generated composition did not compile:\n{string.Join('\n', compiled)}");
+        var check = composition.IndexOf("RequireContract(", StringComparison.Ordinal);
+        Require(check > 0 && check < composition.IndexOf("services.AddScoped<", StringComparison.Ordinal),
+            $"The contract check does not precede the Bridge registrations:\n{composition}");
+        AssertStaleCompositionReportsRebuild(output, composition);
 
         // ViewsCodegen-08: RUNICBRIDGE001 for invalid configuration, such as a composition name that is no C# name.
         var (exit, invalid, _) = await RunGeneratorAsync(generator, temporaryRoot, "CompositionInvalid", Preamble + CompositionModel,
@@ -116,5 +123,40 @@ internal sealed partial class CodegenDiagnosticsTests
             .ConfigureAwait(false);
         _ = await GenerateValidAsync(generator, temporaryRoot, "PrimitivesInteraction", Preamble + ReactiveInteraction,
             "--reactiveui-flavor", "primitives").ConfigureAwait(false);
+    }
+
+    // RUNICBRIDGE038: a composition that another major release generated, simulated by an older contract version, fails
+    // in AddRunicBridges with the rebuild message, before it registers or loads a Bridge.
+    private static void AssertStaleCompositionReportsRebuild(string output, string composition)
+    {
+        var current = $"RequireContract({BridgeGeneratedCode.ContractVersion},";
+        var stale = composition.Replace(current, $"RequireContract({BridgeGeneratedCode.ContractVersion - 1},", StringComparison.Ordinal);
+        Require(stale != composition, $"The composition has no '{current}' call to make stale.");
+        var trees = Directory.GetFiles(output, "*.g.cs").Where(path => Path.GetFileName(path) != "RunicBridgeComposition.g.cs")
+            .Select(path => CSharpSyntaxTree.ParseText(File.ReadAllText(path), new CSharpParseOptions(LanguageVersion.Latest), path))
+            .Append(CSharpSyntaxTree.ParseText(stale, new CSharpParseOptions(LanguageVersion.Latest), "RunicBridgeComposition.g.cs"));
+        using var image = new MemoryStream();
+        var emitted = Compile("StaleComposition", Preamble + CompositionModel).AddSyntaxTrees(trees).Emit(image);
+        Require(emitted.Success, $"The stale composition did not compile:\n{string.Join('\n', emitted.Diagnostics)}");
+        var context = new System.Runtime.Loader.AssemblyLoadContext("StaleComposition", isCollectible: true);
+        try
+        {
+            image.Position = 0;
+            var assembly = context.LoadFromStream(image);
+            var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+            var addBridges = assembly.GetType("Fixture.RunicViewsComposition", throwOnError: true)!.GetMethod("AddRunicBridges")!;
+            RunicBridgeContractException? error = null;
+            try { addBridges.Invoke(null, [services]); }
+            catch (System.Reflection.TargetInvocationException invocation) { error = invocation.InnerException as RunicBridgeContractException; }
+            Require(error is not null, "A stale generated-code contract did not throw RunicBridgeContractException.");
+            var name = assembly.GetName().Name!;
+            Require(error!.AssemblyName == name
+                && error.Message.StartsWith("RUNICBRIDGE038: the generated Runic Bridges in " + name + " were built against an older Runic release", StringComparison.Ordinal)
+                && error.Message.Contains($"Rebuild this library against Runic {RunicBridgeContractException.RuntimeVersion}.", StringComparison.Ordinal)
+                && error.Message.EndsWith("/docs/diagnostics.md#runicbridge038", StringComparison.Ordinal),
+                $"The stale composition's message is not the rebuild error:\n{error.Message}");
+            Require(services.Count == 0, $"The stale composition registered {services.Count} services before failing.");
+        }
+        finally { context.Unload(); }
     }
 }
