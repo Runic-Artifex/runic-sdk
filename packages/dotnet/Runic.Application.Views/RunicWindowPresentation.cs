@@ -150,6 +150,115 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="colorScheme"/> is not a defined value.</exception>
     ValueTask<PlatformResult<PlatformUnit>> SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default);
 
+    /// <summary>Maximizes the Window (zooms it on macOS); a Window that already is stays maximized.</summary>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> once the window was asked to maximize; <see cref="Placement"/> then reports it.
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> where <see cref="Features"/> lacks
+    /// <see cref="RunicWindowPresentationFeatures.Maximize"/>, <see cref="PlatformFailureCode.PermissionDenied"/> when a
+    /// host application's policy refused it, and <see cref="PlatformFailureCode.Conflict"/> for a kiosk window, which stays
+    /// full-screen.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// A full-screen Window leaves full screen first, a minimized one is restored maximized, and a hidden one stays hidden
+    /// and shows maximized. An open side panel stays open. Windows activates a window that it maximizes, as it does when
+    /// the user maximizes one; macOS animates the zoom, and a Linux window manager decides when the window is maximized.
+    /// </para>
+    /// <para>
+    /// The default implementation, for a presentation of 0.18 or earlier, reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// </para>
+    /// </remarks>
+    ValueTask<PlatformResult<PlatformUnit>> MaximizeAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RunicWindowPlacement.Unsupported);
+    }
+
+    /// <summary>
+    /// Returns the Window to its normal bounds: leaves full screen, un-maximizes and un-minimizes it; a normal Window stays
+    /// as it is.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> once the window was asked to restore, with the results of
+    /// <see cref="MaximizeAsync"/> otherwise.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The Window ends at its normal bounds, the ones <see cref="Placement"/> reports, also when it was minimized while
+    /// maximized, where the platform itself would bring it back maximized; <see cref="PresentAsync"/> keeps that
+    /// behaviour. A hidden Window stays hidden and shows at its normal bounds. Windows restores a visible maximized window
+    /// without activating it, but activates one that it brings back from minimized. On Wayland an application is not told
+    /// that its window is minimized, so only <see cref="PresentAsync"/> brings it back there.
+    /// </para>
+    /// <para>The default implementation reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</para>
+    /// </remarks>
+    ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RunicWindowPlacement.Unsupported);
+    }
+
+    /// <summary>
+    /// Gives the open Window a placement: the bounds it restores to and whether it is maximized or full-screen, as a
+    /// placement saved from <see cref="Placement"/> gives it.
+    /// </summary>
+    /// <param name="placement">
+    /// The placement, in the units of <see cref="Placement"/> (see <see cref="RunicWindowPlacement"/>).
+    /// <see cref="RunicWindowPlacement.X"/> and <see cref="RunicWindowPlacement.Y"/> both <see langword="null"/> keep the
+    /// position; a <see cref="RunicWindowPlacement.Width"/> or <see cref="RunicWindowPlacement.Height"/> of zero or less
+    /// keeps that dimension.
+    /// </param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <returns>
+    /// <see cref="PlatformResult{T}.Success"/> once the window was asked to take the placement, with the results of
+    /// <see cref="MaximizeAsync"/> otherwise. Where the platform cannot position a window (Wayland), a placement with a
+    /// position reports <see cref="PlatformUnavailableReason.BackendUnavailable"/> and changes nothing: pass one without
+    /// <see cref="RunicWindowPlacement.X"/> and <see cref="RunicWindowPlacement.Y"/>, as <see cref="Placement"/> reports there.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// A maximized, minimized, full-screen or hidden Window takes the bounds as the ones it restores to, and the
+    /// placement's state when it is next shown or restored. The bounds are kept on a monitor that exists now: bounds off
+    /// every monitor's work area move onto the nearest one, and bounds larger than it shrink to fit, so
+    /// <see cref="Placement"/> can report other bounds than the ones passed. A host application's policy can also change
+    /// them. With a side panel open, the placement is that of the Window's page, without the panel.
+    /// </para>
+    /// <para>
+    /// Windows activates a window that the placement maximizes or brings back from minimized.
+    /// The default implementation reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="placement"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Only one of <see cref="RunicWindowPlacement.X"/> and <see cref="RunicWindowPlacement.Y"/> is set.</exception>
+    ValueTask<PlatformResult<PlatformUnit>> SetPlacementAsync(RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        RunicWindowPlacement.Validate(placement);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(RunicWindowPlacement.Unsupported);
+    }
+
+    /// <summary>
+    /// Gets the Window's placement as last reported: the bounds it restores to and whether it is maximized or full-screen;
+    /// <see langword="null"/> where the host reports none (<see cref="Features"/> without
+    /// <see cref="RunicWindowPresentationFeatures.Placement"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Save it when the Window closes and pass it to <see cref="SetPlacementAsync"/> to put the Window back where it was.
+    /// On Runic Desktop it is the window's <c>DesktopWindowState.Placement</c>, converted with
+    /// <c>ToRunicPlacement()</c> of Runic.Application.Views.Desktop, so a placement saved by either reads in the other.
+    /// </para>
+    /// <para>
+    /// <see cref="INotifyPropertyChanged.PropertyChanged"/> reports a change in a turn of the Window's model context. While
+    /// the user drags or resizes the Window the changes are combined, so a handler reads the latest placement. The value
+    /// stays readable after the Window closed. The default implementation returns <see langword="null"/>.
+    /// </para>
+    /// </remarks>
+    RunicWindowPlacement? Placement => null;
+
     /// <summary>
     /// Opens a page of the Window beside its page, growing the Window by the panel's width on one edge, so its page keeps
     /// its size and its place on the screen.
@@ -255,6 +364,75 @@ public enum RunicWindowPresentationFeatures
     /// </summary>
     [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     SidePanel = 1 << 9,
+
+    /// <summary>
+    /// <see cref="IRunicWindowPresentation.MaximizeAsync"/> maximizes the Window and
+    /// <see cref="IRunicWindowPresentation.RestoreAsync"/> returns it to its normal bounds.
+    /// </summary>
+    Maximize = 1 << 10,
+
+    /// <summary>
+    /// <see cref="IRunicWindowPresentation.SetPlacementAsync"/> places the Window, and
+    /// <see cref="IRunicWindowPresentation.Placement"/> reports where it is.
+    /// </summary>
+    Placement = 1 << 11,
+}
+
+/// <summary>
+/// A Window's placement: the bounds it restores to (when it is neither maximized nor full-screen) and whether it is
+/// maximized or full-screen, for <see cref="IRunicWindowPresentation.Placement"/> and
+/// <see cref="IRunicWindowPresentation.SetPlacementAsync"/>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The values use the units of the Window's host, so a placement read from a Window and saved places a Window of the same
+/// host where it was; save it per host rather than convert it:
+/// </para>
+/// <list type="bullet">
+/// <item><description>On Runic Desktop, those of <c>DesktopWindowPlacement</c> as <c>DesktopWindowState.Placement</c>
+/// reports it: on Windows <see cref="X"/> and <see cref="Y"/> are physical pixels of the virtual screen and
+/// <see cref="Width"/> and <see cref="Height"/> device-independent pixels of the outer frame; on macOS points, the
+/// top-left corner of the frame and the content size; on Linux logical pixels, the frame's corner and the content size,
+/// and no position on Wayland. Runic.Application.Views.Desktop converts with <c>ToRunicPlacement()</c> and
+/// <c>ToDesktopPlacement()</c>.</description></item>
+/// <item><description>In WPF, device-independent pixels for all four values: <c>Window.Left</c>, <c>Top</c>,
+/// <c>Width</c> and <c>Height</c> of the restored window.</description></item>
+/// <item><description>For a host application's window, the host's units.</description></item>
+/// </list>
+/// <para>An open side panel is not part of the bounds: they are those of the Window's page.</para>
+/// </remarks>
+public sealed record RunicWindowPlacement
+{
+    internal static readonly PlatformResult<PlatformUnit> Unsupported =
+        new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+
+    /// <summary>Gets the horizontal position of the restored Window, or <see langword="null"/> where there is none or to keep it.</summary>
+    /// <remarks>Set together with <see cref="Y"/>.</remarks>
+    public int? X { get; init; }
+
+    /// <summary>Gets the vertical position of the restored Window, or <see langword="null"/> where there is none or to keep it.</summary>
+    /// <remarks>Set together with <see cref="X"/>.</remarks>
+    public int? Y { get; init; }
+
+    /// <summary>Gets the width of the restored Window; zero or less keeps the current width.</summary>
+    public int Width { get; init; }
+
+    /// <summary>Gets the height of the restored Window; zero or less keeps the current height.</summary>
+    public int Height { get; init; }
+
+    /// <summary>Gets whether the Window is maximized (zoomed on macOS).</summary>
+    public bool Maximized { get; init; }
+
+    /// <summary>Gets whether the Window is full-screen.</summary>
+    public bool FullScreen { get; init; }
+
+    // The checks of IRunicWindowPresentation.SetPlacementAsync, for every presentation.
+    internal static void Validate(RunicWindowPlacement placement)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        if (placement.X is null != placement.Y is null)
+            throw new ArgumentException("Set both X and Y of the placement, or neither to keep the Window's position.", nameof(placement));
+    }
 }
 
 /// <summary>Whether a Window is active, minimized and visible, for <see cref="IRunicWindowPresentation.Activity"/>.</summary>
@@ -388,6 +566,7 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation, IDispo
             backend.PropertyChanged += OnBackendPropertyChanged;
         }
         Deliver(backend.Features.HasFlag(RunicWindowPresentationFeatures.Activity) ? backend.Activity : RunicWindowActivity.Assumed);
+        if (backend.Placement is { } placement) OnPlacement(placement);
     }
 
     // The Window was released: requests report OwnerClosed, and the activity is Closed.
@@ -428,6 +607,49 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation, IDispo
     {
         if (!Enum.IsDefined(colorScheme)) throw new ArgumentOutOfRangeException(nameof(colorScheme));
         return Forward(backend => backend.SetColorSchemeAsync(colorScheme, cancellationToken), cancellationToken);
+    }
+
+    // sdk#897, W1b (window-api-0.19/DESIGN.md §3.2): maximize, restore and placement go to the host's presentation.
+    public ValueTask<PlatformResult<PlatformUnit>> MaximizeAsync(CancellationToken cancellationToken = default) =>
+        Forward(backend => backend.MaximizeAsync(cancellationToken), cancellationToken);
+
+    public ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(CancellationToken cancellationToken = default) =>
+        Forward(backend => backend.RestoreAsync(cancellationToken), cancellationToken);
+
+    public ValueTask<PlatformResult<PlatformUnit>> SetPlacementAsync(RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        RunicWindowPlacement.Validate(placement);
+        return Forward(backend => backend.SetPlacementAsync(placement, cancellationToken), cancellationToken);
+    }
+
+    // The placement the ViewModel was last told of; the latest one the host reported waits in _reportedPlacement for one
+    // pending turn, so the changes of a drag reach the ViewModel combined.
+    private RunicWindowPlacement? _placement;
+    private RunicWindowPlacement? _reportedPlacement;
+    private bool _placementPending;
+
+    public RunicWindowPlacement? Placement => Volatile.Read(ref _placement);
+
+    private void OnPlacement(RunicWindowPlacement? placement)
+    {
+        lock (_gate)
+        {
+            _reportedPlacement = placement;
+            if (_placementPending) return;
+            _placementPending = true;
+        }
+        InTurn(() =>
+        {
+            RunicWindowPlacement? latest;
+            lock (_gate)
+            {
+                _placementPending = false;
+                latest = _reportedPlacement;
+            }
+            if (Equals(_placement, latest)) return;
+            Volatile.Write(ref _placement, latest);
+            Raise(nameof(Placement));
+        });
     }
 
     // sdk#864, P5: the backend's panel, wrapped so that its Closed and the change of SidePanel arrive in a model turn.
@@ -576,6 +798,11 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation, IDispo
         if (args.PropertyName == nameof(SidePanel))
         {
             if (backend.SidePanel is { } panel) Track(panel);
+            return;
+        }
+        if (args.PropertyName == nameof(Placement))
+        {
+            OnPlacement(backend.Placement);
             return;
         }
         if (args.PropertyName != nameof(ColorScheme)) return;

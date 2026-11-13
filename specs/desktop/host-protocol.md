@@ -424,8 +424,9 @@ native window, navigates it to `url` and answers:
 
 | Member | Contract |
 | --- | --- |
-| `features` | What the hosted window can do, the presentation [requests](#presentation) the host serves for it: `present`, `minimize`, `visibility`, `full-screen`, `document-edited`, `color-scheme`, `per-window-color-scheme`, `activity`, `owned-windows`. Open. They map to `RunicWindowPresentationFeatures`. |
+| `features` | What the hosted window can do, the presentation [requests](#presentation) the host serves for it: `present`, `minimize`, `visibility`, `full-screen`, `document-edited`, `color-scheme`, `per-window-color-scheme`, `activity`, `owned-windows`, `maximize`, `placement`. Open. They map to `RunicWindowPresentationFeatures`. |
 | `activity` | The window's activity, as in the [`activity` push](#activity-and-placement). |
+| `placement` | Optional, with the `placement` feature. The window's placement when it opened: `restored`, `maximized` and `fullScreen`, as in the [`placement` push](#activity-and-placement). The guest's `Placement` starts with it. |
 | `colorScheme` | Optional. The window's colour scheme, as in the [`color-scheme` push](#activity-and-placement). |
 | `presentation` | Optional, with [`region/1`](#regions-region1) in use. `"window"`, the default, or `"region"`: the window shows in a region of a host page ([presentation of a window](#presentation-of-a-window)). |
 | `region` | With `presentation: "region"`: the region's size, or `null` ([presentation of a window](#presentation-of-a-window)). |
@@ -500,11 +501,23 @@ send it.
 | `set-document-edited` | `edited`: boolean | `document-edited` |
 | `set-color-scheme` | `colorScheme`: `"light"`, `"dark"` or `"no-preference"` | `color-scheme` |
 | `toggle-maximized` | — | — |
+| `maximize` | — | `maximize` |
+| `restore` | — | `maximize` |
+| `set-placement` | `x`, `y`: integers from −32,768 to 32,767, both or neither (absent or `null`, which keeps the position); `width`, `height`: integers from 0 to 32,767, where 0 keeps the dimension; `maximized`, `fullScreen`: booleans | `placement` |
 | `resize` | `width`, `height`: integers from 1 to 32,767 | — |
 | `move` | `x`, `y`: integers from −32,768 to 32,767, in the coordinates of the host's desktop | — |
 | `set-represented-file` | `path`: an absolute path or `null` | — |
 | `set-layout-direction` | `direction`: `"default"`, `"left-to-right"` or `"right-to-left"` | — |
 | `announce` | `text`: 1 to 1,024 characters; `priority`: `"polite"` or `"assertive"` | — |
+
+`maximize` maximizes the window and leaves it maximized when it already is; `restore` returns it to its normal bounds
+from maximized, minimized or full screen, also a window minimized while it was maximized. `set-placement` gives the open
+window a placement as the host gives a window that opens one it saved: the bounds it restores to, in the units of the
+`restored` member of the [`placement` push](#activity-and-placement), and whether it is maximized or full-screen; a
+maximized, minimized or hidden window takes the bounds as the ones it restores to. The host may fit the bounds to its
+monitors. A host that cannot position its windows, such as on Wayland, answers a `set-placement` with `x` and `y`
+`unavailable` with `backend-unavailable` and changes nothing. A `set-placement` out of form is `rejected` with
+`invalid-request`. Each is answered when the window was asked; the `placement` push reports the result.
 
 The host's policy can refuse or clamp each request: a refused one is answered `rejected` with `refused`, a clamped one,
 such as a size above the policy's maximum, applies the clamped value and answers `success`. The host presents with its
@@ -512,12 +525,14 @@ own activation rights: on Wayland the host, not the guest, holds the activation 
 as the host's own windows do. A window that any request of the guest that can activate one of its windows made active
 is active because of the guest, not the user, which the [window services](#window-services-window-services1) take
 into account. Besides `window-open`, `present` and `set-visible` that shows a window, desktops activate windows for
-other requests: on Windows `toggle-maximized` and leaving full screen show the window with activation, and a window that
+other requests: on Windows `toggle-maximized`, `maximize`, leaving full screen, and a `restore` or `set-placement` that
+maximizes the window or brings it back from minimized show the window with activation, and a window that
 `minimize`, `set-visible` hiding it or `window-closed` takes from the user activates another one, such as its owner, as
 does the end of a [dialog or context menu](#dialogs-dialogs1).
 
 - **Rates.** A host bounds how often a guest makes the requests that can activate its windows (`present`,
-  `minimize`, `set-visible`, `set-full-screen` and `toggle-maximized`) and how often it announces; a request over the
+  `minimize`, `set-visible`, `set-full-screen`, `toggle-maximized`, `maximize`, `restore` and `set-placement`) and how
+  often it announces; a request over the
   rate is `rejected` with `capacity`, which Runic's guest reports as `ResourceBusy` ([limits](#limits)).
 - **Announcements.** An announcement speaks through the host's window, so the user's screen reader attributes it to
   the host application. An `assertive` one interrupts the screen reader, so Runic's host makes it `polite` unless the
@@ -532,7 +547,7 @@ The host pushes what the guest's presentation reports:
 | Push | Members | When |
 | --- | --- | --- |
 | `activity` | `window`; `active`, `minimized`, `visible`: booleans | The window's activity changed. Requires the `activity` window feature. |
-| `placement` | `window`; `bounds`: `{x, y, width, height}`; `maximized`, `fullScreen`: booleans; `monitor`: a string or `null` | The window moved, was resized, maximized or entered or left full screen. |
+| `placement` | `window`; `bounds`: `{x, y, width, height}`; `maximized`, `fullScreen`: booleans; `monitor`: a string or `null`; `restored`: `{x, y, width, height}`, with `x` and `y` `null` where the host has no position | The window moved, was resized, maximized or entered or left full screen. `bounds` is the current frame; `restored` the bounds the window restores to, which `set-placement` takes and the guest's `Placement` reports. A guest of a host that sends no `restored` reads `bounds`. |
 | `color-scheme` | `window`; `colorScheme`: `"light"`, `"dark"` or `"no-preference"` | The window's colour scheme changed, also through another window or the host's application. |
 
 A push for a window the guest already closed is ignored. The pushes of one window arrive in the order the host sent
@@ -759,7 +774,8 @@ the window the request names:
 - The window is active (it has the keyboard focus, as for [context menus](#context-menus)), and
 - not because of a guest: it did not become active within two seconds after any guest's request that can
   activate one of its windows, or the user worked in it since. Those requests are `window-open`, `present`, `minimize`,
-  `set-visible`, `set-full-screen`, `toggle-maximized` and `window-closed`, for any guest's windows, and the end
+  `set-visible`, `set-full-screen`, `toggle-maximized`, `maximize`, `restore`, `set-placement` and `window-closed`,
+  for any guest's windows, and the end
   of any guest's dialogs and context menus, whether the guest cancelled it or the user answered it: the desktop then
   activates the owner. An activation while one of them shows counts as well, since the desktop activates the owner as
   the user answers, before the host learns of the answer; so does one while the host's policy decides a guest's
@@ -768,7 +784,8 @@ the window the request names:
   window's activation, and one guest, or a second instance of the same one, cannot hand another a window by
   minimizing, hiding or closing its own. Runic's host keeps this time host-wide, across its guests.
 - not because of a deferred request of the guest: when the guest asked to activate or show the window (`window-open`,
-  `present`, `set-visible` with `visible: true`, `set-full-screen`, `toggle-maximized`) and the desktop did not activate
+  `present`, `set-visible` with `visible: true`, `set-full-screen`, `toggle-maximized`, `maximize`, `restore`,
+  `set-placement`) and the desktop did not activate
   it right away, the window's next activation is the guest's, however late it comes. macOS activates such a window
   only when the user next switches to the host application, and Windows' and Linux desktops' focus-stealing prevention
   can defer it the same way. The cost is one false refusal when the user later switches to that window on purpose;
@@ -1091,7 +1108,7 @@ The [presentation requests](#presentation) of a region window:
 | Request | In a region | Reply |
 | --- | --- | --- |
 | `present` | Brings the host window forward under the usual rules, and moves the focus into the region only as the [focus](#focus-in-a-region) rule allows. A request that can activate a window, for the rate and the window services. | `success`, or `rejected` with `refused` or `capacity` |
-| `minimize`, `set-visible`, `set-full-screen` | Not in `features`; the guest does not send them | `unavailable` with `backend-unavailable` |
+| `minimize`, `set-visible`, `set-full-screen`, `maximize`, `restore`, `set-placement` | Not in `features`; the guest does not send them | `unavailable` with `backend-unavailable` |
 | `toggle-maximized`, `move`, `set-represented-file` | Not applicable | `unavailable` with `embedded`; a guest that does not know the reason reads it as `backend-unavailable` |
 | `resize` | The guest's **preferred size**. With `sizing: "content-height"` the host applies the height within its minimum and maximum, and the region's width keeps following the host page. Runic's guest sends its page's content height. Under the rate of requests that can activate a window. | `success` when the region follows the guest's height, else `unavailable` with `embedded` |
 | `set-document-edited` | In `features`; the host may show it, such as a mark on a wizard's step | `success` |

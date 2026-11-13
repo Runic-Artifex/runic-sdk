@@ -91,6 +91,26 @@ internal static class HostProtocol
             : null;
     }
 
+    // set-placement's members (host-protocol.md, Presentation): x and y both absent (or null) or both integers from
+    // -32,768 to 32,767, width and height from 0 (keep) to 32,767, maximized and fullScreen; null when one is out of form.
+    internal static (int? X, int? Y, int Width, int Height, bool Maximized, bool FullScreen)? Placement(JsonObject message)
+    {
+        if (!Position(message, "x", out var x) || !Position(message, "y", out var y) || x is null != y is null) return null;
+        return Integer(message, "width") is { } width and >= 0 and <= 32_767 && Integer(message, "height") is { } height and >= 0 and <= 32_767 &&
+            Boolean(message, "maximized") is { } maximized && Boolean(message, "fullScreen") is { } fullScreen
+            ? (x, y, (int)width, (int)height, maximized, fullScreen)
+            : null;
+
+        static bool Position(JsonObject message, string name, out int? value)
+        {
+            value = null;
+            if (message[name] is null) return true;
+            if (Integer(message, name) is not { } number || number is < -32_768 or > 32_767) return false;
+            value = (int)number;
+            return true;
+        }
+    }
+
     // A string of 1 to maximum characters, or null.
     internal static string? Text(JsonObject message, string name, int maximum) =>
         String(message, name) is { Length: > 0 } text && text.Length <= maximum ? text : null;

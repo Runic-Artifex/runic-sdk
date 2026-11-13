@@ -517,7 +517,8 @@ internal sealed class HostedGuest : IAsyncDisposable
             HostedWindowPresentation.FeaturesOf(reply["features"] as JsonArray),
             HostedWindowPresentation.ActivityOf(reply["activity"] as JsonObject) ?? RunicWindowActivity.Assumed,
             HostedWindowPresentation.ColorSchemeOf(HostProtocol.String(reply, "colorScheme")) ?? DesktopColorScheme.NoPreference,
-            (presentationRequest, token) => WindowRequestAsync(id, presentationRequest, token), LogFailure);
+            (presentationRequest, token) => WindowRequestAsync(id, presentationRequest, token), LogFailure,
+            HostedWindowPresentation.PlacementOf(reply["placement"] as JsonObject));
         window.Opened(presentation, region);
         return window;
     }
@@ -674,6 +675,10 @@ internal sealed class HostedGuest : IAsyncDisposable
             case "activity":
                 if (FindWindow(push)?.Presentation is { } activityWindow && HostedWindowPresentation.ActivityOf(push) is { } activity)
                     activityWindow.OnActivity(activity);
+                return;
+            case "placement":
+                if (FindWindow(push)?.Presentation is { } placementWindow && HostedWindowPresentation.PlacementOf(push) is { } placement)
+                    placementWindow.OnPlacement(placement);
                 return;
             case "color-scheme":
                 if (FindWindow(push)?.Presentation is { } schemeWindow &&

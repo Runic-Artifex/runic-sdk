@@ -368,7 +368,15 @@ application's WPF controls keep the theme the application gives them.
 `NoPreference` gives the title bar the system's app mode and follows it when the
 user switches it while the window is open; a window whose scheme was never set
 keeps WPF's default title bar. `SetDocumentEditedAsync` reports `Unavailable(BackendUnavailable)`,
-as on Windows generally. `IsActive`, `IsMinimized` and `IsVisible` follow
+as on Windows generally. `MaximizeAsync` and `RestoreAsync` set `WindowState`,
+leaving full screen first; `RestoreAsync` ends normal, also for a window
+minimized while it was maximized. `Placement` and `SetPlacementAsync` use WPF's
+device-independent pixels for all four values: `RestoreBounds` while the
+window is maximized, minimized or full-screen, else `Left`, `Top` and its actual
+size. `SetPlacementAsync` sets `Left`, `Top`, `Width` and `Height`, which WPF
+keeps as the restored bounds of a maximized or minimized window, then the state.
+WPF does not fit the bounds on a monitor. Windows activates a window that it
+maximizes or brings back from minimized. `IsActive`, `IsMinimized` and `IsVisible` follow
 `Activated`, `Deactivated`, `StateChanged` and `IsVisibleChanged`, and the
 changes are raised on the window's dispatcher, the ViewModels' thread in WPF. A
 handler that throws is logged as event 1130 (`WindowPresentationHandlerFailed`,

@@ -55,6 +55,13 @@ namespace Runic.Application.Testing;
 /// activity, <see cref="IsFullScreen"/> and the room produce the refusals; <see cref="SetSidePanelRefusal"/> chooses
 /// one, and <see cref="CloseSidePanel"/> closes the panel as its page or a crash would.
 /// </para>
+/// <para>
+/// It keeps a placement as a desktop window does (<see cref="Placement"/>, at 100, 100 with 800 by 600 at first):
+/// <see cref="MaximizeAsync"/> maximizes it and <see cref="RestoreAsync"/> returns it to normal, both leaving full screen
+/// and restoring a minimized window; <see cref="SetPlacementAsync"/> takes the placement's bounds and state as a
+/// desktop that fits them on its monitors would, here unchanged; and <see cref="SetPlacement"/> moves the window as its
+/// user would, without recording a request.
+/// </para>
 /// </remarks>
 public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
 {
@@ -64,7 +71,7 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
         RunicWindowPresentationFeatures.FullScreen | RunicWindowPresentationFeatures.DocumentEdited |
         RunicWindowPresentationFeatures.ColorScheme | RunicWindowPresentationFeatures.PerWindowColorScheme |
         RunicWindowPresentationFeatures.Activity | RunicWindowPresentationFeatures.OwnedWindows |
-        RunicWindowPresentationFeatures.SidePanel;
+        RunicWindowPresentationFeatures.SidePanel | RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement;
 
     private static readonly PlatformResult<PlatformUnit> Done = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private static readonly PlatformResult<PlatformUnit> Unsupported = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
@@ -77,6 +84,9 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     // The window's own state, from which the activity follows: hidden and minimized are independent, as on the desktop.
     private bool _hidden;
     private bool _minimized;
+    private bool _maximized;
+    // The bounds the window restores to, without its state.
+    private RunicWindowPlacement _restored = new() { X = 100, Y = 100, Width = 800, Height = 600 };
     private DesktopColorScheme _colorScheme;
 
     /// <summary>Creates a window that is active and visible, with every feature.</summary>
@@ -126,7 +136,64 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     }
 
     /// <summary>Gets whether the window is full-screen after the requests so far.</summary>
-    public bool IsFullScreen { get; private set; }
+    public bool IsFullScreen
+    {
+        get;
+        private set
+        {
+            if (field == value) return;
+            field = value;
+            PlacementChanged();
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks><see langword="null"/> without <see cref="RunicWindowPresentationFeatures.Placement"/> in <see cref="Features"/>.</remarks>
+    public RunicWindowPlacement? Placement
+    {
+        get
+        {
+            if ((Features & RunicWindowPresentationFeatures.Placement) == 0) return null;
+            lock (_gate) return _restored with { Maximized = _maximized, FullScreen = IsFullScreen };
+        }
+    }
+
+    /// <summary>
+    /// Moves, resizes, maximizes or restores the window as its user would, and raises <see cref="PropertyChanged"/> for
+    /// <see cref="Placement"/> on the calling thread when it changed. Not recorded as a request.
+    /// </summary>
+    /// <param name="placement">
+    /// The window's new placement; <see langword="null"/> <see cref="RunicWindowPlacement.X"/> and
+    /// <see cref="RunicWindowPlacement.Y"/> keep its position, and a width or height of zero or less keeps that dimension.
+    /// </param>
+    public void SetPlacement(RunicWindowPlacement placement)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        Place(placement);
+    }
+
+    private void Place(RunicWindowPlacement placement)
+    {
+        lock (_gate)
+        {
+            _restored = new RunicWindowPlacement
+            {
+                X = placement.X ?? _restored.X,
+                Y = placement.Y ?? _restored.Y,
+                Width = placement.Width > 0 ? placement.Width : _restored.Width,
+                Height = placement.Height > 0 ? placement.Height : _restored.Height,
+            };
+            _maximized = placement.Maximized;
+        }
+        IsFullScreen = placement.FullScreen;
+        PlacementChanged();
+    }
+
+    // Raised for every change of the bounds or state; the per-Window presentation reports only actual changes.
+    private void PlacementChanged()
+    {
+        if ((Features & RunicWindowPresentationFeatures.Placement) != 0) RaiseInOrder(() => Raise(nameof(Placement)));
+    }
 
     /// <summary>Gets whether the window's document is marked edited after the requests so far.</summary>
     public bool IsDocumentEdited { get; private set; }
@@ -237,6 +304,51 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
             }, cancellationToken);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Recorded as <see cref="RunicWindowPresentationRequestKind.Maximize"/>. It leaves full screen and restores a minimized
+    /// window maximized, which activates it, as on Windows; a hidden window stays hidden.
+    /// </remarks>
+    public ValueTask<PlatformResult<PlatformUnit>> MaximizeAsync(CancellationToken cancellationToken = default) =>
+        Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.Maximize), RunicWindowPresentationFeatures.Maximize,
+            () => ShowState(maximized: true), cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Recorded as <see cref="RunicWindowPresentationRequestKind.Restore"/>. It leaves full screen and maximized and
+    /// restores a minimized window to normal, which activates it, as on Windows; a hidden window stays hidden.
+    /// </remarks>
+    public ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(CancellationToken cancellationToken = default) =>
+        Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.Restore), RunicWindowPresentationFeatures.Maximize,
+            () => ShowState(maximized: false), cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Recorded as <see cref="RunicWindowPresentationRequestKind.SetPlacement"/> with the placement as passed. The window
+    /// takes its bounds and state; a minimized or hidden window stays so.
+    /// </remarks>
+    public ValueTask<PlatformResult<PlatformUnit>> SetPlacementAsync(RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        if (placement.X is null != placement.Y is null)
+            throw new ArgumentException("Set both X and Y of the placement, or neither to keep the Window's position.", nameof(placement));
+        return Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.SetPlacement) { Placement = placement },
+            RunicWindowPresentationFeatures.Placement, () => Place(placement), cancellationToken);
+    }
+
+    private void ShowState(bool maximized)
+    {
+        bool wasMinimized;
+        lock (_gate)
+        {
+            wasMinimized = _minimized;
+            _maximized = maximized;
+        }
+        IsFullScreen = false;
+        PlacementChanged();
+        if (wasMinimized) Apply(_hidden, minimized: false, active: true);
+    }
+
     // Raised after SetVisibleAsync hid or showed the window: the test host hides and shows its owned Windows with it.
     internal event Action<bool>? VisibilitySet;
 
@@ -306,9 +418,19 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     public int WorkAreaWidth { get; set; } = 1920;
 
     /// <summary>Gets or sets whether the window is maximized, which refuses a side panel with <see cref="RunicSidePanelRefusal.Maximized"/>.</summary>
-    /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
+    /// <remarks>
+    /// <see cref="MaximizeAsync"/>, <see cref="RestoreAsync"/> and <see cref="SetPlacementAsync"/> change it too, and
+    /// <see cref="Placement"/> reports it. Experimental (<c>RUNICDESK104</c>).
+    /// </remarks>
     [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-    public bool IsMaximized { get; set; }
+    public bool IsMaximized
+    {
+        get { lock (_gate) return _maximized; }
+        set
+        {
+            lock (_gate) _maximized = value;
+        }
+    }
 
     /// <summary>Gets or sets whether the desktop arranged the window, which refuses a side panel with <see cref="RunicSidePanelRefusal.Snapped"/>.</summary>
     /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
@@ -399,7 +521,7 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
         if (_sidePanelRefusal is { } refusal) return refusal;
         if (_minimized || _hidden) return RunicSidePanelRefusal.Minimized;
         if (IsFullScreen) return RunicSidePanelRefusal.FullScreen;
-        if (IsMaximized) return RunicSidePanelRefusal.Maximized;
+        if (_maximized) return RunicSidePanelRefusal.Maximized;
         if (IsSnapped) return RunicSidePanelRefusal.Snapped;
         if (x < 0 || x + width > WorkAreaWidth || panelWidth * 2 > WorkAreaWidth) return RunicSidePanelRefusal.NoRoom;
         return null;
@@ -535,6 +657,9 @@ public sealed record RunicWindowPresentationRequest(RunicWindowPresentationReque
     /// <summary>Gets the activation context of <see cref="RunicWindowPresentationRequestKind.Present"/>.</summary>
     public DesktopActivationContext? Activation { get; init; }
 
+    /// <summary>Gets the placement of <see cref="RunicWindowPresentationRequestKind.SetPlacement"/>, as requested.</summary>
+    public RunicWindowPlacement? Placement { get; init; }
+
     /// <summary>Gets the options of <see cref="RunicWindowPresentationRequestKind.OpenSidePanel"/>.</summary>
     /// <remarks>Experimental (<c>RUNICDESK104</c>).</remarks>
     [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
@@ -591,6 +716,15 @@ public enum RunicWindowPresentationRequestKind
     /// <summary><see cref="IRunicSidePanel.CloseAsync"/>, also by disposing it. Experimental (<c>RUNICDESK104</c>).</summary>
     [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     CloseSidePanel,
+
+    /// <summary><see cref="IRunicWindowPresentation.MaximizeAsync"/>.</summary>
+    Maximize,
+
+    /// <summary><see cref="IRunicWindowPresentation.RestoreAsync"/>.</summary>
+    Restore,
+
+    /// <summary><see cref="IRunicWindowPresentation.SetPlacementAsync"/>.</summary>
+    SetPlacement,
 }
 
 /// <summary>Registers <see cref="RunicTestWindowPresentation"/> for dependency injection.</summary>

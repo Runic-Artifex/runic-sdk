@@ -8,3 +8,11 @@ static Runic.Application.Views.Desktop.DesktopPlatformServices.AttachWindowServi
 static Runic.Application.Views.Desktop.DesktopPlatformServices.ForWindowPresentation(Runic.Desktop.DesktopWindow! window) -> Runic.Application.Views.IRunicWindowPresentation!
 [RUNICDESK105]Runic.Application.Views.Desktop.RunicDesktopHostOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
 [RUNICDESK105]Runic.Application.Views.Desktop.RunicDesktopHostOptions.CloseDrain.init -> void
+Runic.Application.Views.Desktop.DesktopWindowPlacementExtensions
+static Runic.Application.Views.Desktop.DesktopWindowPlacementExtensions.ToDesktopPlacement(this Runic.Application.Views.RunicWindowPlacement! placement) -> Runic.Desktop.DesktopWindowPlacement!
+static Runic.Application.Views.Desktop.DesktopWindowPlacementExtensions.ToRunicPlacement(this Runic.Desktop.DesktopWindowPlacement! placement) -> Runic.Application.Views.RunicWindowPlacement!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationKind.Maximize = 12 -> Runic.Application.Views.Desktop.RunicHostedPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationKind.Restore = 13 -> Runic.Application.Views.Desktop.RunicHostedPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationKind.SetPlacement = 14 -> Runic.Application.Views.Desktop.RunicHostedPresentationKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationRequest.Placement.get -> Runic.Desktop.DesktopWindowPlacement?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationRequest.Placement.init -> void

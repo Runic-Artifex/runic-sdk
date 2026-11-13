@@ -617,6 +617,10 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public bool Directs { get; init; }
     // Runs while a window opens, before OpenAsync returns.
     public Action? Opening { get; init; }
+    // A window host that maximizes, restores and places its open window (WindowPlacement), and reports it in its state;
+    // with PositionUnavailable, a placement with a position fails as on Wayland.
+    public bool Places { get; init; }
+    public bool PositionUnavailable { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
@@ -629,6 +633,8 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
             Placement = MenuBarPlacement,
             Drags = Drags,
             InitialActivity = InitialActivity,
+            Places = Places,
+            PositionUnavailable = PositionUnavailable,
         };
         Hosts.Add(host);
         return host;
@@ -637,8 +643,45 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 
 // A headless embedded host whose "native thread" is a dedicated worker.
 sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost,
-    IDesktopDragSourceWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost
+    IDesktopDragSourceWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost,
+    IDesktopWindowShowStateHost
 {
+    public bool Places { get; init; }
+    public bool PositionUnavailable { get; init; }
+    // The show-state requests in order: "maximize", "restore" or the placement.
+    public System.Collections.Concurrent.ConcurrentQueue<object> ShowStates { get; } = new();
+    private DesktopWindowState CurrentState => State ?? new DesktopWindowState();
+    public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
+    {
+        ShowStates.Enqueue("maximize");
+        Report(CurrentState with { IsMaximized = true, IsFullScreen = false, Placement = CurrentState.Placement with { Maximized = true, FullScreen = false } });
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask RestoreAsync(CancellationToken cancellationToken = default)
+    {
+        ShowStates.Enqueue("restore");
+        Report(CurrentState with { IsMaximized = false, IsFullScreen = false, Placement = CurrentState.Placement with { Maximized = false, FullScreen = false } });
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        if (PositionUnavailable && placement.X is not null)
+            throw new DesktopException(DesktopErrorCategory.InvalidState, "window-position-unavailable", "Wayland positions no window.");
+        ShowStates.Enqueue(placement);
+        var current = CurrentState.Placement;
+        Report(CurrentState with
+        {
+            IsMaximized = placement.Maximized,
+            IsFullScreen = placement.FullScreen,
+            Placement = new DesktopWindowPlacement
+            {
+                X = placement.X ?? current.X, Y = placement.Y ?? current.Y,
+                Width = placement.Width > 0 ? placement.Width : current.Width, Height = placement.Height > 0 ? placement.Height : current.Height,
+                Maximized = placement.Maximized, FullScreen = placement.FullScreen, Origin = DesktopCoordinateOrigin.TopLeft,
+            },
+        });
+        return ValueTask.CompletedTask;
+    }
     public bool Directs { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<DesktopLayoutDirection> Directions { get; } = new();
     // Holds the next direction change until it completes.
@@ -709,7 +752,8 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State) |
         (InitialActivity is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme) |
         (Owns ? DesktopWindowCapabilities.Ownership : DesktopWindowCapabilities.None) |
-        (Directs ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None);
+        (Directs ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |
+        (Places ? DesktopWindowCapabilities.WindowPlacement : DesktopWindowCapabilities.None);
     public bool Owns { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)

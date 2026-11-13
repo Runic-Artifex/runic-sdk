@@ -84,6 +84,75 @@ internal sealed partial class WindowPresentationChecks
             "A closed window did not report the owner closed.");
     }
 
+    // sdk#897, W1b: maximize, restore and placement of a WPF window, in WPF's device-independent pixels.
+    [Test, NotInParallel("WpfSuite", Order = 42)]
+    public async Task ThePresentationMaximizesRestoresAndPlacesTheWindow()
+    {
+        var window = new Window
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = 100, Top = 120, Width = 400, Height = 300,
+            Title = "Runic WPF placement",
+        };
+        var presentation = WpfPlatformServices.ForWindowPresentation(window);
+        Program.Check(presentation.Features.HasFlag(RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement),
+            $"Features: {presentation.Features}.");
+        var changes = 0;
+        presentation.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(IRunicWindowPresentation.Placement)) changes++;
+        };
+        try
+        {
+            window.Show();
+            RequirePlacement(presentation, 100, 120, 400, 300, maximized: false, "at open");
+
+            Program.Check(await presentation.MaximizeAsync() is PlatformResult<PlatformUnit>.Success && window.WindowState == WindowState.Maximized,
+                "Maximizing did not maximize the window.");
+            RequirePlacement(presentation, 100, 120, 400, 300, maximized: true, "maximized");
+            Program.Check(await presentation.MaximizeAsync() is PlatformResult<PlatformUnit>.Success && window.WindowState == WindowState.Maximized,
+                "A second maximize did not keep the window maximized.");
+            Program.Check(await presentation.RestoreAsync() is PlatformResult<PlatformUnit>.Success && window.WindowState == WindowState.Normal,
+                "Restoring did not return the window to normal.");
+            RequirePlacement(presentation, 100, 120, 400, 300, maximized: false, "restored");
+            Program.Check(changes >= 2, $"PropertyChanged reported {changes} placement changes.");
+
+            // New restored bounds for a window that the placement maximizes; restoring then returns to them.
+            Program.Check(await presentation.SetPlacementAsync(new RunicWindowPlacement { X = 150, Y = 160, Width = 500, Height = 350, Maximized = true })
+                is PlatformResult<PlatformUnit>.Success && window.WindowState == WindowState.Maximized, "The placement did not maximize the window.");
+            RequirePlacement(presentation, 150, 160, 500, 350, maximized: true, "placed maximized");
+            await presentation.RestoreAsync();
+            Program.Check(Near(window.Left, 150) && Near(window.Top, 160) && Near(window.ActualWidth, 500) && Near(window.ActualHeight, 350),
+                $"The window restored to {window.Left}, {window.Top}, {window.ActualWidth} x {window.ActualHeight}.");
+
+            // Maximize leaves full screen; a window minimized while maximized restores to normal (D064.13).
+            await presentation.SetFullScreenAsync(true);
+            Program.Check(presentation.Placement is { FullScreen: true }, $"Full screen is not in {presentation.Placement}.");
+            await presentation.MaximizeAsync();
+            Program.Check(window.WindowStyle == WindowStyle.SingleBorderWindow && window.WindowState == WindowState.Maximized
+                && presentation.Placement is { FullScreen: false, Maximized: true }, "Maximizing did not leave full screen.");
+            await presentation.MinimizeAsync();
+            await presentation.RestoreAsync();
+            Program.Check(window.WindowState == WindowState.Normal, $"Restoring a minimized maximized window left it {window.WindowState}.");
+
+            try
+            {
+                await presentation.SetPlacementAsync(new RunicWindowPlacement { X = 1 });
+                throw new InvalidOperationException("A placement with X alone was accepted.");
+            }
+            catch (ArgumentException) { }
+        }
+        finally { window.Close(); }
+        Program.Check(await presentation.MaximizeAsync() is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed },
+            "A closed window did not report the owner closed.");
+    }
+
+    private static bool Near(double actual, int expected) => Math.Abs(actual - expected) <= 1;
+
+    private static void RequirePlacement(IRunicWindowPresentation presentation, int x, int y, int width, int height, bool maximized, string when) =>
+        Program.Check(presentation.Placement is { X: { } px, Y: { } py } placement && Near(px, x) && Near(py, y) && Near(placement.Width, width)
+            && Near(placement.Height, height) && placement.Maximized == maximized && !placement.FullScreen,
+            $"The placement {when} is {presentation.Placement}.");
+
     // DWMWA_USE_IMMERSIVE_DARK_MODE, or its number before Windows 10 20H1.
     private static int DarkMode(nint handle) =>
         DwmGetWindowAttribute(handle, 20, out var value, sizeof(int)) >= 0 || DwmGetWindowAttribute(handle, 19, out value, sizeof(int)) >= 0 ? value : -1;

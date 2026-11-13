@@ -131,6 +131,7 @@ internal sealed class HostRoleConformanceTests
             _fixture = await HostFixture.StartAsync(serveOnly: BrowserHost);
             _fixture.Applications.WindowOpened += (_, e) => { lock (_opened) _opened.Add(e.Window); };
             _fixture.Factory.ContextMenu = _user.ContextMenuAsync;
+            _fixture.Factory.Places = scenario["arrange"]!["host"]!["windowPlacement"]?.GetValue<bool>() == true;
             _dialogs.Answer = _user.DialogAsync;
             _dialogsInstalled = _dialogs.Install(_platform);
             var installed = RunicHostedApplication.CreateDialogs;
@@ -173,6 +174,7 @@ internal sealed class HostRoleConformanceTests
                     prompt: host["policy"]?.GetValue<string>() == "prompts-launches" ? _user.PromptAsync : null,
                     embed: host["embed"]?.GetValue<string>(),
                     embedComponent: host["embedComponent"]?.GetValue<bool>() == true,
+                    limitsPlacement: host["policy"]?.GetValue<string>() == "limits-placement",
                     embedOptions: new RunicHostedRegionOptions
                     {
                         FocusOnAttach = host["embedOptions"]?["focusOnAttach"]?.GetValue<bool>() ?? false,
@@ -776,9 +778,22 @@ internal sealed class HostRoleConformanceTests
     // (region/1).
     private sealed class ScenarioPolicy(RunicHostedLimits limits, bool failsServices,
         Func<CancellationToken, Task<object?>>? prompt = null, string? embed = null, RunicHostedRegionOptions? embedOptions = null,
-        bool embedComponent = false) : IRunicHostedWindowPolicy
+        bool embedComponent = false, bool limitsPlacement = false) : IRunicHostedWindowPolicy
     {
         public RunicHostedLimits Limits => limits;
+
+        // limits-placement: maximize is refused, and a placement's size clamped to 1,200 by 900.
+        public RunicHostedPresentationDecision Present(RunicHostedPresentationRequest request) => !limitsPlacement
+            ? RunicHostedPresentationDecision.Allow()
+            : request.Kind switch
+            {
+                RunicHostedPresentationKind.Maximize => RunicHostedPresentationDecision.Refuse("The host keeps its windows unmaximized."),
+                RunicHostedPresentationKind.SetPlacement when request.Placement is { } placement => RunicHostedPresentationDecision.Apply(request with
+                {
+                    Placement = placement with { Width = Math.Min(placement.Width, 1_200), Height = Math.Min(placement.Height, 900) },
+                }),
+                _ => RunicHostedPresentationDecision.Allow(),
+            };
 
         public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken) =>
             ValueTask.FromResult(embed is not null && request.CanEmbed && request.Owner is null
