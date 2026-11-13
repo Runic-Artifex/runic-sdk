@@ -84,6 +84,8 @@ installed browsers refuse it with `Unsupported`. Start with the
 | Package | API |
 | --- | --- |
 | `Runic.Desktop` | `DesktopWindow.OpenSidePanelAsync`, `DesktopWindow.SidePanel`, `DesktopWindow.CheckSidePanel`, `DesktopSidePanel`, `DesktopSidePanelOptions`, `DesktopSidePanelResult` (`Opened`, `Refused`), `DesktopSidePanelRefusal`, `DesktopSidePanelCloseReason` and `DesktopSidePanelClosedEventArgs` |
+| `Runic.Application.Views` | `IRunicWindowPresentation.OpenSidePanelAsync` and `SidePanel`, `RunicWindowPresentationFeatures.SidePanel`, `IRunicSidePanel`, `RunicSidePanelOptions`, `RunicSidePanelEdge`, `RunicSidePanelResult` (`Opened`, `Refused`), `RunicSidePanelRefusal`, `RunicSidePanelCloseReason` and `RunicSidePanelClosedEventArgs` ([a side panel beside the Window's page](../packages/dotnet/Runic.Application.Views/README.md#a-side-panel-beside-the-windows-page)) |
+| `Runic.Application.Testing` | `RunicTestWindowPresentation`'s side panel: `OpenSidePanelAsync`, `SidePanel`, `SetSidePanelRefusal`, `CloseSidePanel`, `WindowX`, `WindowWidth`, `WorkAreaWidth`, `IsMaximized`, `IsSnapped` and `IsRightToLeft`; `RunicWindowPresentationRequest.SidePanel`, `Edge` and `Width`; the `RunicWindowPresentationRequestKind` values `OpenSidePanel`, `MoveSidePanel`, `SetSidePanelWidth`, `FocusSidePanel` and `CloseSidePanel` |
 
 <a id="experimental-packages"></a>
 
