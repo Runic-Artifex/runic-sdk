@@ -41,6 +41,7 @@ internal sealed class EditorBrowsableTests
         typeof(BridgeOperationExecution),
         typeof(ReactiveCommandExecution),
         typeof(ReactiveInteractionDescriptor),
+        typeof(BridgeGeneratedCode),
     ];
 
     [Test]

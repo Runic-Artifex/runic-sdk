@@ -268,3 +268,9 @@ virtual Runic.Application.Views.Generated.ViewModelBridge.Dispose() -> void
 *REMOVED*static Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>! getQuestion, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
 *REMOVED*static Runic.Application.Views.Generated.ViewRequestDescriptor.Create<TModel, T>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewRequest<T>!>! getRequest, System.Func<T, string!>! encodeInput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
 *REMOVED*virtual Runic.Application.Views.Generated.ViewModelBridge<T>.Dispose() -> void
+Runic.Application.Views.Generated.BridgeGeneratedCode
+static Runic.Application.Views.Generated.BridgeGeneratedCode.RequireContract(int contractVersion, System.Reflection.Assembly! generatedAssembly) -> void
+static Runic.Application.Views.Generated.BridgeGeneratedCode.StaleBridge(System.Exception! error, System.Delegate! factory, System.Type! viewModel) -> Runic.Application.Views.RunicBridgeContractException?
+Runic.Application.Views.RunicBridgeContractException
+Runic.Application.Views.RunicBridgeContractException.AssemblyName.get -> string!
+const Runic.Application.Views.RunicBridgeContractException.DiagnosticId = "RUNICBRIDGE038" -> string!

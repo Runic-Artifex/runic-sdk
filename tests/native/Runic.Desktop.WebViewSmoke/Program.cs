@@ -53,8 +53,13 @@ try
         var hostName = OperatingSystem.IsWindows() ? "webview2" : OperatingSystem.IsMacOS() ? "wkwebview" : "gtk3";
         var probe = AccessibilitySmoke.ProbeCommand(args);
         // --region before --probe: the probe's own arguments follow it.
-        var region = args.TakeWhile(static argument => argument != "--probe").Contains("--region", StringComparer.Ordinal);
-        Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(), host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region));
+        var own = args.TakeWhile(static argument => argument != "--probe").ToArray();
+        var region = own.Contains("--region", StringComparer.Ordinal);
+        // --side-panel before --probe too: a side panel beside the page (#864 P6).
+        var sidePanel = own.Contains("--side-panel", StringComparer.Ordinal);
+        Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(),
+            host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region, sidePanel: sidePanel,
+                pressTab: OperatingSystem.IsMacOS() ? SidePanelSmoke.PressTabOnMacOSAsync : null));
     }
     else if (args.Contains("--region", StringComparer.Ordinal))
     {
@@ -109,6 +114,11 @@ try
     {
         // #864 P2. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = SidePanelSmoke.Run(CreateHostOptions());
+    }
+    else if (args.Contains("--side-panel-edges", StringComparer.Ordinal))
+    {
+        // #864 P6. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
+        Environment.ExitCode = SidePanelEdgeSmoke.Run(CreateHostOptions());
     }
     else if (args.Contains("--color-scheme", StringComparer.Ordinal))
     {

@@ -8,6 +8,7 @@ TypeScript clients. To start a new application, use the
 - [First Window](first-window/README.md) introduces one Window, ViewModel, and frontend client.
 - [First Window on Runic Desktop](first-window-desktop/README.md) hosts the same counter with Runic Desktop and ReactiveUI.
 - [Attachments](attachments/README.md) shows an avatar that the ViewModel draws and uploads files from the page, with `RunicBlob` and `RunicUpload` on Runic Desktop.
+- [Side panel](side-panel/README.md) opens a debug panel beside an 860 × 640 window, which grows instead of the panel covering the page, from the ViewModel through `IRunicWindowPresentation`, and falls back to an overlay where the window cannot grow.
 - [Status icon](status-icon/README.md) starts without a window and opens one from its status icon and menu.
 - [Multi-window project](multi-window/README.md) opens Windows from a ReactiveUI ViewModel, shares state across Windows, stores app settings next to the desktop's preferences, and is translated into English, German and Arabic with one Runic Translations catalog for the page, the ViewModels and the menu bar.
 - [Hosted windows](hosted-windows/README.md) is a shell that shows another Runic application's windows as its own: the counter it hosts gets its menu bar and dialogs through the shell, follows the shell's language and theme, and is limited by the shell's policy.
