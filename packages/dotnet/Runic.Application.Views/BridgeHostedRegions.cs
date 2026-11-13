@@ -109,6 +109,30 @@ internal sealed class BridgeHostedRegions
         });
     }
 
+    // hosted-region-content with the embedding "component" (region-component/1): the region shows the guest's component,
+    // which the page imports from module and connects to url with token. False when no connection declares the name.
+    internal bool ShowComponent(string name, string module, string url, string token)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(token);
+        if (module.Length is 0 or > MaximumSourceLength)
+            throw new ArgumentException($"The component's module address is empty or longer than {MaximumSourceLength} characters.", nameof(module));
+        if (url.Length is 0 or > MaximumSourceLength)
+            throw new ArgumentException($"The component's connection address is empty or longer than {MaximumSourceLength} characters.", nameof(url));
+        if (token.Length is 0 or > 256)
+            throw new ArgumentException("The component token is empty or longer than 256 characters.", nameof(token));
+        return Push(name, writer =>
+        {
+            writer.WriteString("kind", "hosted-region-content");
+            writer.WriteString("name", name);
+            writer.WriteString("embedding", "component");
+            writer.WriteString("module", module);
+            writer.WriteString("url", url);
+            writer.WriteString("token", token);
+        });
+    }
+
     // hosted-region-update: the members given; Title.HasValue false leaves the title, null clears it. False when no
     // connection declares the name.
     internal bool Update(string name, HostedRegionTitle title = default, int? height = null)

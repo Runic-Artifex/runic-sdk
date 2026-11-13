@@ -70,7 +70,8 @@ internal sealed class HostedRegion : IDisposable
         get { lock (_gate) return (_width, _height, _scale); }
     }
 
-    // region-attach: a detach of the attached region first, then a new frame launch address.
+    // region-attach: a detach of the attached region first, then a new frame launch address, or, in component mode, a
+    // new component token.
     internal async Task AttachAsync(HostRequest request)
     {
         var message = request.Message;
@@ -79,7 +80,9 @@ internal sealed class HostedRegion : IDisposable
             await request.FailAsync("rejected", "invalid-request", "The region-attach names no embedding.").ConfigureAwait(false);
             return;
         }
-        if (embedding != "frame")
+        // Component mode only with region-component/1 in use: the application allowed it for this host.
+        var component = embedding == "component" && _guest.InUse(HostFeatures.RegionComponent);
+        if (embedding != "frame" && !component)
         {
             await request.FailAsync("rejected", "embedding-unsupported", $"This guest does not implement the embedding '{HostedWire.Shorten(embedding, 64)}'.")
                 .ConfigureAwait(false);
@@ -102,6 +105,13 @@ internal sealed class HostedRegion : IDisposable
                 "The application runs elevated, so it does not show its page in a region of a browser host's page.").ConfigureAwait(false);
             return;
         }
+        if (component && !HostedGuest.ComponentModeAvailable)
+        {
+            // An elevated guest's token in a host page's realm needs elevated-peer admission (host-protocol.md, Component mode).
+            await request.FailAsync("rejected", "refused", "This elevated application allows component mode only with elevated-peer admission.")
+                .ConfigureAwait(false);
+            return;
+        }
         // An unknown sizing reads as "fill".
         var measuresHeight = HostProtocol.String(message, "sizing") == "content-height";
         var allowSameSite = HostProtocol.Boolean(message, "allowSameSite") == true;
@@ -109,10 +119,13 @@ internal sealed class HostedRegion : IDisposable
         try
         {
             Detach();
-            DesktopFrameLaunch launch;
+            JsonObject? reply;
             try
             {
-                launch = await _surface.BeginFrameLaunchAsync(embedder, allowSameSite, measuresHeight, CancellationToken.None).ConfigureAwait(false);
+                if (!component) reply = await BeginFrameAsync(embedder, allowSameSite, measuresHeight).ConfigureAwait(false);
+                else if (await BeginComponentAsync(embedder, allowSameSite, HostProtocol.Boolean(message, "browser") == true).ConfigureAwait(false) is { } content)
+                    reply = new JsonObject { ["component"] = content };
+                else reply = null;
             }
             catch (DesktopFrameCrossSiteUnavailableException error)
             {
@@ -124,22 +137,89 @@ internal sealed class HostedRegion : IDisposable
                 await request.FailAsync("failed", null, "The Window is closing.").ConfigureAwait(false);
                 return;
             }
+            if (reply is null)
+            {
+                await request.FailAsync("rejected", "embedding-unsupported",
+                    "This application has no component build: its content serves no _runic_component/runic-component.json.").ConfigureAwait(false);
+                return;
+            }
             lock (_gate)
             {
                 _attached = true;
-                _measuresHeight = measuresHeight;
+                _measuresHeight = measuresHeight && !component;
                 (_width, _height, _scale) = bounds;
             }
             _title.Reset();
             _preferredHeight.Reset();
-            await request.ReplyAsync(new JsonObject
-            {
-                ["frame"] = new JsonObject { ["url"] = launch.Url.AbsoluteUri, ["sameSite"] = launch.SameSite },
-            }).ConfigureAwait(false);
+            await request.ReplyAsync(reply).ConfigureAwait(false);
         }
         finally
         {
             _attaching.Release();
+        }
+    }
+
+    private async Task<JsonObject> BeginFrameAsync(string embedder, bool allowSameSite, bool measuresHeight)
+    {
+        var launch = await _surface.BeginFrameLaunchAsync(embedder, allowSameSite, measuresHeight, CancellationToken.None).ConfigureAwait(false);
+        return new JsonObject
+        {
+            ["frame"] = new JsonObject { ["url"] = launch.Url.AbsoluteUri, ["sameSite"] = launch.SameSite },
+        };
+    }
+
+    // Component mode: a new component token, and the address of the component build's module, which its manifest names
+    // (_runic_component/runic-component.json, written by the component build target). Null, with the attach ended,
+    // when the content has no component build.
+    private async Task<JsonObject?> BeginComponentAsync(string embedder, bool allowSameSite, bool browser)
+    {
+        var launch = await _surface.BeginComponentAsync(embedder, allowSameSite, browser, CancellationToken.None).ConfigureAwait(false);
+        var root = new Uri(launch.Listener, WebUiWindow.ComponentPath.TrimStart('/') + "/");
+        if (await ReadComponentModuleAsync(root, embedder).ConfigureAwait(false) is not { } module)
+        {
+            _surface.EndComponent();
+            return null;
+        }
+        return new JsonObject
+        {
+            ["module"] = module.AbsoluteUri,
+            ["url"] = new UriBuilder(new Uri(launch.Listener, WebUiWindow.WebSocketPath.TrimStart('/'))) { Scheme = "ws" }.Uri.AbsoluteUri,
+            ["token"] = launch.Token,
+            ["sameSite"] = launch.SameSite,
+        };
+    }
+
+    // How long the guest waits for its own surface to serve the component manifest.
+    private static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(10);
+
+    // The module of the component build that the surface serves at root, as the host page will request it: with the
+    // embedder's Origin, through the surface's content. The manifest is {version: 1, module, …}; module is a relative path
+    // below root that ends in .js. Null when there is none or it is not valid.
+    internal static async Task<Uri?> ReadComponentModuleAsync(Uri root, string embedder)
+    {
+        using var http = new HttpClient(new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = false, UseProxy = false })
+        {
+            Timeout = ManifestTimeout,
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(root, "runic-component.json"));
+        request.Headers.TryAddWithoutValidation("Origin", embedder);
+        try
+        {
+            using var response = await http.SendAsync(request).ConfigureAwait(false);
+            if (response.StatusCode != System.Net.HttpStatusCode.OK || response.Content.Headers.ContentLength is > 65_536) return null;
+            var text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (text.Length > 65_536 || JsonNode.Parse(text) is not JsonObject manifest ||
+                HostProtocol.Integer(manifest, "version") != 1 ||
+                HostProtocol.String(manifest, "module") is not { Length: > 3 and <= 256 } path ||
+                !path.EndsWith(".js", StringComparison.Ordinal) || path.StartsWith('/') || path.Contains('\\') ||
+                path.Contains("..", StringComparison.Ordinal) || path.Contains(':') || path.Contains('?') || path.Contains('#'))
+                return null;
+            var module = new Uri(root, path);
+            return module.AbsoluteUri.StartsWith(root.AbsoluteUri, StringComparison.Ordinal) ? module : null;
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or IOException)
+        {
+            return null;
         }
     }
 
@@ -153,6 +233,7 @@ internal sealed class HostedRegion : IDisposable
             _attached = false;
         }
         _surface.EndFrameLaunch();
+        _surface.EndComponent();
     }
 
     // region-bounds: the region's new size and scale; one out of range is ignored.

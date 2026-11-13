@@ -7,19 +7,14 @@
 // bundle's CSS as constructable stylesheets. The bundle's copy of this package defaults to the instance of its one
 // connected element (scope.ts), so code outside a provider never reaches the host page's instance. The element touches
 // no document-level state: no history, no global listeners, no `<html lang dir>` and no document stylesheets.
+import { connectComponentBridge, type RunicComponentEndpoint } from "./component-bridge.js";
 import {
-  createRunicInstance, detachedSlots, setDefaultSlots, slotsOf, type RunicInstance, type Slots,
+  createRunicInstance, detachedSlots, onInstanceDisposed, setDefaultSlots, slotsOf, type RunicInstance, type Slots,
 } from "./scope.js";
 import type { RunicBridgeClient } from "./transport.js";
 import { syncDocumentLocale } from "./translated-text.js";
 
-/** Where a component's Bridge connects: the guest's surface and the component token (`region-component/1`). */
-export interface RunicComponentEndpoint {
-  /** The WebSocket address of the guest's surface. */
-  readonly url: string;
-  /** The component token, a bearer credential of the guest. */
-  readonly token: string;
-}
+export { connectComponentBridge, type RunicComponentBridge, type RunicComponentEndpoint } from "./component-bridge.js";
 
 /** What an element connects with: a Bridge, or the endpoint that {@link RunicComponentOptions.connect} turns into one. */
 export type RunicComponentConnection = { readonly bridge: RunicBridgeClient } | RunicComponentEndpoint;
@@ -60,7 +55,10 @@ export interface RunicComponentOptions {
   readonly tag: string;
   readonly mount: RunicComponentMount;
   readonly styles?: readonly RunicComponentStyle[];
-  /** Makes the Bridge of an element connected with an endpoint. Defaults to {@link connectComponentBridge}. */
+  /**
+   * Makes the Bridge of an element connected with an endpoint. Defaults to {@link connectComponentBridge}. When the Bridge
+   * has a `close` method, the element calls it when it ends.
+   */
   readonly connect?: (endpoint: RunicComponentEndpoint) => RunicBridgeClient;
 }
 
@@ -80,15 +78,6 @@ export interface RunicComponentElement extends HTMLElement {
   connect(connection: RunicComponentConnection): void;
   /** The element's instance while it is mounted. */
   readonly instance: RunicInstance | undefined;
-}
-
-/**
- * Turns a component endpoint into a Bridge. The component token flow and its admission (`region-component/1`) are not
- * part of this release yet, so this throws; connect an element with `{ bridge }` instead.
- */
-export function connectComponentBridge(endpoint: RunicComponentEndpoint): RunicBridgeClient {
-  void endpoint;
-  throw new Error("Connecting a component to its guest with a component token (region-component/1) is not available in this release; connect it with { bridge }.");
 }
 
 // The connected elements of every component this copy defined; the copy's default instance is the only one's.
@@ -202,6 +191,9 @@ export function defineRunicComponent(options: RunicComponentOptions): RunicCompo
       const connection = this.#connection!;
       const bridge = "bridge" in connection ? connection.bridge : connectEndpoint(connection);
       const instance = createRunicInstance({ bridge });
+      // A Bridge the element made from an endpoint ends with the element's instance.
+      const close = "bridge" in connection ? undefined : (bridge as { close?: unknown }).close;
+      if (typeof close === "function") onInstanceDisposed(slotsOf(instance), () => close.call(bridge));
       const container = this.ownerDocument.createElement("div");
       this.#root.replaceChildren(container);
       this.#instance = instance;

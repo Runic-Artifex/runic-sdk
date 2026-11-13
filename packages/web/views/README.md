@@ -1727,62 +1727,6 @@ framework packages wrap it for components: `useBridgeConnection` in
 `@runic-artifex/vite-plugin-runic` shows the page's state on its DevTools dock from
 page load.
 
-## Hosted regions (experimental)
-
-A host application can show another Runic application's Window, a **guest**, in a
-region of its own page instead of in a window of its own
-([regions](../../../specs/desktop/host-protocol.md#regions-region1) of the Runic host
-protocol). The page marks the region with `<runic-hosted-region>`, from
-`@runic-artifex/views/experimental`; the host's .NET policy decides what shows in it
-(`RunicHostedWindowDecision.Embed`, experimental family `RUNICDESK103`):
-
-```html
-<runic-hosted-region name="check" style="height: 420px">
-  <p slot="fallback">Starting the system check…</p>
-  <p slot="ended">The system check has ended.</p>
-</runic-hosted-region>
-<script type="module">
-  import { defineHostedRegion } from "@runic-artifex/views/experimental";
-  defineHostedRegion();
-</script>
-```
-
-The framework packages wrap it as `RunicHostedRegion` in their own `./experimental`
-entries, which define the element themselves.
-
-- **What it shows.** The guest's page, in a sandboxed `<iframe>` from the guest's own
-  loopback origin, inside the element's closed shadow root. The page never gets a
-  reference to the frame and cannot read or script it; style its border with
-  `::part(frame)`. Children with `slot="fallback"` show while no guest page shows; a
-  child whose `slot` names a state (`waiting`, `loading`, `detached`, `ended`,
-  `unsupported`) shows instead in that state.
-- **Attributes.** `name` (required, 1 to 64 ASCII letters, digits, `.`, `_` or `-`),
-  `sizing` (`fill`, the default, where the page's layout sets the height and the guest
-  scrolls inside, or `content-height`, where the guest's content sets it) and `label`,
-  the region's accessible name, which overrides the guest page's title. Give a `fill`
-  region a height. The element reflects `state` and `focused` as attributes, and
-  dispatches `runicregionstatechange` (`detail: {state, previous}`) and
-  `runicregiontitlechange` (`detail: {title}`).
-- **What it tells the host.** Its size, device pixel ratio, place in the viewport,
-  visibility and focus, over the page's own Bridge (`hosted-regions/1`), never to the
-  guest. Its place stays with the host, which uses it for context menus.
-- **Focus.** Tab and Shift+Tab move through the frame in document order, as through
-  any frame. The element reports how the focus entered (`tab`, `shift-tab`, a click,
-  or `script`); the host lets the guest use the clipboard and launches only after the
-  user moved the focus in. A guest page cannot take the focus away from the host page
-  through the host: the host moves the focus into a region only while the page holds
-  none.
-- **One name, one region.** A page declares a name once; the latest connected element
-  of a name shows the region, and an earlier one shows its fallback.
-- **Moving the element** in the document removes its frame and declares the region
-  again: a frame's address is good for one load, so the host attaches the guest anew.
-- **Without a host.** On a page whose host does not implement hosted regions, or
-  without a Bridge, the element is `unsupported` and shows its fallback.
-- **The guest.** A guest's page in a region is its served build, not a development
-  server, and a guest whose own `Content-Security-Policy` sets
-  `frame-ancestors 'none'` blocks its own region. Treat its `localStorage` and
-  IndexedDB as session-scoped: they live in the host's browser profile.
-
 ## Runic instances
 
 The runtime of a page belongs to a Runic instance. A page that does nothing about
@@ -1851,6 +1795,76 @@ connect call rejects as `unavailable`; call it inside `instance.run` or under th
 provider. A component calls none of the document-level installers
 (`installNavigationPath`, `installBackNavigation`, `installErrorReporting`), uses
 `createMenuBarController` with `keyboard: false`, and shows no title of its own.
-Connecting with a component token (`{ url, token }`) is not available yet:
-`connectComponentBridge` throws until the component attach of `region-component/1`
-ships.
+An element connected with `{ url, token }` connects to its guest itself with
+`connectComponentBridge`: the component token that the host page received for the
+region is its WebSocket subprotocol, and the guest admits it only from the host
+page's origin ([component mode](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/host-protocol.md#component-mode-region-component1)).
+The connection never runs script that its guest sends and never navigates the host
+page; it closes when the element is removed. `<runic-hosted-region>` does all this
+when the host shows a guest as a component.
+
+## Hosted regions (experimental)
+
+A host application can show another Runic application's Window, a **guest**, in a
+region of its own page instead of in a window of its own
+([regions](../../../specs/desktop/host-protocol.md#regions-region1) of the Runic host
+protocol). The page marks the region with `<runic-hosted-region>`, from
+`@runic-artifex/views/experimental`; the host's .NET policy decides what shows in it
+(`RunicHostedWindowDecision.Embed`, experimental family `RUNICDESK103`):
+
+```html
+<runic-hosted-region name="check" style="height: 420px">
+  <p slot="fallback">Starting the system check…</p>
+  <p slot="ended">The system check has ended.</p>
+</runic-hosted-region>
+<script type="module">
+  import { defineHostedRegion } from "@runic-artifex/views/experimental";
+  defineHostedRegion();
+</script>
+```
+
+The framework packages wrap it as `RunicHostedRegion` in their own `./experimental`
+entries, which define the element themselves.
+
+- **What it shows.** The guest's page, in a sandboxed `<iframe>` from the guest's own
+  loopback origin, inside the element's closed shadow root. The page never gets a
+  reference to the frame and cannot read or script it; style its border with
+  `::part(frame)`. Children with `slot="fallback"` show while no guest page shows; a
+  child whose `slot` names a state (`waiting`, `loading`, `detached`, `ended`,
+  `unsupported`) shows instead in that state.
+- **Attributes.** `name` (required, 1 to 64 ASCII letters, digits, `.`, `_` or `-`),
+  `sizing` (`fill`, the default, where the page's layout sets the height and the guest
+  scrolls inside, or `content-height`, where the guest's content sets it) and `label`,
+  the region's accessible name, which overrides the guest page's title. Give a `fill`
+  region a height. The element reflects `state` and `focused` as attributes, and
+  dispatches `runicregionstatechange` (`detail: {state, previous}`) and
+  `runicregiontitlechange` (`detail: {title}`).
+- **What it tells the host.** Its size, device pixel ratio, place in the viewport,
+  visibility and focus, over the page's own Bridge (`hosted-regions/1`), never to the
+  guest. Its place stays with the host, which uses it for context menus.
+- **Focus.** Tab and Shift+Tab move through the frame in document order, as through
+  any frame. The element reports how the focus entered (`tab`, `shift-tab`, a click,
+  or `script`); the host lets the guest use the clipboard and launches only after the
+  user moved the focus in. A guest page cannot take the focus away from the host page
+  through the host: the host moves the focus into a region only while the page holds
+  none.
+- **One name, one region.** A page declares a name once; the latest connected element
+  of a name shows the region, and an earlier one shows its fallback.
+- **Moving the element** in the document removes its frame and declares the region
+  again: a frame's address is good for one load, so the host attaches the guest anew.
+- **Components.** When the host shows the guest as a component
+  (`RunicHostedWindowDecision.EmbedComponent`, trusted component mode), the element
+  imports the guest's component module from the guest's origin and shows its element
+  instead of a frame, in the page's own document: the page's CSS custom properties
+  reach it, and Tab moves through it as through the page. The page's
+  Content-Security-Policy must allow the guest's origin in `script-src` and
+  `connect-src` (`http://127.0.0.1:*` and `ws://127.0.0.1:*` in a Runic window);
+  without it the element shows its fallback as `unsupported`. The guest's code runs
+  in the page's realm: embed components only of applications you trust as your own
+  page.
+- **Without a host.** On a page whose host does not implement hosted regions, or
+  without a Bridge, the element is `unsupported` and shows its fallback.
+- **The guest.** A guest's page in a region is its served build, not a development
+  server, and a guest whose own `Content-Security-Policy` sets
+  `frame-ancestors 'none'` blocks its own region. Treat its `localStorage` and
+  IndexedDB as session-scoped: they live in the host's browser profile.

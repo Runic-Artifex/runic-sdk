@@ -28,19 +28,21 @@ public sealed partial class RunicHostedApplication
     private async Task OpenRegionWindowAsync(HostRequest request, RunicHostedWindow window, RunicHostedWindowDecision decision,
         DesktopPermissionGrant permissions)
     {
-        if (!InUse(HostFeatures.Region) || window.IsModal)
+        if (!InUse(HostFeatures.Region) || window.IsModal || decision.IsComponent && !InUse(HostFeatures.RegionComponent))
         {
             DesktopLog.HostedWindowPolicyFailed(_logger, null, "EmbedUnavailable");
             await request.FailAsync("failed", null, window.IsModal
                 ? "The host's window policy embedded a modal window, which cannot show in a region."
-                : "The host's window policy embedded a window, but the application does not implement region/1.").ConfigureAwait(false);
+                : !InUse(HostFeatures.Region)
+                    ? "The host's window policy embedded a window, but the application does not implement region/1."
+                    : "The host's window policy embedded a window as a component, but the application does not allow component embedding.").ConfigureAwait(false);
             return;
         }
         var options = decision.RegionOptions ?? RunicHostedRegionOptions.Default;
         var grant = options.Permissions ?? (permissions & _host.WindowOptions.AllowedPermissions);
         // The frame's permissions policy: only what the policy granted (host-protocol.md, Features in a region).
         var allow = grant.HasFlag(DesktopPermissionGrant.MediaCapture) ? "camera; microphone" : "";
-        var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow);
+        var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow, decision.IsComponent);
         var features = IsBrowserHost ? BrowserRegionFeatures : RegionFeatures;
         window.AttachRegion(region, features);
         if (Regions.Open(region, out var slot) is { } failure)
@@ -97,17 +99,18 @@ public sealed partial class RunicHostedApplication
         await OnWindowClosedAsync(window, null).ConfigureAwait(false);
     }
 
-    // region-attach: the guest's frame launch address, or why there is none. browser: the host page runs in an installed
-    // browser, which an elevated guest refuses (guest-elevated); sent only when true.
+    // region-attach: the guest's frame launch address, or in component mode its component's module, address and token,
+    // or why there are none. browser: the host page runs in an installed browser, which an elevated guest refuses
+    // (guest-elevated) and for which a guest serves a component cross-site; sent only when true.
     internal async Task<RegionAttachResult> RegionAttachAsync(RunicHostedWindow window, string embedder, RunicHostedRegionSize size,
-        Runic.Application.Views.HostedRegionSizing sizing, bool allowSameSite, bool browser = false)
+        Runic.Application.Views.HostedRegionSizing sizing, bool allowSameSite, bool browser = false, bool component = false)
     {
         if (_channel is not { IsOpen: true } channel) return new(null, false, "closed");
         var message = new JsonObject
         {
             ["kind"] = "region-attach",
             ["window"] = window.Id,
-            ["embedding"] = "frame",
+            ["embedding"] = component ? "component" : "frame",
             ["embedder"] = embedder,
             ["width"] = size.Width,
             ["height"] = size.Height,
@@ -123,13 +126,53 @@ public sealed partial class RunicHostedApplication
             return new(null, false, reply["error"] is JsonObject failed
                 ? HostProtocol.String(failed, "reason") ?? HostProtocol.String(failed, "kind") ?? "failed"
                 : "failed");
+        if (component)
+        {
+            return ReadComponent(reply["component"] as JsonObject) is { } content
+                ? new(content.Url, content.SameSite, null, content)
+                : new(null, false, "invalid-reply");
+        }
         if (reply["frame"] is not JsonObject frame || FrameUrl(HostProtocol.String(frame, "url")) is not { } url ||
             (frame["sameSite"] is not null && HostProtocol.Boolean(frame, "sameSite") is null))
             return new(null, false, "invalid-reply");
         return new(url.OriginalString, HostProtocol.Boolean(frame, "sameSite") == true, null);
     }
 
-    internal readonly record struct RegionAttachResult(string? Url, bool SameSite, string? Failure);
+    // Url is the frame launch address, or a component's WebSocket address; Component is set in component mode.
+    internal readonly record struct RegionAttachResult(string? Url, bool SameSite, string? Failure, RegionComponentContent? Component = null);
+
+    // What a component attach's reply names (host-protocol.md, region-component/1): the module, the WebSocket address of
+    // the guest's surface, the component token and whether the guest serves it from the host page's own site.
+    internal sealed record RegionComponentContent(string Module, string Url, string Token, bool SameSite);
+
+    // The reply's component, or null when a member is missing or out of form: module is http on a loopback literal and an
+    // explicit port, in /_runic_component/, ending in .js; url is ws on the same authority, ending in /_webui_ws_connect;
+    // token is 43 characters of base64url; each address is at most 2,048 characters, without a query or fragment.
+    internal static RegionComponentContent? ReadComponent(JsonObject? component)
+    {
+        if (component is null ||
+            LoopbackUrl(HostProtocol.String(component, "module"), Uri.UriSchemeHttp) is not { } module ||
+            !module.AbsolutePath.Contains("/_runic_component/", StringComparison.Ordinal) ||
+            !module.AbsolutePath.EndsWith(".js", StringComparison.Ordinal) ||
+            LoopbackUrl(HostProtocol.String(component, "url"), Uri.UriSchemeWs) is not { } url ||
+            !string.Equals(url.Authority, module.Authority, StringComparison.Ordinal) ||
+            !url.AbsolutePath.EndsWith("/_webui_ws_connect", StringComparison.Ordinal) ||
+            HostProtocol.String(component, "token") is not { Length: 43 } token ||
+            !token.All(static c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') ||
+            component["sameSite"] is not null && HostProtocol.Boolean(component, "sameSite") is null)
+            return null;
+        return new(module.OriginalString, url.OriginalString, token, HostProtocol.Boolean(component, "sameSite") == true);
+    }
+
+    private static Uri? LoopbackUrl(string? text, string scheme)
+    {
+        if (text is not { Length: > 0 and <= 2_048 } || !Uri.TryCreate(text, UriKind.Absolute, out var url)) return null;
+        return url.Scheme == scheme && !url.IsDefaultPort && url.Host is "127.0.0.1" or "[::1]" &&
+            string.IsNullOrEmpty(url.UserInfo) && string.IsNullOrEmpty(url.Query) && string.IsNullOrEmpty(url.Fragment) &&
+            text.Contains("://" + url.Authority, StringComparison.Ordinal)
+            ? url
+            : null;
+    }
 
     // A frame launch address (host-protocol.md, region-attach): http on a loopback literal and an explicit port, with a
     // path that ends in /_runic_frame/<code>, at most 2,048 characters.

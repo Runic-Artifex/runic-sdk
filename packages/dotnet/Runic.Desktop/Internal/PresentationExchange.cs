@@ -130,6 +130,7 @@ internal abstract class PresentationExchange
 internal static class PresentationStatus
 {
     internal const int Ok = 200;
+    internal const int NoContent = 204;
     internal const int Found = 302;
     internal const int SeeOther = 303;
     internal const int BadRequest = 400;

@@ -208,7 +208,7 @@ test("Chromium: a frame push shows the guest's page in a sandboxed cross-origin 
       (document.getElementById("fallback") as HTMLElement).offsetHeight]), [true, 0]);
 
     // An embedding this page does not know shows the fallback as unsupported.
-    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "component", module: "x", tag: "y", token: "z" });
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "native", handle: 1 });
     assert.equal(await state(tab), "unsupported");
     assert.deepEqual(errors, []);
   } finally { await context.close(); }

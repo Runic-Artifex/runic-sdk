@@ -1100,6 +1100,40 @@ host**: its pages run in the user's browser, and it shows guests' windows only i
 - The guest's storage lives in the user's browser profile; see the security guide's
   [Hosted windows in a region](../../../docs/security.md#hosted-windows-in-a-region).
 
+#### Components (trusted component mode)
+
+For applications of the same vendor, a region can show the guest's Views as a **component** in the host page's own
+document instead of in a frame (`region-component/1`), so they take the page's theme and layout and Tab moves through
+them as through the page ([specification](../../../specs/desktop/host-protocol.md#component-mode-region-component1)).
+Host page and guest code then share one JavaScript realm: the guest's code can read the page and use its Bridge, and the
+page holds the guest's token. Both sides opt in:
+
+```csharp
+// The guest: allow component embedding by the hosts of your own suite. A filter, not a security boundary.
+Guest = RunicGuestOptions.FromStandardInput() with
+{
+    AllowComponentEmbedding = host => host.Name == "Contoso Installer",
+},
+
+// The host's policy: a component where the guest allows it, a frame otherwise.
+ValueTask.FromResult(request.CanEmbedComponent
+    ? RunicHostedWindowDecision.EmbedComponent("check")
+    : RunicHostedWindowDecision.Embed("check"));
+```
+
+- **The guest's build.** The guest builds its component with the `component` target of
+  `@runic-artifex/vite-plugin-runic`, which writes `_runic_component/` next to its page. A guest without it refuses a
+  component attach, and `EmbedComponent` then leaves the window detached; `CanEmbedComponent` is `false` for a guest that
+  does not allow the host.
+- **The host page's Content-Security-Policy** must allow the guest's origin for scripts and connections. Components of
+  an embedded host come from `127.0.0.1` on a port that changes with each run: add `http://127.0.0.1:*` to
+  `script-src` and `ws://127.0.0.1:*` to `connect-src` of `RunicDesktopHostOptions.ContentSecurityPolicy` (see the
+  security guide's "Components in a host page").
+- **In a component.** `RunicHostedRegion.IsComponent` is `true`. The component has the host page's permissions, focus,
+  drops and keys; `RegionOptions.Permissions` and `sizing="content-height"` do not apply, and the guest sends no title.
+  `State` reaches `Attached` once the component connected, as in frame mode.
+- **Elevated guests** do not offer component mode yet.
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

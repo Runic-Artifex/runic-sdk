@@ -56,6 +56,10 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     public Guid Id { get; } = Guid.NewGuid();
 
+    // runic-host/1 region-component/1: the upgrade offered the component token, which takes the place of the window's
+    // packet token (ComponentBinding).
+    public bool AdmittedByComponentToken { get; init; }
+
     public nuint ConnectionId { get; }
 
     public nuint ClientId { get; }
@@ -553,7 +557,8 @@ internal sealed class WebUiSession : IAsyncDisposable
 
         var id = WebUiProtocol.ReadId(payload.Span);
         var command = payload.Span[7];
-        var tokenIsValid = WebUiProtocol.ReadToken(payload.Span) == _window.Token;
+        // A component's socket was admitted with its component token, and its packets carry no window token.
+        var tokenIsValid = AdmittedByComponentToken || WebUiProtocol.ReadToken(payload.Span) == _window.Token;
         if (command == WebUiProtocol.CheckToken)
         {
             // A socket that is closing (expired or rejected) or has ended gets no reply.

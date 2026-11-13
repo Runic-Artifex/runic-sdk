@@ -35,6 +35,16 @@ export function invalidHostedRegionPush(push: Readonly<Record<string, unknown>>)
   switch (push["kind"]) {
     case "hosted-region-content":
       if (typeof push["embedding"] !== "string") return "The hosted region content has no embedding.";
+      if (push["embedding"] === "component") {
+        // region-component/1: the guest's module, the WebSocket address of its surface and the component token.
+        if (typeof push["module"] !== "string" || push["module"].length > maximumSource || !/^https?:\/\//.test(push["module"]))
+          return "The hosted region content has no component module address.";
+        if (typeof push["url"] !== "string" || push["url"].length > maximumSource || !/^wss?:\/\//.test(push["url"]))
+          return "The hosted region content has no component connection address.";
+        if (typeof push["token"] !== "string" || !/^[A-Za-z0-9_-]{1,256}$/.test(push["token"]))
+          return "The hosted region content has no component token.";
+        return undefined;
+      }
       if (push["embedding"] !== "frame") return undefined;
       if (typeof push["src"] !== "string" || push["src"].length === 0 || push["src"].length > maximumSource || !/^https?:\/\//.test(push["src"]))
         return "The hosted region content has no frame address.";
