@@ -475,6 +475,11 @@ When the user closes a hosted window, or the host's application asks to close it
   window whose decision is pending waits for the same decision.
 - `RunicWindow.RequestCloseAsync` in the guest asks the same decision locally: the guest runs the guard and, when it
   allows, closes the Window, which pushes `window-closed`.
+- A Window with a close drain (`RunicWindowOptions.CloseDrain`, experimental) answers `allow: true` once its guard
+  agreed, then stays open while its accepted work drains: its page receives `closing` with `draining: true` and stays
+  connected. It pushes `window-closed` after the drain, which may take as long as the work does; the host keeps the
+  hosted window, or the region, until then, and may show it as closing. `"force": true` skips the decision, not the
+  drain. A `close-request` during the drain is answered `allow: true` and changes nothing. No message is added for it.
 
 ### `shutdown`
 
@@ -484,6 +489,10 @@ answers `{"id":12,"ok":true}` at once and then shuts down as when its desktop as
 `DesktopHost.ShutdownRequested`, its Windows close, each with its `window-closed` push, and `Run` returns when its body
 does. The host waits for the process to exit up to its stop timeout (10 seconds by default) and then ends its process
 tree. A host that wants each Window's guard to decide first sends `close-request` for each window before `shutdown`.
+A guest whose Windows have a close drain cancels `DesktopHost.ShutdownStarting` first and lets them drain, within its
+own `DesktopHostOptions.ShutdownDrainTimeout` (30 seconds by default), before `ShutdownRequested`; each pushes
+`window-closed` after its drain. The host's stop timeout still ends the process tree, so a host that hosts such a
+guest sets its stop timeout above the guest's drain.
 
 ## Presentation
 

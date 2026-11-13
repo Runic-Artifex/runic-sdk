@@ -1291,10 +1291,38 @@ declaration wins.
   `RemainingOperations`, and keeps the Window's scope until it ended:
   `Completion`, and the Window's disposal, wait for it.
 
-0.19 drains in `RunicWindowTestHost` (`RunicWindowTestHostOptions.CloseDrain`,
-`RunicTestWindow.IsDraining`); Runic Desktop's embedded windows and its
-shutdown follow in a later part of sdk#900 and close at once until then. The
-operation declarations and `DrainOnClose` apply on every host.
+- **`RequestCloseAsync`** returns `true` once the close was decided, not when
+  the window has gone, so a "Save and close" command that is itself work the
+  drain waits for does not wait for itself. `WaitForCloseAsync` waits for the
+  window.
+
+Where it applies:
+
+| Host | Visible drain | Shutdown (Ctrl+C, SIGTERM, quit) |
+| --- | --- | --- |
+| Runic Desktop's embedded window (WebView2, WKWebView, WebKitGTK with GTK 3 and GTK 4), `RunicDesktopHostOptions.CloseDrain` for every Window | Yes | Drains visibly for up to `DesktopHostOptions.ShutdownDrainTimeout` (30 s), then closes; `ShutdownRequested` follows the drains |
+| A window the application opens itself (`DesktopPlatformServices.AttachWindowServices`) | With `DesktopWindowOptions.CloseDrainAsync` | As above |
+| A hosted application's Window (runic-host/1) and its regions | Yes: it reports `window-closed` after the drain, and the host keeps its window until then | Within the guest's `ShutdownDrainTimeout`; the host's stop timeout still ends it |
+| An installed browser, serve-only mode, CS-WebUI | No: the window closes at once, with `WindowCloseDrainUnavailable` (event 1055) | The Window's scope still waits for durable work |
+| WPF (`RunicViewHost`) | No: the application owns its window's `Closing` (below) | The application's own |
+| `RunicWindowTestHost` | `RunicWindowTestHostOptions.CloseDrain`, `RunicTestWindow.IsDraining` | |
+
+The operation declarations and `DrainOnClose` apply on every host. A WPF
+window waits for its work in its own `Closing` handler: cancel the first close,
+wait without closing admission, then close again.
+
+```csharp
+private bool _drained;
+
+private async void OnClosing(object? sender, CancelEventArgs e)
+{
+    if (_drained) return;
+    e.Cancel = true;                        // keep the window visible
+    await _work.WaitForAcceptedAsync();     // admission stays open while it waits
+    _drained = true;
+    Close();
+}
+```
 
 ### Menu bar commands
 

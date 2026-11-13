@@ -833,9 +833,9 @@ public sealed class DesktopHost : IAsyncDisposable
     private async Task DrainForShutdownAsync(DesktopSurface[] surfaces, DesktopWindow[] draining, Task[] external)
     {
         var timeout = _options.ShutdownDrainTimeout;
-        if (_logger is { } logger) DesktopLog.ShutdownDraining(logger, draining.Length + external.Length, timeout.TotalSeconds);
-        else System.Diagnostics.Trace.TraceInformation(
-            $"Waiting up to {timeout.TotalSeconds} seconds for {draining.Length + external.Length} Desktop windows to drain before the shutdown closes them.");
+        var count = draining.Length + external.Length;
+        if (_logger is { } logger) DesktopLog.ShutdownDraining(logger, count, timeout.TotalSeconds);
+        else System.Diagnostics.Trace.TraceInformation($"Waiting up to {timeout.TotalSeconds} seconds for {count} Desktop windows to drain before the shutdown closes them.");
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(_drainsEnded.Token);
         if (timeout != Timeout.InfiniteTimeSpan) limit.CancelAfter(timeout);
         // The windows without a drain close at once, as before 0.19.

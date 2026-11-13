@@ -68,7 +68,7 @@ public sealed partial class DesktopWindow
         catch (AggregateException error)
         {
             if (_engine.Logger is { } logger) Internal.DesktopLog.CloseDrainFailed(logger, error, Internal.DesktopLog.ErrorType(error));
-            else System.Diagnostics.Trace.TraceError($"A window's close drain failed with {error.GetType().FullName}; the window closes.");
+            else System.Diagnostics.Trace.TraceError($"A cancellation callback of a window's close drain failed with {error.GetType().FullName}; the window closes.");
         }
     }
 

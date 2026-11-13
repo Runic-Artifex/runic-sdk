@@ -159,6 +159,21 @@ The same Window and `async host => ...` body run on CS-WebUI with
   the `CloseConfirmation` capability opens the Window unguarded for the user's
   close and logs event 1053 `WindowCloseGuardUnavailable`; `RequestCloseAsync`
   still asks `CanCloseAsync` there.
+- A Window with a close drain (`RunicWindowOptions.CloseDrain`, or
+  `RunicDesktopHostOptions.CloseDrain` for every Window; experimental,
+  `RUNICDESK105`) keeps its embedded window open after the user's close,
+  `RequestCloseAsync` or a quit was approved, until its operations, awaited
+  commands and drained scopes have ended (see
+  [Closing after the Window's work has drained](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained)).
+  The host sets `DesktopWindowOptions.CloseDrainAsync` for it, after a drain of
+  `WindowOptions`' own. The page stays connected, and the appearance feed and
+  connection bindings stay attached while the window is visible; the drop queue
+  and menu commands stop at once. Ctrl+C, SIGTERM and a quit cancel
+  `DesktopHost.ShutdownStarting`, drain such windows visibly for up to
+  `DesktopHostOptions.ShutdownDrainTimeout` and then cancel `ShutdownRequested`
+  ([closing after the work has drained](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#closing-after-the-work-has-drained)).
+  An installed browser and serve-only mode close at once and log event 1055
+  `WindowCloseDrainUnavailable`; the Window's scope still waits for durable work.
 - `DesktopPlatformServices.AnnounceAsync(window, message, priority)` asks the screen
   reader to speak a status message for a Window, such as "Saved", through its
   embedded window (`DesktopWindow.AnnounceAsync`; see
@@ -651,7 +666,10 @@ await window.WaitForCloseAsync();
   `DesktopWindowOptions.Language` gave it when it opened.
 - `IRunicWindowContext.RequestCloseAsync` calls `DesktopWindow.RequestCloseAsync`,
   so the window's `ConfirmCloseAsync` decides; `IRunicWindowContext.Window` is
-  `null`, because there is no `IRunicWindow`.
+  `null`, because there is no `IRunicWindow`. To keep the window open after an
+  approved close until the application's work has ended, set
+  `DesktopWindowOptions.CloseDrainAsync = (_, ct) => new(work.WaitForAcceptedAsync(ct))`
+  when you open it; the request then returns at the decision.
 - It throws `InvalidOperationException` for a closed window or a scope that a
   Window already uses, and `ArgumentException` for a session of another
   surface. A scope without `AddRunicWindowService()` attaches what it has, and
@@ -1076,7 +1094,10 @@ var exitCode = await tool.Exited;
   above.
 - **End.** When the guest exits or crashes, or its channel closes, the host closes its windows, ends its process tree
   and completes `Exited` with its exit code (event 2017). `StopAsync` asks the guest to shut down and ends it after
-  `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. The guests
+  `StopTimeout` (10 seconds); `RequestStopAsync` asks each window first; `KillAsync` ends it at once. A guest whose
+  Windows have a close drain reports each `window-closed` after its drain, and the host keeps the window, or the
+  region, open until then; on `shutdown` the guest drains within its own `ShutdownDrainTimeout` (30 seconds), so set
+  `StopTimeout` above it for such a guest. The guests
   still running stop when the host's Desktop shuts down and when `RunicDesktopHost.Run` returns. A hosted application
   cannot host; a serve-only one shows guests' windows only in regions ([browser hosts](#browser-serve-only-hosts)).
 
