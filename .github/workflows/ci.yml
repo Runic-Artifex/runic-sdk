@@ -328,8 +328,19 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: bun tests/scaling/report.mjs --require-all ${BASE:+--base "$BASE"}
+      # The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size", D064.5: linux-x64 gates): three linux-x64
+      # NativeAOT publishes of a fixture with 0, 1 and 9 bridged ViewModels, about 20 s each with warm packages. The
+      # application group has already restored the ILCompiler packages for its own NativeAOT fixture. The job summary
+      # gets the budgets and the cost per ViewModel.
+      - name: Measure the NativeAOT size budgets
+        id: aot-size
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'application') }}
+        timeout-minutes: 12
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: bun tests/scaling/aot-size/measure.mjs ${BASE:+--base "$BASE"}
       - name: Retain the scaling results
-        if: ${{ always() && steps.scaling.outcome != 'skipped' }}
+        if: ${{ always() && (steps.scaling.outcome != 'skipped' || steps.aot-size.outcome != 'skipped') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
