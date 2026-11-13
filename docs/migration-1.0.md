@@ -66,9 +66,10 @@ the release notes, which give the full detail and the pull requests:
 - 0.18.0: [Upgrading from 0.17](../eng/release/notes/0.18.0.md#upgrading-from-017),
   [Elevated hosts and guests](../eng/release/notes/0.18.0.md#elevated-hosts-and-guests-865-experimental),
   [Region mode](../eng/release/notes/0.18.0.md#region-mode-866-experimental),
-  [Trusted component mode](../eng/release/notes/0.18.0.md#trusted-component-mode-866-d0598-experimental),
+  [Trusted component mode](../eng/release/notes/0.18.0.md#trusted-component-mode-866-experimental),
   [Window building blocks](../eng/release/notes/0.18.0.md#window-building-blocks-864),
   [Runic's own text in German](../eng/release/notes/0.18.0.md#runics-own-text-in-german-881),
+  [Smaller changes](../eng/release/notes/0.18.0.md#smaller-changes),
   [Known issues](../eng/release/notes/0.18.0.md#known-issues)
 
 ## Before you start
@@ -1285,6 +1286,9 @@ one that uses Runic Command Line to 0.12.0.
 | An empty `integer` field said "Enter a number." | "Enter a whole number.", as the catalog and `bigint` fields say |
 | A GTK 4 window was titled "Runic Desktop" until the page had a title | `DesktopPlatformTexts.LoadingTitle` ("Loading…"), as on WebView2 |
 | Every `PropertyChanged` read every bridged getter | A notification that names a bridged member refreshes that member; each getter is read about twice per publication unit. A getter with side effects runs less often; frames are unchanged |
+| A collection or observed sub-object replaced under another member's notification published none of the new instance's later changes until its own member or every member was notified | They are published; in a unit after a named notification a list without keys is read once more, an observed sub-object once more |
+| `Runic.Application.Views.Translations` required Runic Translations 0.9.x; `dotnet-runic`, `Runic.Create` and the `Runic.Assets` packer bundled Runic Command Line 0.11.0 | It requires Translations `[0.10.0, 0.11.0)`, and the tools bundle Command Line 0.12.0: move every Translations package to 0.10.0 and Runic Command Line to 0.12.0 |
+| `dotnet runic doctor` failed with the .NET 11 SDK | It accepts SDK 11 for `net10.0` applications and checks the .NET 10 runtime (`dotnet-runtime`); `dotnet runic dev` stops with `RAPPDEV1013` when that runtime is missing |
 | Generated union encoders typed the case value `any`, and a strict build of the generated folder failed for unions with list or dictionary members | Typed per case: regenerate |
 | A test compared a host's or a guest's `hello` exactly | Runic's hosts and guests list `region/1`, and `region-component/1` where it applies |
 

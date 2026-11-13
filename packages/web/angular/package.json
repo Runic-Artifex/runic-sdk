@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/angular",
-  "version": "0.17.1",
+  "version": "0.18.0",
   "type": "module",
   "exports": {
     ".": {
@@ -23,7 +23,7 @@
   "peerDependencies": {
     "@angular/core": ">=22.0.0 <23",
     "@angular/forms": ">=22.0.0 <23",
-    "@runic-artifex/views": "0.17.1"
+    "@runic-artifex/views": "0.18.0"
   },
   "peerDependenciesMeta": {
     "@angular/forms": {
