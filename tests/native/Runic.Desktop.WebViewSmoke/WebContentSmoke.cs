@@ -396,18 +396,37 @@ internal static partial class WebContentSmoke
         private static void OnFailed(nint download, nint error, nint data) => DownloadsFailed.Enqueue(
             error == 0 ? "failed" : Marshal.PtrToStringUTF8(*(nint*)((byte*)error + 8)) ?? "failed");
 
-        // The window's child, or the last child of the box that also holds the menu bar (B10).
+        // The window's child, or the last child of the box that also holds the menu bar (B10); inside it the overlay that
+        // lays the view out beside a side panel (sdk#864), whose first child is the page's view while no panel shows.
         private static nint WebView(nint window)
         {
             var child = s_gtk4 ? Gtk4WindowGetChild(window) : Gtk3BinGetChild(window);
-            if (TypeCheckInstanceIsA(child, s_gtk4 ? Gtk4BoxType() : Gtk3BoxType()) == 0) return child;
-            if (s_gtk4) return Gtk4WidgetGetLastChild(child);
-            var children = Gtk3ContainerGetChildren(child);
-            nint last = 0;
-            for (var node = children; node != 0; node = ((nint*)node)[1]) last = ((nint*)node)[0];
-            GListFree(children);
-            return last;
+            if (TypeCheckInstanceIsA(child, s_gtk4 ? Gtk4BoxType() : Gtk3BoxType()) != 0) child = s_gtk4 ? Gtk4WidgetGetLastChild(child) : Gtk3Child(child, last: true);
+            if (TypeCheckInstanceIsA(child, s_gtk4 ? Gtk4OverlayType() : Gtk3OverlayType()) != 0) child = s_gtk4 ? Gtk4WidgetGetFirstChild(child) : Gtk3Child(child, last: false);
+            return child;
         }
+
+        private static nint Gtk3Child(nint container, bool last)
+        {
+            var children = Gtk3ContainerGetChildren(container);
+            nint found = 0;
+            for (var node = children; node != 0; node = ((nint*)node)[1])
+            {
+                found = ((nint*)node)[0];
+                if (!last) break;
+            }
+            GListFree(children);
+            return found;
+        }
+
+        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_overlay_get_type")]
+        private static partial nuint Gtk4OverlayType();
+
+        [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_first_child")]
+        private static partial nint Gtk4WidgetGetFirstChild(nint widget);
+
+        [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_overlay_get_type")]
+        private static partial nuint Gtk3OverlayType();
 
         private static nint WebKit(string name) => NativeLibrary.GetExport(s_webKit, name);
 

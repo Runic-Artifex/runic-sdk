@@ -570,6 +570,10 @@ static void GenerateCompositionRegistration(string path, string compositionType,
     cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicBridges(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
     cs.AppendLine("    {");
     cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(services);");
+    // RUNICBRIDGE038: the runtime checks the generated-code contract before any Bridge type loads, so a library that
+    // another major release generated fails here with a rebuild message. The lambdas below construct the Bridges only
+    // when a Window or View attaches one, so JIT compiling this method loads none of them.
+    cs.AppendLine($"        global::Runic.Application.Views.Generated.BridgeGeneratedCode.RequireContract({Runic.Application.Views.Generated.BridgeGeneratedCode.ContractVersion}, typeof({parts[^1]}).Assembly);");
     foreach (var (model, name) in models)
     {
         var modelType = $"global::{model.FullName}";
@@ -2638,6 +2642,9 @@ static class BridgeDiagnosticCodes
     internal const string SharedClient = "RUNICBRIDGE036";
     /// <summary>RunicApplicationFrontendTranslations has no Runic Translations ESM to copy, or its directory holds other files.</summary>
     internal const string FrontendTranslations = "RUNICBRIDGE037";
+    // Reported by the Runic.Application.Views runtime (RunicBridgeContractException.DiagnosticId).
+    /// <summary>Generated Bridges were built against another Runic release than the running runtime.</summary>
+    internal const string ContractMismatch = "RUNICBRIDGE038";
     /// <summary>A [RunicRowEditor] method matches no keyed collection, or several, or has an unsupported signature.</summary>
     internal const string RowEditor = "RUNICBRIDGE050";
     /// <summary>A keyed collection has two [RunicRowEditor] methods.</summary>
@@ -2697,6 +2704,7 @@ static class BridgeDiagnosticCodes
         (ViewMember, "error", "A ViewRequest or ViewQuestion member is not a get-only property"),
         (SharedClient, "error", "A ViewModel does not publish a member of a [RunicSharedClient] interface alike, or the interface cannot have a shared client"),
         (FrontendTranslations, "error", "The build has no Runic Translations ESM for the page, or its directory holds other files"),
+        (ContractMismatch, "error", "Generated Bridges were built against another Runic release than the running runtime"),
         (OperationClose, "warning", "A [RunicOperationClose] declaration reaches no operation"),
         (RowEditor, "error", "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"),
         (RowEditors, "error", "A keyed collection has more than one [RunicRowEditor] method"),

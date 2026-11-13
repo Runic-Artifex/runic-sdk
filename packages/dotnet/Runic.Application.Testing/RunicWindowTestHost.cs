@@ -78,8 +78,16 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             IDisposable? attachment = null;
             try
             {
-                _attachment = attach(Transport, Content, viewModel)
-                    ?? throw new InvalidOperationException("The generated Bridge factory returned no attachment.");
+                try
+                {
+                    _attachment = attach(Transport, Content, viewModel)
+                        ?? throw new InvalidOperationException("The generated Bridge factory returned no attachment.");
+                }
+                catch (Exception error) when (Runic.Application.Views.Generated.BridgeGeneratedCode.StaleBridge(error, attach,
+                    typeof(TViewModel)) is { } stale)
+                {
+                    throw stale;
+                }
                 attachment = _attachment;
                 if (!Transport.Serves(rootRoute))
                     throw new InvalidOperationException($"The root route '{rootRoute}' was not attached.");

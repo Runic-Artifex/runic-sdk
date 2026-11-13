@@ -20,10 +20,15 @@ test("every Experimental attribute sets a documentation UrlFormat", () => {
 });
 
 test("docs/experimental.md has an entry for every experimental diagnostic ID, or says there is none", () => {
-  const ids = new Set(sources.flatMap(([, text]) => [
-    ...[...text.matchAll(/const string \w*Id = "(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
-    ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
-  ]));
+  // A constant counts only where an [Experimental] attribute names it; other diagnostic IDs (for example a runtime
+  // error's RunicBridgeContractException.DiagnosticId) are not experimental.
+  const constants = sources.flatMap(([, text]) => [...text.matchAll(/const string (\w*Id) = "(RUNIC[A-Z]+\d{3})"/g)]
+    .map(([, name, id]) => ({ name, id })));
+  const ids = new Set([
+    ...constants.filter(({ name }) => sources.some(([, text]) => new RegExp(`Experimental\\((?:[\\w.]+\\.)?${name}\\b`).test(text)))
+      .map(({ id }) => id),
+    ...sources.flatMap(([, text]) => [...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1])),
+  ]);
   // RUNICASSETS001 graduated in 0.10.0 (D029.3); RUNICDESK103 (hosted application windows) is experimental through 1.0
   // (D055.8); RUNICDESK104 (the side panel) and RUNICDESK105 (the close drain) are experimental for one minor (D062.7,
   // D064.20). A new family adds its ID here.

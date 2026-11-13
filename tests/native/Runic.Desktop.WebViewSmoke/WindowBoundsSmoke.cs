@@ -291,7 +291,7 @@ internal static class WindowBoundsSmoke
     }
 
     // The X window of a GTK window and its WM_NORMAL_HINTS, read and resized through a connection of our own.
-    private static unsafe class X11Native
+    internal static unsafe class X11Native
     {
         private static nint X11 => NativeLibrary.TryLoad(Environment.GetEnvironmentVariable("RUNIC_LIBX11") ?? "libX11.so.6", out var x11)
             ? x11 : NativeLibrary.Load("libX11.so.6");

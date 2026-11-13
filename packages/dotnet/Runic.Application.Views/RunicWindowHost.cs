@@ -332,9 +332,18 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(content);
-        var bridge = _attachWithContent is not null
-            ? _attachWithContent(transport, content, ViewModel)
-            : _attach!(transport, ViewModel);
+        IDisposable bridge;
+        try
+        {
+            bridge = _attachWithContent is not null
+                ? _attachWithContent(transport, content, ViewModel)
+                : _attach!(transport, ViewModel);
+        }
+        catch (Exception error) when (BridgeGeneratedCode.StaleBridge(error, (Delegate?)_attachWithContent ?? _attach!,
+            typeof(TViewModel)) is { } stale)
+        {
+            throw stale;
+        }
         Window.AttachedBridge(content, bridge);
         // IRunicConnections in this scope follows this Window's page connections.
         (Scope.ServiceProvider.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(content);

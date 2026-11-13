@@ -187,6 +187,11 @@
       "title": "The build has no Runic Translations ESM for the page, or its directory holds other files"
     },
     {
+      "id": "RUNICBRIDGE038",
+      "severity": "error",
+      "title": "Generated Bridges were built against another Runic release than the running runtime"
+    },
+    {
       "id": "RUNICBRIDGE039",
       "severity": "warning",
       "title": "A [RunicOperationClose] declaration reaches no operation"

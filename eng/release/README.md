@@ -435,7 +435,7 @@ of the same major without changes by its author. That includes:
 
   | Prefix | Reported by |
   | --- | --- |
-  | `RUNICBRIDGE` | The Runic.Application.Views generator and build targets |
+  | `RUNICBRIDGE` | The Runic.Application.Views generator and build targets; its runtime reports `RUNICBRIDGE038` (since 0.19) |
   | `RUNICPA` | Privileged actions: the build targets of Runic.Platform and its platform packages |
   | `RUNICEL` | The Runic.Platform.Windows.Elevation build targets |
   | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |

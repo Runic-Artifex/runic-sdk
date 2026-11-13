@@ -31,7 +31,9 @@ assembly has a portable PDB (the default), and ends with the link to its entry.
 The `Runic.Application.Views` build targets report the codes that concern the
 frontend and the build itself. Warnings don't fail the build unless the project
 treats warnings as errors; the generator's warnings repeat on builds that reuse
-the cached generation. Every other code fails the build. `RUNICBRIDGE` errors
+the cached generation. Every other code fails the build, except
+`RUNICBRIDGE038`, which the runtime throws when an application runs Bridges
+built against another Runic release. `RUNICBRIDGE` errors
 come from this post-compile step, not from a Roslyn analyzer: they appear after a
 build, not while you type, link to the source line, and a warning is suppressed
 per project with `NoWarn`. The
@@ -83,6 +85,7 @@ and severities are open.
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
 | [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
 | [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
+| [`RUNICBRIDGE038`](#runicbridge038) | Error | Runtime | Generated Bridges were built against another Runic release than the running runtime |
 | [`RUNICBRIDGE039`](#runicbridge039) | Warning | Generator | A `[RunicOperationClose]` declaration reaches no operation |
 | [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
@@ -709,6 +712,34 @@ errors and leaves the directory as it is.
 that gets the catalog from the Translations Vite plugin does not need
 `RunicApplicationFrontendTranslations`. See
 [Translated text](../packages/dotnet/Runic.Application.Views/README.md#translated-text).
+
+### RUNICBRIDGE038
+
+An error of the `Runic.Application.Views` runtime (since 0.19), thrown as
+`RunicBridgeContractException`, whose `AssemblyName` names the library. An
+assembly's generated Bridges were built against another Runic release than the
+running `Runic.Application.Views`, and the generated-code support API they call
+has changed in between:
+
+- The generated `AddRunicBridges()` (and `AddRunicViews()`, which calls it)
+  checks the generated-code contract version that its generator wrote before it
+  registers a Bridge. The version changes only when the support API breaks
+  binary compatibility, in a major release (and in 0.19), so Bridges that an
+  earlier minor release of the same major generated keep running.
+- Bridges from before 0.19 make no such check. When the first Window or View
+  attaches one, the host reports the `TypeLoadException` or
+  `MissingMethodException` it throws as this error, with that exception as the
+  inner exception.
+
+It is common after an upgrade that rebuilt the application but not a library
+it references: a separate `RunicApplicationFrontendModelAssembly`, or a
+ViewModel library from another solution or a NuGet package.
+
+**Fix:** rebuild the assembly the message names against the Runic release the
+message names, which regenerates its Bridges, and use the same version of every
+Runic package. A library built against a newer Runic needs the application's
+Runic packages updated to that release instead. See
+[From 0.18 to 0.19](migration-1.0.md#from-018-to-019).
 
 ### RUNICBRIDGE039
 
