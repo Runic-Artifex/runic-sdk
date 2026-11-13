@@ -17,8 +17,8 @@ public sealed class RunicCollectionAttribute(string keyProperty) : Attribute
     public string KeyProperty { get; } = keyProperty;
 }
 
-internal sealed record BridgeCollectionChange<T>(
-    BridgeCollectionDescriptor<T> Descriptor,
+internal sealed record BridgeCollectionChange(
+    BridgeCollectionDescriptor Descriptor,
     string Kind,
     int Index,
     int OldIndex,

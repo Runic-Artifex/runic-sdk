@@ -581,27 +581,27 @@ internal sealed partial class DomainFailureTests
     }
 
     private sealed class EditorBridge(IBridgeTransport transport, EditorModel model, WindowContentSession? content, bool keyed = false)
-        : ViewModelBridge<EditorModel>(transport, model, "editor", [
-            new BridgeStateMember<EditorModel>("title", static (writer, vm) => writer.WriteStringValue(vm.Title)),
+        : ViewModelBridge(transport, model, typeof(EditorModel), "editor", [
+            new BridgeStateMember("title", static (writer, vm) => writer.WriteStringValue(((EditorModel)vm).Title)),
             // The keyed collection is a member, so a frame that changes it checks its keys.
-            new BridgeStateMember<EditorModel>("rows", static (writer, vm) =>
+            new BridgeStateMember("rows", static (writer, vm) =>
             {
                 writer.WriteStartArray();
-                foreach (var row in vm.Rows) writer.WriteStringValue(row);
+                foreach (var row in ((EditorModel)vm).Rows) writer.WriteStringValue(row);
                 writer.WriteEndArray();
             }),
         ],
         [], [],
         [
-            new("Save", vm => vm.SaveCommand) { EncodeFailure = Encode },
-            new("Undeclared", vm => vm.UndeclaredCommand),
-            new("Submit", vm => vm.SubmitCommand) { ExecuteAsync = (vm, _, _) => vm.SubmitAsync(), EncodeFailure = Encode },
-            new("Race", vm => vm.RaceCommand) { ExecuteAsync = (_, token, _) => EditorModel.RaceAsync(token), EncodeFailure = Encode },
-            new("Publish", vm => vm.PublishCommand) { CreateStream = () => new BridgeOperationStream(), ExecuteStreamAsync = (vm, execution, _, _) => vm.PublishAsync(execution), EncodeFailure = Encode },
+            new("Save", vm => ((EditorModel)vm).SaveCommand) { EncodeFailure = Encode },
+            new("Undeclared", vm => ((EditorModel)vm).UndeclaredCommand),
+            new("Submit", vm => ((EditorModel)vm).SubmitCommand) { ExecuteAsync = (vm, _, _) => ((EditorModel)vm).SubmitAsync(), EncodeFailure = Encode },
+            new("Race", vm => ((EditorModel)vm).RaceCommand) { ExecuteAsync = (_, token, _) => EditorModel.RaceAsync(token), EncodeFailure = Encode },
+            new("Publish", vm => ((EditorModel)vm).PublishCommand) { CreateStream = () => new BridgeOperationStream(), ExecuteStreamAsync = (vm, execution, _, _) => ((EditorModel)vm).PublishAsync(execution), EncodeFailure = Encode },
         ],
         BridgeContractShape.Compute(typeof(EditorModel)), content,
         collections: keyed
-            ? [new("rows", vm => vm.Rows, (writer, item) => writer.WriteStringValue((string)item!), item => (string)item!, PublishesChanges: false)]
+            ? [new("rows", vm => ((EditorModel)vm).Rows, (writer, item) => writer.WriteStringValue((string)item!), item => (string)item!, publishesChanges: false)]
             : null);
 
     private sealed class PropertyDeclaredModel : INotifyPropertyChanged

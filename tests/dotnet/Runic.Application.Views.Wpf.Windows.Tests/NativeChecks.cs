@@ -1044,17 +1044,17 @@ file sealed class CspProbeModel : INotifyPropertyChanged
 }
 
 file sealed class CspProbeBridge(IBridgeTransport transport, CspProbeModel model)
-    : ViewModelBridge<CspProbeModel>(transport, model, "csp", State, [], [], Commands)
+    : ViewModelBridge(transport, model, typeof(CspProbeModel), "csp", State, [], [], Commands)
 {
-    private static readonly BridgeStateMember<CspProbeModel>[] State =
+    private static readonly BridgeStateMember[] State =
     [
-        new("value", static (writer, model) => writer.WriteNumberValue(model.Value)),
-        new("text", static (writer, model) => writer.WriteStringValue(model.Text)),
+        new("value", static (writer, model) => writer.WriteNumberValue(((CspProbeModel)model).Value)),
+        new("text", static (writer, model) => writer.WriteStringValue(((CspProbeModel)model).Text)),
     ];
 
-    private static readonly CommandDescriptor<CspProbeModel>[] Commands =
+    private static readonly CommandDescriptor[] Commands =
     [
-        new("Publish", static model => model.Publish),
-        new("Report", static model => model.Report) { ReadInput = static input => input.GetString() },
+        new("Publish", static model => ((CspProbeModel)model).Publish),
+        new("Report", static model => ((CspProbeModel)model).Report) { ReadInput = static input => input.GetString() },
     ];
 }

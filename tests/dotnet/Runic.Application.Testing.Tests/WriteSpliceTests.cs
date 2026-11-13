@@ -192,18 +192,18 @@ public sealed class WriteSpliceTests
     }
 
     private sealed class SpliceWriteBridge(IBridgeTransport transport, SpliceWriteModel model, WindowContentSession content)
-        : ViewModelBridge<SpliceWriteModel>(transport, model, "splice-write",
+        : ViewModelBridge(transport, model, typeof(SpliceWriteModel), "splice-write",
             [
-                new("body", (writer, vm) => { if (vm.Body is null) writer.WriteNullValue(); else writer.WriteStringValue(vm.Body); }),
-                new("count", (writer, vm) => writer.WriteNumberValue(vm.Count)),
+                new("body", (writer, vm) => { if (((SpliceWriteModel)vm).Body is null) writer.WriteNullValue(); else writer.WriteStringValue(((SpliceWriteModel)vm).Body); }),
+                new("count", (writer, vm) => writer.WriteNumberValue(((SpliceWriteModel)vm).Count)),
             ],
             [
-                new("Body", "body", vm => vm.Body, null) { TextMember = true },
-                new("Count", "count", vm => vm.Count, null),
+                new("Body", "body", vm => ((SpliceWriteModel)vm).Body, null) { TextMember = true },
+                new("Count", "count", vm => ((SpliceWriteModel)vm).Count, null),
             ],
             [
-                new("Body", "body", CheckedFieldValueKind.NullableString, vm => vm.Body, (vm, value) => vm.Body = (string?)value),
-                new("Count", "count", CheckedFieldValueKind.Int32, vm => vm.Count, (vm, value) => vm.Count = (int)value!),
+                new("Body", "body", CheckedFieldValueKind.NullableString, vm => ((SpliceWriteModel)vm).Body, (vm, value) => ((SpliceWriteModel)vm).Body = (string?)value),
+                new("Count", "count", CheckedFieldValueKind.Int32, vm => ((SpliceWriteModel)vm).Count, (vm, value) => ((SpliceWriteModel)vm).Count = (int)value!),
             ],
             [], contractFingerprint: "splice-write", content: content);
 }

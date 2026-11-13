@@ -78,8 +78,8 @@ public enum DesktopSidePanelRefusal
     /// <summary>
     /// The presentation has no native window of its own to grow, or its host has no side panel: an installed browser, a
     /// custom window host (<see cref="IDesktopWindowHostFactory"/>, also WPF's <c>RunicWebView</c>), a hosted
-    /// application's window (<c>runic-host/1</c>) or region, a surface that admits several clients, and, until their
-    /// engines support it, the macOS and Linux windows.
+    /// application's window (<c>runic-host/1</c>) or region, a surface that admits several clients, and, until its
+    /// engine supports it, the Linux windows.
     /// </summary>
     Unsupported,
 

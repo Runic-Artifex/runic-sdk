@@ -172,11 +172,11 @@ internal sealed class FailureDetailTests
     }
 
     private sealed class FailingBridge(IBridgeTransport transport, Model model, WindowContentSession? content = null)
-        : ViewModelBridge<Model>(transport, model, "failing", [],
-        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadString(value))], [],
+        : ViewModelBridge(transport, model, typeof(Model), "failing", [],
+        [new("Value", "value", vm => ((Model)vm).Value, (vm, value) => ((Model)vm).Value = BridgeWire.ReadString(value))], [],
         [
-            new("Throw", vm => vm.Throw),
-            new("FailAsync", vm => vm.Throw) { ExecuteAsync = (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret.")) },
+            new("Throw", vm => ((Model)vm).Throw),
+            new("FailAsync", vm => ((Model)vm).Throw) { ExecuteAsync = (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret.")) },
         ],
         contractFingerprint: "failure-detail", content: content);
 

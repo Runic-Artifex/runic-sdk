@@ -13,12 +13,14 @@ namespace Runic.Application.Testing.Tests.ReservedNames;
 // use. The bridges for this namespace's ViewModels are generated into it,
 // where these declarations would hide the types of `using Runic.Application.Views;`.
 #pragma warning disable CA1040, CA1711, CA1715 // The names are the shape under test.
-public sealed class ViewModelBridge<T>;
-public sealed class PropertyDescriptor<T>;
-public sealed class CheckedPropertyDescriptor<T>;
-public sealed class CommandDescriptor<T>;
+public sealed class ViewModelBridge;
+public sealed class BridgeStateMember;
+public sealed class BridgeInteractionDescriptor;
+public sealed class PropertyDescriptor;
+public sealed class CheckedPropertyDescriptor;
+public sealed class CommandDescriptor;
 public sealed class BridgeSnapshotWriter<T>;
-public sealed class BridgeCollectionDescriptor<T>;
+public sealed class BridgeCollectionDescriptor;
 public sealed class IBridgeTransport;
 public sealed class WindowContentSession;
 public sealed class BridgeJson;

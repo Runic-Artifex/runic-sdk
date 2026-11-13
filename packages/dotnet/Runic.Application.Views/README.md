@@ -1082,9 +1082,10 @@ private async Task ShowDebugAsync()
 | Host | Side panel |
 | --- | --- |
 | Runic Desktop, WebView2 | Yes |
-| Runic Desktop, WKWebView; WebKitGTK (GTK 3, GTK 4) | Not yet: `Unsupported` |
+| Runic Desktop, WKWebView | Yes |
+| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes; on Wayland the right edge only (the left edge refuses with `PositionUnavailable`) |
 | Runic Desktop, an installed browser after a fallback; a serve-only application | `Unsupported` |
-| A custom Runic Desktop window host; WPF | `Unsupported`: the WPF application owns its layout and can place a second `RunicWebView` |
+| A custom Runic Desktop window host (other than `Runic.Desktop.Gtk4`'s); WPF | `Unsupported`: the WPF application owns its layout and can place a second `RunicWebView` |
 | CS-WebUI | `Unsupported` |
 | A hosted application's Window or region (`runic-host/1`) | `Unsupported` |
 
@@ -1713,8 +1714,8 @@ export type DocumentPane = "Editor" | "Preview";
   or `input` for scalars.
 
 <a id="generated-code-support-api"></a>
-The generated C# bridge calls public runtime types such as `ViewModelBridge<T>`,
-`PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire`, `BridgeJson` and
+The generated C# bridge calls public runtime types such as `ViewModelBridge`,
+`PropertyDescriptor`, `CommandDescriptor`, `BridgeWire`, `BridgeJson` and
 `ReactiveCommandExecution`. They are in the `Runic.Application.Views.Generated`
 namespace (`Runic.Application.Views.ReactiveUI.Generated` and
 `Runic.Application.Views.ReactiveUI.Reactive.Generated` for the ReactiveUI

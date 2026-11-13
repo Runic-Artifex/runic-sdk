@@ -136,6 +136,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Api.GtkWidgetSetDirection(_window, direction);
             if (_menuBox != 0) Api.GtkWidgetSetDirection(_menuBox, direction);
             Api.GtkWidgetSetDirection(_webView, direction);
+            if (_panel is { View: not 0 } panel) Api.GtkWidgetSetDirection(panel.View, direction);
             if (_appliedMenuBar is { } menus) ApplyMenuBar(menus);
         }, cancellationToken);
 
@@ -398,11 +399,15 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         Api.GtkWindowSetDefaultSize(_window, width, height);
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
         {
-            Api.GtkWidgetSetSizeRequest(_window, checked((int)minimumWidth), checked((int)minimumHeight));
+            (_minimumWidth, _minimumHeight) = (checked((int)minimumWidth), checked((int)minimumHeight));
+            Api.GtkWidgetSetSizeRequest(_window, _minimumWidth, _minimumHeight);
         }
+        // The view in an overlay that lays it out beside a side panel (sdk#864, LinuxWebKitGtkHost.SidePanel.cs); without
+        // a panel the view fills it, as it filled the window.
+        var content = CreateOverlay();
         // The Native menu bar goes above the view in a box (B10); other windows hold the view alone.
-        var menuBox = CreateMenuBox(options);
-        Api.GtkContainerAdd(_window, menuBox != 0 ? menuBox : _webView);
+        var menuBox = CreateMenuBox(options, content);
+        Api.GtkContainerAdd(_window, menuBox != 0 ? menuBox : content);
         // DesktopWindowOptions.LayoutDirection: the window and its widgets; the page keeps its own dir.
         if (options.LayoutDirection != Runic.Platform.DesktopLayoutDirection.Default)
         {
@@ -585,6 +590,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             X = x, Y = y, Width = Math.Max(1, width), Height = Math.Max(1, height), Origin = DesktopCoordinateOrigin.TopLeft,
         };
+        // A side panel closed while the window was maximized or full-screen: the restored window loses its width.
+        if (!maximized && !fullScreen && ApplyPendingRestore(current)) return;
         var exact = ReadExactBounds(x, y, current.Width, current.Height, flags, maximized, fullScreen);
         // A placement given while hidden maximizes the shown window once it has its size (ApplyPlacementWhenShown).
         if (!maximized) MaximizeAtSize(force: false, current.Width, current.Height);
@@ -593,12 +600,15 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         var shownNormal = !maximized && !fullScreen && !tiled && _geometryWhenShown is null && Api.GtkWidgetGetVisible(_window);
         if (ObserveRestoreBounds(maximized || fullScreen, shownNormal ? new RestoreFrame(x, y, current.Width, current.Height) : null) is { } restore)
         {
-            _normal = current with { X = restore.X, Y = restore.Y, Width = restore.Width, Height = restore.Height };
+            // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
+            _normal = ExcludePanel(current with { X = restore.X, Y = restore.Y, Width = restore.Width, Height = restore.Height });
         }
         else if (!maximized && !fullScreen && !tiled && _geometryWhenShown is null)
         {
-            _normal = current;
+            // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
+            _normal = ExcludePanel(current);
         }
+        RecordWorkArea();
         var kiosk = _options?.Kiosk == true;
         var state = new DesktopWindowState
         {
@@ -642,6 +652,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host)
             {
+                host.OnPanelConfigure();
                 if (Interlocked.Exchange(ref host._stateUpdateQueued, 1) == 0) Dispatcher.Post(host.UpdateState);
                 // window-state-event: iconified and restored.
                 host.QueueActivityUpdate();
@@ -666,6 +677,13 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // WebView still exposes them, so GTK releases their native resources.
         ReleaseOwner();
         ReleaseMenus();
+        ClosePanelWithWindow();
+        if (_pageHandOff != 0)
+        {
+            PanelNative.Value.RemoveScript(0, _pageHandOff);
+            _pageHandOff = 0;
+        }
+        Volatile.Write(ref _overlay, 0);
         Api.DestroyWebViewChildren(_webView);
         if (_downloadContext != 0)
         {
@@ -739,15 +757,24 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     // the window's only focusable widget, so GTK would clear the window's focus and
     // give it back, which the page sees as the window losing and regaining focus.
     // Keep focus on the view; the keyboard script then focuses the other end of the page.
+    // Beside a side panel, the other view takes the focus instead (HandFocus).
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int OnWindowFocus(nint window, int direction, nint context)
     {
         const int TabForward = 0;
         const int TabBackward = 1;
-        return GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host
-            && host._webView != 0
-            && direction is TabForward or TabBackward
-            && Api.GtkWindowGetFocus(window) == host._webView ? 1 : 0;
+        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost host || host._webView == 0
+            || direction is not (TabForward or TabBackward)) return 0;
+        var focused = Api.GtkWindowGetFocus(window);
+        try
+        {
+            if (host.HandFocus(focused, direction == TabBackward)) return 1;
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+        return focused == host._webView ? 1 : 0;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -966,9 +993,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         try
         {
-            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _webContent: { } content } host)
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host && host.WebContentOf(webView) is { } content)
             {
-                return host.DecidePolicy(content, decision, type) ? 1 : 0;
+                return host.DecidePolicy(webView, content, decision, type) ? 1 : 0;
             }
         }
         catch
@@ -979,7 +1006,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     }
 
     // Whether this handler decided; WebKit's default handling applies otherwise.
-    private bool DecidePolicy(WebKitGtkWebContent content, nint decision, int type)
+    private bool DecidePolicy(nint webView, WebKitGtkWebContent content, nint decision, int type)
     {
         switch (type)
         {
@@ -993,7 +1020,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 // Ignored, so WebKit emits no create signal for it.
                 var (url, userGesture) = Api.GetNavigation(Api.GetNavigationAction(decision));
                 Api.IgnorePolicy(decision);
-                OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+                OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url, webView);
                 return true;
             }
             case PolicyDecisionResponse:
@@ -1027,10 +1054,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         try
         {
-            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _webContent: { } content } host)
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host && host.WebContentOf(webView) is { } content)
             {
                 var (url, userGesture) = Api.GetNavigation(navigationAction);
-                host.OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url);
+                host.OpenNewWindow(content.Rules.ForNewWindow(url, userGesture), url, webView);
             }
         }
         catch
@@ -1040,7 +1067,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         return 0;
     }
 
-    private void OpenNewWindow(WebContentRules.Decision decision, string? url)
+    // A navigation in the window goes to the view that asked: the page's, or a side panel's.
+    private void OpenNewWindow(WebContentRules.Decision decision, string? url, nint webView)
     {
         if (decision == WebContentRules.Decision.OpenExternally)
         {
@@ -1051,7 +1079,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             // From WebKit's signal: load once it has returned.
             Dispatcher.Post(() =>
             {
-                if (IsOpen && _webView != 0) Api.LoadUri(_webView, url);
+                if (IsOpen && (webView == _webView || _panel?.View == webView) && webView != 0) Api.LoadUri(webView, url);
             });
         }
     }
@@ -1063,7 +1091,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         try
         {
-            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _webContent: { } content } host)
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host && host.WebContentOf(webView) is { } content)
             {
                 var url = Marshal.PtrToStringUTF8(failingUri);
                 if (content.ForFailedMainFrameLoad(url, out var suppress) == WebContentRules.Decision.OpenExternally)
@@ -1085,8 +1113,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         try
         {
+            // A side panel's view shares the page's web context, and so this connection.
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { _webView: not 0 } host
-                && Api.GetDownloadWebView(download) == host._webView)
+                && Api.GetDownloadWebView(download) is var source && (source == host._webView || (source != 0 && host._panel?.View == source)))
             {
                 Api.CancelDownload(download);
             }
@@ -1637,6 +1666,15 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
             return gdkWindow == 0 || display == 0 ? 0
                 : ((delegate* unmanaged[Cdecl]<nint, nint, nint>)GdkDisplayGetMonitorAtWindowPointer)(display, gdkWindow);
+        }
+
+        // A GdkMonitor's work area, or null.
+        internal ScreenRect? MonitorWorkArea(nint monitor)
+        {
+            if (monitor == 0 || GdkMonitorGetWorkareaPointer == 0) return null;
+            GdkRectangle area;
+            ((delegate* unmanaged[Cdecl]<nint, GdkRectangle*, void>)GdkMonitorGetWorkareaPointer)(monitor, &area);
+            return area.Width > 0 && area.Height > 0 ? new ScreenRect(area.X, area.Y, area.Width, area.Height) : null;
         }
 
         // The index of a GdkMonitor in the default display, which gtk_window_fullscreen_on_monitor takes; -1 if absent.
@@ -2196,6 +2234,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             var value = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetTitlePointer)(webView);
             return value == 0 ? null : Marshal.PtrToStringUTF8(value);
         }
+
+        internal nint WebKitWebViewGetUserContentManager(nint webView) =>
+            webView == 0 ? 0 : ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetUserContentManagerPointer)(webView);
 
         // All frames, at document start, without URL patterns: the script compares
         // complete origins, including the listener port, itself.

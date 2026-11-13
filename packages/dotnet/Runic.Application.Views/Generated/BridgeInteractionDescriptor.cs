@@ -9,9 +9,9 @@ namespace Runic.Application.Views.Generated;
 
 /// <summary>Neutral generated interaction descriptor. Optional adapters implement its attachment behavior.</summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public abstract class BridgeInteractionDescriptor<TModel>
+public abstract class BridgeInteractionDescriptor
 {
     /// <summary>Attaches the interaction of <paramref name="model"/> to the browser route.</summary>
     /// <returns>A lease that detaches the interaction.</returns>
-    public abstract IDisposable Attach(WindowContentSession session, TModel model, string route);
+    public abstract IDisposable Attach(WindowContentSession session, object model, string route);
 }

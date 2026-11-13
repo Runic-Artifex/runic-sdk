@@ -684,6 +684,18 @@ internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory 
 public interface IDesktopEphemeralDataStoreWindowHost : IDesktopWindowHost;
 #pragma warning restore CA1040
 
+// sdk#864, P4: a first-party custom window host that shows the side panel (Runic.Desktop.Gtk4), through the same seam as
+// the built-in hosts (IWebUiEmbeddedHost.SupportsSidePanel, CheckSidePanel, OpenSidePanelAsync). Other custom window hosts
+// refuse the panel (D062.8).
+internal interface IDesktopSidePanelWindowHost : IDesktopWindowHost
+{
+    bool SupportsSidePanel { get; }
+
+    DesktopSidePanelRefusal? CheckSidePanel(bool left, int width);
+
+    ValueTask<Internal.WebUiSidePanelOpening> OpenSidePanelAsync(Internal.WebUiSidePanelRequest request, CancellationToken cancellationToken);
+}
+
 internal interface IDesktopPageAnnouncementHost : IDesktopWindowHost
 {
     Func<string, DesktopAnnouncementPriority, CancellationToken, Task<bool>>? AnnounceInPage { set; }
@@ -869,6 +881,17 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             OwnerHandle = options.OwnerHandle,
             Modality = options.Modality,
         }, cancellationToken);
+
+    public bool SupportsSidePanel => _host is IDesktopSidePanelWindowHost { SupportsSidePanel: true };
+
+    public DesktopSidePanelRefusal? CheckSidePanel(bool left, int width) =>
+        _host is IDesktopSidePanelWindowHost panelHost ? panelHost.CheckSidePanel(left, width) : DesktopSidePanelRefusal.Unsupported;
+
+    public ValueTask<Internal.WebUiSidePanelOpening> OpenSidePanelAsync(Internal.WebUiSidePanelRequest request,
+        CancellationToken cancellationToken = default) =>
+        _host is IDesktopSidePanelWindowHost panelHost
+            ? panelHost.OpenSidePanelAsync(request, cancellationToken)
+            : ValueTask.FromResult(Internal.WebUiSidePanelOpening.Refused(DesktopSidePanelRefusal.Unsupported));
 
     public ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
         _host is IDesktopSpellCheckingWindowHost spellingHost

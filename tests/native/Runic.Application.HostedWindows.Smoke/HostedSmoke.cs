@@ -500,7 +500,7 @@ internal sealed class HostedSmokeModel : INotifyPropertyChanged
 }
 
 internal sealed class HostedSmokeBridge(IBridgeTransport transport, HostedSmokeModel model)
-    : ViewModelBridge<HostedSmokeModel>(transport, model, "hosted-smoke", [], [], [], []);
+    : ViewModelBridge(transport, model, typeof(HostedSmokeModel), "hosted-smoke", [], [], [], []);
 
 internal sealed class ReportCommand(Action execute) : System.Windows.Input.ICommand
 {

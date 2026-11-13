@@ -5,7 +5,7 @@ namespace Runic.Application.Views.Generated;
 // query-collections/1 (specs/application/README.md, "Query collections"): the rows of a RunicQueryCollection, which each
 // connection reads for its own range (query-rows), the query it changes (query-set), and the position of a key
 // (query-index). The rows never enter the route's state; its state member carries the query, total and version.
-public partial class ViewModelBridge<T>
+public partial class ViewModelBridge
 {
     // The requests a connection may have in flight per query collection: two query-rows (a page sends one at a time), one
     // query-set and one query-index. Further ones answer busy, so one page cannot take every slot of the row source.
@@ -156,7 +156,7 @@ public partial class ViewModelBridge<T>
     }
 
     // The query collection a request names, read in a model turn; null with the reply to send instead.
-    private IBridgeQueryCollection? QueryCollection(BridgeRouteRequest request, out PropertyDescriptor<T> property,
+    private IBridgeQueryCollection? QueryCollection(BridgeRouteRequest request, out PropertyDescriptor property,
         out ReadOnlyMemory<byte> failure)
     {
         failure = default;

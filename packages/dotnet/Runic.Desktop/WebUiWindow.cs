@@ -4282,6 +4282,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private IEnumerable<WebUiSession> SessionsOf(DesktopConnectionSlot slot) =>
         _sessions.Values.Where(session => session.Slot == slot);
 
+    // Diagnostics (Runic.Desktop.WebViewSmoke): the slots of the connected sessions, such as "Page, SidePanel".
+    internal string DescribeConnectedSlots() => string.Join(", ",
+        _sessions.Values.Where(session => _connectedSessions.ContainsKey(session.Id)).Select(session => session.Slot.ToString()));
+
     // sdk#864, P1a: opens the side panel's connection slot and returns its credential, which only the panel's view
     // receives, in its document-start script (CreatePanelDocumentStartScript). Opening again revokes the earlier
     // credential and closes its page's connection. The surface must admit one page with a session credential, outside

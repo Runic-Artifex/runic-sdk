@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Runic.Application.Views;
+using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;
 
 namespace Runic.Application.Scaling.Tests;
 
@@ -112,18 +113,18 @@ public sealed class ObservedWideModel(int size) : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public sealed class ObservedWideBridge(IBridgeTransport transport, ObservedWideModel model, string route) : ViewModelBridge<ObservedWideModel>(
-    transport, model, route,
+public sealed class ObservedWideBridge(IBridgeTransport transport, ObservedWideModel model, string route) : ViewModelBridge(
+    transport, model, typeof(ObservedWideModel), route,
     [
-        .. Enumerable.Range(0, model.Size).Select(index => new BridgeStateMember<ObservedWideModel>(Wire(index),
-            (writer, vm) => writer.WriteNumberValue(vm.Get(index)))),
-        new BridgeStateMember<ObservedWideModel>("detail", static (writer, vm) => writer.WriteStringValue(vm.Detail.Value)),
+        .. Enumerable.Range(0, model.Size).Select(index => new BridgeStateMember(Wire(index),
+            (writer, vm) => writer.WriteNumberValue(((ObservedWideModel)vm).Get(index)))),
+        new BridgeStateMember("detail", static (writer, vm) => writer.WriteStringValue(((ObservedWideModel)vm).Detail.Value)),
     ],
     [
-        .. Enumerable.Range(0, model.Size).Select(index => new PropertyDescriptor<ObservedWideModel>(ObservedWideModel.Name(index), Wire(index),
-            vm => vm.Get(index), null)),
-        new PropertyDescriptor<ObservedWideModel>(nameof(ObservedWideModel.Detail), "detail", static vm => vm.Detail.Value, null,
-            static vm => vm.Observe()),
+        .. Enumerable.Range(0, model.Size).Select(index => new PropertyDescriptor(ObservedWideModel.Name(index), Wire(index),
+            vm => ((ObservedWideModel)vm).Get(index), null)),
+        new PropertyDescriptor(nameof(ObservedWideModel.Detail), "detail", static vm => ((ObservedWideModel)vm).Detail.Value, null,
+            static vm => ((ObservedWideModel)vm).Observe()),
     ], [], [])
 {
     private static string Wire(int index) => $"m{index:00}";

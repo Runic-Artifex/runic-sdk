@@ -409,18 +409,18 @@ internal sealed class ChecksViewModel : INotifyPropertyChanged
 }
 
 internal sealed class ChecksBridge(IBridgeTransport transport, ChecksViewModel vm, WindowContentSession content)
-    : ViewModelBridge<ChecksViewModel>(transport, vm, "checks",
-        [new("runs", (writer, model) => writer.WriteNumberValue(model.Runs))],
+    : ViewModelBridge(transport, vm, typeof(ChecksViewModel), "checks",
+        [new("runs", (writer, model) => writer.WriteNumberValue(((ChecksViewModel)model).Runs))],
         [],
         [],
         [
-            new("Pick", model => model.PickCommand)
+            new("Pick", model => ((ChecksViewModel)model).PickCommand)
             {
                 ReadInput = value => value.GetInt32(),
                 ResolveArgument = (_, key) => (int)key! == 1 ? "one" : null,
             },
-            new("Locked", model => model.LockedCommand),
-            new("Slow", model => model.SlowCommand) { ExecuteAsync = (model, _, _) => model.SlowAsync() },
+            new("Locked", model => ((ChecksViewModel)model).LockedCommand),
+            new("Slow", model => ((ChecksViewModel)model).SlowCommand) { ExecuteAsync = (model, _, _) => ((ChecksViewModel)model).SlowAsync() },
         ],
         "presentation-checks", content);
 

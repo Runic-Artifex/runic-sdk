@@ -88,6 +88,10 @@ if (args.Contains("--window-placement", StringComparer.Ordinal))
     return WindowPlacementSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
         args.Contains("--window-manager", StringComparer.Ordinal));
 
+// --side-panel (#864 P4): the side panel beside the page under a window manager; see SidePanelSmoke.cs.
+if (args.Contains("--side-panel", StringComparer.Ordinal))
+    return SidePanelSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true }, gtk4: true);
+
 // --placement [--window-manager] (#663): a restored placement's position on X11, also under a window manager.
 if (args.Contains("--placement", StringComparer.Ordinal)) return PlacementSmoke.Run(args.Contains("--window-manager", StringComparer.Ordinal));
 

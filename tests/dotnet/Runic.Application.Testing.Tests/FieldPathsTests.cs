@@ -329,16 +329,16 @@ internal sealed class FieldPathsTests
 
     // A hand-written Bridge of PathRowsViewModel that counts how often it encodes a row.
     private sealed class CountingRowsBridge(IBridgeTransport transport, PathRowsViewModel vm, WindowContentSession content, Action encoded)
-        : Runic.Application.Views.Generated.ViewModelBridge<PathRowsViewModel>(transport, vm, "countingRows",
-            [new("lines", (writer, model) => { writer.WriteStartArray(); foreach (var line in model.Lines) WriteLine(writer, line); writer.WriteEndArray(); })],
-            [new("Lines", "lines", model => model.Lines, null)], [], [], "counting-rows", content,
+        : Runic.Application.Views.Generated.ViewModelBridge(transport, vm, typeof(PathRowsViewModel), "countingRows",
+            [new("lines", (writer, model) => { writer.WriteStartArray(); foreach (var line in ((PathRowsViewModel)model).Lines) WriteLine(writer, line); writer.WriteEndArray(); })],
+            [new("Lines", "lines", model => ((PathRowsViewModel)model).Lines, null)], [], [], "counting-rows", content,
             collections:
             [
-                new("lines", model => model.Lines, (writer, row) => { encoded(); WriteLine(writer, (PathLine)row!); },
+                new("lines", model => ((PathRowsViewModel)model).Lines, (writer, row) => { encoded(); WriteLine(writer, (PathLine)row!); },
                     row => ((PathLine)row!).Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
                 {
                     FieldPaths = [new(["quantity"], (row, value) => (PathLine)row with { Quantity = value.GetInt32() })],
-                    UpdateRow = (model, row, _) => model.UpdateLine(((PathLine)row!).Id, (PathLine)row),
+                    UpdateRow = (model, row, _) => ((PathRowsViewModel)model).UpdateLine(((PathLine)row!).Id, (PathLine)row),
                 },
             ])
     {

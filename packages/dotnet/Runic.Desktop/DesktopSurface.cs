@@ -62,6 +62,9 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal string? SidePanelCredential => _engine.PanelCredential;
 
+    // Diagnostics: the slots of the window's connected pages.
+    internal string DescribeConnectedSlots() => _engine.DescribeConnectedSlots();
+
     // runic-host/1 region/1: the window shows in a region of a host page, in a frame (WebUiWindow.EnterRegionMode).
     internal void EnterRegionMode()
     {

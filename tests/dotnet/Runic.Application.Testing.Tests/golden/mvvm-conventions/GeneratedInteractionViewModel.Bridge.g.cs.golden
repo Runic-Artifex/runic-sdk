@@ -2,23 +2,23 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
-internal sealed class GeneratedInteractionBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>
+internal sealed class GeneratedInteractionBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
     private readonly global::System.IDisposable? _rootInteractionMount;
     internal GeneratedInteractionBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
-        transport, vm, routePrefix ?? "generatedInteraction",
+        transport, vm, typeof(global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel), routePrefix ?? "generatedInteraction",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Attempt", "attempt", vm => vm.Attempt, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("AcceptedCount", "acceptedCount", vm => vm.AcceptedCount, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Attempt", "attempt", static vm => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).Attempt, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("AcceptedCount", "acceptedCount", static vm => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AcceptedCount, null),
         ],
         [
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Ask", vm => (object)vm.AskCommand) { ExecuteResultAsync = async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, CanExecute = (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, changed), WireName = "ask", ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, logger, "GeneratedInteractionViewModel.AskCommand") },
+            new global::Runic.Application.Views.Generated.CommandDescriptor("Ask", static vm => (object)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand) { ExecuteResultAsync = static async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.Generated.BridgeOperationResult.None; }, CanExecute = static (vm, argument) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe = static (vm, changed) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand, changed), WireName = "ask", ObserveFailures = static (vm, logger) => global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand, logger, "GeneratedInteractionViewModel.AskCommand") },
         ], "<fingerprint>", content,
         [
-            global::Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel, global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirm", "<fingerprint>:interaction:Confirm", vm => vm.Confirm, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmInteractionInputCodec.Write(writer, input)), element => ConfirmInteractionOutputCodec.Read(element)),
+            global::Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<global::Runic.Application.Testing.Tests.GeneratedInteractionRequest, global::System.Boolean>("confirm", "<fingerprint>:interaction:Confirm", static vm => ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).Confirm, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ConfirmInteractionInputCodec.Write(writer, input)), element => ConfirmInteractionOutputCodec.Read(element)),
         ],
         dataSubscriptions: DataMetadata,
         collections: [
@@ -126,12 +126,12 @@ private static class ConfirmInteractionOutputCodec
 
 }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>[] State =
+    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
-        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("attempt", static (writer, vm) => AttemptValueCodec.Write(writer, vm.Attempt)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("acceptedCount", static (writer, vm) => AcceptedCountValueCodec.Write(writer, vm.AcceptedCount)),
-        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("canAsk", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default))),
-        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("isAskExecuting", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember("attempt", static (writer, vm) => AttemptValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).Attempt)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember("acceptedCount", static (writer, vm) => AcceptedCountValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AcceptedCount)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember("canAsk", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand, global::ReactiveUI.Primitives.RxVoid.Default))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember("isAskExecuting", static (writer, vm) => writer.WriteBooleanValue(global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)((global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel)vm).AskCommand))),
     ]
     ;
     public override void Dispose()

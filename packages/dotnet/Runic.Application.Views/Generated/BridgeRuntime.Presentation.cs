@@ -11,7 +11,7 @@ namespace Runic.Application.Views.Generated;
 //   revision that includes everything published before the wait. While a wait is pending, each connection that uses
 //   the feature and has a presentation of the route open is asked once with a present push, also one that opens the
 //   route during the wait.
-public partial class ViewModelBridge<T> : IBridgePresentationRoute, IBridgeResumedPresentations
+public partial class ViewModelBridge : IBridgePresentationRoute, IBridgeResumedPresentations
 {
     // The route's current epoch: the revision of the state that began it. Read and written in model turns.
     private long _epoch;

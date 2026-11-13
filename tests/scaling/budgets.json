@@ -224,6 +224,37 @@
       "measured": [17264, 44384],
       "margin": 0.25,
       "note": "O(members) per unit, the allocations of B6 (sdk#911)"
+    },
+    "aot/bridge/executable-bytes": {
+      "class": "O(n)",
+      "sizes": [1, 9],
+      "limit": 229835,
+      "measured": [29136, 225328],
+      "slack": 32768,
+      "note": "linux-x64 executable bytes above the build without fixture ViewModels; the slope from 1 to 9 is the cost per ViewModel, about 24 KiB after #901 (118 KiB before; win-x64 22.2 KiB, osx-arm64 24.4 KiB in the ci:all-platforms run of #918): the generated Bridge's constructor, codecs and lambdas and the ViewModel itself. Section alignment makes the size not exactly linear: the slack and the 2 % margin absorb it",
+      "margin": 0.02
+    },
+    "aot/bridge/view-model-types": {
+      "class": "O(n)",
+      "sizes": [1, 9],
+      "limit": 27,
+      "measured": [3, 27],
+      "note": "mstat type records that name a fixture ViewModel: 3 per ViewModel after #901 (947 before), its DI factory delegates and itself; D064.24 allows at most 16"
+    },
+    "aot/bridge/generated-generic-types": {
+      "class": "O(n)",
+      "sizes": [1, 9],
+      "limit": 0,
+      "measured": [0, 0],
+      "note": "#901's metric: mstat type records that instantiate a Runic.Application.Views.Generated type over a fixture ViewModel (894 per ViewModel before #901). It stays 0: the Bridge runtime is not generic over the ViewModel"
+    },
+    "aot/executable-bytes": {
+      "class": "total",
+      "sizes": [0, 9],
+      "limit": 10939590,
+      "measured": [10499760, 10725088],
+      "margin": 0.02,
+      "note": "the whole linux-x64 executable without fixture ViewModels and with 9; the limit is the larger plus 2 %"
     }
   }
 }

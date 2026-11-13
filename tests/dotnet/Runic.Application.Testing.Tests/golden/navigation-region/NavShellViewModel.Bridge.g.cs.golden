@@ -2,15 +2,15 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
-internal sealed class NavShellBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.NavShellViewModel>
+internal sealed class NavShellBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
     private readonly global::Runic.Application.Views.WindowContentSession _content;
     private readonly global::Runic.Application.Testing.Tests.NavShellViewModel _owner;
     internal NavShellBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.NavShellViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
-        transport, vm, routePrefix ?? "navShell",
+        transport, vm, typeof(global::Runic.Application.Testing.Tests.NavShellViewModel), routePrefix ?? "navShell",
         CreateState(content),
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.NavShellViewModel>("Main", "main", vm => vm.Main?.Current, null, static vm => vm.Main),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Main", "main", static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main?.Current, null, static vm => ((global::Runic.Application.Testing.Tests.NavShellViewModel)vm).Main),
         ],
         [
         ],
@@ -29,13 +29,14 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.Generated
         [
         ]
     ;
-    private static global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.NavShellViewModel>[] CreateState(global::Runic.Application.Views.WindowContentSession? content)
+    private static global::Runic.Application.Views.Generated.BridgeStateMember[] CreateState(global::Runic.Application.Views.WindowContentSession? content)
     {
         global::System.ArgumentNullException.ThrowIfNull(content);
         return
         [
-            new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.NavShellViewModel>("main", (writer, vm) =>
+            new global::Runic.Application.Views.Generated.BridgeStateMember("main", (writer, model) =>
             {
+                var vm = (global::Runic.Application.Testing.Tests.NavShellViewModel)model;
                 if (vm.Main?.Current is null) { content.Clear(vm, "Main"); writer.WriteNullValue(); }
                 else
                 {

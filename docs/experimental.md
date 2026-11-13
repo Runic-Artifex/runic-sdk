@@ -75,9 +75,10 @@ window's page, in a strip on one edge by which the window grows, so the page kee
 its size and its place on the screen. The panel's page is a second connection of the
 window and binds to the same ViewModel tree. Experimental for one minor (D062.7);
 the window building blocks it uses (`DesktopWindowState.Bounds`, `SetBoundsAsync`,
-`SetMinimumSizeAsync`, `IsSnapped`) are stable. 0.19 shows it on Windows (WebView2);
-macOS, Linux, custom window hosts, WPF, hosted windows and installed browsers refuse
-it with `Unsupported`. Start with the
+`SetMinimumSizeAsync`, `IsSnapped`) are stable. 0.19 shows it on Windows (WebView2),
+macOS (WKWebView) and Linux (WebKitGTK, GTK 3 and the GTK 4 profile of
+`Runic.Desktop.Gtk4`; on Wayland the right edge only); other custom window hosts,
+WPF, hosted windows and installed browsers refuse it with `Unsupported`. Start with the
 [Runic.Desktop README](../packages/dotnet/Runic.Desktop/README.md#side-panel).
 
 | Package | API |

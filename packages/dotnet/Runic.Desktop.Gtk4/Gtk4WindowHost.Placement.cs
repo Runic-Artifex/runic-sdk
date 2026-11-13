@@ -31,6 +31,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
         return new RestoreFrame(_normalPosition?.X, _normalPosition?.Y, width > 0 ? width : window.GetWidth(), height > 0 ? height : window.GetHeight());
     }
 
+    // GTK thread only: the window's frame for a page frame, with an open side panel on its edge.
+    private RestoreFrame WithPanel(RestoreFrame page)
+    {
+        if (_panel is not { IsShown: true } panel || !_layout.IsShown) return page;
+        var bounds = SidePanelPlanner.IncludePanel(
+            new DesktopWindowBounds { X = page.X, Y = page.Y, Width = page.Width, Height = page.Height, Scale = 1 }, panel.IsLeft, _layout.Width);
+        return new RestoreFrame(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+    }
+
     // GTK thread only: SetBoundsAsync, MoveAsync and ResizeAsync of a normal window, whose frame is the restore bounds.
     private void ReleaseRestoreBounds() => _restore.Reset(_restore.Current);
 
@@ -106,10 +115,17 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
             var x11 = Gtk4X11Placement.IsActive;
             // D064.11: a position Wayland cannot set fails the whole placement, before anything changes.
             if (placement.X is not null && !x11) throw WindowBoundsSupport.PositionUnavailable();
+            // The page's placement, as State.Placement reports it, which excludes an open side panel; the window adds the
+            // panel on its edge before the fit (side-panel/DESIGN.md §3.1).
+            var page = Volatile.Read(ref _state)?.Placement;
             window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
-            var width = placement.Width > 0 ? placement.Width : defaultWidth > 0 ? defaultWidth : window.GetWidth();
-            var height = placement.Height > 0 ? placement.Height : defaultHeight > 0 ? defaultHeight : window.GetHeight();
-            (int X, int Y)? position = !x11 ? null : placement is { X: { } placedX, Y: { } placedY } ? (placedX, placedY) : _normalPosition;
+            var width = placement.Width > 0 ? placement.Width : page is { Width: > 0 } kept ? kept.Width : defaultWidth > 0 ? defaultWidth : window.GetWidth();
+            var height = placement.Height > 0 ? placement.Height : page is { Height: > 0 } keptHeight ? keptHeight.Height : defaultHeight > 0 ? defaultHeight : window.GetHeight();
+            (int X, int Y)? position = !x11 ? null
+                : placement is { X: { } placedX, Y: { } placedY } ? (placedX, placedY)
+                : page is { X: { } pageX, Y: { } pageY } ? (pageX, pageY) : _normalPosition;
+            var frame = WithPanel(new RestoreFrame(position?.X, position?.Y, width, height));
+            (position, width, height) = (frame is { X: { } frameX, Y: { } frameY } ? (frameX, frameY) : null, frame.Width, frame.Height);
             // Kept on a monitor that exists now, as at open.
             if (position is { } requested)
             {

@@ -23,8 +23,24 @@ internal sealed partial class LinuxWebKitGtkHost
     private readonly System.Diagnostics.Stopwatch _restoreClock = System.Diagnostics.Stopwatch.StartNew();
 
     // GTK thread only: the restore bounds now.
+    // The tracker holds the window's frame, an open side panel included; _normal and the placement exclude the panel.
     private RestoreFrame? CurrentRestore() =>
-        _restore.Current ?? (_normal is { } normal ? new RestoreFrame(normal.X, normal.Y, normal.Width, normal.Height) : null);
+        _restore.Current ?? (_normal is { } normal ? WithPanel(new RestoreFrame(normal.X, normal.Y, normal.Width, normal.Height)) : null);
+
+    // GTK thread only: the window's frame for a page frame, with an open side panel on its edge (side-panel/DESIGN.md
+    // §3.1: a placement is the page's, and the window grows by the panel).
+    private RestoreFrame WithPanel(RestoreFrame page)
+    {
+        if (_panel is not { IsShown: true } panel || !_layout.IsShown) return page;
+        var bounds = SidePanelPlanner.IncludePanel(
+            new DesktopWindowBounds { X = page.X, Y = page.Y, Width = page.Width, Height = page.Height, Scale = 1 }, panel.IsLeft, _layout.Width);
+        return new RestoreFrame(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+    }
+
+    // GTK thread only, from ShrinkRestoredBounds: a side panel closed while the window was maximized or full-screen; the
+    // window restores to the page's bounds, which the tracker holds and gives it once it is restored.
+    private void HoldRestoredPage(DesktopWindowPlacement page) =>
+        _restore.Set(new RestoreFrame(page.X, page.Y, page.Width, page.Height), _restoreClock.Elapsed, maximized: true);
 
     // GTK thread only: SetBoundsAsync, MoveAsync and ResizeAsync of a normal window, whose frame is the restore bounds.
     private void ReleaseRestoreBounds() => _restore.Reset(_restore.Current);
@@ -92,6 +108,9 @@ internal sealed partial class LinuxWebKitGtkHost
             var height = placement.Height > 0 ? placement.Height : basis?.Height ?? currentHeight;
             int? x = isWayland ? null : placement.X ?? basis?.X;
             int? y = isWayland ? null : placement.Y ?? basis?.Y;
+            // The page's placement: the window adds an open side panel on its edge before the fit.
+            var frame = WithPanel(new RestoreFrame(x, y, width, height));
+            (x, y, width, height) = (frame.X, frame.Y, frame.Width, frame.Height);
             // Kept on a monitor that exists now, as at open.
             var workAreas = Api.GetWorkAreas();
             if (x is { } placedX && y is { } placedY)
@@ -125,7 +144,8 @@ internal sealed partial class LinuxWebKitGtkHost
                 }
             }
             if (placement.FullScreen && !fullScreen && Api.CanUseFullScreen) EnterFullScreen();
-            _normal = new DesktopWindowPlacement { X = x, Y = y, Width = width, Height = height, Origin = DesktopCoordinateOrigin.TopLeft };
+            // The page's placement after the fit, without an open side panel.
+            _normal = ExcludePanel(new DesktopWindowPlacement { X = x, Y = y, Width = width, Height = height, Origin = DesktopCoordinateOrigin.TopLeft });
             ReportPlacement(placement.Maximized, placement.FullScreen && Api.CanUseFullScreen);
         }, cancellationToken);
     }

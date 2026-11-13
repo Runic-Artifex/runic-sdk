@@ -49,7 +49,7 @@ internal sealed class ViewRequestCodegenTests
                 && bridge.Contains($"\"{fingerprint}\", content,", StringComparison.Ordinal),
                 $"{model.Name}: the generated fingerprint differs from BridgeContractShape.Compute ({fingerprint}).");
             Require(client.Contains($"focus: {{ contract: \"{fingerprint}:request:Focus\", decodeInput: (value: unknown) => bridgeWire.object<ViewRequestFocusTarget>(", StringComparison.Ordinal)
-                && bridge.Contains($"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<global::{model.FullName}, global::Runic.Application.Testing.Tests.ViewRequestFocusTarget>(\"focus\", \"{fingerprint}:request:Focus\", vm => vm.Focus, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FocusRequestInputCodec.Write(writer, input))),", StringComparison.Ordinal),
+                && bridge.Contains($"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<global::Runic.Application.Testing.Tests.ViewRequestFocusTarget>(\"focus\", \"{fingerprint}:request:Focus\", static vm => ((global::{model.FullName})vm).Focus, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => FocusRequestInputCodec.Write(writer, input))),", StringComparison.Ordinal),
                 $"{model.Name}: the Focus view request lost its contract or descriptor.\n{client}\n{bridge}");
 
             var parts = BridgeContractShape.Parts(model);
@@ -62,10 +62,10 @@ internal sealed class ViewRequestCodegenTests
                 && parts.Contains($"wire:{model.Name}.ConfirmDiscard.output:type:System.Boolean:nullable:False"),
                 $"{model.Name}.ConfirmDiscard is not an interaction:\n{string.Join('\n', parts)}");
             Require(client.Contains($"confirmDiscard: {{ contract: \"{fingerprint}:interaction:ConfirmDiscard\"", StringComparison.Ordinal)
-                && bridge.Contains($"global::Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<global::{model.FullName}, global::Runic.Application.Testing.Tests.ViewRequestDiscard, global::System.Boolean>(\"confirmDiscard\", \"{fingerprint}:interaction:ConfirmDiscard\", vm => vm.ConfirmDiscard,", StringComparison.Ordinal),
+                && bridge.Contains($"global::Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<global::Runic.Application.Testing.Tests.ViewRequestDiscard, global::System.Boolean>(\"confirmDiscard\", \"{fingerprint}:interaction:ConfirmDiscard\", static vm => ((global::{model.FullName})vm).ConfirmDiscard,", StringComparison.Ordinal),
                 $"{model.Name}: the ConfirmDiscard view question is not a generated interaction.\n{client}\n{bridge}");
             Require(!client.Contains("readonly focus: string", StringComparison.Ordinal) && !client.Contains("confirmDiscard: unknown", StringComparison.Ordinal)
-                && !bridge.Contains("PropertyDescriptor<global::" + model.FullName + ">(\"Focus\"", StringComparison.Ordinal),
+                && !bridge.Contains("PropertyDescriptor(\"Focus\"", StringComparison.Ordinal),
                 $"{model.Name}: a view request or question was published as state.");
         }
         // A nullable input keeps its annotation on both sides.

@@ -65,6 +65,12 @@ callback finishes, then exits GTK. This main-thread model avoids the current
 WebKitGTK exit-time threading defect ([WebKit bug 284807](https://bugs.webkit.org/show_bug.cgi?id=284807)).
 Each view owns a separate WebKit context.
 
+The window host shows the experimental side panel (`DesktopWindow.OpenSidePanelAsync`,
+`RUNICDESK104`), although it is a custom window host, which otherwise refuses it: a
+related view of the page beside it, as on GTK 3. On Wayland only the right edge
+opens. Files dropped on the panel are refused, and so are drags inside its page. See
+[Side panel](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#side-panel).
+
 GTK4 rejects centering, transparent, high-contrast, profile-path,
 custom-argument, and icon-file options, and on Wayland a global position;
 `DesktopHost.Validate` reports each one as a `window-option-unsupported`

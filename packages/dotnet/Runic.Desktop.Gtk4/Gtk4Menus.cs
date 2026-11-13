@@ -67,17 +67,17 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         return new(Gtk4Dispatcher.Instance.InvokeAsync(() => ApplyMenuBar(menus), cancellationToken));
     }
 
-    // The window's child: the view, or a box with the view for a window that shows its bar in the window.
-    private Gtk.Widget CreateMenuContent(DesktopWindowHostOptions options, WebKit.WebView webView)
+    // The window's child: the content that holds the view, or a box with it for a window that shows its bar in the window.
+    private Gtk.Widget CreateMenuContent(DesktopWindowHostOptions options, WebKit.WebView webView, Gtk.Widget content)
     {
         _pointerMotion = Gtk.EventControllerMotion.New();
         _pointerMotion.OnMotion += OnPointerMotion;
         webView.AddController(_pointerMotion);
-        if (!GtkMenus.ShowsInWindowBar(options.MenuBarPresentation, options.Frameless, options.Kiosk)) return webView;
+        if (!GtkMenus.ShowsInWindowBar(options.MenuBarPresentation, options.Frameless, options.Kiosk)) return content;
         _menuBox = Gtk.Box.New(Gtk.Orientation.Vertical, 0);
-        webView.SetVexpand(true);
-        webView.SetHexpand(true);
-        _menuBox.Append(webView);
+        content.SetVexpand(true);
+        content.SetHexpand(true);
+        _menuBox.Append(content);
         return _menuBox;
     }
 
