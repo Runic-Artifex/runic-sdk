@@ -307,6 +307,21 @@ internal static class SidePanelSmoke
         await window.ToggleMaximizedAsync();
         await WaitForAsync(() => !window.State!.IsMaximized && SameFrame(window.State.Bounds!, start.Bounds!), "the window restored again");
         Console.WriteLine("Side panel: a maximized window kept the panel with the page beside it, and refused a new one.");
+        if (OperatingSystem.IsWindows()) return;
+
+        // Closing the panel of a maximized window: the restored size shrinks by the panel (D062.5), as
+        // SidePanelEdgeSmoke (--side-panel-edges) checks on every platform.
+        panel = await OpenQuietlyAsync(window);
+        await WaitForAsync(() => SameFrame(window.State!.Bounds!, opened), $"the grown bounds {opened}");
+        await window.ToggleMaximizedAsync();
+        await WaitForAsync(() => window.State!.IsMaximized, "the window maximized with the panel");
+        await Task.Delay(Settle);
+        await panel.CloseAsync();
+        Require(window.State!.IsMaximized && window.SidePanel is null, "the window still maximized after the panel closed");
+        await window.ToggleMaximizedAsync();
+        await WaitForAsync(() => !window.State!.IsMaximized && SameFrame(window.State.Bounds!, start.Bounds!),
+            $"the window to restore to exactly the start bounds {start.Bounds}: its restored size shrinks by the panel");
+        Console.WriteLine("Side panel: closing a maximized window's panel shrank its restored size; it restored to the start bounds.");
     }
 
     // The minimum width includes the panel; closing the window closes the panel with WindowClosed.

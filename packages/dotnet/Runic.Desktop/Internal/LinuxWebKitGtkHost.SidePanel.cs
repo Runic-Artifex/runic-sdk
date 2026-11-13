@@ -27,6 +27,8 @@ internal sealed partial class LinuxWebKitGtkHost
     // The minimum size DesktopWindowOptions or SetMinimumSizeAsync asked for, zero for none; an open panel adds its width.
     private int _minimumWidth;
     private int _minimumHeight;
+    // The bounds a window restores to after its panel closed while it was maximized, full-screen or minimized.
+    private DesktopWindowPlacement? _pendingRestore;
     // Serializes the panel's open, move, width change and close, which wait for the window manager.
     private readonly SemaphoreSlim _panelGate = new(1, 1);
     // Any thread: whether a panel is open, and the work area of the window's monitor, for CheckSidePanel.
@@ -368,11 +370,23 @@ internal sealed partial class LinuxWebKitGtkHost
     }
 
     // The size a maximized or full-screen window restores to loses the panel's width: the placement already excludes it.
-    private void ShrinkRestoredBounds()
+    // The window manager keeps the geometry a maximized or full-screen window restores to and ignores a resize requested
+    // meanwhile, so the bounds apply when the window is restored (ApplyPendingRestore, D062.5).
+    private void ShrinkRestoredBounds() => _pendingRestore = _normal;
+
+    // GTK thread, from UpdateState of a window that is neither maximized, full-screen nor minimized: a panel closed while
+    // it was gives it the restored bounds without the panel, in one configure request. True when it changed the window,
+    // whose next configure-event reports the new state.
+    private bool ApplyPendingRestore(DesktopWindowPlacement current)
     {
-        if (_normal is not { } normal) return;
-        if (!Api.IsWaylandDisplay() && normal is { X: { } x, Y: { } y }) Api.GtkWindowMove(_window, x, y);
-        Api.GtkWindowResize(_window, normal.Width, normal.Height);
+        if (_pendingRestore is not { } restore) return false;
+        _pendingRestore = null;
+        var wayland = Api.IsWaylandDisplay();
+        var moves = !wayland && restore is { X: not null, Y: not null } && (restore.X != current.X || restore.Y != current.Y);
+        if (!moves && restore.Width == current.Width && restore.Height == current.Height) return false;
+        if (moves) Api.GtkWindowMove(_window, restore.X!.Value, restore.Y!.Value);
+        Api.GtkWindowResize(_window, restore.Width, restore.Height);
+        return true;
     }
 
     private async Task DiscardPanelAsync(SidePanel panel)

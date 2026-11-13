@@ -578,6 +578,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             X = x, Y = y, Width = Math.Max(1, width), Height = Math.Max(1, height), Origin = DesktopCoordinateOrigin.TopLeft,
         };
+        // A side panel closed while the window was maximized or full-screen: the restored window loses its width.
+        if (!maximized && !fullScreen && ApplyPendingRestore(current)) return;
         var exact = ReadExactBounds(x, y, current.Width, current.Height, flags, maximized, fullScreen);
         if (!maximized && !fullScreen && !tiled)
         {

@@ -25,6 +25,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
     private UserScript? _pageHandOff;
     private int _minimumWidth;
     private int _minimumHeight;
+    // The bounds a window restores to after its panel closed while it was maximized, full-screen or minimized.
+    private ((int X, int Y)? Position, int Width, int Height)? _pendingRestore;
     // The last Tab the window received, and the view that had the focus, for WatchFocus.
     private Gtk.EventControllerKey? _tabKeys;
     private (bool Backward, long At)? _lastTab;
@@ -430,11 +432,31 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
 
     // GTK 4 keeps the restored size in the default size: it loses the panel's width, and on the left edge the position
     // it restores to moves right by it.
+    // The window manager keeps the geometry a maximized or full-screen window restores to, and GTK takes it from the
+    // window manager's configure when it is restored, so the bounds apply then (ApplyPendingRestore, D062.5).
     private void ShrinkRestoredBounds(Gtk.Window window, Gtk4SidePanel panel)
     {
         window.GetDefaultSize(out var width, out var height);
-        if (width > 0) window.SetDefaultSize(Math.Max(1, width - panel.NativeWidth), height);
-        if (panel.IsLeft && _normalPosition is { } position) _normalPosition = (position.X + panel.NativeWidth, position.Y);
+        if (width <= 0 || height <= 0) return;
+        (int X, int Y)? position = _normalPosition is { } normal && panel.IsLeft ? (normal.X + panel.NativeWidth, normal.Y) : _normalPosition;
+        _pendingRestore = (position, Math.Max(1, width - panel.NativeWidth), height);
+        if (position is { } moved) _normalPosition = moved;
+    }
+
+    // GTK thread, from UpdateState of a window that is neither maximized, full-screen nor minimized: a panel closed while
+    // it was gives it the restored bounds without the panel, the default size and on X11 one XMoveResizeWindow. True when
+    // it changed the window, whose next notification reports the new state.
+    private bool ApplyPendingRestore(Gtk.Window window, (int X, int Y)? current, int width, int height)
+    {
+        if (_pendingRestore is not { } restore) return false;
+        _pendingRestore = null;
+        var moves = restore.Position is { } target && current is { } now && target != now;
+        if (!moves && restore.Width == width && restore.Height == height) return false;
+        window.SetDefaultSize(restore.Width, restore.Height);
+        if (restore.Position is { } position && current is not null)
+            Gtk4X11Placement.MoveResize(SurfaceOf(window), position.X, position.Y, restore.Width, restore.Height);
+        QueueStateUpdate();
+        return true;
     }
 
     // GTK thread: removes the panel's view and forgets it, without changing the window or reporting.

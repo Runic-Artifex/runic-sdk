@@ -1813,6 +1813,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         var restoredHeight = Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
         // X11 only, and only once the window is mapped: an unmapped window has no position on screen yet.
         var position = window.IsVisible() ? Gtk4X11Placement.GetPosition(SurfaceOf(window)) : null;
+        // A side panel closed while the window was maximized or full-screen: the restored window loses its width.
+        var minimized = window.GetSurface() is { } restoredSurface && (ToplevelGetState(restoredSurface.Handle.DangerousGetHandle()) & GdkToplevelStateMinimized) != 0;
+        if (!maximized && !fullScreen && !minimized && ApplyPendingRestore(window, position, width, height)) return;
         if (position is not null && !maximized && !fullScreen)
         {
             _normalPosition = position;
