@@ -817,7 +817,12 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         lock (_modelGate)
         {
             if (IsInactive) return;
-            if (string.IsNullOrEmpty(e.PropertyName)) RefreshMembers();
+            if (string.IsNullOrEmpty(e.PropertyName))
+            {
+                // Every row may have moved, also in a collection without change notifications.
+                _collectionIndexes.Clear();
+                RefreshMembers();
+            }
             else RefreshMember(e.PropertyName);
             ScheduleUnit();
         }
@@ -832,12 +837,12 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         foreach (var descriptor in _incrementalCollections) RefreshCollectionInstance(descriptor);
     }
 
-    // Refreshes the instances of the member a notification named; the model gate is held, in a model turn.
+    // Refreshes the instances of the member a notification named; the model gate is held, in a model turn. The row
+    // indexes of other keyed collections stay (#909): a collection's own changes drop its index (TryPublishCollection),
+    // and an index is only used for the instance it was built from (TryPublishItem).
     private void RefreshMember(string name)
     {
         _memberRefreshPending = true;
-        // A row's index may have changed with the member.
-        _collectionIndexes.Clear();
         if (_propertiesByName.TryGetValue(name, out var properties))
         {
             var changed = false;
@@ -845,9 +850,19 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
             if (changed) PublishCollectionFields();
             foreach (var property in properties) RefreshObservedSubObject(property);
         }
+        // A notification of the member that holds a keyed collection may announce rows that moved without a collection
+        // change, so its row index is dropped too.
         if (_collectionsByName.TryGetValue(name, out var collections))
-            foreach (var descriptor in collections) RefreshCollectionInstance(descriptor);
-        foreach (var descriptor in _unnamedCollections) RefreshCollectionInstance(descriptor);
+            foreach (var descriptor in collections)
+            {
+                _collectionIndexes.Remove(descriptor);
+                RefreshCollectionInstance(descriptor);
+            }
+        foreach (var descriptor in _unnamedCollections)
+        {
+            _collectionIndexes.Remove(descriptor);
+            RefreshCollectionInstance(descriptor);
+        }
     }
 
     // Before a unit or a state reads the members: every member's instances, when a named notification may have
@@ -869,6 +884,8 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
         var rows = descriptor.Get(_vm);
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
         _collectionInstances[descriptor] = rows;
+        // The row index of the previous instance would keep it and its rows alive.
+        _collectionIndexes.Remove(descriptor);
         MarkCollectionSet(descriptor);
         _dataSubscriptions?.Reattach(descriptor.Name);
     }
@@ -952,7 +969,6 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
 
     private void RefreshCollectionSubscriptions()
     {
-        _collectionIndexes.Clear();
         var changed = false;
         foreach (var property in _properties) changed |= RefreshCollectionSubscription(property);
         if (changed) PublishCollectionFields();
