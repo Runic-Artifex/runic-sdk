@@ -27,6 +27,8 @@ jobs:
     outputs:
       ci-run-id: ${{ steps.ci.outputs.run-id }}
       artifact-id: ${{ steps.ci.outputs.artifact-id }}
+      command-line-version: ${{ steps.train.outputs.cli }}
+      translations-version: ${{ steps.train.outputs.translations }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,6 +49,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node eng/release/ci-run.mjs
+      # The Command Line and Translations releases this commit builds against (Directory.Packages.props); row P-sdk
+      # checks them as published.
+      - name: Read the train's Command Line and Translations versions
+        id: train
+        run: |
+          node --input-type=module -e '
+            const { trainVersions } = await import("./eng/ci/train-feed.mjs");
+            const { cli, translations } = trainVersions();
+            console.log("cli=" + cli + "\ntranslations=" + translations);
+          ' >> "$GITHUB_OUTPUT"
   # Read-only: verifies the CI packages, describes the release (bundle, SBOM,
   # checksums) and checks registries, tag and release. In a dry run this is the
   # last job; it never holds OIDC, attestation or write permissions.
@@ -110,8 +122,25 @@ jobs:
       - name: Check npm latest without moving it
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: bun eng/release/cli.mjs tag-latest artifacts/release/packages.json --dry-run
-  publish:
+  # Train compatibility gate, row P-sdk (eng/train/README.md): restores, builds and runs consumers of exactly these
+  # runic-sdk candidates (the CI run preflight found) with the published Command Line and Translations releases of
+  # the train, with warnings as errors. Publishing needs it; a dry run runs it too. The gate runs from this commit.
+  train:
     needs: [preflight, candidate]
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/train-compat.yml
+    with:
+      row: P-sdk
+      cli: published:${{ needs.preflight.outputs.command-line-version }}
+      translations: published:${{ needs.preflight.outputs.translations-version }}
+      sdk: run:${{ needs.preflight.outputs.ci-run-id }}
+    secrets:
+      # Only if GitHub refuses this job's token for the other repositories' artifacts (D061.12).
+      RUNIC_TRAIN_TOKEN: ${{ secrets.RUNIC_TRAIN_TOKEN }}
+  publish:
+    needs: [preflight, candidate, train]
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30

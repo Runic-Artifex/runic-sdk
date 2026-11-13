@@ -89,25 +89,27 @@ package artifact of a CI run.
    row **P-tr** (`cli=published:<version>`, `translations=run:<id>`, `sdk=run`)
    before it publishes.
 3. After Translations is published, refresh runic-sdk's lock files against nuget.org
-   (`RunicUpdateLockFiles`), wait for CI, and run row **P-sdk**
-   (`cli=published:<version>`, `translations=published:<version>`, `sdk=run:<the CI run
-   Publish preview will use>`). Publish only after it passes.
+   (eng/train/README.md, "Train feed") and merge that. Publish preview then runs row
+   **P-sdk** (`cli=published:<version>`, `translations=published:<version>`,
+   `sdk=run:<the CI run it publishes>`) in its `train` job, and publishes only after
+   it passes.
 
-Until each repository's `publish-preview.yml` calls the gate as a reusable workflow
-(eng/train/README.md, "Publish workflows"; runic-sdk's comes with its 0.18.0 release
-PR), the release manager dispatches these rows and links the passing run in the
-release PR. A run lists every package with its SHA-256 in `train-result.json`, so the
-packages it checked can be compared with the ones published. The nightly rows (the
-newest published versions, and the newest `main` runs) only report.
+Each repository's `publish-preview.yml` calls the gate as a reusable workflow in a
+`train` job that its publishing job needs (eng/train/README.md, "Publish workflows"),
+also in a dry run. A run lists every package with its SHA-256 in `train-result.json`,
+so the packages it checked can be compared with the ones published. The nightly rows
+(the newest published versions, and the newest `main` runs) only report.
 
 `eng/train/expected-failures.json` names the incompatibilities of published packages
-that a train fixes (0.18: I1 to I7 of the Translations 0.9.x packages); each entry
-applies only below the fixing version, and the release that fixes it removes it.
+that a train fixes; each entry applies only below the fixing version, and the release
+that fixes it removes it. It is empty since the 0.18 train's entries (Translations
+0.9.x) went with the publication of Translations 0.10.0.
 
 ## Workflow jobs and dry run
 
 - `preflight` (`contents: read`, `actions: read`) checks the requested version and
-  runs `eng/release/ci-run.mjs` to find the CI run and the id of its package artifact.
+  runs `eng/release/ci-run.mjs` to find the CI run and the id of its package artifact,
+  and reads the train's Command Line and Translations versions for `train`.
 - `candidate` (`contents: read`, `actions: read`, no environment) downloads the
   artifact with `actions/download-artifact` (`artifact-ids`, `run-id`, `github-token`;
   a re-upload under the same name gets a new id, so it cannot swap the bytes), records it
@@ -133,12 +135,16 @@ applies only below the fixing version, and the release that fixes it removes it.
   NuGet push check before the first push, then publishes (npm also with `--provenance`),
   creates the release and moves `latest`. It installs no workspace dependencies:
   the release scripts use only built-in modules.
+- `train` (`contents: read`, `actions: read`) calls `./.github/workflows/train-compat.yml`
+  with row **P-sdk** after `candidate`: the preflight CI run's packages
+  (`sdk=run:<id>`) with the Command Line and Translations versions of
+  `Directory.Packages.props` as published on nuget.org. `publish` needs it.
 - `indexed` (`contents: read`, no environment) runs after `publish` and polls
   `cli.mjs wait-indexed`: every 30 seconds, for up to an hour, it reads each NuGet
   package's flat-container version list, which `dotnet restore` uses, until all list
   the release's version. The GitHub release and npm `latest` do not wait for it.
 
-A dry run therefore ends after `candidate`, with no OIDC token, attestation,
+A dry run therefore ends after `candidate` and `train`, with no OIDC token, attestation,
 registry write, tag or release. A failing dry-run check is the failure the real
 run would hit. `eng/release/workflow.test.mjs`, `github.test.mjs`, `sbom.test.mjs`
 and `ci-run.test.mjs` pin this contract.

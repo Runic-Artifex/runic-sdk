@@ -84,7 +84,8 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
    the locked restore with NU1403.
 2. Move `tests/fixtures/nix/completions/App` to the new Command Line (`App.csproj`, then `dotnet restore` its lock
    file).
-3. Merge that; its CI has no `train-feed` artifact. Row **P-sdk** then runs on it.
+3. Merge that; its CI has no `train-feed` artifact. Row **P-sdk** then runs on it as part of Publish preview
+   (dry run or not; "Publish workflows" below).
 
 ## Scenarios
 
@@ -157,20 +158,11 @@ candidates, and an entry that applied but matched nothing is reported as "no lon
 An entry may `waive` a warning code (I1's NU1608): when every error of a build is such an expected failure, the
 scenario records it and continues with the warning waived, so the rest of the scenario still checks something.
 
-| Id | What | Applies while | Remove |
-| --- | --- | --- | --- |
-| I1 | `Runic.Translations.CommandLine` 0.9.x requires `Runic.CommandLine` `[0.9.1, 0.10.0)`: NU1608 with Command Line 0.11.0 (S1, S3); its range and the tool's bundled Command Line 0.9.1 (S6) | Translations.CommandLine < 0.10.0 | runic-sdk 0.18.0 release PR, after Translations 0.10.0 is published |
-| I2 | No German `hints.usage` in the adapter: one English line (S1, S2, S3) | Translations.CommandLine < 0.10.0 | the same |
-| I4 | Hosting and Wpf accept any `Runic.Translations` ≥ 0.9.1; the adapter's Command Line bound is `0.10.0`, not `-0.0` (S6) | Runic.Translations < 0.10.0 | the same |
-| I7 | `dotnet-runic-translations --version` prints `0.2`, a constant in `tools/dotnet-runic-translations/Program.cs` that SARIF reports carry too (S5) | dotnet-runic-translations < 0.10.0 | the same |
-| I3 | The editor pins CsWebUi `2.5.0-beta.4.8`; Views.CsWebUi 0.17.1-preview.1 needs beta.4.9 (NU1109, S8, informational) | Runic.Translations < 0.10.0 | the same |
-
-With the newest published versions of 2026-11-12 (Command Line 0.11.0, Translations 0.9.1, SDK 0.17.1) every
-scenario's failures are these, S4 and S7 pass, and the verdict is pass.
-
-The train's candidates (Command Line 0.12.0, Translations 0.10.0) fix all five, and none of the entries applies to
-rows T, P-tr and P-sdk. They stay while N-pub combines the published 0.9.1 Translations packages, which still have
-these failures, and go in the 0.18.0 release PR once Translations 0.10.0 is the newest published version.
+The file has no entries now. The 0.18 train had five, all in Translations 0.9.x packages and fixed by Translations
+0.10.0, and they went once that was published: I1 (`Runic.Translations.CommandLine` required `Runic.CommandLine`
+`[0.9.1, 0.10.0)`: NU1608), I2 (no German `hints.usage`), I3 (the editor pinned CsWebUi `2.5.0-beta.4.8`), I4
+(Hosting and Wpf ranges, the adapter's Command Line bound) and I7 (`dotnet-runic-translations --version` printed
+`0.2`). A later train adds the incompatibilities it fixes in the same form.
 
 ## Cross-repository artifacts
 
@@ -181,8 +173,8 @@ workflow already prefers when it exists (`train-result.json` records which one w
 
 ## Publish workflows
 
-A publish workflow calls the gate as a reusable workflow and makes its publishing job need it. In runic-sdk this
-comes with the 0.18.0 release PR (COMPATIBILITY.md Q10); `eng/release/README.md` describes it.
+A publish workflow calls the gate as a reusable workflow and makes its publishing job need it; a dry run runs it
+too. `eng/release/README.md` describes runic-sdk's.
 
 ```yaml
   train:
@@ -208,8 +200,9 @@ Follow-up per repository:
   Pin the reusable workflow to a runic-sdk SHA. The dry run runs it too.
 - **runic-translations-sdk** (`publish-preview.yml`): the same with `row: P-tr`,
   `cli: published:<RunicCommandLineVersion from eng/Versions.props>`, `translations: run:<its CI run id>`,
-  `sdk: run`. Its 0.10.0 also fixes I1, I2, I4, I7 (the tool's version) and I3, after which runic-sdk removes
-  those entries.
-- **runic-sdk** (`publish-preview.yml`, in the 0.18.0 release PR): `row: P-sdk`, `cli: published:<train>`,
-  `translations: published:<train>`, `sdk: run:<its CI run id>`; then remove the I-entries of
-  `expected-failures.json`.
+  `sdk: run`.
+- **runic-sdk** (`publish-preview.yml`): a `train` job with `row: P-sdk`,
+  `cli: published:<Runic.CommandLine>`, `translations: published:<Runic.Translations>` (the versions in
+  `Directory.Packages.props`, which the preflight job reads with `trainVersions()` from `eng/ci/train-feed.mjs`) and
+  `sdk: run:<the CI run id preflight found>`. It calls `./.github/workflows/train-compat.yml`, so the gate runs from
+  the commit being published, without `gate-ref`.
