@@ -124,6 +124,11 @@ public sealed class BridgeRequest
 
     /// <summary>The trusted identity of the connection that carried the request.</summary>
     public string ConnectionKey { get; }
+
+    // Which page of the window the connection is, as its transport authenticated it: Runic Desktop's side panel slot
+    // (sdk#864) admits the panel's page with a credential of its own. Every request of a connection carries the same kind;
+    // the window takes it from the first.
+    internal RunicConnectionKind ConnectionKind { get; init; }
 }
 
 // A transport that never reports two connections with one key while it serves a dispatcher, such as Runic Desktop's, whose

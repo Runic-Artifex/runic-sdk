@@ -1303,6 +1303,14 @@ public async Task ClosesWhenTheHostAsks()
   var frame = await window.AttachRegionAsync($"http://127.0.0.1:{hostPagePort}");
   await page.GotoAsync($"http://127.0.0.1:{hostPagePort}/region.html?src={Uri.EscapeDataString(frame.AbsoluteUri)}");
   ```
+- Components (`region-component/1`; add it to `Features`, and allow it in the
+  guest with `RunicGuestOptions.AllowComponentEmbedding`):
+  `AttachComponentAsync(embedder)` attaches a region window as a component and
+  returns its `Module`, `Url` and `Token`. Import `Module` in a test page whose
+  origin is `embedder`, create the element its `tag` export names and call
+  `element.connect({ url, token })`; the guest admits the connection only from
+  that origin, and serves its component build only to it. The page's
+  Content-Security-Policy must allow the guest's origin.
 - The application's `OpenWindowAsync` waits for the page to connect when its
   `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
   real host. Load `LaunchUrl` in the browser under test, or start the

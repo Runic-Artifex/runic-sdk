@@ -25,7 +25,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The reply to a late call of a recently released capability (Views protocol 3).
     internal const string ReleasedCapabilityReply =
         "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
-    private const string WebSocketPath = "/_webui_ws_connect";
+    internal const string WebSocketPath = "/_webui_ws_connect";
     // blobs/1: the window's blobs (GET and HEAD of /_runic/blobs/{token}) and uploads (POST /_runic/upload), which a
     // Bridge transport serves (SetBlobHandler).
     internal const string BlobsPath = "/_runic/blobs";
@@ -62,6 +62,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly BrowserLaunchBinding _launchBinding = new();
     // runic-host/1 region mode: the frame of a host page that shows this surface, and the page it admits.
     private readonly FrameLaunchBinding _frameBinding = new();
+    // runic-host/1 region-component/1: the host page that loads this surface's component, and the token it admits.
+    private readonly ComponentBinding _componentBinding = new();
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _presentationGate = new(1, 1);
     private readonly TaskCompletionSource _disposeCompletion = NewCompletionSource();
@@ -149,6 +151,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private WebUiBrowser _currentBrowser;
     private int _requestedPort;
     private int _activeConnections;
+    // The side panel's page connection slot (sdk#864) and its one connection, beside the page's (_activeConnections).
+    private readonly PanelConnectionSlot _panelSlot = new();
+    private int _activePanelConnections;
     private long _nextClientId;
     private long _nextConnectionId;
     private long _nextEventNumber;
@@ -1267,8 +1272,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(url);
+        // The window's page: a side panel's page keeps its own address.
         return Task.WhenAll(_sessions.Values
-            .Where(static session => session.IsAuthenticated)
+            .Where(static session => session.IsAuthenticated && session.Slot == DesktopConnectionSlot.Page)
             .Select(session => session.NavigateAsync(url, cancellationToken)));
     }
 
@@ -1963,7 +1969,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             0,
             session.ClientId,
             session.ConnectionId,
-            session.Cookies);
+            session.Cookies)
+        {
+            Slot = session.Slot,
+        };
         var previousCallbackWindow = CallbackWindow.Value;
         CallbackWindow.Value = this;
         List<Exception>? failures = null;
@@ -2052,7 +2061,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             (nuint)registration.Order,
             session.ClientId,
             session.ConnectionId,
-            session.Cookies);
+            session.Cookies)
+        {
+            Slot = session.Slot,
+        };
         var previousCallbackWindow = CallbackWindow.Value;
         CallbackWindow.Value = this;
         try
@@ -2066,8 +2078,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
+    // The window's page, never a side panel's page.
     private WebUiSession GetExecutionSession()
-        => _sessions.Values.FirstOrDefault(static session => session.IsAuthenticated)
+        => _sessions.Values.FirstOrDefault(static session => session.IsAuthenticated && session.Slot == DesktopConnectionSlot.Page)
             ?? throw new InvalidOperationException("No authenticated WebUI browser is connected.");
 
     private IWebUiEmbeddedHost GetEmbeddedHost()
@@ -3122,6 +3135,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             context.StatusCode = PresentationStatus.NotFound;
             return;
         }
+        var origin = context.GetRequestHeader("Origin");
+        // region-component/1: the component's page is the host page, another origin, so its requests are cross-origin.
+        var component = _componentBinding.Embedder;
+        if (upload && component is not null && string.Equals(context.Method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            ServeUploadPreflight(context, component, origin);
+            return;
+        }
         if (upload ? !string.Equals(context.Method, "POST", StringComparison.OrdinalIgnoreCase) : !(context.IsGet || context.IsHead))
         {
             context.StatusCode = PresentationStatus.MethodNotAllowed;
@@ -3130,10 +3151,26 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         // A blob may be embedded by the window's own pages (same-origin) and fetched by them; an upload is a POST that
         // a browser always sends with Origin, which must be the surface's or an additional origin of its policy.
         var crossSite = context.GetRequestHeader("Sec-Fetch-Site").Equals("cross-site", StringComparison.OrdinalIgnoreCase);
-        var origin = context.GetRequestHeader("Origin");
-        var deniedOrigin = upload
-            ? _securityPolicy is not null && (origin.Length == 0 || !AllowsPageOrigin(origin))
-            : crossSite;
+        var deniedOrigin = component is not null
+            // A component's blob may be embedded by the host page, whose no-cors request (an <img>) carries no Origin and
+            // may be cross-site: its URL is the capability. A request that names an origin must name the embedder. An
+            // upload always names it.
+            ? upload ? !string.Equals(origin, component, StringComparison.Ordinal)
+                : origin.Length != 0 && !string.Equals(origin, component, StringComparison.Ordinal)
+            : upload
+                ? _securityPolicy is not null && (origin.Length == 0 || !AllowsPageOrigin(origin))
+                : crossSite;
+        if (component is not null && !deniedOrigin)
+        {
+            context.SetResponseHeader("Vary", "Origin");
+            context.SetResponseHeader("Cross-Origin-Resource-Policy", "cross-origin");
+            if (origin.Length != 0)
+            {
+                context.SetResponseHeader("Access-Control-Allow-Origin", origin);
+                // The client sends uploads with credentials; the surface sets no cookie in region mode.
+                if (upload) context.SetResponseHeader("Access-Control-Allow-Credentials", "true");
+            }
+        }
         var deniedClient = UsesClientCookies && !IsFromPage(context);
         if (deniedOrigin || deniedClient)
         {
@@ -3147,6 +3184,30 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
         await handler(context, token).ConfigureAwait(false);
+    }
+
+    // region-component/1: the CORS preflight of a component's upload (its custom headers need one), granted to the
+    // embedder alone. The upload itself still needs its connection's upload token.
+    private void ServeUploadPreflight(PresentationExchange context, string embedder, string origin)
+    {
+        context.SetResponseHeader("Vary", "Origin");
+        if (!string.Equals(origin, embedder, StringComparison.Ordinal) ||
+            !string.Equals(context.GetRequestHeader("Access-Control-Request-Method"), "POST", StringComparison.Ordinal))
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                DesktopErrorCategory.OriginDenied,
+                "upload-not-admitted",
+                "An upload's preflight came from another origin than the host page that embeds this window's component.",
+                Retryable: false));
+            context.StatusCode = PresentationStatus.Forbidden;
+            return;
+        }
+        context.SetResponseHeader("Access-Control-Allow-Origin", origin);
+        context.SetResponseHeader("Access-Control-Allow-Credentials", "true");
+        context.SetResponseHeader("Access-Control-Allow-Methods", "POST");
+        context.SetResponseHeader("Access-Control-Allow-Headers", "Content-Type, X-Runic-Upload-Token, X-Runic-Upload-Name");
+        context.SetResponseHeader("Access-Control-Max-Age", "600");
+        context.StatusCode = PresentationStatus.NoContent;
     }
 
     // region-component/1: the component build (ComponentPath) is served to the embedder's document alone, with CORS for
@@ -3361,18 +3422,23 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // The origin of the page: in region mode the frame's (the listener that serves it) alone, without additional
     // origins; otherwise the surface's and its policy's additional origins.
+    // A component's page is the host page that loads it: its origin is the embedder's, exactly as the attach named it.
     private bool AllowsPageOrigin(string origin) =>
         _frameBinding.IsActive
-            // As browsers serialize it: http://[::1]:40117 (CanonicalOrigin's IdnHost drops an IPv6 literal's brackets).
-            ? _frameBinding.Listener is { } frame &&
-              string.Equals(frame.GetLeftPart(UriPartial.Authority), origin, StringComparison.OrdinalIgnoreCase)
+            ? _componentBinding.Embedder is { } embedder
+                ? string.Equals(embedder, origin, StringComparison.Ordinal)
+                // As browsers serialize it: http://[::1]:40117 (CanonicalOrigin's IdnHost drops an IPv6 literal's brackets).
+                : _frameBinding.Listener is { } frame &&
+                  string.Equals(frame.GetLeftPart(UriPartial.Authority), origin, StringComparison.OrdinalIgnoreCase)
             : _securityPolicy?.AllowsOrigin(Url!, origin) != false;
 
     // The additional origins are canonical (scheme://host:port), which is a valid CSP host source.
     internal static string CreateFrameAncestorsPolicy(IEnumerable<string>? additionalOrigins) =>
         string.Join(' ', (additionalOrigins ?? []).Order(StringComparer.Ordinal).Prepend("frame-ancestors 'self'"));
 
-    private string CreateDocumentStartScript()
+    private string CreateDocumentStartScript() => CreateDocumentStartScript(_sessionCredential);
+
+    private string CreateDocumentStartScript(string sessionCredential)
     {
         var url = Url ?? throw new InvalidOperationException("The surface must be started before opening a presentation.");
         var origins = (_securityPolicy?.AdditionalOrigins ?? Enumerable.Empty<string>())
@@ -3406,7 +3472,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
               Object.defineProperty(globalThis, Symbol.for("runic-desktop.bootstrap"), {
                 value: Object.freeze({
                   token: {{AsciiNumbers.Format(_token)}},
-                  sessionCredential: {{EncodeJavaScriptString(_sessionCredential)}}
+                  sessionCredential: {{EncodeJavaScriptString(sessionCredential)}}
                 })
               });
             })();
@@ -3425,6 +3491,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         // Region mode: the attachment whose token the upgrade offers, checked again once its session is listed.
         var frameGeneration = _frameBinding.Generation;
+        var componentGeneration = _componentBinding.Generation;
         var acceptedSubprotocol = ValidateWebSocketAdmission(context);
         if (acceptedSubprotocol is null)
         {
@@ -3443,13 +3510,30 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
+        // The slot follows from the credential the WebSocket offered (PanelConnectionSlot).
+        var slot = SlotOf(acceptedSubprotocol, out var panelGeneration);
+        if (slot is null)
+        {
+            HandshakeLog.RecordRejection("the side panel closed");
+            context.StatusCode = PresentationStatus.Unauthorized;
+            return;
+        }
+
         bool admitted;
         lock (_connectionGate)
         {
-            admitted = AllowMultipleClients || _activeConnections == 0 || YieldSilentConnections(_activeConnections, _sessions.Values);
-            if (admitted)
+            // One connection per slot: the page's slot as before, and the side panel's for its own credential.
+            if (slot == DesktopConnectionSlot.SidePanel)
             {
-                _activeConnections++;
+                admitted = _activePanelConnections == 0
+                    || YieldSilentConnections(_activePanelConnections, SessionsOf(DesktopConnectionSlot.SidePanel));
+                if (admitted) _activePanelConnections++;
+            }
+            else
+            {
+                admitted = AllowMultipleClients || _activeConnections == 0
+                    || YieldSilentConnections(_activeConnections, SessionsOf(DesktopConnectionSlot.Page));
+                if (admitted) _activeConnections++;
             }
         }
 
@@ -3458,7 +3542,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (!admitted)
         {
             ReportConnectionProgress(context, ConnectionProgress.WebSocketRejected, credentialed);
-            HandshakeLog.RecordRejection("another WebSocket holds the only connection");
+            HandshakeLog.RecordRejection(slot == DesktopConnectionSlot.SidePanel
+                ? "another WebSocket holds the side panel's connection"
+                : "another WebSocket holds the only connection");
             context.StatusCode = PresentationStatus.Forbidden;
             return;
         }
@@ -3481,7 +3567,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 WebUiApplication.BridgeHandshakeTimeout,
                 TimeProvider)
             {
+                Slot = slot.Value,
                 Origin = _securityPolicy is null ? string.Empty : context.GetRequestHeader("Origin"),
+                // A component cannot read this window's packet token, which only its served bootstrap carries: the
+                // component token on the upgrade admitted it instead (ComponentBinding).
+                AdmittedByComponentToken = _componentBinding.Embedder is not null &&
+                    string.Equals(acceptedSubprotocol, _componentBinding.ExpectedProtocol, StringComparison.Ordinal),
             };
             if (!_sessions.TryAdd(session.Id, session))
             {
@@ -3490,7 +3581,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             // A detach, a new attach or a launch conflict that came between the token check and now disconnected the
             // pages it found; this one was not listed yet.
-            if (_frameBinding.IsActive && _frameBinding.Generation != frameGeneration)
+            if (_frameBinding.IsActive &&
+                (_frameBinding.Generation != frameGeneration || _componentBinding.Generation != componentGeneration))
+            {
+                _sessions.TryRemove(session.Id, out _);
+                await session.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+            // The same for the side panel: a close or a new open since the credential check revoked this page's admission.
+            if (slot == DesktopConnectionSlot.SidePanel && !_panelSlot.Holds(panelGeneration))
             {
                 _sessions.TryRemove(session.Id, out _);
                 await session.DisposeAsync().ConfigureAwait(false);
@@ -3521,7 +3620,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             lock (_connectionGate)
             {
-                _activeConnections--;
+                if (slot == DesktopConnectionSlot.SidePanel) _activePanelConnections--;
+                else _activeConnections--;
             }
         }
     }
@@ -3752,7 +3852,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // Whether this surface answers a request that arrived on listener: its own listener, and in region mode the frame's.
     private bool ServesListener(Uri? listener) =>
-        listener is null || SameAuthority(listener, Url) || SameAuthority(listener, _frameBinding.Listener);
+        listener is null || SameAuthority(listener, Url) || SameAuthority(listener, _frameBinding.Listener) ||
+        SameAuthority(listener, _componentBinding.Listener);
 
     private static bool SameAuthority(Uri? left, Uri? right) =>
         left is not null && right is not null && string.Equals(left.Authority, right.Authority, StringComparison.OrdinalIgnoreCase);
@@ -3813,6 +3914,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         _frameBinding.Enter();
         _launchBinding.Revoke();
+        // A region has no side panel (D062.8): its credential is revoked with every other page.
+        _panelSlot.Close();
         CloseSessions();
     }
 
@@ -3839,6 +3942,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ?? throw new ArgumentException("The embedder must be an http origin of 127.0.0.1, [::1] or localhost with an explicit port.", nameof(embedder));
         // The earlier attachment ends first: its page must not survive into the new one.
         EndFrameLaunch();
+        EndComponent();
         var listener = url;
         var sameSite = false;
         if (host != "[::1]")
@@ -3869,6 +3973,68 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (_frameBinding.End()) CloseSessions();
     }
+
+    // runic-host/1 region-component/1, component admission: a new component token for the host page whose origin is
+    // embedder, which loads the surface's component build (ComponentPath) into its own document. The component is
+    // served from the surface's own listener, whose origin a host page's Content-Security-Policy can name
+    // (http://127.0.0.1:*; CSP host sources cannot name an IPv6 literal), unless that listener is of the embedder's own
+    // site and the host did not allow the same site: then from the IPv6 loopback listener, else
+    // DesktopFrameCrossSiteUnavailableException. A browser host's page (browser) runs in the user's browser, whose
+    // 127.0.0.1 cookies other local applications set, so its component comes from the IPv6 loopback listener whatever its
+    // host, and from 127.0.0.1 only for a [::1] page, as its frames do (D059.18). A new attachment replaces the earlier
+    // one, frame or component, whose token is revoked and whose page is disconnected.
+    internal async Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, bool browser,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(embedder);
+        var url = Url ?? throw new InvalidOperationException("The surface must be started before a component attach.");
+        if (_embeddedHost is not null)
+            throw new InvalidOperationException("This surface is already hosted by an embedded WebView.");
+        if (_securityPolicy is not { RequireSessionCredential: true } || AllowMultipleClients || _host is null || _surface is null)
+            throw new InvalidOperationException(
+                "A component attach needs the session credential and a single client on a hosted surface (DesktopSecurityPolicy).");
+        if (_externalUrl is not null)
+            throw new InvalidOperationException("A component is served only from content that the surface serves itself, not an external URL.");
+        var host = FrameEmbedderHost(embedder)
+            ?? throw new ArgumentException("The embedder must be an http origin of 127.0.0.1, [::1] or localhost with an explicit port.", nameof(embedder));
+        // The earlier attachment ends first: its page must not survive into the new one.
+        EndFrameLaunch();
+        EndComponent();
+        // Region mode first, with its window-mode launch revoked, as the guest's region window always is.
+        if (!_frameBinding.IsActive) EnterRegionMode();
+        var listener = url;
+        // Hosts are compared as written: 127.0.0.1, [::1] and localhost are three sites.
+        var sameSite = string.Equals(url.Host, host, StringComparison.OrdinalIgnoreCase);
+        if (browser && host != "[::1]")
+        {
+            listener = await _host.GetIpv6LoopbackUrlAsync(_surface, cancellationToken).ConfigureAwait(false)
+                ?? throw new DesktopFrameCrossSiteUnavailableException(
+                    "The IPv6 loopback address cannot be bound, so the component cannot be served apart from the 127.0.0.1 cookies of the user's browser.");
+            sameSite = false;
+        }
+        else if (sameSite && !allowSameSite)
+        {
+            listener = (url.Host == "127.0.0.1" ? await _host.GetIpv6LoopbackUrlAsync(_surface, cancellationToken).ConfigureAwait(false) : null)
+                ?? throw new DesktopFrameCrossSiteUnavailableException(
+                    "The IPv6 loopback address cannot be bound, so the component cannot be served cross-site to its host page, which did not allow its own site.");
+            sameSite = false;
+        }
+        var token = _componentBinding.Begin(embedder, listener);
+        SetComponentEmbedder(new Uri(embedder, UriKind.Absolute));
+        return new DesktopComponentLaunch(listener, token, sameSite);
+    }
+
+    // Detaches a component: its token is revoked, its build is refused to every origin and its page is disconnected.
+    internal void EndComponent()
+    {
+        if (!_componentBinding.End()) return;
+        SetComponentEmbedder(null);
+        CloseSessions();
+    }
+
+    // The base URL of the listener that the page of this surface uses: a region's attachment's, else the surface's.
+    // Blob and upload addresses are made from it (blobs/1), so they have the origin the page requests them from.
+    internal Uri? PageUrl => _componentBinding.Listener ?? _frameBinding.Listener ?? Url;
 
     // The host of a frame embedder in the form browsers serialize such an origin: http://, the host 127.0.0.1, [::1] or
     // localhost, an explicit port from 1 to 65535 without leading zeros, nothing after it, at most 256 characters
@@ -4006,9 +4172,20 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return string.Empty;
         }
 
+        // The side panel's page offers the panel credential instead (PanelConnectionSlot); region mode admits only its
+        // frame.
+        if (!_frameBinding.IsActive && OffersPanelCredential(context, out var panel))
+        {
+            return panel ?? RefuseCredential(context);
+        }
+
         // A frame's page offers its frame token instead (FrameLaunchBinding); none is admitted before the frame used its
-        // launch code or after the token was revoked.
-        var expected = _frameBinding.IsActive ? _frameBinding.ExpectedProtocol : $"runic-desktop.{_sessionCredential}";
+        // launch code or after the token was revoked. A component offers its component token (ComponentBinding), on the
+        // listener that serves it.
+        var expected = !_frameBinding.IsActive ? $"runic-desktop.{_sessionCredential}"
+            : _componentBinding.Embedder is not null
+                ? SameAuthority(context.Listener ?? Url, _componentBinding.Listener) ? _componentBinding.ExpectedProtocol : null
+                : _frameBinding.ExpectedProtocol;
         var offered = context.WebSocketRequestedProtocols;
         if (expected is null || !OffersCredential(offered, expected))
         {
@@ -4035,6 +4212,92 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             found |= CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(protocol), expectedBytes);
         }
         return found;
+    }
+
+    // Whether a WebSocket offers the open side panel's credential; panel is its subprotocol, or null when the WebSocket
+    // offers the session credential too, which admits it to neither slot.
+    private bool OffersPanelCredential(PresentationExchange context, out string? panel)
+    {
+        var offered = context.WebSocketRequestedProtocols;
+        panel = _panelSlot.Admit(offered, out _);
+        if (panel is null) return false;
+        if (OffersCredential(offered, $"runic-desktop.{_sessionCredential}")) panel = null;
+        return true;
+    }
+
+    private string? RefuseCredential(PresentationExchange context)
+    {
+        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+            DesktopErrorCategory.AuthenticationDenied,
+            "credential-required",
+            "A valid session credential is required.",
+            Retryable: false));
+        context.StatusCode = PresentationStatus.Unauthorized;
+        return null;
+    }
+
+    // The slot of a WebSocket that ValidateWebSocketAdmission admitted with accepted, and for the side panel the
+    // generation it holds the slot at. Null when it offered the side panel's credential and the panel closed or opened
+    // again since: the WebSocket is then admitted to no slot. The panel credential is matched first, so a panel page
+    // that raced the surface into region mode never takes the frame's slot; its generation is then stale.
+    private DesktopConnectionSlot? SlotOf(string accepted, out long panelGeneration)
+    {
+        panelGeneration = 0;
+        if (accepted.Length != 0 && _panelSlot.Admit([accepted], out panelGeneration) is not null)
+        {
+            return DesktopConnectionSlot.SidePanel;
+        }
+        return accepted.Length == 0 || _frameBinding.IsActive ||
+            string.Equals(accepted, $"runic-desktop.{_sessionCredential}", StringComparison.Ordinal)
+            ? DesktopConnectionSlot.Page
+            : null;
+    }
+
+    // The sessions of one slot, which YieldSilentConnections looks through for that slot's one connection.
+    private IEnumerable<WebUiSession> SessionsOf(DesktopConnectionSlot slot) =>
+        _sessions.Values.Where(session => session.Slot == slot);
+
+    // sdk#864, P1a: opens the side panel's connection slot and returns its credential, which only the panel's view
+    // receives, in its document-start script (CreatePanelDocumentStartScript). Opening again revokes the earlier
+    // credential and closes its page's connection. The surface must admit one page with a session credential, outside
+    // region mode and hosted or installed-browser launches (D062.8). The caller hands the credential only to a view that
+    // runs document-start scripts: a served bootstrap script never carries it.
+    internal string OpenPanelSlot()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_securityPolicy is not { RequireSessionCredential: true } || AllowMultipleClients)
+            throw new InvalidOperationException(
+                "A side panel needs the session credential and a single client (DesktopSecurityPolicy).");
+        if (_frameBinding.IsActive || ChecksLaunchBinding)
+            throw new InvalidOperationException(
+                "A side panel needs a window of its own: the surface shows in a region, a host's window or an installed browser.");
+        var hadPanel = _panelSlot.IsOpen;
+        var credential = _panelSlot.Open();
+        if (hadPanel) ClosePanelSessions();
+        return credential;
+    }
+
+    // Revokes the side panel's credential and closes its page's connection. False when no panel slot was open.
+    internal bool ClosePanelSlot()
+    {
+        if (!_panelSlot.Close()) return false;
+        ClosePanelSessions();
+        return true;
+    }
+
+    internal bool HasPanelSlot => _panelSlot.IsOpen;
+
+    // The side panel's view's document-start script: CreateDocumentStartScript with the panel credential in place of the
+    // session credential, so the panel's page offers it on its Bridge WebSocket. Null while no panel slot is open.
+    internal string? CreatePanelDocumentStartScript() =>
+        _panelSlot.Credential is { } credential ? CreateDocumentStartScript(credential) : null;
+
+    private void ClosePanelSessions()
+    {
+        foreach (var session in SessionsOf(DesktopConnectionSlot.SidePanel))
+        {
+            _ = CloseBridgeIgnoringFailureAsync(session, CancellationToken.None);
+        }
     }
 
     private bool AllowMultipleClients => _securityPolicy?.AllowMultipleClients ?? WebUiApplication.MultiClient;

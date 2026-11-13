@@ -47,6 +47,19 @@ public sealed class DesktopSurface : IAsyncDisposable
         return _engine.BeginHostedLaunch();
     }
 
+    // sdk#864, P1a: the side panel's page connection slot (WebUiWindow.OpenPanelSlot): a second page of this surface
+    // that connects to the same window as its page. Opening returns the panel credential for the panel view's
+    // document-start script (SidePanelDocumentStartScript); closing revokes it and disconnects the panel's page.
+    internal string OpenSidePanelSlot()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.OpenPanelSlot();
+    }
+
+    internal bool CloseSidePanelSlot() => _engine.ClosePanelSlot();
+
+    internal string? SidePanelDocumentStartScript => _engine.CreatePanelDocumentStartScript();
+
     // runic-host/1 region/1: the window shows in a region of a host page, in a frame (WebUiWindow.EnterRegionMode).
     internal void EnterRegionMode()
     {
@@ -66,6 +79,21 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal void EndFrameLaunch()
     {
         if (Volatile.Read(ref _disposed) == 0) _engine.EndFrameLaunch();
+    }
+
+    // runic-host/1 region-component/1: a new component token for a component in the host page of embedder
+    // (WebUiWindow.BeginComponentAsync).
+    internal Task<DesktopComponentLaunch> BeginComponentAsync(string embedder, bool allowSameSite, bool browser,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _engine.BeginComponentAsync(embedder, allowSameSite, browser, cancellationToken);
+    }
+
+    // runic-host/1 region-detach of a component: its token is revoked and its page disconnected.
+    internal void EndComponent()
+    {
+        if (Volatile.Read(ref _disposed) == 0) _engine.EndComponent();
     }
 
     // runic-host/1 region-focus enter: the frame's page focuses an element; false without a connected page.
@@ -384,8 +412,9 @@ public sealed class DesktopSurface : IAsyncDisposable
         return new BlobLease(_engine, handler);
     }
 
-    // The surface URL, or null before the surface is attached or after it closed.
-    internal Uri? CurrentUrl => _engine.Url;
+    // The base URL that the surface's page requests from, or null before the surface is attached or after it closed:
+    // the surface URL, or in region mode the listener of the frame or component that shows it (blobs/1 addresses).
+    internal Uri? CurrentUrl => _engine.Url is null ? null : _engine.PageUrl;
 
     // region-component/1: lets the host page at embedder load the surface's component build (WebUiWindow.ComponentPath)
     // with CORS, or, with null, refuses it to everyone.

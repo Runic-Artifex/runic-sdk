@@ -169,7 +169,13 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IBridge
         // The request's UTF-8 JSON is a slice of the page's packet, which no other invocation shares and nothing
         // reuses; it stays valid while this capability handler awaits the request. The reply's UTF-8 JSON, which the
         // handler does not reuse, is copied into the reply packet as it is: neither is decoded to a string.
-        var request = new BridgeRequest(invocation.GetBytes(0), key, key);
+        // The connection's kind comes from the slot its WebSocket was admitted to, by the credential it offered.
+        var request = new BridgeRequest(invocation.GetBytes(0), key, key)
+        {
+            ConnectionKind = invocation.Session.Slot == Runic.Desktop.Internal.DesktopConnectionSlot.SidePanel
+                ? RunicConnectionKind.SidePanel
+                : RunicConnectionKind.Page,
+        };
         var reply = await handler.HandleAsync(request, cancellationToken).ConfigureAwait(false);
         return PresentationResult.FromUtf8(reply);
     }

@@ -1,0 +1,127 @@
+name: Train compatibility
+# The cross-repository compatibility gate of a release train (eng/train/README.md, D061.11-D061.20): restores,
+# builds and runs consumers of one combination of Command Line, Translations and runic-sdk packages with warnings
+# as errors. Each input is published, published:<version>, run (newest successful ci.yml run on main) or
+# run:<ci run id>.
+on:
+  workflow_dispatch:
+    inputs:
+      cli:
+        description: 'runic-cli-sdk: published, published:<version>, run or run:<ci run id>'
+        type: string
+        default: published
+      translations:
+        description: 'runic-translations-sdk: published, published:<version>, run or run:<ci run id>'
+        type: string
+        default: published
+      sdk:
+        description: 'runic-sdk: published, published:<version>, run or run:<ci run id>'
+        type: string
+        default: published
+      row:
+        description: 'Train row this run stands for: T, P-tr, P-sdk or custom (eng/train/README.md)'
+        type: string
+        default: custom
+  # The publish workflows of the three repositories call this before publishing (eng/release/README.md).
+  workflow_call:
+    inputs:
+      cli:
+        type: string
+        default: published
+      translations:
+        type: string
+        default: published
+      sdk:
+        type: string
+        default: published
+      row:
+        type: string
+        default: custom
+      gate-ref:
+        description: The runic-sdk commit whose gate runs; pass the SHA of the uses line. Defaults to the caller's commit in runic-sdk and to main elsewhere.
+        type: string
+        default: ''
+    secrets:
+      RUNIC_TRAIN_TOKEN:
+        description: Read-only token for other repositories' CI artifacts, only if GITHUB_TOKEN is refused (D061.12)
+        required: false
+    outputs:
+      verdict:
+        description: pass or fail
+        value: ${{ jobs.gate.outputs.verdict }}
+  # Nightly, for information: the newest published versions and the newest main runs of the three repositories.
+  schedule:
+    - cron: '41 2 * * *'
+  # A change to the gate itself runs the nightly rows.
+  pull_request:
+    paths:
+      - eng/train/**
+      - .github/workflows/train-compat.yml
+      - tests/templates/template-npm-registry.mjs
+      - tests/templates/bind-template-candidate-integrities.mjs
+      - eng/release/template-locks.mjs
+      - eng/nupkg.mjs
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: train-compat-${{ github.event_name }}-${{ github.ref }}-${{ inputs.row || 'nightly' }}-${{ inputs.cli || '' }}-${{ inputs.translations || '' }}-${{ inputs.sdk || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  gate:
+    name: ${{ matrix.row }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'pull_request')
+          && '[{"row":"N-pub","cli":"published","translations":"published","sdk":"published","informational":false},{"row":"N-main","cli":"run","translations":"run","sdk":"run","informational":true}]'
+          || format('[{{"row":{0},"cli":{1},"translations":{2},"sdk":{3},"informational":false}}]', toJSON(inputs.row), toJSON(inputs.cli), toJSON(inputs.translations), toJSON(inputs.sdk))) }}
+    outputs:
+      verdict: ${{ steps.gate.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Runic-Artifex/runic-sdk
+          # Called from another repository: the gate-ref commit (main without one); in runic-sdk: the event's commit.
+          ref: ${{ inputs.gate-ref || (github.repository != 'Runic-Artifex/runic-sdk' && 'main' || '') }}
+          persist-credentials: false
+      # The gate's scripts use only built-in modules; the consumers bring their own dependencies.
+      - uses: ./.github/actions/setup-sdk
+        with:
+          node: "true"
+          nuget: none
+          install: "false"
+      - name: Run the train gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.RUNIC_TRAIN_TOKEN || github.token }}
+          RUNIC_TRAIN_TOKEN_SOURCE: ${{ secrets.RUNIC_TRAIN_TOKEN && 'RUNIC_TRAIN_TOKEN' || 'GITHUB_TOKEN' }}
+          INFORMATIONAL: ${{ matrix.informational }}
+          ROW: ${{ matrix.row }}
+          CLI: ${{ matrix.cli }}
+          TRANSLATIONS: ${{ matrix.translations }}
+          SDK: ${{ matrix.sdk }}
+        run: |
+          set +e
+          bun eng/train/gate.mjs --row "$ROW" --cli "$CLI" --translations "$TRANSLATIONS" --sdk "$SDK" --out artifacts/train-compat
+          code=$?
+          verdict=$(node -p 'require("./artifacts/train-compat/train-result.json").verdict' 2>/dev/null || echo fail)
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          # N-main follows the three main branches between trains and only reports. A refused artifact (exit code 3)
+          # is a setup problem and always fails.
+          if [[ "$INFORMATIONAL" == true && "$code" == 1 ]]; then
+            echo "::warning title=$ROW (informational)::The gate failed for the newest main runs; see the job summary."
+            exit 0
+          fi
+          exit "$code"
+      # train-result.json is the gate's record: publish workflows find it through the API (eng/train/README.md).
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: train-result-${{ github.run_id }}-${{ matrix.row }}
+          path: artifacts/train-compat
+          if-no-files-found: ignore
+          retention-days: 90

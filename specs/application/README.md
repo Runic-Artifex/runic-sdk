@@ -1473,6 +1473,11 @@ region**, which the application chooses. A route path is a string of segments se
 `invalid-request`, and so is `navigation` on a connection that does not use the feature. The producer sends
 `navigationPath` and `navigation-path` only to connections that use the feature.
 
+A producer may withhold the feature from a connection whose page keeps an address of its own: its `hello` reply then
+does not list `navigation-path/1`, so the page neither follows nor drives the window's route path. Runic Desktop
+withholds it from a window's **side panel** connection, a second page of the window's surface beside its page that
+connects to the same window; every other feature is granted to it as to the page.
+
 **Back.** `action: "back"` goes back in the innermost presented region that can: the producer looks at the window's
 regions that no page owns, the most recently created first, and within a region at the regions its current page owns,
 the most recently created first, before the region itself; of a region collection or other selection it follows only
@@ -1788,6 +1793,7 @@ Pushes (producer → the connection that declared the region):
 | `kind` | Members | The page |
 | --- | --- | --- |
 | `hosted-region-content` | `name`; `embedding`: `"frame"`; `src`: the frame launch address; `title`: the guest's title or `null`; `allow`: the frame's permissions policy, at most 1,024 characters | Shows a new frame with that `src`, replacing the region's content |
+| `hosted-region-content` | `name`; `embedding`: `"component"` ([component mode](../desktop/host-protocol.md#component-mode-region-component1)); `module`: the address of the guest's component module, `http:` or `https:`, at most 2,048 characters; `url`: the WebSocket address of the guest's surface, `ws:` or `wss:`, at most 2,048 characters; `token`: the component token, 1 to 256 base64url characters | Shows the guest's component, replacing the region's content |
 | `hosted-region-update` | `name`; optional `title`: a string or `null`; optional `height`: the region's height in CSS pixels, an integer from 0 to 32,767 | Applies the members it carries: the frame's accessible name, and with `sizing: "content-height"` the region's height |
 | `hosted-region-empty` | `name`; `reason`: `"waiting"` (no Window shows in the region yet), `"detached"` (its Window is detached and may come back) or `"ended"` (its Window closed or its guest went away) | Removes the frame and shows the region's fallback content |
 | `hosted-region-focus` | `name` | Moves the keyboard focus into the region, as the host decided ([focus in a region](../desktop/host-protocol.md#focus-in-a-region)) |
@@ -1820,6 +1826,13 @@ Pushes (producer → the connection that declared the region):
   guest page's access. It gives the page no reference to the frame, so a later embedding can replace it. A
   `hosted-region-content` with an `embedding` the client does not know removes the region's content and shows its
   fallback, and the client reports the region as unsupported.
+- **The component.** For `embedding: "component"`, a client imports `module` (a dynamic `import()`, so the page's
+  Content-Security-Policy must admit the guest's origin in `script-src`, and in `connect-src` for `url`), creates an
+  element of the name the module exports as `tag`, places it in the region and connects it with `{url, token}`
+  (`element.connect`, from `@runic-artifex/views/component`). It holds the token only for that call. A module that does
+  not load, or exports no tag of a defined element with `connect`, leaves the region unsupported, with an error in the
+  console. Removing the region's content removes the element, which closes its connection. A component is part of the
+  page's focus order: `hosted-region-focus` does not move the focus into it.
 - **Focus.** On `hosted-region-focus`, the client focuses the frame (`iframe.focus()`) only while the page holds no
   focus: its `document.activeElement` is none, its body or the region; otherwise it does nothing, and the focus stays where
   the user has it. When it moved the focus, its next `hosted-region-state` reports it with `focusSource: "script"`, and the

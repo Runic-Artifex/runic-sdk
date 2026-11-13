@@ -89,8 +89,9 @@ public sealed class RunicHostedRegion
     internal RequestRate TitleRate { get; } = new(10, TimeSpan.FromSeconds(1));
 
     internal RunicHostedRegion(RunicHostedApplication application, HostedRegionDirectory directory, RunicHostedWindow window, string name,
-        IRunicWindow? hostWindow, RunicHostedRegionOptions options, string allow, DesktopPermissionGrant grant)
+        IRunicWindow? hostWindow, RunicHostedRegionOptions options, string allow, DesktopPermissionGrant grant, bool component = false)
     {
+        IsComponent = component;
         _application = application;
         _directory = directory;
         Window = window;
@@ -122,6 +123,12 @@ public sealed class RunicHostedRegion
 
     /// <summary>How the region shows the window, as the policy decided.</summary>
     public RunicHostedRegionOptions Options { get; }
+
+    /// <summary>
+    /// Whether the region shows the window as a component in the host page's own document
+    /// (<see cref="RunicHostedWindowDecision.EmbedComponent(string)"/>), not in a frame.
+    /// </summary>
+    public bool IsComponent { get; }
 
     /// <summary>Where the window is: waiting for a region, loading, attached, detached or ended.</summary>
     public RunicHostedRegionState State
@@ -483,8 +490,8 @@ public sealed class RunicHostedRegion
         var size = SizeOf(slot.Report);
         // The window's pushes so far, such as the activity of a detach, reach the guest before the attach.
         await Window.PushesSent().ConfigureAwait(false);
-        var attach = await _application.RegionAttachAsync(Window, slot.Embedder, size, slot.Sizing, slot.Page.AllowsSameSite, slot.Page.IsBrowser)
-            .ConfigureAwait(false);
+        var attach = await _application.RegionAttachAsync(Window, slot.Embedder, size, slot.Sizing, slot.Page.AllowsSameSite, slot.Page.IsBrowser,
+            IsComponent).ConfigureAwait(false);
         if (attach.Url is not { } url)
         {
             // The guest refused or failed the attach: the window stays open and unattached; the page shows its fallback.
@@ -498,7 +505,8 @@ public sealed class RunicHostedRegion
             slot.Page.Empty(slot.Name, Bridge.HostedRegionEmptyReason.Detached);
             return;
         }
-        if (attach.SameSite) _application.LogRegionSameSite(Name);
+        // A component from the host page's own site is the rule for an embedded host (host-protocol.md, Component mode).
+        if (attach.SameSite && attach.Component is null) _application.LogRegionSameSite(Name);
         lock (_stateGate)
         {
             _attachedSlot = slot;
@@ -529,7 +537,12 @@ public sealed class RunicHostedRegion
         if (!IsCurrent(slot)) return;
         string? title;
         lock (_stateGate) title = _title;
-        try { _ = slot.Page.ShowFrame(slot.Name, url, title, _allow); }
+        try
+        {
+            _ = attach.Component is { } component
+                ? slot.Page.ShowComponent(slot.Name, component.Module, url, component.Token)
+                : slot.Page.ShowFrame(slot.Name, url, title, _allow);
+        }
         catch (ArgumentException error) { _application.LogRegionFailed(error); }
         Raise(Attached, null);
         _application.RaiseRegionAttached(this);

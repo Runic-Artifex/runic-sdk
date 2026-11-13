@@ -56,11 +56,18 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     public Guid Id { get; } = Guid.NewGuid();
 
+    // runic-host/1 region-component/1: the upgrade offered the component token, which takes the place of the window's
+    // packet token (ComponentBinding).
+    public bool AdmittedByComponentToken { get; init; }
+
     public nuint ConnectionId { get; }
 
     public nuint ClientId { get; }
 
     public string Cookies { get; }
+
+    // The page connection slot the WebSocket was admitted to (DesktopConnectionSlot), from the credential it offered.
+    public DesktopConnectionSlot Slot { get; init; }
 
     // The upgrade's Origin header, which the window's origin check admitted; empty when the request had none or the
     // window checks no origin. A region's host page frames the guest from this origin (region/1, region-attach embedder).
@@ -550,7 +557,8 @@ internal sealed class WebUiSession : IAsyncDisposable
 
         var id = WebUiProtocol.ReadId(payload.Span);
         var command = payload.Span[7];
-        var tokenIsValid = WebUiProtocol.ReadToken(payload.Span) == _window.Token;
+        // A component's socket was admitted with its component token, and its packets carry no window token.
+        var tokenIsValid = AdmittedByComponentToken || WebUiProtocol.ReadToken(payload.Span) == _window.Token;
         if (command == WebUiProtocol.CheckToken)
         {
             // A socket that is closing (expired or rejected) or has ended gets no reply.
@@ -785,7 +793,8 @@ internal sealed class WebUiSession : IAsyncDisposable
                 .ConfigureAwait(false);
             if (accepted)
             {
-                _window.NotifyAuthenticated();
+                // The window's presentation waits for its page; a side panel's page connects to an open window.
+                if (Slot == DesktopConnectionSlot.Page) _window.NotifyAuthenticated();
                 // The page announces DesktopWindow.AnnounceAsync while it has the focus on WebView2 (I-184). Its live
                 // regions are added now, so that the screen reader knows them before the first message.
                 if (_window.AnnouncesInPage)

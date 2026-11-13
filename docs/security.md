@@ -180,6 +180,9 @@ sent with HTML responses. New `runic-app` projects set one outside
 default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 ```
 
+A host page that shows guests as components also admits the guests' origin
+([components in a host page](#components-in-a-host-page)).
+
 `script-src 'self'` covers the Bridge on every host, in embedded WebViews and
 installed browsers alike. Runic's bridge and bootstrap scripts and the Bridge
 WebSocket come from the page's own origin, Bridge calls are data, and since
@@ -425,11 +428,58 @@ What it means for applications:
   process chose to; Windows services that run as SYSTEM or another service account pass too, since they have High
   integrity or above.
 
-**Trusted component mode** (`region-component/1`, reserved) will let a guest's Views run as a component in the host
-page's own document, for theme and layout. There host page and guest code share one realm: the guest can read the host
-page and call its Bridge, and the host page holds the guest's token. It needs an explicit opt-in on both sides,
-`RunicGuestOptions.AllowComponentEmbedding` and the host policy's `RunicHostedWindowDecision.EmbedComponent`, and is
-meant for applications of the same vendor.
+### Components in a host page
+
+With `region-component/1` (**trusted component mode**), a region shows a guest's Window as a component in the host
+page's own document instead of in a frame: the host page loads the guest's component module, built by the `component`
+target of `@runic-artifex/vite-plugin-runic`, and the guest's Views render with the host page's theme and layout
+([component mode](../specs/desktop/host-protocol.md#component-mode-region-component1)). Most of what frame mode holds
+does not hold here, by design:
+
+- **One realm.** Host page and component share one JavaScript realm. The guest's code can read and change the host
+  page, use its Bridge as the page does, patch its globals and use every permission the host page has. The host page
+  can read the component's state and holds its token, so it can act as the guest's page. A shadow root separates
+  styles, not code (T24).
+- **Both sides opt in.** The guest's application allows it per host with `RunicGuestOptions.AllowComponentEmbedding`,
+  and the host's policy decides it per window with `RunicHostedWindowDecision.EmbedComponent`. Without either, the
+  window can still show in a frame. Both filters read what the other side says about itself: they choose products, they
+  do not authenticate them. **Embed components only of applications of your own vendor**, whose code you would ship in
+  your own page.
+
+What Runic still enforces:
+
+- **The token reaches the host's page alone.** The guest mints a component token for each attach and sends it only
+  over the authenticated host channel. The host passes it only to the page that declared the region. It is never in a
+  URL and dies when the region detaches or attaches again.
+- **Origin and token.** The guest admits the component's WebSocket only with the host page's origin as `Origin` and the
+  token as its subprotocol, one page at a time. A browser cannot forge `Origin`, so another page, such as another local
+  application's page in your browser, cannot connect as the component even with a leaked token. A process that is not
+  a browser can send any `Origin`, but needs the token (T25).
+- **CORS for the host page alone.** The guest serves its component build, and its blobs and uploads, cross-origin only
+  to the host page's origin, and only while the component is attached (T26). A blob URL embedded with no CORS, as by an
+  `<img>`, works by its URL alone while attached: the URL is a capability, as in a window.
+- **No guest script, no navigation.** The component's connection never runs script that the guest sends and never
+  navigates the host page.
+- **Elevated guests.** An elevated guest offers component mode only with elevated-peer admission on its listeners
+  (event 2029 for a refused peer); on macOS, where Runic cannot check peers, it refuses component mode.
+
+What it means for applications:
+
+- **Content-Security-Policy.** The host page must allow the guest's origin for scripts and connections. Runic serves an
+  embedded host's components from `127.0.0.1` on a port that changes with each run, so a host page's policy adds
+  `http://127.0.0.1:*` to `script-src` and `ws://127.0.0.1:*` to `connect-src`:
+
+  ```text
+  default-src 'self'; script-src 'self' http://127.0.0.1:*; connect-src 'self' ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  ```
+
+  That admits any local server's scripts, not just the guest's, should the page ever run injected script: weigh it
+  as the cost of component mode, and keep such host pages free of untrusted content. A component served from the host
+  page's own site receives the cookies of the host page's origin with its connection, which an embedded host's profile
+  holds only of the host itself. A browser host's components come from `[::1]`, which a policy can admit only with
+  `http:` and `ws:`, since CSP sources cannot name an IPv6 address; prefer frame mode there.
+- **Prefer frame mode** for a guest of another vendor, for a guest the user installs separately, and for a host page
+  that renders remote or user content.
 
 ### File access
 

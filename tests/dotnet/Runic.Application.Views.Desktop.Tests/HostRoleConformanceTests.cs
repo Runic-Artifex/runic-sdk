@@ -172,6 +172,7 @@ internal sealed class HostRoleConformanceTests
                 }, failsServices: host["policy"]?.GetValue<string>() == "fails-services",
                     prompt: host["policy"]?.GetValue<string>() == "prompts-launches" ? _user.PromptAsync : null,
                     embed: host["embed"]?.GetValue<string>(),
+                    embedComponent: host["embedComponent"]?.GetValue<bool>() == true,
                     embedOptions: new RunicHostedRegionOptions
                     {
                         FocusOnAttach = host["embedOptions"]?["focusOnAttach"]?.GetValue<bool>() ?? false,
@@ -580,6 +581,8 @@ internal sealed class HostRoleConformanceTests
                         ["name"] = name,
                         ["shows"] = declared.Shows,
                         ["src"] = declared.Src,
+                        ["module"] = declared.Module,
+                        ["token"] = declared.Token,
                         ["title"] = declared.Title,
                         ["allow"] = declared.Allow,
                         ["height"] = declared.AppliedHeight,
@@ -772,13 +775,17 @@ internal sealed class HostRoleConformanceTests
     // With embed, the guest's windows that can show in a region and have no owner show in the region of that name
     // (region/1).
     private sealed class ScenarioPolicy(RunicHostedLimits limits, bool failsServices,
-        Func<CancellationToken, Task<object?>>? prompt = null, string? embed = null, RunicHostedRegionOptions? embedOptions = null) : IRunicHostedWindowPolicy
+        Func<CancellationToken, Task<object?>>? prompt = null, string? embed = null, RunicHostedRegionOptions? embedOptions = null,
+        bool embedComponent = false) : IRunicHostedWindowPolicy
     {
         public RunicHostedLimits Limits => limits;
 
         public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken) =>
             ValueTask.FromResult(embed is not null && request.CanEmbed && request.Owner is null
-                ? RunicHostedWindowDecision.Embed(embed, embedOptions ?? RunicHostedRegionOptions.Default)
+                // With embedComponent, also for a guest that does not allow it, whose open then fails.
+                ? embedComponent
+                    ? RunicHostedWindowDecision.EmbedComponent(embed, embedOptions ?? RunicHostedRegionOptions.Default)
+                    : RunicHostedWindowDecision.Embed(embed, embedOptions ?? RunicHostedRegionOptions.Default)
                 : RunicHostedWindowDecision.Allow());
 
         public ValueTask<RunicHostedServiceDecision> ServiceAsync(RunicHostedServiceRequest request, CancellationToken cancellationToken) =>

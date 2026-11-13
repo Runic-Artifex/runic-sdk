@@ -388,7 +388,7 @@ the feature is in use.
 | `dialogs/1` | File dialogs and message boxes owned by the hosted window: [dialogs](#dialogs-dialogs1) |
 | `window-services/1` | The host's clipboard, its monitors, opening files and links, and files dropped onto a hosted window: [window services](#window-services-window-services1) |
 | `region/1` | A guest Window shown in a region of a host page, in a frame, instead of in a window of its own: [regions](#regions-region1) |
-| `region-component/1` | Reserved: a guest's Views mounted as a component in the host page's own document ([component mode](#component-mode-region-component1)) |
+| `region-component/1` | A guest Window shown in a region as a component in the host page's own document, for applications of the same vendor; a guest lists it only when its application allows it: [component mode](#component-mode-region-component1) |
 
 A guest service whose feature is not in use reports `OwnerUnavailable`, as in serve-only mode.
 
@@ -867,7 +867,7 @@ backend is the Views protocol's [`hosted-regions/1`](../application/README.md#ho
   window** is the host's native window whose page shows the region, or for a [browser host](#browser-hosts) the page
   in the user's browser. The region window is **attached** from its `region-attach` reply until its `region-detach`.
 - **Open embeddings.** `region-attach` names how the region shows the page (`embedding`). This version defines
-  `"frame"`; [component mode](#component-mode-region-component1) reserves `"component"`. Only frame admission is
+  `"frame"`, and [component mode](#component-mode-region-component1) `"component"`. Only frame admission is
   specific to frames.
 
 ### Presentation of a window
@@ -924,7 +924,7 @@ The host attaches a region window when its region is shown, and the guest answer
 
 | Member | Contract |
 | --- | --- |
-| `embedding` | `"frame"`. An open set: a guest answers an embedding it does not implement `rejected` with `embedding-unsupported`, and the host's policy then falls back or refuses. |
+| `embedding` | `"frame"`, or `"component"` with `region-component/1` in use ([component attach](#component-attach)). An open set: a guest answers an embedding it does not implement, or one whose feature is not in use, `rejected` with `embedding-unsupported`, and the host's policy then falls back or refuses. |
 | `embedder` | The origin of the host page that frames the guest's page: `http://`, the host `127.0.0.1`, `[::1]` or `localhost`, an explicit port from 1 to 65,535 without leading zeros, and nothing after it (no path, query, fragment or user information), at most 256 characters: the form in which browsers serialize such an origin. It is the origin the host page has in its web view or browser, such as the host's own page, or in development its development server; Runic's host takes the `Origin` with which the page that declared the region connected to it. |
 | `width`, `height` | The region's size in CSS pixels of the host page, integers from 0 to 32,767. |
 | `scale` | The host page's device pixel ratio, a number from 0.25 to 8. |
@@ -1182,11 +1182,12 @@ A **browser host** is a host whose pages run in the user's installed browser, su
 serve-only (`RUNIC_APPLICATION_SERVE_ONLY=1`). It has no native window of its own, so it shows a guest's Windows only
 in regions of its pages, with fewer features than a host with native windows:
 
-- **Features.** Its `hello` lists `region/1` alone. Without `menus/1`, `dialogs/1` and `window-services/1`, a guest's
+- **Features.** Its `hello` lists `region/1` and `region-component/1` alone. Without `menus/1`, `dialogs/1` and `window-services/1`, a guest's
   menus, dialogs and window services report `OwnerUnavailable`, as in serve-only mode.
 - **No windows of their own.** It answers a `window-open` that its policy does not show in a region `rejected` with
   `refused`, so the guest's open fails with `hosted-window-refused`. Owned windows are among them. In .NET,
-  `RunicHostedWindowRequest.CanOpenWindow` is `false` and only `RunicHostedWindowDecision.Embed` shows a window.
+  `RunicHostedWindowRequest.CanOpenWindow` is `false` and only `RunicHostedWindowDecision.Embed` and `EmbedComponent`
+  show a window.
 - **Presentation.** A region window's `features` list neither `present` nor `owned-windows`. `present` and `announce`
   are answered `unavailable` with `backend-unavailable`: the host can neither bring the user's browser forward nor speak
   through it. `activity` reports the region `active` while it holds the focus of its page, since a browser reports
@@ -1196,6 +1197,11 @@ in regions of its pages, with fewer features than a host with native windows:
   holds the cookies of other local applications on the same loopback names, which a same-site frame would receive. A
   guest that cannot listen on the other loopback family answers `failed` with `cross-site-unavailable`, and the region
   shows its fallback content.
+- **Components.** A guest serves a component for a browser host's page from `[::1]`, or from `127.0.0.1` for a page on
+  `[::1]`, never from `127.0.0.1` for a page on `localhost`: the user's browser sends the `127.0.0.1` cookies of other
+  local applications with the component's connection ([component origin](#component-origin)). Without `[::1]` it
+  answers `failed` with `cross-site-unavailable`. The page's Content-Security-Policy can admit `[::1]` only with `http:`
+  and `ws:`.
 - **The embedder** is the origin with which the host page connected to the host, as its browser sent it, so a page
   opened through `localhost` names `http://localhost:<port>` and the guest serves its frame from `[::1]`, else
   `127.0.0.1` ([guest origin](#guest-origin)). Runic's surfaces admit a page's connection only from their own origin or
@@ -1209,24 +1215,158 @@ A host with native windows whose page runs in a browser fallback, rather than it
 
 ### Component mode (`region-component/1`)
 
-Reserved. A later version of this document specifies the feature `region-component/1`, which requires `region/1`.
+With `region-component/1`, which requires `region/1`, a region shows a guest Window as a **component**: the guest
+serves an ES module that defines a custom element, and the host page loads it into its own document. The guest's Views
+render in the host page, with its theme (CSS custom properties and `prefers-*` media inherit into the component) and its
+layout, and without a frame boundary for focus, drops and accessibility. Several components can share one page.
 
-In **component mode** the guest serves an ES module that defines a custom element, and the host page loads it into
-its own document. The guest's Views then render in the host page, with its theme and layout and without a frame
-boundary for focus, drops and accessibility. `region-attach` names `embedding: "component"`, and its reply carries
-`component: {module, tag, token}` instead of `frame`. The component connects to the guest's surface from the host
-page's origin, which the guest admits as `Origin` only when it is `embedder`, and with the token.
+- **Trust.** Host page and component share one JavaScript realm; a shadow root is no boundary. The guest's code can read
+  and change the host page's document, use its Bridge as the host page does and patch its globals, and has every
+  permission of the host page. The host page holds the guest's component token and can act as the guest's page. The two
+  trust domains merge at the page; the backends stay separate processes, each with its own channel and policy.
+  Component mode is for applications of the same vendor.
+- **Both sides opt in.** The guest lists `region-component/1` in its `hello` reply only when its application allows
+  component embedding for the host the offer names (in .NET, `RunicGuestOptions.AllowComponentEmbedding`, a filter like
+  `AcceptHost`, not a security boundary). The host lists it when it implements it, and shows a window as a component
+  only when its policy decides so (in .NET, `RunicHostedWindowDecision.EmbedComponent`, which
+  `RunicHostedWindowRequest.CanEmbedComponent` allows) and its page's Content-Security-Policy admits the guest's origin
+  ([the host page](#the-host-page)). Without the feature in use, the host's policy cannot decide it, and a guest answers
+  `embedding: "component"` with `embedding-unsupported`; frame mode still applies.
 
-- **Trust.** Host page and component share one realm: a shadow root is no boundary. The guest's code can read the host
-  page's document and call its Bridge, and the host page holds the guest's token and can act as the guest's page. The
-  two trust domains merge at the page level; the processes stay separate. Component mode is for applications of the
-  same vendor.
-- **Both sides opt in.** The guest with `RunicGuestOptions.AllowComponentEmbedding`, a filter like `AcceptHost`, and
-  the host with its policy's `RunicHostedWindowDecision.EmbedComponent` and a Content-Security-Policy that admits the
-  guest's origin for scripts and connections. Without both, a guest answers `"component"` with
-  `embedding-unsupported`, and frame mode still applies.
-- **Elevated guests.** An elevated guest allows component mode only for an elevated host, and only from an
-  [elevated peer](#elevated-peer-admission).
+#### Component attach
+
+```json
+{"id":5,"kind":"region-attach","window":"w1","embedding":"component","embedder":"http://127.0.0.1:38200","width":800,"height":520,"scale":1.5,"allowSameSite":true}
+{"id":5,"ok":true,"component":{"module":"http://127.0.0.1:40117/w1/_runic_component/component.js","url":"ws://127.0.0.1:40117/w1/_webui_ws_connect","token":"q3VtYm…","sameSite":true}}
+```
+
+`embedder`, `width`, `height`, `scale` and `allowSameSite` are those of [`region-attach`](#region-attach); `sizing` does
+not apply, since the component takes part in the host page's layout. Reply members:
+
+| Member | Contract |
+| --- | --- |
+| `component.module` | The address of the component build's module: `http://`, a loopback literal and the component surface's port, and a path that ends in `/_runic_component/` and the module the build's manifest names, ending in `.js`; at most 2,048 characters, without a query or fragment |
+| `component.url` | The WebSocket address the component connects to: `ws://` on the module's authority, with a path that ends in `/_webui_ws_connect`; at most 2,048 characters |
+| `component.token` | A new **component token**: 32 bytes from a cryptographically secure random generator, in base64url without padding (43 characters) |
+| `component.sameSite` | `true` when the component surface is of the embedder's own site ([component origin](#component-origin)), `false` otherwise |
+
+- **Before the reply** the guest ends the window's earlier attachment, frame or component: it revokes its code or token
+  and closes the connections of the page they admitted. It then mints the new token and grants the embedder its
+  component build ([component build](#component-build)).
+- **No tag.** The reply names no tag: the module defines its custom element when it loads and exports the name it
+  defined as `tag`. The same build loaded from a second origin into one page, such as two instances of one application,
+  defines a name of its own, so the page takes the name from the module.
+- **Failures.** A guest whose content has no component build answers `rejected` with `embedding-unsupported`. One that
+  cannot serve the component cross-site and may not use the embedder's site answers `failed` with
+  `cross-site-unavailable`. An elevated guest without [elevated-peer admission](#elevated-peer-admission) answers
+  `rejected` with `refused`. The window stays open and unattached.
+- `region-detach`, `region-bounds`, `region-page` and the [lifecycle](#lifecycle-in-a-region) are as in frame mode.
+  `region-page` reports the page that the component token admitted. A `region-focus` `enter` has no effect: the
+  component is part of the host page's focus order. A component has no document title of its own, so the guest sends
+  no `set-title` for it.
+
+#### Component origin
+
+The guest serves a component from its Window's surface on `127.0.0.1`, an origin that a host page's
+Content-Security-Policy can name as `http://127.0.0.1:*` and `ws://127.0.0.1:*`: CSP host sources cannot name an IPv6
+literal, and engines ignore such a source as invalid (verified in Chromium 154).
+
+| `embedder`'s host | The component surface listens on |
+| --- | --- |
+| `127.0.0.1`, with `allowSameSite: true` | `127.0.0.1`: the embedder's own site, `sameSite: true` |
+| `127.0.0.1`, without it | `[::1]`, else `failed` with `cross-site-unavailable` |
+| `[::1]` or `localhost` | `127.0.0.1`, another site |
+| any, with `browser: true` ([browser hosts](#browser-hosts)) | `[::1]`, else `failed` with `cross-site-unavailable`; for a `[::1]` embedder `127.0.0.1` |
+
+A same-site component surface receives the cookies of the host page's origin with its WebSocket upgrade and the
+host page's blob requests, since cookies do not separate ports. Unlike a frame's, this exposes nothing new: the
+component's code already runs in the host page's realm, the web view profile of an embedded host holds only the host's
+own cookies, and Runic's surfaces in embedded windows use none. Runic's embedded hosts allow it. A browser host
+(serve-only) never does, since the user's browser holds the cookies of other local applications on the same loopback
+address: its components come from `[::1]` (D059.18), which its page's Content-Security-Policy can admit only with the
+scheme sources `http:` and `ws:`.
+
+#### Component build
+
+A guest's surface serves its **component build** below `_runic_component/`, as the `component` build target of
+`@runic-artifex/vite-plugin-runic` writes it: the manifest `runic-component.json`
+(`{"version": 1, "name", "module", "tag"}`), the module and its chunks and assets.
+
+- It answers `GET` and `HEAD` only with an `Origin` that is the embedder of the window's current component attach,
+  exactly as the browser serialized it, with `Access-Control-Allow-Origin` repeating that origin, `Vary: Origin` and
+  `Cross-Origin-Resource-Policy: cross-origin`. Any other origin, a request without one, and every request while no
+  component is attached get `403` (diagnostic `component-origin-not-allowed`). It serves no pages (`.html`, folders)
+  there, sets no cookie, and the files carry no credential.
+- The guest reads the manifest through its own surface, with the embedder's `Origin`, to answer the attach. `module` is
+  a relative path below `_runic_component/` that ends in `.js`.
+
+#### Component admission
+
+The component's Bridge WebSocket comes from the host page's document, so neither a cookie nor a frame token can admit
+it. Instead:
+
+1. **Token.** Each component attach mints a component token, which travels only in the `region-attach` reply over the
+   authenticated channel. The host passes it only to the page that declared the region, in its
+   [`hosted-region-content`](../application/README.md#hosted-regions).
+2. **Upgrade.** The guest admits a WebSocket upgrade of `component.url` only on the listener that serves the component,
+   only with `Origin` equal to `embedder` (otherwise `403`, `origin-not-allowed`), and only with the subprotocol
+   `runic-desktop.<token>` (otherwise `401`, `credential-required`). The token is compared in constant time. No cookie
+   takes part. The token is never in a URL.
+3. **One page at a time.** An upgrade with the token while a page that it admitted is connected is refused with `403`.
+   A component that lost its connection connects again with the same token while the window stays attached.
+4. **Packets.** The component's packets carry no window token, which only the guest's served bootstrap holds; on a
+   socket that the component token admitted, the guest accepts the token check with any packet token.
+5. **End.** The token dies at `region-detach`, at the window's next `region-attach` and when the Window closes. The
+   component build's grant ends with it.
+
+Each check covers a requester that the other does not. A browser cannot forge `Origin`, so no other page, such as
+another local application's page in the user's browser, connects as the component, even with a leaked token. A process
+that is not a browser can send any `Origin`, so it needs the token, which only the host's backend and its page hold.
+Processes of the same user that read the host's memory are outside what Runic protects.
+
+A component never runs script that its guest sends: a request to evaluate script is answered with a failure. It never
+navigates the host page and ignores the page wire's navigation, click and binding traffic.
+
+#### Blobs and uploads of a component
+
+While a component is attached, the guest's [blob and upload](../application/README.md#blobs-and-uploads) addresses are
+on the component surface, and the component, whose page is the host page, reaches them cross-origin:
+
+- **Blobs.** A blob request that carries an `Origin` must name the embedder, and is answered with
+  `Access-Control-Allow-Origin` repeating it, `Vary: Origin` and `Cross-Origin-Resource-Policy: cross-origin`; another
+  origin gets `403` (`blob-not-admitted`). A no-cors request of the host page, such as an `<img>`, carries no `Origin`
+  and may be cross-site, so the guest admits it, and any other no-cors request, by the blob URL alone, which is a
+  capability of at least 128 random bits.
+- **Uploads.** The upload's custom headers need a CORS preflight. The guest answers an `OPTIONS` of the upload address
+  from the embedder with `204`, `Access-Control-Allow-Origin` repeating it, `Access-Control-Allow-Credentials: true`,
+  `Access-Control-Allow-Methods: POST` and `Access-Control-Allow-Headers: Content-Type, X-Runic-Upload-Token,
+  X-Runic-Upload-Name`, and any other origin with `403`. The `POST` must come from the embedder and carry the
+  connection's upload token, as on any surface; its answer carries the same `Access-Control-Allow-Origin` and
+  `-Credentials`.
+- After the detach, the frame and window rules of `blobs/1` apply again.
+
+#### The host page
+
+- The host pushes the reply's `module`, `url` and `token` to the page that declared the region, as
+  [`hosted-region-content`](../application/README.md#hosted-regions) with `embedding: "component"`. The page imports the
+  module, creates the element whose name the module exports as `tag`, and connects it with `url` and `token`
+  (`<runic-hosted-region>` does this). A component that is removed closes its connection.
+- **Content-Security-Policy.** A host page with a policy must admit the component surface's origin in `script-src` and
+  `connect-src`. Its port changes with each run, so a host page of an embedded host names `http://127.0.0.1:*` and
+  `ws://127.0.0.1:*`; a browser host's page needs `http:` and `ws:` ([component origin](#component-origin)). A module
+  that the policy blocks does not load, and the region shows its fallback content.
+- **Local Network Access.** Engines that gate requests from public pages to loopback addresses, such as Chromium,
+  admit a host page that is on a loopback address itself, as Runic's host pages are.
+- **Permissions.** A component has the host page's permissions and its drops, keys and focus; the frame's permissions
+  policy (`RunicHostedRegionOptions.Permissions`) does not apply.
+
+#### Elevated guests
+
+A component of an elevated guest runs in the host page's realm with the guest's token, so with the token any process
+that renders the host page acts as the elevated guest's page. An elevated guest allows component mode only for an
+elevated host, and its component surface admits only [elevated peers](#elevated-peer-admission). Where the guest
+cannot check its peers (macOS), it does not list `region-component/1` and answers a component attach `rejected` with
+`refused`. A browser host, and a host that does not run elevated, cannot show an elevated guest as a component.
 
 ## Lifecycle
 
@@ -1378,7 +1518,7 @@ that is not valid).
 
 | Version | Release | Change |
 | --- | --- | --- |
-| 1 | 0.17 | First version, experimental (`RUNICDESK103`). 0.18 added, without a version change, the feature `region/1` and reserved `region-component/1`. |
+| 1 | 0.17 | First version, experimental (`RUNICDESK103`). 0.18 added, without a version change, the features `region/1` and `region-component/1`. |
 
 ## Security requirements
 
@@ -1433,6 +1573,14 @@ application is in the [security guide](../../docs/security.md#hosted-application
     the window services, and redacts frame tokens in console messages it forwards.
 14. **Elevated peers.** An elevated guest admits connections to its listeners only from elevated loopback peers, and
     refuses region mode where it cannot check them ([elevated-peer admission](#elevated-peer-admission)).
+15. **Components.** Component mode needs both opt-ins: a guest lists `region-component/1` only when its application
+    allows the host, and a host shows a component only when its policy decides it. The component token travels only
+    over the channel and to the page that declared the region, and is never in a URL. A guest admits a component's
+    WebSocket only with `Origin` equal to the embedder and the token, one page at a time, and serves its component build,
+    and its blobs and uploads cross-origin, only to the embedder; everything ends at detach. A component never runs
+    script of its guest or navigates the host page. An elevated guest allows component mode only with elevated-peer
+    admission on its listeners, and refuses it where it cannot check its peers
+    ([component mode](#component-mode-region-component1)).
 
 ### Threats
 
@@ -1466,7 +1614,7 @@ boundary.
 
 #### Threats in a region
 
-The threats of [regions](#regions-region1) (`region/1`):
+The threats of [regions](#regions-region1) (`region/1`) and of [component mode](#component-mode-region-component1) (`region-component/1`, T24–T26):
 
 | # | Threat | Mitigation |
 | --- | --- | --- |
@@ -1475,3 +1623,6 @@ The threats of [regions](#regions-region1) (`region/1`):
 | T21 | A frame launch code or frame token leaks, such as through a console message of a framing that `frame-ancestors` blocked, or the host page uses the code itself | Codes are one-time and short-lived, and come only over the channel; the token is in a fragment, never sent to a server or in a `Referer`, and is removed from the address; a token admits one connected page at a time and dies at detach; a spent code presented again revokes the token; `frame-ancestors` admits only the embedder; console forwarding redacts `#runic-frame=`. Residual: a host page can keep the guest's page from loading by spending its code |
 | T22 | The guest's surface receives the host page's cookies, or its frame shares the host page's renderer process | The frame surface is cross-site to the host page ([guest origin](#guest-origin)), and frame admission uses no cookie. Residual: the same-site fallback, which only an embedded host allows and logs; and in engines without site isolation (WebKit) the frame shares the host page's content process, which the same-origin policy still separates |
 | T23 | A process that does not run elevated renders or drives an elevated guest's page, such as an installed browser or a process that obtained a frame launch code or token | [Elevated-peer admission](#elevated-peer-admission) on every listener of an elevated guest; on macOS an elevated guest refuses region mode. Residual: on Windows a process that an elevated process handed or let inherit its connected socket passes, as that process chose to, and so do services of High or System integrity |
+| T24 | A component's code reads or changes the host page, uses its Bridge, or keeps running after the region went; the host page reads the guest's token or state and acts as the guest's page | Inherent to [component mode](#component-mode-region-component1), which merges the two trust domains at the page: both sides opt in, for applications of the same vendor, and each backend keeps its own policy for what the other's page asks. The token dies at detach, and the component's connection with it. Residual: a host that embeds a component trusts the guest's code as its own page's, and the reverse |
+| T25 | Another page or process connects as the component: another local application's page in the user's browser, a web page, a process that is not a browser and sends the embedder's `Origin`, or a replay of a token after the region went | The upgrade needs both `Origin` equal to the embedder, which a browser cannot forge, and the token, which only the host's backend and page hold; the token is never in a URL; one page at a time; the token dies at detach and at the next attach. Residual: a process of the same user that reads the host's memory, outside what Runic protects |
+| T26 | Another origin loads the guest's component build or reaches its blobs and uploads through CORS | The build, blob reads that name an origin and uploads are granted to the embedder of the current attach alone, with `Vary: Origin`; nothing before an attach or after a detach. Residual: a no-cors embedding of a blob, such as an `<img>` on another page, works with its URL alone while the component is attached, as the URL is the capability |

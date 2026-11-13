@@ -592,6 +592,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         {
             Locale = locale,
             CanEmbed = InUse(HostFeatures.Region),
+            CanEmbedComponent = InUse(HostFeatures.Region) && InUse(HostFeatures.RegionComponent),
             CanOpenWindow = !_host.ServeOnly,
         };
         RunicHostedWindowDecision decision;
