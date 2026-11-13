@@ -1,11 +1,12 @@
 // The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size"): publishes the fixture (Fixture/AotSize.csproj)
 // for linux-x64 with an mstat file, with no fixture ViewModel and at each size of the aot/ budget entries, reads each
 // mstat with MstatReader and checks the aot/ entries of tests/scaling/budgets.json.
-//   bun tests/scaling/aot-size/measure.mjs [--update] [--base <revision>] [--keep]
+//   bun tests/scaling/aot-size/measure.mjs [--update] [--base <revision>] [--keep] [--rid <rid>]
 // --update records the results and rewrites the aot/ entries' measured and limit, as bun run scaling --update does for
 // the managed suite. --base lists the budgets that changed against that revision. --keep keeps the published
-// applications and mstat files under artifacts/scaling/aot-size/ (by default only results.json stays). The report goes
-// to standard output and, in GitHub Actions, to the job summary.
+// applications and mstat files under artifacts/scaling/aot-size/ (by default only results.json stays). --rid measures
+// another runtime, such as win-x64 or osx-arm64, and only reports: the budgets gate linux-x64 (D064.5, D064.25). The
+// report goes to standard output and, in GitHub Actions, to the job summary.
 import { spawnSync } from "node:child_process";
 import { appendFileSync, copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,8 +21,12 @@ const fixture = resolve(root, "tests/scaling/aot-size/Fixture/AotSize.csproj");
 const reader = resolve(root, "tests/scaling/aot-size/MstatReader/MstatReader.csproj");
 const output = resolve(root, "artifacts/scaling/aot-size");
 export const resultsFile = resolve(output, "results.json");
-const rid = "linux-x64";
+// The budgets' runtime; another --rid only reports.
+const gatedRid = "linux-x64";
+const ridIndex = process.argv.indexOf("--rid");
+const rid = ridIndex >= 0 ? process.argv[ridIndex + 1] : gatedRid;
 const mstat = resolve(root, `tests/scaling/aot-size/Fixture/obj/Release/net10.0/${rid}/native/AotSize.mstat`);
+const executable = rid.startsWith("win-") ? "AotSize.exe" : "AotSize";
 
 // A metric is an improvement when it is below this share of its limit (as ScalingBudgets.cs).
 const improvementShare = 0.75;
@@ -99,7 +104,7 @@ export function perViewModel(builds) {
     `| --- | ${counts.map(() => "---:").join(" | ")} | ---: |`,
     ...rows.map(([label, key]) => `| ${label} | ${counts.map(count => builds[count][key].toLocaleString("en-US")).join(" | ")} | ${slope(key).toLocaleString("en-US")} |`),
     "",
-    `Executable bytes per ViewModel: ${(slope("executableBytes") / 1024).toFixed(1)} KiB. linux-x64, Release, \`PublishAot=true\`; K is the number of fixture ViewModels besides the shell.`,
+    `Executable bytes per ViewModel: ${(slope("executableBytes") / 1024).toFixed(1)} KiB. ${rid}, Release, \`PublishAot=true\`; K is the number of fixture ViewModels besides the shell.`,
   ];
   return { markdown: `${lines.join("\n")}\n`, slopes: Object.fromEntries(rows.map(([, key]) => [key, slope(key)])) };
 }
@@ -127,7 +132,7 @@ function publish(count, keep) {
   const records = spawnSync("dotnet", [resolve(root, "tests/scaling/aot-size/MstatReader/bin/Release/net10.0/MstatReader.dll"), mstat],
     { cwd: root, encoding: "utf8", maxBuffer: 1 << 28 });
   if (records.status !== 0) throw new Error(`MstatReader failed on ${mstat}: ${records.stderr}`);
-  const build = { ...measurement(statSync(resolve(directory, "bin/AotSize")).size, records.stdout), publishSeconds: Math.round(milliseconds / 1000) };
+  const build = { ...measurement(statSync(resolve(directory, "bin", executable)).size, records.stdout), publishSeconds: Math.round(milliseconds / 1000) };
   if (keep) {
     copyFileSync(mstat, resolve(directory, "AotSize.mstat"));
     writeFileSync(resolve(directory, "records.tsv"), records.stdout);
@@ -140,6 +145,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = process.argv.slice(2);
   const option = name => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
   const updating = args.includes("--update");
+  const reportOnly = rid !== gatedRid;
+  if (reportOnly && args.includes("--update")) throw new Error(`--update records the ${gatedRid} budgets; ${rid} only reports.`);
   const keep = args.includes("--keep");
   const revision = option("--base");
 
@@ -164,8 +171,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
   const table = perViewModel(builds);
   mkdirSync(output, { recursive: true });
-  writeFileSync(resultsFile, `${JSON.stringify({ schema: 1, cases: results, builds, perViewModel: table.slopes }, null, 2)}\n`);
+  writeFileSync(resultsFile, `${JSON.stringify({ schema: 1, rid, cases: results, builds, perViewModel: table.slopes }, null, 2)}\n`);
 
+  if (reportOnly) {
+    const summary = `## NativeAOT size on ${rid}\n\nNot gated: the budgets gate ${gatedRid} (D064.5).\n\n${table.markdown}`;
+    console.log(summary);
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+    process.exit(0);
+  }
   if (updating && failures.length === 0) {
     writeFileSync(budgetsFile, format(updatedBudgets(budgets, results)));
     console.log(`Updated ${budgetsFile} from ${Object.keys(results).length} results.`);

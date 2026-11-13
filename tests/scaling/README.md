@@ -98,6 +98,9 @@ ViewModel brings the per-ViewModel copies back.
 
 In CI the managed job's application group runs `measure.mjs` after the scaling report, and the results are part of
 the `scaling-results-<sha>` artifact.
+`--rid win-x64` or `--rid osx-arm64` measures on that runtime and only reports (D064.25). A pull request labelled
+`ci:all-platforms` runs it on the Windows x64 and macOS arm64 native legs, with `--keep`, and keeps the mstat files in
+the `aot-size-<rid>-<run>` artifact.
 
 ## Counters in the product
 
