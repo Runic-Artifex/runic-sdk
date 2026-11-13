@@ -214,6 +214,8 @@ internal sealed partial class MacOsWkWebViewHost
     {
         try
         {
+            // The side panel takes no drops from outside its page (D062.6).
+            if (RefusesDrop(self, sender)) return MacOsDragOperations.None;
             var operation = Api.SendSuperUlongNint(self, Api.GetClass("WKWebView"), selector, sender);
             if (WebViews.TryGetValue(self, out var host)) host._dragOperation = operation;
             return operation;
