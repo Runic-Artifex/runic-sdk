@@ -80,40 +80,36 @@
       "note": "a notification without a name refreshes every member once, plus the unit's reads"
     },
     "bridge/scalar-unit/members-serialized[toolkit]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [20, 80],
-      "limit": 40,
-      "measured": [10, 40],
-      "target": "O(1)",
-      "known": "O(members) per unit: WriteChangedMembers encodes every compared member to find the changed one (B6)",
-      "issue": "sdk#911"
+      "limit": 1,
+      "measured": [1, 1],
+      "issue": "sdk#911",
+      "note": "a scalar member whose value did not change is compared by its value, not encoded: only the changed member is (B6)"
     },
     "bridge/scalar-unit/bytes-serialized[toolkit]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [20, 80],
-      "limit": 40,
-      "measured": [10, 40],
-      "target": "O(1)",
-      "known": "O(state bytes) per unit: WriteChangedMembers encodes every compared member (B6)",
-      "issue": "sdk#911"
+      "limit": 1,
+      "measured": [1, 1],
+      "issue": "sdk#911",
+      "note": "only the changed scalar member is encoded (B6)"
     },
     "bridge/scalar-unit/members-serialized[reactive]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [20, 80],
-      "limit": 40,
-      "measured": [10, 40],
-      "target": "O(1)",
-      "known": "O(members) per unit: WriteChangedMembers encodes every compared member to find the changed one (B6)",
-      "issue": "sdk#911"
+      "limit": 1,
+      "measured": [1, 1],
+      "issue": "sdk#911",
+      "note": "a scalar member whose value did not change is compared by its value, not encoded: only the changed member is (B6)"
     },
     "bridge/scalar-unit/bytes-serialized[reactive]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [20, 80],
-      "limit": 40,
-      "measured": [10, 40],
-      "target": "O(1)",
-      "known": "O(state bytes) per unit: WriteChangedMembers encodes every compared member (B6)",
-      "issue": "sdk#911"
+      "limit": 1,
+      "measured": [1, 1],
+      "issue": "sdk#911",
+      "note": "only the changed scalar member is encoded (B6)"
     },
     "bridge/collection-burst/getter-reads": {
       "class": "O(1)",
@@ -198,12 +194,12 @@
       "note": "a burst of named notifications allocates the same whatever the members (#887)"
     },
     "bridge/notification-burst/unit-bytes[toolkit]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [20, 80],
-      "limit": 55480,
-      "measured": [17264, 44384],
+      "limit": 15980,
+      "measured": [11344, 12784],
       "margin": 0.25,
-      "note": "O(members) per unit, the allocations of B6 (sdk#911)"
+      "note": "constant within the margin since unchanged members are not encoded (B6); one boxed value, 24 bytes, per compared number member remains (sdk#911)"
     },
     "bridge/notification-burst/burst-bytes[reactive]": {
       "class": "O(1)",
@@ -214,12 +210,12 @@
       "note": "a burst of named notifications allocates the same whatever the members (#887)"
     },
     "bridge/notification-burst/unit-bytes[reactive]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [20, 80],
-      "limit": 55480,
-      "measured": [17264, 44384],
+      "limit": 15980,
+      "measured": [11344, 12784],
       "margin": 0.25,
-      "note": "O(members) per unit, the allocations of B6 (sdk#911)"
+      "note": "constant within the margin since unchanged members are not encoded (B6); one boxed value, 24 bytes, per compared number member remains (sdk#911)"
     },
     "aot/bridge/executable-bytes": {
       "class": "O(n)",

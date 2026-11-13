@@ -12,7 +12,8 @@ internal sealed class BridgeCostCounters
     // Units that PublishUnitCore ran.
     internal long UnitsRun;
 
-    // Members a unit encoded to compare them with the published state (WriteChangedMembers), and their bytes (B6).
+    // Members a unit encoded to compare them with the published state (WriteChangedMembers), and their bytes (B6). A
+    // scalar member whose value did not change is compared by its value and not encoded.
     internal long MembersSerialized;
     internal long BytesSerialized;
 

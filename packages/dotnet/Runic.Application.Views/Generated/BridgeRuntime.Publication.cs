@@ -21,7 +21,8 @@ namespace Runic.Application.Views.Generated;
 // Each notification counts as a change (_changes). A unit that compared every member covers the changes counted when
 // it started (_publishedChanges): the unit a notification requested is then withdrawn or skipped instead of encoding
 // every member again, as after a set, whose reply published the change already. A unit compares each member while it
-// is written (BridgeComparingWriter) and keeps the bytes only of members that differ. Pushes are written into pooled
+// is written (BridgeComparingWriter) and keeps the bytes only of members that differ; a member whose value is a scalar
+// that equals the value its baseline was written from is not written at all (#911). Pushes are written into pooled
 // buffers that the delivery returns once the transport took them; a full state writes its members straight into the
 // message. The route's first state, captured at attach, stays as an encoded state until the next change, so an open
 // before then copies it instead of encoding every member again.
@@ -32,6 +33,18 @@ public partial class ViewModelBridge
     private Dictionary<string, byte[]>? _baselines;
     // The version of each checked field as last published.
     private readonly Dictionary<string, long> _publishedVersions = new(StringComparer.Ordinal);
+    // #911: the value that each compared member whose value is a scalar had when its baseline was written, read from the
+    // property it encodes (ScalarSources). A unit encodes such a member only when its value differs from this one (or it
+    // has none), since equal scalars have equal encodings. Every other member is still encoded in each unit: the
+    // comparison is not driven by notifications (specs/application/state-changes.md, "Members").
+    private readonly Dictionary<string, object?> _scalarBaselines = new(StringComparer.Ordinal);
+    // The scalar values of the members whose encoding changed in the current unit, which become their baselines when its
+    // frame is committed.
+    private readonly Dictionary<string, object?> _unitScalars = new(StringComparer.Ordinal);
+    // The property each state member encodes, in state order, or null when it is not read to compare it as a scalar
+    // (ScalarSources, TryReadScalar), and whether it held a scalar value.
+    private PropertyDescriptor?[]? _scalarSources;
+    private bool[] _scalarTyped = [];
     // Keyed collections whose next publication is a set of the field: reset, replaced, changed in a way indexed changes
     // cannot express, or withheld because of invalid keys.
     private readonly HashSet<BridgeCollectionDescriptor> _collectionSets = [];
@@ -353,6 +366,9 @@ public partial class ViewModelBridge
             }
         }
         foreach (var (name, value) in members) _baselines![name] = value;
+        if (!fullState)
+            foreach (var (name, value) in _unitScalars) _scalarBaselines[name] = value;
+        _unitScalars.Clear();
         foreach (var field in _checkedProperties) _publishedVersions[field.Descriptor.WireName] = field.Registry.Current.Version;
         foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
         foreach (var member in _textMembers)
@@ -554,6 +570,11 @@ public partial class ViewModelBridge
                 && message.Buffer.SequenceEqual(start, previous)) continue;
             _baselines[name] = message.Buffer.ToArray(start, length);
         }
+        // The values the state's scalar members were written from.
+        _scalarBaselines.Clear();
+        for (var index = 0; index < _stateMembers.Length; index++)
+            if (_baselines.TryGetValue(_stateMembers[index].Name, out var encoding) && TryReadScalar(index, encoding, out var value))
+                _scalarBaselines[_stateMembers[index].Name] = value;
         foreach (var descriptor in _incrementalCollections) SetCollectionInstance(descriptor, descriptor.Get(_vm));
         Commit([], _revision, fullState: true);
         // The state is a unit that compared every member.
@@ -623,16 +644,30 @@ public partial class ViewModelBridge
 
     // The compared members (all but keyed collections and append-only text) whose encoding or checked version differs
     // from what the route published, with their new encoding. An unchanged member is compared while it is written and
-    // allocates nothing.
+    // allocates nothing; an unchanged scalar is compared by its value and not written (#911).
     private List<(string Name, byte[] Value)> WriteChangedMembers()
     {
         var changed = new List<(string Name, byte[] Value)>();
+        _unitScalars.Clear();
         using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger, _content?.Validation))
         {
-            foreach (var member in _stateMembers)
+            for (var index = 0; index < _stateMembers.Length; index++)
             {
+                var member = _stateMembers[index];
                 if (_incrementalMembers.Contains(member.Name)) continue;
                 _baselines!.TryGetValue(member.Name, out var previous);
+                var version = VersionOf(member.Name);
+                var isScalar = TryReadScalar(index, previous, out var scalar);
+                if (isScalar)
+                {
+                    if (previous is not null && _scalarBaselines.TryGetValue(member.Name, out var written) && SameScalar(written, scalar))
+                    {
+                        if (version is not null && _publishedVersions.GetValueOrDefault(member.Name) != version) changed.Add((member.Name, previous));
+                        continue;
+                    }
+                }
+                // Until a publication writes the member, it has no scalar baseline.
+                _scalarBaselines.Remove(member.Name);
                 var comparing = BridgeComparingWriter.Rent(previous);
                 try
                 {
@@ -640,7 +675,12 @@ public partial class ViewModelBridge
                     Costs.MembersSerialized++;
                     Costs.BytesSerialized += comparing.Writer.BytesCommitted + comparing.Writer.BytesPending;
                     var matches = comparing.Matches;
-                    var version = VersionOf(member.Name);
+                    if (isScalar)
+                    {
+                        // The value read before the member was written is the value of the encoding compared.
+                        if (matches) _scalarBaselines[member.Name] = scalar;
+                        else _unitScalars[member.Name] = scalar;
+                    }
                     if (matches && (version is null || _publishedVersions.GetValueOrDefault(member.Name) == version)) continue;
                     changed.Add((member.Name, matches ? previous! : comparing.ToArray()));
                 }
@@ -651,6 +691,80 @@ public partial class ViewModelBridge
         if (IsInactive) throw new BridgeSnapshotDetachedException();
         return changed;
     }
+
+    // The property whose value each state member encodes, in state order: the one property with the member's wire name,
+    // unless the member publishes changes (keyed collections, text) or reads an observed sub-object. Null otherwise.
+    private PropertyDescriptor?[] ScalarSources()
+    {
+        var sources = new PropertyDescriptor?[_stateMembers.Length];
+        _scalarTyped = new bool[_stateMembers.Length];
+        for (var index = 0; index < sources.Length; index++)
+        {
+            var name = _stateMembers[index].Name;
+            if (_incrementalMembers.Contains(name)) continue;
+            PropertyDescriptor? source = null;
+            var count = 0;
+            foreach (var property in _properties)
+            {
+                if (!string.Equals(property.WireName, name, StringComparison.Ordinal)) continue;
+                source = property;
+                count++;
+            }
+            if (count == 1 && source!.Observe is null && source.QueryRowWriter is null) sources[index] = source;
+        }
+        return sources;
+    }
+
+    // Reads the value of the compared member at index in state order to compare it as a scalar, or returns false without
+    // reading it. encoding is the member's encoding as last written, or null. A member is read once it held a scalar, or
+    // while its encoding is a number, string or Boolean; a member whose encoding is an object or an array, or whose value
+    // is no scalar, is not read for this again, so the comparison adds no getter call for it.
+    private bool TryReadScalar(int index, ReadOnlySpan<byte> encoding, out object? value)
+    {
+        value = null;
+        var sources = _scalarSources ??= ScalarSources();
+        if (sources[index] is not { } source) return false;
+        if (!_scalarTyped[index])
+        {
+            if (encoding.IsEmpty || encoding[0] == (byte)'n') return false;
+            if (encoding[0] is (byte)'{' or (byte)'[')
+            {
+                sources[index] = null;
+                return false;
+            }
+        }
+        value = source.Get(_vm);
+        // A null value of a member that held a scalar encodes as null whatever its type.
+        if (value is null) return _scalarTyped[index];
+        if (!IsScalar(value))
+        {
+            sources[index] = null;
+            value = null;
+            return false;
+        }
+        _scalarTyped[index] = true;
+        return true;
+    }
+
+    // Whether a value's encoding is a function of the value alone, compared by SameScalar: a string or an immutable
+    // primitive, enum, date or time value. Decimal is not, as 1.0m and 1.00m are equal but encode differently.
+    private static bool IsScalar(object value) => value is string or bool or char or byte or sbyte or short or ushort
+        or int or uint or long or ulong or float or double or Guid or DateTime or DateTimeOffset or TimeSpan or DateOnly or TimeOnly
+        or Enum;
+
+    // Whether two scalars have the same encoding: equal, of the same type, with floating-point values compared by their
+    // bits (0.0 and -0.0) and dates by their kind or offset as well.
+    private static bool SameScalar(object? written, object? value) => (written, value) switch
+    {
+        (null, null) => true,
+        (null, _) or (_, null) => false,
+        (string left, string right) => string.Equals(left, right, StringComparison.Ordinal),
+        (double left, double right) => BitConverter.DoubleToInt64Bits(left) == BitConverter.DoubleToInt64Bits(right),
+        (float left, float right) => BitConverter.SingleToInt32Bits(left) == BitConverter.SingleToInt32Bits(right),
+        (DateTime left, DateTime right) => left.Ticks == right.Ticks && left.Kind == right.Kind,
+        (DateTimeOffset left, DateTimeOffset right) => left.EqualsExact(right),
+        _ => written.GetType() == value.GetType() && written.Equals(value),
+    };
 
     // The encoding of one member.
     private byte[] WriteMember(string name)
