@@ -672,6 +672,13 @@ after a user close.
   Save drafts as the user edits, or handle the close afterwards, where that
   matters. `RequestCloseAsync` still asks there, because the application is
   the one closing.
+- A guard that agreed does not have to wait for the Window's work itself: a
+  [close drain](#closing-after-the-windows-work-has-drained) (0.19,
+  experimental) keeps the window open after every guard agreed until that work
+  has ended. A guard that waits commits to nothing either:
+  `AcceptedWorkScope.WaitForAcceptedAsync` waits without closing the scope's
+  admission, so a later guard that keeps the Window open leaves the scope
+  accepting work as before.
 
 ### Closing a ViewModel's own Window
 
@@ -724,7 +731,11 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
 - `RequestCloseAsync(cancellationToken)` is the Window's own
   `RequestCloseAsync`: it asks `CanCloseAsync` when the Window sets
   `GuardClose`, returns `false` with the Window open when that keeps it, and
-  `true` once it closed. It works on Runic Desktop and on CS-WebUI, where the
+  `true` once it closed. With a
+  [close drain](#closing-after-the-windows-work-has-drained) it returns `true`
+  once the close was approved, while the Window drains, so a "Save and close"
+  command does not wait for a drain that waits for it;
+  `IRunicWindow.WaitForCloseAsync` waits for the Window itself. It works on Runic Desktop and on CS-WebUI, where the
   request is guarded although the browser's own close is not.
 - The context belongs to the Window's DI scope. A scoped service that the
   ViewModel takes shares it; a navigation entry created with
@@ -1208,6 +1219,82 @@ uses the feature, such as a page of an older release. `DisposeAsync` and
 `CloseAsync(TimeSpan.Zero)` tell the pages but do not wait. Only the first
 close of a Window tells and waits; later calls return its result. An
 unacknowledged close is logged at Debug as event 1026.
+
+### Closing after the Window's work has drained
+
+> Experimental (0.19, [`RUNICDESK105`](../../../docs/experimental.md#RUNICDESK105)):
+> `RunicCloseDrain`, `RunicWindowOptions.CloseDrain`, `RunicOperationClose`,
+> `IRunicWindowContext.DrainOnClose` and `RunicWindowCloseResult.RemainingDurableWork`.
+> `AcceptedWorkScope.WaitForAcceptedAsync` is stable.
+
+An application whose Window runs durable work, such as a change to an external
+system that must not stop halfway, can keep the window open after the user
+closed it until that work has ended, without a prompt. Three declarations say
+what the close waits for and what it cancels:
+
+```csharp
+// The Window stays open after a decided close until its accepted work has ended.
+await windows.OpenWindowAsync<DeployWindow>(new RunicWindowOptions { CloseDrain = RunicCloseDrain.UntilDrained });
+
+public sealed partial class DeployViewModel : ObservableObject
+{
+    public DeployViewModel(IRunicWindowContext window, DeploymentWork work)
+    {
+        // Application work outside the Window's operations: the close waits for it too.
+        window.DrainOnClose(work.Accepted);
+    }
+
+    // Durable: never asked to cancel by a close or a shutdown; the close waits for it.
+    [RelayCommand]
+    [property: RunicOperationClose(RunicOperationClose.Durable)]
+    private Task ApplyAsync(CancellationToken cancellationToken) => ...;
+
+    // Read-only: asked to cancel as soon as the close is decided.
+    [RelayCommand]
+    [property: RunicOperationClose(RunicOperationClose.Cancel)]
+    private Task RefreshAsync(CancellationToken cancellationToken) => ...;
+}
+```
+
+With ReactiveUI, put `[RunicOperationClose(...)]` on the command property. On
+the ViewModel class it covers each of its operations, and a property's
+declaration wins.
+
+- **`RunicCloseDrain`.** `None`, the default, closes the visible window as soon
+  as the close is decided, as before 0.19. `For(timeout)` keeps it until the
+  work has ended or the time passed; then operations without a declaration are
+  asked to cancel and the window closes. `UntilDrained` has no timeout.
+- **The order.** A user close, or `IRunicWindowContext.RequestCloseAsync`, asks
+  the Window's guards first (`CanCloseAsync`, `ConfirmCloseAsync`); a refusal
+  changes nothing. Once every guard agreed, the Window leaves
+  `IRunicWindowService.Windows`, operation admission stops (`owner-closing`),
+  `Cancel` operations are asked to cancel, and the pages receive `closing` with
+  `draining: true`. They stay connected and keep receiving the Window's state,
+  so the page can show that it is finishing, with progress. The window closes by
+  itself when the work has ended.
+- **A second user close** during the drain is ignored.
+- **`RunicOperationClose`.** `Default`, without a declaration, is waited for and
+  asked to cancel at the drain's or close's timeout, as before 0.19, under every
+  `CloseDrain`. `Cancel` is asked to cancel when the close is decided. `Durable`
+  is never asked to cancel by a Window's close, `CloseAsync`, disposal or the
+  host's shutdown token (`WindowContentSessionOptions.OperationShutdown`); the
+  client's `cancel()` and a `RunicOperationRetirement.Cancel` retirement still
+  cancel it. Awaited command calls count as `Default`.
+- **`DrainOnClose(scope)`.** The close waits for the work that the
+  `AcceptedWorkScope` accepted before the close was decided
+  (`WaitForAcceptedAsync`), and never cancels it. The scope keeps accepting
+  work, and several Windows may drain one scope. Dispose the result to stop.
+- **The application's own close.** `CloseAsync(timeout)` keeps its timeout and
+  honours the declarations; called during a drain, it ends the drain at the
+  timeout. `DisposeAsync` closes the visible window at once. Durable work still
+  running is counted in `RunicWindowCloseResult.RemainingDurableWork`, not in
+  `RemainingOperations`, and keeps the Window's scope until it ended:
+  `Completion`, and the Window's disposal, wait for it.
+
+0.19 drains in `RunicWindowTestHost` (`RunicWindowTestHostOptions.CloseDrain`,
+`RunicTestWindow.IsDraining`); Runic Desktop's embedded windows and its
+shutdown follow in a later part of sdk#900 and close at once until then. The
+operation declarations and `DrainOnClose` apply on every host.
 
 ### Menu bar commands
 
@@ -2028,7 +2115,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034` and `053` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -4521,7 +4608,10 @@ await shell.Main.PushAsync(NavigationTarget.Create<ReportViewModel>(),
 
 The registry of operations is per Window: a second Window, or a second launch,
 cannot observe an operation the first Window started, and closing the Window
-waits for its operations up to the close timeout, then cancels them. Work that
+waits for its operations up to the close timeout, then cancels them. An
+operation declared `[RunicOperationClose(RunicOperationClose.Durable)]` (0.19,
+experimental) is never cancelled by the close: the Window's scope stays until it
+ended (see [Closing after the Window's work has drained](#closing-after-the-windows-work-has-drained)). Work that
 must outlive a Window, or that several Windows observe, belongs to an
 application-owned service registered outside the Window's scope, as
 nix-manager's `IOperationService`:
@@ -5081,6 +5171,19 @@ including awaited continuations and `Task.Run`. Code that continues in that
 task after the drain must not use the resources the owner released. If the
 close is queued to another thread without the execution context, do not await
 its disposal from the accepted task; let the task return instead.
+
+`WaitForAcceptedAsync(cancellationToken)` waits until the work accepted before
+the call has finished and keeps admission open: work accepted later is accepted
+as usual and not waited for, so a close guard can wait for the work and still
+keep its Window open. Called from accepted work of the scope, it does not wait
+for that work, as `DrainAsync` does not. Its token stops only the wait.
+
+A Window's close waits for a scope that its context registered with
+`IRunicWindowContext.DrainOnClose(scope)` (0.19, experimental), within the
+close's timeout or [close drain](#closing-after-the-windows-work-has-drained),
+and never cancels its work. This replaces draining the scope inside a close
+guard, which closed its admission before a later guard could still keep the
+Window open.
 
 The scope does not serialize operations, dispatch model changes, request
 cancellation, or implement recovery. The application still owns those policies

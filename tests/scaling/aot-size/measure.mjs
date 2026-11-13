@@ -64,7 +64,7 @@ export const metrics = {
 
 // Checks one metric as ScalingBudgets.Check does. A "total" has no growth class: only its limit at the larger size.
 export function check(name, entry, values, updating = false) {
-  const { class: growth = "", sizes, limit, margin = 0, slack = 0 } = entry;
+  const { class: growth = "", sizes, limit, margin = 0, slack = 0, noise = 0 } = entry;
   const [small, large] = values;
   const k = sizes[1] / sizes[0];
   const factor = { "O(1)": 1, "O(n)": k, "O(n²)": k * k, total: null }[growth];
@@ -72,7 +72,9 @@ export function check(name, entry, values, updating = false) {
   const notes = [];
   if (factor === undefined) failure = `${name}: unknown class '${growth}' in budgets.json`;
   else if (factor !== null) {
-    const upper = small * factor * (1 + margin) + slack;
+    // noise: how far each measurement may sit off the true line (section alignment); the factor amplifies it at the
+    // smaller size, so it is added there before the factor applies, and once more at the larger size.
+    const upper = (small + noise) * factor * (1 + margin) + slack + noise;
     if (large > upper) failure = `${name} grows faster than ${growth}: ${small} at ${sizes[0]}, ${large} at ${sizes[1]} (at most ${Math.round(upper * 100) / 100}).`;
     else if (factor > 1 && large < 0.5 * factor * small * (1 - margin)) notes.push(`grows slower than ${growth}`);
   }

@@ -21,7 +21,7 @@ import { regionCollectionsFeature } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
 import { clientLanguages, clientLanguagesFeature } from "./client-languages.js";
 import { hostedRegionsFeature } from "./hosted-region-wire.js";
-import { reportWindowClosed } from "./connection-state.js";
+import { endWindowDraining, reportWindowClosed, reportWindowDraining } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitDrafts } from "./field-controller.js";
 import { blobsFeature, readBlobGrant, type BlobGrant } from "./blob-wire.js";
@@ -243,7 +243,9 @@ function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
     await runtime.request({ kind: "flush-reply", id }).catch(() => undefined);
   }
 
-  async function closing(): Promise<void> {
+  // `draining: true`: the window stays visible while its work drains. The page acknowledges as for any close but keeps
+  // applying the window's pushes and reports `draining` instead of `closed`, which the end of the connection reports.
+  async function closing(draining: boolean): Promise<void> {
     if (!features.has(presentedFeature)) return;
     const current = connection;
     flushNotifications();
@@ -258,7 +260,8 @@ function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
     if (disposed || connection !== current) return;
     const reply = connected ? runtime.request({ kind: "closing-reply" }) : undefined;
     // Reported as the reply is sent: the host may end the connection before its answer arrives.
-    reportWindowClosed(slots, true);
+    if (draining) reportWindowDraining(slots, true);
+    else reportWindowClosed(slots, true);
     await reply?.catch(() => undefined);
   }
 
@@ -421,7 +424,9 @@ function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
     },
   };
 
-  const stopClosing = add(windowHandlers, "closing", () => { void closing(); });
+  const stopClosing = add(windowHandlers, "closing", push => {
+    void closing((push as Extract<Push, { kind: "closing" }>).draining === true);
+  });
   const stopFlush = add(windowHandlers, "flush", push => { void flush((push as { readonly id: string }).id); });
   const stopFallback = flushOnDeparture(slots);
   // translation-text/1: the producer sends `locale` only to connections that list the feature, also right after the
@@ -445,8 +450,10 @@ function createRuntime(slots: Slots, bridge: RunicBridgeClient): SharedRuntime {
     reported = true;
     connected = next;
     if (next) connection++;
-    // A new connection ends the `closed` state of a window the application closed.
+    // A new connection ends the `closed` state of a window the application closed; the end of a draining window's
+    // connection is its close.
     if (next && !first) reportWindowClosed(slots, false);
+    if (!next) endWindowDraining(slots);
     hello = undefined;
     features = new Set<string>();
     navigationPath = undefined;

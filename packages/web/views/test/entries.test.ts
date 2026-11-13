@@ -27,9 +27,9 @@ test("binding and generator APIs are not in the application entries; graduated A
   // Graduated from ./experimental in 0.10 (docs/experimental.md).
   for (const name of ["collectionViewport", "createCollectionViewportController", "createLatestOperationController"])
     assert.equal(typeof (root as Record<string, unknown>)[name], "function", `${name} is a root export`);
-  // Hosted regions (0.18) are experimental: only ./experimental exports them.
+  // Hosted regions (0.18) and the close drain's flag (0.19) are experimental: only ./experimental exports them.
   const experimental = await import("@runic-artifex/views/experimental");
-  assert.deepEqual(Object.keys(experimental).sort(), ["defineHostedRegion", "hostedRegionTag"]);
+  assert.deepEqual(Object.keys(experimental).sort(), ["defineHostedRegion", "hostedRegionTag", "onBridgeDraining"]);
   for (const name of Object.keys(experimental)) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   const bindings = await import("@runic-artifex/views/bindings");
   assert.deepEqual(Object.keys(bindings).sort(), [

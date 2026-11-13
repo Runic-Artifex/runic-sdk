@@ -782,6 +782,33 @@ Assert.True(shell.IsBlocked);
   Window. A command that closes its own Window is cancelled by the close, as on
   every host, so don't assert its reply.
 
+#### A close drain
+
+With `RunicWindowTestHostOptions.CloseDrain`, or the Window's own
+`RunicWindowOptions.CloseDrain` (0.19, experimental `RUNICDESK105`), a close that
+the Window's guards approved keeps it open while its accepted work drains, as
+described in
+[closing after the Window's work has drained](../Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained):
+
+```csharp
+await using var window = await RunicWindowTestHost.CreateWindowAsync<DeployWindow>(services,
+    hostOptions: new() { CloseDrain = RunicCloseDrain.For(TimeSpan.FromSeconds(30)) });
+var apply = window.Root<DeployViewModel>().Start(vm => vm.ApplyCommand);   // [RunicOperationClose(Durable)]
+Assert.True(await window.RequestUserCloseAsync());     // the guards agreed
+Assert.True(window.IsOpen && window.IsDraining);       // the page still receives the Window's state
+((FakeTimeProvider)window.Host<DeployViewModel>().Time).Advance(TimeSpan.FromSeconds(30));
+await window.Window.WaitForCloseAsync();               // unmarked operations were asked to cancel; Apply was not
+```
+
+- `RequestUserCloseAsync()` returns once the close was decided; a second call
+  during the drain is ignored and returns `true` without asking the guard.
+- The drain's timeout runs on the Window's clock. The page's `closing` push says
+  `draining: true` (`Host<T>().Transport.Messages`), and starts during the drain
+  are rejected with `owner-closing`.
+- `DisposeAsync`, or `Window.CloseAsync(TimeSpan.Zero)`, ends the drain at once
+  without cancelling durable work, and the disposal waits for that work: release
+  it in the test before the Window is disposed.
+
 ### Collections and frames
 
 `Track()` follows a route from a snapshot through its pushes, as the generated

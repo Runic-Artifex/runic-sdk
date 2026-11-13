@@ -12,7 +12,9 @@ public sealed class WindowContentSessionOptions
     /// <summary>Resolves .NET Views for presented content.</summary>
     public IRunicViewLocator? ViewLocator { get; init; }
 
-    /// <summary>Cancels window-owned operations when signalled.</summary>
+    /// <summary>
+    /// Cancels window-owned operations when signalled, except those declared <see cref="RunicOperationClose.Durable"/>.
+    /// </summary>
     public CancellationToken OperationShutdown { get; init; }
 
     /// <summary>The window's root ViewModel, if any.</summary>

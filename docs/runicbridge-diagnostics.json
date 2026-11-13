@@ -192,6 +192,11 @@
       "title": "Generated Bridges were built against another Runic release than the running runtime"
     },
     {
+      "id": "RUNICBRIDGE039",
+      "severity": "warning",
+      "title": "A [RunicOperationClose] declaration reaches no operation"
+    },
+    {
       "id": "RUNICBRIDGE050",
       "severity": "error",
       "title": "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"

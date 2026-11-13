@@ -1,8 +1,14 @@
 namespace Runic.Application.Views;
 
 /// <summary>The admission result of a graceful Window or content-session close.</summary>
-/// <param name="Drained">Whether every accepted operation reached a terminal result within the timeout.</param>
-/// <param name="RemainingOperations">Operations still running at the timeout. They were asked to cancel.</param>
+/// <param name="Drained">
+/// Whether every accepted operation reached a terminal result within the timeout, and the work of the scopes the Window
+/// drains ended.
+/// </param>
+/// <param name="RemainingOperations">
+/// Operations still running at the timeout. They were asked to cancel. Durable work is counted in
+/// <see cref="RemainingDurableWork"/> instead.
+/// </param>
 /// <param name="Completion">
 /// Completes when the remaining operations have finished and the closer has released
 /// what it owns. A Window host faults it with any release failures.
@@ -17,6 +23,16 @@ public sealed record RunicWindowCloseResult(bool Drained, int RemainingOperation
     /// while such a page is connected.
     /// </summary>
     public bool PagesAcknowledged { get; init; } = true;
+
+    /// <summary>
+    /// The durable work still running when the close ended its wait: operations declared
+    /// <see cref="RunicOperationClose.Durable"/> and the unfinished work of the scopes the Window drains
+    /// (<see cref="IRunicWindowContext.DrainOnClose"/>). None of it was asked to cancel, and <see cref="Completion"/>
+    /// completes only after it. It is not counted in <see cref="RemainingOperations"/>.
+    /// </summary>
+    /// <remarks>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public int RemainingDurableWork { get; init; }
 }
 
 /// <summary>

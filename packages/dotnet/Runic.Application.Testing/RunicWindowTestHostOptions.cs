@@ -17,8 +17,23 @@ public sealed class RunicWindowTestHostOptions
     /// <summary>Resolves .NET Views for presented content.</summary>
     public IRunicViewLocator? ViewLocator { get; init; }
 
-    /// <summary>Cancels window-owned operations when signalled.</summary>
+    /// <summary>
+    /// Cancels window-owned operations when signalled, except those declared <see cref="RunicOperationClose.Durable"/>.
+    /// </summary>
     public CancellationToken OperationShutdown { get; init; }
+
+    /// <summary>
+    /// The close drain of the Windows that <see cref="RunicWindowTestHost.CreateWindowAsync{TWindow}"/> opens whose
+    /// <see cref="RunicWindowOptions.CloseDrain"/> is <see langword="null"/>, as a host's default. <see langword="null"/>,
+    /// the default, is <see cref="RunicCloseDrain.None"/>.
+    /// </summary>
+    /// <remarks>
+    /// With a drain, <see cref="RunicTestWindow.RequestUserCloseAsync"/> returns once the close was decided, and the Window
+    /// stays open (<see cref="RunicTestWindow.IsDraining"/>) with its page connected until its accepted work has ended or
+    /// the drain's timeout passed on the Window's clock. Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public RunicCloseDrain? CloseDrain { get; init; }
 
     /// <summary>The model context the window graph must share, if any.</summary>
     public IRunicModelContext? ModelContext { get; init; }

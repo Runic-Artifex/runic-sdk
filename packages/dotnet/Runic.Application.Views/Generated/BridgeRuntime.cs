@@ -334,6 +334,13 @@ public sealed class CommandDescriptor(string name, Func<object, object> get)
     /// from <see cref="RunicOperationRetirementAttribute"/>. <see cref="RunicOperationRetirement.Keep"/> by default.
     /// </summary>
     public RunicOperationRetirement Retirement { get; init; }
+
+    /// <summary>
+    /// What a Window's close does to the command's running operations, from <see cref="RunicOperationCloseAttribute"/>.
+    /// <see cref="RunicOperationClose.Default"/> by default. Experimental (<c>RUNICDESK105</c>).
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public RunicOperationClose Close { get; init; }
 }
 
 // Detail is present only when the window allows local failure detail.
@@ -706,7 +713,7 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
                     _checkedProperties = [.. checkedBindings];
                 }
             }
-            foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
+            foreach (var descriptor in _incrementalCollections) SetCollectionInstance(descriptor, descriptor.Get(_vm));
             _vm.PropertyChanged += OnChanged;
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
@@ -883,7 +890,7 @@ public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridg
     {
         var rows = descriptor.Get(_vm);
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
-        _collectionInstances[descriptor] = rows;
+        SetCollectionInstance(descriptor, rows);
         // The row index of the previous instance would keep it and its rows alive.
         _collectionIndexes.Remove(descriptor);
         MarkCollectionSet(descriptor);

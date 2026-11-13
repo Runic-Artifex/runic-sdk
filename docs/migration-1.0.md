@@ -1370,3 +1370,18 @@ On Windows, maximizing a window or bringing it back from minimized activates it,
 | 0.18 | 0.19 |
 | --- | --- |
 | A panel drawn by the page as an overlay, or a window widened by hand with `MoveAsync` and `ResizeAsync`, which widened the page's viewport too | `IRunicWindowPresentation.OpenSidePanelAsync` shows the panel's own page beside the window's page and grows the window; keep the overlay as the fallback for a refusal. Experimental ([`RUNICDESK104`](experimental.md#RUNICDESK104)); see the [side panel guide](side-panel.md) |
+
+### Close drain (#900, experimental)
+
+Nothing changes for existing code: operations without `[RunicOperationClose]` and Windows without
+`RunicWindowOptions.CloseDrain` close as in 0.18. An application that built the close-drain workaround of sdk#900 can
+replace it:
+
+| 0.18 | 0.19 |
+| --- | --- |
+| `await acceptedWork.DrainAsync(cancellationToken)` inside `CanCloseAsync` or `ConfirmCloseAsync`, which closed the scope's admission before a later guard could keep the Window open | `IRunicWindowContext.DrainOnClose(acceptedWork)` and `RunicWindowOptions.CloseDrain = RunicCloseDrain.UntilDrained`; a guard that must wait without committing uses `acceptedWork.WaitForAcceptedAsync(cancellationToken)` |
+| A long `CloseAsync` timeout that also kept read-only queries running | `[RunicOperationClose(RunicOperationClose.Cancel)]` on read-only operations and `[RunicOperationClose(RunicOperationClose.Durable)]` on durable ones |
+
+The API is experimental (`RUNICDESK105`, [experimental APIs](experimental.md#RUNICDESK105)): suppress the ID in the
+project that uses it. `WaitForAcceptedAsync` is stable. In 0.19 the visible drain runs in `RunicWindowTestHost`; Runic
+Desktop's windows follow in a later part of sdk#900.

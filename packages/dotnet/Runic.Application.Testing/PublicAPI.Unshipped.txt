@@ -39,3 +39,6 @@ Runic.Application.Testing.RunicWindowPresentationRequestKind.Maximize = 11 -> Ru
 Runic.Application.Testing.RunicWindowPresentationRequestKind.Restore = 12 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
 Runic.Application.Testing.RunicWindowPresentationRequestKind.SetPlacement = 13 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
 [RUNICDESK103]Runic.Application.Testing.RunicTestHostedWindow.SetPlacementAsync(Runic.Application.Views.RunicWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK105]Runic.Application.Testing.RunicTestWindow.IsDraining.get -> bool
+[RUNICDESK105]Runic.Application.Testing.RunicWindowTestHostOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
+[RUNICDESK105]Runic.Application.Testing.RunicWindowTestHostOptions.CloseDrain.init -> void

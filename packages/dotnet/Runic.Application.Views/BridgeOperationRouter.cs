@@ -122,9 +122,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         Func<string?> refusal,
         Func<CancellationToken, Task<BridgeOperationResult>> work,
         BridgeOperationRetirement? retirement = null,
-        Func<long?>? terminalRevision = null)
+        Func<long?>? terminalRevision = null,
+        BridgeOperationClosePolicy close = BridgeOperationClosePolicy.Default)
     {
-        var admission = _operations.AcceptUnlessRefused(request, refusal, work, retirement, terminalRevision);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, work, retirement, terminalRevision, close);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
@@ -134,9 +135,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         BridgeOperationStream stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
         BridgeOperationRetirement? retirement = null,
-        Func<long?>? terminalRevision = null)
+        Func<long?>? terminalRevision = null,
+        BridgeOperationClosePolicy close = BridgeOperationClosePolicy.Default)
     {
-        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work, retirement, terminalRevision);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work, retirement, terminalRevision, close);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
@@ -145,6 +147,10 @@ internal sealed class BridgeOperationRouter : IDisposable
 
     internal ValueTask<BridgeOperationCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
         _operations.BeginCloseAsync(timeout, cancellationToken);
+
+    internal ValueTask<BridgeOperationCloseResult> DrainAsync(TimeSpan timeout, IReadOnlyCollection<Task> durableWork,
+        CancellationToken cancellationToken) =>
+        _operations.BeginCloseAsync(timeout, durableWork, cancellationToken);
 
     internal BridgeOperationRegistry.BridgeAwaitedExecution? TryBeginAwaited(CancellationToken callerCancellation,
         out bool atCapacity) => _operations.TryBeginAwaited(callerCancellation, out atCapacity);

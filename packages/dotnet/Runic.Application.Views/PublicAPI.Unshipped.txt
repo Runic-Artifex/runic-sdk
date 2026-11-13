@@ -301,3 +301,31 @@ override Runic.Application.Views.RunicWindowPlacement.GetHashCode() -> int
 override Runic.Application.Views.RunicWindowPlacement.ToString() -> string!
 static Runic.Application.Views.RunicWindowPlacement.operator !=(Runic.Application.Views.RunicWindowPlacement? left, Runic.Application.Views.RunicWindowPlacement? right) -> bool
 static Runic.Application.Views.RunicWindowPlacement.operator ==(Runic.Application.Views.RunicWindowPlacement? left, Runic.Application.Views.RunicWindowPlacement? right) -> bool
+Runic.Application.Views.AcceptedWorkScope.WaitForAcceptedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK105]override Runic.Application.Views.RunicCloseDrain.Equals(object? obj) -> bool
+[RUNICDESK105]override Runic.Application.Views.RunicCloseDrain.GetHashCode() -> int
+[RUNICDESK105]override Runic.Application.Views.RunicCloseDrain.ToString() -> string!
+[RUNICDESK105]Runic.Application.Views.Generated.CommandDescriptor.Close.get -> Runic.Application.Views.RunicOperationClose
+[RUNICDESK105]Runic.Application.Views.Generated.CommandDescriptor.Close.init -> void
+[RUNICDESK105]Runic.Application.Views.IRunicWindowContext.DrainOnClose(Runic.Application.Views.AcceptedWorkScope! work) -> System.IDisposable!
+[RUNICDESK105]Runic.Application.Views.RunicCloseDrain
+[RUNICDESK105]Runic.Application.Views.RunicCloseDrain.<Clone>$() -> Runic.Application.Views.RunicCloseDrain!
+[RUNICDESK105]Runic.Application.Views.RunicCloseDrain.Equals(Runic.Application.Views.RunicCloseDrain? other) -> bool
+[RUNICDESK105]Runic.Application.Views.RunicCloseDrain.KeepsWindow.get -> bool
+[RUNICDESK105]Runic.Application.Views.RunicCloseDrain.Timeout.get -> System.TimeSpan
+[RUNICDESK105]Runic.Application.Views.RunicOperationClose
+[RUNICDESK105]Runic.Application.Views.RunicOperationCloseAttribute
+[RUNICDESK105]Runic.Application.Views.RunicOperationCloseAttribute.Close.get -> Runic.Application.Views.RunicOperationClose
+[RUNICDESK105]Runic.Application.Views.RunicOperationCloseAttribute.RunicOperationCloseAttribute(Runic.Application.Views.RunicOperationClose close) -> void
+[RUNICDESK105]Runic.Application.Views.RunicOperationClose.Cancel = 1 -> Runic.Application.Views.RunicOperationClose
+[RUNICDESK105]Runic.Application.Views.RunicOperationClose.Default = 0 -> Runic.Application.Views.RunicOperationClose
+[RUNICDESK105]Runic.Application.Views.RunicOperationClose.Durable = 2 -> Runic.Application.Views.RunicOperationClose
+[RUNICDESK105]Runic.Application.Views.RunicWindowCloseResult.RemainingDurableWork.get -> int
+[RUNICDESK105]Runic.Application.Views.RunicWindowCloseResult.RemainingDurableWork.init -> void
+[RUNICDESK105]Runic.Application.Views.RunicWindowOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
+[RUNICDESK105]Runic.Application.Views.RunicWindowOptions.CloseDrain.init -> void
+[RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.For(System.TimeSpan timeout) -> Runic.Application.Views.RunicCloseDrain!
+[RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.None.get -> Runic.Application.Views.RunicCloseDrain!
+[RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.operator !=(Runic.Application.Views.RunicCloseDrain? left, Runic.Application.Views.RunicCloseDrain? right) -> bool
+[RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.operator ==(Runic.Application.Views.RunicCloseDrain? left, Runic.Application.Views.RunicCloseDrain? right) -> bool
+[RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.UntilDrained.get -> Runic.Application.Views.RunicCloseDrain!

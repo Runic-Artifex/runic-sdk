@@ -67,7 +67,18 @@ public sealed class RunicTestWindow : IAsyncDisposable
     public bool IsBlocked => _application.IsBlocked(this);
 
     /// <summary>Whether the Window is open: it has not closed, by the user or the application.</summary>
+    /// <remarks>A Window that drains after its close was decided (<see cref="IsDraining"/>) is still open.</remarks>
     public bool IsOpen => !_bridge.IsClosed;
+
+    /// <summary>
+    /// Whether the Window's close was decided and it stays open while its accepted work drains
+    /// (<see cref="RunicWindowOptions.CloseDrain"/>, <see cref="RunicWindowTestHostOptions.CloseDrain"/>): its operation
+    /// admission stopped, its page received <c>closing</c> with <c>draining: true</c> and still receives its state. It
+    /// closes by itself when the work has ended or the drain's timeout passed on the Window's clock.
+    /// </summary>
+    /// <remarks>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public bool IsDraining => _bridge.IsDraining;
 
     /// <summary>The Window's recording presentation.</summary>
     public RunicTestWindowPresentation Presentation => _bridge.Presentation;
@@ -104,6 +115,12 @@ public sealed class RunicTestWindow : IAsyncDisposable
     /// open, and a window-modal one that agrees closes before this Window's own guard is asked. A request while another
     /// request or <see cref="IRunicWindow.RequestCloseAsync"/> is being decided waits for the same decision. A closed
     /// Window returns <see langword="true"/>. The Windows it owns close with it.
+    /// </para>
+    /// <para>
+    /// A Window with a close drain (<see cref="RunicWindowOptions.CloseDrain"/>) returns <see langword="true"/> once the
+    /// close was decided and stays open while it drains (<see cref="IsDraining"/>); <see cref="IRunicWindow.WaitForCloseAsync"/>
+    /// waits until it closed. A request during the drain is ignored and returns <see langword="true"/>, as the user's second
+    /// close is.
     /// </para>
     /// <para>
     /// The user cannot close a Window that a window-modal Window blocks (<see cref="IsBlocked"/>), as on Windows and macOS:
@@ -153,6 +170,7 @@ public sealed class RunicTestWindow : IAsyncDisposable
 internal interface ITestBridgeWindow
 {
     bool IsClosed { get; }
+    bool IsDraining { get; }
     RunicTestWindowPresentation Presentation { get; }
     object Host { get; }
     Task<bool> RequestUserCloseAsync(CancellationToken cancellationToken);
@@ -174,6 +192,9 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
     private RunicTestWindow? _root;
 
     public IServiceProvider Services { get; } = services;
+
+    // RunicWindowTestHostOptions.CloseDrain: the drain of the Windows whose options set none.
+    internal RunicCloseDrain? CloseDrain => options.CloseDrain;
 
     // RunicWindowTestHostOptions.ApplicationLocale: the application's locale and the one DisposeAsync sets back.
     private (IRunicApplicationLocale Locale, string? Previous)? _restoreLocale;
@@ -381,10 +402,17 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
     private Task<RunicWindowCloseResult>? _close;
     private Task<bool>? _decision;
     private int _disposed;
+    // RunicCloseDrain: the Window's, else the test host's default.
+    private readonly RunicCloseDrain _drain = opening.Options.CloseDrain ?? application.CloseDrain ?? RunicCloseDrain.None;
+    // Ends the visible phase of a drain that a decided close started: the application's own close or disposal.
+    private CancellationTokenSource? _endDrain;
+    private int _draining;
 
     internal RunicTestWindow? TestWindow { get; set; }
 
     public bool IsClosed => _closed.Task.IsCompleted;
+
+    public bool IsDraining => Volatile.Read(ref _draining) != 0 && !IsClosed;
 
     public RunicTestWindowPresentation Presentation { get; } = presentation;
 
@@ -401,12 +429,37 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
 
     // As Runic Desktop's embedded window: the guard decides, then the window closes; an application close meanwhile ends
     // the decision.
+    // With a close drain, the decision returns once the guards agreed and the window stays open while it drains; a request
+    // meanwhile, such as the user's second close, is ignored.
     private async Task<bool> DecideAsync()
     {
-        if (IsClosed) return true;
+        if (IsClosed || Volatile.Read(ref _draining) != 0) return true;
         if (!await AskToCloseAsync(_closeWithoutAsking.Token).ConfigureAwait(false)) return IsClosed;
+        if (_drain.KeepsWindow)
+        {
+            StartDrain();
+            return true;
+        }
         _ = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
         return true;
+    }
+
+    // The closing phase of a decided close with a drain (Runic Desktop's, sdk#900): the Window leaves the open Windows,
+    // admission stops, the page gets closing with draining: true and stays attached, and the window closes when its work
+    // has ended or the drain's timeout passed.
+    // The drain starts before the decision returns, so its timeout runs from then on the Window's clock.
+    private void StartDrain()
+    {
+        Task<Task<RunicWindowCloseResult>> start;
+        lock (_gate)
+        {
+            if (_close is not null) return;
+            var end = _endDrain = new CancellationTokenSource();
+            Volatile.Write(ref _draining, 1);
+            start = new Task<Task<RunicWindowCloseResult>>(() => CloseCoreAsync(_drain.Timeout, draining: true, end.Token));
+            _close = start.Unwrap();
+        }
+        start.RunSynchronously(TaskScheduler.Default);
     }
 
     // As Runic Desktop's owner close: the owned Windows first, innermost first; a window-modal one that agrees closes
@@ -428,15 +481,45 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(timeout));
         Task<RunicWindowCloseResult> close;
-        lock (_gate) close = _close ??= Task.Run(() => CloseCoreAsync(timeout), CancellationToken.None);
+        CancellationTokenSource? drain = null;
+        lock (_gate)
+        {
+            if (_close is null) _close = Task.Run(() => CloseCoreAsync(timeout, draining: false, CancellationToken.None), CancellationToken.None);
+            else drain = _endDrain;
+            close = _close;
+        }
+        // The application's own close during a drain keeps its timeout: the visible window closes then at the latest.
+        // Outside the gate, because ending the drain continues the close on this thread.
+        if (drain is not null && !close.IsCompleted) EndDrainAfter(drain, timeout);
         return new(close.WaitAsync(cancellationToken));
     }
 
-    private async Task<RunicWindowCloseResult> CloseCoreAsync(TimeSpan timeout)
+    private void EndDrainAfter(CancellationTokenSource end, TimeSpan timeout)
+    {
+        if (timeout == Timeout.InfiniteTimeSpan) return;
+        if (timeout == TimeSpan.Zero)
+        {
+            end.Cancel();
+            return;
+        }
+        _ = Task.Delay(timeout, host.Time).ContinueWith(_ => end.Cancel(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private async Task<RunicWindowCloseResult> CloseCoreAsync(TimeSpan timeout, bool draining, CancellationToken endDrain)
     {
         opening.Window.MarkClosing();
-        await _closeWithoutAsking.CancelAsync().ConfigureAwait(false);
-        var drained = await host.DrainAsync(timeout).ConfigureAwait(false);
+        // A drain starts from the decided close, which no pending decision can still need.
+        if (draining) _closeWithoutAsking.Cancel();
+        else await _closeWithoutAsking.CancelAsync().ConfigureAwait(false);
+        RunicWindowCloseResult drained;
+        try { drained = await host.DrainAsync(timeout, draining, endDrain).ConfigureAwait(false); }
+        // The application closed or disposed the Window during its drain: from here on a close without a timeout, which
+        // asks the remaining operations to cancel, except durable ones.
+        catch (OperationCanceledException) when (endDrain.IsCancellationRequested)
+        {
+            drained = await host.DrainAsync(TimeSpan.Zero, draining, CancellationToken.None).ConfigureAwait(false);
+        }
         Presentation.SetActivity(RunicWindowActivity.Closed);
         _closed.TrySetResult();
         await application.CloseOwnedAsync(opening.Window).ConfigureAwait(false);
@@ -449,7 +532,9 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _ = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
+        var closed = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
+        // Durable work is never asked to cancel, so the Window's scope stays until it ended, as on Runic Desktop.
+        if (closed.RemainingDurableWork > 0) await closed.Completion.ConfigureAwait(false);
         try { host.Dispose(); }
         finally { await opening.Scope.DisposeAsync().ConfigureAwait(false); }
     }
