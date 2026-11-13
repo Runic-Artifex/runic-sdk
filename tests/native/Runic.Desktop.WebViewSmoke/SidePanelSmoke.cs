@@ -8,9 +8,10 @@ using Runic.Desktop;
 //   the panel's page connects as a second connection of the window and disconnects when it closes.
 // - Frame capture: each DWM frame (DwmFlush) one row of the screen across the page's left edge, which the page marks
 //   with a magenta bar, while the panel opens and closes on the left edge and moves between edges. The page's edge may
-//   be out of place in at most one frame (side-panel/DESIGN.md §4); the count is printed. A desktop whose screen GDI
-//   cannot read, as the arm64 runner's (the row shows none of the page's white), leaves frame capture unverified; the
-//   transitions and their other checks still run. A page that shows without its marker, or loses it later, fails.
+//   be out of place in at most one frame (side-panel/DESIGN.md §4); the count is printed. A baseline search before any
+//   side-panel operation decides whether this desktop can be captured: where GDI does not show the marker then, as on
+//   the arm64 runner (nothing, garbage or a blank white row), frame capture is unverified and the transitions run with
+//   their other checks. A marker found at the baseline and missing or out of place later fails.
 // - Tab from the page's last element focuses the panel's first, Shift+Tab hands focus back (SendInput; a desktop that
 //   delivers no input to the window, as the arm64 runner's, leaves it unverified).
 // - The placement excludes the panel; a maximized window keeps the panel and the page takes the rest; refusals
@@ -87,6 +88,12 @@ internal static partial class SidePanelSmoke
             var page = await ReadPageAsync(surface);
             Console.WriteLine($"Side panel: window {start.Bounds} at scale {scale}, page {page.Width} CSS px, work area check for {PanelWidth}.");
 
+            // The baseline, before any side-panel operation, with the window as opened: where GDI cannot find the page's
+            // marker now (the arm64 runner's desktop reads garbage or blank white), frame capture is unverified, and the
+            // transitions run with every other check. Found here, it must be found in place later.
+            // GDI frame capture is Windows only; macOS checks the page's place on the screen instead.
+            var marker = OperatingSystem.IsWindows() ? FindBaselineMarker(start.VisibleBounds!) : null;
+
             await ExerciseRefusalsAsync(window);
             var right = await OpenAsync(window, surface, reports, DesktopWindowEdge.Right, start, native, page);
             Require(window.State!.Placement!.Width == start.Placement!.Width && window.State.Placement.X == start.Placement.X,
@@ -101,10 +108,9 @@ internal static partial class SidePanelSmoke
             await RequirePageAsync(surface, page, "after the width changes");
             await CloseAsync(window, surface, right, start);
 
-            // The left edge with frame capture: the page's left edge stays where it is on the screen.
-            // Null where the runner's desktop shows GDI nothing of the window (the arm64 runner's): the transitions then
-            // run without frame capture, and every other check stays. macOS checks the page's place on the screen instead.
-            var marker = OperatingSystem.IsWindows() ? FindMarker(window.State!.VisibleBounds!) : null;
+            // The left edge with frame capture: the page's left edge stays where it is on the screen. The window is back at
+            // its start bounds, so the marker is where the baseline found it.
+            if (marker is { } baseline) RequireMarker(baseline);
             DesktopSidePanel? left = null;
             await CaptureAsync("open on the left edge", marker,
                 async () => left = await OpenAsync(window, surface, reports, DesktopWindowEdge.Left, start, native, page));
@@ -320,25 +326,30 @@ internal static partial class SidePanelSmoke
         Require(deviating <= 1, $"at most one frame with the page's left edge out of place during '{what}', not {deviating}");
     }
 
-    // The page's magenta marker in the row through the middle of the window's visible frame, or null when the screen
-    // capture shows nothing of the window at all: a probe of the row for the page's white background, which a desktop
-    // that GDI can read always shows beside the marker. A row with the page but without its marker fails.
-    private static (int X, int Y)? FindMarker(DesktopWindowBounds visible)
+    // The baseline: the page's magenta marker in the row through the middle of the window's visible frame, read before
+    // any side-panel operation, or null when GDI does not show it there: then this runner's desktop cannot be captured
+    // (the arm64 runner's reads nothing, garbage or a blank white row), and frame capture is unverified.
+    private static (int X, int Y)? FindBaselineMarker(DesktopWindowBounds visible)
     {
         var y = visible.Y!.Value + visible.Height / 2;
         var row = Screen.Row(visible.X!.Value, y, visible.Width);
-        var white = row?.Count(static pixel => (pixel & 0xFFFFFF) == 0xFFFFFF) ?? 0;
-        if (row is null || white < visible.Width / 4)
+        var colors = row?.Select(static pixel => pixel & 0xFFFFFF).Distinct().Count() ?? 0;
+        if (row is not null && colors > 1 && Screen.MarkerIn(row) is { } x)
         {
-            var colors = row?.Select(static pixel => pixel & 0xFFFFFF).Distinct().Count() ?? 0;
-            Console.WriteLine($"Side panel: frame capture unverified on this runner: GDI reads {(row is null ? "nothing (BitBlt failed)" : $"{colors} colour(s) and {white} white pixel(s)")} " +
-                $"in the row {y} of the window {visible}, not its page.");
-            return null;
+            Console.WriteLine($"Side panel: baseline: the page's left edge is at screen x {visible.X.Value + x}, row {y}; frame capture is on.");
+            return (visible.X.Value + x, y);
         }
-        var x = Screen.MarkerIn(row)
-            ?? throw new InvalidOperationException($"Side panel: the screen shows the page ({white} white pixels in the row {y} of {visible}) but not its left-edge marker.");
-        Console.WriteLine($"Side panel: the page's left edge is at screen x {visible.X.Value + x}, row {y}.");
-        return (visible.X.Value + x, y);
+        Console.WriteLine($"Side panel: frame capture unverified on this runner: before any side-panel operation GDI reads " +
+            $"{(row is null ? "nothing (BitBlt failed)" : $"{colors} colour(s) and no marker")} in the row {y} of the window {visible}.");
+        return null;
+    }
+
+    // Once the baseline found the marker, it must be in the same place whenever the window is back at its start bounds.
+    private static void RequireMarker((int X, int Y) baseline)
+    {
+        var found = Screen.MarkerIn(baseline.X - 40, baseline.Y, 80) is { } x ? baseline.X - 40 + x : (int?)null;
+        Require(found == baseline.X,
+            $"the page's left-edge marker at screen x {baseline.X} in the row {baseline.Y}, where the baseline found it, not {found?.ToString(CultureInfo.InvariantCulture) ?? "missing"}");
     }
 
     private static async Task RequirePageAsync(DesktopSurface surface, (int Resizes, int Width, int Height) expected, string when)

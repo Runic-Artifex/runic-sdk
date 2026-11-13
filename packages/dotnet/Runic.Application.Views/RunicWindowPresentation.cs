@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Runic.Navigation;
 using Runic.Platform;
@@ -148,6 +149,58 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="colorScheme"/> is not a defined value.</exception>
     ValueTask<PlatformResult<PlatformUnit>> SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens a page of the Window beside its page, growing the Window by the panel's width on one edge, so its page keeps
+    /// its size and its place on the screen.
+    /// </summary>
+    /// <param name="options">The edge, width and page of the panel.</param>
+    /// <param name="cancellationToken">Cancels waiting for the panel's page; a cancelled open leaves the Window unchanged.</param>
+    /// <returns>
+    /// <see cref="RunicSidePanelResult.Opened"/> with the panel, also <see cref="SidePanel"/> from then on, or
+    /// <see cref="RunicSidePanelResult.Refused"/> with the reason, after which the Window is unchanged and the ViewModel
+    /// shows the content another way, such as an overlay of its page.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The panel's page is a second connection of the Window and binds to the same ViewModel tree, for example to a
+    /// <c>SidePanel</c> property of the root ViewModel; its address and history are its own. Only Runic Desktop's own
+    /// windows on Windows (WebView2) open one in 0.19; every other presentation refuses with
+    /// <see cref="RunicSidePanelRefusal.Unsupported"/>: macOS and Linux for now, an installed browser, a serve-only
+    /// application, a custom window host, WPF, CS-WebUI and a hosted application's Window or region.
+    /// <see cref="RunicWindowPresentationFeatures.SidePanel"/> in <see cref="Features"/> says the host has one; the
+    /// Window's state can still refuse (maximized, full-screen, snapped, minimized, no room). Once the Window closed,
+    /// the result is <see cref="RunicSidePanelRefusal.Closed"/>.
+    /// </para>
+    /// <para>
+    /// The default implementation, for a presentation of 0.18 or earlier, refuses with
+    /// <see cref="RunicSidePanelRefusal.Unsupported"/>. Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The width is smaller than <see cref="RunicSidePanelOptions.MinimumWidth"/>, the edge is not defined, or the load
+    /// timeout is not positive.
+    /// </exception>
+    /// <exception cref="ArgumentException">The path is empty, absolute, or leaves the Window's page.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    ValueTask<RunicSidePanelResult> OpenSidePanelAsync(RunicSidePanelOptions options, CancellationToken cancellationToken = default)
+    {
+        RunicSidePanelOptions.Validate(options);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<RunicSidePanelResult>(new RunicSidePanelResult.Refused(RunicSidePanelRefusal.Unsupported));
+    }
+
+    /// <summary>Gets the Window's open side panel, or <see langword="null"/>.</summary>
+    /// <remarks>
+    /// Set when <see cref="OpenSidePanelAsync"/> returns the panel; <see langword="null"/> again in the turn of the Window's
+    /// model context that raises the panel's <see cref="IRunicSidePanel.Closed"/>, and
+    /// <see cref="INotifyPropertyChanged.PropertyChanged"/> reports both changes. The default implementation returns
+    /// <see langword="null"/>. Experimental (<c>RUNICDESK104</c>).
+    /// </remarks>
+    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    IRunicSidePanel? SidePanel => null;
 }
 
 /// <summary>What a Window's host can do through <see cref="IRunicWindowPresentation"/>.</summary>
@@ -195,6 +248,13 @@ public enum RunicWindowPresentationFeatures
     /// to it (<see cref="RunicWindowOptions.Modality"/>). Without it, such a Window opens on its own.
     /// </summary>
     OwnedWindows = 1 << 8,
+
+    /// <summary>
+    /// <see cref="IRunicWindowPresentation.OpenSidePanelAsync"/> can open a side panel: the host has one, though the
+    /// Window's state can still refuse it. Experimental (<c>RUNICDESK104</c>).
+    /// </summary>
+    [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    SidePanel = 1 << 9,
 }
 
 /// <summary>Whether a Window is active, minimized and visible, for <see cref="IRunicWindowPresentation.Activity"/>.</summary>
@@ -370,6 +430,132 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation, IDispo
         return Forward(backend => backend.SetColorSchemeAsync(colorScheme, cancellationToken), cancellationToken);
     }
 
+    // sdk#864, P5: the backend's panel, wrapped so that its Closed and the change of SidePanel arrive in a model turn.
+    private ModelSidePanel? _sidePanel;
+
+    public IRunicSidePanel? SidePanel => Volatile.Read(ref _sidePanel);
+
+    public async ValueTask<RunicSidePanelResult> OpenSidePanelAsync(RunicSidePanelOptions options, CancellationToken cancellationToken = default)
+    {
+        RunicSidePanelOptions.Validate(options);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Volatile.Read(ref _closed)) return new RunicSidePanelResult.Refused(RunicSidePanelRefusal.Closed);
+        // A Window whose host attached no presentation, such as a serve-only one, has no native window to grow.
+        if (Volatile.Read(ref _backend) is not { } backend) return new RunicSidePanelResult.Refused(RunicSidePanelRefusal.Unsupported);
+        var result = await backend.OpenSidePanelAsync(options, cancellationToken).ConfigureAwait(false);
+        return result is RunicSidePanelResult.Opened opened ? new RunicSidePanelResult.Opened(Track(opened.Panel)) : result;
+    }
+
+    // The backend's panel, wrapped once: SidePanel is set at once, so the command that opened it reads it, and
+    // PropertyChanged follows in a turn.
+    private ModelSidePanel Track(IRunicSidePanel inner)
+    {
+        ModelSidePanel panel;
+        lock (_gate)
+        {
+            if (_sidePanel is { } current && ReferenceEquals(current.Inner, inner)) return current;
+            panel = new ModelSidePanel(this, inner);
+            Volatile.Write(ref _sidePanel, panel);
+        }
+        panel.Start();
+        InTurn(() => Raise(nameof(SidePanel)));
+        return panel;
+    }
+
+    private void OnSidePanelClosed(ModelSidePanel panel, RunicSidePanelCloseReason reason) => InTurn(() =>
+    {
+        bool current;
+        lock (_gate)
+        {
+            current = ReferenceEquals(_sidePanel, panel);
+            if (current) Volatile.Write(ref _sidePanel, null);
+        }
+        if (current) Raise(nameof(SidePanel));
+        panel.RaiseClosed(reason);
+    });
+
+    // IRunicSidePanel of the Window's scope: forwards to the backend's panel and raises its Closed in a model turn.
+    private sealed class ModelSidePanel(RunicWindowPresentation presentation, IRunicSidePanel inner) : IRunicSidePanel
+    {
+        private readonly object _gate = new();
+        private EventHandler<RunicSidePanelClosedEventArgs>? _closedHandlers;
+        private int _closing;
+        private bool _raised;
+
+        internal IRunicSidePanel Inner => inner;
+
+        public RunicSidePanelEdge Edge => inner.Edge;
+
+        public int Width => inner.Width;
+
+        public bool IsOpen => inner.IsOpen;
+
+        public event EventHandler<RunicSidePanelClosedEventArgs>? Closed
+        {
+            add { lock (_gate) if (!_raised) _closedHandlers += value; }
+            remove { lock (_gate) _closedHandlers -= value; }
+        }
+
+        internal void Start()
+        {
+            inner.Closed += OnInnerClosed;
+            // Closed before the handler was added: a backend does not call a handler added after the close.
+            if (!inner.IsOpen) OnClosed(RunicSidePanelCloseReason.Closed);
+        }
+
+        private void OnInnerClosed(object? sender, RunicSidePanelClosedEventArgs args) => OnClosed(args.Reason);
+
+        private void OnClosed(RunicSidePanelCloseReason reason)
+        {
+            if (Interlocked.Exchange(ref _closing, 1) != 0) return;
+            inner.Closed -= OnInnerClosed;
+            presentation.OnSidePanelClosed(this, reason);
+        }
+
+        internal void RaiseClosed(RunicSidePanelCloseReason reason)
+        {
+            EventHandler<RunicSidePanelClosedEventArgs>? handlers;
+            lock (_gate)
+            {
+                _raised = true;
+                handlers = _closedHandlers;
+                _closedHandlers = null;
+            }
+            if (handlers is null) return;
+            var args = new RunicSidePanelClosedEventArgs(reason);
+            foreach (EventHandler<RunicSidePanelClosedEventArgs> handler in handlers.GetInvocationList())
+            {
+                try { handler(this, args); }
+                catch (Exception error) when (error is not OutOfMemoryException) { presentation.HandlerFailed(error, nameof(Closed)); }
+            }
+        }
+
+        public ValueTask<RunicSidePanelRefusal?> MoveToEdgeAsync(RunicSidePanelEdge edge, CancellationToken cancellationToken = default)
+        {
+            RunicSidePanelOptions.ValidateEdge(edge);
+            cancellationToken.ThrowIfCancellationRequested();
+            return IsOpen ? inner.MoveToEdgeAsync(edge, cancellationToken) : ValueTask.FromResult<RunicSidePanelRefusal?>(RunicSidePanelRefusal.Closed);
+        }
+
+        public ValueTask<RunicSidePanelRefusal?> SetWidthAsync(int width, CancellationToken cancellationToken = default)
+        {
+            RunicSidePanelOptions.ValidateWidth(width);
+            cancellationToken.ThrowIfCancellationRequested();
+            return IsOpen ? inner.SetWidthAsync(width, cancellationToken) : ValueTask.FromResult<RunicSidePanelRefusal?>(RunicSidePanelRefusal.Closed);
+        }
+
+        public ValueTask FocusAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return IsOpen ? inner.FocusAsync(cancellationToken) : ValueTask.CompletedTask;
+        }
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken = default) =>
+            IsOpen ? inner.CloseAsync(cancellationToken) : ValueTask.CompletedTask;
+
+        public ValueTask DisposeAsync() => CloseAsync(CancellationToken.None);
+    }
+
     private ValueTask<PlatformResult<PlatformUnit>> Forward(Func<IRunicWindowPresentation, ValueTask<PlatformResult<PlatformUnit>>> request,
         CancellationToken cancellationToken)
     {
@@ -385,7 +571,14 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation, IDispo
 
     private void OnBackendPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName != nameof(ColorScheme) || Volatile.Read(ref _closed) || sender is not IRunicWindowPresentation backend) return;
+        if (Volatile.Read(ref _closed) || sender is not IRunicWindowPresentation backend) return;
+        // A panel the backend opened without this presentation, such as through DesktopWindow; its close reports itself.
+        if (args.PropertyName == nameof(SidePanel))
+        {
+            if (backend.SidePanel is { } panel) Track(panel);
+            return;
+        }
+        if (args.PropertyName != nameof(ColorScheme)) return;
         var colorScheme = backend.ColorScheme;
         InTurn(() =>
         {
