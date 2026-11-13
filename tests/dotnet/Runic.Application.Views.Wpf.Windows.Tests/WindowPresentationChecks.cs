@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.Wpf;
+using Runic.Desktop.Internal;
 using Runic.Platform;
 using TUnit.Core;
 
@@ -63,6 +64,19 @@ internal sealed partial class WindowPresentationChecks
                 "WPF reported an edited mark.");
             await presentation.SetColorSchemeAsync(DesktopColorScheme.Light);
             Program.Check(DarkMode(handle) == 0, "The title bar did not turn light.");
+
+            // #888: NoPreference gives the title bar the system's app mode, and again after the system announces a change
+            // of it (here a title bar set the other way, then WM_SETTINGCHANGE "ImmersiveColorSet"); Light keeps its own.
+            var system = WindowsWebView2Host.TitleBarDarkMode(DesktopColorScheme.NoPreference, WindowsWebView2Host.SystemUsesDarkTheme(),
+                WebUiSystemTheme.IsHighContrast);
+            await presentation.SetColorSchemeAsync(DesktopColorScheme.NoPreference);
+            Program.Check(DarkMode(handle) == system, $"With NoPreference the title bar is {DarkMode(handle)}, the system's app mode {system}.");
+            WindowsWebView2Host.SetImmersiveDarkMode(handle, 1 - system);
+            AnnounceAppModeChange(handle);
+            Program.Check(DarkMode(handle) == system, $"After an app mode change the title bar is {DarkMode(handle)}, the system's app mode {system}.");
+            await presentation.SetColorSchemeAsync(DesktopColorScheme.Light);
+            AnnounceAppModeChange(handle);
+            Program.Check(DarkMode(handle) == 0, "An app mode change reached a title bar with Light.");
         }
         finally { window.Close(); }
         Program.Check(presentation.Activity == RunicWindowActivity.Closed, $"A closed window reported {presentation.Activity}.");
@@ -76,6 +90,17 @@ internal sealed partial class WindowPresentationChecks
 
     [LibraryImport("dwmapi.dll")]
     private static partial int DwmGetWindowAttribute(nint window, int attribute, out int value, int size);
+
+    // The WM_SETTINGCHANGE that Windows broadcasts when the app mode changes, to this window only.
+    private static void AnnounceAppModeChange(nint handle)
+    {
+        var area = Marshal.StringToHGlobalUni("ImmersiveColorSet");
+        try { _ = SendMessage(handle, 0x001A, 0, area); }
+        finally { Marshal.FreeHGlobal(area); }
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial nint SendMessage(nint window, uint message, nuint wParam, nint lParam);
 
     private sealed class EventLog : ILoggerFactory
     {

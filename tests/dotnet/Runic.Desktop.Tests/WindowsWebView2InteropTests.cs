@@ -187,11 +187,39 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.Contains("COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK\t= ( COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT + 1 )", header);
         Assert.Equal(1, WindowsWebView2Interop.PreferredColorScheme(Runic.Platform.DesktopColorScheme.Light));
         Assert.Equal(2, WindowsWebView2Interop.PreferredColorScheme(Runic.Platform.DesktopColorScheme.Dark));
-        // DWMWA_USE_IMMERSIVE_DARK_MODE; a window without a scheme keeps Windows' default title bar.
+        // DWMWA_USE_IMMERSIVE_DARK_MODE; a window without a scheme follows the system (TitleBarFollowsTheSystemsAppMode).
         Assert.Equal(20, WindowsWebView2Host.DwmUseImmersiveDarkMode);
         Assert.Equal(1, WindowsWebView2Host.ImmersiveDarkMode(Runic.Platform.DesktopColorScheme.Dark));
         Assert.Equal(0, WindowsWebView2Host.ImmersiveDarkMode(Runic.Platform.DesktopColorScheme.Light));
         Assert.Null(WindowsWebView2Host.ImmersiveDarkMode(Runic.Platform.DesktopColorScheme.NoPreference));
+    }
+
+    // #888: NoPreference gives the title bar the system's app mode, and a contrast theme its own colours; Light and Dark
+    // force theirs whatever the system's.
+    [Test]
+    [Arguments(Runic.Platform.DesktopColorScheme.NoPreference, false, false, 0)]
+    [Arguments(Runic.Platform.DesktopColorScheme.NoPreference, true, false, 1)]
+    [Arguments(Runic.Platform.DesktopColorScheme.NoPreference, true, true, 0)]
+    [Arguments(Runic.Platform.DesktopColorScheme.Light, true, false, 0)]
+    [Arguments(Runic.Platform.DesktopColorScheme.Light, true, true, 0)]
+    [Arguments(Runic.Platform.DesktopColorScheme.Dark, false, false, 1)]
+    [Arguments(Runic.Platform.DesktopColorScheme.Dark, false, true, 1)]
+    [DisplayName("TitleBarFollowsTheSystemsAppMode(colorScheme: $colorScheme, systemDark: $systemDark, highContrast: $highContrast)")]
+    public void TitleBarFollowsTheSystemsAppMode(Runic.Platform.DesktopColorScheme colorScheme, bool systemDark, bool highContrast, int expected) =>
+        Assert.Equal(expected, WindowsWebView2Host.TitleBarDarkMode(colorScheme, systemDark, highContrast));
+
+    // WM_SETTINGCHANGE: the app mode ("ImmersiveColorSet") and a contrast theme (SPI_SETHIGHCONTRAST) reach a title bar
+    // that follows the system; other areas, such as the locale or a policy refresh, do not.
+    [Test]
+    public void TitleBarFollowsTheAppModeAndContrastSettingChanges()
+    {
+        Assert.Equal((nuint)0x0043, WindowsWebView2Host.SpiSetHighContrast);
+        Assert.True(WindowsWebView2Host.ChangesSystemTitleBar(0, "ImmersiveColorSet"));
+        Assert.True(WindowsWebView2Host.ChangesSystemTitleBar(0x0043, null));
+        Assert.False(WindowsWebView2Host.ChangesSystemTitleBar(0, null));
+        Assert.False(WindowsWebView2Host.ChangesSystemTitleBar(0, "intl"));
+        Assert.False(WindowsWebView2Host.ChangesSystemTitleBar(0, "Policy"));
+        Assert.False(WindowsWebView2Host.ChangesSystemTitleBar(0x0042, "immersivecolorset"));
     }
 
     [Test]
