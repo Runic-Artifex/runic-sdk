@@ -101,6 +101,23 @@ internal static partial class SidePanelSmoke
             finally { Send(pool, Sel("drain")); }
         });
 
+        // The window's first responder: the page's view, another subview of the content view (the panel's), or its class.
+        internal static async Task<string> DescribeFirstResponderAsync(DesktopWindow window)
+        {
+            var description = "";
+            await window.InvokeNativeAsync(handle =>
+            {
+                var responder = Send(handle, Sel("firstResponder"));
+                var subviews = Send(Send(handle, Sel("contentView")), Sel("subviews"));
+                var index = -1L;
+                for (long i = 0, count = Send(subviews, Sel("count")); i < count; i++)
+                    if (Arg(subviews, Sel("objectAtIndex:"), (nint)i) == responder) index = i;
+                description = responder == 0 ? "none" : responder == s_page ? "the page's view" : index >= 0 ? $"the content view's subview {index} (the panel's)"
+                    : Text(Send(Send(responder, Sel("className")), Sel("description")));
+            });
+            return description;
+        }
+
         internal static async Task<double> ContentMinimumWidthAsync(DesktopWindow window)
         {
             double width = 0;

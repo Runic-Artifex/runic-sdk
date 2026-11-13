@@ -11,9 +11,11 @@ namespace Runic.Desktop.Internal;
 // its place on the screen. Afterwards the autoresizing masks give a user resize, zoom or full screen to the page, and
 // the panel keeps its width (D062.5).
 //
-// - Focus: the page's and the panel's views are each other's next key view. When Tab leaves a document and the UI
-//   delegate has no _webView:takeFocus:, WebKit selects the window's next or previous key view, which focuses its
-//   first or last element in that direction: no private API.
+// - Focus: as WebView2's MoveFocusRequested, Tab past a document's last tab stop focuses the other view's first, and
+//   Shift+Tab before its first the other's last. WebKit hands focus out of a WKWebView only through the private
+//   _webView:takeFocus: (its key-view fallback leaves no element focused, osx-arm64), so FocusScript, in a content world
+//   of its own in both views, reports a Tab that left its document, and MoveFocusOut moves the first responder and
+//   focuses the tab stop. The views are also each other's next key view, for AppKit's own key-view loop.
 // - Accessibility: the content view's children are listed in subview order, so the panel is below the page on the left
 //   edge and above it on the right: the reading order is the visual order.
 // - The panel's view shares the window's delegates through the WebViews map; PanelViews tells them it is the panel.
@@ -125,7 +127,7 @@ internal sealed partial class MacOsWkWebViewHost
         var store = Api.SendNint(Api.SendNint(_webView, "configuration"), "websiteDataStore");
         var view = Api.AllocInitWebView(new CGRect(bounds.X + bounds.Width, bounds.Y, panel.NativeWidth, bounds.Height),
             request.DocumentStartScript, WebViewClass, fileDropHandler: 0,
-            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, store);
+            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, store, FocusHandler.Value);
         if (view == 0) throw new InvalidOperationException("WebKit could not create the side panel's WKWebView.");
         panel.View = view;
         _panel = panel;
@@ -514,6 +516,102 @@ internal sealed partial class MacOsWkWebViewHost
             }
         });
         return true;
+    }
+
+    private const string FocusMessageHandler = "runicSidePanelFocus";
+    private const string FocusContentWorld = "runic-desktop-side-panel-focus";
+    private static readonly Lazy<nint> FocusHandler = new(CreateFocusHandler);
+
+    // Runs at document start in the main frame of the page's and the panel's view, in its own content world. After a
+    // trusted Tab or Shift+Tab that the page did not cancel, a document whose focus left it (WebKit clears the focused
+    // element when Tab passes the last tab stop or Shift+Tab the first) reports "next" or "previous". Focus moving into
+    // a frame of the page leaves the frame element active, which is not reported.
+    internal const string FocusScript = """
+        (() => {
+          "use strict";
+          const handler = globalThis.webkit?.messageHandlers?.runicSidePanelFocus;
+          if (!handler) return;
+          addEventListener("keydown", event => {
+            if (event.key !== "Tab" || !event.isTrusted || event.altKey || event.ctrlKey || event.metaKey) return;
+            const direction = event.shiftKey ? "previous" : "next";
+            setTimeout(() => {
+              if (event.defaultPrevented) return;
+              const active = document.activeElement;
+              if (active && active !== document.body && active !== document.documentElement) return;
+              handler.postMessage(direction);
+            }, 0);
+          }, true);
+        })();
+        """;
+
+    // The first (forward) or last tab stop of a document, in tab order: positive tabindex values first, then document
+    // order; it is focused.
+    private static string FocusEdgeScript(bool forward) => $$"""
+        (() => {
+          const candidates = [...document.querySelectorAll('a[href],area[href],button,input,select,textarea,iframe,summary,audio[controls],video[controls],[tabindex],[contenteditable]:not([contenteditable="false"])')]
+            .filter(element => element.tabIndex >= 0 && !element.disabled && element.type !== "hidden" && element.getClientRects().length > 0
+              && !element.closest("[inert]"));
+          const ordered = [...candidates.filter(element => element.tabIndex > 0).sort((a, b) => a.tabIndex - b.tabIndex),
+            ...candidates.filter(element => element.tabIndex === 0)];
+          const target = {{(forward ? "ordered[0]" : "ordered[ordered.length - 1]")}};
+          if (target) target.focus();
+          return target ? target.id || target.tagName : "";
+        })();
+        """;
+
+    // Main thread: Tab left view's document forward or backward; the other view of the window takes the focus at its
+    // first or last tab stop. Without a shown panel nothing changes, as before.
+    private void MoveFocusOut(nint view, bool forward)
+    {
+        if (!IsOpen || _panel is not { IsShown: true, View: not 0 } panel) return;
+        var target = view == panel.View ? _webView : view == _webView ? panel.View : 0;
+        if (target == 0) return;
+        Api.SendNintNint(_window, "makeFirstResponder:", target);
+        var script = Api.CreateString(FocusEdgeScript(forward));
+        try
+        {
+            Api.SendVoidNintNint(target, "evaluateJavaScript:completionHandler:", script, 0);
+        }
+        finally
+        {
+            Api.SendVoid(script, "release");
+        }
+    }
+
+    private static unsafe nint CreateFocusHandler()
+    {
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable) return 0;
+        var type = Api.GetClass("RunicDesktopSidePanelFocusHandler");
+        if (type == 0)
+        {
+            type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopSidePanelFocusHandler");
+            if (type == 0) return 0;
+            Api.AddMethod(type, "userContentController:didReceiveScriptMessage:",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&DidReceiveFocusMessage, "v@:@@");
+            Api.RegisterClassPair(type);
+        }
+        return Api.SendNint(Api.SendNint(type, "alloc"), "init");
+    }
+
+    // The focus script's report, from a main frame; the focus moves after WebKit's callback returned.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void DidReceiveFocusMessage(nint self, nint selector, nint controller, nint message)
+    {
+        try
+        {
+            var webView = Api.SendNint(message, "webView");
+            if (!WebViews.TryGetValue(webView, out var host) || !host.IsOpen) return;
+            var frame = Api.SendNint(message, "frameInfo");
+            if (frame != 0 && !Api.SendBool(frame, "isMainFrame")) return;
+            var body = Api.SendNint(message, "body");
+            var direction = Api.IsString(body) ? Api.Text(body) : null;
+            if (direction is not ("next" or "previous")) return;
+            MacOsMainThread.Post(() => host.MoveFocusOut(webView, direction == "next"));
+        }
+        catch
+        {
+            // Never unwind through WebKit.
+        }
     }
 
     // A panel from its request until it closed. Main thread only, except the read-only members of IWebUiSidePanel.

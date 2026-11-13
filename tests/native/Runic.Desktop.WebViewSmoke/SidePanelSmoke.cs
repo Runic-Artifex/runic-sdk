@@ -176,7 +176,8 @@ internal static partial class SidePanelSmoke
     private static async Task ExerciseFocusAsync(DesktopWindow window, DesktopSurface surface, System.Collections.Concurrent.ConcurrentQueue<string> reports)
     {
         await window.FocusAsync();
-        await surface.ExecuteJavaScriptAsync("document.getElementById('last').focus(); return document.activeElement.id;", Deadline);
+        var before = (await surface.ExecuteJavaScriptAsync("document.getElementById('last').focus(); return document.activeElement.id;", Deadline)).Trim('"');
+        Require(before == "last", $"the page's last element focused before Tab, not '{before}'");
         await Task.Delay(Settle);
         reports.Clear();
         await PressTabAsync(window, shift: false);
@@ -185,7 +186,8 @@ internal static partial class SidePanelSmoke
         if (!reports.Contains("focus-panel-first"))
         {
             var focus = await surface.ExecuteJavaScriptAsync("return document.hasFocus() + ' ' + document.activeElement.id;", Deadline);
-            Require(focus.Trim('"') == "true last", $"Tab past the page's last element to focus the panel's first, but the page has '{focus}'");
+            var responder = OperatingSystem.IsMacOS() ? $"; the window's first responder is {await MacOS.DescribeFirstResponderAsync(window)}" : "";
+            Require(focus.Trim('"') == "true last", $"Tab past the page's last element to focus the panel's first, but the page has '{focus}'{responder}");
             Console.WriteLine("Side panel: Tab unverified on this runner: its desktop does not deliver the key to the window.");
             return;
         }

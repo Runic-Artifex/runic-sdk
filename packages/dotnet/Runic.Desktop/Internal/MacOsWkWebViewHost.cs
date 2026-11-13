@@ -551,7 +551,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Volatile.Write(ref _hostedMenuBar, []);
         }
         _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0,
-            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, dataStore);
+            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0, dataStore, FocusHandler.Value);
         if (_webView == 0)
         {
             ReleaseEphemeralDataStore();
@@ -2768,7 +2768,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler, nint windowChromeHandler,
-            nint websiteDataStore = 0)
+            nint websiteDataStore = 0, nint focusHandler = 0)
         {
             var configuration = SendNint(SendNint(GetClass("WKWebViewConfiguration"), "alloc"), "init");
             if (configuration == 0)
@@ -2816,6 +2816,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 {
                     AddIsolatedScript(SendNint(configuration, "userContentController"), windowChromeHandler,
                         MacOsWindowChrome.MessageHandler, MacOsWindowChrome.Script, MacOsWindowChrome.ContentWorld, mainFrameOnly: true);
+                }
+                if (focusHandler != 0)
+                {
+                    AddIsolatedScript(SendNint(configuration, "userContentController"), focusHandler,
+                        FocusMessageHandler, FocusScript, FocusContentWorld, mainFrameOnly: true);
                 }
 
                 // WebKit's pop-up blocker: window.open reaches the UI delegate only from a script that handles a user
