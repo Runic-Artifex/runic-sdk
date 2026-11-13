@@ -29,9 +29,21 @@ internal static class SidePanelEdgeSmoke
           document.title = 'Side panel';
           document.body.innerHTML = '<aside aria-label="Side panel" style="padding:16px"><button>Panel</button></aside>';
           fetch('report/loaded');
+          // Each step reports to the fixture, so a panel that does not close tells which step it stopped at: the
+          // command never seen, window.close() called but the panel left open (with the history length, which decides
+          // whether a browser lets a script close its window), or a failing poll.
           const poll = async () => {
-            const command = await (await fetch('report/command', { cache: 'no-store' })).text();
-            if (command === 'close') { fetch('report/closing'); window.close(); return; }
+            try {
+              const command = await (await fetch('report/command', { cache: 'no-store' })).text();
+              if (command === 'close') {
+                await fetch('report/closing');
+                window.close();
+                setTimeout(() => fetch('report/still-open-' + history.length), 1500);
+                return;
+              }
+            } catch (error) {
+              fetch('report/poll-error');
+            }
             setTimeout(poll, 100);
           };
           poll();
@@ -53,7 +65,8 @@ internal static class SidePanelEdgeSmoke
             {
                 if (!request.Path.StartsWith("/report/", StringComparison.Ordinal)) return ValueTask.FromResult<ContentResponse?>(null);
                 var report = request.Path["/report/".Length..];
-                if (report == "command") return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text(Volatile.Read(ref command), "text/plain"));
+                if (report == "command")
+                    return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text(Volatile.Read(ref command) is { Length: > 0 } now ? now : "wait", "text/plain"));
                 reports.Enqueue(report);
                 return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text("ok", "text/plain"));
             },
@@ -89,8 +102,17 @@ internal static class SidePanelEdgeSmoke
             var panel = await OpenAsync(host, window, surface, reports, grown);
             var reason = ClosedReason(panel);
             Volatile.Write(ref command, "close");
-            await WaitForAsync(() => reports.Contains("closing"), "the panel's page to call window.close()");
-            Require(await reason.WaitAsync(Deadline) == DesktopSidePanelCloseReason.Closed, "Closed after window.close() in the panel");
+            // The panel's page reports "closing" just before window.close(), and "still-open-<history length>" if it is
+            // still there 1.5 s later.
+            DesktopSidePanelCloseReason closedWith;
+            try { closedWith = await reason.WaitAsync(TestTimeouts.Scale(Deadline)); }
+            catch (TimeoutException)
+            {
+                throw new TimeoutException("Side panel edges: expected window.close() in the panel's page to close the panel. The panel's page reported: "
+                    + (reports.IsEmpty ? "nothing" : string.Join(", ", reports)) + $"; the panel is {(panel.IsOpen ? "open" : "closed")}.");
+            }
+            Require(reports.Contains("closing"), $"the panel's page to report window.close() before the panel closed ({string.Join(", ", reports)})");
+            Require(closedWith == DesktopSidePanelCloseReason.Closed, $"Closed after window.close() in the panel, not {closedWith}");
             Volatile.Write(ref command, "");
             await WaitForBoundsAsync(window, start.Bounds, "exactly the start bounds after window.close()");
             await WaitForAsync(() => surface.ConnectionCount == 1, "the panel's page to disconnect");
