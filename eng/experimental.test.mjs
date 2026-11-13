@@ -25,8 +25,8 @@ test("docs/experimental.md has an entry for every experimental diagnostic ID, or
     ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
   ]));
   // RUNICASSETS001 graduated in 0.10.0 (D029.3); RUNICDESK103 (hosted application windows) is experimental through 1.0
-  // (D055.8). A new family adds its ID here.
-  assert.deepEqual([...ids].sort(), ["RUNICDESK103"]);
+  // (D055.8); RUNICDESK104 (the side panel) is experimental for one minor (D062.7). A new family adds its ID here.
+  assert.deepEqual([...ids].sort(), ["RUNICDESK103", "RUNICDESK104"]);
   if (ids.size === 0) assert.match(docs, /^No \.NET API is experimental\./m);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.

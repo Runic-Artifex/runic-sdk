@@ -83,6 +83,10 @@ public sealed record DesktopHostOptions
     /// <summary>Gets the embedded-window factory, or the platform default when omitted.</summary>
     public IDesktopWindowHostFactory? WindowHostFactory { get; init; }
 
+    // Tests only: a built-in host of the test's own in place of the platform's, for behaviour that custom window hosts do
+    // not have, such as the side panel.
+    internal IWebUiEmbeddedHostFactory? BuiltInHostFactory { get; init; }
+
     /// <summary>Gets whether opening a window waits for bridge authentication.</summary>
     public bool WaitForConnection { get; init; } = true;
 

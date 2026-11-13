@@ -101,6 +101,10 @@ internal static partial class DesktopLog
         Message = "The embedded WebView had requested nothing after {TimeoutSeconds} seconds but was still making progress ({Progress}); waiting up to {LimitSeconds} seconds for it.")]
     internal static partial void ConnectionDeadlineExtended(ILogger logger, double timeoutSeconds, string progress, double limitSeconds);
 
+    [LoggerMessage(EventId = 3041, EventName = "SidePanelClosedHandlerFailed", Level = LogLevel.Error,
+        Message = "A DesktopSidePanel.Closed handler failed with {ErrorType}.")]
+    internal static partial void SidePanelClosedHandlerFailed(ILogger logger, Exception exception, string errorType);
+
     [LoggerMessage(EventId = 3040, EventName = "WindowActivityHandlerFailed", Level = LogLevel.Error,
         Message = "A DesktopWindow.ActivityChanged handler failed with {ErrorType}.")]
     internal static partial void WindowActivityHandlerFailed(ILogger logger, Exception exception, string errorType);

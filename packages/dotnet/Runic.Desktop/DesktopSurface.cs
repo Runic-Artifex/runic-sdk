@@ -60,6 +60,8 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal string? SidePanelDocumentStartScript => _engine.CreatePanelDocumentStartScript();
 
+    internal string? SidePanelCredential => _engine.PanelCredential;
+
     // runic-host/1 region/1: the window shows in a region of a host page, in a frame (WebUiWindow.EnterRegionMode).
     internal void EnterRegionMode()
     {
@@ -971,7 +973,7 @@ public sealed class DesktopSurface : IAsyncDisposable
 }
 
 /// <summary>Represents one installed-browser or embedded-WebView presentation of a surface.</summary>
-public sealed class DesktopWindow : IAsyncDisposable
+public sealed partial class DesktopWindow : IAsyncDisposable
 {
     private readonly DesktopSurface _surface;
     private readonly WebUiWindow _engine;
@@ -1126,6 +1128,7 @@ public sealed class DesktopWindow : IAsyncDisposable
     {
         if (IsOpen) return;
         _engine.PresentationClosed -= OnEnginePresentationClosed;
+        CloseSidePanelWithWindow();
         ReportClosedActivity();
     }
 
@@ -2408,6 +2411,7 @@ public sealed class DesktopWindow : IAsyncDisposable
         try
         {
             await _surface.CloseWindowAsync(this).ConfigureAwait(false);
+            CloseSidePanelWithWindow();
             _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
             _engine.EmbeddedWindowActivityChanged -= OnEngineActivityChanged;
             _engine.PresentationClosed -= OnEnginePresentationClosed;

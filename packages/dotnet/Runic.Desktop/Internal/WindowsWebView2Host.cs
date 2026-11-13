@@ -524,6 +524,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 _controller.IsVisible = visible;
             }
+            if (_panel?.Controller is { } panel) panel.IsVisible = visible;
         }, cancellationToken);
 
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default)
@@ -661,9 +662,17 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             Height = (int)UnscaleForDpi(frame.Bottom - frame.Top, dpi),
             Origin = DesktopCoordinateOrigin.TopLeft,
         };
+        RecordWorkArea();
+        // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
+        var normal = current;
+        if (_panel is { IsShown: true } panel)
+        {
+            var excluded = SidePanelPlanner.ExcludePanel(exact.Bounds, panel.Left, panel.NativeWidth);
+            normal = current with { X = excluded.X!.Value, Width = (int)UnscaleForDpi(excluded.Width, dpi) };
+        }
         if (!maximized && !fullScreen)
         {
-            _normal = current;
+            _normal = normal;
         }
         var state = new DesktopWindowState
         {
@@ -675,7 +684,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             IsFullScreen = fullScreen,
             MonitorId = WindowsMonitors.IdOf(Native.MonitorFromWindow(_window, MonitorDefaultToNearest)),
             // A full-screen window restores to the maximized state it left.
-            Placement = (_normal ?? current) with
+            Placement = (_normal ?? normal) with
             {
                 Maximized = _fullScreen ? _windowedMaximized : maximized,
                 FullScreen = _fullScreen && !kiosk,
@@ -1010,11 +1019,11 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 host?.DrainDispatchQueue();
                 return 0;
             case WmSize:
-                if (host?._controller is not null)
-                {
-                    host._controller.Bounds = host.ClientBounds();
-                }
+                // The page, and beside it an open side panel (LayoutViews).
+                host?.LayoutViews();
                 return 0;
+            case WmNcCalcSize when host is not null && host.KeepPagePixels(window, wParam, lParam, out var keptPage):
+                return keptPage;
             case WmActivate:
                 if (host is not null)
                 {
@@ -1034,9 +1043,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 // DefWindowProc sends WM_SIZE and WM_MOVE from this message.
                 return Native.DefWindowProc(window, message, wParam, lParam);
             case WmDpiChanged:
-                var suggested = (Rect*)lParam;
-                Native.SetWindowPos(window, 0, suggested->Left, suggested->Top,
-                    suggested->Right - suggested->Left, suggested->Bottom - suggested->Top,
+                var suggested = host?.SuggestedDpiRect(*(Rect*)lParam, (uint)(wParam & 0xFFFF)) ?? *(Rect*)lParam;
+                Native.SetWindowPos(window, 0, suggested.Left, suggested.Top,
+                    suggested.Right - suggested.Left, suggested.Bottom - suggested.Top,
                     SwpNoZOrder | SwpNoActivate);
                 return 0;
             case WmSettingChange:
@@ -1084,6 +1093,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     host._provider = 0;
                     WindowsAnnouncementProvider.Destroy(window, provider);
                 }
+                host?.ClosePanelWithWindow();
                 host?.CloseController();
                 host?.CompleteContextMenus();
                 host?.DestroyHiddenBar();
