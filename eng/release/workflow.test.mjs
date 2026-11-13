@@ -8,7 +8,8 @@ const runs = job => job.steps.filter(s => s.run).map(s => s.run).join('\n');
 test('publication reuses the package artifact of the successful CI push run without rerunning CI', () => {
   const ci = workflow('ci.yml'), release = workflow('publish-preview.yml');
   expect(Object.hasOwn(ci.on, 'workflow_call')).toBe(false);
-  expect(Object.values(release.jobs).some(job => job.uses)).toBe(false);
+  // The only reusable workflow is the train gate (row P-sdk), from this commit; CI is not rerun.
+  expect(Object.entries(release.jobs).filter(([, job]) => job.uses).map(([name, job]) => [name, job.uses])).toEqual([['train', './.github/workflows/train-compat.yml']]);
   expect(runs(release.jobs.preflight)).toContain('node eng/release/ci-run.mjs');
   expect(release.jobs.preflight.if).toContain("github.ref == 'refs/heads/main'");
   expect(release.jobs.preflight.permissions).toEqual({contents: 'read', actions: 'read'});
@@ -26,7 +27,7 @@ test('publication reuses the package artifact of the successful CI push run with
     expect(job.permissions.actions).toBe('read');
     expect(runs(job)).not.toMatch(/run\.mjs pack|verify-packages|verify:|bun run test|eng\/test\.mjs/);
   }
-  expect(release.jobs.publish.needs).toEqual(['preflight', 'candidate']);
+  expect(release.jobs.publish.needs).toEqual(['preflight', 'candidate', 'train']);
   expect(release.concurrency['cancel-in-progress']).toBe(false);
   expect(ci.concurrency.group).not.toBe(release.concurrency.group);
 });
@@ -49,9 +50,30 @@ test('a dry run performs every read-only check and never reaches OIDC, registry 
   for (const job of Object.values(release.jobs)) expect(job.permissions).toBeDefined();
   expect(release.permissions).toEqual({contents: 'read'});
 });
+test('publishing needs train gate row P-sdk on this CI run with the published Command Line and Translations of the train, also in a dry run', () => {
+  const {preflight, train, publish} = workflow('publish-preview.yml').jobs;
+  expect(train.needs).toEqual(['preflight', 'candidate']);
+  expect(train.if).toBeUndefined();
+  expect(train.permissions).toEqual({contents: 'read', actions: 'read'});
+  expect(train.with).toEqual({row: 'P-sdk', cli: 'published:${{ needs.preflight.outputs.command-line-version }}',
+    translations: 'published:${{ needs.preflight.outputs.translations-version }}', sdk: 'run:${{ needs.preflight.outputs.ci-run-id }}'});
+  expect(train.secrets).toEqual({RUNIC_TRAIN_TOKEN: '${{ secrets.RUNIC_TRAIN_TOKEN }}'});
+  expect(publish.needs).toContain('train');
+  expect(preflight.outputs['command-line-version']).toBe('${{ steps.train.outputs.cli }}');
+  expect(preflight.outputs['translations-version']).toBe('${{ steps.train.outputs.translations }}');
+  const step = preflight.steps.find(s => s.id === 'train');
+  const output = join(mkdtempSync(join(tmpdir(), 'runic-train-versions-')), 'output');
+  try {
+    const result = spawnSync('bash', ['-e', '-c', step.run], {cwd: new URL('../..', import.meta.url).pathname, encoding: 'utf8', env: {...process.env, GITHUB_OUTPUT: output}});
+    expect(result.status).toBe(0);
+    const props = readFileSync(new URL('../../Directory.Packages.props', import.meta.url), 'utf8');
+    const version = id => new RegExp(`Include="${id}" Version="([^"]+)"`).exec(props)[1];
+    expect(readFileSync(output, 'utf8')).toBe(`cli=${version('Runic\\.CommandLine')}\ntranslations=${version('Runic\\.Translations')}\n`);
+  } finally { rmSync(join(output, '..'), {recursive: true, force: true}); }
+});
 test('only the publish job attests, after verifying and before publishing, every package and release asset', () => {
   const release = workflow('publish-preview.yml');
-  const attesting = Object.entries(release.jobs).filter(([, job]) => job.steps.some(s => s.uses?.startsWith('actions/attest')));
+  const attesting = Object.entries(release.jobs).filter(([, job]) => job.steps?.some(s => s.uses?.startsWith('actions/attest')));
   expect(attesting.map(([name]) => name)).toEqual(['publish']);
   const steps = release.jobs.publish.steps;
   const attest = steps.filter(s => s.uses?.startsWith('actions/attest'));

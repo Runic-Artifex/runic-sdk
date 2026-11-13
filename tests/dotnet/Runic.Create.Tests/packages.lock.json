@@ -94,13 +94,13 @@
         "type": "CentralTransitive",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "xHHJPPeP6Fe2EfC0iqO13Fm5kOxOBEQUESASEY3lrequQWMe4PVIPaKlfNMjpHsClxdayjq1Go1vi8IdqsD/Pg=="
+        "contentHash": "Wp6iDmzesVfupHHCop1XDidQUf/D1uQcn0c4yr8JjtFG8qqRXU5l1qCYLkA63sLsXU9SdR4TlctQbNi2o1E5qQ=="
       },
       "Runic.CommandLine.Spectre": {
         "type": "CentralTransitive",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "G0qQLf9gzG9rJOoyIn9kJJCTLA/WKsRGdxv9qjLBeISyY0lwS9WvPobGU9/z2bhvG7GgE54yCvsbiY8sQjy52Q==",
+        "contentHash": "9yHfw9cWPv2LL+mqlq7Bq2H6+Zx85dTWN+acxj7GPPmxrbc7hTH12Y8efJwiW9LQoa1cDJotUbzBGlH/iue7xw==",
         "dependencies": {
           "Runic.CommandLine": "[0.12.0]",
           "Spectre.Console": "[0.57.2, 0.58.0)"
