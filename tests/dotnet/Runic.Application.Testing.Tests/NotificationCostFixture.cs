@@ -41,6 +41,23 @@ public interface INotificationCostViewModel : INotifyPropertyChanged
     void ReplaceRows(IEnumerable<KeyedRow> rows, string? notify);
     void ReplaceTags(IEnumerable<string> tags, string? notify);
     void ReplaceSource(IEnumerable<KeyedRow> rows, string? notify);
+    // A sub-object the data graph observes (#891).
+    NotificationCostDetail Detail { get; }
+    void ReplaceDetail(NotificationCostDetail detail, string? notify);
+}
+
+// A sub-object whose changes the data graph observes.
+public sealed class NotificationCostDetail : INotifyPropertyChanged
+{
+    private string _label = "";
+
+    public string Label
+    {
+        get => _label;
+        set { _label = value; PropertyChanged?.Invoke(this, new(nameof(Label))); }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 // The rows SourceRows reads: replacing them notifies Source, which is not bridged, never SourceRows.
@@ -56,6 +73,7 @@ public sealed class ToolkitCostViewModel : ObservableObject, INotificationCostVi
     private ObservableCollection<KeyedRow> _rows = [new("a", "one")];
     private ObservableCollection<string> _tags = ["first"];
     private NotificationCostSource _source = new([new("s", "source")]);
+    private NotificationCostDetail _detail = new() { Label = "first" };
 
     [RunicIgnore] public GetterCounts Counts { get; } = new();
     [RunicIgnore] public IReadOnlyList<string> Scalars { get; } = [nameof(Alpha), nameof(Beta), nameof(Gamma), nameof(Delta), nameof(Epsilon), nameof(Zeta)];
@@ -74,6 +92,8 @@ public sealed class ToolkitCostViewModel : ObservableObject, INotificationCostVi
 
     [RunicCollection(nameof(KeyedRow.Key))]
     public ObservableCollection<KeyedRow> SourceRows { get { Counts.Read(nameof(SourceRows)); return _source.Rows; } }
+
+    public NotificationCostDetail Detail { get { Counts.Read(nameof(Detail)); return _detail; } }
 
     public void SetScalar(string member, string value)
     {
@@ -108,6 +128,12 @@ public sealed class ToolkitCostViewModel : ObservableObject, INotificationCostVi
         _source = new(rows);
         Notify(notify);
     }
+
+    public void ReplaceDetail(NotificationCostDetail detail, string? notify)
+    {
+        _detail = detail;
+        Notify(notify);
+    }
 }
 
 public sealed partial class ToolkitCostWindow : RunicWindow<ToolkitCostViewModel>;
@@ -119,6 +145,7 @@ public sealed class ReactiveCostViewModel : ReactiveObject, INotificationCostVie
     private ObservableCollection<KeyedRow> _rows = [new("a", "one")];
     private ObservableCollection<string> _tags = ["first"];
     private NotificationCostSource _source = new([new("s", "source")]);
+    private NotificationCostDetail _detail = new() { Label = "first" };
 
     [RunicIgnore] public GetterCounts Counts { get; } = new();
     [RunicIgnore] public IReadOnlyList<string> Scalars { get; } = [nameof(Alpha), nameof(Beta), nameof(Gamma), nameof(Delta), nameof(Epsilon), nameof(Zeta)];
@@ -137,6 +164,8 @@ public sealed class ReactiveCostViewModel : ReactiveObject, INotificationCostVie
 
     [RunicCollection(nameof(KeyedRow.Key))]
     public ObservableCollection<KeyedRow> SourceRows { get { Counts.Read(nameof(SourceRows)); return _source.Rows; } }
+
+    public NotificationCostDetail Detail { get { Counts.Read(nameof(Detail)); return _detail; } }
 
     public void SetScalar(string member, string value)
     {
@@ -169,6 +198,12 @@ public sealed class ReactiveCostViewModel : ReactiveObject, INotificationCostVie
     public void ReplaceSource(IEnumerable<KeyedRow> rows, string? notify)
     {
         _source = new(rows);
+        Notify(notify);
+    }
+
+    public void ReplaceDetail(NotificationCostDetail detail, string? notify)
+    {
+        _detail = detail;
         Notify(notify);
     }
 }

@@ -309,9 +309,49 @@ internal sealed class BridgeDataSubscriptions : IDisposable
         }
     }
 
-    private void RefreshEdge(Edge edge, bool forceCollectionRefresh = false)
+    // The root's members that hold a collection or a sub-object the graph observes, read before a publication unit
+    // (RefreshRootInstances), except the keyed collections whose instances the Bridge reads itself (Reattach). Fixed
+    // once the root node exists.
+    private Edge[]? _rootInstanceEdges;
+
+    // The root's edges that observe a collection or a sub-object.
+    private IEnumerable<Edge> RootStructuralEdges() =>
+        _nodes.TryGetValue(_rootKey, out var root)
+            ? root.Edges.Where(edge => edge.Member.EnumerateChildren is not null || edge.Member.Children.Count > 0)
+            : [];
+
+    // #891: a getter can return another collection or sub-object after the notification of a member other than its
+    // own. The Bridge calls this once in a publication unit that follows a named notification, before it publishes, so
+    // that later changes of the new instance are observed whatever member the notification named. It reads each such
+    // root member once; one whose instance did not change keeps its subscriptions. Runs in the model turn.
+    internal void RefreshRootInstances()
     {
-        var next = edge.Member.Read(edge.Node.Owner);
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _rootInstanceEdges ??= [.. RootStructuralEdges().Where(edge => _incrementalCollectionNames?.Contains(edge.Member.Name) != true)];
+            foreach (var edge in _rootInstanceEdges) RefreshEdge(edge);
+        }
+    }
+
+    // Observes the instance a root member, by wire name, holds now: the Bridge found that a keyed collection was
+    // replaced, possibly under another member's notification (#891). Runs in the model turn.
+    internal void Reattach(string name)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            foreach (var edge in RootStructuralEdges())
+                if (string.Equals(edge.Member.Name, name, StringComparison.Ordinal)) RefreshEdge(edge);
+        }
+    }
+
+    private void RefreshEdge(Edge edge, bool forceCollectionRefresh = false) =>
+        RefreshEdgeTo(edge, edge.Member.Read(edge.Node.Owner), forceCollectionRefresh);
+
+    // Makes next the edge's value: subscribes a new instance and releases the previous one.
+    private void RefreshEdgeTo(Edge edge, object? next, bool forceCollectionRefresh = false)
+    {
         if (ReferenceEquals(next, edge.Value))
         {
             // Plain List/Dictionary values have no collection event. An
