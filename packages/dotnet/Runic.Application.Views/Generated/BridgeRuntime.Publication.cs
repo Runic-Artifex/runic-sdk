@@ -147,6 +147,7 @@ public partial class ViewModelBridge<T>
     {
         if (IsInactive) return;
         _dataSubscriptions?.SweepPending();
+        RefreshPendingMembers();
         var changed = _changes;
         if (_baselines is null)
         {
@@ -485,6 +486,7 @@ public partial class ViewModelBridge<T>
     // "state" object is in the message. Throws BridgeCollectionKeyException for invalid keys.
     private (int Start, int Length) WriteState(BridgePublicationWriter message, bool updateBaselines, bool epoch = false)
     {
+        RefreshPendingMembers();
         var changed = _changes;
         var writer = message.Writer;
         List<(string Name, long Start, long End)>? compared = updateBaselines ? new(_stateMembers.Length) : null;
@@ -698,7 +700,7 @@ public partial class ViewModelBridge<T>
                     || kind == "replace" && (args.NewItems?.Count ?? 0) != (args.OldItems?.Count ?? 0));
                 foreach (var descriptor in descriptors)
                 {
-                    if (_collectionSets.Contains(descriptor)) continue;
+                    if (_collectionSets.Contains(descriptor) || ReplacedUnnoticed(descriptor, collection)) continue;
                     // A change without a position, or with invalid keys, becomes a set of the field; the unit checks
                     // the keys and withholds the publication while they are invalid.
                     if (!indexed || !TrackCollectionKeys(descriptor, collection, args))
@@ -753,7 +755,7 @@ public partial class ViewModelBridge<T>
                     }
                     if (!indexes.TryGetValue(item, out var at) || at >= rows.Count || !ReferenceEquals(rows[at], item)) continue;
                     handled = true;
-                    if (_baselines is null || _collectionSets.Contains(descriptor)) continue;
+                    if (_baselines is null || _collectionSets.Contains(descriptor) || ReplacedUnnoticed(descriptor, rows)) continue;
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
                     else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
@@ -763,6 +765,16 @@ public partial class ViewModelBridge<T>
                 return handled;
             }
         }, closed: true);
+    }
+
+    // A change of a keyed collection instance that no notification reported yet, such as one a getter returns after
+    // another member's notification, cannot be described against the previous instance: the field becomes a set.
+    private bool ReplacedUnnoticed(BridgeCollectionDescriptor<T> descriptor, object rows)
+    {
+        if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return false;
+        _collectionInstances[descriptor] = rows;
+        MarkCollectionSet(descriptor);
+        return true;
     }
 
     // Checks every keyed collection's keys and makes them the baseline for frames: a state whose keyed collection has a

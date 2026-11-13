@@ -53,8 +53,9 @@ public sealed class PropertyDescriptor<T>
     /// <param name="getter">Reads the property's wire value.</param>
     /// <param name="setter">Writes the property from the request's <c>value</c>, or <see langword="null"/> for a read-only property.</param>
     /// <param name="observe">
-    /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created and
-    /// again when the ViewModel reports a change, and publishes when the sub-object changes. A
+    /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created, again
+    /// when the ViewModel reports a change of this property or of every property, and before the publication unit that
+    /// follows a change of another property; it publishes when the sub-object changes. A
     /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
     /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes,
     /// and for a <see cref="RegionCollection"/> also when its regions or their <c>Current</c> change;
@@ -523,6 +524,16 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly BridgeCollectionDescriptor<T>[] _keyedCollections;
     private readonly BridgeCollectionDescriptor<T>[] _incrementalCollections;
     private readonly HashSet<string> _generatedCollectionNames;
+    // The bridged properties and the frame-publishing keyed collections they hold, by .NET property name: a notification
+    // that names a member refreshes only that member's instances (OnChanged). Keyed collections that no bridged property
+    // holds are checked on every notification.
+    private readonly Dictionary<string, PropertyDescriptor<T>[]> _propertiesByName;
+    private readonly Dictionary<string, BridgeCollectionDescriptor<T>[]> _collectionsByName;
+    private readonly BridgeCollectionDescriptor<T>[] _unnamedCollections;
+    // Whether a named notification arrived since every member's instances were last refreshed. A getter may return a
+    // collection or sub-object that another member's notification replaced, so the next unit refreshes every member
+    // once before it publishes (RefreshPendingMembers).
+    private bool _memberRefreshPending;
     // Append-only text fields, which publish their appended text.
     private readonly PropertyDescriptor<T>[] _textFields;
     private readonly PropertyDescriptor<T>[] _textMembers;
@@ -592,6 +603,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _incrementalCollections = [.. _keyedCollections.Where(descriptor => descriptor.PublishesChanges)];
         _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
             .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
+        _propertiesByName = properties.GroupBy(property => property.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        var holders = properties.ToLookup(property => property.WireName, property => property.Name, StringComparer.Ordinal);
+        _collectionsByName = _incrementalCollections
+            .SelectMany(descriptor => holders[descriptor.Name].Distinct(StringComparer.Ordinal).Select(holder => (Holder: holder, Descriptor: descriptor)))
+            .GroupBy(entry => entry.Holder, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(entry => entry.Descriptor).ToArray(), StringComparer.Ordinal);
+        _unnamedCollections = [.. _incrementalCollections.Where(descriptor => !holders.Contains(descriptor.Name))];
         _logger = content?.Logger ?? TraceFallbackLogger.Instance;
         _delivery = new(transport, name, _modelTurn, CaptureRequestedState, RunRequestedUnit, ModelName, _logger);
         _replyOrder = BridgeReplyOrder.For(transport);
@@ -723,24 +742,63 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     // after the presentation was opened; returns the open reply's registration, or null for none.
     private partial string? RegisterOpenHandlers(string presentation, BridgeConnection connection, JsonElement handlers);
 
+    // A notification that names a member refreshes only that member's collection subscription, observed sub-object and
+    // keyed collection instance, so a burst of n notifications reads n members' getters, not n times every member's
+    // (#887); the unit it requests refreshes every member once (RefreshPendingMembers). An empty or null name (every
+    // member changed) refreshes every member at once.
     private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate)
         {
             if (IsInactive) return;
-            RefreshCollectionSubscriptions();
-            RefreshObservedSubObjects();
-            // A keyed collection replaced by another instance cannot be described by changes of the old one.
-            foreach (var descriptor in _incrementalCollections)
-            {
-                var rows = descriptor.Get(_vm);
-                if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) continue;
-                _collectionInstances[descriptor] = rows;
-                MarkCollectionSet(descriptor);
-            }
+            if (string.IsNullOrEmpty(e.PropertyName)) RefreshMembers();
+            else RefreshMember(e.PropertyName);
             ScheduleUnit();
         }
     });
+
+    // Refreshes every member's instances; the model gate is held, in a model turn.
+    private void RefreshMembers()
+    {
+        _memberRefreshPending = false;
+        RefreshCollectionSubscriptions();
+        RefreshObservedSubObjects();
+        foreach (var descriptor in _incrementalCollections) RefreshCollectionInstance(descriptor);
+    }
+
+    // Refreshes the instances of the member a notification named; the model gate is held, in a model turn.
+    private void RefreshMember(string name)
+    {
+        _memberRefreshPending = true;
+        // A row's index may have changed with the member.
+        _collectionIndexes.Clear();
+        if (_propertiesByName.TryGetValue(name, out var properties))
+        {
+            var changed = false;
+            foreach (var property in properties) changed |= RefreshCollectionSubscription(property);
+            if (changed) PublishCollectionFields();
+            foreach (var property in properties) RefreshObservedSubObject(property);
+        }
+        if (_collectionsByName.TryGetValue(name, out var collections))
+            foreach (var descriptor in collections) RefreshCollectionInstance(descriptor);
+        foreach (var descriptor in _unnamedCollections) RefreshCollectionInstance(descriptor);
+    }
+
+    // Before a unit or a state reads the members: every member's instances, when a named notification may have
+    // replaced one it did not name.
+    private void RefreshPendingMembers()
+    {
+        if (_memberRefreshPending) RefreshMembers();
+    }
+
+    // A keyed collection replaced by another instance cannot be described by changes of the old one.
+    private void RefreshCollectionInstance(BridgeCollectionDescriptor<T> descriptor)
+    {
+        var rows = descriptor.Get(_vm);
+        if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
+        _collectionInstances[descriptor] = rows;
+        MarkCollectionSet(descriptor);
+    }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -823,49 +881,56 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     {
         _collectionIndexes.Clear();
         var changed = false;
-        foreach (var property in _properties)
-        {
-            if (_generatedCollectionNames.Contains(property.Name)) continue;
-            var next = property.Get(_vm) as INotifyCollectionChanged;
-            _collections.TryGetValue(property.Name, out var previous);
-            if (ReferenceEquals(previous, next)) continue;
-            changed = true;
-            if (previous is not null) previous.CollectionChanged -= OnCollectionChanged;
-            if (next is not null)
-            {
-                next.CollectionChanged += OnCollectionChanged;
-                _collections[property.Name] = next;
-            }
-            else _collections.Remove(property.Name);
-        }
-        // By wire name, as BridgeDataSubscriptions reports the collections it observes.
-        if (changed) Volatile.Write(ref _collectionFields, [.. _collections.Select(entry =>
-            (Array.Find(_properties, property => property.Name == entry.Key)?.WireName ?? entry.Key, entry.Value))]);
+        foreach (var property in _properties) changed |= RefreshCollectionSubscription(property);
+        if (changed) PublishCollectionFields();
     }
+
+    // Subscribes the collection a property holds now; returns whether it changed.
+    private bool RefreshCollectionSubscription(PropertyDescriptor<T> property)
+    {
+        if (_generatedCollectionNames.Contains(property.Name)) return false;
+        var next = property.Get(_vm) as INotifyCollectionChanged;
+        _collections.TryGetValue(property.Name, out var previous);
+        if (ReferenceEquals(previous, next)) return false;
+        if (previous is not null) previous.CollectionChanged -= OnCollectionChanged;
+        if (next is not null)
+        {
+            next.CollectionChanged += OnCollectionChanged;
+            _collections[property.Name] = next;
+        }
+        else _collections.Remove(property.Name);
+        return true;
+    }
+
+    // By wire name, as BridgeDataSubscriptions reports the collections it observes.
+    private void PublishCollectionFields() => Volatile.Write(ref _collectionFields, [.. _collections.Select(entry =>
+        (Array.Find(_properties, property => property.Name == entry.Key)?.WireName ?? entry.Key, entry.Value))]);
 
     private void RefreshObservedSubObjects()
     {
-        foreach (var property in _properties)
+        foreach (var property in _properties) RefreshObservedSubObject(property);
+    }
+
+    private void RefreshObservedSubObject(PropertyDescriptor<T> property)
+    {
+        if (property.Observe is not { } observe) return;
+        var next = observe(_vm);
+        _observed.TryGetValue(property.Name, out var previous);
+        if (ReferenceEquals(previous.Source, next)) return;
+        previous.Subscription?.Dispose();
+        _observed.Remove(property.Name);
+        // A query collection publishes in this ViewModel's model turns (query-collections/1).
+        if (next is IBridgeQueryCollection query) query.Bind(_modelContextLease?.Context ?? _content?.ModelContext, _logger);
+        var subscription = next switch
         {
-            if (property.Observe is not { } observe) continue;
-            var next = observe(_vm);
-            _observed.TryGetValue(property.Name, out var previous);
-            if (ReferenceEquals(previous.Source, next)) continue;
-            previous.Subscription?.Dispose();
-            _observed.Remove(property.Name);
-            // A query collection publishes in this ViewModel's model turns (query-collections/1).
-            if (next is IBridgeQueryCollection query) query.Bind(_modelContextLease?.Context ?? _content?.ModelContext, _logger);
-            var subscription = next switch
-            {
-                NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),
-                NavigationSelection selection when property.RegionCollection =>
-                    NavigationPresentationBinding.ObserveCollection(selection, _content, ScheduleUnit),
-                NavigationSelection selection => NavigationPresentationBinding.Observe(selection, ScheduleUnit),
-                INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, ScheduleUnit),
-                _ => null,
-            };
-            if (next is not null && subscription is not null) _observed[property.Name] = (next, subscription);
-        }
+            NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),
+            NavigationSelection selection when property.RegionCollection =>
+                NavigationPresentationBinding.ObserveCollection(selection, _content, ScheduleUnit),
+            NavigationSelection selection => NavigationPresentationBinding.Observe(selection, ScheduleUnit),
+            INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, ScheduleUnit),
+            _ => null,
+        };
+        if (next is not null && subscription is not null) _observed[property.Name] = (next, subscription);
     }
 
     IReadOnlyList<(NavigationRegion Region, NavigationSelection? Collection)> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>

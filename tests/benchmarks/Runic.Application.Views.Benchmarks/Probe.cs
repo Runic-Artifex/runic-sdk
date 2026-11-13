@@ -9,12 +9,23 @@ namespace Runic.Application.Views.Benchmarks;
 //
 // - notifications: a model posts about 10,000 counter updates a second for 2 s; how many frames reach the page.
 // - model turns: 64 routes on one RunicModelContext publish 200 changes each; the peak number of thread-pool threads.
+// - notification burst: the getter calls of 60 single-member notifications on 75 members in one unit (#887).
 public static class Probe
 {
     public static void Run()
     {
         Notifications();
         ModelTurns();
+        NotificationBurst();
+    }
+
+    // #887: the getter calls of 60 single-member notifications on 75 members in one unit.
+    private static void NotificationBurst()
+    {
+        const int members = 75, notifications = 60;
+        var (getters, serializations) = NotificationBurstBenchmarks.CountOneBurst(members, notifications);
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"notification burst: {notifications} notifications on {members} members -> {getters} getter calls, {serializations} JSON serializations"));
     }
 
     private static void Notifications()
