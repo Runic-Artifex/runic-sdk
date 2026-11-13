@@ -224,6 +224,12 @@ The same Window and `async host => ...` body run on CS-WebUI with
   while the window is open, subscribe to `DesktopWindow.StateChanged` of the
   host's `DesktopBridgeWindow<TViewModel>.Window`. A placement belongs to the machine and operating
   system that saved it: its units are each platform's.
+  A Window that is already open takes a placement with
+  `IRunicWindowPresentation.SetPlacementAsync`, from a ViewModel too:
+  `ToRunicPlacement()` converts a saved `DesktopWindowPlacement`, and
+  `ToDesktopPlacement()` converts the `IRunicWindowPresentation.Placement` a
+  ViewModel saved back for `RunicDesktopHost.Placement`. Both use the units of
+  `DesktopWindowState.Placement` ([Maximizing and placing the Window](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#maximizing-and-placing-the-window)).
 - `host.UseApplicationMenu(commands)` runs the application's menu bar commands
   by id until the returned object is disposed. They are application-wide, the
   `DesktopHost.MenuCommands` of every host on that Desktop host, so a second
@@ -1048,7 +1054,7 @@ var exitCode = await tool.Exited;
   default; Runic's guest sends its latest menus again when one is turned away), the dialogs a guest shows at once,
   across its windows (one by default; another reports `ResourceBusy` to a Runic guest), its clipboard and monitor
   requests (20 a second), the files and links it opens (5 per ten seconds), its requests that can activate a window
-  (present, minimize, set-visible, set-full-screen and toggle-maximized: 2 a second after a burst of 3) and its announcements (2 a second after a burst of 5). The host rebuilds a window's native bar
+  (present, minimize, set-visible, set-full-screen, toggle-maximized, maximize, restore and set-placement: 2 a second after a burst of 3) and its announcements (2 a second after a burst of 5). The host rebuilds a window's native bar
   at most every 50 milliseconds, however many changes arrive.
 - **Elevated guests.** A guest that an elevated host starts runs elevated too, and refuses hosted mode
   (`guest-refused` with `guest-elevated`). An elevated host whose guest needs administrator rights as well, such as an

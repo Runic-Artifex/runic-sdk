@@ -726,6 +726,10 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
     // Holds each window's open until it completes, such as while the test ends the guest.
     public Func<Task>? OpenGate { get; set; }
 
+    // The windows opened from now on maximize, restore and place themselves (WindowPlacement) and report their state,
+    // from 100, 100 with 800 by 600.
+    public bool Places { get; set; }
+
     // Answers each native context menu with the item to choose, or null to dismiss it; null dismisses every menu.
     public Func<ImmutableArray<DesktopMenuEntry>, DesktopContextMenuOptions, CancellationToken, Task<DesktopMenuItem?>>? ContextMenu { get; set; }
 
@@ -794,8 +798,71 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
 // A headless embedded window host that honours the ephemeral data store of hosted windows and records how it opened.
 // UserClose is the title-bar close button.
 internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost,
-    IDesktopFileDropWindowHost, IDesktopPlacementWindowHost
+    IDesktopFileDropWindowHost, IDesktopPlacementWindowHost, IDesktopWindowStateHost, IDesktopWindowShowStateHost
 {
+    // sdk#897: with HostedWindowFactory.Places, the window keeps a state and takes the show-state requests, which
+    // activate it as on Windows when they maximize it or bring it back from minimized.
+    private readonly bool _places;
+    private DesktopWindowState? _state;
+    public DesktopWindowState? State => Volatile.Read(ref _state);
+    public event EventHandler? StateChanged;
+
+    // The show-state requests in order: "maximize", "restore" or the placement.
+    public System.Collections.Concurrent.ConcurrentQueue<object> ShowStates { get; } = new();
+
+    private void ReportState(Func<DesktopWindowState, DesktopWindowState> change)
+    {
+        Volatile.Write(ref _state, change(State ?? new DesktopWindowState()));
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
+    {
+        ShowStates.Enqueue("maximize");
+        ActivateForRequest();
+        ReportState(static state => state with
+        {
+            X = 0, Y = 0, Width = 1920, Height = 1040, IsMaximized = true, IsFullScreen = false,
+            Placement = state.Placement with { Maximized = true, FullScreen = false },
+        });
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask RestoreAsync(CancellationToken cancellationToken = default)
+    {
+        ShowStates.Enqueue("restore");
+        ReportState(static state => state with
+        {
+            X = state.Placement.X, Y = state.Placement.Y, Width = state.Placement.Width, Height = state.Placement.Height,
+            IsMaximized = false, IsFullScreen = false, Placement = state.Placement with { Maximized = false, FullScreen = false },
+        });
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        ShowStates.Enqueue(placement);
+        if (placement.Maximized) ActivateForRequest();
+        ReportState(state =>
+        {
+            var restored = new DesktopWindowPlacement
+            {
+                X = placement.X ?? state.Placement.X, Y = placement.Y ?? state.Placement.Y,
+                Width = placement.Width > 0 ? placement.Width : state.Placement.Width,
+                Height = placement.Height > 0 ? placement.Height : state.Placement.Height,
+                Maximized = placement.Maximized, FullScreen = placement.FullScreen, Origin = DesktopCoordinateOrigin.TopLeft,
+            };
+            return placement.Maximized
+                ? state with { X = 0, Y = 0, Width = 1920, Height = 1040, IsMaximized = true, IsFullScreen = placement.FullScreen, Placement = restored }
+                : state with
+                {
+                    X = restored.X, Y = restored.Y, Width = restored.Width, Height = restored.Height, IsMaximized = false,
+                    IsFullScreen = placement.FullScreen, Placement = restored,
+                };
+        });
+        return ValueTask.CompletedTask;
+    }
+
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     // The user drops files onto the window.
@@ -924,12 +991,25 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     private volatile bool _open;
     private int _focused;
 
-    public HostedWindowHost(HostedWindowFactory? factory = null) => _factory = factory;
+    public HostedWindowHost(HostedWindowFactory? factory = null)
+    {
+        _factory = factory;
+        _places = factory?.Places == true;
+        if (_places)
+        {
+            _state = new DesktopWindowState
+            {
+                X = 100, Y = 100, Width = 800, Height = 600,
+                Placement = new DesktopWindowPlacement { X = 100, Y = 100, Width = 800, Height = 600, Origin = DesktopCoordinateOrigin.TopLeft },
+            };
+        }
+    }
 
     public Uri? Url { get; private set; }
     public DesktopWindowHostOptions? Options { get; private set; }
     public int Focused => Volatile.Read(ref _focused);
-    public DesktopWindowCapabilities Capabilities => SupportedCapabilities;
+    public DesktopWindowCapabilities Capabilities => SupportedCapabilities |
+        (_places ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.WindowPlacement : DesktopWindowCapabilities.None);
     public bool SupportsCloseConfirmation => true;
     public event EventHandler? Closed;
     public bool IsOpen => _open;

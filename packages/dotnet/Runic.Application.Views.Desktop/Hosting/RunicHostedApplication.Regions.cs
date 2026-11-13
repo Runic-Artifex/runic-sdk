@@ -281,7 +281,8 @@ public sealed partial class RunicHostedApplication
             case RunicHostedPresentationKind.ToggleMaximized or RunicHostedPresentationKind.Move or RunicHostedPresentationKind.SetRepresentedFile:
                 return Embedded();
             case RunicHostedPresentationKind.Minimize or RunicHostedPresentationKind.SetVisible or RunicHostedPresentationKind.SetFullScreen
-                or RunicHostedPresentationKind.SetColorScheme:
+                or RunicHostedPresentationKind.SetColorScheme or RunicHostedPresentationKind.Maximize or RunicHostedPresentationKind.Restore
+                or RunicHostedPresentationKind.SetPlacement:
                 return Outcome(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
             default:
                 return Outcome(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.InvalidData));

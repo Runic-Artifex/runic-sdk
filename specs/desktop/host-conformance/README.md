@@ -33,7 +33,8 @@ uses, and `steps` what happens, in order.
   the guest's menu requests per second across its windows, `dialogs`, the dialogs a guest shows at once, and
   `dialogRate`, the dialogs a guest shows per ten seconds, `serviceRate`, the guest's clipboard and monitor requests per
   second, `launchRate`, its launches per ten seconds, `presentRate`, its requests that can activate a window
-  (`present`, `minimize`, `set-visible`, `set-full-screen` and `toggle-maximized`) per second, and `announcementRate`,
+  (`present`, `minimize`, `set-visible`, `set-full-screen`, `toggle-maximized`, `maximize`, `restore` and
+  `set-placement`) per second, and `announcementRate`,
   its announcements per second (each rate also its burst), which are the host's defaults when absent. Also for the
   `host` role, `guestActivation`: how long after the guest's last request that can activate one of its windows the host
   counts an activation as the guest's; a host that fixes it, as Runic's does at 2,000, is not configured with it, and its
@@ -45,7 +46,10 @@ uses, and `steps` what happens, in order.
 - `host`: for the `host` role, the host's `name` and `version`, which its offer carries, and optionally its `policy`:
   `"fails-services"`, a window policy that fails (in .NET, throws) for every window service request, or
   `"prompts-launches"`, a policy that asks the user in a prompt of its own (dialog kind `host-prompt`) before each
-  launch, and follows the defaults when the user presses `allow`. With `userStarted: true`, the host starts the guest
+  launch, and follows the defaults when the user presses `allow`, or `"limits-placement"`, a policy that refuses
+  `maximize` and clamps the size of a `set-placement` to at most 1,200 by 900. With `windowPlacement: true`, the host's
+  windows maximize, restore and take a placement, and report their placement, at 100, 100 with 800 by 600 when they
+  open: the host lists `maximize` and `placement` for them. With `userStarted: true`, the host starts the guest
   as one the user started directly (in .NET, `RunicGuestStartInfo.UserStarted`).
 
 ### Steps
@@ -165,6 +169,9 @@ action.
 | `launch` | `window`, `value`: an absolute URI, or a `$file` path | A platform outcome: `IDesktopFileLauncher.LaunchUriAsync` for a URI, `LaunchAsync` with `reveal` for a path |
 | `drops` | `window` | `dropped`: the file names of the files dropped onto the application's `Drop` Windows, in order; the runner waits until they are the expected ones |
 | `setTitle` | `window`, `value`: the title | — (the title of the Window's page changes, as its page reports it in a [region](../host-protocol.md#set-title)) |
+| `maximize`, `restore` | `window` | A platform outcome (`IRunicWindowPresentation.MaximizeAsync`, `RestoreAsync`) |
+| `setPlacement` | `window`, `value`: a placement, `{x, y, width, height, maximized, fullScreen}` with `x` and `y` optional | A platform outcome (`IRunicWindowPresentation.SetPlacementAsync`) |
+| `placement` | `window` | `placement`: the Window's `IRunicWindowPresentation.Placement` as `{x, y, width, height, maximized, fullScreen}`, or `null`; the runner waits until it is the expected one |
 
 `expect` names the action by the step's `as`, or checks `startFailure` (the guest's hosted start, or the host's start
 of the guest, failed with a code), `exited` (the guest process exited; a code when given), `running` (the guest still

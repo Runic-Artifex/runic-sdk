@@ -487,6 +487,21 @@ internal sealed class HostConformanceTests
                 case "minimize": result = Present(async window => await window.Presentation.MinimizeAsync()); break;
                 case "setVisible": result = Present(async window => await window.Presentation.SetVisibleAsync(guest["value"]!.GetValue<bool>())); break;
                 case "setFullScreen": result = Present(async window => await window.Presentation.SetFullScreenAsync(guest["value"]!.GetValue<bool>())); break;
+                case "maximize": result = Present(async window => await window.Presentation.MaximizeAsync()); break;
+                case "restore": result = Present(async window => await window.Presentation.RestoreAsync()); break;
+                case "setPlacement":
+                    var placed = (JsonObject)guest["value"]!;
+                    var placement = new RunicWindowPlacement
+                    {
+                        X = placed["x"]?.GetValue<int>(), Y = placed["y"]?.GetValue<int>(),
+                        Width = placed["width"]!.GetValue<int>(), Height = placed["height"]!.GetValue<int>(),
+                        Maximized = placed["maximized"]!.GetValue<bool>(), FullScreen = placed["fullScreen"]!.GetValue<bool>(),
+                    };
+                    result = Present(async window => await window.Presentation.SetPlacementAsync(placement));
+                    break;
+                case "placement":
+                    result = Run(async () => (object?)(await Window()).Presentation);
+                    break;
                 case "setDocumentEdited": result = Present(async window => await window.Presentation.SetDocumentEditedAsync(guest["value"]!.GetValue<bool>())); break;
                 case "setColorScheme":
                     var scheme = guest["value"]!.GetValue<string>() switch
@@ -765,6 +780,19 @@ internal sealed class HostConformanceTests
                 if (expect["closed"] is { } closed)
                     Check(result is bool value && value == closed.GetValue<bool>(), $"RequestCloseAsync returned {result}.");
                 if (expect["outcome"] is JsonObject outcome) CheckOutcome(outcome, (PlatformResult<PlatformUnit>)result!);
+                if (expect.ContainsKey("placement"))
+                {
+                    var presentation = (IRunicWindowPresentation)result!;
+                    var expected = expect["placement"];
+                    JsonNode? Actual() => presentation.Placement is { } placement ? new JsonObject
+                    {
+                        ["x"] = placement.X, ["y"] = placement.Y, ["width"] = placement.Width, ["height"] = placement.Height,
+                        ["maximized"] = placement.Maximized, ["fullScreen"] = placement.FullScreen,
+                    } : null;
+                    Check(await TestTimeouts.UntilAsync(() => JsonNode.DeepEquals(Actual(), expected), StepTimeout),
+                        $"The placement is {Actual()?.ToJsonString() ?? "null"}, not {expected?.ToJsonString() ?? "null"}.");
+                    return;
+                }
                 if (expect["activity"] is JsonObject activity)
                 {
                     var presentation = (IRunicWindowPresentation)result!;

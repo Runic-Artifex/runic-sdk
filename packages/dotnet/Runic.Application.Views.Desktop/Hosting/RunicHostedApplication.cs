@@ -479,15 +479,18 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
     // The presentation requests that ask to activate or show their own window, which the platform may do later, such as
     // macOS once the host application is next activated.
     private static bool KeysWindow(RunicHostedPresentationRequest request) => request.Kind is RunicHostedPresentationKind.Present
-        or RunicHostedPresentationKind.SetFullScreen or RunicHostedPresentationKind.ToggleMaximized ||
+        or RunicHostedPresentationKind.SetFullScreen or RunicHostedPresentationKind.ToggleMaximized or RunicHostedPresentationKind.Maximize
+        or RunicHostedPresentationKind.Restore or RunicHostedPresentationKind.SetPlacement ||
         (request.Kind == RunicHostedPresentationKind.SetVisible && request.Value == true);
 
     // The presentation requests that can activate one of the guest's windows, or another window when theirs loses the
-    // activation: present, minimize, set-visible either way, set-full-screen either way and toggle-maximized, which on
-    // Windows show the window with activation. Resizing, moving and the others never activate.
+    // activation: present, minimize, set-visible either way, set-full-screen either way, toggle-maximized, maximize,
+    // restore and set-placement, which on Windows show the window with activation when they maximize it or bring it back
+    // from minimized (D064.12). Resizing, moving and the others never activate.
     private static bool CanActivate(RunicHostedPresentationKind kind) => kind is RunicHostedPresentationKind.Present
         or RunicHostedPresentationKind.Minimize or RunicHostedPresentationKind.SetVisible or RunicHostedPresentationKind.SetFullScreen
-        or RunicHostedPresentationKind.ToggleMaximized;
+        or RunicHostedPresentationKind.ToggleMaximized or RunicHostedPresentationKind.Maximize or RunicHostedPresentationKind.Restore
+        or RunicHostedPresentationKind.SetPlacement;
 
     // window-services/1: a request of the guest that can activate one of its windows, or another window as one of its
     // windows closes, hides or minimizes. Besides the requests above: window-open, the guest's close of a window
@@ -693,14 +696,18 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         // window-services/1: the files the user drops onto the window, when the guest's Window takes them.
         if (fileDrops && InUse(HostServices.Feature)) ForwardDrops(window, presentation);
         presentation.Closed += (_, _) => _ = OnWindowClosedAsync(window, hostedSurface);
+        var opened = new JsonObject
+        {
+            ["features"] = new JsonArray([.. FeatureNames(window.Features).Select(static name => (JsonNode)name)]),
+            ["activity"] = ActivityMembers(adapter.Activity),
+            ["colorScheme"] = Token(adapter.ColorScheme),
+        };
+        // sdk#897: the guest's Placement starts with the window's, before its first placement push.
+        if (window.Features.HasFlag(RunicWindowPresentationFeatures.Placement) && adapter.Placement is { } placement)
+            opened["placement"] = PlacementMembers(placement);
         try
         {
-            await request.ReplyAsync(new JsonObject
-            {
-                ["features"] = new JsonArray([.. FeatureNames(window.Features).Select(static name => (JsonNode)name)]),
-                ["activity"] = ActivityMembers(adapter.Activity),
-                ["colorScheme"] = Token(adapter.ColorScheme),
-            }).ConfigureAwait(false);
+            await request.ReplyAsync(opened).ConfigureAwait(false);
         }
         catch (HostChannelClosedException)
         {
@@ -796,6 +803,9 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         "set-color-scheme" => RunicHostedPresentationKind.SetColorScheme,
         "set-layout-direction" => RunicHostedPresentationKind.SetLayoutDirection,
         "announce" => RunicHostedPresentationKind.Announce,
+        "maximize" => RunicHostedPresentationKind.Maximize,
+        "restore" => RunicHostedPresentationKind.Restore,
+        "set-placement" => RunicHostedPresentationKind.SetPlacement,
         _ => null,
     };
 
@@ -807,6 +817,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         RunicHostedPresentationKind.SetFullScreen => RunicWindowPresentationFeatures.FullScreen,
         RunicHostedPresentationKind.SetDocumentEdited => RunicWindowPresentationFeatures.DocumentEdited,
         RunicHostedPresentationKind.SetColorScheme => RunicWindowPresentationFeatures.ColorScheme,
+        RunicHostedPresentationKind.Maximize or RunicHostedPresentationKind.Restore => RunicWindowPresentationFeatures.Maximize,
+        RunicHostedPresentationKind.SetPlacement => RunicWindowPresentationFeatures.Placement,
         _ => null,
     };
 
@@ -860,10 +872,21 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
                 return HostProtocol.Text(message, "text", 1_024) is { } text && priority is not null
                     ? request with { Text = text, Priority = priority }
                     : null;
+            case RunicHostedPresentationKind.SetPlacement:
+                return PlacementOf(message) is { } placement ? request with { Placement = placement } : null;
             default:
                 return request;
         }
     }
+
+    // set-placement's members (HostProtocol.Placement) as Runic Desktop's placement.
+    private static DesktopWindowPlacement? PlacementOf(JsonObject message) => HostProtocol.Placement(message) is { } placement
+        ? new DesktopWindowPlacement
+        {
+            X = placement.X, Y = placement.Y, Width = placement.Width, Height = placement.Height,
+            Maximized = placement.Maximized, FullScreen = placement.FullScreen, Origin = DesktopCoordinateOrigin.TopLeft,
+        }
+        : null;
 
     // A platform outcome reply (host-protocol.md, Platform outcomes).
     internal static JsonObject Outcome(PlatformResult<PlatformUnit> result) => result switch
@@ -887,6 +910,8 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         if (features.HasFlag(RunicWindowPresentationFeatures.PerWindowColorScheme)) yield return "per-window-color-scheme";
         if (features.HasFlag(RunicWindowPresentationFeatures.Activity)) yield return "activity";
         if (features.HasFlag(RunicWindowPresentationFeatures.OwnedWindows)) yield return "owned-windows";
+        if (features.HasFlag(RunicWindowPresentationFeatures.Maximize)) yield return "maximize";
+        if (features.HasFlag(RunicWindowPresentationFeatures.Placement)) yield return "placement";
     }
 
     private static JsonObject ActivityMembers(RunicWindowActivity activity) => new()
@@ -912,6 +937,21 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
         ["maximized"] = state.IsMaximized,
         ["fullScreen"] = state.IsFullScreen,
         ["monitor"] = state.MonitorId,
+        // sdk#897: the bounds the window restores to, which set-placement takes (host-protocol.md, Activity and placement).
+        ["restored"] = Restored(state.Placement),
+    };
+
+    private static JsonObject Restored(DesktopWindowPlacement placement) => new()
+    {
+        ["x"] = placement.X, ["y"] = placement.Y, ["width"] = placement.Width, ["height"] = placement.Height,
+    };
+
+    // The window-open reply's placement, with the placement feature: as the push's restored, maximized and fullScreen.
+    private static JsonObject PlacementMembers(RunicWindowPlacement placement) => new()
+    {
+        ["restored"] = new JsonObject { ["x"] = placement.X, ["y"] = placement.Y, ["width"] = placement.Width, ["height"] = placement.Height },
+        ["maximized"] = placement.Maximized,
+        ["fullScreen"] = placement.FullScreen,
     };
 
     private static string Token(DesktopColorScheme scheme) => scheme switch

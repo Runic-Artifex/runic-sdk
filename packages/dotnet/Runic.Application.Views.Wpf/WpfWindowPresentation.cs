@@ -41,6 +41,15 @@ public static partial class WpfPlatformServices
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>, as on Windows generally.
     /// </para>
     /// <para>
+    /// <see cref="IRunicWindowPresentation.MaximizeAsync"/> and <see cref="IRunicWindowPresentation.RestoreAsync"/> set
+    /// <see cref="Window.WindowState"/>, leaving full screen first. <see cref="IRunicWindowPresentation.Placement"/> is
+    /// in WPF's device-independent pixels: <see cref="Window.RestoreBounds"/> while the window is maximized, minimized or
+    /// full-screen, else <see cref="Window.Left"/>, <see cref="Window.Top"/> and its actual size.
+    /// <see cref="IRunicWindowPresentation.SetPlacementAsync"/> sets the bounds the window restores to, also while it is
+    /// maximized or minimized, then its state; WPF does not fit the bounds on a monitor. Windows activates a window that
+    /// it maximizes or brings back from minimized.
+    /// </para>
+    /// <para>
     /// The activity follows <see cref="Window.Activated"/>, <see cref="Window.Deactivated"/>,
     /// <see cref="Window.StateChanged"/> and <see cref="UIElement.IsVisibleChanged"/>. A handler that throws is logged and
     /// does not stop the others, and a change that a handler causes is raised after the handlers of the current one.
@@ -70,7 +79,8 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
     internal const RunicWindowPresentationFeatures Supported = RunicWindowPresentationFeatures.Present |
         RunicWindowPresentationFeatures.Minimize | RunicWindowPresentationFeatures.Visibility |
         RunicWindowPresentationFeatures.FullScreen | RunicWindowPresentationFeatures.ColorScheme |
-        RunicWindowPresentationFeatures.PerWindowColorScheme | RunicWindowPresentationFeatures.Activity;
+        RunicWindowPresentationFeatures.PerWindowColorScheme | RunicWindowPresentationFeatures.Activity |
+        RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement;
 
     // The window's presentation, which ForWindowPresentation returns again and its RunicWebViews read.
     internal static readonly DependencyProperty PresentationProperty = DependencyProperty.RegisterAttached("RunicWindowPresentation",
@@ -94,17 +104,61 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
     private volatile bool _closed;
     // Dispatcher only: the frame and state that full screen replaced.
     private (WindowStyle Style, ResizeMode Resize, WindowState State)? _windowed;
+    // sdk#897, W1b: the placement last read on the dispatcher, and whether the window was maximized when it was minimized.
+    private RunicWindowPlacement? _placement;
+    private bool _maximizedBeforeMinimized;
 
     internal WpfWindowPresentation(Window window, ILogger logger)
     {
         _window = window;
         _logger = logger;
         _activity = Read();
+        _maximizedBeforeMinimized = window.WindowState == WindowState.Maximized;
+        _placement = ReadPlacement();
         window.Activated += OnChanged;
         window.Deactivated += OnChanged;
         window.StateChanged += OnChanged;
         window.IsVisibleChanged += OnVisibleChanged;
+        window.LocationChanged += OnBoundsChanged;
+        window.SizeChanged += OnSizeChanged;
         window.Closed += OnClosed;
+    }
+
+    public RunicWindowPlacement? Placement => Volatile.Read(ref _placement);
+
+    // On the dispatcher. A normal window's own bounds; otherwise the ones it restores to. Before the window was shown,
+    // Left and Top can be NaN: the placement then has no position.
+    private RunicWindowPlacement ReadPlacement()
+    {
+        var state = _window.WindowState;
+        if (state != WindowState.Minimized) _maximizedBeforeMinimized = state == WindowState.Maximized;
+        var bounds = state == WindowState.Normal && _windowed is null || _window.RestoreBounds.IsEmpty
+            ? new Rect(_window.Left, _window.Top,
+                _window.ActualWidth > 0 ? _window.ActualWidth : _window.Width, _window.ActualHeight > 0 ? _window.ActualHeight : _window.Height)
+            : _window.RestoreBounds;
+        var positioned = double.IsFinite(bounds.X) && double.IsFinite(bounds.Y);
+        return new RunicWindowPlacement
+        {
+            X = positioned ? (int)Math.Round(bounds.X) : null,
+            Y = positioned ? (int)Math.Round(bounds.Y) : null,
+            Width = double.IsFinite(bounds.Width) ? (int)Math.Round(bounds.Width) : 0,
+            Height = double.IsFinite(bounds.Height) ? (int)Math.Round(bounds.Height) : 0,
+            Maximized = _windowed is { } windowed ? windowed.State == WindowState.Maximized : _maximizedBeforeMinimized,
+            FullScreen = _windowed is not null,
+        };
+    }
+
+    private void OnBoundsChanged(object? sender, EventArgs args) => UpdatePlacement();
+
+    private void OnSizeChanged(object? sender, SizeChangedEventArgs args) => UpdatePlacement();
+
+    private void UpdatePlacement()
+    {
+        if (_closed) return;
+        var placement = ReadPlacement();
+        if (Equals(placement, _placement)) return;
+        Volatile.Write(ref _placement, placement);
+        RaiseInOrder(() => Raise(nameof(Placement)));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -129,7 +183,11 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
         return new RunicWindowActivity(!minimized && _window.IsActive, minimized, !minimized && _window.IsVisible);
     }
 
-    private void OnChanged(object? sender, EventArgs args) => Update(Read());
+    private void OnChanged(object? sender, EventArgs args)
+    {
+        Update(Read());
+        UpdatePlacement();
+    }
 
     private void OnVisibleChanged(object? sender, DependencyPropertyChangedEventArgs args) => Update(Read());
 
@@ -140,6 +198,8 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
         _window.Deactivated -= OnChanged;
         _window.StateChanged -= OnChanged;
         _window.IsVisibleChanged -= OnVisibleChanged;
+        _window.LocationChanged -= OnBoundsChanged;
+        _window.SizeChanged -= OnSizeChanged;
         _window.SourceInitialized -= OnSourceInitialized;
         _window.Closed -= OnClosed;
         _settingChanges?.RemoveHook(OnWindowMessage);
@@ -215,24 +275,82 @@ internal sealed partial class WpfWindowPresentation : IRunicWindowPresentation
     public ValueTask<PlatformResult<PlatformUnit>> SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default) =>
         RunAsync(() =>
         {
-            if (fullScreen && _windowed is null)
-            {
-                _windowed = (_window.WindowStyle, _window.ResizeMode, _window.WindowState);
-                // WPF keeps a maximized window's frame unless it leaves the maximized state first.
-                _window.WindowState = WindowState.Normal;
-                _window.WindowStyle = WindowStyle.None;
-                _window.ResizeMode = ResizeMode.NoResize;
-                _window.WindowState = WindowState.Maximized;
-            }
-            else if (!fullScreen && _windowed is { } windowed)
-            {
-                _windowed = null;
-                _window.WindowState = WindowState.Normal;
-                _window.WindowStyle = windowed.Style;
-                _window.ResizeMode = windowed.Resize;
-                _window.WindowState = windowed.State == WindowState.Minimized ? WindowState.Normal : windowed.State;
-            }
+            if (fullScreen) EnterFullScreen();
+            else LeaveFullScreen();
         }, cancellationToken);
+
+    // Dispatcher only.
+    private void EnterFullScreen()
+    {
+        if (_windowed is not null) return;
+        _windowed = (_window.WindowStyle, _window.ResizeMode, _window.WindowState);
+        // WPF keeps a maximized window's frame unless it leaves the maximized state first.
+        _window.WindowState = WindowState.Normal;
+        _window.WindowStyle = WindowStyle.None;
+        _window.ResizeMode = ResizeMode.NoResize;
+        _window.WindowState = WindowState.Maximized;
+    }
+
+    // Dispatcher only: back to the frame and state full screen replaced, or to state.
+    private void LeaveFullScreen(WindowState? state = null)
+    {
+        if (_windowed is not { } windowed) return;
+        _windowed = null;
+        _window.WindowState = WindowState.Normal;
+        _window.WindowStyle = windowed.Style;
+        _window.ResizeMode = windowed.Resize;
+        _window.WindowState = state ?? (windowed.State == WindowState.Minimized ? WindowState.Normal : windowed.State);
+    }
+
+    // sdk#897, W1b (window-api-0.19/DESIGN.md §3.4): WindowState, leaving full screen first.
+    public ValueTask<PlatformResult<PlatformUnit>> MaximizeAsync(CancellationToken cancellationToken = default) =>
+        RunAsync(() =>
+        {
+            LeaveFullScreen(WindowState.Maximized);
+            _window.WindowState = WindowState.Maximized;
+            UpdatePlacement();
+        }, cancellationToken);
+
+    // A window minimized while maximized ends normal (D064.13).
+    public ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(CancellationToken cancellationToken = default) =>
+        RunAsync(() =>
+        {
+            LeaveFullScreen(WindowState.Normal);
+            _window.WindowState = WindowState.Normal;
+            // Win32 brings a window minimized while maximized back maximized (WPF_RESTORETOMAXIMIZED).
+            if (_window.WindowState != WindowState.Normal) _window.WindowState = WindowState.Normal;
+            UpdatePlacement();
+        }, cancellationToken);
+
+    // Left, Top, Width and Height of a window that is not normal are the bounds it restores to; WPF stores them in the
+    // native window's restore placement. The state follows, so a maximized window keeps its new restored bounds.
+    public ValueTask<PlatformResult<PlatformUnit>> SetPlacementAsync(RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        if (placement.X is null != placement.Y is null)
+            throw new ArgumentException("Set both X and Y of the placement, or neither to keep the Window's position.", nameof(placement));
+        return RunAsync(() =>
+        {
+            var state = placement.Maximized ? WindowState.Maximized : WindowState.Normal;
+            if (!placement.FullScreen) LeaveFullScreen(_window.WindowState == WindowState.Minimized ? WindowState.Minimized : state);
+            if (placement is { X: { } x, Y: { } y })
+            {
+                _window.Left = x;
+                _window.Top = y;
+            }
+            if (placement.Width > 0) _window.Width = placement.Width;
+            if (placement.Height > 0) _window.Height = placement.Height;
+            if (placement.FullScreen)
+            {
+                EnterFullScreen();
+                // The state the window returns to when it leaves full screen.
+                _windowed = _windowed!.Value with { State = state };
+            }
+            else if (_window.WindowState == WindowState.Minimized) _maximizedBeforeMinimized = placement.Maximized;
+            else _window.WindowState = state;
+            UpdatePlacement();
+        }, cancellationToken);
+    }
 
     public ValueTask<PlatformResult<PlatformUnit>> SetDocumentEditedAsync(bool edited, CancellationToken cancellationToken = default)
     {

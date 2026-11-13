@@ -27,6 +27,10 @@ internal static class HostedPresentation
                 RunicHostedPresentationKind.SetDocumentEdited => await adapter.SetDocumentEditedAsync(request.Value ?? false, cancellationToken).ConfigureAwait(false),
                 RunicHostedPresentationKind.SetColorScheme => await adapter.SetColorSchemeAsync(request.ColorScheme ?? DesktopColorScheme.NoPreference, cancellationToken).ConfigureAwait(false),
                 RunicHostedPresentationKind.ToggleMaximized => await RunAsync(window, () => window.ToggleMaximizedAsync(cancellationToken)).ConfigureAwait(false),
+                RunicHostedPresentationKind.Maximize => await RunAsync(window, () => window.MaximizeAsync(cancellationToken)).ConfigureAwait(false),
+                RunicHostedPresentationKind.Restore => await RunAsync(window, () => window.RestoreAsync(cancellationToken)).ConfigureAwait(false),
+                RunicHostedPresentationKind.SetPlacement when request.Placement is { } placement =>
+                    await RunAsync(window, () => window.SetPlacementAsync(placement, cancellationToken)).ConfigureAwait(false),
                 RunicHostedPresentationKind.Resize when request is { Width: { } width and >= 1, Height: { } height and >= 1 } =>
                     await RunAsync(window, () => window.ResizeAsync(width, height, cancellationToken)).ConfigureAwait(false),
                 RunicHostedPresentationKind.Move when request is { X: { } x, Y: { } y } =>
@@ -59,6 +63,8 @@ internal static class HostedPresentation
         }
         catch (ObjectDisposedException) { return Closed; }
         catch (DesktopException error) when (error.Code == "window-capability-unavailable") { return Unsupported; }
+        // A placement with a position on Wayland (D064.11): nothing changed.
+        catch (DesktopException error) when (error.Code == "window-position-unavailable") { return Unsupported; }
         catch (InvalidOperationException) when (!window.IsOpen) { return Closed; }
         catch (InvalidOperationException error)
         {

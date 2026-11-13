@@ -66,7 +66,11 @@ internal sealed class WindowPresentationTests
         var backend = new RunicTestWindowPresentation();
         await using var window = await new PresentingHost(provider, backend).OpenWindowAsync<WindowPresentationWindow>();
         var changed = new List<string?>();
-        window.Presentation.PropertyChanged += (_, args) => { lock (changed) changed.Add(args.PropertyName); };
+        // The window's first placement, which the Window reports once its host attached, is not part of the activity.
+        window.Presentation.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(IRunicWindowPresentation.Placement)) lock (changed) changed.Add(args.PropertyName);
+        };
         backend.SetActive(false);
         await WaitUntilAsync(() => { lock (changed) return changed.Count >= 2; });
         lock (changed) Require(changed.SequenceEqual([nameof(IRunicWindowPresentation.IsActive), nameof(IRunicWindowPresentation.Activity)]),

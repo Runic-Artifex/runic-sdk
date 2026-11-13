@@ -1350,6 +1350,21 @@ not application API. A hand-written Bridge, for example in a test, follows the g
 `Runic.Application.Views.Generated` now has two `PropertyDescriptor` types; qualify the name or add
 `using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;`.
 
+### Maximize, restore and placement
+
+Nothing has to change. These rows are optional:
+
+| 0.18 | 0.19 |
+| --- | --- |
+| `DesktopWindow.ToggleMaximizedAsync`, or `ToggleMaximizedAsync` after reading `State.IsMaximized`, to maximize or restore | `DesktopWindow.MaximizeAsync` and `RestoreAsync`, which change nothing when the window is already in that state |
+| A ViewModel that reached its `DesktopWindow` (through `DesktopPlatformServices.GetDesktopWindow`) to maximize or place its Window | `IRunicWindowPresentation.MaximizeAsync`, `RestoreAsync`, `SetPlacementAsync(RunicWindowPlacement)` and `Placement`, which also work in WPF and hosted windows. Convert a saved `DesktopWindowPlacement` with `ToRunicPlacement()` |
+| A placement restored only at open (`DesktopWindowOptions.Placement`) | `SetPlacementAsync` places an open window too, also a maximized, minimized or hidden one |
+| A custom `IRunicWindowPresentation` | Compiles unchanged; the new members report `BackendUnavailable` until it implements them |
+| A custom Runic Desktop window host | Implement `IDesktopWindowShowStateHost` and report `DesktopWindowCapabilities.WindowPlacement` to support them |
+| A host application's `IRunicHostedWindowPolicy` that switches over `RunicHostedPresentationKind` | Decide `Maximize`, `Restore` and `SetPlacement` too, or let the default allow them; clamp a placement through `RunicHostedPresentationRequest.Placement` |
+
+On Windows, maximizing a window or bringing it back from minimized activates it, as when the user does so.
+
 ### Side panel
 
 | 0.18 | 0.19 |

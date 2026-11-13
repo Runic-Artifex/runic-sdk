@@ -1,0 +1,40 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "presentation.placement-not-listed.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "presentation",
+  "roles": ["guest"],
+  "description": "Without the maximize and placement features in the window-open reply, maximize, restore and set-placement are unavailable at once, without a message to the host, and the Window reports no placement, also after a placement push.",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "p1": {"kind":"action"},
+    "p2": {"kind":"action"},
+    "p3": {"kind":"action"},
+    "pl1": {"kind":"action"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":[],"locale":null,"languages":[],"appearance":null},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"features":["present","minimize","visibility","full-screen","document-edited","color-scheme","activity","owned-windows"],"activity":{"active":true,"minimized":false,"visible":true},"colorScheme":"no-preference"},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"guest":{"action":"maximize","window":"w1"},"as":"p1"},
+    {"expect":{"action":"p1","outcome":{"unavailable":"backend-unavailable"}}},
+    {"guest":{"action":"restore","window":"w1"},"as":"p2"},
+    {"expect":{"action":"p2","outcome":{"unavailable":"backend-unavailable"}}},
+    {"guest":{"action":"setPlacement","window":"w1","value":{"x":0,"y":0,"width":800,"height":600,"maximized":false,"fullScreen":false}},"as":"p3"},
+    {"expect":{"action":"p3","outcome":{"unavailable":"backend-unavailable"}}},
+    {"send":{"kind":"placement","window":{"$id":"w1"},"bounds":{"x":30,"y":40,"width":640,"height":480},"maximized":false,"fullScreen":false,"monitor":null},"connection":"c1"},
+    {"guest":{"action":"placement","window":"w1"},"as":"pl1"},
+    {"expect":{"action":"pl1","placement":null}}
+  ]
+}

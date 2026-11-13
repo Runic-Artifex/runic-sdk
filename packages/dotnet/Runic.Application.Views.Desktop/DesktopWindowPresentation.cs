@@ -18,12 +18,21 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
     private readonly Func<DesktopNativeOwner?> _owner;
     private readonly object _gate = new();
     private RunicWindowActivity _activity;
+    // sdk#897, W1b: the window's placement, for a window whose host reports it (WindowPlacement); kept after it closed.
+    private readonly bool _reportsPlacement;
+    private RunicWindowPlacement? _placement;
 
     internal DesktopWindowPresentation(DesktopWindow window, Func<DesktopNativeOwner?> owner)
     {
         _window = window;
         _owner = owner;
         _activity = Convert(window.Activity);
+        _reportsPlacement = window.Capabilities.HasFlag(DesktopWindowCapabilities.WindowPlacement);
+        if (_reportsPlacement)
+        {
+            _placement = window.State?.Placement.ToRunicPlacement();
+            window.StateChanged += OnStateChanged;
+        }
         window.ActivityChanged += OnActivityChanged;
         // Also a change another window or the application made to a shared scheme.
         window.ColorSchemeChanged += OnColorSchemeChanged;
@@ -70,6 +79,8 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
             features |= RunicWindowPresentationFeatures.PerWindowColorScheme;
         if (capabilities.HasFlag(DesktopWindowCapabilities.Activity)) features |= RunicWindowPresentationFeatures.Activity;
         if (capabilities.HasFlag(DesktopWindowCapabilities.Ownership)) features |= RunicWindowPresentationFeatures.OwnedWindows;
+        if (capabilities.HasFlag(DesktopWindowCapabilities.WindowPlacement))
+            features |= RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement;
         // NSWindow.documentEdited: only the macOS window shows it; elsewhere DesktopWindow accepts it and does nothing.
         if (macOS && capabilities.HasFlag(DesktopWindowCapabilities.NativeHandle)) features |= RunicWindowPresentationFeatures.DocumentEdited;
         return features;
@@ -105,9 +116,25 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         if (!_window.IsOpen) Detach();
     }
 
+    public RunicWindowPlacement? Placement => Volatile.Read(ref _placement);
+
+    // DesktopWindow.State.Placement, which excludes an open side panel. StateChanged is raised one at a time and combines
+    // the changes of a drag; a change of the current frame alone keeps the placement.
+    private void OnStateChanged(object? sender, DesktopWindowStateChangedEventArgs args)
+    {
+        var placement = args.State.Placement.ToRunicPlacement();
+        lock (_gate)
+        {
+            if (Equals(_placement, placement)) return;
+            Volatile.Write(ref _placement, placement);
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Placement)));
+    }
+
     // Stops following the window, which then no longer holds this presentation (DesktopWindowServices).
     internal void Detach()
     {
+        _window.StateChanged -= OnStateChanged;
         _window.ActivityChanged -= OnActivityChanged;
         _window.ColorSchemeChanged -= OnColorSchemeChanged;
     }
@@ -148,6 +175,20 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         // DesktopWindow.ColorSchemeChanged reports the change.
         return await Request(RunicWindowPresentationFeatures.ColorScheme,
             () => _window.SetColorSchemeAsync(colorScheme, cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    // sdk#897, W1b (window-api-0.19/DESIGN.md §3.2): DesktopWindow's own requests, in its placement units.
+    public ValueTask<PlatformResult<PlatformUnit>> MaximizeAsync(CancellationToken cancellationToken = default) =>
+        Request(RunicWindowPresentationFeatures.Maximize, () => _window.MaximizeAsync(cancellationToken), cancellationToken);
+
+    public ValueTask<PlatformResult<PlatformUnit>> RestoreAsync(CancellationToken cancellationToken = default) =>
+        Request(RunicWindowPresentationFeatures.Maximize, () => _window.RestoreAsync(cancellationToken), cancellationToken);
+
+    public ValueTask<PlatformResult<PlatformUnit>> SetPlacementAsync(RunicWindowPlacement placement, CancellationToken cancellationToken = default)
+    {
+        RunicWindowPlacement.Validate(placement);
+        var desktop = placement.ToDesktopPlacement();
+        return Request(RunicWindowPresentationFeatures.Placement, () => _window.SetPlacementAsync(desktop, cancellationToken), cancellationToken);
     }
 
     // sdk#864, P5 (side-panel/DESIGN.md §3.2): the Window's side panel is its DesktopWindow's.
@@ -345,6 +386,8 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         }
         catch (ObjectDisposedException) { return Closed; }
         catch (DesktopException error) when (error.Code == "window-capability-unavailable") { return Unsupported; }
+        // A placement with a position on Wayland (D064.11): nothing changed.
+        catch (DesktopException error) when (error.Code == "window-position-unavailable") { return Unsupported; }
         catch (InvalidOperationException) when (!_window.IsOpen) { return Closed; }
         catch (InvalidOperationException) when (_window.State?.IsFullScreen == true)
         {

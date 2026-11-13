@@ -25,7 +25,8 @@ public sealed partial class RunicTestHost
     private const Views.RunicWindowPresentationFeatures RegionlessFeatures =
         Views.RunicWindowPresentationFeatures.Minimize | Views.RunicWindowPresentationFeatures.Visibility |
         Views.RunicWindowPresentationFeatures.FullScreen | Views.RunicWindowPresentationFeatures.ColorScheme |
-        Views.RunicWindowPresentationFeatures.PerWindowColorScheme;
+        Views.RunicWindowPresentationFeatures.PerWindowColorScheme | Views.RunicWindowPresentationFeatures.Maximize |
+        Views.RunicWindowPresentationFeatures.Placement;
 
     // The presentation requests of a region window that do not apply there, and set-title of a window shown in a window
     // (host-protocol.md, Presentation in a region); null for a request answered as in a window.

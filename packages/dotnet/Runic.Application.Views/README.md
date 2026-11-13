@@ -928,6 +928,8 @@ casts `IRunicWindow.Host` to a host's type:
 | `MinimizeAsync()` | Minimizes it to the taskbar or Dock. |
 | `SetVisibleAsync(visible)` | Hides it without closing it, for example to a status icon, or shows it again. |
 | `SetFullScreenAsync(fullScreen)` | Enters or leaves full screen. |
+| `MaximizeAsync()`, `RestoreAsync()` | Maximizes the Window, or returns it to its normal bounds from maximized, minimized or full screen; a second call changes nothing. |
+| `SetPlacementAsync(placement)`, `Placement` | Gives the open Window a saved placement (the bounds it restores to, maximized, full screen), and reports where it is; [placement](#maximizing-and-placing-the-window). |
 | `SetDocumentEditedAsync(edited)` | Marks unsaved changes where the platform shows them: the dot in the macOS close button. |
 | `SetColorSchemeAsync(scheme)` | Switches it between light and dark; the page's `prefers-color-scheme` follows. |
 | `IsActive`, `IsMinimized`, `IsVisible`, `Activity` | Whether it has the keyboard focus, is minimized and is shown, with `ActivityChanged` and `PropertyChanged`. |
@@ -1010,19 +1012,80 @@ public InboxViewModel(IRunicWindowPresentation window)
   dropped): it reports the native window, not whether a View currently shows
   the ViewModel. Use the View lifetime hooks for that.
 
-| Host | Present | Minimize | Hide and show | Full screen | Document edited | Color scheme | Activity |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Runic Desktop, WebView2 | Yes | Yes | Yes | Yes | No | Yes; shared by the windows of a configured `ProfilePath` | Yes |
-| Runic Desktop, WKWebView | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes | Yes | Yes | Yes | No | Yes, shared by every window of the application | Yes; minimized only on X11 |
-| Runic Desktop, an installed browser after a fallback | No | No | No | No | No | No | No |
-| WPF, `WpfPlatformServices.ForWindowPresentation(window)` | Yes | Yes | Yes | Yes | No | Title bar and the pages of `RunicViewHost`s | Yes |
-| CS-WebUI | Yes | WebView only | No | No | No | No | No |
+| Host | Present | Minimize | Hide and show | Full screen | Maximize, restore, placement | Document edited | Color scheme | Activity |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Runic Desktop, WebView2 | Yes | Yes | Yes | Yes | Yes | No | Yes; shared by the windows of a configured `ProfilePath` | Yes |
+| Runic Desktop, WKWebView | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes | Yes | Yes | Yes | Yes; no position on Wayland | No | Yes, shared by every window of the application | Yes; minimized only on X11 |
+| Runic Desktop, an installed browser after a fallback | No | No | No | No | No | No | No | No |
+| A host application's window (`runic-host/1`) | As the host lists | As listed | As listed | As listed | As listed; the host's policy decides | As listed | As listed | As listed |
+| A host application's region | Yes | No | No | No | No | Yes | No | Yes |
+| WPF, `WpfPlatformServices.ForWindowPresentation(window)` | Yes | Yes | Yes | Yes | Yes, in WPF DIPs | No | Title bar and the pages of `RunicViewHost`s | Yes |
+| CS-WebUI | Yes | WebView only | No | No | No | No | No | No |
+
+A serve-only application's Windows have no native window: every request
+reports `OwnerUnavailable`.
 
 A custom Runic Desktop window host provides the activity and the color scheme
 through `IDesktopActivityWindowHost` and `IDesktopColorSchemeWindowHost`; a
 custom Window host gives the Window its own presentation with
 `RunicWindowOpening<TViewModel>.UsePresentation` once the native window exists.
+
+#### Maximizing and placing the Window
+
+`MaximizeAsync`, `RestoreAsync` and `SetPlacementAsync` (0.19, stable) are
+idempotent requests: a maximized Window stays maximized, and `RestoreAsync`
+always ends at the normal bounds, also for a Window minimized while it was
+maximized, which the platform itself brings back maximized (`PresentAsync`
+keeps that behaviour). `Features` lists `Maximize` for the first two and
+`Placement` for `SetPlacementAsync` and `Placement`.
+
+`Placement` is a `RunicWindowPlacement`: the bounds the Window restores to,
+and whether it is maximized or full-screen. Save it when the Window closes and
+give it back to put the Window where the user left it:
+
+```csharp
+[RelayCommand]
+private async Task RestoreLayoutAsync()
+{
+    if (_settings.WindowPlacement is { } saved) await _window.SetPlacementAsync(saved);
+}
+
+// When the Window closes; it stays readable after the close.
+_settings.WindowPlacement = _window.Placement;
+```
+
+- **Units.** The values are the host's, as a placement saved from the same
+  host reads them; save placements per host rather than convert them. On Runic
+  Desktop they are those of `DesktopWindowState.Placement` (physical `X/Y`
+  and device-independent `Width/Height` on Windows, points on macOS, logical
+  pixels on Linux), and Runic.Application.Views.Desktop converts with
+  `ToRunicPlacement()` and `ToDesktopPlacement()`, so a placement saved with
+  `DesktopPlatformServices.GetWindowState` passes between the two layers. In
+  WPF all four are device-independent pixels. An open side panel is not part
+  of the bounds.
+- **Keeping or fitting.** `X` and `Y` both `null` keep the position, and a
+  `Width` or `Height` of zero or less keeps that dimension. Runic Desktop keeps
+  the bounds on a monitor that exists now, as at open, so `Placement` can report
+  other bounds than the ones passed. A host application's policy may refuse a
+  request (`PermissionDenied`) or clamp the placement.
+- **Wayland** has no window positions: a placement with `X` and `Y` reports
+  `BackendUnavailable` and changes nothing. Pass one without them, as
+  `Placement` reads there. A minimized window on Wayland comes back only with
+  `PresentAsync`.
+- **Activation on Windows.** Windows activates a window that it maximizes or
+  brings back from minimized, as it does when the user does so; Runic does not
+  hide this. Restoring a visible maximized window, and a placement that keeps
+  the window's state, leave the activation alone.
+- **Completion.** A request completes when the window was asked: macOS
+  animates a zoom, and a Linux window manager decides when the window is
+  maximized. `PropertyChanged` reports `Placement` in a turn of the Window's
+  model context, with the changes of a drag combined.
+- A kiosk window stays full-screen: the requests that would leave full screen
+  report `Conflict`.
+
+A custom Runic Desktop window host supports them by implementing
+`IDesktopWindowShowStateHost` and reporting `DesktopWindowCapabilities.WindowPlacement`.
 
 #### A side panel beside the Window's page
 
