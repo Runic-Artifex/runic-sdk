@@ -125,8 +125,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme |
-        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize;
-    public DesktopWindowCapabilities Capabilities => KnownCapabilities |
+        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize |
+        DesktopWindowCapabilities.WindowPlacement;
+    // A sheet (a window-modal window) stays attached to its owner: AppKit places it, so it takes no placement.
+    public DesktopWindowCapabilities Capabilities => (_sheet ? KnownCapabilities & ~DesktopWindowCapabilities.WindowPlacement : KnownCapabilities) |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
@@ -393,6 +395,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
             // Ordering a window out sends no delegate notification but an occlusion change, which may come later.
             UpdateActivity();
+            if (visible) QueuePendingZoom();
         }, cancellationToken);
 
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default)
@@ -701,9 +704,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     // Main thread only. The frame's top-left corner, the units of SetPositionAsync, and the content size, the units of
     // setContentSize:.
-    private DesktopWindowPlacement ReadBounds()
+    private DesktopWindowPlacement ReadBounds() => PlacementOf(Api.SendRect(_window, "frame"));
+
+    // Main thread only: the placement of a frame, as ReadBounds reads the window's.
+    private DesktopWindowPlacement PlacementOf(CGRect frame)
     {
-        var frame = Api.SendRect(_window, "frame");
         var content = Api.SendRectRect(_window, "contentRectForFrameRect:", frame);
         var (x, y) = MacOsCoordinates.FrameTopLeft(frame.X, frame.Y, frame.Height, PrimaryScreenHeight());
         return new DesktopWindowPlacement
@@ -750,7 +755,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
             MonitorId = CurrentMonitorId(),
-            Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !_kiosk },
+            // A hidden or miniaturized window reports the state it shows in (QueuePendingZoom).
+            Placement = (_normal ?? current) with { Maximized = !_kiosk && PlacementMaximized, FullScreen = fullScreen && !_kiosk },
             Bounds = exact.Bounds,
             VisibleBounds = exact.Bounds,
             IsSnapped = exact.Snapped,
@@ -810,6 +816,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             host._fullScreenTransition = false;
             host.UpdateState();
             host.ApplyTrafficLights();
+            host.ApplyAfterFullScreen();
         }
     }
 
@@ -839,6 +846,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 host.UpdateState();
                 // windowDidDeminiaturize: restores the activity too.
                 host.UpdateActivity();
+                // A window back from the Dock takes the zoom state MaximizeAsync, RestoreAsync or SetPlacementAsync gave it.
+                host.QueuePendingZoom();
                 // AppKit lays the title bar out again after a resize.
                 host.ApplyTrafficLights();
             }

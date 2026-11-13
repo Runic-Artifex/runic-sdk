@@ -1170,6 +1170,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken)
         => GetEmbeddedHost().SetMinimumSizeAsync(width, height, cancellationToken);
 
+    internal ValueTask ShowMaximizedAsync(CancellationToken cancellationToken)
+        => GetEmbeddedHost().ShowMaximizedAsync(cancellationToken);
+
+    internal ValueTask ShowNormalAsync(CancellationToken cancellationToken)
+        => GetEmbeddedHost().ShowNormalAsync(cancellationToken);
+
+    internal ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken)
+        => GetEmbeddedHost().SetPlacementAsync(placement, cancellationToken);
+
     // Why a window lacks a capability, for the window-capability-unavailable message.
     internal string CapabilityRefusal(DesktopWindowCapabilities capability) => Volatile.Read(ref _embeddedHost) switch
     {

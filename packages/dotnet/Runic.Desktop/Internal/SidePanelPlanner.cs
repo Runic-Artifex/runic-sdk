@@ -95,6 +95,15 @@ internal static class SidePanelPlanner
         return left && bounds.X is { } x ? bounds with { X = checked(x + removed), Width = width } : bounds with { Width = width };
     }
 
+    // The inverse of ExcludePanel: the bounds of a window whose page has bounds, with a panel of nativeWidth on its edge.
+    // DesktopWindow.SetPlacementAsync takes the page's placement, as State.Placement reports it, and the window grows by
+    // the panel, so the placement round-trips (window-api-0.19/DESIGN.md §3.1).
+    internal static DesktopWindowBounds IncludePanel(DesktopWindowBounds page, bool left, int nativeWidth)
+    {
+        var grown = page with { Width = checked(page.Width + nativeWidth) };
+        return left && page.X is { } x ? grown with { X = checked(x - nativeWidth) } : grown;
+    }
+
     // A restored rectangle of a maximized or full-screen window whose panel closes: the rectangle it restores to shrinks by
     // the panel's width on the docked edge.
     internal static ScreenRect ShrinkRestored(ScreenRect restored, bool left, int nativeWidth)

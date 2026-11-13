@@ -163,6 +163,18 @@ GDK's tiled state or, on X11, a frame that fills a half or a quarter of its
 monitor's work area, and `SetMinimumSizeAsync` sets the size request of the web
 view. See [Exact bounds](../Runic.Desktop/README.md#exact-bounds-visible-frame-and-minimum-size).
 
+It implements `IDesktopWindowShowStateHost` too. `DesktopWindow.MaximizeAsync`
+and `RestoreAsync` maximize and unmaximize the window; GTK 4 has no call to
+un-minimize a window, so `RestoreAsync` presents a minimized one, which brings
+it back normal on X11 (Wayland reports no minimized state). `SetPlacementAsync`
+sets the default size, the unmaximized size GTK 4 keeps while the window is
+maximized, and on X11 moves and resizes the X window (unmaximizing it first, so
+the window manager takes the frame as the bounds it restores to), then
+maximizes it or enters full screen. A hidden window takes the placement when it
+is shown. On Wayland a placement with a position fails as a whole with
+`window-position-unavailable`. See
+[Maximize, restore and placement](../Runic.Desktop/README.md#maximize-restore-and-placement-of-an-open-window).
+
 WebKitGTK's spell checker is on in every window, with enchant dictionaries for
 `DesktopHostOptions.SpellCheckingLanguages`, and the host implements
 `IDesktopSpellCheckingWindowHost` for `DesktopHost.SetSpellCheckingLanguagesAsync`.

@@ -82,6 +82,12 @@ if (args.Contains("--window-bounds", StringComparer.Ordinal))
     return WindowBoundsSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
         args.Contains("--window-manager", StringComparer.Ordinal), gtk4: true);
 
+// --window-placement [--window-manager] (sdk#897 W1a): maximize, restore and placements of an open window; see
+// WindowPlacementSmoke.cs.
+if (args.Contains("--window-placement", StringComparer.Ordinal))
+    return WindowPlacementSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
+        args.Contains("--window-manager", StringComparer.Ordinal));
+
 // --placement [--window-manager] (#663): a restored placement's position on X11, also under a window manager.
 if (args.Contains("--placement", StringComparer.Ordinal)) return PlacementSmoke.Run(args.Contains("--window-manager", StringComparer.Ordinal));
 

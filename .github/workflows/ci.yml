@@ -974,6 +974,16 @@ jobs:
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds --window-manager'
+      # sdk#897 W1a: MaximizeAsync and RestoreAsync are idempotent, and SetPlacementAsync round-trips through
+      # State.Placement while the window is normal, maximized, minimized and hidden, which then restores or shows at the
+      # placement; RestoreAsync of a window minimized while maximized ends normal. Under Openbox, which maximizes and
+      # iconifies.
+      - name: Maximize, restore and place the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-placement --window-manager'
       # S11 window mode (runic-host/1): Runic.Application.HostedWindows.Smoke hosts itself as guests; each guest page
       # loads in a GTK 3 window of the host in an ephemeral web context, without the host's or another guest's cookies;
       # close, crash and stop.
@@ -1085,6 +1095,9 @@ jobs:
           # #864 B1: the same window building blocks in GTK 4, whose X11 bounds change is one XMoveResizeWindow.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --window-bounds --window-manager'
+          # sdk#897 W1a: maximize, restore and placements of the open GTK 4 window, as for GTK 3.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --window-placement --window-manager'
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.
@@ -1206,6 +1219,14 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds
+      # sdk#897 W1a: MaximizeAsync and RestoreAsync are idempotent, and SetPlacementAsync round-trips through
+      # State.Placement while the window is normal, maximized, minimized and hidden (SetWindowPlacement; setFrame:display:
+      # then zoom:). Measures the design's two open claims: AppKit keeps the frame it set on a miniaturized or hidden
+      # window, and Windows restores an inactive maximized window without activating it (SW_SHOWNOACTIVATE).
+      - name: Maximize, restore and place a window on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-placement
       # #864 P2: the WebView2 side panel (DesktopWindow.OpenSidePanelAsync): both edges, the exact bounds back on close, the
       # page never resized, its left edge in place in every DWM frame but at most one (a GDI row per DwmFlush), Tab
       # between the page and the panel, a maximized window keeping the panel, the refusals and the minimum width. macOS

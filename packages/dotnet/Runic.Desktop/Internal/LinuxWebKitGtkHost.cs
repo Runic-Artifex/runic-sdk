@@ -55,7 +55,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
-        (Api.CanReportState ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds : DesktopWindowCapabilities.None) |
+        (Api.CanReportState
+            ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.WindowPlacement
+            : DesktopWindowCapabilities.None) |
         DesktopWindowCapabilities.ColorScheme |
         (Api.CanSetDirection ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |
         (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None) |
@@ -262,6 +264,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 // The global menu keeps showing the bar.
                 if (_globalPlacement && _menuBar != 0) Api.GtkWidgetHide(_menuBar);
                 BlockOwner();
+                // A placement, MaximizeAsync or RestoreAsync given while hidden applies to the mapped window.
+                ApplyPlacementWhenShown();
             }
             else
             {
@@ -574,7 +578,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             X = x, Y = y, Width = Math.Max(1, width), Height = Math.Max(1, height), Origin = DesktopCoordinateOrigin.TopLeft,
         };
         var exact = ReadExactBounds(x, y, current.Width, current.Height, flags, maximized, fullScreen);
-        if (!maximized && !fullScreen && !tiled)
+        // A placement given while hidden maximizes the shown window once it has its size (ApplyPlacementWhenShown).
+        if (!maximized) MaximizeAtSize(force: false, current.Width, current.Height);
+        // A hidden window keeps the placement it shows at (SetPlacementAsync).
+        if (!maximized && !fullScreen && !tiled && _geometryWhenShown is null)
         {
             _normal = current;
         }
@@ -588,7 +595,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             IsMaximized = maximized,
             IsFullScreen = fullScreen,
             MonitorId = MonitorIdOf(Api.MonitorOfWindow(_window)),
-            Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !kiosk },
+            // A hidden window, or one that waits for its size to maximize, reports the state it is given (SetPlacementAsync).
+            Placement = (_normal ?? current) with { Maximized = PendingMaximized ?? maximized, FullScreen = fullScreen && !kiosk },
             Bounds = exact.Bounds,
             VisibleBounds = exact.Visible,
             IsSnapped = exact.Snapped,

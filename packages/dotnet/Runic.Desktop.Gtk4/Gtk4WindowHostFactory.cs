@@ -436,7 +436,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
         DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds |
-        DesktopWindowCapabilities.MinimumSize;
+        DesktopWindowCapabilities.MinimumSize | DesktopWindowCapabilities.WindowPlacement;
     private DesktopWindowState? _state;
     private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
@@ -726,7 +726,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // one keeps the position as the bounds it restores to, which a move would replace.
     private void Present(Gtk.Window window)
     {
-        try { PresentCore(window); }
+        try
+        {
+            PresentCore(window);
+            // A window hidden while maximized and given a normal placement (Gtk4WindowHost.Placement.cs).
+            UnmaximizeWhenShown(window);
+        }
         finally { BlockOwner(window.Handle.DangerousGetHandle()); }
     }
 
@@ -1800,6 +1805,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
         var maximized = window.IsMaximized();
         var fullScreen = window.IsFullscreen();
+        // A window hidden while maximized and given a normal placement takes its size once unmaximized.
+        ApplyUnmaximizedSize(window, maximized);
         var width = window.GetWidth();
         var height = window.GetHeight();
         var restoredWidth = Math.Max(1, defaultWidth > 0 ? defaultWidth : width);
