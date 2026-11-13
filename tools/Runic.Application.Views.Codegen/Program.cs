@@ -379,7 +379,7 @@ static void ApplyOperationRetirement(Type model, IReadOnlyList<PropertyInfo> com
 }
 
 // RunicOperationClose (#900): read as RunicOperationRetirement is, a declaration on a command property, else on the
-// ViewModel class or a base class. Only an operation carries it; RUNICBRIDGE038 warns about a declaration that reaches
+// ViewModel class or a base class. Only an operation carries it; RUNICBRIDGE039 warns about a declaration that reaches
 // none. Default emits nothing, so a Bridge without one is generated as before, and the TypeScript and contract hash
 // never change.
 static void ApplyOperationClose(Type model, IReadOnlyList<PropertyInfo> commands, Dictionary<PropertyInfo, GeneratedCommandPlan> commandPlans)
@@ -2619,7 +2619,7 @@ static class BridgeDiagnosticCodes
     /// <summary>Warning: a RunicOperationRetirement declaration reaches no operation.</summary>
     internal const string OperationRetirement = "RUNICBRIDGE028";
     /// <summary>Warning: a RunicOperationClose declaration reaches no operation.</summary>
-    internal const string OperationClose = "RUNICBRIDGE038";
+    internal const string OperationClose = "RUNICBRIDGE039";
     /// <summary>Warning: RunicApplicationFrontendPackageManager is not npm, pnpm or bun.</summary>
     internal const string PackageManager = "RUNICBRIDGE029";
     /// <summary>Warning: RunicApplicationFrontendDelivery=Embedded cannot apply, so the build copies the frontend.</summary>

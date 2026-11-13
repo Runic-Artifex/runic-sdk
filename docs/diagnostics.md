@@ -83,7 +83,7 @@ and severities are open.
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
 | [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
 | [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
-| [`RUNICBRIDGE038`](#runicbridge038) | Warning | Generator | A `[RunicOperationClose]` declaration reaches no operation |
+| [`RUNICBRIDGE039`](#runicbridge039) | Warning | Generator | A `[RunicOperationClose]` declaration reaches no operation |
 | [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 | [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
@@ -710,7 +710,7 @@ that gets the catalog from the Translations Vite plugin does not need
 `RunicApplicationFrontendTranslations`. See
 [Translated text](../packages/dotnet/Runic.Application.Views/README.md#translated-text).
 
-### RUNICBRIDGE038
+### RUNICBRIDGE039
 
 A warning from the Bridge generator (since 0.19). A `[RunicOperationClose]`
 declaration has no effect:

@@ -55,7 +55,7 @@ public enum RunicOperationClose
 /// <para>
 /// For a CommunityToolkit <c>[RelayCommand]</c> method, forward it to the generated property with
 /// <c>[property: RunicOperationClose(RunicOperationClose.Durable)]</c>. On a member that has no operation, such as a
-/// synchronous command or a state property, it has no effect and the Bridge generator warns (RUNICBRIDGE038). The policy
+/// synchronous command or a state property, it has no effect and the Bridge generator warns (RUNICBRIDGE039). The policy
 /// is .NET-side only: the generated TypeScript, contract hash and mocks do not change.
 /// </para>
 /// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>

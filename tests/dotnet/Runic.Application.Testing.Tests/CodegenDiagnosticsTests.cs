@@ -132,7 +132,7 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
-    // RUNICBRIDGE038 (#900): a RunicOperationClose declaration that reaches no operation is a located warning; the
+    // RUNICBRIDGE039 (#900): a RunicOperationClose declaration that reaches no operation is a located warning; the
     // policy reaches the generated descriptor only for an operation that is not Default, the class's declaration covers
     // the operations and a property's wins, and the generated TypeScript (with the contract hash) does not change.
     [Test]
@@ -179,7 +179,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 """;
             const string Source = Preamble + "#pragma warning disable RUNICDESK105\n" + Models;
             var (exitCode, output, directory) = await RunGeneratorAsync(generator, Path.Combine(temporaryRoot, "declared"), "Close", Source).ConfigureAwait(false);
-            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE038:", StringComparison.Ordinal)).ToArray();
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE039:", StringComparison.Ordinal)).ToArray();
             int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
             bool At(string declaration, string message) => warnings.Any(text =>
                 text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
@@ -189,9 +189,9 @@ internal sealed partial class CodegenDiagnosticsTests
                     && At("public string Title", "CloseViewModel.Title: RunicOperationClose applies only to a Bridge command that starts an operation")
                     && At("public IAsyncRelayCommand OddCommand", "CloseViewModel.OddCommand: 7 is not a RunicOperationClose value")
                     && warnings.Any(text => text.Contains("NoCloseOperationViewModel: RunicOperationClose on the class applies to its operations", StringComparison.Ordinal))
-                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE038")}", StringComparison.Ordinal))
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE039")}", StringComparison.Ordinal))
                     && !warnings.Any(text => text.Contains("ClassCloseViewModel", StringComparison.Ordinal)),
-                $"RunicOperationClose without an operation was not reported as located RUNICBRIDGE038 warnings.\n{output}");
+                $"RunicOperationClose without an operation was not reported as located RUNICBRIDGE039 warnings.\n{output}");
 
             string Bridge(string model) => File.ReadAllText(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs"));
             string Descriptor(string model, string command) => Bridge(model).Split('\n')
