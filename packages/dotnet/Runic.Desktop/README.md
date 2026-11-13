@@ -1037,7 +1037,7 @@ the window's page, in a strip on one edge by which the window grows. The page
 keeps its size and its place on the screen: its viewport, media queries and
 `position: fixed` elements do not change. Experimental under
 [`RUNICDESK104`](../../../docs/experimental.md#RUNICDESK104); 0.19 shows it on
-Windows (WebView2).
+Windows (WebView2) and macOS (WKWebView).
 
 ```csharp
 #pragma warning disable RUNICDESK104 // The side panel is experimental.
@@ -1055,8 +1055,8 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
 ```
 
 - **One step, exact bounds.** The window loads the panel's page in a hidden view
-  first, then grows in one `SetWindowPos`: on the right edge by widening, on the
-  left edge by moving left and widening. The width converts once into native
+  first, then grows in one native call (`SetWindowPos`, `setFrame:display:`): on
+  the right edge by widening, on the left edge by moving left and widening. The width converts once into native
   units (`DesktopWindowBounds.Expand`), so closing the panel restores exactly the
   bounds the window had, unless the user moved or resized it meanwhile; then only
   the docked edge moves back. `DesktopSidePanel.MoveToEdgeAsync` moves the window
@@ -1076,8 +1076,10 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
   window full-screen, the panel keeps its width and the page takes the rest;
   closing the panel then leaves the window's frame and shrinks the bounds it
   restores to. Tab past the page's last element focuses the panel's first, and
-  Shift+Tab hands focus back; UI Automation lists the panel before the page on
-  the left edge and after it on the right. Give the panel's page a `<title>` and a
+  Shift+Tab hands focus back; UI Automation and the macOS accessibility API list
+  the panel before the page on the left edge and after it on the right. On macOS
+  a left panel lies under the traffic lights of a custom title bar; its page
+  reports its own drag regions and should leave room for the buttons. Give the panel's page a `<title>` and a
   `complementary` landmark.
 - **Refusals** (`DesktopSidePanelResult.Refused`, the window unchanged):
   `Minimized` (also hidden), `FullScreen` (also kiosk), `Maximized`, `Snapped`,
@@ -1086,15 +1088,16 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
   `PositionUnavailable` (the left edge on Wayland), `AlreadyOpen`, `LoadFailed`
   (the page did not load within `LoadTimeout`) and `Unsupported`: an installed
   browser, a custom window host or WPF's `RunicWebView`, a hosted application's
-  window or region, a surface that admits several clients, and macOS and Linux
-  until their engines have the panel. `DesktopWindow.CheckSidePanel(edge, width)`
+  window or region, a surface that admits several clients, and Linux until its
+  engine has the panel. `DesktopWindow.CheckSidePanel(edge, width)`
   answers the same from the last reported state, synchronously, for enabling a
   command. `MoveToEdgeAsync` and `SetWidthAsync` refuse for the same reasons.
 
 | Platform | Side panel |
 | --- | --- |
 | Windows (WebView2) | A second WebView2 controller from the page's environment in a child window; `WM_NCCALCSIZE` keeps the page's pixels in place when the left edge moves |
-| macOS, Linux | `Unsupported` for now |
+| macOS (WKWebView) | A second `WKWebView` with the page's website data store in the window's content view; one `setFrame:display:` with both views laid out in the same turn; the views are each other's next key view |
+| Linux | `Unsupported` for now |
 | Installed browser, custom window host, WPF `RunicWebView`, hosted window | `Unsupported` |
 
 ## Menu bar and keyboard shortcuts

@@ -735,11 +735,15 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             ApplyPendingMonitor();
         }
         var maximized = !fullScreen && Api.SendBool(_window, "isZoomed");
+        RecordWorkArea();
+        // A window whose side panel closed while it was maximized or full-screen shrinks once it is back (sdk#864).
+        if (!maximized && !fullScreen) ShrinkRestoredFrame(CurrentBounds());
         var current = ReadBounds();
         var exact = ReadExactBounds(maximized, fullScreen);
         if (!maximized && !fullScreen)
         {
-            _normal = current;
+            // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
+            _normal = ExcludePanel(current);
         }
         var state = new DesktopWindowState
         {
@@ -849,14 +853,15 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    private void Navigate(Uri url)
+    // Loads url in the page's view, or in view, the side panel's.
+    private void Navigate(Uri url, nint view = 0)
     {
         var value = Api.CreateString(url.AbsoluteUri);
         try
         {
             var nativeUrl = Api.SendNintNint(Api.GetClass("NSURL"), "URLWithString:", value);
             var request = Api.SendNintNint(Api.GetClass("NSURLRequest"), "requestWithURL:", nativeUrl);
-            Api.SendNintNint(_webView, "loadRequest:", request);
+            Api.SendNintNint(view != 0 ? view : _webView, "loadRequest:", request);
         }
         finally
         {
@@ -880,8 +885,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.SendVoidNint(_webView, "setUIDelegate:", _webContentDelegate);
     }
 
-    // Main thread, after the decision handler ran: hands a URL to the system's handler, or loads one in this window.
-    private void Complete(MacOsWebContent.Outcome outcome)
+    // Main thread, after the decision handler ran: hands a URL to the system's handler, or loads one in the web view
+    // that asked: the page's, or the side panel's.
+    private void Complete(MacOsWebContent.Outcome outcome, nint webView)
     {
         if (!IsOpen)
         {
@@ -893,7 +899,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         if (outcome.NavigateInWindow is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
-            Navigate(uri);
+            Navigate(uri, PanelViews.ContainsKey(webView) ? webView : 0);
         }
     }
 
@@ -1604,6 +1610,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DetachOwnedWindows();
         ReleaseParent();
         Hosts.TryRemove(_window, out _);
+        // The side panel goes with the window, before its page's view.
+        ClosePanelWithWindow();
         // A hosted window's menus leave the application menu bar with it.
         if (ReferenceEquals(Volatile.Read(ref s_menuBarWindow), this))
         {
@@ -1702,10 +1710,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowActivityChanged, "v@:@");
         }
         // The frame changes during the full-screen animation; the restorable bounds must not follow it.
-        foreach (var selector in (string[])["windowWillEnterFullScreen:", "windowWillExitFullScreen:"])
-        {
-            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionStarted, "v@:@");
-        }
+        Api.AddMethod(type, "windowWillEnterFullScreen:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenEntering, "v@:@");
+        Api.AddMethod(type, "windowWillExitFullScreen:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionStarted, "v@:@");
+        // sdk#864: the frame a zoomed window restores to, which a side panel closed meanwhile shrinks.
+        Api.AddMethod(type, "windowShouldZoom:toFrame:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, CGRect, byte>)&WindowShouldZoom,
+            RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@{CGRect={CGPoint=dd}{CGSize=dd}}" : "c@:@{CGRect={CGPoint=dd}{CGSize=dd}}");
         foreach (var selector in (string[])["windowDidEnterFullScreen:", "windowDidExitFullScreen:"])
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&FullScreenTransitionEnded, "v@:@");
@@ -1810,6 +1819,15 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         // own reload, so the window reloads, as the WebKitGTK window does, a few times a minute at most.
         Api.AddMethod(type, "webViewWebContentProcessDidTerminate:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WebContentProcessDidTerminate, "v@:@");
+        // sdk#864: the side panel's view opens once its page loaded, and window.close() in it closes the panel
+        // (MacOsWkWebViewHost.SidePanel.cs). The page's view ignores them.
+        Api.AddMethod(type, "webView:didFinishNavigation:",
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&NavigationFinished, "v@:@@");
+        foreach (var failed in (string[])["webView:didFailNavigation:withError:", "webView:didFailProvisionalNavigation:withError:"])
+        {
+            Api.AddMethod(type, failed, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, void>)&NavigationFailed, "v@:@@@");
+        }
+        Api.AddMethod(type, "webViewDidClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WebViewDidClose, "v@:@");
         // WKUIDelegate, macOS 12: camera and microphone requests follow AllowedPermissions (SEC-37).
         Api.AddMethod(type, "webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:",
             (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint, nint, void>)&RequestMediaCapturePermission, "v@:@@@q@?");
@@ -1851,7 +1869,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         try
         {
-            host?.Complete(outcome);
+            host?.Complete(outcome, webView);
         }
         catch
         {
@@ -1918,7 +1936,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 var outcome = MacOsWebContent.ForNewWindow(rules, Api.RequestUrl(navigationAction), userInitiated: true);
                 try
                 {
-                    host.Complete(outcome);
+                    host.Complete(outcome, webView);
                 }
                 catch
                 {
@@ -1946,6 +1964,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
+            // The side panel's page crashed: it reloads once, then the panel closes.
+            if (PanelProcessTerminated(webView)) return;
             if (WebViews.TryGetValue(webView, out var host) && host.IsOpen)
             {
                 host._regionFrames?.HostPageProcessEnded();
@@ -2066,6 +2086,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
+            // The side panel takes no drops from outside its page (D062.6).
+            if (RefusesDrop(self, sender)) return 0;
             if (WebViews.TryGetValue(self, out var host) && host.IsOpen)
             {
                 host.ReadDrop(sender);

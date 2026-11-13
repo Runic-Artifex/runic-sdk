@@ -1208,8 +1208,10 @@ jobs:
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds
       # #864 P2: the WebView2 side panel (DesktopWindow.OpenSidePanelAsync): both edges, the exact bounds back on close, the
       # page never resized, its left edge in place in every DWM frame but at most one (a GDI row per DwmFlush), Tab
-      # between the page and the panel, a maximized window keeping the panel, the refusals and the minimum width. macOS
-      # refuses with Unsupported until P3.
+      # between the page and the panel, a maximized window keeping the panel, the refusals and the minimum width. #864 P3,
+      # macOS (WKWebView): the same, with the page's place on the screen checked around each setFrame:display: instead of
+      # a frame capture, Tab posted to the application's queue, the accessibility order of the views, and closing the
+      # panel of a zoomed window.
       - name: Open, move, resize and close a side panel on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5
