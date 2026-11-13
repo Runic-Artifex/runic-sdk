@@ -253,6 +253,10 @@ export interface NoteTitleTaken {
   readonly existingTitle: string;
 }
 
+export interface NotificationCostDetail {
+  readonly label: string;
+}
+
 export interface OptionalRequest {
   readonly kind: string;
   readonly label?: string | null;

@@ -785,19 +785,26 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     }
 
     // Before a unit or a state reads the members: every member's instances, when a named notification may have
-    // replaced one it did not name.
+    // replaced one it did not name. The data graph observes the instances found as well, whatever member was notified
+    // (#891), and releases the ones they replaced.
     private void RefreshPendingMembers()
     {
-        if (_memberRefreshPending) RefreshMembers();
+        if (!_memberRefreshPending) return;
+        RefreshMembers();
+        if (_dataSubscriptions is not { } graph) return;
+        graph.RefreshRootInstances();
+        graph.SweepPending();
     }
 
-    // A keyed collection replaced by another instance cannot be described by changes of the old one.
+    // A keyed collection replaced by another instance cannot be described by changes of the old one. The data graph
+    // observes the new instance from now on, so its changes are published after this set.
     private void RefreshCollectionInstance(BridgeCollectionDescriptor<T> descriptor)
     {
         var rows = descriptor.Get(_vm);
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
         _collectionInstances[descriptor] = rows;
         MarkCollectionSet(descriptor);
+        _dataSubscriptions?.Reattach(descriptor.Name);
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

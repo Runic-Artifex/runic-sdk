@@ -36,11 +36,14 @@ internal sealed class NotificationCostTests
             Require(burst.Unit.GetValueOrDefault(member) == single.Unit.GetValueOrDefault(member),
                 $"The unit after {Burst} notifications read {member} {burst.Unit.GetValueOrDefault(member)} times, after one {single.Unit.GetValueOrDefault(member)}.");
         }
-        foreach (var member in (string[])[nameof(model.Rows), nameof(model.Tags), nameof(model.SourceRows)])
+        // A sub-object is read once more than a collection: by the Bridge's own collection check, by the data graph's
+        // check for a replaced instance (#891) and when the state is written.
+        foreach (var (member, reads) in (ValueTuple<string, int>[])[(nameof(model.Rows), 2), (nameof(model.Tags), 2), (nameof(model.SourceRows), 2),
+                     (nameof(model.Detail), 3)])
         {
             Require(burst.During.GetValueOrDefault(member) == 0,
                 $"{model.Scalars.Count * Burst} notifications that did not name {member} read it {burst.During.GetValueOrDefault(member)} times.");
-            Require(burst.Unit.GetValueOrDefault(member) == single.Unit.GetValueOrDefault(member) && burst.Unit.GetValueOrDefault(member) <= 2,
+            Require(burst.Unit.GetValueOrDefault(member) == single.Unit.GetValueOrDefault(member) && burst.Unit.GetValueOrDefault(member) <= reads,
                 $"The unit after {Burst} notifications read {member} {burst.Unit.GetValueOrDefault(member)} times, after one {single.Unit.GetValueOrDefault(member)}.");
         }
 
@@ -55,8 +58,7 @@ internal sealed class NotificationCostTests
 
     // A replaced keyed collection, list or collection read through another object is published whether its own member,
     // every member, another bridged member or a member the Bridge does not bridge was notified. Changes of the new
-    // instance follow when its own member or every member was notified: the data graph observes a member's collection
-    // again when that member is notified, not when another one is.
+    // instance follow in each case: the unit that publishes it observes it too (#891).
     [Test]
     [Arguments(false, "self")]
     [Arguments(false, null)]
@@ -74,32 +76,28 @@ internal sealed class NotificationCostTests
         using var bridge = Attach(transport, model);
         await SettleAsync(transport);
         string? Name(string member) => notify == "self" ? member : notify;
-        var reported = notify is "self" or null or "";
 
         model.ReplaceRows([new("b", "two")], Name(nameof(model.Rows)));
         using (var replaced = await NextAsync(transport))
             Require(SetOf(replaced, "rows") is { } rows && rows.GetArrayLength() == 1 && rows[0].GetProperty("key").GetString() == "b",
                 $"The replaced rows were not set: {replaced.RootElement.GetRawText()}");
-        if (reported) await RequireRowAddedAsync(transport, model.Rows, "rows");
+        await RequireRowAddedAsync(transport, model.Rows, "rows");
 
         model.ReplaceTags(["x"], Name(nameof(model.Tags)));
         using (var replaced = await NextAsync(transport))
             Require(SetOf(replaced, "tags") is { } tags && tags.GetArrayLength() == 1 && tags[0].GetString() == "x",
                 $"The replaced tags were not set: {replaced.RootElement.GetRawText()}");
-        if (reported)
-        {
-            model.Tags.Add("y");
-            using var added = await NextAsync(transport);
+        model.Tags.Add("y");
+        using (var added = await NextAsync(transport))
             Require(SetOf(added, "tags") is { } tags && tags.GetArrayLength() == 2 && tags[1].GetString() == "y",
                 $"A tag added to the new tags was not published: {added.RootElement.GetRawText()}");
-        }
 
         // SourceRows reads the rows of Source, which is not bridged: its own notification is never raised.
         model.ReplaceSource([new("t", "new")], notify == "self" ? "Source" : notify);
         using (var replaced = await NextAsync(transport))
             Require(SetOf(replaced, "sourceRows") is { } rows && rows.GetArrayLength() == 1 && rows[0].GetProperty("key").GetString() == "t",
                 $"The replaced source rows were not set: {replaced.RootElement.GetRawText()}");
-        if (notify is null or "") await RequireRowAddedAsync(transport, model.SourceRows, "sourceRows");
+        await RequireRowAddedAsync(transport, model.SourceRows, "sourceRows");
 
         // The page's state equals the model's.
         using var state = transport.SnapshotState(Route);
@@ -108,6 +106,113 @@ internal sealed class NotificationCostTests
             && published.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()).SequenceEqual(model.Tags)
             && Keys(published.GetProperty("sourceRows")).SequenceEqual(Keys(model.SourceRows)),
             $"The state differs from the model: {published.GetRawText()}");
+    }
+
+    // #891: a keyed collection, a list, a keyed collection read through an unbridged object and a sub-object that the
+    // data graph observes, each replaced under another member's notification (or an unbridged one), are observed from
+    // the unit that publishes them: every later change of the new instance is published, as the change it is.
+    [Test]
+    [Arguments(false, "self")]
+    [Arguments(false, "Alpha")]
+    [Arguments(false, "Unbridged")]
+    [Arguments(true, "self")]
+    [Arguments(true, "Alpha")]
+    [Arguments(true, "Unbridged")]
+    public async Task ChangesOfAnInstanceReplacedUnderAnyNotificationArePublishedAsync(bool reactive, string notify)
+    {
+        var model = Create(reactive);
+        using var transport = new InMemoryBridgeTransport();
+        using var bridge = Attach(transport, model);
+        await SettleAsync(transport);
+        string Name(string member) => notify == "self" ? member : notify;
+
+        // A keyed collection: each change of the new rows is published as an indexed change, a reset as a set.
+        var previousRows = model.Rows;
+        model.ReplaceRows([new("a", "one"), new("b", "two"), new("c", "three")], Name(nameof(model.Rows)));
+        using (var replaced = await NextAsync(transport))
+            Require(SetOf(replaced, "rows") is { } set && Keys(set).SequenceEqual(["a", "b", "c"]),
+                $"The replaced rows were not set: {replaced.RootElement.GetRawText()}");
+        var rows = model.Rows;
+        await RequireRowChangeAsync(transport, () => rows.Add(new("d", "four")), "rows", "add", 3);
+        await RequireRowChangeAsync(transport, () => rows.RemoveAt(0), "rows", "remove", 0);
+        await RequireRowChangeAsync(transport, () => rows[1] = new("e", "five"), "rows", "replace", 1);
+        await RequireRowChangeAsync(transport, () => rows.Move(0, 2), "rows", "move", 2);
+        rows.Clear();
+        using (var reset = await NextAsync(transport))
+            Require(SetOf(reset, "rows") is { } set && set.GetArrayLength() == 0, $"The reset rows were not set: {reset.RootElement.GetRawText()}");
+        await RequireRowChangeAsync(transport, () => rows.Add(new("f", "six")), "rows", "add", 0);
+        // The previous rows are no longer observed.
+        previousRows.Add(new("stale", "stale"));
+        await RequireNoPushAsync(transport, "A change of the replaced rows");
+
+        // A list without keys: each change of the new list is a set of the field.
+        model.ReplaceTags(["x", "y", "z"], Name(nameof(model.Tags)));
+        await RequireTagsAsync(transport, model);
+        var tags = model.Tags;
+        foreach (var change in (Action[])[() => tags.Add("w"), () => tags.RemoveAt(0), () => tags[0] = "v", () => tags.Move(0, 2), tags.Clear,
+                     () => tags.Add("u")])
+        {
+            change();
+            await RequireTagsAsync(transport, model);
+        }
+
+        // A keyed collection read through Source, which is not bridged.
+        model.ReplaceSource([new("t", "new"), new("u", "other")], notify == "self" ? "Source" : notify);
+        using (var replaced = await NextAsync(transport))
+            Require(SetOf(replaced, "sourceRows") is { } set && Keys(set).SequenceEqual(["t", "u"]),
+                $"The replaced source rows were not set: {replaced.RootElement.GetRawText()}");
+        var sourceRows = model.SourceRows;
+        await RequireRowChangeAsync(transport, () => sourceRows.Add(new("v", "added")), "sourceRows", "add", 2);
+        await RequireRowChangeAsync(transport, () => sourceRows.RemoveAt(0), "sourceRows", "remove", 0);
+
+        // A sub-object the data graph observes.
+        var previousDetail = model.Detail;
+        model.ReplaceDetail(new() { Label = "replaced" }, Name(nameof(model.Detail)));
+        await RequireDetailAsync(transport, "replaced");
+        model.Detail.Label = "changed";
+        await RequireDetailAsync(transport, "changed");
+        previousDetail.Label = "stale";
+        await RequireNoPushAsync(transport, "A change of the replaced sub-object");
+
+        // The page's state equals the model's.
+        using var state = transport.SnapshotState(Route);
+        var published = state.RootElement.GetProperty("state");
+        Require(Keys(published.GetProperty("rows")).SequenceEqual(Keys(model.Rows))
+            && published.GetProperty("tags").EnumerateArray().Select(tag => tag.GetString()).SequenceEqual(model.Tags)
+            && Keys(published.GetProperty("sourceRows")).SequenceEqual(Keys(model.SourceRows))
+            && published.GetProperty("detail").GetProperty("label").GetString() == model.Detail.Label,
+            $"The state differs from the model: {published.GetRawText()}");
+    }
+
+    // A change of a keyed collection is published as one change of that kind at that index.
+    private static async Task RequireRowChangeAsync(InMemoryBridgeTransport transport, Action change, string field, string kind, int index)
+    {
+        change();
+        using var frame = await NextAsync(transport);
+        var changes = Changes(frame).Where(entry => entry.GetProperty("field").GetString() == field).ToArray();
+        Require(changes.Length == 1 && changes[0].GetProperty("kind").GetString() == kind && changes[0].GetProperty("index").GetInt32() == index,
+            $"Expected one {kind} of {field} at {index}: {frame.RootElement.GetRawText()}");
+    }
+
+    private static async Task RequireTagsAsync(InMemoryBridgeTransport transport, INotificationCostViewModel model)
+    {
+        using var frame = await NextAsync(transport);
+        Require(SetOf(frame, "tags") is { } tags && tags.EnumerateArray().Select(tag => tag.GetString()).SequenceEqual(model.Tags),
+            $"The tags [{string.Join(", ", model.Tags)}] were not set: {frame.RootElement.GetRawText()}");
+    }
+
+    private static async Task RequireDetailAsync(InMemoryBridgeTransport transport, string label)
+    {
+        using var frame = await NextAsync(transport);
+        Require(SetOf(frame, "detail")?.GetProperty("label").GetString() == label,
+            $"The detail {label} was not set: {frame.RootElement.GetRawText()}");
+    }
+
+    private static async Task RequireNoPushAsync(InMemoryBridgeTransport transport, string what)
+    {
+        await Task.Delay(100);
+        var pushes = transport.TakePushes(Route);
+        Require(pushes.Count == 0, $"{what} published: {string.Join(", ", pushes.Select(push => push.RootElement.GetRawText()))}");
     }
 
     private static IEnumerable<string?> Keys(JsonElement rows) => rows.EnumerateArray().Select(row => row.GetProperty("key").GetString());
