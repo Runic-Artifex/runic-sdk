@@ -84,3 +84,11 @@
 [RUNICDESK104]virtual Runic.Desktop.DesktopSidePanelResult.EqualityContract.get -> System.Type!
 [RUNICDESK104]virtual Runic.Desktop.DesktopSidePanelResult.Equals(Runic.Desktop.DesktopSidePanelResult? other) -> bool
 [RUNICDESK104]virtual Runic.Desktop.DesktopSidePanelResult.PrintMembers(System.Text.StringBuilder! builder) -> bool
+Runic.Desktop.DesktopWindow.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.SetPlacementAsync(Runic.Desktop.DesktopWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowCapabilities.WindowPlacement = 8388608 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.IDesktopWindowShowStateHost
+Runic.Desktop.IDesktopWindowShowStateHost.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowShowStateHost.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowShowStateHost.SetPlacementAsync(Runic.Desktop.DesktopWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

@@ -143,6 +143,11 @@ export interface DtoListEntry {
   readonly count: number;
 }
 
+export interface EditableRow {
+  readonly key: string;
+  readonly label: string;
+}
+
 export type EmptyKind = never;
 
 export type FormsPriority = "Low" | "Normal" | "High" | "Urgent";

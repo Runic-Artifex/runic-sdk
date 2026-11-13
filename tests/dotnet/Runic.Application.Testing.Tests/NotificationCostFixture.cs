@@ -209,3 +209,41 @@ public sealed class ReactiveCostViewModel : ReactiveObject, INotificationCostVie
 }
 
 public sealed partial class ReactiveCostWindow : RunicWindow<ReactiveCostViewModel>;
+
+// #909: a keyed collection whose rows change their own label, beside a scalar, for row edits after other notifications.
+public sealed class EditableRow(string key, string label) : INotifyPropertyChanged
+{
+    private string _label = label;
+
+    public string Key { get; } = key;
+
+    public string Label
+    {
+        get => _label;
+        set { _label = value; PropertyChanged?.Invoke(this, new(nameof(Label))); }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed class RowIndexViewModel : ObservableObject
+{
+    private ObservableCollection<EditableRow> _rows = [new("a", "one"), new("b", "two"), new("c", "three")];
+    private int _selected;
+
+    [RunicCollection(nameof(EditableRow.Key))]
+    public ObservableCollection<EditableRow> Rows => _rows;
+
+    public int Selected { get => _selected; set => SetProperty(ref _selected, value); }
+
+    public void Notify(string? member) => OnPropertyChanged(new PropertyChangedEventArgs(member));
+
+    // Replaces Rows and notifies name, which may be another member.
+    public void ReplaceRows(IEnumerable<EditableRow> rows, string? notify)
+    {
+        _rows = [.. rows];
+        Notify(notify);
+    }
+}
+
+public sealed partial class RowIndexWindow : RunicWindow<RowIndexViewModel>;

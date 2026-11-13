@@ -20,6 +20,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowBoundsHost
         {
             var window = GetWindow();
             var surface = SurfaceOf(window);
+            _settlingFrame = null;
+            ReleaseRestoreBounds();
             var state = surface == 0 ? 0 : ToplevelGetState(surface);
             if (window.IsMaximized() || window.IsFullscreen() || (state & GdkToplevelStateMinimized) != 0)
             {

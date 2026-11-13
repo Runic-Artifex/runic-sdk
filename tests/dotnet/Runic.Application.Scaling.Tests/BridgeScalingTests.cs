@@ -152,8 +152,9 @@ internal sealed class BridgeScalingTests
             return [after.PendingScans - before.PendingScans];
         });
 
-    // B2: a named notification drops the row-to-index maps, so each row edit that follows one rebuilds the map of its
-    // collection: O(rows) per edit.
+    // B2 (#909): a row edit finds its row through the collection's row-to-index map, which a named notification of
+    // another member keeps, also across units. A first edit and scalar notification in a unit of their own build the
+    // map; the edits after them, each followed by a named notification of a scalar, index no row.
     [Test]
     [Arguments(false)]
     [Arguments(true)]
@@ -166,6 +167,12 @@ internal sealed class BridgeScalingTests
             using var transport = new InMemoryBridgeTransport();
             using var bridge = Attach(transport, model);
             await SettleAsync(transport);
+            using (BridgeSnapshotBatch.Begin(model))
+            {
+                model.Rows(0)[rows - 1].Label = "first";
+                model.Selected = -1;
+            }
+            Drain(transport);
             var before = Costs(bridge);
             using (BridgeSnapshotBatch.Begin(model))
                 for (var edit = 0; edit < Edits; edit++)
