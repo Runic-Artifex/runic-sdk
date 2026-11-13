@@ -56,8 +56,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.17.1, )",
-          "Runic.Platform": "[0.17.1, )"
+          "Runic.Navigation": "[0.18.0, )",
+          "Runic.Platform": "[0.18.0, )"
         }
       },
       "runic.navigation": {
