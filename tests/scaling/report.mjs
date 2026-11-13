@@ -23,10 +23,10 @@ export const suiteCases = (cases, suite) => Object.fromEntries(Object.entries(ca
 const cell = value => value === undefined || value === null ? "" : String(value).replaceAll("|", "\\|");
 const pair = values => Array.isArray(values) ? values.join(" → ") : cell(values);
 
-// The entries whose limit, class, sizes, margin or slack differ between two budget files, and the added and removed ones.
+// The entries whose limit, class, sizes, margin, slack or noise differ between two budget files, and the added and removed ones.
 export function budgetChanges(base, current) {
   const changes = [];
-  const fields = ["class", "sizes", "limit", "margin", "slack"];
+  const fields = ["class", "sizes", "limit", "margin", "slack", "noise"];
   for (const [name, entry] of Object.entries(current)) {
     const before = base[name];
     if (!before) {
