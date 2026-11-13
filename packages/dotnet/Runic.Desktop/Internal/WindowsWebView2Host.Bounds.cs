@@ -42,7 +42,9 @@ internal sealed partial class WindowsWebView2Host
             // applies it when it is restored.
             if (_fullScreen || Native.IsZoomed(_window) || Native.IsIconic(_window) || !Native.GetWindowRect(_window, out var frame)) return;
             var (currentWidth, currentHeight) = (frame.Right - frame.Left, frame.Bottom - frame.Top);
-            var grownWidth = Math.Max(currentWidth, width == 0 ? 0 : ScaleForWindow((uint)width, _window));
+            // An open side panel adds its width (ApplyMinimumSize).
+            var panelWidth = _panel is { IsShown: true } panel ? panel.NativeWidth : 0;
+            var grownWidth = Math.Max(currentWidth, width == 0 ? 0 : ScaleForWindow((uint)width, _window) + panelWidth);
             var grownHeight = Math.Max(currentHeight, height == 0 ? 0 : ScaleForWindow((uint)height, _window));
             if ((grownWidth, grownHeight) != (currentWidth, currentHeight))
             {
@@ -54,10 +56,12 @@ internal sealed partial class WindowsWebView2Host
     private void InitializeMinimumSize(WebUiEmbeddedHostOptions options) =>
         (_minimumWidth, _minimumHeight) = options is { MinimumWidth: { } width, MinimumHeight: { } height } ? (width, height) : (0u, 0u);
 
-    // Window procedure: the run-time minimum, scaled for the window's DPI.
+    // Window procedure: the run-time minimum, scaled for the window's DPI. An open side panel adds its width, so the page
+    // keeps the minimum width (R4); without a minimum, the system's minimum width is the page's.
     private unsafe void ApplyMinimumSize(nint window, MinMaxInfo* info)
     {
         if (_minimumWidth != 0) info->MinimumTrackSize.X = ScaleForWindow(_minimumWidth, window);
+        if (_panel is { IsShown: true } panel) info->MinimumTrackSize.X += panel.NativeWidth;
         if (_minimumHeight != 0) info->MinimumTrackSize.Y = ScaleForWindow(_minimumHeight, window);
     }
 

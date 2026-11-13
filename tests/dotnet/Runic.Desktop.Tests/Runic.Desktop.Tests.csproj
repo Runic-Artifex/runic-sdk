@@ -11,6 +11,8 @@
     <!-- The executable is also the application ShutdownSignalTests stops (ShutdownSignalFixture.cs),
          so Program.cs chooses between that fixture and the test application. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <!-- The experimental side panel (sdk#864, docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

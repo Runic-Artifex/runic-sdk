@@ -52,6 +52,9 @@ export const traceAllowList = [
   // A DesktopWindow.MenuBarPlacementChanged handler that threw (event 3017).
   { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
     fragment: 'TraceError($"A DesktopWindow.MenuBarPlacementChanged handler failed with' },
+  // A DesktopSidePanel.Closed handler that threw (event 3041).
+  { file: 'packages/dotnet/Runic.Desktop/DesktopSidePanel.cs',
+    fragment: 'TraceError($"A DesktopSidePanel.Closed handler failed with' },
   // A DesktopWindow.ActivityChanged handler that threw (event 3040).
   { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
     fragment: 'TraceError($"A DesktopWindow.ActivityChanged handler failed with' },

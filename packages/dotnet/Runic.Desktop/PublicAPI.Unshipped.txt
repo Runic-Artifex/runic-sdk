@@ -1,1 +1,86 @@
 #nullable enable
+[RUNICDESK104]abstract Runic.Desktop.DesktopSidePanelResult.<Clone>$() -> Runic.Desktop.DesktopSidePanelResult!
+[RUNICDESK104]const Runic.Desktop.DesktopSidePanelOptions.MinimumWidth = 120 -> int
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelOptions.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelOptions.GetHashCode() -> int
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelOptions.ToString() -> string!
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.GetHashCode() -> int
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Opened.<Clone>$() -> Runic.Desktop.DesktopSidePanelResult.Opened!
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Opened.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Opened.GetHashCode() -> int
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Opened.ToString() -> string!
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Refused.<Clone>$() -> Runic.Desktop.DesktopSidePanelResult.Refused!
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Refused.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Refused.GetHashCode() -> int
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.Refused.ToString() -> string!
+[RUNICDESK104]override Runic.Desktop.DesktopSidePanelResult.ToString() -> string!
+[RUNICDESK104]override sealed Runic.Desktop.DesktopSidePanelResult.Opened.Equals(Runic.Desktop.DesktopSidePanelResult? other) -> bool
+[RUNICDESK104]override sealed Runic.Desktop.DesktopSidePanelResult.Refused.Equals(Runic.Desktop.DesktopSidePanelResult? other) -> bool
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelClosedEventArgs
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelClosedEventArgs.DesktopSidePanelClosedEventArgs(Runic.Desktop.DesktopSidePanelCloseReason reason) -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelClosedEventArgs.Reason.get -> Runic.Desktop.DesktopSidePanelCloseReason
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.Closed -> System.EventHandler<Runic.Desktop.DesktopSidePanelClosedEventArgs!>?
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelCloseReason
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelCloseReason.Closed = 0 -> Runic.Desktop.DesktopSidePanelCloseReason
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelCloseReason.Crashed = 2 -> Runic.Desktop.DesktopSidePanelCloseReason
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelCloseReason.WindowClosed = 1 -> Runic.Desktop.DesktopSidePanelCloseReason
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.DisposeAsync() -> System.Threading.Tasks.ValueTask
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.Edge.get -> Runic.Desktop.DesktopWindowEdge
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.IsOpen.get -> bool
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.MoveToEdgeAsync(Runic.Desktop.DesktopWindowEdge edge, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Desktop.DesktopSidePanelRefusal?>
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.<Clone>$() -> Runic.Desktop.DesktopSidePanelOptions!
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.DesktopSidePanelOptions() -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Edge.get -> Runic.Desktop.DesktopWindowEdge
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Edge.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Equals(Runic.Desktop.DesktopSidePanelOptions? other) -> bool
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.LoadTimeout.get -> System.TimeSpan
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.LoadTimeout.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Path.get -> string!
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Path.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Width.get -> int
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelOptions.Width.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.AlreadyOpen = 7 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.FullScreen = 2 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.LoadFailed = 8 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Maximized = 1 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Minimized = 4 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.NoRoom = 5 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.PositionUnavailable = 6 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Snapped = 3 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Unsupported = 0 -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.DesktopSidePanelResult(Runic.Desktop.DesktopSidePanelResult! original) -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Opened
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Opened.Deconstruct(out Runic.Desktop.DesktopSidePanel! Panel) -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Opened.Equals(Runic.Desktop.DesktopSidePanelResult.Opened? other) -> bool
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Opened.Opened(Runic.Desktop.DesktopSidePanel! Panel) -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Opened.Panel.get -> Runic.Desktop.DesktopSidePanel!
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Opened.Panel.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Refused
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Refused.Deconstruct(out Runic.Desktop.DesktopSidePanelRefusal Reason) -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Refused.Equals(Runic.Desktop.DesktopSidePanelResult.Refused? other) -> bool
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Refused.Reason.get -> Runic.Desktop.DesktopSidePanelRefusal
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Refused.Reason.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelResult.Refused.Refused(Runic.Desktop.DesktopSidePanelRefusal Reason) -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.SetWidthAsync(int width, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Desktop.DesktopSidePanelRefusal?>
+[RUNICDESK104]Runic.Desktop.DesktopSidePanel.Width.get -> int
+[RUNICDESK104]Runic.Desktop.DesktopWindow.CheckSidePanel(Runic.Desktop.DesktopWindowEdge edge, int width) -> Runic.Desktop.DesktopSidePanelRefusal?
+[RUNICDESK104]Runic.Desktop.DesktopWindow.OpenSidePanelAsync(Runic.Desktop.DesktopSidePanelOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Desktop.DesktopSidePanelResult!>
+[RUNICDESK104]Runic.Desktop.DesktopWindow.SidePanel.get -> Runic.Desktop.DesktopSidePanel?
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelOptions.operator !=(Runic.Desktop.DesktopSidePanelOptions? left, Runic.Desktop.DesktopSidePanelOptions? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelOptions.operator ==(Runic.Desktop.DesktopSidePanelOptions? left, Runic.Desktop.DesktopSidePanelOptions? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelResult.Opened.operator !=(Runic.Desktop.DesktopSidePanelResult.Opened? left, Runic.Desktop.DesktopSidePanelResult.Opened? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelResult.Opened.operator ==(Runic.Desktop.DesktopSidePanelResult.Opened? left, Runic.Desktop.DesktopSidePanelResult.Opened? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelResult.operator !=(Runic.Desktop.DesktopSidePanelResult? left, Runic.Desktop.DesktopSidePanelResult? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelResult.operator ==(Runic.Desktop.DesktopSidePanelResult? left, Runic.Desktop.DesktopSidePanelResult? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelResult.Refused.operator !=(Runic.Desktop.DesktopSidePanelResult.Refused? left, Runic.Desktop.DesktopSidePanelResult.Refused? right) -> bool
+[RUNICDESK104]static Runic.Desktop.DesktopSidePanelResult.Refused.operator ==(Runic.Desktop.DesktopSidePanelResult.Refused? left, Runic.Desktop.DesktopSidePanelResult.Refused? right) -> bool
+[RUNICDESK104]virtual Runic.Desktop.DesktopSidePanelResult.EqualityContract.get -> System.Type!
+[RUNICDESK104]virtual Runic.Desktop.DesktopSidePanelResult.Equals(Runic.Desktop.DesktopSidePanelResult? other) -> bool
+[RUNICDESK104]virtual Runic.Desktop.DesktopSidePanelResult.PrintMembers(System.Text.StringBuilder! builder) -> bool

@@ -583,7 +583,7 @@ public sealed class DesktopHost : IAsyncDisposable
         var security = ToCorePolicy(configured.Security ?? _options.Security);
         var surfaceFactory = windowHostFactory ?? _options.WindowHostFactory;
         IWebUiEmbeddedHostFactory embeddedFactory = surfaceFactory is null
-            ? new WebUiEmbeddedHostFactory(_options.Linux.EmbeddedBackend)
+            ? _options.BuiltInHostFactory ?? new WebUiEmbeddedHostFactory(_options.Linux.EmbeddedBackend)
             : new DesktopWindowHostFactoryAdapter(surfaceFactory);
         var runtime = new PresentationSurfaceRuntimeOptions(
             rootFolder,
@@ -802,7 +802,10 @@ public sealed class DesktopHost : IAsyncDisposable
 
     // The availability of a surface's presentation: with its own window host factory, that factory's.
     internal DesktopPresentationAvailability GetPresentation(BrowserKind browser, IDesktopWindowHostFactory? windowHostFactory = null) =>
-        DesktopPlatform.GetAvailability(windowHostFactory is null ? _options : _options with { WindowHostFactory = windowHostFactory })
+        // Tests only: the test's built-in host is there whatever the platform.
+        browser == BrowserKind.Embedded && windowHostFactory is null && _options is { WindowHostFactory: null, BuiltInHostFactory: not null }
+            ? new DesktopPresentationAvailability(browser, IsAvailable: true, ExecutablePath: null, DesktopWindowCapabilities.None, [])
+            : DesktopPlatform.GetAvailability(windowHostFactory is null ? _options : _options with { WindowHostFactory = windowHostFactory })
             .GetPresentation(browser);
 
     internal static DesktopPresentationAvailability Unavailable(BrowserKind browser) => new(

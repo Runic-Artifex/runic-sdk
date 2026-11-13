@@ -6,8 +6,9 @@ type or member as an error with that ID, and the message links to the entry on
 this page for the release you use. Suppressing the ID is the opt-in: it says
 your project accepts changes to that API before it is supported.
 
-One .NET API family is experimental: [`RUNICDESK103`](#RUNICDESK103), hosted
-application windows. Each family is listed here with its ID, API and packages.
+Two .NET API families are experimental: [`RUNICDESK103`](#RUNICDESK103), hosted
+application windows, and [`RUNICDESK104`](#RUNICDESK104), the side panel. Each
+family is listed here with its ID, API and packages.
 
 An ID is `RUNIC`, the package family's prefix and a three-digit number. A prefix
 that names no other diagnostics numbers its experimental families from `001`,
@@ -17,7 +18,8 @@ source generator reports `RUNICDBUS001` to `RUNICDBUS013`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
 Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
 experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
-`RUNICDESK102` are retired, so the next is `RUNICDESK103`. The Navigation
+`RUNICDESK102` are retired, `RUNICDESK103` and `RUNICDESK104` are in use, so the
+next is `RUNICDESK105`. The Navigation
 ReactiveUI build targets report `RUNICNAV002`, after the retired `RUNICNAV001`,
 so an experimental Navigation family would be `RUNICNAV100`.
 
@@ -64,6 +66,23 @@ guest's Window in a region of a host page, are part of the same family: see the
 | `Runic.Desktop` | `DesktopWindowHostOptions.EphemeralDataStore` and `IDesktopEphemeralDataStoreWindowHost`, which a custom window host implements to show hosted windows |
 | `Runic.Application.Testing` | The test host: `RunicTestHost`, `RunicTestHostOptions`, `RunicTestHostedWindow`, `RunicTestGuest`, `RunicTestPresentationRequest` and `RunicTestLaunchRequest` ([test a hosted application](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)). From 0.18: `RunicTestHostOptions.EmbedWindow` and `AllowElevatedGuest`, `RunicTestHostedWindow`'s region members (`AttachRegionAsync`, `AttachComponentAsync`, `DetachRegionAsync`, `SetRegionBoundsAsync`, `FocusRegionAsync`, `IsRegion`, `IsAttached`, `FrameIsSameSite`, `Titles`, `RegionPages`) and `RunicTestComponent` |
 
+<a id="RUNICDESK104"></a>
+
+## RUNICDESK104
+
+The side panel (0.19, sdk#864): a page of a window's surface shown beside the
+window's page, in a strip on one edge by which the window grows, so the page keeps
+its size and its place on the screen. The panel's page is a second connection of the
+window and binds to the same ViewModel tree. Experimental for one minor (D062.7);
+the window building blocks it uses (`DesktopWindowState.Bounds`, `SetBoundsAsync`,
+`SetMinimumSizeAsync`, `IsSnapped`) are stable. 0.19 shows it on Windows (WebView2);
+macOS, Linux, custom window hosts, WPF, hosted windows and installed browsers refuse
+it with `Unsupported`. Start with the
+[Runic.Desktop README](../packages/dotnet/Runic.Desktop/README.md#side-panel).
+
+| Package | API |
+| --- | --- |
+| `Runic.Desktop` | `DesktopWindow.OpenSidePanelAsync`, `DesktopWindow.SidePanel`, `DesktopWindow.CheckSidePanel`, `DesktopSidePanel`, `DesktopSidePanelOptions`, `DesktopSidePanelResult` (`Opened`, `Refused`), `DesktopSidePanelRefusal`, `DesktopSidePanelCloseReason` and `DesktopSidePanelClosedEventArgs` |
 
 <a id="experimental-packages"></a>
 

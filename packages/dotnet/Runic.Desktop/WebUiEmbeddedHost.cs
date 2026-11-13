@@ -157,6 +157,16 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot change its minimum size."));
 
+    /// <summary>Whether the host shows a side panel (sdk#864): a second view of the window's surface beside its page.</summary>
+    bool SupportsSidePanel => false;
+
+    /// <summary>Whether <see cref="OpenSidePanelAsync"/> would open a panel now, from the last reported state; null when it would.</summary>
+    DesktopSidePanelRefusal? CheckSidePanel(bool left, int width) => DesktopSidePanelRefusal.Unsupported;
+
+    /// <summary>Opens a side panel and grows the window by it; requires <see cref="SupportsSidePanel"/>.</summary>
+    ValueTask<Internal.WebUiSidePanelOpening> OpenSidePanelAsync(Internal.WebUiSidePanelRequest request, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Internal.WebUiSidePanelOpening.Refused(DesktopSidePanelRefusal.Unsupported));
+
     /// <summary>Applies DesktopHost.SetSpellCheckingLanguagesAsync; a host whose checker has no languages ignores it.</summary>
     ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;

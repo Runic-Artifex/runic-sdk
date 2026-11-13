@@ -4303,6 +4303,40 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal bool HasPanelSlot => _panelSlot.IsOpen;
 
+    internal string? PanelCredential => _panelSlot.Credential;
+
+    // sdk#864, P2: whether the current window can show a side panel: a built-in host that has one, a window of its own
+    // (not a hosted application's window or a region, D062.8) and a surface whose panel slot can open (OpenPanelSlot).
+    internal bool SupportsSidePanel => Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsSidePanel: true }
+        && HostedDataStore is null && !_frameBinding.IsActive && !ChecksLaunchBinding
+        && _securityPolicy is { RequireSessionCredential: true } && !AllowMultipleClients;
+
+    internal DesktopSidePanelRefusal? CheckSidePanel(bool left, int width) =>
+        SupportsSidePanel ? GetEmbeddedHost().CheckSidePanel(left, width) : DesktopSidePanelRefusal.Unsupported;
+
+    internal ValueTask<WebUiSidePanelOpening> OpenSidePanelAsync(WebUiSidePanelRequest request, CancellationToken cancellationToken) =>
+        GetEmbeddedHost().OpenSidePanelAsync(request, cancellationToken);
+
+    // The address of a side panel's page: path relative to the address the window's page opened with; null for a path
+    // that is absolute or leaves the surface.
+    internal Uri? SidePanelUrl(string path)
+    {
+        if (Url is not { } url) return null;
+        var start = GetBrowserUrl(url);
+        var relative = path.TrimStart('/');
+        var pathPart = relative.Split('?', '#')[0];
+        if (relative.Contains('\\') || path.StartsWith("//", StringComparison.Ordinal) || pathPart.Contains(':')
+            || Uri.UnescapeDataString(pathPart).Split('/').Any(static segment => segment is "." or "..")) return null;
+        // A query or fragment alone keeps the start page; a path is relative to the start page's directory, which a page
+        // file such as index.html is not part of.
+        var resolved = relative.Length == 0 ? start
+            : relative[0] is '#' or '?' ? new Uri(start, relative)
+            : new Uri(new Uri(start, "./"), relative);
+        var root = new Uri(_externalUrl is null ? url : start, "./").AbsolutePath;
+        return resolved.Scheme == start.Scheme && resolved.Authority == start.Authority
+            && resolved.AbsolutePath.StartsWith(root, StringComparison.Ordinal) ? resolved : null;
+    }
+
     // The side panel's view's document-start script: CreateDocumentStartScript with the panel credential in place of the
     // session credential, so the panel's page offers it on its Bridge WebSocket. Null while no panel slot is open.
     internal string? CreatePanelDocumentStartScript() =>

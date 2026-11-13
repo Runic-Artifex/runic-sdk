@@ -55,6 +55,9 @@ internal static partial class WindowsWebView2Interop
     internal const int ControllerCloseSlot = 24;
     internal const int ControllerWebViewSlot = 25;
     internal const int ControllerBackgroundSlot = 27;
+    // ICoreWebView2Controller4::put_AllowExternalDrop.
+    internal static readonly Guid Controller4Interface = new("97d418d5-a426-4e49-a151-e1a10f327d9e");
+    internal const int ControllerAllowExternalDropSlot = 37;
     internal const int EnvironmentCreateControllerSlot = 3;
     internal const int EnvironmentBrowserVersionSlot = 5;
     internal const int PermissionUriSlot = 3;
@@ -365,6 +368,45 @@ internal sealed class WindowsWebView2Controller : IDisposable
             WindowsWebView2Interop.Release(environment);
             throw;
         }
+    }
+
+    // sdk#864, P2: a second controller in window from this controller's environment, so it shares the user data folder,
+    // the browser process and the default profile, and with them the page's origin storage (side-panel/DESIGN.md §1.2).
+    internal async Task<WindowsWebView2Controller> CreateSiblingAsync(nint window)
+    {
+        var completion = new WebViewCompletion();
+        using var handler = new WebViewComReference<IWebViewControllerCompleted>(completion);
+        WindowsWebView2Interop.CreateController(_environment, window, handler.Pointer);
+        var controller = await completion.Task;
+        // The sibling holds a reference of its own to the environment, released by its Dispose.
+        WindowsWebView2Interop.AddRef(_environment);
+        return new WindowsWebView2Controller(_environment, controller);
+    }
+
+    // ICoreWebView2Controller4::put_AllowExternalDrop (WebView2 runtime 1.0.1185): false refuses files and other content
+    // dragged from outside the WebView, so a drop neither navigates the view nor reaches the page. An older runtime
+    // keeps its default.
+    internal void RefuseExternalDrops()
+    {
+        nint controller4;
+        try { controller4 = WindowsWebView2Interop.Query(_controller, WindowsWebView2Interop.Controller4Interface); }
+        catch (InvalidCastException) { return; }
+        try { WindowsWebView2Interop.SetInteger(controller4, WindowsWebView2Interop.ControllerAllowExternalDropSlot, 0); }
+        finally { WindowsWebView2Interop.Release(controller4); }
+    }
+
+    // The kind of every process failure the WebView reports (COREWEBVIEW2_PROCESS_FAILED_KIND).
+    internal void RegisterProcessFailed(Action<int> failed) =>
+        AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
+            failed(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot))));
+
+    // Completes with whether the next top-level navigation succeeded.
+    internal Task<bool> NextNavigationCompletedAsync()
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        AddEvent<IWebViewNavigationCompleted>(WindowsWebView2Interop.NavigationCompletedSlot, new WebViewEvent(args =>
+            completion.TrySetResult(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedIsSuccessSlot) != 0)));
+        return completion.Task;
     }
 
     internal Rectangle Bounds { set => WindowsWebView2Interop.SetBounds(_controller, value); }
