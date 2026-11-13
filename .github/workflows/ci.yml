@@ -1479,9 +1479,13 @@ jobs:
               --accessibility --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview.json
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
               --accessibility --region --probe "${probe[@]}" --receipt artifacts/accessibility/wkwebview-region.json
-            # #864 P6: the side panel with VoiceOver; not applicable until the WKWebView host has the panel (#905).
-            eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
-              --accessibility --side-panel --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview-side-panel.json
+            # #864 P6: the side panel with VoiceOver, three times: VoiceOver follows the focus between the two web views
+            # only as the panel's Tab hand-off moves it, and a single pass could be ordering luck.
+            for attempt in 1 2 3; do
+              eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
+                --accessibility --side-panel --probe "${probe[@]}" --screen-reader voiceover \
+                --receipt "artifacts/accessibility/wkwebview-side-panel-$attempt.json"
+            done
             exit
           fi
           for toolkit in gtk3 gtk4; do
