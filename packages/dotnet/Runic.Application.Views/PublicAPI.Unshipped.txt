@@ -78,6 +78,96 @@ Runic.Application.Views.Generated.PropertyDescriptor.TextSetter.init -> void
 Runic.Application.Views.Generated.PropertyDescriptor.WireName.get -> string!
 Runic.Application.Views.Generated.ViewModelBridge
 Runic.Application.Views.Generated.ViewModelBridge.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, System.ComponentModel.INotifyPropertyChanged! vm, System.Type! modelType, string! name, Runic.Application.Views.Generated.BridgeStateMember![]! state, Runic.Application.Views.Generated.PropertyDescriptor![]! properties, Runic.Application.Views.Generated.CheckedPropertyDescriptor![]! checkedProperties, Runic.Application.Views.Generated.CommandDescriptor![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.Generated.BridgeInteractionDescriptor![]? interactions = null, Runic.Application.Views.Generated.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.Generated.BridgeCollectionDescriptor![]? collections = null, Runic.Application.Views.Generated.BridgeValidationReader? validationReader = null) -> void
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.Closed -> System.EventHandler<Runic.Application.Views.RunicSidePanelClosedEventArgs!>?
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.Edge.get -> Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.IsOpen.get -> bool
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.MoveToEdgeAsync(Runic.Application.Views.RunicSidePanelEdge edge, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicSidePanelRefusal?>
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.SetWidthAsync(int width, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicSidePanelRefusal?>
+[RUNICDESK104]Runic.Application.Views.IRunicSidePanel.Width.get -> int
+[RUNICDESK104]Runic.Application.Views.IRunicWindowPresentation.OpenSidePanelAsync(Runic.Application.Views.RunicSidePanelOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicSidePanelResult!>
+[RUNICDESK104]Runic.Application.Views.IRunicWindowPresentation.SidePanel.get -> Runic.Application.Views.IRunicSidePanel?
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelCloseReason
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelCloseReason.Closed = 0 -> Runic.Application.Views.RunicSidePanelCloseReason
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelCloseReason.Crashed = 2 -> Runic.Application.Views.RunicSidePanelCloseReason
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelCloseReason.WindowClosed = 1 -> Runic.Application.Views.RunicSidePanelCloseReason
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelClosedEventArgs
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelClosedEventArgs.Reason.get -> Runic.Application.Views.RunicSidePanelCloseReason
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelClosedEventArgs.RunicSidePanelClosedEventArgs(Runic.Application.Views.RunicSidePanelCloseReason reason) -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelEdge.End = 3 -> Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelEdge.Left = 0 -> Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelEdge.Right = 1 -> Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelEdge.Start = 2 -> Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.<Clone>$() -> Runic.Application.Views.RunicSidePanelOptions!
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Edge.get -> Runic.Application.Views.RunicSidePanelEdge
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Edge.init -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Equals(Runic.Application.Views.RunicSidePanelOptions? other) -> bool
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.LoadTimeout.get -> System.TimeSpan
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.LoadTimeout.init -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Path.get -> string!
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Path.init -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.RunicSidePanelOptions() -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Width.get -> int
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelOptions.Width.init -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.AlreadyOpen = 7 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.Closed = 9 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.FullScreen = 2 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.LoadFailed = 8 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.Maximized = 1 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.Minimized = 4 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.NoRoom = 5 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.PositionUnavailable = 6 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.Snapped = 3 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelRefusal.Unsupported = 0 -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Opened
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Opened.Deconstruct(out Runic.Application.Views.IRunicSidePanel! Panel) -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Opened.Equals(Runic.Application.Views.RunicSidePanelResult.Opened? other) -> bool
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Opened.Opened(Runic.Application.Views.IRunicSidePanel! Panel) -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Opened.Panel.get -> Runic.Application.Views.IRunicSidePanel!
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Opened.Panel.init -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Refused
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Refused.Deconstruct(out Runic.Application.Views.RunicSidePanelRefusal Reason) -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Refused.Equals(Runic.Application.Views.RunicSidePanelResult.Refused? other) -> bool
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Refused.Reason.get -> Runic.Application.Views.RunicSidePanelRefusal
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Refused.Reason.init -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.Refused.Refused(Runic.Application.Views.RunicSidePanelRefusal Reason) -> void
+[RUNICDESK104]Runic.Application.Views.RunicSidePanelResult.RunicSidePanelResult(Runic.Application.Views.RunicSidePanelResult! original) -> void
+[RUNICDESK104]Runic.Application.Views.RunicWindowPresentationFeatures.SidePanel = 512 -> Runic.Application.Views.RunicWindowPresentationFeatures
+[RUNICDESK104]abstract Runic.Application.Views.RunicSidePanelResult.<Clone>$() -> Runic.Application.Views.RunicSidePanelResult!
+[RUNICDESK104]const Runic.Application.Views.RunicSidePanelOptions.MinimumWidth = 120 -> int
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelOptions.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelOptions.GetHashCode() -> int
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelOptions.ToString() -> string!
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.GetHashCode() -> int
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Opened.<Clone>$() -> Runic.Application.Views.RunicSidePanelResult.Opened!
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Opened.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Opened.GetHashCode() -> int
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Opened.ToString() -> string!
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Refused.<Clone>$() -> Runic.Application.Views.RunicSidePanelResult.Refused!
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Refused.Equals(object? obj) -> bool
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Refused.GetHashCode() -> int
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.Refused.ToString() -> string!
+[RUNICDESK104]override Runic.Application.Views.RunicSidePanelResult.ToString() -> string!
+[RUNICDESK104]override sealed Runic.Application.Views.RunicSidePanelResult.Opened.Equals(Runic.Application.Views.RunicSidePanelResult? other) -> bool
+[RUNICDESK104]override sealed Runic.Application.Views.RunicSidePanelResult.Refused.Equals(Runic.Application.Views.RunicSidePanelResult? other) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelOptions.operator !=(Runic.Application.Views.RunicSidePanelOptions? left, Runic.Application.Views.RunicSidePanelOptions? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelOptions.operator ==(Runic.Application.Views.RunicSidePanelOptions? left, Runic.Application.Views.RunicSidePanelOptions? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelResult.Opened.operator !=(Runic.Application.Views.RunicSidePanelResult.Opened? left, Runic.Application.Views.RunicSidePanelResult.Opened? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelResult.Opened.operator ==(Runic.Application.Views.RunicSidePanelResult.Opened? left, Runic.Application.Views.RunicSidePanelResult.Opened? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelResult.Refused.operator !=(Runic.Application.Views.RunicSidePanelResult.Refused? left, Runic.Application.Views.RunicSidePanelResult.Refused? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelResult.Refused.operator ==(Runic.Application.Views.RunicSidePanelResult.Refused? left, Runic.Application.Views.RunicSidePanelResult.Refused? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelResult.operator !=(Runic.Application.Views.RunicSidePanelResult? left, Runic.Application.Views.RunicSidePanelResult? right) -> bool
+[RUNICDESK104]static Runic.Application.Views.RunicSidePanelResult.operator ==(Runic.Application.Views.RunicSidePanelResult? left, Runic.Application.Views.RunicSidePanelResult? right) -> bool
+[RUNICDESK104]virtual Runic.Application.Views.RunicSidePanelResult.EqualityContract.get -> System.Type!
+[RUNICDESK104]virtual Runic.Application.Views.RunicSidePanelResult.Equals(Runic.Application.Views.RunicSidePanelResult? other) -> bool
+[RUNICDESK104]virtual Runic.Application.Views.RunicSidePanelResult.PrintMembers(System.Text.StringBuilder! builder) -> bool
 abstract Runic.Application.Views.Generated.BridgeInteractionDescriptor.Attach(Runic.Application.Views.WindowContentSession! session, object! model, string! route) -> System.IDisposable!
 static Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<TInput, TOutput>(string! name, string! contract, System.Func<object!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>! getQuestion, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor!
 static Runic.Application.Views.Generated.ViewRequestDescriptor.Create<T>(string! name, string! contract, System.Func<object!, Runic.Application.Views.ViewRequest<T>!>! getRequest, System.Func<T, string!>! encodeInput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor!

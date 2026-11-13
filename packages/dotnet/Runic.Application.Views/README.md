@@ -928,6 +928,7 @@ casts `IRunicWindow.Host` to a host's type:
 | `SetColorSchemeAsync(scheme)` | Switches it between light and dark; the page's `prefers-color-scheme` follows. |
 | `IsActive`, `IsMinimized`, `IsVisible`, `Activity` | Whether it has the keyboard focus, is minimized and is shown, with `ActivityChanged` and `PropertyChanged`. |
 | `Features` | What the host can do now. |
+| `OpenSidePanelAsync(options)`, `SidePanel` | Opens another page of the Window beside its page, growing the Window; [experimental](#a-side-panel-beside-the-windows-page). |
 
 With CommunityToolkit.Mvvm, a ViewModel that polls less while the user works
 elsewhere and hides to the status area:
@@ -1018,6 +1019,76 @@ A custom Runic Desktop window host provides the activity and the color scheme
 through `IDesktopActivityWindowHost` and `IDesktopColorSchemeWindowHost`; a
 custom Window host gives the Window its own presentation with
 `RunicWindowOpening<TViewModel>.UsePresentation` once the native window exists.
+
+#### A side panel beside the Window's page
+
+`OpenSidePanelAsync` (0.19, experimental under
+[`RUNICDESK104`](../../../docs/experimental.md#RUNICDESK104)) opens another
+page of the Window beside its page, in a strip on one edge by which the Window
+grows, so the page keeps its size and its place on the screen. The panel's page
+is a second connection of the same Window: it binds to the same ViewModel tree,
+for example to a `SidePanel` property of the root ViewModel, through a route of
+the application's own frontend (`Path`). It does not follow or drive the
+Window's navigation path. When the panel cannot open, the ViewModel shows the
+content another way, such as an overlay of its page:
+
+```csharp
+[RelayCommand]
+private async Task ShowDebugAsync()
+{
+    var result = await _window.OpenSidePanelAsync(new RunicSidePanelOptions { Width = 360, Path = "side-panel" });
+    if (result is RunicSidePanelResult.Opened opened)
+    {
+        opened.Panel.Closed += (_, e) => IsDebugPanelOpen = false;   // in a turn of the Window's model context
+        IsDebugPanelOpen = true;
+    }
+    else
+    {
+        ShowDebugOverlay = true;   // Unsupported, Maximized, Snapped, NoRoom, ...
+    }
+}
+```
+
+- `Edge` is `End` by default: the right edge of a left-to-right Window and the
+  left edge of a right-to-left one. `Width` is in the Window's units (DIPs,
+  points, logical pixels), at least `RunicSidePanelOptions.MinimumWidth` (120).
+- `RunicSidePanelResult` is `Opened` with the `IRunicSidePanel`, which is also
+  `SidePanel` from then on, or `Refused` with a `RunicSidePanelRefusal`, after
+  which the Window is unchanged. Treat an unknown refusal as `Unsupported`.
+- The Window refuses while it is minimized or hidden (`Minimized`),
+  full-screen, maximized or snapped, when the grown Window would leave the
+  monitor's work area or the panel is wider than half of it (`NoRoom`; the
+  Window is never moved to make room), for the left edge on Wayland
+  (`PositionUnavailable`), while a panel is open (`AlreadyOpen`), and when the
+  panel's page does not load (`LoadFailed`). Once the Window closed, the result
+  is `Closed`.
+- `IRunicSidePanel` moves to the other edge (`MoveToEdgeAsync`), changes its
+  width (`SetWidthAsync`), takes the focus (`FocusAsync`) and closes
+  (`CloseAsync`, or disposing it). Move and width changes return the same
+  refusals, `null` when done, and `Closed` once the panel closed.
+- `Closed` is raised once, in a turn of the Window's model context, whether the
+  application, the panel's page (`window.close()`), a crash or the Window's
+  close closed it (`RunicSidePanelCloseReason`). `SidePanel` is `null` again by
+  then, and `PropertyChanged` reports both changes.
+- `Features.HasFlag(RunicWindowPresentationFeatures.SidePanel)` says whether
+  the host has a panel at all, for example to hide the command.
+- A presentation written for 0.18 keeps compiling: the interface's default
+  members refuse with `Unsupported` and report no panel.
+
+| Host | Side panel |
+| --- | --- |
+| Runic Desktop, WebView2 | Yes |
+| Runic Desktop, WKWebView; WebKitGTK (GTK 3, GTK 4) | Not yet: `Unsupported` |
+| Runic Desktop, an installed browser after a fallback; a serve-only application | `Unsupported` |
+| A custom Runic Desktop window host; WPF | `Unsupported`: the WPF application owns its layout and can place a second `RunicWebView` |
+| CS-WebUI | `Unsupported` |
+| A hosted application's Window or region (`runic-host/1`) | `Unsupported` |
+
+The [Runic.Desktop README](../Runic.Desktop/README.md#side-panel) describes the
+geometry: exact bounds on close, maximize and full screen while open, and what
+`DesktopWindowState` reports. In tests, `RunicTestWindowPresentation` decides
+the panel as a desktop window does
+([Runic.Application.Testing](../Runic.Application.Testing/README.md#the-windows-presentation)).
 
 ### What the page sees of a close
 
