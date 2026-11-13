@@ -9,7 +9,9 @@ using Runic.Desktop;
 //   the panel's page connects as a second connection of the window and disconnects when it closes.
 // - Frame capture: each DWM frame (DwmFlush) one row of the screen across the page's left edge, which the page marks
 //   with a magenta bar, while the panel opens and closes on the left edge and moves between edges. The page's edge may
-//   be out of place in at most one frame (side-panel/DESIGN.md §4); the count is printed.
+//   be out of place in at most one frame (side-panel/DESIGN.md §4); the count is printed. A desktop whose screen GDI
+//   cannot read, as the arm64 runner's (the row shows none of the page's white), leaves frame capture unverified; the
+//   transitions and their other checks still run. A page that shows without its marker, or loses it later, fails.
 // - Tab from the page's last element focuses the panel's first, Shift+Tab hands focus back (SendInput, or XTEST on X11;
 //   a desktop that delivers no input to the window, as the arm64 runner's, leaves it unverified).
 // - Linux runs under a window manager (openbox) for maximize. Frame capture is Windows only; on X11 the page's resize
@@ -152,8 +154,9 @@ internal static class SidePanelSmoke
         System.Collections.Concurrent.ConcurrentQueue<string> reports, DesktopWindowState start, int native,
         (int Resizes, int Width, int Height) page)
     {
+        // Null where the runner's desktop shows GDI nothing of the window (the arm64 runner's): the transitions then
+        // run without frame capture, and every other check stays.
         var marker = FindMarker(window.State!.VisibleBounds!);
-        Console.WriteLine($"Side panel: the page's left edge is at screen x {marker.X}, row {marker.Y}.");
         DesktopSidePanel? left = null;
         await CaptureAsync("open on the left edge", marker,
             async () => left = await OpenAsync(window, surface, reports, DesktopWindowEdge.Left, start, native, page));
@@ -412,8 +415,15 @@ internal static class SidePanelSmoke
 
     // Samples the row through the page's left edge once per DWM frame while operation runs, and counts the frames in which
     // the edge was not at its place.
-    private static async Task CaptureAsync(string what, (int X, int Y) marker, Func<Task> operation)
+    private static async Task CaptureAsync(string what, (int X, int Y)? found, Func<Task> operation)
     {
+        if (found is not { } marker)
+        {
+            await operation();
+            await Task.Delay(Settle);
+            Console.WriteLine($"Side panel: {what} without frame capture (unverified on this runner).");
+            return;
+        }
         var frames = new List<int>();
         using var stop = new CancellationTokenSource();
         var sampler = new Thread(() =>
@@ -442,12 +452,24 @@ internal static class SidePanelSmoke
         Require(deviating <= 1, $"at most one frame with the page's left edge out of place during '{what}', not {deviating}");
     }
 
-    // The page's magenta marker in the row through the middle of the window's visible frame.
-    private static (int X, int Y) FindMarker(DesktopWindowBounds visible)
+    // The page's magenta marker in the row through the middle of the window's visible frame, or null when the screen
+    // capture shows nothing of the window at all: a probe of the row for the page's white background, which a desktop
+    // that GDI can read always shows beside the marker. A row with the page but without its marker fails.
+    private static (int X, int Y)? FindMarker(DesktopWindowBounds visible)
     {
         var y = visible.Y!.Value + visible.Height / 2;
-        var x = Screen.MarkerIn(visible.X!.Value, y, visible.Width)
-            ?? throw new InvalidOperationException($"Side panel: the page's marker is not on the screen in the row {y} of {visible}; is the window covered?");
+        var row = Screen.Row(visible.X!.Value, y, visible.Width);
+        var white = row?.Count(static pixel => (pixel & 0xFFFFFF) == 0xFFFFFF) ?? 0;
+        if (row is null || white < visible.Width / 4)
+        {
+            var colors = row?.Select(static pixel => pixel & 0xFFFFFF).Distinct().Count() ?? 0;
+            Console.WriteLine($"Side panel: frame capture unverified on this runner: GDI reads {(row is null ? "nothing (BitBlt failed)" : $"{colors} colour(s) and {white} white pixel(s)")} " +
+                $"in the row {y} of the window {visible}, not its page.");
+            return null;
+        }
+        var x = Screen.MarkerIn(row)
+            ?? throw new InvalidOperationException($"Side panel: the screen shows the page ({white} white pixels in the row {y} of {visible}) but not its left-edge marker.");
+        Console.WriteLine($"Side panel: the page's left edge is at screen x {visible.X.Value + x}, row {y}.");
         return (visible.X.Value + x, y);
     }
 
@@ -562,7 +584,20 @@ internal static class SidePanelSmoke
     private static unsafe class Screen
     {
         // The offset of the first magenta pixel in the row of width pixels from (x, y), or null.
-        internal static int? MarkerIn(int x, int y, int width)
+        internal static int? MarkerIn(int x, int y, int width) => Row(x, y, width) is { } row ? MarkerIn(row) : null;
+
+        internal static int? MarkerIn(uint[] pixels)
+        {
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var (red, green, blue) = ((pixels[i] >> 16) & 0xFF, (pixels[i] >> 8) & 0xFF, pixels[i] & 0xFF);
+                if (red > 200 && green < 80 && blue > 200) return i;
+            }
+            return null;
+        }
+
+        // The row of width screen pixels from (x, y) as 0x00RRGGBB, or null when GDI cannot copy it.
+        internal static uint[]? Row(int x, int y, int width)
         {
             var screen = Win32.GetDC(0);
             var memory = Win32.CreateCompatibleDC(screen);
@@ -571,20 +606,16 @@ internal static class SidePanelSmoke
             try
             {
                 // SRCCOPY | CAPTUREBLT.
-                _ = Win32.BitBlt(memory, 0, 0, width, 1, screen, x, y, 0x00CC0020 | 0x40000000);
+                if (screen == 0 || memory == 0 || bitmap == 0
+                    || Win32.BitBlt(memory, 0, 0, width, 1, screen, x, y, 0x00CC0020 | 0x40000000) == 0) return null;
                 var pixels = new uint[width];
                 var header = new BitmapInfoHeader { Size = (uint)sizeof(BitmapInfoHeader), Width = width, Height = -1, Planes = 1, BitCount = 32 };
                 fixed (uint* data = pixels)
                 {
                     _ = Win32.SelectObject(memory, previous);
-                    _ = Win32.GetDIBits(memory, bitmap, 0, 1, data, &header, 0);
+                    if (Win32.GetDIBits(memory, bitmap, 0, 1, data, &header, 0) == 0) return null;
                 }
-                for (var i = 0; i < pixels.Length; i++)
-                {
-                    var (red, green, blue) = ((pixels[i] >> 16) & 0xFF, (pixels[i] >> 8) & 0xFF, pixels[i] & 0xFF);
-                    if (red > 200 && green < 80 && blue > 200) return i;
-                }
-                return null;
+                return pixels;
             }
             finally
             {
