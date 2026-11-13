@@ -7,6 +7,11 @@
 //   right edge and the panel before the page once the fixture docked it on the left edge (the page's Dock panel left);
 // - with --screen-reader, <reader>-side-panel-focus, -landmark and -return: focus moved into the panel is spoken with
 //   the button's name and the landmark's name, and focus moved back to the page is spoken with the page's button.
+//   VoiceOver does not speak a landmark when the focus moves into it (its rotor lists landmarks instead), so for it the
+//   landmark check passes when the focused button's nearest AX landmark ancestor is "Debug tools"
+//   (AXLandmarkComplementary), what the rotor and "where am I" report. On macOS the focus goes back to the page with
+//   Shift+Tab, which the fixture presses as a user does: the panel's focus hand-off then focuses the page's last
+//   control (Finish). Setting AXFocused on the page's button from the panel's view bypasses that hand-off.
 // A host that refuses the panel (Unsupported) shows the page's "Side panel unsupported" button instead: the checks are
 // then not applicable, because that platform's host has no panel yet (macOS until #905, Linux until #907).
 internal sealed class SidePanelScenario(AccessibilityClient client, Report report, ScreenReader? reader)
@@ -141,11 +146,33 @@ internal sealed class SidePanelScenario(AccessibilityClient client, Report repor
                 await client.FocusAsync(panel, cancellationToken);
             }
             await RecordAsync("side-panel-focus", PanelButton, mark, cancellationToken);
-            await RecordAsync("side-panel-landmark", Landmark, mark, cancellationToken);
+            Console.WriteLine($"  focused in the panel: {await client.FocusedAsync(cancellationToken) ?? "not reported"}");
+            if (reader!.Id == "voiceover" && await HeardAsync(mark, Landmark, cancellationToken) is null)
+            {
+                // VoiceOver's convention: landmarks are in the rotor, not spoken on a focus change.
+                var landmark = await client.LandmarkOfAsync(panel, cancellationToken);
+                if (landmark is not null && landmark.StartsWith(Landmark + " (AXLandmark", StringComparison.Ordinal))
+                    report.Pass($"{reader.Id}-side-panel-landmark", $"VoiceOver does not speak a landmark on a focus change; the focused button's landmark for its rotor is {landmark}");
+                else report.Fail($"{reader.Id}-side-panel-landmark", $"VoiceOver did not say '{Landmark}', and the focused button's nearest landmark is {landmark ?? "none"}");
+            }
+            else
+            {
+                await RecordAsync("side-panel-landmark", Landmark, mark, cancellationToken);
+            }
             await QuietAsync(cancellationToken);
             mark = Mark();
-            await client.FocusAsync(page, cancellationToken);
-            await RecordAsync("side-panel-return", PageButton, mark, cancellationToken);
+            if (client.MovesBetweenViewsWithKeys)
+            {
+                // Shift+Tab from the panel's only control: the hand-off focuses the page's last one.
+                Console.WriteLine("PROBE REQUEST shift-tab");
+                await RecordAsync("side-panel-return", Fixture.Finish, mark, cancellationToken);
+            }
+            else
+            {
+                await client.FocusAsync(page, cancellationToken);
+                await RecordAsync("side-panel-return", PageButton, mark, cancellationToken);
+            }
+            Console.WriteLine($"  focused after the return: {await client.FocusedAsync(cancellationToken) ?? "not reported"}");
         }
         finally
         {

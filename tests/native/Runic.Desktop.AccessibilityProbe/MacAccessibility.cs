@@ -176,6 +176,37 @@ internal sealed partial class MacAccessibility : AccessibilityClient
         }
     }
 
+    internal override bool MovesBetweenViewsWithKeys => true;
+
+    internal override Task<string?> FocusedAsync(CancellationToken cancellationToken)
+    {
+        var focused = Copy(_application, "AXFocusedUIElement");
+        if (focused == 0) return Task.FromResult<string?>(null);
+        try { return Task.FromResult<string?>($"{Text(focused, "AXRole")} ({Text(focused, "AXSubrole")}) '{Name(focused)}'"); }
+        finally { CFRelease(focused); }
+    }
+
+    // AXParent up to a group whose subrole is AXLandmark…, which VoiceOver's rotor lists under Landmarks with its
+    // description.
+    internal override Task<string?> LandmarkOfAsync(Control control, CancellationToken cancellationToken)
+    {
+        var element = CFRetain((nint)control.Handle);
+        for (var depth = 0; depth < 30 && element != 0; depth++)
+        {
+            if (Text(element, "AXSubrole") is { } subrole && subrole.StartsWith("AXLandmark", StringComparison.Ordinal))
+            {
+                var name = Name(element);
+                CFRelease(element);
+                return Task.FromResult<string?>($"{name} ({subrole})");
+            }
+            var parent = Copy(element, "AXParent");
+            CFRelease(element);
+            element = parent;
+        }
+        if (element != 0) CFRelease(element);
+        return Task.FromResult<string?>(null);
+    }
+
     // AXChildren from the application, as VoiceOver's navigation walks them; the content view's children follow the
     // visual order, which puts the side panel's web area before or after the page's.
     internal override Task<IReadOnlyList<Element>> ElementsAsync(CancellationToken cancellationToken)

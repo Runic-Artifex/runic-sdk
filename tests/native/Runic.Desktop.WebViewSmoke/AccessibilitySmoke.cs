@@ -147,7 +147,8 @@ internal static class AccessibilitySmoke
 
     // announce: how the host announces, when not through the window's DesktopWindow.AnnounceAsync.
     internal static async Task<int> RunAsync(DesktopHost host, string hostName, IReadOnlyList<string> probe,
-        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null, bool region = false, bool sidePanel = false)
+        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null, bool region = false, bool sidePanel = false,
+        Func<DesktopWindow, bool, ValueTask>? pressTab = null)
     {
         if (region) probe = [.. probe, "--region"];
         if (sidePanel) probe = [.. probe, "--side-panel"];
@@ -161,12 +162,16 @@ internal static class AccessibilitySmoke
         start.ArgumentList.Add(hostName);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("The probe did not start.");
         var listening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // "PROBE REQUEST shift-tab": the side panel scenario asks the fixture to press Shift+Tab as a user does (pressTab),
+        // which the probe cannot post to another process's window.
+        var keyRequests = System.Threading.Channels.Channel.CreateUnbounded<bool>();
         var output = Task.Run(async () =>
         {
             while (await process.StandardOutput.ReadLineAsync() is { } line)
             {
                 Console.WriteLine(line);
                 if (line == "PROBE LISTENING") listening.TrySetResult();
+                else if (line == "PROBE REQUEST shift-tab") keyRequests.Writer.TryWrite(true);
             }
             listening.TrySetException(new InvalidOperationException("The probe exited before it listened for events."));
         });
@@ -234,6 +239,12 @@ internal static class AccessibilitySmoke
         var finished = false;
         while (!exited.IsCompleted)
         {
+            while (keyRequests.Reader.TryRead(out var shift))
+            {
+                if (pressTab is null) throw new InvalidOperationException("The probe asked for Shift+Tab, which this fixture cannot press.");
+                await pressTab(window, shift);
+                Console.WriteLine("ACCESSIBILITY pressed Shift+Tab.");
+            }
             var request = await surface.ExecuteJavaScriptAsync(
                 "const request = window.__runicRequest || ''; window.__runicRequest = ''; return request;",
                 TimeSpan.FromSeconds(20), cancellationToken: deadline.Token);

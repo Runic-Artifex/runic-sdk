@@ -58,7 +58,8 @@ try
         // --side-panel before --probe too: a side panel beside the page (#864 P6).
         var sidePanel = own.Contains("--side-panel", StringComparer.Ordinal);
         Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(),
-            host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region, sidePanel: sidePanel));
+            host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region, sidePanel: sidePanel,
+                pressTab: OperatingSystem.IsMacOS() ? SidePanelSmoke.PressTabOnMacOSAsync : null));
     }
     else if (args.Contains("--region", StringComparer.Ordinal))
     {

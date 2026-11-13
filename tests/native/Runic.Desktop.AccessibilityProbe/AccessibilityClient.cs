@@ -55,6 +55,18 @@ internal abstract class AccessibilityClient : IAsyncDisposable
     internal virtual Task SelectWithKeysAsync(Control control, string item, CancellationToken cancellationToken)
         => SelectAsync(control, item, cancellationToken);
 
+    /// <summary>Whether focus moves between a window's web views with Shift+Tab, which the fixture presses, rather than
+    /// with <see cref="FocusAsync"/>: macOS, where setting AXFocused on an element of the other web view bypasses the
+    /// side panel's focus hand-off, unlike a user's Tab.</summary>
+    internal virtual bool MovesBetweenViewsWithKeys => false;
+
+    /// <summary>The element that has the keyboard focus, as "role 'name'", or null when the API does not tell.</summary>
+    internal virtual Task<string?> FocusedAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
+    /// <summary>The name of the nearest landmark that contains the control, as a screen reader's rotor or "where am I"
+    /// finds it, or null when there is none or the API does not tell.</summary>
+    internal virtual Task<string?> LandmarkOfAsync(Control control, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
     /// <summary>A short description of the native menu bar, or null when the host has none.</summary>
     internal virtual Task<string?> MenuBarAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 
