@@ -117,7 +117,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 $"RunicOperationRetirement without an operation was not reported as located RUNICBRIDGE028 warnings.\n{output}");
 
             string Descriptor(string model, string command) => File.ReadAllLines(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs"))
-                .Single(line => line.Contains($"(\"{command}\", vm => (object)vm.{command}Command)", StringComparison.Ordinal));
+                .Single(line => line.Contains($"(\"{command}\", static vm => (object)((global::Fixture.{model})vm).{command}Command)", StringComparison.Ordinal));
             const string Policy = "Retirement = global::Runic.Application.Views.RunicOperationRetirement.";
             Require(Descriptor("RetirementViewModel", "Save").Contains(Policy + "Cancel", StringComparison.Ordinal)
                     && Descriptor("ClassPolicyViewModel", "Save").Contains(Policy + "Drain", StringComparison.Ordinal)
@@ -981,7 +981,7 @@ internal sealed partial class CodegenDiagnosticsTests
             // Navigation is a supported API: a Bridge that observes a region slot needs no warning
             // suppression of its own.
             var regionBridges = Directory.GetFiles(Path.Combine(missingViewDirectory, "cs"), "*.g.cs")
-                .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("static vm => vm.", StringComparison.Ordinal))).ToArray();
+                .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("static vm => ((global::", StringComparison.Ordinal))).ToArray();
             Require(regionBridges.Length > 0 && regionBridges.All(lines => !lines.Any(line => line.StartsWith("#pragma warning", StringComparison.Ordinal))),
                 $"A generated Bridge with a navigation region slot suppresses a warning.\n{shellBridge}");
             // A Window's ViewModel has a Window, not a View: it is not reported

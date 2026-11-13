@@ -67,8 +67,11 @@ test("the managed report and the NativeAOT size budgets each take their own entr
   expect(Object.keys(suiteCases(budgets, "aot-size")).sort()).toEqual(Object.keys(metrics).sort());
   for (const [name, entry] of Object.entries(suiteCases(budgets, "aot-size"))) {
     expect(entry.limit, name).toBeNumber();
-    expect(entry.issue, name).toBe("sdk#901");
+    // #901 is fixed (A1-b): no aot/ entry is a known cost any more.
+    expect(entry.known, name).toBeUndefined();
   }
+  // D064.24: no generated-code support type is closed over a ViewModel.
+  expect(budgets["aot/bridge/generated-generic-types"].limit).toBe(0);
 });
 
 test("the NativeAOT size measurement counts the records that name a fixture ViewModel", () => {
