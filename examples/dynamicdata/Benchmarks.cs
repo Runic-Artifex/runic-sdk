@@ -81,12 +81,12 @@ internal static class Benchmarks
 
     private sealed class FullBridge(MeteredTransport transport, RowsViewModel model)
         : ViewModelBridge(transport, model, typeof(RowsViewModel), "rows", [new BridgeStateMember("rows", WriteRows)],
-            [new("Rows", "rows", current => current.Rows, null)], [], [])
+            [new("Rows", "rows", static current => ((RowsViewModel)current).Rows, null)], [], [])
     {
-        private static void WriteRows(Utf8JsonWriter writer, RowsViewModel current)
+        private static void WriteRows(Utf8JsonWriter writer, object current)
         {
             writer.WriteStartArray();
-            foreach (var row in current.Rows)
+            foreach (var row in ((RowsViewModel)current).Rows)
             {
                 writer.WriteStartObject(); writer.WriteNumber("id", row.Id); writer.WriteString("label", row.Label); writer.WriteNumber("value", row.Value); writer.WriteEndObject();
             }
