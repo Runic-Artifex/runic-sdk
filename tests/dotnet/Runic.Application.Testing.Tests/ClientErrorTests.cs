@@ -75,6 +75,20 @@ public sealed class ClientErrorTests
             "Bidirectional formatting characters were not removed.");
     }
 
+    // A region's frame launch code and frame token never reach the log (host-protocol.md, Frame admission), such as in an
+    // engine's message about a frame that frame-ancestors blocked.
+    [Test]
+    public void FrameCodesAndTokensAreRedacted()
+    {
+        var token = new string('T', 40) + "_-9";
+        var message = BridgeClientErrors.Text($"Refused to frame 'http://[::1]:40117/w1/index.html#runic-frame={token}' from http://[::1]:40117/w1/_runic_frame/{token}.", 2_048, singleLine: true);
+        Require(!message.Contains(token, StringComparison.Ordinal), $"The token was logged: {message}");
+        Require(message == "Refused to frame 'http://[::1]:40117/w1/index.html#runic-frame=…' from http://[::1]:40117/w1/_runic_frame/….", message);
+        Require(BridgeClientErrors.Text("at x (#runic-frame=" + token + ")\nat y", 8_192, singleLine: false).Contains("#runic-frame=…)", StringComparison.Ordinal),
+            "The stack kept the token.");
+        Require(BridgeClientErrors.Text("#runic-frame= stays", 100, singleLine: true) == "#runic-frame= stays", "A marker without a token changed.");
+    }
+
     [Test]
     public void ACutNeverLeavesHalfASurrogatePair()
     {

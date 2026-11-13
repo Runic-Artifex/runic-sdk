@@ -42,7 +42,7 @@ public sealed partial class RunicHostedApplication
         var grant = options.Permissions ?? (permissions & _host.WindowOptions.AllowedPermissions);
         // The frame's permissions policy: only what the policy granted (host-protocol.md, Features in a region).
         var allow = grant.HasFlag(DesktopPermissionGrant.MediaCapture) ? "camera; microphone" : "";
-        var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow, decision.IsComponent);
+        var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow, grant, decision.IsComponent);
         var features = IsBrowserHost ? BrowserRegionFeatures : RegionFeatures;
         window.AttachRegion(region, features);
         if (Regions.Open(region, out var slot) is { } failure)

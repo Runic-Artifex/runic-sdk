@@ -1,5 +1,5 @@
 /*
- * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 4.
+ * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 5.
  *
  * Threading: every function may be called from any thread. Callbacks run on the server's threads, never while a
  * caller waits inside a runic_server_* function, and none starts after runic_server_stop returned. A callback must
@@ -23,6 +23,11 @@
  *
  * IPv6 loopback (ABI 4): RUNIC_SERVER_FLAG_IPV6_LOOPBACK listens on [::1] instead of 127.0.0.1, with the same Host
  * check. A response whose Content-Security-Policy names frame-ancestors gets no default X-Frame-Options.
+ *
+ * Peer admission (ABI 5): with on_admit, every connection the listener accepts is served only when on_admit returns
+ * nonzero for its peer's and the listener's address (text, valid during the call) and ports. It is called on a blocking
+ * thread before anything is read from the connection, so it may look the peer up; a refused connection is closed
+ * without a response. Without on_admit every connection is served.
  */
 #ifndef RUNIC_SERVER_H
 #define RUNIC_SERVER_H
@@ -34,7 +39,7 @@
 extern "C" {
 #endif
 
-#define RUNIC_SERVER_ABI_VERSION 4u
+#define RUNIC_SERVER_ABI_VERSION 5u
 #define RUNIC_SERVER_BODY_READ_DATA 1u
 #define RUNIC_SERVER_BODY_READ_END 2u
 #define RUNIC_SERVER_BODY_READ_FAILED 3u
@@ -102,6 +107,9 @@ typedef struct RunicServerOptions {
     void (*on_closed)(void *context, uint64_t connection, int32_t code, const uint8_t *reason, size_t length);
     void (*on_completed)(void *context, uint64_t token, int32_t accepted);
     void (*on_received)(void *context, uint64_t token, uint32_t kind, const uint8_t *data, size_t length);
+    /* optional: NULL serves every connection */
+    int32_t (*on_admit)(void *context, const uint8_t *remote_address, size_t remote_length, uint16_t remote_port,
+                        const uint8_t *local_address, size_t local_length, uint16_t local_port);
 } RunicServerOptions;
 
 uint32_t runic_server_abi_version(void);

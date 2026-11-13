@@ -26,7 +26,8 @@ internal sealed class KestrelPresentationServer(Action<IServiceCollection>? conf
     // interfaces and GetEnumerator of its uninstantiated base CollectionBase. A trimmed application then
     // fails to load the type with a TypeLoadException when Kestrel binds. NativeAOT is not affected.
     [DynamicDependency(DynamicallyAccessedMemberTypes.Interfaces, typeof(System.Collections.CollectionBase))]
-    public async Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken)
+    public async Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, LoopbackPeerAdmission? admission,
+        CancellationToken cancellationToken)
     {
         // The server reads no files. The default content root is the working directory,
         // often the user's home, and reloading configuration from it would put a recursive
@@ -45,7 +46,20 @@ internal sealed class KestrelPresentationServer(Action<IServiceCollection>? conf
         // stops this embedded server, so the application would ignore them.
         builder.Services.AddSingleton<IHostLifetime, ProcessOwnedLifetime>();
         configureServices?.Invoke(builder.Services);
-        builder.WebHost.ConfigureKestrel(options => options.Listen(address, port));
+        builder.WebHost.ConfigureKestrel(options => options.Listen(address, port, listen =>
+        {
+            // Connection middleware runs before Kestrel reads the request: a refused peer's connection is closed
+            // without a response (host-protocol.md, Elevated-peer admission).
+            if (admission is not null)
+                listen.Use(next => connection =>
+                {
+                    if (connection.RemoteEndPoint is IPEndPoint peer && connection.LocalEndPoint is IPEndPoint local &&
+                        admission.Admit(peer, local))
+                        return next(connection);
+                    connection.Abort();
+                    return Task.CompletedTask;
+                });
+        }));
 
         var application = builder.Build();
         application.UseWebSockets();

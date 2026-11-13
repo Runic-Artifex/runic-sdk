@@ -141,6 +141,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() => GtkColorScheme.Apply(Api.GtkSettingsGetDefault(), colorScheme, Api.GtkSettingsResetPropertyPointer), cancellationToken);
     public bool SupportsDocumentStartScript => true;
+
+    public bool SupportsRegionFrames => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
     public async ValueTask InvokeNativeAsync(Action action, CancellationToken cancellationToken)
@@ -827,7 +829,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     }
 
     // The script runs in every frame (D037.2); a report from a subframe of another origin than the presented one
-    // refuses the drop.
+    // refuses the drop, unless the subframe is an attached region's, whose guest receives it (RegionFrames).
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFileDropMessage(nint manager, nint message, nint context)
     {
@@ -836,7 +838,11 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host)
             {
                 var report = FileDropSupport.DecodeReport(Api.GetMessageString(message));
-                host._drops?.PageReport(report.Label, refused: !GtkDragSupport.AcceptsReport(host._presentedUrl, report.Origin));
+                // A drop onto an attached region's frame goes to its guest (D059.3); any other frame of another origin
+                // gets none.
+                var accepted = GtkDragSupport.AcceptsReport(host._presentedUrl, report.Origin);
+                var region = accepted ? null : host._options?.RegionFrames?.Find(report.FrameAddress);
+                host._drops?.PageReport(report.Label, refused: !accepted && region is null, deliverTo: region?.Dropped);
             }
         }
         catch
@@ -870,6 +876,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host && host._webView == webView)
             {
                 host._mediaFrames?.Reset();
+                // The page's frames, region frames included, ran in that process (no site isolation): their regions
+                // detach with crashed.
+                host._options?.RegionFrames?.HostPageProcessEnded();
                 var (reload, diagnostic) = host._webProcess.Terminated(reason, Environment.TickCount64);
                 if (reload)
                 {

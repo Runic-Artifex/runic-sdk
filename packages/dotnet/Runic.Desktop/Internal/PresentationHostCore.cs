@@ -29,6 +29,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
     private IPresentationServer? _ipv6Server;
     private Uri? _ipv6BaseUrl;
     private bool _ipv6Unavailable;
+    private LoopbackPeerAdmission? _peerAdmission;
     private int _disposed;
 
     internal PresentationHostCore(PresentationHostCoreOptions options)
@@ -45,6 +46,25 @@ internal sealed class PresentationHostCore : IAsyncDisposable
     internal bool IsPublic => _options.NetworkExposure == PresentationNetworkExposure.AllInterfaces;
 
     internal CancellationToken ShutdownToken => _shutdown.Token;
+
+    // The peers this core's listeners serve: every one when null. Set before a listener starts, as an elevated guest
+    // does once its host is known (host-protocol.md, Elevated-peer admission); a listener that started without it would
+    // serve every peer, so a later change is refused.
+    internal LoopbackPeerAdmission? PeerAdmission
+    {
+        get => Volatile.Read(ref _peerAdmission);
+        set
+        {
+            _lifecycleGate.Wait();
+            try
+            {
+                if (_server is not null || _ipv6Server is not null)
+                    throw new InvalidOperationException("The peer admission of a presentation listener is set before it starts.");
+                Volatile.Write(ref _peerAdmission, value);
+            }
+            finally { _lifecycleGate.Release(); }
+        }
+    }
 
     internal async ValueTask<PresentationSurfaceRegistration> AttachSurfaceAsync(
         string pathBase,
@@ -108,7 +128,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
                 try
                 {
                     var port = await server.StartAsync(IPAddress.IPv6Loopback, 0, exchange => DispatchAsync(exchange, Volatile.Read(ref _ipv6BaseUrl)),
-                        cancellationToken).ConfigureAwait(false);
+                        PeerAdmission, cancellationToken).ConfigureAwait(false);
                     _ipv6Server = server;
                     Volatile.Write(ref _ipv6BaseUrl, new Uri($"http://[::1]:{port}/"));
                 }
@@ -201,7 +221,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         try
         {
             port = await server.StartAsync(address, _options.Port, exchange => DispatchAsync(exchange, Volatile.Read(ref _baseUrl)),
-                cancellationToken).ConfigureAwait(false);
+                PeerAdmission, cancellationToken).ConfigureAwait(false);
         }
         catch
         {

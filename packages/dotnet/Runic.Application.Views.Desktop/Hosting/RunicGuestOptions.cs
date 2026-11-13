@@ -112,8 +112,8 @@ public sealed record RunicGuestOptions
     /// Like <see cref="AcceptHost"/>, the decision reads what the host says about itself: it is a filter for the
     /// product, not a security boundary. When it returns <see langword="false"/>, the guest does not list
     /// <c>region-component/1</c>, and a component attach is refused with <c>embedding-unsupported</c>; the host can
-    /// still show the Window in a frame. An application that runs elevated never offers component mode until Runic
-    /// checks that its loopback peers are elevated too.
+    /// still show the Window in a frame. An application that runs elevated offers component mode only where Runic checks
+    /// that its loopback peers are elevated too (elevated-peer admission); on macOS it never does.
     /// </para>
     /// </remarks>
     public Func<RunicHostInfo, bool>? AllowComponentEmbedding { get; init; }
@@ -197,6 +197,12 @@ public sealed record RunicGuestOptions
     // This process's privileges and its parent's, read once as hosted mode starts; tests replace it to play an elevated
     // process, parent or both.
     internal Func<Hosting.GuestPrivilegeFacts> ReadPrivileges { get; init; } = Hosting.GuestPrivileges.Read;
+
+    // Tests only: elevated-peer admission's check of a connection's peer (the peer's end, the listener's end), and
+    // whether the system has one at all; an elevated pair applies them (host-protocol.md, Elevated-peer admission).
+    internal Func<System.Net.IPEndPoint, System.Net.IPEndPoint, bool> CheckPeer { get; init; } = Runic.Desktop.Internal.ElevatedPeers.IsElevated;
+
+    internal bool CanCheckPeers { get; init; } = Runic.Desktop.Internal.ElevatedPeers.IsAvailable;
 
     // Whether this process runs elevated (root on Linux and macOS, an elevated token on Windows): such a guest refuses a
     // region in a browser host's page (host-protocol.md, Browser hosts); tests replace it.

@@ -1323,7 +1323,9 @@ one exception is the frame of an attached hosted region (`region/1` of the
 [Runic host protocol](../../../specs/desktop/host-protocol.md#features-in-a-region)):
 a drop there goes to the guest whose page the frame shows, as `files-dropped`
 under the host's policy, and never to the host's page or the window's
-`FileDropped`. This routing is not built yet; it comes with region mode in 0.18.0.
+`FileDropped`. WebView2, WKWebView and the built-in GTK 3 window route it; a window
+host of the application's own, such as Runic.Desktop.Gtk4's, delivers none from
+such a frame, as from any other frame of another origin.
 
 | Presentation | Paths from | Target label and effect | Promised files | Frames | Verified |
 | --- | --- | --- | --- | --- | --- |

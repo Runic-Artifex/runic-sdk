@@ -23,7 +23,7 @@ use crate::server::{
 };
 
 /// Bumped on every incompatible change of this file's types or functions.
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 
 pub const OK: i32 = 0;
 pub const PENDING: i32 = 1;
@@ -103,6 +103,19 @@ pub type CompletedCallback = unsafe extern "C" fn(context: *mut c_void, token: u
 pub type ReceivedCallback =
     unsafe extern "C" fn(context: *mut c_void, token: u64, kind: u32, data: *const u8, length: usize);
 
+/// Whether to serve a connection the listener accepted (ABI 5): the peer's and the listener's address as text and
+/// their ports. Nonzero admits it; zero closes it without a response. Called on a blocking thread before anything is
+/// read from the connection.
+pub type AdmitCallback = unsafe extern "C" fn(
+    context: *mut c_void,
+    remote_address: *const u8,
+    remote_length: usize,
+    remote_port: u16,
+    local_address: *const u8,
+    local_length: usize,
+    local_port: u16,
+) -> i32;
+
 pub const BODY_READ_DATA: u32 = 1;
 pub const BODY_READ_END: u32 = 2;
 pub const BODY_READ_FAILED: u32 = 3;
@@ -123,6 +136,8 @@ pub struct RunicServerOptions {
     pub on_closed: Option<ClosedCallback>,
     pub on_completed: Option<CompletedCallback>,
     pub on_received: Option<ReceivedCallback>,
+    /// Optional (ABI 5): with it, every accepted connection is checked before it is served.
+    pub on_admit: Option<AdmitCallback>,
 }
 
 struct Callbacks {
@@ -133,6 +148,7 @@ struct Callbacks {
     on_closed: ClosedCallback,
     on_completed: CompletedCallback,
     on_received: ReceivedCallback,
+    on_admit: Option<AdmitCallback>,
 }
 
 // The host's context pointer is opaque here; the host makes its callbacks thread-safe.
@@ -191,6 +207,25 @@ impl Handler for Callbacks {
 
     fn completed(&self, token: u64, accepted: bool) {
         unsafe { (self.on_completed)(self.context, token, i32::from(accepted)) };
+    }
+
+    fn admit(&self, remote: std::net::SocketAddr, local: std::net::SocketAddr) -> bool {
+        let Some(on_admit) = self.on_admit else {
+            return true;
+        };
+        let remote_address = remote.ip().to_string();
+        let local_address = local.ip().to_string();
+        unsafe {
+            on_admit(
+                self.context,
+                remote_address.as_ptr(),
+                remote_address.len(),
+                remote.port(),
+                local_address.as_ptr(),
+                local_address.len(),
+                local.port(),
+            ) != 0
+        }
     }
 
     fn received(&self, token: u64, read: BodyRead<'_>) {
@@ -316,6 +351,7 @@ pub unsafe extern "C" fn runic_server_start(
         worker_threads: options.worker_threads as usize,
         max_message_bytes,
         receive_window: options.receive_window as usize,
+        check_peers: options.on_admit.is_some(),
     };
     let callbacks = Callbacks {
         context: options.context,
@@ -325,6 +361,7 @@ pub unsafe extern "C" fn runic_server_start(
         on_closed,
         on_completed,
         on_received,
+        on_admit: options.on_admit,
     };
     match Server::start(config, Arc::new(callbacks)) {
         Ok(server) => {

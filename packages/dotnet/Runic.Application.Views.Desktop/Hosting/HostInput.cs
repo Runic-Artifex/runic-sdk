@@ -223,9 +223,6 @@ internal static partial class WindowsProcesses
     private const uint QueryLimitedInformation = 0x1000; // PROCESS_QUERY_LIMITED_INFORMATION
     private const uint TokenQuery = 0x0008;
     private const int TokenUserClass = 1;
-    private const int TokenElevationClass = 20;
-    private const int TokenIntegrityLevelClass = 25;
-    private const uint HighIntegrity = 0x3000; // SECURITY_MANDATORY_HIGH_RID
     private const int ProcessBasicInformationClass = 0;
 
     internal static GuestPrivileges.ParentFacts Parent()
@@ -277,21 +274,9 @@ internal static partial class WindowsProcesses
         finally { _ = CloseHandle(token); }
     }
 
-    // TOKEN_ELEVATION.TokenIsElevated, or a mandatory label of High integrity or above (TOKEN_MANDATORY_LABEL: the last
-    // subauthority of its SID); false when neither can be read.
-    private static unsafe bool Elevated(nint token)
-    {
-        uint elevation = 0;
-        if (GetTokenInformation(token, TokenElevationClass, &elevation, sizeof(uint), out _) && elevation != 0) return true;
-        _ = GetTokenInformation(token, TokenIntegrityLevelClass, null, 0, out var size);
-        if (size is 0 or > 256) return false;
-        var buffer = stackalloc byte[(int)size];
-        if (!GetTokenInformation(token, TokenIntegrityLevelClass, buffer, size, out _)) return false;
-        var sid = *(nint*)buffer;
-        if (sid == 0 || !IsValidSid(sid)) return false;
-        var count = *GetSidSubAuthorityCount(sid);
-        return count > 0 && *GetSidSubAuthority(sid, (uint)(count - 1)) >= HighIntegrity;
-    }
+    // TOKEN_ELEVATION.TokenIsElevated, or a mandatory label of High integrity or above, as elevated-peer admission reads
+    // it too.
+    private static bool Elevated(nint token) => Runic.Desktop.Internal.WindowsProcessTokens.TokenElevated(token);
 
     [System.Runtime.InteropServices.LibraryImport("kernel32")]
     private static partial nint GetCurrentProcess();
@@ -320,12 +305,6 @@ internal static partial class WindowsProcesses
 
     [System.Runtime.InteropServices.LibraryImport("advapi32")]
     private static partial uint GetLengthSid(nint sid);
-
-    [System.Runtime.InteropServices.LibraryImport("advapi32")]
-    private static unsafe partial byte* GetSidSubAuthorityCount(nint sid);
-
-    [System.Runtime.InteropServices.LibraryImport("advapi32")]
-    private static unsafe partial uint* GetSidSubAuthority(nint sid, uint index);
 
     [System.Runtime.InteropServices.LibraryImport("kernel32")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]

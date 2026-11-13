@@ -519,10 +519,11 @@ public sealed class FrameLaunchBindingTests
     {
         public IServiceProvider Services => server.Services;
 
-        public Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken) =>
+        public Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, LoopbackPeerAdmission? admission,
+            CancellationToken cancellationToken) =>
             address.Equals(IPAddress.IPv6Loopback)
                 ? throw new IOException("IPv6 is turned off.")
-                : server.StartAsync(address, port, dispatch, cancellationToken);
+                : server.StartAsync(address, port, dispatch, admission, cancellationToken);
 
         public ValueTask DisposeAsync() => server.DisposeAsync();
     }

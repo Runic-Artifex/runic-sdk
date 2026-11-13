@@ -60,7 +60,8 @@ internal static class TestClients
     {
         public IServiceProvider Services => server.Services;
 
-        public Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken) =>
+        public Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, LoopbackPeerAdmission? admission,
+            CancellationToken cancellationToken) =>
             server.StartAsync(address, port, exchange =>
             {
                 if (exchange.GetRequestHeader(Header) == s_value) return dispatch(exchange);
@@ -68,7 +69,7 @@ internal static class TestClients
                     $"{exchange.RemoteIpAddress}:{exchange.RemotePort}, User-Agent '{exchange.GetRequestHeader("User-Agent")}'.");
                 exchange.StatusCode = PresentationStatus.NotFound;
                 return Task.CompletedTask;
-            }, cancellationToken);
+            }, admission, cancellationToken);
 
         public ValueTask DisposeAsync() => server.DisposeAsync();
     }

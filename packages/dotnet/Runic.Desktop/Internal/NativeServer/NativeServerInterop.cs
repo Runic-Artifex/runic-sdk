@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 4. Every struct mirrors its
+// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 5. Every struct mirrors its
 // #[repr(C)] counterpart field by field.
 internal static unsafe partial class NativeServerInterop
 {
     internal const string Library = "runic_server";
-    internal const uint AbiVersion = 4;
+    internal const uint AbiVersion = 5;
 
     internal const int Ok = 0;
     internal const int Pending = 1;
@@ -80,6 +80,8 @@ internal static unsafe partial class NativeServerInterop
         internal delegate* unmanaged[Cdecl]<void*, ulong, int, byte*, nuint, void> OnClosed;
         internal delegate* unmanaged[Cdecl]<void*, ulong, int, void> OnCompleted;
         internal delegate* unmanaged[Cdecl]<void*, ulong, uint, byte*, nuint, void> OnReceived;
+        // Optional (ABI 5): asked about every accepted connection before it is served.
+        internal delegate* unmanaged[Cdecl]<void*, byte*, nuint, ushort, byte*, nuint, ushort, int> OnAdmit;
     }
 
     [LibraryImport(Library, EntryPoint = "runic_server_abi_version")]

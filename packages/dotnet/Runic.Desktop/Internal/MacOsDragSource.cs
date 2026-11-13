@@ -248,17 +248,18 @@ internal sealed partial class MacOsWkWebViewHost
 
     // The page's report of a drop, main thread. While a promised drop receives its files, the report waits with it:
     // the pairing waits only FileDropSupport.LabelWait for a report after the native drop.
-    private void PageReport(string? label, bool refused)
+    // deliverTo is an attached region's guest (RegionFrames), which receives the drop instead of the window.
+    private void PageReport(string? label, bool refused, Action<DesktopFileDropEventArgs>? deliverTo = null)
     {
         lock (_promiseGate)
         {
             if (_awaitingReport is { } drop)
             {
-                drop.Report(label, refused);
+                drop.Report(label, refused, deliverTo);
                 _awaitingReport = null;
                 return;
             }
-            _drops?.PageReport(label, refused);
+            _drops?.PageReport(label, refused, deliverTo: deliverTo);
         }
     }
 
@@ -285,7 +286,7 @@ internal sealed partial class MacOsWkWebViewHost
             }
             // A closed window's pairing discards the drop and deletes the staged copies.
             drops.NativeDrop(drop.Paths, files, drop.Effect);
-            if (drop.Reported) drops.PageReport(drop.Label, drop.Refused);
+            if (drop.Reported) drops.PageReport(drop.Label, drop.Refused, deliverTo: drop.DeliverTo);
         }
     }
 
@@ -297,12 +298,14 @@ internal sealed partial class MacOsWkWebViewHost
         internal bool Reported { get; private set; }
         internal string? Label { get; private set; }
         internal bool Refused { get; private set; }
+        internal Action<DesktopFileDropEventArgs>? DeliverTo { get; private set; }
 
-        internal void Report(string? label, bool refused)
+        internal void Report(string? label, bool refused, Action<DesktopFileDropEventArgs>? deliverTo)
         {
             Reported = true;
             Label = label;
             Refused = refused;
+            DeliverTo = deliverTo;
         }
     }
 

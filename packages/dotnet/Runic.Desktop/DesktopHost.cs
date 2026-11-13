@@ -578,6 +578,7 @@ public sealed class DesktopHost : IAsyncDisposable
         var id = Guid.NewGuid();
         var path = configured.Path ?? $"surface-{id:N}";
         var isolatedCore = configured.UseIsolatedListener ? CreateCore(_options, port: 0) : null;
+        if (isolatedCore is not null) isolatedCore.PeerAdmission = PeerAdmission;
         var core = isolatedCore ?? _core;
         var security = ToCorePolicy(configured.Security ?? _options.Security);
         var surfaceFactory = windowHostFactory ?? _options.WindowHostFactory;
@@ -817,6 +818,14 @@ public sealed class DesktopHost : IAsyncDisposable
             $"No supported presentation was discovered for {browser}.",
             Retryable: false,
             Remediation: "Install a supported browser or WebView runtime; DesktopHost.Validate(windowOptions) lists what is missing.")]);
+
+    // The peers every listener of this host serves (host-protocol.md, Elevated-peer admission): set by an elevated
+    // guest before its first window opens; null serves every peer.
+    internal LoopbackPeerAdmission? PeerAdmission
+    {
+        get => _core.PeerAdmission;
+        set => _core.PeerAdmission = value;
+    }
 
     private static PresentationHostCore CreateCore(DesktopHostOptions options, int port) => new(
         new PresentationHostCoreOptions(

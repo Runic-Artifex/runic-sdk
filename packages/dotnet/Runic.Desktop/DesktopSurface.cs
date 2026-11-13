@@ -983,6 +983,12 @@ public sealed class DesktopWindow : IAsyncDisposable
     private int _stateDispatching;
     private readonly object? _stateSource;
 
+    // region/1: routes the frame of a region attached in this window's page to the region's guest until the result is
+    // disposed (Internal.RegionFrames); null when this window's host routes none, such as an installed browser or a
+    // window host of the application's own.
+    internal IDisposable? AttachRegionFrame(Internal.RegionFrameRoute route) =>
+        _engine.SupportsRegionFrames ? _engine.RegionFrames.Add(route) : null;
+
     internal DesktopWindow(
         DesktopSurface surface,
         WebUiWindow engine,

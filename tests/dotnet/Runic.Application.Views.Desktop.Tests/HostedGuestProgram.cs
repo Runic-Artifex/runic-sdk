@@ -113,6 +113,12 @@ internal static class HostedGuestProgram
                         // Every mode but "no-elevated-host" allows an elevated host: an elevated guest is then hosted only
                         // by an elevated parent of its user whose offer allows it.
                         AllowElevatedHost = mode != "no-elevated-host",
+                        // The elevated pair as the guest would see it, without running elevated: "elevated-peers" checks its
+                        // peers as an elevated guest does, "elevated-unchecked" plays a system without a peer lookup.
+                        ReadPrivileges = mode is "elevated-peers" or "elevated-unchecked"
+                            ? static () => new Runic.Application.Views.Desktop.Hosting.GuestPrivilegeFacts(Elevated: true, SameUser: true, ParentElevated: true)
+                            : Runic.Application.Views.Desktop.Hosting.GuestPrivileges.Read,
+                        CanCheckPeers = mode != "elevated-unchecked" && Runic.Desktop.Internal.ElevatedPeers.IsAvailable,
                     },
                 },
                 host => BodyAsync(host, mode));
@@ -133,6 +139,8 @@ internal static class HostedGuestProgram
             case "component":
             case "region-page":
             case "no-elevated-host":
+            case "elevated-peers":
+            case "elevated-unchecked":
             {
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
                 await window.WaitForCloseAsync();

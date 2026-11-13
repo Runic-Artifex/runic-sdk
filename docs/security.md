@@ -402,8 +402,9 @@ What it means for applications:
   sensitive confirmation itself, such as with IntersectionObserver v2 visibility on Chromium. Runic adds no input
   guard.
 - **Tokens in logs.** An engine's console message for a framing that `frame-ancestors` blocked can carry the frame's
-  full address with its token. Runic's hosts redact it in the console messages they forward. A token in a log is
-  useless while its frame is connected, and it dies at detach.
+  full address with its token. Runic's hosts forward no engine console messages; the page messages they do log, page
+  errors (`client-errors/1`), have frame launch codes and frame tokens redacted, as do the guest's own logs. A token in a
+  log is useless while its frame is connected, and it dies at detach.
 - **Browser (serve-only) hosts.** A serve-only application can host guests and show their windows in regions of its
   pages, which run in the user's browser ([browser hosts](../specs/desktop/host-protocol.md#browser-hosts)). The rules
   above hold, and the frame must be cross-site. Its `frame-ancestors` names the origin with which the host page
@@ -418,9 +419,14 @@ What it means for applications:
 - **Elevated guests admit elevated peers only.** An elevated guest admits connections to every one of its listeners,
   its channel, its page surfaces and its frame and component surfaces, only from loopback peer processes that run
   elevated. An installed browser, or another process of the user that does not run elevated, then cannot render or
-  drive the elevated guest's page, also with a code or token it obtained (T23). On macOS, where Runic cannot look up a
-  connection's process, an elevated guest refuses region mode. **Not yet enforced:** the rule ships with region mode's
-  native work in 0.18.0.
+  drive the elevated guest's page, also with a code or token it obtained (T23). The guest looks up each connection's
+  process before it reads the request and closes a refused one without a response (event 2029,
+  `elevated-peer-refused`): on Windows the owning process of the connection, held open while its token is read, and on
+  Linux the socket's owner, which must be root. On macOS, where Runic cannot look up a connection's process, an
+  elevated guest refuses region mode, and its other listeners keep the elevated pair's protections without the check.
+  Residual: on Windows a process that inherited or was handed a socket from an elevated process passes, as that
+  process chose to; Windows services that run as SYSTEM or another service account pass too, since they have High
+  integrity or above.
 
 ### Components in a host page
 
@@ -454,8 +460,8 @@ What Runic still enforces:
   `<img>`, works by its URL alone while attached: the URL is a capability, as in a window.
 - **No guest script, no navigation.** The component's connection never runs script that the guest sends and never
   navigates the host page.
-- **Elevated guests.** An elevated guest offers component mode only once Runic enforces elevated-peer admission on its
-  listeners; until then it refuses it.
+- **Elevated guests.** An elevated guest offers component mode only with elevated-peer admission on its listeners
+  (event 2029 for a refused peer); on macOS, where Runic cannot check peers, it refuses component mode.
 
 What it means for applications:
 

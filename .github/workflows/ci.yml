@@ -1112,6 +1112,21 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+      # Region mode (#866): a host page frames a guest's page from the other loopback family; the frame gets none of the
+      # host page's credential or messages, drops onto it reach the guest (WebView2, WebKitGTK), and on WebView2 a
+      # shortcut it leaves unhandled runs the host window's menu item. REGION FINDING lines report how a click and a Tab
+      # into the frame look to the host page. The Windows runner runs elevated: --elevated also checks that elevated-peer
+      # admission lets WebView2's own processes through.
+      - name: Exercise region frames in the embedded window
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          smoke=tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+          case "$RUNNER_OS" in
+            Linux) GDK_BACKEND=x11 xvfb-run -a dotnet "$smoke" --region ;;
+            Windows) dotnet "$smoke" --region --elevated ;;
+            *) dotnet "$smoke" --region ;;
+          esac
       # B12 (I-066, I-073): the host lists and watches its monitors, a window opens on and moves to a monitor, enters
       # and leaves full screen, and a placement saved full-screen opens full-screen. Windows: a resolution change reaches
       # the watch, and a right-to-left window has a mirrored frame while WebView2 renders and hit-tests the page
@@ -1294,6 +1309,9 @@ jobs:
             probe="$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe"
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility \
               --probe "$probe" --receipt artifacts/accessibility/webview2.json
+            # A guest's button inside a region's cross-site frame (#866), found and pressed through UI Automation.
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility --region \
+              --probe "$probe" --receipt artifacts/accessibility/webview2-region.json
             exit
           fi
           dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0
@@ -1301,11 +1319,15 @@ jobs:
           if [[ "$RUNNER_OS" == macOS ]]; then
             eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
               --accessibility --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview.json
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
+              --accessibility --region --probe "${probe[@]}" --receipt artifacts/accessibility/wkwebview-region.json
             exit
           fi
           for toolkit in gtk3 gtk4; do
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --receipt "artifacts/accessibility/$toolkit.json"
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+              -c Release --no-build -- --accessibility "$toolkit" --region --probe "${probe[@]}" --receipt "artifacts/accessibility/$toolkit-region.json"
           done
       - name: Retain accessibility receipts
         if: always()

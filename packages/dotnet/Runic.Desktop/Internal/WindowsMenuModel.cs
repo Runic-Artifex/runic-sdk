@@ -136,7 +136,8 @@ internal static class WindowsMenuKeys
         (() => {
           "use strict";
           const view = globalThis.chrome?.webview;
-          if (globalThis.top !== globalThis || typeof view?.postMessage !== "function") return;
+          // Subframes report too; the host hears only the top-level document and attached regions' frames.
+          if (typeof view?.postMessage !== "function") return;
           const post = view.postMessage.bind(view);
           const stringify = JSON.stringify;
           const later = globalThis.setTimeout.bind(globalThis);

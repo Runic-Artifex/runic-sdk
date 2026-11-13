@@ -18,6 +18,18 @@ internal static partial class WindowsWebView2Interop
     internal const int NavigationCompletedIsSuccessSlot = 3;
     internal const int NavigationCompletedWebErrorStatusSlot = 4;
     internal const int ProcessFailedKindSlot = 3;
+    // ICoreWebView2ProcessFailedEventArgs2::get_FrameInfosForFailedProcess, ICoreWebView2FrameInfoCollection::GetIterator,
+    // ICoreWebView2FrameInfoCollectionIterator::get_HasCurrent, GetCurrent and MoveNext, ICoreWebView2FrameInfo::get_Source.
+    internal static readonly Guid ProcessFailedEventArgs2 = new("4dab9422-46fa-4c3e-a5d2-41d2071d3680");
+    internal const int ProcessFailedFrameInfosSlot = 7;
+    internal const int FrameInfoCollectionIteratorSlot = 3;
+    internal const int FrameInfoIteratorHasCurrentSlot = 3;
+    internal const int FrameInfoIteratorCurrentSlot = 4;
+    internal const int FrameInfoIteratorMoveNextSlot = 5;
+    internal const int FrameInfoSourceSlot = 4;
+    // COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED and _FRAME_RENDER_PROCESS_EXITED.
+    internal const int RenderProcessExited = 1;
+    internal const int FrameRenderProcessExited = 3;
     internal const int NewWindowRequestedSlot = 44;
     internal const int DownloadStartingSlot = 75;
     internal const int SettingsDevToolsSlot = 12;
@@ -77,6 +89,12 @@ internal static partial class WindowsWebView2Interop
     internal const int FrameNestedFrameCreatedSlot = 30;
     internal static readonly Guid Frame2Interface = new("7a6a5834-d185-4dbf-b63f-4a9bc43107d4");
     internal static readonly Guid Frame7Interface = new("3598cfa2-d85d-5a9f-9228-4dde1f59ec64");
+    // ICoreWebView2Frame2::add_NavigationStarting and ICoreWebView2Frame3::add_PermissionRequested, which a frame raises
+    // for its own and its descendants' requests before the WebView does.
+    internal const int FrameNavigationStartingSlot = 11;
+    internal static readonly Guid Frame3Interface = new("b50d82cc-cc28-481d-9614-cb048895e6a0");
+    internal const int FramePermissionRequestedSlot = 24;
+    internal static readonly Guid PermissionRequestedEventArgs2 = new("74d7127f-9de6-4200-8734-42d6fb4ff741");
     internal static readonly Guid WebMessageReceivedEventArgs2 = new("06fc7ab7-c90c-4297-9389-33ca01cf6d5e");
     internal static readonly Guid WebView4Interface = new("20d02d59-6df2-42dc-bd06-f98a694b1302");
     // ICoreWebView2_13::get_Profile and ICoreWebView2Profile::put_PreferredColorScheme (COREWEBVIEW2_PREFERRED_COLOR_SCHEME
@@ -292,6 +310,11 @@ internal sealed class WindowsWebView2Controller : IDisposable
     private nint _webView4;
     private nint _framesSource;
     private WebViewFrames? _frames;
+    private bool _framesUnavailable;
+    // What the window hears from its subframes (ICoreWebView2Frame2's WebMessageReceived), in order: drops, menu keys.
+    private readonly List<Action<nint>> _frameReceivers = [];
+    // The regions whose frames' permission requests their guests' grants decide (RegisterEvents).
+    private RegionFrames? _permissionRegions;
     private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
     private readonly List<nint> _receivers = [];
 
@@ -379,20 +402,97 @@ internal sealed class WindowsWebView2Controller : IDisposable
             finally { WindowsWebView2Interop.Release(args2); }
         }));
 
-    // The keys the page left unhandled, reported by WindowsMenuKeys.Script from the top-level document of the
-    // presented origin, with the script's token.
-    internal async Task EnableMenuKeysAsync(Uri presentedUrl, Action<MenuKeyReport> pressed)
+    // The keys the page left unhandled, reported by WindowsMenuKeys.Script, with the script's token, from the top-level
+    // document of the presented origin and from the frames of attached regions (RegionFrames): a key the guest's page
+    // left unhandled reaches the host window's menus (host-protocol.md, Features in a region).
+    internal async Task EnableMenuKeysAsync(Uri presentedUrl, Action<MenuKeyReport> pressed, RegionFrames? regions = null)
     {
         var token = Guid.NewGuid().ToString("N");
-        AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+        void Read(nint args)
         {
-            if (!PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.WebMessageSourceSlot))) return;
             string? message;
             try { message = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
             catch (ArgumentException) { return; } // Not a string message: not ours.
             if (WindowsMenuKeys.Parse(message, token) is { } report) pressed(report);
+        }
+        AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+        {
+            if (PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.WebMessageSourceSlot))) Read(args);
         }));
+        if (regions is not null && EnsureFrames())
+            _frameReceivers.Add(args =>
+            {
+                if (regions.Find(GetString(args, WindowsWebView2Interop.WebMessageSourceSlot)) is not null) Read(args);
+            });
         await AddDocumentStartScriptAsync(WindowsMenuKeys.Script(token));
+    }
+
+    // FrameCreated of the WebView, whose frames' messages reach _frameReceivers; false on a runtime without
+    // ICoreWebView2_4, which hears the top-level document only.
+    private bool EnsureFrames()
+    {
+        if (_frames is not null) return true;
+        if (_framesUnavailable) return false;
+        nint webView4;
+        try { webView4 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView4Interface); }
+        catch (InvalidCastException)
+        {
+            _framesUnavailable = true;
+            return false;
+        }
+        _frames = new WebViewFrames(args =>
+        {
+            foreach (var receive in _frameReceivers) receive(args);
+        }, _permissionRegions is { } regions ? (args, frameUrl) => DecideRegionPermission(args, regions.Find(frameUrl)) : null);
+        try { AddEvent<IWebViewFrameCreated>(webView4, WindowsWebView2Interop.FrameCreatedSlot, new WebViewEvent(_frames.Created)); }
+        finally { _framesSource = webView4; }
+        return true;
+    }
+
+    // A render process that ended: a frame's (ICoreWebView2ProcessFailedEventArgs2 names the frames it rendered, which
+    // now show an error page) or the page's own, which rendered its same-site frames. The regions of those frames detach
+    // with crashed (host-protocol.md, Lifecycle in a region).
+    internal void EnableRegionCrashes(RegionFrames regions) =>
+        AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
+        {
+            if (regions.IsEmpty) return;
+            var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot);
+            if (kind == WindowsWebView2Interop.RenderProcessExited) regions.HostPageProcessEnded();
+            else if (kind == WindowsWebView2Interop.FrameRenderProcessExited) regions.FrameProcessEnded(FailedFrameSources(args));
+        }));
+
+    private static List<string?> FailedFrameSources(nint args)
+    {
+        List<string?> sources = [];
+        nint args2;
+        try { args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.ProcessFailedEventArgs2); }
+        catch (InvalidCastException) { return sources; }
+        try
+        {
+            var collection = WindowsWebView2Interop.GetPointer(args2, WindowsWebView2Interop.ProcessFailedFrameInfosSlot);
+            if (collection == 0) return sources;
+            try
+            {
+                var iterator = WindowsWebView2Interop.GetPointer(collection, WindowsWebView2Interop.FrameInfoCollectionIteratorSlot);
+                if (iterator == 0) return sources;
+                try
+                {
+                    // At most a page's worth of frames.
+                    for (var count = 0; count < 1_024 && WindowsWebView2Interop.GetInteger(iterator, WindowsWebView2Interop.FrameInfoIteratorHasCurrentSlot) != 0; count++)
+                    {
+                        var info = WindowsWebView2Interop.GetPointer(iterator, WindowsWebView2Interop.FrameInfoIteratorCurrentSlot);
+                        try { if (info != 0) sources.Add(GetString(info, WindowsWebView2Interop.FrameInfoSourceSlot)); }
+                        finally { WindowsWebView2Interop.Release(info); }
+                        if (WindowsWebView2Interop.GetInteger(iterator, WindowsWebView2Interop.FrameInfoIteratorMoveNextSlot) == 0) break;
+                    }
+                }
+                finally { WindowsWebView2Interop.Release(iterator); }
+            }
+            finally { WindowsWebView2Interop.Release(collection); }
+        }
+        catch (Exception error) when (error is COMException or ArgumentException) { }
+        finally { WindowsWebView2Interop.Release(args2); }
+        return sources;
     }
 
     // Native checks drive trusted input (for example a Tab key) through the DevTools protocol.
@@ -447,31 +547,33 @@ internal sealed class WindowsWebView2Controller : IDisposable
     // Dropped files reach the host as the File objects of the page's drop event, which carry their paths only on this
     // side: Runic's document-start script, which WebView2 runs in every frame, hands them over
     // (FileDropSupport.WebView2Script). The top-level document and the frames of the presented origin are heard, with the
-    // script's token; a frame's messages arrive on the frame (ICoreWebView2Frame2), which FrameCreated hands over.
-    internal async Task EnableFileDropsAsync(Uri presentedUrl, Action<DesktopFileDropEventArgs> dropped)
+    // script's token; a frame's messages arrive on the frame (ICoreWebView2Frame2), which FrameCreated hands over. A
+    // drop in an attached region's frame goes to its guest (RegionFrames; D059.3), never to the window; every other
+    // frame of another origin is not heard.
+    internal async Task EnableFileDropsAsync(Uri presentedUrl, Action<DesktopFileDropEventArgs> dropped, RegionFrames? regions = null)
     {
         var token = Guid.NewGuid().ToString("N");
         void Receive(nint args)
         {
-            if (ReadFileDrop(args, presentedUrl, token) is { } drop) dropped(drop);
+            var source = GetString(args, WindowsWebView2Interop.WebMessageSourceSlot);
+            if (PresentationSecurityPolicy.IsSameOrigin(presentedUrl, source))
+            {
+                if (ReadFileDrop(args, token) is { } drop) dropped(drop);
+            }
+            else if (regions?.Find(source) is { } region && ReadFileDrop(args, token) is { } regionDrop)
+            {
+                region.Dropped(regionDrop);
+            }
         }
         AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(Receive));
         // ICoreWebView2_4; an older runtime without it delivers drops of the top-level document only.
-        nint webView4;
-        try { webView4 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView4Interface); }
-        catch (InvalidCastException) { webView4 = 0; }
-        if (webView4 != 0)
-        {
-            _frames = new WebViewFrames(Receive);
-            try { AddEvent<IWebViewFrameCreated>(webView4, WindowsWebView2Interop.FrameCreatedSlot, new WebViewEvent(_frames.Created)); }
-            finally { _framesSource = webView4; }
-        }
+        if (EnsureFrames()) _frameReceivers.Add(Receive);
         await AddDocumentStartScriptAsync(FileDropSupport.WebView2Script(token));
     }
 
-    internal static DesktopFileDropEventArgs? ReadFileDrop(nint args, Uri presentedUrl, string token)
+    // The drop of a message whose source was checked: its paths come from the File objects WebView2 hands over.
+    internal static DesktopFileDropEventArgs? ReadFileDrop(nint args, string token)
     {
-        if (!PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.WebMessageSourceSlot))) return null;
         string? message;
         try { message = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
         catch (ArgumentException) { return null; } // Not a string message: not ours.
@@ -510,11 +612,16 @@ internal sealed class WindowsWebView2Controller : IDisposable
         finally { WindowsWebView2Interop.Release(args2); }
     }
 
+    // Native smokes only: every message the top-level WebMessageReceived hears, with its source, set before the window
+    // opens. A region's guest frame must not reach it (Runic.Desktop.WebViewSmoke --region).
+    internal static Action<string?, string?>? TopLevelMessageObserver { get; set; }
+
     internal void RegisterEvents(
         Action<string> titleChanged,
         Action closeRequested,
         DesktopPermissionGrant permissions,
-        Uri presentedUrl)
+        Uri presentedUrl,
+        RegionFrames? regions = null)
     {
         AddEvent<IWebViewTitleChanged>(WindowsWebView2Interop.DocumentTitleChangedSlot, new WebViewEvent(_ =>
         {
@@ -523,17 +630,49 @@ internal sealed class WindowsWebView2Controller : IDisposable
             finally { Marshal.FreeCoTaskMem(title); }
         }));
         AddEvent<IWebViewCloseRequested>(WindowsWebView2Interop.WindowCloseRequestedSlot, new WebViewEvent(_ => closeRequested()));
+        if (TopLevelMessageObserver is { } observe)
+            AddEvent<IWebViewWebMessageReceived>(WindowsWebView2Interop.WebMessageReceivedSlot, new WebViewEvent(args =>
+            {
+                string? text;
+                try { text = GetString(args, WindowsWebView2Interop.WebMessageAsStringSlot); }
+                catch (ArgumentException) { text = null; }
+                observe(GetString(args, WindowsWebView2Interop.WebMessageSourceSlot), text);
+            }));
         AddEvent<IWebViewPermissionRequested>(WindowsWebView2Interop.PermissionRequestedSlot, new WebViewEvent(args =>
         {
-            // Microphone (1) and camera (2), only for the presented origin; the URI names the requesting frame.
+            // Microphone (1) and camera (2), only for the presented origin; the URI names the requesting frame. An
+            // attached region's frame asks with its guest's grant, not the window's (host-protocol.md, Features in a
+            // region).
             var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.PermissionKindSlot);
-            var allowed = kind is 1 or 2 && (permissions & DesktopPermissionGrant.MediaCapture) != 0 &&
-                PresentationSecurityPolicy.IsSameOrigin(presentedUrl, GetString(args, WindowsWebView2Interop.PermissionUriSlot));
+            var uri = GetString(args, WindowsWebView2Interop.PermissionUriSlot);
+            var allowed = kind is 1 or 2 && (PresentationSecurityPolicy.IsSameOrigin(presentedUrl, uri)
+                ? (permissions & DesktopPermissionGrant.MediaCapture) != 0
+                : regions?.Find(uri) is { AllowsMediaCapture: true });
             WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.PermissionStateSlot, allowed ? 1 : 2);
-            var args2 = WindowsWebView2Interop.Query(args, new Guid("74d7127f-9de6-4200-8734-42d6fb4ff741"));
+            var args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.PermissionRequestedEventArgs2);
             try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.PermissionHandledSlot, 1); }
             finally { WindowsWebView2Interop.Release(args2); }
         }));
+        if (regions is not null)
+        {
+            _permissionRegions = regions;
+            _ = EnsureFrames();
+        }
+    }
+
+    // A request from a region's frame or its descendants (ICoreWebView2Frame3): microphone and camera by the guest's
+    // grant, everything else denied, and handled, so the WebView's own event, which may name the top-level page as the
+    // requester, does not decide it. A frame that is no region's is left to that event.
+    private static void DecideRegionPermission(nint args, RegionFrameRoute? region)
+    {
+        if (region is null) return;
+        var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.PermissionKindSlot);
+        WindowsWebView2Interop.SetInteger(args, WindowsWebView2Interop.PermissionStateSlot, kind is 1 or 2 && region.AllowsMediaCapture ? 1 : 2);
+        nint args2;
+        try { args2 = WindowsWebView2Interop.Query(args, WindowsWebView2Interop.PermissionRequestedEventArgs2); }
+        catch (InvalidCastException) { return; }
+        try { WindowsWebView2Interop.SetInteger(args2, WindowsWebView2Interop.PermissionHandledSlot, 1); }
+        finally { WindowsWebView2Interop.Release(args2); }
     }
 
     // Whether the developer tools are enabled, for native checks.
@@ -949,7 +1088,9 @@ internal sealed partial class WebViewEnvironmentOptions(string? arguments, strin
 
 // The frames of a WebView2 document, each listened to for Runic's drop messages until it is destroyed or the window
 // closes. Nested frames arrive through ICoreWebView2Frame7 where the runtime has it. Window thread only.
-internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
+// permissionRequested: a frame's PermissionRequested (ICoreWebView2Frame3) with the frame's address, as its latest
+// navigation named it; the handler may set the request's state and Handled.
+internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>? permissionRequested = null) : IDisposable
 {
     private readonly List<Frame> _frames = [];
     private bool _disposed;
@@ -969,6 +1110,20 @@ internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
             _frames.Add(entry);
             entry.Add(frame2, WindowsWebView2Interop.FrameWebMessageReceivedSlot, new WebViewComReference<IWebViewFrameWebMessageReceived>(new WebViewEvent(receive)));
             entry.Add(frame2, WindowsWebView2Interop.FrameDestroyedSlot, new WebViewComReference<IWebViewFrameDestroyed>(new WebViewFrameDestroyed(() => Destroyed(entry))));
+            if (permissionRequested is { } decide)
+            {
+                // A region frame's requests are decided by its guest's grant (RegionFrames): Chromium may attribute a
+                // request that the frame's allow attribute delegated to the top-level page's origin.
+                entry.Add(frame2, WindowsWebView2Interop.FrameNavigationStartingSlot, new WebViewComReference<IWebViewNavigationStarting>(
+                    new WebViewEvent(args => entry.Url = GetString(args, WindowsWebView2Interop.NavigationStartingUriSlot))));
+                try
+                {
+                    entry.Permissions = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame3Interface);
+                    entry.Add(entry.Permissions, WindowsWebView2Interop.FramePermissionRequestedSlot, new WebViewComReference<IWebViewPermissionRequested>(
+                        new WebViewEvent(args => decide(args, entry.Url))));
+                }
+                catch (InvalidCastException) { } // A runtime without frame permission events: the WebView's event decides.
+            }
             try
             {
                 entry.Nested = WindowsWebView2Interop.Query(frame, WindowsWebView2Interop.Frame7Interface);
@@ -994,10 +1149,20 @@ internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
         _frames.Clear();
     }
 
+    private static string? GetString(nint instance, int slot)
+    {
+        var value = WindowsWebView2Interop.GetPointer(instance, slot);
+        try { return Marshal.PtrToStringUni(value); }
+        finally { Marshal.FreeCoTaskMem(value); }
+    }
+
     private sealed class Frame(nint frame2) : IDisposable
     {
         private readonly List<(nint Source, int Slot, long Token, IDisposable Handler)> _events = [];
         internal nint Nested { get; set; }
+        internal nint Permissions { get; set; }
+        // The address of the frame's latest navigation, the frame launch address or the page it redirected to.
+        internal string? Url { get; set; }
 
         internal void Add<T>(nint source, int slot, WebViewComReference<T> handler) where T : class
         {
@@ -1017,6 +1182,8 @@ internal sealed class WebViewFrames(Action<nint> receive) : IDisposable
             _events.Clear();
             WindowsWebView2Interop.Release(Nested);
             Nested = 0;
+            WindowsWebView2Interop.Release(Permissions);
+            Permissions = 0;
             WindowsWebView2Interop.Release(frame2);
         }
     }

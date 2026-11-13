@@ -1078,8 +1078,18 @@ sealed class CheckPolicy : IRunicHostedWindowPolicy
   server's. The guest's storage in a region lives in the host window's profile: treat it as session-scoped. A refused
   or failed attach leaves the window detached (event 2026).
 
-Drops into a region's frame, the frame's permission requests and menu keys reach the guest from 0.18's native routing
-(`Runic.Desktop/README.md`).
+- **Drops, permissions and keys.** The host window's web view routes the attached frame to its guest
+  (`Runic.Desktop/README.md`): a drop onto the frame reaches the guest as `files-dropped` under the policy
+  (`RunicHostedServiceKind.FileDrop`), never the host page; the frame's camera and microphone requests are decided by
+  the region's permissions, except on WebKitGTK, which denies them; a shortcut the guest's page leaves unhandled runs
+  the host window's menu item. A window host of the application's own, such as Runic.Desktop.Gtk4's, routes none of
+  these: drops onto the frame are discarded there.
+- **Crashes.** When the engine reports that the frame's content process ended, the region detaches with `crashed`; a
+  frame of its own process (WebView2) attaches again with a new code, and a host page whose own process ended
+  (WebKit's frames share it) declares the region again when it reloads.
+- **Elevated guests.** A guest of the elevated pair admits connections, also its frame's, only from elevated loopback
+  peers (event 2029). On macOS, which has no peer lookup, it refuses region mode, and `Embed` leaves the window detached
+  (event 2026, `refused`).
 
 #### Browser (serve-only) hosts
 

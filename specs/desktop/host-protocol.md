@@ -1131,7 +1131,8 @@ registers no `beforeunload` listener: a region window guards its close with `clo
   frame asks, WebKitGTK, denies the frame's requests, as it denies any frame of another origin's.
 - **Keys.** While the frame has the focus, keys go to the guest's page first; the host page's script does not see
   them. The host window's native menu shortcuts work as for its own pages, after the guest's page left the key
-  unhandled.
+  unhandled. On WebView2, where the page reports the keys it left unhandled, Runic's host hears those reports from an
+  attached region's frame as from its own page, and from no other frame of another origin.
 - **Owned windows.** A window that a region window owns opens in window mode, owned by the host window that shows the
   region, or last showed it; with `modality: "window"`, it is modal to that host window.
 
@@ -1168,6 +1169,12 @@ The guest never takes the keyboard focus from the host page:
 - **The guest goes away**: the host empties its regions, and its page shows its own content for the ended state.
 - **The frame's content process ends**: the host detaches the window with `crashed` and attaches it again with a new
   code. A host page never loads a frame launch address twice: the second load would be a launch conflict.
+- **Runic's hosts** learn of an ended content process from the engine. WebView2 names the frames of a frame render
+  process that ended, which then show an error page: their regions detach with `crashed` and attach again. The end of
+  the host page's own process, WebView2's render process or WebKit's web content process, ends the frames it rendered
+  too, since WebKit runs a page's frames in the page's process: their regions detach with `crashed`, and the page's
+  reload declares them again. When the host page's connection to the host's backend closes before the engine reports
+  the end, the detach reads `reload`.
 
 ### Browser hosts
 
@@ -1357,10 +1364,9 @@ on the component surface, and the component, whose page is the host page, reache
 
 A component of an elevated guest runs in the host page's realm with the guest's token, so with the token any process
 that renders the host page acts as the elevated guest's page. An elevated guest allows component mode only for an
-elevated host, and its component surface admits only [elevated peers](#elevated-peer-admission). Until Runic's guest
-enforces elevated-peer admission, an elevated guest does not list `region-component/1` and answers a component attach
-`rejected` with `refused`. A browser host, and a host that does not run elevated, cannot show an elevated guest as a
-component.
+elevated host, and its component surface admits only [elevated peers](#elevated-peer-admission). Where the guest
+cannot check its peers (macOS), it does not list `region-component/1` and answers a component attach `rejected` with
+`refused`. A browser host, and a host that does not run elevated, cannot show an elevated guest as a component.
 
 ## Lifecycle
 
@@ -1418,15 +1424,17 @@ rendered by whichever process hosts the page, so without the rule a process that
 installed browser or a process that obtained a frame launch code or token, could render and drive the elevated guest's
 page.
 
-> **Not yet enforced.** Runic's guest implements this rule with region mode's per-engine work in 0.18.0. Until then
-> an elevated guest relies on the protections of the elevated pair alone.
-
 - **The check.** The guest looks up the process that owns the peer's end of each accepted TCP connection, before it
   reads the request: on Windows the owning process of the connection (`GetExtendedTcpTable`) and its token, which
   must be elevated (`TokenElevation`) or have an integrity level of High or above, as for the elevated pair's parent;
   on Linux the owner of the socket (`/proc/net/tcp`, `/proc/net/tcp6`), which must be uid 0. A peer that fails the
   check, or that the guest cannot look up, is refused: the connection is closed without a response, and the guest
   reports `elevated-peer-refused` to its diagnostics.
+- **Process ids.** On Windows the guest holds the owning process open while it reads its token, and reads the
+  connection's owner again while it holds it, so the process it read is the one that owns the connection: an id is
+  reused only once every handle to the old process is closed. The process must still run and must have been created
+  before the connection was accepted. An IPv4 connection that a dual-mode socket lists with IPv4-mapped IPv6 addresses
+  is matched as IPv4.
 - **What passes.** The elevated host's own processes, including its web view's processes, which start from the host's
   token. An installed browser of the user, a browser (serve-only) host, and any process of the user that does not run
   elevated fail, whatever code or token they hold.
@@ -1564,15 +1572,15 @@ application is in the [security guide](../../docs/security.md#hosted-application
     focus out of its page for the guest, counts focus that the user did not move into the region as the guest's for
     the window services, and redacts frame tokens in console messages it forwards.
 14. **Elevated peers.** An elevated guest admits connections to its listeners only from elevated loopback peers, and
-    refuses region mode where it cannot check them ([elevated-peer admission](#elevated-peer-admission); not yet
-    enforced).
+    refuses region mode where it cannot check them ([elevated-peer admission](#elevated-peer-admission)).
 15. **Components.** Component mode needs both opt-ins: a guest lists `region-component/1` only when its application
     allows the host, and a host shows a component only when its policy decides it. The component token travels only
     over the channel and to the page that declared the region, and is never in a URL. A guest admits a component's
     WebSocket only with `Origin` equal to the embedder and the token, one page at a time, and serves its component build,
     and its blobs and uploads cross-origin, only to the embedder; everything ends at detach. A component never runs
-    script of its guest or navigates the host page. An elevated guest refuses component mode until it enforces
-    elevated-peer admission ([component mode](#component-mode-region-component1)).
+    script of its guest or navigates the host page. An elevated guest allows component mode only with elevated-peer
+    admission on its listeners, and refuses it where it cannot check its peers
+    ([component mode](#component-mode-region-component1)).
 
 ### Threats
 
@@ -1614,7 +1622,7 @@ The threats of [regions](#regions-region1) (`region/1`) and of [component mode](
 | T20 | A guest's frame takes the keyboard focus from the host page with script and reads keystrokes meant for the host | `present` never takes the focus from the host page; focus that entered the region without the user's Tab or click counts as the guest's for the window services. Residual: the guest's page reads the keys typed while it has the focus, as a process of the same user can at the desktop level |
 | T21 | A frame launch code or frame token leaks, such as through a console message of a framing that `frame-ancestors` blocked, or the host page uses the code itself | Codes are one-time and short-lived, and come only over the channel; the token is in a fragment, never sent to a server or in a `Referer`, and is removed from the address; a token admits one connected page at a time and dies at detach; a spent code presented again revokes the token; `frame-ancestors` admits only the embedder; console forwarding redacts `#runic-frame=`. Residual: a host page can keep the guest's page from loading by spending its code |
 | T22 | The guest's surface receives the host page's cookies, or its frame shares the host page's renderer process | The frame surface is cross-site to the host page ([guest origin](#guest-origin)), and frame admission uses no cookie. Residual: the same-site fallback, which only an embedded host allows and logs; and in engines without site isolation (WebKit) the frame shares the host page's content process, which the same-origin policy still separates |
-| T23 | A process that does not run elevated renders or drives an elevated guest's page, such as an installed browser or a process that obtained a frame launch code or token | [Elevated-peer admission](#elevated-peer-admission) on every listener of an elevated guest; on macOS an elevated guest refuses region mode. Not yet enforced |
+| T23 | A process that does not run elevated renders or drives an elevated guest's page, such as an installed browser or a process that obtained a frame launch code or token | [Elevated-peer admission](#elevated-peer-admission) on every listener of an elevated guest; on macOS an elevated guest refuses region mode. Residual: on Windows a process that an elevated process handed or let inherit its connected socket passes, as that process chose to, and so do services of High or System integrity |
 | T24 | A component's code reads or changes the host page, uses its Bridge, or keeps running after the region went; the host page reads the guest's token or state and acts as the guest's page | Inherent to [component mode](#component-mode-region-component1), which merges the two trust domains at the page: both sides opt in, for applications of the same vendor, and each backend keeps its own policy for what the other's page asks. The token dies at detach, and the component's connection with it. Residual: a host that embeds a component trusts the guest's code as its own page's, and the reverse |
 | T25 | Another page or process connects as the component: another local application's page in the user's browser, a web page, a process that is not a browser and sends the embedder's `Origin`, or a replay of a token after the region went | The upgrade needs both `Origin` equal to the embedder, which a browser cannot forge, and the token, which only the host's backend and page hold; the token is never in a URL; one page at a time; the token dies at detach and at the next attach. Residual: a process of the same user that reads the host's memory, outside what Runic protects |
 | T26 | Another origin loads the guest's component build or reaches its blobs and uploads through CORS | The build, blob reads that name an origin and uploads are granted to the embedder of the current attach alone, with `Vary: Origin`; nothing before an attach or after a detach. Residual: a no-cors embedding of a blob, such as an `<img>` on another page, works with its URL alone while the component is attached, as the URL is the capability |

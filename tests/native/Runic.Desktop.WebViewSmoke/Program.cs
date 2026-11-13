@@ -52,7 +52,18 @@ try
         watchdog.Change(TimeSpan.FromMinutes(6), Timeout.InfiniteTimeSpan);
         var hostName = OperatingSystem.IsWindows() ? "webview2" : OperatingSystem.IsMacOS() ? "wkwebview" : "gtk3";
         var probe = AccessibilitySmoke.ProbeCommand(args);
-        Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(), host => AccessibilitySmoke.RunAsync(host, hostName, probe));
+        // --region before --probe: the probe's own arguments follow it.
+        var region = args.TakeWhile(static argument => argument != "--probe").Contains("--region", StringComparer.Ordinal);
+        Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(), host => AccessibilitySmoke.RunAsync(host, hostName, probe, region: region));
+    }
+    else if (args.Contains("--region", StringComparer.Ordinal))
+    {
+        // Region mode's frames (#866). Must run before the first await, as --accessibility: on macOS the AppKit loop owns
+        // the main thread. Windows adds a menu bar for the shortcut the frame leaves unhandled.
+        var hostName = OperatingSystem.IsWindows() ? "webview2" : OperatingSystem.IsMacOS() ? "wkwebview" : "gtk3";
+        var options = OperatingSystem.IsWindows() ? CreateHostOptions() with { MenuBar = RegionSmoke.Bar } : CreateHostOptions();
+        Environment.ExitCode = DesktopEventLoop.Run(options,
+            host => RegionSmoke.RunAsync(host, hostName, args.Contains("--elevated", StringComparer.Ordinal)));
     }
     else if (args.Contains("--zoom", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
     {

@@ -105,7 +105,7 @@ internal sealed class HostedRegion : IDisposable
                 "The application runs elevated, so it does not show its page in a region of a browser host's page.").ConfigureAwait(false);
             return;
         }
-        if (component && !HostedGuest.ComponentModeAvailable)
+        if (component && !_guest.ComponentModeAvailable)
         {
             // An elevated guest's token in a host page's realm needs elevated-peer admission (host-protocol.md, Component mode).
             await request.FailAsync("rejected", "refused", "This elevated application allows component mode only with elevated-peer admission.")

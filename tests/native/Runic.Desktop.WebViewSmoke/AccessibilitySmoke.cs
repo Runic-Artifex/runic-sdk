@@ -69,6 +69,30 @@ internal static class AccessibilitySmoke
         </script></body></html>
         """;
 
+    // --region: a host page whose region shows a guest's page in a cross-site frame, as region mode does (#866); the probe
+    // (--region) finds and presses the guest's button inside the region through the accessibility API, then the host's
+    // Finish. The guest's page tells the host page of the press.
+    internal const string RegionPage = """
+        <!doctype html><html lang="en"><head><meta charset="utf-8"><script src="webui.js"></script>
+        <title>Runic accessibility fixture</title>
+        <style>body { font: 16px system-ui; } iframe { width: 100%; height: 260px; border: 1px solid #888; }</style></head>
+        <body><main><h1>Region fixture</h1>
+        <iframe id="region" sandbox="allow-scripts allow-same-origin allow-forms" title="Region guest"></iframe>
+        <button id="finish" type="button">Finish</button></main>
+        <script>
+        window.__regionPressed = false;
+        const frame = document.getElementById('region');
+        addEventListener('message', event => { if (event.source === frame.contentWindow && event.data === 'pressed') window.__regionPressed = true; });
+        document.getElementById('finish').addEventListener('click', () => { window.__runicRequest = 'finish'; });
+        </script></body></html>
+        """;
+
+    internal const string RegionGuestPage = """
+        <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Region guest</title></head>
+        <body><main><h1>System check</h1><button id="run" type="button">Run system check</button></main>
+        <script>document.getElementById('run').addEventListener('click', () => parent.postMessage('pressed', '*'));</script></body></html>
+        """;
+
     internal const string PoliteAnnouncement = "Runic polite announcement";
     internal const string AssertiveAnnouncement = "Runic assertive announcement";
 
@@ -85,8 +109,9 @@ internal static class AccessibilitySmoke
 
     // announce: how the host announces, when not through the window's DesktopWindow.AnnounceAsync.
     internal static async Task<int> RunAsync(DesktopHost host, string hostName, IReadOnlyList<string> probe,
-        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null)
+        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null, bool region = false)
     {
+        if (region) probe = [.. probe, "--region"];
         // The probe starts first and registers for events, as a screen reader runs before the application: WebKitGTK's
         // web process reads the registered events when it starts.
         var start = new ProcessStartInfo(probe[0]) { UseShellExecute = false, RedirectStandardOutput = true };
@@ -108,7 +133,8 @@ internal static class AccessibilitySmoke
         });
         await listening.Task.WaitScaledAsync(TimeSpan.FromSeconds(60));
 
-        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
+        await using var guest = region ? await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(RegionGuestPage) }) : null;
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(region ? RegionPage : Page) });
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
         {
             Browser = BrowserKind.Embedded,
@@ -121,6 +147,15 @@ internal static class AccessibilitySmoke
         announce ??= (message, priority, cancellationToken) => window.AnnounceAsync(message, priority, cancellationToken).AsTask();
         if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(20)) != "Runic accessibility fixture")
             throw new InvalidOperationException("The fixture page did not load.");
+        if (guest is not null)
+        {
+            // The guest's frame launch address on the other loopback family, as region mode's guest answers region-attach.
+            var launch = await guest.BeginFrameLaunchAsync(Runic.Desktop.Internal.RegionFrames.Origin(surface.Url), allowSameSite: true,
+                measuresHeight: false, CancellationToken.None);
+            await surface.ExecuteJavaScriptAsync(
+                $"document.getElementById('region').src = {System.Text.Json.Nodes.JsonValue.Create(launch.Url.AbsoluteUri).ToJsonString()}; return '';");
+            Console.WriteLine($"ACCESSIBILITY region frame from {Runic.Desktop.Internal.RegionFrames.Origin(launch.Url)}{(launch.SameSite ? " (same-site)" : "")}.");
+        }
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
         using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(5));
         var exited = process.WaitForExitAsync(deadline.Token);
@@ -153,6 +188,13 @@ internal static class AccessibilitySmoke
         // The probe pressed Finish through the accessibility API before it exited.
         if (!finished && await surface.ExecuteJavaScriptAsync("return window.__runicRequest || '';") != "finish")
             throw new InvalidOperationException("The probe exited without pressing Finish through the accessibility API.");
+        if (region && await surface.ExecuteJavaScriptAsync("return String(window.__regionPressed);") != "true")
+            throw new InvalidOperationException("The probe's press of the guest's button in the region did not reach the guest's page.");
+        if (region)
+        {
+            Console.WriteLine($"PASS {hostName} accessibility region: the probe found and pressed the guest's button inside the region through the platform accessibility API.");
+            return 0;
+        }
         Console.WriteLine($"PASS {hostName} accessibility fixture: the probe read and changed the page through the platform accessibility API.");
         return 0;
     }
