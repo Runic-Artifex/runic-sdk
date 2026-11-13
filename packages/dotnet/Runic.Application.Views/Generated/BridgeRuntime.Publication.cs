@@ -72,6 +72,20 @@ public partial class ViewModelBridge<T>
 
     private const int MaximumChanges = 4_096;
 
+    // What publication did, for the scaling suite (BridgeCostCounters).
+    BridgeCostCounters IBridgeCostSource.Costs => Costs;
+    private BridgeCostCounters Costs { get; } = new();
+
+    int IBridgeCostSource.DataGraphWalks => _dataSubscriptions?.Walks ?? 0;
+
+    // Checks every row's key of a keyed collection; counted as rows scanned.
+    private BridgeCollectionKeyBaseline ScanKeys(string field, System.Collections.IEnumerable rows, Func<object?, string> keyOf)
+    {
+        var baseline = BridgeCollectionKeyBaseline.Scan(ModelName, field, rows, keyOf);
+        Costs.KeyScans += baseline.Count;
+        return baseline;
+    }
+
     /// <summary>Seam (P4 -> P5): publishes everything pending on the route for a reply and returns its revision.</summary>
     /// <remarks>
     /// Call it inside the model turn of the request's effects. It compares every member with the state last published
@@ -146,6 +160,7 @@ public partial class ViewModelBridge<T>
     private void PublishUnitCore()
     {
         if (IsInactive) return;
+        Costs.UnitsRun++;
         _dataSubscriptions?.SweepPending();
         RefreshPendingMembers();
         var changed = _changes;
@@ -199,6 +214,8 @@ public partial class ViewModelBridge<T>
         Published(changed);
         var baseRevision = _publishedRevision;
         var frame = WriteFrame(changes, baseRevision, revision, withSplices: true);
+        Costs.FramesWritten++;
+        Costs.FrameBytes += frame.Length;
         // A connection that does not use text-splice/1 may complete its hello before the frame is broadcast.
         Func<byte[]>? fallback = changes.Exists(static change => change.IsSplice)
             ? () => WriteValue(writer => WriteFrameTo(writer, changes, baseRevision, revision, withSplices: false)) : null;
@@ -282,7 +299,7 @@ public partial class ViewModelBridge<T>
                 var rows = descriptor.Get(_vm);
                 // A set validates the keys as a full state does.
                 if (rows is System.Collections.IEnumerable enumerable)
-                    _collectionKeys[descriptor] = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, enumerable, descriptor.Key);
+                    _collectionKeys[descriptor] = ScanKeys(descriptor.Name, enumerable, descriptor.Key);
                 else _collectionKeys.Remove(descriptor);
                 changes.Add(Change.Set(descriptor.Name, WriteMember(descriptor.Name), null));
             }
@@ -293,7 +310,7 @@ public partial class ViewModelBridge<T>
         foreach (var change in memberSets)
             if (Array.Find(_keyedCollections, descriptor => descriptor.Name == change.Field) is { } keyed
                 && keyed.Get(_vm) is System.Collections.IEnumerable rows)
-                BridgeCollectionKeyBaseline.Scan(ModelName, keyed.Name, rows, keyed.Key);
+                ScanKeys(keyed.Name, rows, keyed.Key);
         changes.AddRange(memberSets);
         changes.AddRange(texts);
         return changes;
@@ -316,6 +333,7 @@ public partial class ViewModelBridge<T>
                 continue;
             }
             if (target.Rows is not { } rows) continue;
+            Costs.PendingScans += _pendingCollectionChanges.Count;
             foreach (var change in _pendingCollectionChanges)
             {
                 if (change.Descriptor != rows) continue;
@@ -611,6 +629,8 @@ public partial class ViewModelBridge<T>
                 try
                 {
                     WriteMemberValue(member, comparing.Writer);
+                    Costs.MembersSerialized++;
+                    Costs.BytesSerialized += comparing.Writer.BytesCommitted + comparing.Writer.BytesPending;
                     var matches = comparing.Matches;
                     var version = VersionOf(member.Name);
                     if (matches && (version is null || _publishedVersions.GetValueOrDefault(member.Name) == version)) continue;
@@ -671,6 +691,7 @@ public partial class ViewModelBridge<T>
     {
         if (_baselines is null) return;
         _collectionSets.Add(descriptor);
+        Costs.PendingScans += _pendingCollectionChanges.Count;
         _pendingCollectionChanges.RemoveAll(change => change.Descriptor == descriptor);
         _collectionKeys.Remove(descriptor);
     }
@@ -726,6 +747,7 @@ public partial class ViewModelBridge<T>
                     {
                         ItemKeys = kind == "replace" ? args.NewItems?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [] : kind == "add" ? keys : [],
                     });
+                    Costs.PendingScans += _pendingCollectionChanges.Count;
                     if (_pendingCollectionChanges.Count(change => change.Descriptor == descriptor) > MaximumChanges)
                         MarkCollectionSet(descriptor);
                 }
@@ -749,6 +771,8 @@ public partial class ViewModelBridge<T>
                     if (!_collectionIndexes.TryGetValue(descriptor, out var indexes))
                     {
                         indexes = new(ReferenceEqualityComparer.Instance);
+                        Costs.IndexRebuilds++;
+                        Costs.IndexRebuildRows += rows.Count;
                         for (var index = 0; index < rows.Count; index++)
                             if (rows[index] is { } row) indexes[row] = index;
                         _collectionIndexes[descriptor] = indexes;
@@ -785,7 +809,7 @@ public partial class ViewModelBridge<T>
         {
             _collectionKeys.Remove(descriptor);
             if (descriptor.Get(_vm) is not System.Collections.IEnumerable rows) continue;
-            var baseline = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, rows, descriptor.Key);
+            var baseline = ScanKeys(descriptor.Name, rows, descriptor.Key);
             if (descriptor.PublishesChanges) _collectionKeys[descriptor] = baseline;
         }
     }
@@ -799,7 +823,7 @@ public partial class ViewModelBridge<T>
         {
             if (!_collectionKeys.TryGetValue(descriptor, out var tracked) || !ReferenceEquals(tracked.Rows, rows))
             {
-                _collectionKeys[descriptor] = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, enumerable, descriptor.Key);
+                _collectionKeys[descriptor] = ScanKeys(descriptor.Name, enumerable, descriptor.Key);
                 return true;
             }
             if (args.Action is NotifyCollectionChangedAction.Remove or NotifyCollectionChangedAction.Replace && args.OldItems is { } removed)

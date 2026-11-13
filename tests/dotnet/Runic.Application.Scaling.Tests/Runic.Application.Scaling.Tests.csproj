@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <RunicTestTimeouts>true</RunicTestTimeouts>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run, or bun run scaling. -->
+    <OutputType>Exe</OutputType>
+    <OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- Dynamic PGO moves allocations between runs; the allocation budgets compare runs (tests/scaling/README.md). -->
+    <TieredPGO>false</TieredPGO>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The cases read the Bridge's cost counters (BridgeCostCounters) through the generated-code support types. -->
+    <Using Include="Runic.Application.Views.Generated" />
+    <Using Include="Runic.Application.Views.Generated.Bridges" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Protocol requests on an InMemoryBridgeTransport (snapshots, pushes), shared with Runic.Application.Testing.Tests. -->
+    <Compile Include="../Runic.Application.Testing.Tests/BridgeRequests.cs" Link="Shared/BridgeRequests.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <Compile Remove="*Tests.cs" />
+  </ItemGroup>
+  <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../eng/build/application.targets" />
+</Project>
