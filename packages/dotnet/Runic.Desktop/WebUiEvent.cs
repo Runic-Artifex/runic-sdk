@@ -34,6 +34,9 @@ internal sealed class WebUiEvent
         Cookies = cookies;
     }
 
+    // The page connection slot of the event's session (WebUiSession.Slot).
+    internal Internal.DesktopConnectionSlot Slot { get; init; }
+
     /// <summary>Gets the window that received this event.</summary>
     public WebUiWindow Window { get; }
 

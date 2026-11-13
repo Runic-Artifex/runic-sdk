@@ -41,7 +41,10 @@ internal sealed class PresentationInvocation
     {
         Surface = surface;
         _event = webUiEvent;
-        Session = new PresentationSession(webUiEvent.Window, webUiEvent.SessionIdentifier, webUiEvent.ConnectionId);
+        Session = new PresentationSession(webUiEvent.Window, webUiEvent.SessionIdentifier, webUiEvent.ConnectionId)
+        {
+            Slot = webUiEvent.Slot,
+        };
         CorrelationId = Guid.NewGuid().ToString("N");
     }
 
@@ -172,6 +175,10 @@ internal sealed class PresentationSession
 
     /// <summary>Gets the opaque session identifier for diagnostics.</summary>
     public ulong Id { get; }
+
+    // The page connection slot the session's WebSocket was admitted to: the window's page or its side panel's page. The
+    // Views transport gives it to the window as the connection's kind (BridgeRequest.ConnectionKind).
+    internal Internal.DesktopConnectionSlot Slot { get; init; }
 
     /// <summary>Runs JavaScript in this presentation session.</summary>
     public Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>

@@ -62,6 +62,9 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     public string Cookies { get; }
 
+    // The page connection slot the WebSocket was admitted to (DesktopConnectionSlot), from the credential it offered.
+    public DesktopConnectionSlot Slot { get; init; }
+
     // The upgrade's Origin header, which the window's origin check admitted; empty when the request had none or the
     // window checks no origin. A region's host page frames the guest from this origin (region/1, region-attach embedder).
     public string Origin { get; init; } = string.Empty;
@@ -785,7 +788,8 @@ internal sealed class WebUiSession : IAsyncDisposable
                 .ConfigureAwait(false);
             if (accepted)
             {
-                _window.NotifyAuthenticated();
+                // The window's presentation waits for its page; a side panel's page connects to an open window.
+                if (Slot == DesktopConnectionSlot.Page) _window.NotifyAuthenticated();
                 // The page announces DesktopWindow.AnnounceAsync while it has the focus on WebView2 (I-184). Its live
                 // regions are added now, so that the screen reader knows them before the first message.
                 if (_window.AnnouncesInPage)

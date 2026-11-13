@@ -815,11 +815,12 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         BridgeConnection replacement;
         lock (_gate)
         {
-            if (!_connections.TryGetValue(old.TransportKey, out var current) || !ReferenceEquals(current, old)) return Connect(old.TransportKey, old.ClientKey);
+            if (!_connections.TryGetValue(old.TransportKey, out var current) || !ReferenceEquals(current, old))
+                return Connect(old.TransportKey, old.ClientKey, old.Kind);
             _connections.Remove(old.TransportKey);
             observers = CloseLocked(old);
             _replacedCloses[old.TransportKey] = _replacedCloses.GetValueOrDefault(old.TransportKey) + 1;
-            replacement = AddConnection(old.TransportKey, old.ClientKey);
+            replacement = AddConnection(old.TransportKey, old.ClientKey, old.Kind);
         }
         Closed(old, observers);
         return replacement;
@@ -833,18 +834,19 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         || envelope.Root.TryGetProperty("session", out var session) && session.ValueKind == JsonValueKind.String
             && session.ValueEquals(connection.Session);
 
-    private BridgeConnection Connect(BridgeRequest request) => Connect(request.ConnectionKey, request.ClientKey);
+    private BridgeConnection Connect(BridgeRequest request) => Connect(request.ConnectionKey, request.ClientKey, request.ConnectionKind);
 
-    private BridgeConnection Connect(string transportKey, string clientKey)
+    // The connection's kind comes from its first request, which the transport authenticated, like its keys.
+    private BridgeConnection Connect(string transportKey, string clientKey, RunicConnectionKind kind)
     {
         lock (_gate)
-            return _connections.TryGetValue(transportKey, out var connection) ? connection : AddConnection(transportKey, clientKey);
+            return _connections.TryGetValue(transportKey, out var connection) ? connection : AddConnection(transportKey, clientKey, kind);
     }
 
     // The caller holds _gate.
-    private BridgeConnection AddConnection(string transportKey, string clientKey)
+    private BridgeConnection AddConnection(string transportKey, string clientKey, RunicConnectionKind kind)
     {
-        var connection = new BridgeConnection(NewConnectionKey(transportKey), clientKey, transportKey);
+        var connection = new BridgeConnection(NewConnectionKey(transportKey), clientKey, transportKey) { Kind = kind };
         _connections.Add(transportKey, connection);
         _byKey.Add(connection.Key, connection);
         return connection;
@@ -940,6 +942,10 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
                 out var usesFieldFlush, out var usesFieldPaths, out var usesTranslationText, out var usesNavigationPath, out var usesClientLanguages))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
+        // A side panel's page keeps its own address (D062.6): the producer does not grant it navigation-path/1, so it
+        // neither follows nor drives the window's route path, and its Back does not navigate the window.
+        var grantsNavigationPath = connection.Kind == RunicConnectionKind.Page;
+        usesNavigationPath &= grantsNavigationPath;
         var usesAppearance = ListsAppearance(root);
         var usesHostedRegions = ListsFeature(root, BridgeHostedRegions.Feature);
         if (!TryReadLanguages(root, usesClientLanguages, out var languages))
@@ -993,7 +999,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         var grant = usesBlobs ? Blobs.Grant(connection.Key) : null;
         // navigation-path/1: the reply tells the page the window's route path, when the window has a path region.
         return usesNavigationPath && BridgeNavigation.TryGetPath(this, out var path) ? BridgeMessages.Hello(grant, path, navigationPath: true)
-            : BridgeMessages.Hello(grant);
+            : BridgeMessages.Hello(grant, grantsNavigationPath: grantsNavigationPath);
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
@@ -1205,6 +1211,8 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     // The key the transport reports the connection with, which its targeted pushes and close name.
     internal string TransportKey { get; } = transportKey ?? key;
     internal string ClientKey { get; } = clientKey;
+    // Which page of the window the connection is (RunicConnectionKind), as its transport authenticated it.
+    internal RunicConnectionKind Kind { get; init; }
     // The session the hello named.
     internal string? Session { get; set; }
     internal string? ClientName { get; set; }

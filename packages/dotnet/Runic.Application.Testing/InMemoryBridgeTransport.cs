@@ -54,6 +54,8 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
     private readonly HashSet<string> _connections = new(StringComparer.Ordinal);
     private readonly List<RunicBridgeMessage> _messages = [];
     private readonly List<(string Route, string Json)> _publications = [];
+    // Connections that a test marked as a side panel's page (MarkSidePanel).
+    private readonly HashSet<string> _sidePanels = new(StringComparer.Ordinal);
     // The hello the drivers sent on each connection, completed when it was answered.
     private readonly Dictionary<string, Task> _greeted = new(StringComparer.Ordinal);
     private TaskCompletionSource _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -153,16 +155,26 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         ArgumentNullException.ThrowIfNull(json);
         ArgumentException.ThrowIfNullOrEmpty(connectionKey);
         IBridgeRequestHandler handler;
+        RunicConnectionKind kind;
         lock (_gate)
         {
             ThrowIfDisposed();
             handler = _handler ?? throw new InvalidOperationException("No window serves this transport.");
             _connections.Add(connectionKey);
+            kind = _sidePanels.Contains(connectionKey) ? RunicConnectionKind.SidePanel : RunicConnectionKind.Page;
         }
         var reply = await handler.HandleAsync(
-            new BridgeRequest(Encoding.UTF8.GetBytes(json), clientKey ?? DefaultClientKey, connectionKey),
+            new BridgeRequest(Encoding.UTF8.GetBytes(json), clientKey ?? DefaultClientKey, connectionKey) { ConnectionKind = kind },
             cancellationToken).ConfigureAwait(false);
         return Encoding.UTF8.GetString(reply.Span);
+    }
+
+    // Marks a connection as a side panel's page of the window (RunicConnectionKind.SidePanel), as Runic Desktop's panel
+    // slot admits it (sdk#864). Mark it before its first request.
+    internal void MarkSidePanel(string connectionKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(connectionKey);
+        lock (_gate) _sidePanels.Add(connectionKey);
     }
 
     /// <summary>

@@ -49,7 +49,9 @@ internal static class BridgeMessages
         Failure("rejected", reason, message, hello);
 
     // grant is the connection's upload grant (blobs/1), when the connection uses blobs/1 and the host takes uploads.
-    internal static byte[] Hello(BridgeUploadGrant? grant = null, string? path = null, bool navigationPath = false) =>
+    // grantsNavigationPath: whether the producer offers navigation-path/1 to the connection; not to a side panel's page.
+    internal static byte[] Hello(BridgeUploadGrant? grant = null, string? path = null, bool navigationPath = false,
+        bool grantsNavigationPath = true) =>
         Write(writer =>
         {
             writer.WriteStartObject();
@@ -70,7 +72,7 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.FieldFlushFeature);
             writer.WriteStringValue(BridgeDispatcher.FieldPathsFeature);
             writer.WriteStringValue(BridgeDispatcher.TranslationTextFeature);
-            writer.WriteStringValue(BridgeDispatcher.NavigationPathFeature);
+            if (grantsNavigationPath) writer.WriteStringValue(BridgeDispatcher.NavigationPathFeature);
             writer.WriteStringValue(BridgeDispatcher.AppearanceFeature);
             writer.WriteStringValue(BridgeDispatcher.ClientLanguagesFeature);
             writer.WriteStringValue(BridgeHostedRegions.Feature);
