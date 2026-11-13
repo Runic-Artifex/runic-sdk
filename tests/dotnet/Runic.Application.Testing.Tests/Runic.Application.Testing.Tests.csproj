@@ -13,6 +13,8 @@
     <!-- NavOrphanViewModel deliberately has no View; the data-shape and validation fixtures keep small observable lists
          of DTO rows without keys. -->
     <NoWarn>$(NoWarn);RUNICBRIDGE013;RUNICBRIDGE032</NoWarn>
+    <!-- The side panel API (sdk#864) is experimental. -->
+    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
     <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
     <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
     <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicApplicationFrontendDirectory>

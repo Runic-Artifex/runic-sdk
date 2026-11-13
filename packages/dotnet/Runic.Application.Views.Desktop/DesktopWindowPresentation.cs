@@ -39,7 +39,23 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
     internal Func<DesktopNativeOwner, DesktopActivationContext?, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>> Present
     { get; init; } = DesktopPlatformServices.PresentAsync;
 
-    public RunicWindowPresentationFeatures Features => FeaturesOf(_window.Capabilities, _window.IsOpen, OperatingSystem.IsMacOS());
+    public RunicWindowPresentationFeatures Features =>
+        FeaturesOf(_window.Capabilities, _window.IsOpen, OperatingSystem.IsMacOS()) | SidePanelFeature();
+
+    // DesktopWindow has no capability flag for the panel: CheckSidePanel answers Unsupported where its host has none.
+    private RunicWindowPresentationFeatures SidePanelFeature()
+    {
+        try
+        {
+            return _window.IsOpen && _window.CheckSidePanel(DesktopWindowEdge.End, DesktopSidePanelOptions.MinimumWidth) != DesktopSidePanelRefusal.Unsupported
+                ? RunicWindowPresentationFeatures.SidePanel
+                : RunicWindowPresentationFeatures.None;
+        }
+        catch (ObjectDisposedException)
+        {
+            return RunicWindowPresentationFeatures.None;
+        }
+    }
 
     internal static RunicWindowPresentationFeatures FeaturesOf(DesktopWindowCapabilities capabilities, bool open, bool macOS)
     {
@@ -132,6 +148,183 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         // DesktopWindow.ColorSchemeChanged reports the change.
         return await Request(RunicWindowPresentationFeatures.ColorScheme,
             () => _window.SetColorSchemeAsync(colorScheme, cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    // sdk#864, P5 (side-panel/DESIGN.md §3.2): the Window's side panel is its DesktopWindow's.
+    private PanelAdapter? _sidePanel;
+
+    // Also a panel opened on the DesktopWindow itself, adopted when it is first read.
+    public IRunicSidePanel? SidePanel => _window.SidePanel is { } native ? Adopt(native) : null;
+
+    private PanelAdapter Adopt(DesktopSidePanel native)
+    {
+        PanelAdapter panel;
+        lock (_gate)
+        {
+            if (_sidePanel is { } current && ReferenceEquals(current.Native, native)) return current;
+            panel = new PanelAdapter(native);
+            _sidePanel = panel;
+        }
+        panel.Start(this);
+        return panel;
+    }
+
+    public async ValueTask<RunicSidePanelResult> OpenSidePanelAsync(RunicSidePanelOptions options, CancellationToken cancellationToken = default)
+    {
+        RunicSidePanelOptions.Validate(options);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_window.IsOpen) return new RunicSidePanelResult.Refused(RunicSidePanelRefusal.Closed);
+        DesktopSidePanelResult result;
+        try
+        {
+            result = await _window.OpenSidePanelAsync(new DesktopSidePanelOptions
+            {
+                Edge = Convert(options.Edge), Width = options.Width, Path = options.Path, LoadTimeout = options.LoadTimeout,
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return new RunicSidePanelResult.Refused(RunicSidePanelRefusal.Closed);
+        }
+        if (result is DesktopSidePanelResult.Refused refused) return new RunicSidePanelResult.Refused(Convert(refused.Reason));
+        var opened = (DesktopSidePanelResult.Opened)result;
+        var panel = Adopt(opened.Panel);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SidePanel)));
+        return new RunicSidePanelResult.Opened(panel);
+    }
+
+    private void OnSidePanelClosed(PanelAdapter panel)
+    {
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_sidePanel, panel)) return;
+            _sidePanel = null;
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SidePanel)));
+    }
+
+    internal static DesktopWindowEdge Convert(RunicSidePanelEdge edge) => edge switch
+    {
+        RunicSidePanelEdge.Left => DesktopWindowEdge.Left,
+        RunicSidePanelEdge.Right => DesktopWindowEdge.Right,
+        RunicSidePanelEdge.Start => DesktopWindowEdge.Start,
+        _ => DesktopWindowEdge.End,
+    };
+
+    // An unknown value of a later Runic.Desktop counts as Unsupported, as DesktopSidePanelRefusal says.
+    internal static RunicSidePanelRefusal Convert(DesktopSidePanelRefusal refusal) => refusal switch
+    {
+        DesktopSidePanelRefusal.Maximized => RunicSidePanelRefusal.Maximized,
+        DesktopSidePanelRefusal.FullScreen => RunicSidePanelRefusal.FullScreen,
+        DesktopSidePanelRefusal.Snapped => RunicSidePanelRefusal.Snapped,
+        DesktopSidePanelRefusal.Minimized => RunicSidePanelRefusal.Minimized,
+        DesktopSidePanelRefusal.NoRoom => RunicSidePanelRefusal.NoRoom,
+        DesktopSidePanelRefusal.PositionUnavailable => RunicSidePanelRefusal.PositionUnavailable,
+        DesktopSidePanelRefusal.AlreadyOpen => RunicSidePanelRefusal.AlreadyOpen,
+        DesktopSidePanelRefusal.LoadFailed => RunicSidePanelRefusal.LoadFailed,
+        _ => RunicSidePanelRefusal.Unsupported,
+    };
+
+    internal static RunicSidePanelCloseReason Convert(DesktopSidePanelCloseReason reason) => reason switch
+    {
+        DesktopSidePanelCloseReason.WindowClosed => RunicSidePanelCloseReason.WindowClosed,
+        DesktopSidePanelCloseReason.Crashed => RunicSidePanelCloseReason.Crashed,
+        _ => RunicSidePanelCloseReason.Closed,
+    };
+
+    // IRunicSidePanel of a DesktopSidePanel. Its Closed is raised on the thread pool, as DesktopSidePanel's; the Window's
+    // RunicWindowPresentation raises it again in a model turn. Edge and width are kept, so they stay readable once it closed.
+    private sealed class PanelAdapter(DesktopSidePanel native) : IRunicSidePanel
+    {
+        private readonly object _gate = new();
+        private EventHandler<RunicSidePanelClosedEventArgs>? _closedHandlers;
+        private bool _raised;
+        private volatile RunicSidePanelEdge _edge = EdgeOf(native);
+        private int _width = native.Width;
+        private DesktopWindowPresentation? _presentation;
+
+        internal DesktopSidePanel Native => native;
+
+        private static RunicSidePanelEdge EdgeOf(DesktopSidePanel panel) =>
+            panel.Edge == DesktopWindowEdge.Left ? RunicSidePanelEdge.Left : RunicSidePanelEdge.Right;
+
+        public RunicSidePanelEdge Edge => _edge;
+
+        public int Width => Volatile.Read(ref _width);
+
+        public bool IsOpen => native.IsOpen;
+
+        public event EventHandler<RunicSidePanelClosedEventArgs>? Closed
+        {
+            add { lock (_gate) if (!_raised) _closedHandlers += value; }
+            remove { lock (_gate) _closedHandlers -= value; }
+        }
+
+        internal void Start(DesktopWindowPresentation presentation)
+        {
+            _presentation = presentation;
+            native.Closed += OnClosed;
+            // Closed before the handler was added (the window closed meanwhile): DesktopSidePanel does not call it then.
+            if (!native.IsOpen) OnClosed(native, new DesktopSidePanelClosedEventArgs(DesktopSidePanelCloseReason.WindowClosed));
+        }
+
+        private void OnClosed(object? sender, DesktopSidePanelClosedEventArgs args)
+        {
+            EventHandler<RunicSidePanelClosedEventArgs>? handlers;
+            lock (_gate)
+            {
+                if (_raised) return;
+                _raised = true;
+                handlers = _closedHandlers;
+                _closedHandlers = null;
+            }
+            native.Closed -= OnClosed;
+            _presentation?.OnSidePanelClosed(this);
+            handlers?.Invoke(this, new RunicSidePanelClosedEventArgs(Convert(args.Reason)));
+        }
+
+        public async ValueTask<RunicSidePanelRefusal?> MoveToEdgeAsync(RunicSidePanelEdge edge, CancellationToken cancellationToken = default)
+        {
+            RunicSidePanelOptions.ValidateEdge(edge);
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (await native.MoveToEdgeAsync(Convert(edge), cancellationToken).ConfigureAwait(false) is { } refusal) return Convert(refusal);
+            }
+            catch (ObjectDisposedException) { return RunicSidePanelRefusal.Closed; }
+            catch (InvalidOperationException) when (!native.IsOpen) { return RunicSidePanelRefusal.Closed; }
+            if (native.IsOpen) _edge = EdgeOf(native);
+            return null;
+        }
+
+        public async ValueTask<RunicSidePanelRefusal?> SetWidthAsync(int width, CancellationToken cancellationToken = default)
+        {
+            RunicSidePanelOptions.ValidateWidth(width);
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if (await native.SetWidthAsync(width, cancellationToken).ConfigureAwait(false) is { } refusal) return Convert(refusal);
+            }
+            catch (ObjectDisposedException) { return RunicSidePanelRefusal.Closed; }
+            catch (InvalidOperationException) when (!native.IsOpen) { return RunicSidePanelRefusal.Closed; }
+            Volatile.Write(ref _width, width);
+            return null;
+        }
+
+        public async ValueTask FocusAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await native.FocusAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) when (!native.IsOpen) { }
+        }
+
+        public ValueTask CloseAsync(CancellationToken cancellationToken = default) => native.CloseAsync(cancellationToken);
+
+        public ValueTask DisposeAsync() => native.DisposeAsync();
     }
 
     private ValueTask<PlatformResult<PlatformUnit>> Request(RunicWindowPresentationFeatures feature, Func<ValueTask> request,
