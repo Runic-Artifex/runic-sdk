@@ -534,6 +534,11 @@ jobs:
           xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
       - name: Exercise blobs and uploads on Runic Desktop
         run: node examples/attachments/browser-smoke.mjs
+      # sdk#864: a browser cannot grow, so the side panel example falls back to its overlay; #/debug renders the panel's page.
+      - name: Exercise the side panel example's fallback and panel route
+        run: |
+          node examples/side-panel/browser-smoke.mjs
+          dotnet run --project examples/side-panel/Tests -c Release --no-build
       - name: Check composed View lifetime and window scopes
         run: |
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
@@ -1269,6 +1274,20 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --side-panel
+      # #864 P6: the side panel cases --side-panel leaves out: window.close() in the panel's page, closing the panel of a
+      # maximized window (its restored size shrinks), and a full-screen window with the panel open and closed. Linux runs
+      # GTK 3 under Openbox.
+      - name: Close a side panel from its page, while maximized and in full screen
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          smoke=tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+              "openbox & exec dotnet $smoke --side-panel-edges"
+          else
+            dotnet "$smoke" --side-panel-edges
+          fi
       # S10: the page's prefers-reduced-motion and forced-colors and IDesktopSettings (Contrast, the palette, a running
       # watch) follow Windows' client area animations and a contrast theme, which the smoke switches and restores
       # (--toggle-desktop); on macOS prefers-contrast, prefers-reduced-motion and IDesktopSettings agree with Increase
@@ -1472,6 +1491,13 @@ jobs:
               --accessibility --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview.json
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
               --accessibility --region --probe "${probe[@]}" --receipt artifacts/accessibility/wkwebview-region.json
+            # #864 P6: the side panel with VoiceOver, three times: VoiceOver follows the focus between the two web views
+            # only as the panel's Tab hand-off moves it, and a single pass could be ordering luck.
+            for attempt in 1 2 3; do
+              eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
+                --accessibility --side-panel --probe "${probe[@]}" --screen-reader voiceover \
+                --receipt "artifacts/accessibility/wkwebview-side-panel-$attempt.json"
+            done
             exit
           fi
           for toolkit in gtk3 gtk4; do
@@ -2493,6 +2519,11 @@ jobs:
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility \
               --probe "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
               --screen-reader nvda --nvda "$RUNNER_TEMP/nvda/nvda.exe" --receipt artifacts/screen-reader/webview2.json
+            # #864 P6: a side panel beside the page: its landmark, the reading order on both edges, and what NVDA says as
+            # the focus moves into the panel and back.
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility --side-panel \
+              --probe "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
+              --screen-reader nvda --nvda "$RUNNER_TEMP/nvda/nvda.exe" --receipt artifacts/screen-reader/webview2-side-panel.json
             # The same page in a WPF window's RunicWebView, which announces through WpfPlatformServices (I-203).
             dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release --no-build -- \
               --treenode-filter "/*/*/*/*[Category=ScreenReader]" --output detailed \
@@ -2505,6 +2536,11 @@ jobs:
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --screen-reader orca \
               --receipt "artifacts/screen-reader/$toolkit/$toolkit.json"
+            # #864 P6: the side panel with Orca: its landmark, the reading order on both edges and what Orca says as the focus
+            # moves into the panel and back. A screen wide enough for the 440-wide window and its 240-wide panel (xvfb-run's default screen is 640 x 480).
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a -s '-screen 0 1600x900x24' dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+              -c Release --no-build -- --accessibility "$toolkit" --side-panel --probe "${probe[@]}" --screen-reader orca \
+              --receipt "artifacts/screen-reader/$toolkit/$toolkit-side-panel.json"
           done
       - name: Retain screen reader receipts and logs
         if: always()

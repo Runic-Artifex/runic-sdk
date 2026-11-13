@@ -1104,6 +1104,11 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
 | Linux (WebKitGTK, GTK 3; GTK 4 with `Runic.Desktop.Gtk4`) | A related view of the page (same web context and web process, a user content manager of its own) beside it in an overlay. The layout changes at the first allocation with the new width, so the page keeps its width; on the left edge the window manager may show the moved frame one frame before the page follows. The window manager must grant the new bounds; one that does not gets the change after a second, and the page takes what remains. Wayland gives no positions: the right edge only, the left edge refuses with `PositionUnavailable`. The panel's page is in the page's web process, so a crash of one usually takes both: the page reloads as before, and the panel reloads once. The panel's page shares `localStorage` with the page but not `sessionStorage`, and asks for no permission (camera, microphone). Drops from outside are refused: on GTK 3 from outside the panel's view, on GTK 4 also drags inside its page. A transparent GTK 3 window refuses the panel (`Unsupported`) |
 | Installed browser, custom window host, WPF `RunicWebView`, hosted window | `Unsupported`; `Runic.Desktop.Gtk4`'s window host is the exception |
 
+The [side panel guide](../../../docs/side-panel.md) covers the panel's page, the
+fallback where the window cannot grow, accessibility and each platform's known
+limits; the [side panel example](../../../examples/side-panel/README.md) opens a
+panel from a ViewModel.
+
 ## Menu bar and keyboard shortcuts
 
 On macOS Runic Desktop gives the application the menus Cocoa applications are

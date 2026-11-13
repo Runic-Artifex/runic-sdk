@@ -1310,6 +1310,11 @@ modes.
 
 ## From 0.18 to 0.19
 
+<!-- Draft: the 0.19.0 release PR completes this section. -->
+
+Update every Runic NuGet and npm package to 0.19.0 together and rebuild, so that the generated clients and Bridges are
+regenerated; an assembly with Bridges that a 0.18 generator wrote must be rebuilt (below).
+
 ### Rebuild every assembly with generated Bridges
 
 The Bridge runtime and its descriptors are no longer generic over the ViewModel (#901). NativeAOT used to copy about
@@ -1344,3 +1349,9 @@ not application API. A hand-written Bridge, for example in a test, follows the g
 (`static vm => ((MyViewModel)vm).Title`). A file that imports both `System.ComponentModel` and
 `Runic.Application.Views.Generated` now has two `PropertyDescriptor` types; qualify the name or add
 `using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;`.
+
+### Side panel
+
+| 0.18 | 0.19 |
+| --- | --- |
+| A panel drawn by the page as an overlay, or a window widened by hand with `MoveAsync` and `ResizeAsync`, which widened the page's viewport too | `IRunicWindowPresentation.OpenSidePanelAsync` shows the panel's own page beside the window's page and grows the window; keep the overlay as the fallback for a refusal. Experimental ([`RUNICDESK104`](experimental.md#RUNICDESK104)); see the [side panel guide](side-panel.md) |
