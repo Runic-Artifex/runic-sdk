@@ -133,7 +133,7 @@ Another client implementation for the web SHOULD use the same keys.
 | --- | --- | --- |
 | `runic.views.generated-client-runtime` | `globalThis` | The page's runtime of generated clients for the current `__runicBridge`: its connection, routes, presentations and operations. It is the only `onMessage` listener and dispatches pushes by `route`. |
 | `runic.views.diagnostics` | `globalThis` | A `Set` of listener functions. Each is called with a `BridgeDiagnostic`: `kind` (`error` or `operation`), `code`, `message`, and optionally `route`, `detail`, `member`, `requestId` and, for local observers only, `error`. `code` is an open set; a listener ignores codes and fields it does not know. |
-| `runic.views.connection` | `globalThis` | `{ listeners, state, requested, start, closed, closedListeners }`: a `Set` of listener functions called with the page's `BridgeConnectionState` on each change, and the latest state. `closed` is `true` from a [`closing`](#window-close) push until the next connection, and `closedListeners` is a `Set` of functions called with each change of it, through which every copy reports the state `closed`. The first View that connects starts it. A copy of `@runic-artifex/views` sets `start`, a function that starts it, when it loads; a reader that wants the state before a View connects (the Vite development client) sets `requested` to `true`, which a copy that loads later honours, and calls `start` if it is set. |
+| `runic.views.connection` | `globalThis` | `{ listeners, state, requested, start, closed, closedListeners, draining, drainingListeners }`: a `Set` of listener functions called with the page's `BridgeConnectionState` on each change, and the latest state. `closed` is `true` from a [`closing`](#window-close) push until the next connection, and `closedListeners` is a `Set` of functions called with each change of it, through which every copy reports the state `closed`. `draining` (0.19) is `true` from a `closing` push with `draining: true` until that connection ends or a new one opens, and `drainingListeners` is a `Set` of functions called with each change of it. The first View that connects starts it. A copy of `@runic-artifex/views` sets `start`, a function that starts it, when it loads; a reader that wants the state before a View connects (the Vite development client) sets `requested` to `true`, which a copy that loads later honours, and calls `start` if it is set. |
 | `runic.views.inspector` | `globalThis` | `{ listeners, requested }`: the development state inspector. A reader (the Vite development client) adds a listener function to the `Set` and sets `requested` to `true`; only then does each copy of `@runic-artifex/views` call the listeners, with `{ kind: "state", route, revision, epoch, presentations, state }` when the state its presentations receive changes, `{ kind: "closed", route }` when a route closes, and `{ kind: "superseded", route, member, epoch, revision }` when the producer answered a `command` `superseded`. `state` is the exposed state; a listener must not change it. A listener ignores kinds and fields it does not know. Since 0.15. |
 | `runic.views.diagnosticReported` | An error | `true` once a diagnostic reported the error, so each error is reported once. |
 | `runic.views.unavailableReported` | `globalThis` | `true` once the page reported that it has no `__runicBridge`. |
@@ -1158,6 +1158,7 @@ its window:
 {"ok":true}
 
 {"kind":"closing"}
+{"kind":"closing","draining":true}
 {"kind":"closing-reply"}
 {"ok":true}
 ```
@@ -1166,7 +1167,7 @@ its window:
 | --- | --- | --- |
 | push `present` | `route`, `revision` | To one connection: report when the page has painted `route` at `revision` or later. |
 | request `presented` | `route`, `revision` | The page painted `route` at `revision`. The reply is `{ok:true}`. |
-| push `closing` | none | To each connection that uses the feature: the application closes the window. The first push without a `route`. |
+| push `closing` | `draining?` | To each connection that uses the feature: the application closes the window. The first push without a `route`. `draining: true` (0.19): the window stays visible and connected while its accepted work drains. |
 | request `closing-reply` | none | The page has shown the window's last state. The reply is `{ok:true}`. |
 
 A producer sends `present` and `closing` only to connections that use the feature. A client without it would ignore
@@ -1233,6 +1234,15 @@ the producer closed the window. `closing` comes after the close was decided, so 
 departure guard: a guard that must see them needs [field flush](#field-flush). When the connection then drops, it
 keeps reporting that the producer closed the window, not a reconnecting or lost connection. A new connection reports a
 connected client again.
+
+**`draining`.** A window closed with a close drain (0.19) stays visible after its close was decided, until its accepted
+work has drained. Its `closing` push carries `draining: true`, which a client that does not know it ignores. The
+producer keeps the connection and keeps pushing the window's state, so the page can show that it is finishing, with the
+progress of its operations; it starts no new operation (`owner-closing`). The client acknowledges as for any `closing`
+and keeps applying pushes. It reports `draining` instead of the producer's close while the connection stays (through
+the shared channel's `draining`, [shared globals](#shared-globals)), and the producer's close when the connection then
+ends. A push without the member, or with `false`, is a close without a drain, as before. A connection that completes its
+hello with `presented/1` after the push gets the same push.
 
 ### Field flush
 

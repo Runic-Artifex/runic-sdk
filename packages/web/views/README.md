@@ -105,6 +105,20 @@ reports the connection state `closed` ([Connection state](#connection-state)),
 so a page, such as a CS-WebUI browser tab that outlives the application, can
 say "The application closed this window." instead of showing a lost connection.
 
+A window closed with a close drain (0.19, experimental) stays visible until its
+accepted work has drained. The page acknowledges as for any close, stays
+`connected` and keeps receiving the window's state, and `onBridgeDraining`
+from `@runic-artifex/views/experimental` reports `true`, so it can show that it
+is finishing:
+
+```ts
+import { onBridgeDraining } from "@runic-artifex/views/experimental";
+
+onBridgeDraining(draining => { finishing.hidden = !draining; });
+```
+
+The state becomes `closed` when the window's connection ends.
+
 ### View requests
 
 A ViewModel can ask its View for a presentation action that needs no answer,
@@ -273,7 +287,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
-| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental) |
+| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), `onBridgeDraining` |
 
 Every entry has `types`, `import` and `default` conditions; the package is ESM
 only. Application code imports the root entry and `/mock`. The `/experimental`
@@ -1307,8 +1321,9 @@ Presentation epochs and window close have test counterparts of their .NET API:
   route, as `RunicPresentation.WaitForPresentedAsync` does, and resolves `true`
   once it did, or `false` after `timeout` milliseconds (default 5000, virtual
   time with `scheduling: "manual"`).
-- `bridge.closeWindow(timeout?)` closes the window as the application does:
-  the page acknowledges and reports `closed`. It resolves with whether the page
+- `bridge.closeWindow(timeout?, options?)` closes the window as the application does:
+  the page acknowledges and reports `closed`; with `{ draining: true }` the push
+  carries `draining: true` and the page reports `draining` until `disconnect()`. It resolves with whether the page
   acknowledged within `timeout` (default 5000), and keeps the connection open:
   `disconnect()` then ends it as a host does.
 

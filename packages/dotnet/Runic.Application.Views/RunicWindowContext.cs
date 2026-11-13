@@ -50,6 +50,33 @@ public interface IRunicWindowContext
     /// constructor returned. The default implementation, for a test fake, returns <see langword="null"/>.
     /// </remarks>
     IRunicWindow? Window => null;
+
+    /// <summary>
+    /// Makes this Window's close wait for <paramref name="work"/> as for its own operations: the close waits, within its
+    /// timeout or drain (<see cref="RunicWindowOptions.CloseDrain"/>), until the work that the scope accepted before the
+    /// close was decided has finished (<see cref="AcceptedWorkScope.WaitForAcceptedAsync"/>), and the Window's scope is
+    /// released only after it. Dispose the result to stop.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The scope keeps accepting work while the Window is open, and a close that a guard refuses changes nothing. Runic
+    /// never asks the scope's work to cancel: it counts as <see cref="RunicOperationClose.Durable"/>. Several Windows may
+    /// drain one scope, such as an application-wide one; each waits for the work accepted before its own close.
+    /// </para>
+    /// <para>
+    /// The default implementation, for a test fake, does nothing. Experimental (<c>RUNICDESK105</c>); see
+    /// <c>docs/experimental.md</c>.
+    /// </para>
+    /// </remarks>
+    /// <param name="work">The application work the close waits for.</param>
+    /// <returns>Stops this registration when disposed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="work"/> is <see langword="null"/>.</exception>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    IDisposable DrainOnClose(AcceptedWorkScope work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        return RunicCloseDrains.None;
+    }
 }
 
 /// <summary>
@@ -174,13 +201,17 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
     // or the application's, and its changes raise PropertyChanged from then on.
     internal void AttachContent(WindowContentSession content)
     {
+        List<CloseDrainRegistration>? drains;
         lock (_localeGate)
         {
             if (_content is not null) return;
             _content = content;
             // A locale the session was given directly before it attached is the Window's own.
             _own ??= content.Locale;
+            (drains, _pendingDrains) = (_pendingDrains, null);
         }
+        if (drains is not null)
+            foreach (var drain in drains) drain.Attach(content);
         content.LocaleChanged += OnContentLocaleChanged;
         Apply();
     }
@@ -294,6 +325,53 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
             return;
         }
         PropertyChanged?.Invoke(this, LocaleArgs);
+    }
+
+    // DrainOnClose before the Window's content session attached, such as from the ViewModel's constructor: registered
+    // with the session when it attaches.
+    private List<CloseDrainRegistration>? _pendingDrains;
+
+    public IDisposable DrainOnClose(AcceptedWorkScope work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        var registration = new CloseDrainRegistration(work);
+        WindowContentSession? content;
+        lock (_localeGate)
+        {
+            content = _content;
+            if (content is null) (_pendingDrains ??= []).Add(registration);
+        }
+        if (content is not null) registration.Attach(content);
+        return registration;
+    }
+
+    private sealed class CloseDrainRegistration(AcceptedWorkScope work) : IDisposable
+    {
+        private readonly Lock _gate = new();
+        private IDisposable? _registered;
+        private bool _disposed;
+
+        public void Attach(WindowContentSession content)
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                try { _registered = content.DrainOnClose(work); }
+                // The session was released before it attached: there is no close left to wait.
+                catch (ObjectDisposedException) { }
+            }
+        }
+
+        public void Dispose()
+        {
+            IDisposable? registered;
+            lock (_gate)
+            {
+                _disposed = true;
+                (registered, _registered) = (_registered, null);
+            }
+            registered?.Dispose();
+        }
     }
 
     public void Dispose()

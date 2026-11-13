@@ -456,6 +456,13 @@ public sealed class WindowContentSession : IDisposable
     /// remaining operations reach a terminal result. It never faults; the session
     /// itself stays alive until its owner disposes it.
     /// </para>
+    /// <para>
+    /// Operations declared <see cref="RunicOperationClose.Cancel"/> are asked to cancel when the first call starts.
+    /// Those declared <see cref="RunicOperationClose.Durable"/>, and the work of the scopes the Window drains
+    /// (<see cref="IRunicWindowContext.DrainOnClose"/>) accepted before the first call, are waited for within the
+    /// timeout and never asked to cancel; the result counts them in <see cref="RunicWindowCloseResult.RemainingDurableWork"/>.
+    /// Without declarations, the session closes as before 0.19.
+    /// </para>
     /// </remarks>
     /// <param name="timeout">How long to wait for accepted work, or <see cref="Timeout.InfiniteTimeSpan"/>.</param>
     /// <param name="cancellationToken">
@@ -463,19 +470,63 @@ public sealed class WindowContentSession : IDisposable
     /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeout"/> is negative and not infinite.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public async ValueTask<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public ValueTask<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        DrainAsync(timeout, draining: false, cancellationToken);
+
+    // DrainAsync of a close that keeps the visible window while its work drains (RunicCloseDrain): the pages' closing push
+    // says draining: true, and they stay attached and receive the window's state meanwhile, as they do for every drain of
+    // the session; the host decides when to detach them. The first call decides draining, as it decides the pages' wait.
+    // Operations declared RunicOperationClose.Cancel are asked to cancel at once, Durable ones and the scopes the window
+    // drains (DrainOnClose) are waited for within the timeout and never asked to cancel.
+    internal async ValueTask<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, bool draining, CancellationToken cancellationToken)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
         Task<bool> pages;
+        Task[] durableWork;
         lock (_gate)
         {
             ThrowIfDisposed();
-            pages = _pagesAcknowledged ??= AcknowledgeCloseAsync(timeout);
+            pages = _pagesAcknowledged ??= AcknowledgeCloseAsync(timeout, draining);
+            // The scopes' work accepted before the first close; their later work is not the close's.
+            durableWork = _closeDrainWork ??= [.. _closeDrains.Select(static scope => scope.WaitForAcceptedAsync())];
         }
-        var result = await _operations.DrainAsync(timeout, cancellationToken).ConfigureAwait(false);
-        var acknowledged = await pages.WaitAsync(cancellationToken).ConfigureAwait(false);
-        return new(result.Drained, result.RemainingRunningOperations, result.Remaining) { PagesAcknowledged = acknowledged };
+        var result = await _operations.DrainAsync(timeout, durableWork, cancellationToken).ConfigureAwait(false);
+        // A close without a timeout does not wait for the pages, also when an earlier close with one still waits: the
+        // application's close or disposal during a drain ends the drain at once.
+        var acknowledged = timeout == TimeSpan.Zero
+            ? pages.IsCompletedSuccessfully && pages.Result
+            : await pages.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new(result.Drained, result.RemainingRunningOperations, result.Remaining)
+        {
+            PagesAcknowledged = acknowledged,
+            RemainingDurableWork = result.RemainingDurableWork,
+        };
+    }
+
+    // IRunicWindowContext.DrainOnClose: the application's scopes this window's close waits for, and what the first close
+    // waits for of them.
+    private readonly List<AcceptedWorkScope> _closeDrains = [];
+    private Task[]? _closeDrainWork;
+
+    // Registers a scope the window's close waits for, until the result is disposed. A registration after the first close
+    // has no effect on it.
+    internal IDisposable DrainOnClose(AcceptedWorkScope work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        lock (_gate) _closeDrains.Add(work);
+        return new CloseDrainRegistration(this, work);
+    }
+
+    private sealed class CloseDrainRegistration(WindowContentSession session, AcceptedWorkScope work) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            lock (session._gate) session._closeDrains.Remove(work);
+        }
     }
 
     // field-flush/1: asks the window's pages to write their field drafts; true when every page answered. A disposed
@@ -493,10 +544,10 @@ public sealed class WindowContentSession : IDisposable
     private Task<bool>? _pagesAcknowledged;
 
     // Pushes closing to the pages and waits up to min(timeout, 5 s) for their replies; a zero timeout does not wait.
-    private async Task<bool> AcknowledgeCloseAsync(TimeSpan timeout)
+    private async Task<bool> AcknowledgeCloseAsync(TimeSpan timeout, bool draining)
     {
         var dispatcher = BridgeDispatcher.For(_transport);
-        var replied = dispatcher.BeginClosing();
+        var replied = dispatcher.BeginClosing(draining);
         if (!replied.IsCompleted && timeout != TimeSpan.Zero)
         {
             var limit = timeout == Timeout.InfiniteTimeSpan || timeout > CloseAcknowledgementLimit ? CloseAcknowledgementLimit : timeout;

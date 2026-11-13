@@ -86,6 +86,7 @@ and severities are open.
 | [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
 | [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
 | [`RUNICBRIDGE038`](#runicbridge038) | Error | Runtime | Generated Bridges were built against another Runic release than the running runtime |
+| [`RUNICBRIDGE039`](#runicbridge039) | Warning | Generator | A `[RunicOperationClose]` declaration reaches no operation |
 | [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 | [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
@@ -739,6 +740,26 @@ message names, which regenerates its Bridges, and use the same version of every
 Runic package. A library built against a newer Runic needs the application's
 Runic packages updated to that release instead. See
 [From 0.18 to 0.19](migration-1.0.md#from-018-to-019).
+
+### RUNICBRIDGE039
+
+A warning from the Bridge generator (since 0.19). A `[RunicOperationClose]`
+declaration has no effect:
+
+- it is on a ViewModel member that is not a Bridge command that starts an
+  operation: a state property, a ReactiveUI interaction, or a synchronous
+  command (a non-async CommunityToolkit command, a plain `ICommand`), which
+  never runs as an operation;
+- it is on a ViewModel class that has no asynchronous Bridge command;
+- its value is not a `RunicOperationClose` member; the declaration is ignored.
+
+The generated Bridge is the same as without the declaration.
+`RunicOperationClose` is experimental ([`RUNICDESK105`](experimental.md#RUNICDESK105)).
+
+**Fix:** put it on an asynchronous command property (for a CommunityToolkit
+`[RelayCommand]` method, `[property: RunicOperationClose(...)]`), or on the
+class whose operations it should cover, or remove it. See
+[Operations that outlive a window](../packages/dotnet/Runic.Application.Views/README.md#operations-that-outlive-a-window).
 
 ### RUNICBRIDGE050
 

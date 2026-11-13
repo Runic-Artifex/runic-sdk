@@ -15,6 +15,8 @@
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <!-- ...and its experimental side panel API (sdk#864). -->
     <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <!-- ...and its experimental close drain API (sdk#900). -->
+    <NoWarn>$(NoWarn);RUNICDESK105</NoWarn>
     <!-- Published enum members name wire value kinds (String, Int32, Single). -->
     <NoWarn>$(NoWarn);CA1720</NoWarn>
     <!-- buildTransitive/Runic.Application.Views.props: help links for diagnostics of the build targets. -->

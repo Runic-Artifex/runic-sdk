@@ -15,6 +15,8 @@
          globalization every interpolation is culture-neutral, so CA1305 is moot. -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <NoWarn>$(NoWarn);CA1305</NoWarn>
+    <!-- It reads and emits the experimental RunicOperationClose (sdk#900). -->
+    <NoWarn>$(NoWarn);RUNICDESK105</NoWarn>
     <!-- Diagnostics link to their catalog entry at the release tag. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
   </PropertyGroup>

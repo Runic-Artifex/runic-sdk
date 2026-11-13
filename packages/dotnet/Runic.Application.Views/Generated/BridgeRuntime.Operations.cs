@@ -172,6 +172,7 @@ public partial class ViewModelBridge
         var retirement = descriptor.Retirement is RunicOperationRetirement.Keep ? null
             : new BridgeOperationRetirement(descriptor.Retirement, _vm, content.PresentingOwners(_vm), _name);
         Func<long?> terminalRevision = () => _modelTurn.Run(PublishForReply);
+        var close = (BridgeOperationClosePolicy)descriptor.Close;
         RunicInteractionInvocation.InvocationScope Enter(CancellationToken cancellation) =>
             RunicInteractionInvocation.Enter(content, _name, connection.ClientKey, connection.Key, descriptor.Name, cancellation);
         var admission = descriptor.ExecuteStreamAsync is { } executeStream
@@ -183,7 +184,7 @@ public partial class ViewModelBridge
                     var task = executeStream(_vm, execution, cancellation, argument);
                     invocation.EndAfter(task);
                     return task;
-                }), retirement, terminalRevision)
+                }), retirement, terminalRevision, close)
             : content.Operations.AcceptUnlessRefused(operation, refusal,
                 cancellation => ObserveOperationAsync(_logger, ModelName, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
@@ -191,7 +192,7 @@ public partial class ViewModelBridge
                     var task = InvokeCommandAsync(descriptor, argument, cancellation);
                     invocation.EndAfter(task);
                     return task;
-                }), retirement, terminalRevision);
+                }), retirement, terminalRevision, close);
         return admission with { Member = operation.Member };
     }
 
