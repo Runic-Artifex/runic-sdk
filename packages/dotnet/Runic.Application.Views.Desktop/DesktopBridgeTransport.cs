@@ -37,6 +37,9 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IBridge
     private Serving? _serving;
     private bool _disposed;
 
+    // The surface whose pages this transport serves (DesktopPlatformServices.AttachWindowServices checks it).
+    internal DesktopSurface Surface => _surface;
+
     /// <summary>Creates a transport for <paramref name="surface"/>.</summary>
     public DesktopBridgeTransport(DesktopSurface surface)
         : this(surface ?? throw new ArgumentNullException(nameof(surface)), logger: null)

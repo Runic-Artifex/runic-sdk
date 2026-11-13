@@ -970,6 +970,11 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # sdk#896: a directly opened GTK 3 window's ViewModel sets the scheme through its scope's IRunicWindowPresentation.
+      - name: Attach per-window services to a directly opened GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
       # S10: WebKitGTK's prefers-reduced-motion and prefers-contrast follow GTK's gtk-enable-animations and theme name
       # while the window is open.
       - name: Follow the desktop's contrast and motion in the GTK 3 window
@@ -1216,6 +1221,13 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # sdk#896: a window the application opens itself gets its DI scope's per-window services
+      # (DesktopPlatformServices.AttachWindowServices); a ViewModel's IRunicWindowPresentation sets its title bar's scheme,
+      # and its session receives the desktop's appearance.
+      - name: Attach per-window services to a directly opened window on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll --direct-services
       # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one
       # SetWindowPos or setFrame:display: (the page resizes once); the visible frame (DWMWA_EXTENDED_FRAME_BOUNDS on
       # Windows) places a second window flush; a run-time minimum holds against a SetWindowPos from outside Runic

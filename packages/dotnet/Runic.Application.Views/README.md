@@ -731,7 +731,11 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `RunicNavigatorOptions.CreateEntryScopes` has a scope of its own, so pass the context to it from
   the Window's ViewModel. Resolved outside a Window's scope, or called before
   the Window has opened, for example from the ViewModel's constructor, it
-  throws `InvalidOperationException`.
+  throws `InvalidOperationException`. In the scope of a `DesktopWindow` the
+  application opened itself and attached with
+  `DesktopPlatformServices.AttachWindowServices` (0.19), it asks the window's
+  `DesktopWindowOptions.ConfirmCloseAsync`, as the close button does, and
+  `Window` stays `null`.
 - The interface has one method, so a test registers a fake that answers
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
@@ -1089,6 +1093,30 @@ geometry: exact bounds on close, maximize and full screen while open, and what
 `DesktopWindowState` reports. In tests, `RunicTestWindowPresentation` decides
 the panel as a desktop window does
 ([Runic.Application.Testing](../Runic.Application.Testing/README.md#the-windows-presentation)).
+
+### Per-window services by way of opening
+
+The per-window services a ViewModel takes in its constructor are live only for
+a window that a host opened or attached. A scope that nothing attached hands
+out the same objects, unbound: the presentation reports `OwnerUnavailable`, the
+locale only keeps its value, `IRunicConnections` is empty and
+`IRunicWindowContext.RequestCloseAsync` throws.
+
+| Way of opening | `IRunicWindowPresentation` | `IRunicWindowLocale` | `IRunicConnections` | Dialogs, clipboard (`IWindowPlatformServices`) | `IRunicWindowContext` | `appearance/1` push |
+| --- | --- | --- | --- | --- | --- | --- |
+| `OpenWindowAsync` on `RunicDesktopHost` | Yes | Yes, with the native direction | Yes | Yes, with `AddRunicPlatformServices()` | `RequestCloseAsync` and `Window` | Yes, when only this computer reaches the page; a hosted guest's from its host |
+| `OpenWindowAsync` on `RunicCsWebUiHost` | Yes (see the table above) | Yes | Yes | Yes, with `AddRunicPlatformServices()` | `RequestCloseAsync` and `Window` | No |
+| A `DesktopWindow` the application opened, `DesktopPlatformServices.AttachWindowServices(window, scope, content)` (0.19) | Yes | Yes, with the native direction, when it gets `content` | Yes, with `content` | Yes, with `AddRunicPlatformServices()` | `RequestCloseAsync` (the window's `ConfirmCloseAsync` decides); `Window` is `null` | Yes, with `content`, when only this computer reaches the page |
+| A `DesktopWindow` the application opened, `DesktopPlatformServices.ForWindowPresentation(window)` (0.19) | Yes, passed to the ViewModel | No | No | `DesktopPlatformServices.ForWindow(new DesktopNativeOwner(window))` | No | No |
+| A WPF window, `WpfPlatformServices.ForWindowPresentation(window)` | Yes, passed to the ViewModel | No | No (no Window scope) | `WpfPlatformServices.ForWindow(window)` | No | Yes, for the pages of its `RunicViewHost`s |
+| `RunicWindowTestHost` (Runic.Application.Testing) | `RunicTestWindowPresentation`, with `AddRunicTestWindowPresentation()` | Yes | Yes | The test's own registrations | `RequestCloseAsync` and `Window` | Set by the test (`Content.Appearance`) |
+
+Only `OpenWindowAsync` gives a Window `IRunicWindowService.Windows`,
+`IRunicWindowParameter<T>`, `RunicWindowOptions.Owner`, `GuardClose` and the
+binding of the ViewModel's menu commands. A window the application opens
+itself takes its owner from `DesktopWindowOptions.Owner` and confirms a close
+with `DesktopWindowOptions.ConfirmCloseAsync`; see
+[a window the application opens itself](../Runic.Application.Views.Desktop/README.md#a-window-the-application-opens-itself).
 
 ### What the page sees of a close
 
@@ -3727,8 +3755,10 @@ reconnects keeps no stale value) and on each change:
   or the platform's own, which it creates while a Window is open and disposes
   after the last one closed, and keeps it current with one watch while any
   Window is open; the views of Runic.Application.Views.Wpf (`RunicViewHost`,
-  `CreateWpfViewAsync`) share one such watch per registered `IDesktopSettings`,
-  or one of the platform's own, and hold no view's services. A read that fails
+  `CreateWpfViewAsync`) and the windows an application attaches with
+  `DesktopPlatformServices.AttachWindowServices` (0.19) share one such watch per
+  registered `IDesktopSettings`, or one of the platform's own, and hold no
+  view's or window's services. A read that fails
   keeps the last appearance. A watch that throws is logged as event 2009, and
   the next Window that opens watches again.
 - The desktop's accessibility settings and palette describe the user at this
