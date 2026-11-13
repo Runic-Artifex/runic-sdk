@@ -16,6 +16,11 @@
     <Project Path="examples/hosted-windows/Counter/CounterTool.csproj" />
     <Project Path="examples/hosted-windows/Counter/Tests/CounterTool.Tests.csproj" />
     <Project Path="examples/hosted-windows/Shell/HostedShell.csproj" />
+    <Project Path="examples/hosted-region/Check/CheckTool.csproj" />
+    <Project Path="examples/hosted-region/Check/Tests/CheckTool.Tests.csproj" />
+    <Project Path="examples/hosted-region/Installer/HostedInstaller.csproj" />
+    <Project Path="examples/hosted-components/Widget/WidgetTool.csproj" />
+    <Project Path="examples/hosted-components/Dashboard/HostedDashboard.csproj" />
     <Project Path="examples/query-collections/QueryCollectionsExample.csproj" />
     <Project Path="examples/wpf-navigation/NotesNavigation/NotesNavigation.csproj" />
     <Project Path="examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj" />

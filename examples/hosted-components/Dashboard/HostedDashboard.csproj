@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicApplicationFrontendCompositionType>HostedDashboard.RunicViewsComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
+    <!-- Hosting another application and its components are experimental (docs/experimental.md). -->
+    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="ReactiveUI" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
+    <!-- Builds the widget first. The dashboard does not reference its code: it starts the widget's executable, twice. -->
+    <ProjectReference Include="../Widget/WidgetTool.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <!-- Where the widget's executable is. A suite finds its tools in its own installation folder. -->
+    <AssemblyMetadata Include="WidgetTool" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../Widget/bin/$(Configuration)/$(TargetFramework)/WidgetTool'))" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+  <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
+</Project>

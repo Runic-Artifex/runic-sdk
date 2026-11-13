@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Hosted region installer</title>
+    <!-- A file, not an inline <style>: the page's Content-Security-Policy admits only its own styles (Program.cs). -->
+    <link rel="stylesheet" href="app.css" />
+    <script src="webui.js"></script>
+    <script src="runic-desktop-views.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Contoso Tools setup</h1>
+      <ol class="steps">
+        <li id="step-welcome">Welcome</li>
+        <li id="step-check">System check <span id="check-title"></span></li>
+        <li id="step-finish">Finish</li>
+      </ol>
+    </header>
+    <main>
+      <section id="welcome">
+        <h2>Welcome</h2>
+        <p>This setup checks the computer before it installs Contoso Tools. Choose Next to start the system check.</p>
+      </section>
+      <section id="check" hidden>
+        <!-- The check's Window shows here, in a frame from the check's own origin. The installer's page cannot read or
+             script it. Each child with a slot shows while the region is in that state; slot="fallback" covers the rest. -->
+        <runic-hosted-region name="check">
+          <p slot="waiting" id="check-waiting">Starting the system check…</p>
+          <p slot="loading">Loading the system check…</p>
+          <p slot="detached" id="check-note"></p>
+          <div slot="ended">
+            <p>The system check has ended.</p>
+            <button id="restart-check" type="button">Run the system check again</button>
+          </div>
+          <p slot="unsupported">This installer cannot show the system check here.</p>
+          <p slot="fallback">The system check is not shown.</p>
+        </runic-hosted-region>
+      </section>
+      <section id="finish" hidden>
+        <h2>Finish</h2>
+        <p>The system check is done. This example installs nothing; close the window to end it.</p>
+      </section>
+    </main>
+    <footer>
+      <output id="check-event" aria-live="polite"></output>
+      <button id="back" type="button">Back</button>
+      <button id="next" type="button">Next</button>
+    </footer>
+  </body>
+</html>

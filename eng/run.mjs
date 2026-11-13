@@ -71,8 +71,13 @@ function web(command, built = []) {
 export function viewsRuntime() {
   run("bun", ["run", "--bun", "build"], resolve(root, "packages/web/views"));
 }
+// The hosted components example builds its widget's component with the workspace's Vite plugin (`vite build`).
+function vitePlugin() {
+  run("bun", ["run", "--bun", "build"], resolve(root, "packages/web/vite-plugin-runic"));
+}
 function core() {
   viewsRuntime();
+  vitePlugin();
   run("dotnet", [
     "build",
     "RunicSdk.Core.slnx",
@@ -84,8 +89,8 @@ function core() {
 }
 function build() {
   core();
-  // core() has just built the Views runtime.
-  web("build", ["@runic-artifex/views"]);
+  // core() has just built the Views runtime and the Vite plugin.
+  web("build", ["@runic-artifex/views", "@runic-artifex/vite-plugin-runic"]);
 }
 export const packages = resolve(root, "artifacts/packages");
 // Each NuGet package packs at its own version (eng/version.mjs packageVersion). A package
