@@ -17,6 +17,23 @@ namespace Runic.Application.Views.Desktop;
 internal sealed class DesktopAppearanceFeed(IDesktopSettings? settings, Func<IDesktopSettings>? create = null)
 {
     private readonly Func<IDesktopSettings> _create = create ?? DesktopPlatformServices.CreateSettings;
+    // One feed per IDesktopSettings that a container registers, which it uses without owning it, so the windows of one
+    // container share a watch and a disposed container's settings stay with that container's windows; windows whose
+    // services register none share one feed of the platform's own settings, which it creates while a window is open and
+    // disposes after the last closed. No feed holds a container: each window lends it its logger while it is open.
+    // WPF's RunicViewHost and DesktopPlatformServices.AttachWindowServices use it; RunicDesktopHost has a feed of its own.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IDesktopSettings, DesktopAppearanceFeed> s_feeds = new();
+    private static readonly Lazy<DesktopAppearanceFeed> s_platformFeed = new(static () => new DesktopAppearanceFeed(settings: null));
+
+    // The shared feed of services: the one of its IDesktopSettings, or of the platform's own without one.
+    internal static DesktopAppearanceFeed For(IServiceProvider services)
+    {
+        IDesktopSettings? settings;
+        try { settings = services.GetService(typeof(IDesktopSettings)) as IDesktopSettings; }
+        catch (ObjectDisposedException) { settings = null; }
+        return settings is null ? s_platformFeed.Value : s_feeds.GetValue(settings, static settings => new DesktopAppearanceFeed(settings));
+    }
+
     private readonly object _gate = new();
     // Each open window's session, or another follower, with what applies an appearance to it and the logger of its services.
     private readonly Dictionary<object, (Action<DesktopAppearance> Apply, ILogger Logger)> _sessions = [];

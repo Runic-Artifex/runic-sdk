@@ -1644,7 +1644,7 @@ public static partial class DesktopPlatformServices
 /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers one instance per window
 /// scope. Before the window opens every service reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>;
 /// <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> binds it to the window as soon as the presentation opens, and closing the window
-/// stops it. After that every service reports <see cref="PlatformUnavailableReason.OwnerClosed"/>.
+/// stops it; <see cref="DesktopPlatformServices.AttachWindowServices"/> does the same for a window the application opened itself. After that every service reports <see cref="PlatformUnavailableReason.OwnerClosed"/>.
 /// </remarks>
 public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFileDialogs, IDesktopClipboard, IDesktopFileLauncher, IAsyncDisposable
 {

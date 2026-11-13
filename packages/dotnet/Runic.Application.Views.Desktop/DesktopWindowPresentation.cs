@@ -86,11 +86,14 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         }
         // DesktopWindow raises its events one at a time, so the changes keep their order.
         ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, activity));
-        if (!_window.IsOpen)
-        {
-            _window.ActivityChanged -= OnActivityChanged;
-            _window.ColorSchemeChanged -= OnColorSchemeChanged;
-        }
+        if (!_window.IsOpen) Detach();
+    }
+
+    // Stops following the window, which then no longer holds this presentation (DesktopWindowServices).
+    internal void Detach()
+    {
+        _window.ActivityChanged -= OnActivityChanged;
+        _window.ColorSchemeChanged -= OnColorSchemeChanged;
     }
 
     public async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopActivationContext? activation = null,
