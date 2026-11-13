@@ -1100,6 +1100,11 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
 | macOS, Linux | `Unsupported` for now |
 | Installed browser, custom window host, WPF `RunicWebView`, hosted window | `Unsupported` |
 
+The [side panel guide](../../../docs/side-panel.md) covers the panel's page, the
+fallback where the window cannot grow, accessibility and each platform's known
+limits; the [side panel example](../../../examples/side-panel/README.md) opens a
+panel from a ViewModel.
+
 ## Menu bar and keyboard shortcuts
 
 On macOS Runic Desktop gives the application the menus Cocoa applications are

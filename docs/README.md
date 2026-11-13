@@ -24,6 +24,10 @@ The [hosted regions guide](hosted-regions.md) shows a guest application's Window
 in a region of a host page, in a frame or as a component, with the security
 notes and troubleshooting for both.
 
+The [side panel guide](side-panel.md) opens a second page beside a window's
+page, growing the window instead of covering the page, with the fallback where
+the window cannot grow and each platform's limits.
+
 The [security guide](security.md) is for authors of Runic applications: what Runic
 protects by default, which options relax it, and what an application checks itself.
 

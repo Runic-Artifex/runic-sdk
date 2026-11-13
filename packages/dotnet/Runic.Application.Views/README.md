@@ -1084,7 +1084,10 @@ private async Task ShowDebugAsync()
 | CS-WebUI | `Unsupported` |
 | A hosted application's Window or region (`runic-host/1`) | `Unsupported` |
 
-The [Runic.Desktop README](../Runic.Desktop/README.md#side-panel) describes the
+The [side panel guide](../../../docs/side-panel.md) and the
+[side panel example](../../../examples/side-panel/README.md) show the panel's
+route in the frontend, the overlay fallback and each platform's limits. The
+[Runic.Desktop README](../Runic.Desktop/README.md#side-panel) describes the
 geometry: exact bounds on close, maximize and full screen while open, and what
 `DesktopWindowState` reports. In tests, `RunicTestWindowPresentation` decides
 the panel as a desktop window does

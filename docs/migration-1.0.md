@@ -1307,3 +1307,14 @@ modes.
 | A suite that wanted a tool's Views in its own page's theme and layout | `EmbedComponent` with `AllowComponentEmbedding` and the `component` build target, for applications of one vendor ([hosted components example](../examples/hosted-components/README.md)) |
 | A serve-only application could not host | It hosts guests in regions of its pages; `RunicHostedWindowRequest.CanOpenWindow` is `false` |
 | A host page with a Content-Security-Policy | Allows a region's frame with `frame-src http:`, and a component's origin with `script-src … http://127.0.0.1:*` and `connect-src … ws://127.0.0.1:*` |
+
+## From 0.18 to 0.19
+
+<!-- Draft: the 0.19.0 release PR completes this section. -->
+
+0.19.0 adds APIs. Update every Runic NuGet and npm package to 0.19.0 together and rebuild so that the generated clients
+are regenerated.
+
+| 0.18 | 0.19 |
+| --- | --- |
+| A panel drawn by the page as an overlay, or a window widened by hand with `MoveAsync` and `ResizeAsync`, which widened the page's viewport too | `IRunicWindowPresentation.OpenSidePanelAsync` shows the panel's own page beside the window's page and grows the window; keep the overlay as the fallback for a refusal. Experimental ([`RUNICDESK104`](experimental.md#RUNICDESK104)); see the [side panel guide](side-panel.md) |
