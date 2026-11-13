@@ -320,6 +320,24 @@ jobs:
             !artifacts/test-results/application/*/_*
           if-no-files-found: ignore
           overwrite: true
+      # The application group runs the scaling suite (tests/scaling/README.md), whose cases fail on a budget. The job
+      # summary lists every metric, the known costs, the improvements and each budget that changed against the base.
+      - name: Report the scaling budgets
+        id: scaling
+        if: ${{ always() && steps.application.outcome != 'skipped' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: bun tests/scaling/report.mjs --require-all ${BASE:+--base "$BASE"}
+      - name: Retain the scaling results
+        if: ${{ always() && steps.scaling.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scaling-results-${{ github.sha }}
+          path: artifacts/scaling
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 30
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   # One job runs the planned web packages' tests (webTests in eng/ci/plan.mjs) and the framework

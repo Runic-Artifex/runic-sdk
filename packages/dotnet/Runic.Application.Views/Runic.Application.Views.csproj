@@ -30,6 +30,8 @@
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
     <!-- tests/benchmarks sets the window's minimum unit interval (BridgeDispatcher) to measure the units themselves. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Benchmarks" />
+    <!-- The scaling suite reads the Bridge's cost counters (BridgeCostCounters) and sets the minimum unit interval. -->
+    <InternalsVisibleTo Include="Runic.Application.Scaling.Tests" />
   </ItemGroup>
   <ItemGroup>
     <!-- The generated-code support API (Generated/) is used throughout the runtime. -->

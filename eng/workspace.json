@@ -339,6 +339,15 @@
         "tests/fixtures/application/reactiveui-reactive-flavor"
       ]
     },
+    "scaling": {
+      "dependsOn": [
+        "application"
+      ],
+      "paths": [
+        "tests/dotnet/Runic.Application.Scaling.Tests",
+        "tests/scaling"
+      ]
+    },
     "application-wpf": {
       "dependsOn": [
         "application",

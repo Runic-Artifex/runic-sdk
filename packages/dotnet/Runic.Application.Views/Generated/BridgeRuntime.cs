@@ -476,7 +476,7 @@ internal interface IBridgeRegionSlots
 /// </remarks>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
-    IBridgeSnapshotBatchParticipant, IBridgeRegionSlots where T : INotifyPropertyChanged
+    IBridgeSnapshotBatchParticipant, IBridgeRegionSlots, IBridgeCostSource where T : INotifyPropertyChanged
 {
     private const int MaximumFieldWriteRequestIdLength = 256;
     private readonly object _modelGate;
