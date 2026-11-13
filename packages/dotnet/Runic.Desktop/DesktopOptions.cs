@@ -631,6 +631,17 @@ public enum DesktopWindowCapabilities
     /// on Windows its frame, caption buttons, system menu and menu bar, on Linux the GTK window and Runic's widgets in it.
     /// </summary>
     LayoutDirection = 1 << 20,
+
+    /// <summary>
+    /// The window reports its frame in exact native units and the frame the user sees
+    /// (<see cref="DesktopWindowState.Bounds"/> and <see cref="DesktopWindowState.VisibleBounds"/>), and moves and resizes
+    /// in one native operation (<see cref="DesktopWindow.SetBoundsAsync"/>). On Wayland, which lets no application
+    /// position its windows, GTK windows report it for the size alone.
+    /// </summary>
+    Bounds = 1 << 21,
+
+    /// <summary>The window's minimum size can change while it is open (<see cref="DesktopWindow.SetMinimumSizeAsync"/>).</summary>
+    MinimumSize = 1 << 22,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

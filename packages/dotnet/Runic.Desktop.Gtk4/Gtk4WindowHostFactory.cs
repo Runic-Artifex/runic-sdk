@@ -435,7 +435,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
-        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.LayoutDirection;
+        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds |
+        DesktopWindowCapabilities.MinimumSize;
     private DesktopWindowState? _state;
     private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
@@ -1809,6 +1810,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             _normalPosition = position;
         }
+        var exact = ReadExactBounds(window, position, width > 0 ? width : restoredWidth, height > 0 ? height : restoredHeight,
+            maximized, fullScreen);
         var state = new DesktopWindowState
         {
             X = position?.X,
@@ -1828,6 +1831,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 FullScreen = fullScreen && _options?.Kiosk != true,
                 Origin = DesktopCoordinateOrigin.TopLeft,
             },
+            Bounds = exact.Bounds,
+            VisibleBounds = exact.Visible,
+            IsSnapped = exact.Snapped,
         };
         if (Equals(state, Volatile.Read(ref _state)))
         {

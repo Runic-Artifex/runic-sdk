@@ -121,7 +121,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme |
-        DesktopWindowCapabilities.Ownership;
+        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -729,6 +729,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         var maximized = !fullScreen && Api.SendBool(_window, "isZoomed");
         var current = ReadBounds();
+        var exact = ReadExactBounds(maximized, fullScreen);
         if (!maximized && !fullScreen)
         {
             _normal = current;
@@ -743,6 +744,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             IsFullScreen = fullScreen,
             MonitorId = CurrentMonitorId(),
             Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !_kiosk },
+            Bounds = exact.Bounds,
+            VisibleBounds = exact.Bounds,
+            IsSnapped = exact.Snapped,
         };
         if (Equals(state, Volatile.Read(ref _state)))
         {

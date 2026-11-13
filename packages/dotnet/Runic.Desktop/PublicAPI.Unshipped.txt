@@ -1,1 +1,39 @@
 #nullable enable
+override Runic.Desktop.DesktopWindowBounds.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopWindowBounds.GetHashCode() -> int
+override Runic.Desktop.DesktopWindowBounds.ToString() -> string!
+Runic.Desktop.DesktopWindowBounds
+Runic.Desktop.DesktopWindowBounds.<Clone>$() -> Runic.Desktop.DesktopWindowBounds!
+Runic.Desktop.DesktopWindowBounds.DesktopWindowBounds() -> void
+Runic.Desktop.DesktopWindowBounds.Equals(Runic.Desktop.DesktopWindowBounds? other) -> bool
+Runic.Desktop.DesktopWindowBounds.Expand(Runic.Desktop.DesktopWindowEdge edge, double length, Runic.Platform.DesktopLayoutDirection layoutDirection = Runic.Platform.DesktopLayoutDirection.Default) -> Runic.Desktop.DesktopWindowBounds!
+Runic.Desktop.DesktopWindowBounds.Height.get -> int
+Runic.Desktop.DesktopWindowBounds.Height.init -> void
+Runic.Desktop.DesktopWindowBounds.Scale.get -> double
+Runic.Desktop.DesktopWindowBounds.Scale.init -> void
+Runic.Desktop.DesktopWindowBounds.Width.get -> int
+Runic.Desktop.DesktopWindowBounds.Width.init -> void
+Runic.Desktop.DesktopWindowBounds.X.get -> int?
+Runic.Desktop.DesktopWindowBounds.X.init -> void
+Runic.Desktop.DesktopWindowBounds.Y.get -> int?
+Runic.Desktop.DesktopWindowBounds.Y.init -> void
+Runic.Desktop.DesktopWindowCapabilities.Bounds = 2097152 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowCapabilities.MinimumSize = 4194304 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowEdge
+Runic.Desktop.DesktopWindowEdge.End = 3 -> Runic.Desktop.DesktopWindowEdge
+Runic.Desktop.DesktopWindowEdge.Left = 0 -> Runic.Desktop.DesktopWindowEdge
+Runic.Desktop.DesktopWindowEdge.Right = 1 -> Runic.Desktop.DesktopWindowEdge
+Runic.Desktop.DesktopWindowEdge.Start = 2 -> Runic.Desktop.DesktopWindowEdge
+Runic.Desktop.DesktopWindow.SetBoundsAsync(Runic.Desktop.DesktopWindowBounds! bounds, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.SetMinimumSizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowState.Bounds.get -> Runic.Desktop.DesktopWindowBounds?
+Runic.Desktop.DesktopWindowState.Bounds.init -> void
+Runic.Desktop.DesktopWindowState.IsSnapped.get -> bool
+Runic.Desktop.DesktopWindowState.IsSnapped.init -> void
+Runic.Desktop.DesktopWindowState.VisibleBounds.get -> Runic.Desktop.DesktopWindowBounds?
+Runic.Desktop.DesktopWindowState.VisibleBounds.init -> void
+Runic.Desktop.IDesktopWindowBoundsHost
+Runic.Desktop.IDesktopWindowBoundsHost.SetBoundsAsync(Runic.Desktop.DesktopWindowBounds! bounds, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowBoundsHost.SetMinimumSizeAsync(int width, int height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Desktop.DesktopWindowBounds.operator !=(Runic.Desktop.DesktopWindowBounds? left, Runic.Desktop.DesktopWindowBounds? right) -> bool
+static Runic.Desktop.DesktopWindowBounds.operator ==(Runic.Desktop.DesktopWindowBounds? left, Runic.Desktop.DesktopWindowBounds? right) -> bool

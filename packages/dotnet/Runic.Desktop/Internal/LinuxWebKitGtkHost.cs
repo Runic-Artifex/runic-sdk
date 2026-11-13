@@ -51,11 +51,11 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
-        DesktopWindowCapabilities.Ownership;
+        DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.MinimumSize;
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
-        (Api.CanReportState ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity : DesktopWindowCapabilities.None) |
+        (Api.CanReportState ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds : DesktopWindowCapabilities.None) |
         DesktopWindowCapabilities.ColorScheme |
         (Api.CanSetDirection ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |
         (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None) |
@@ -571,6 +571,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             X = x, Y = y, Width = Math.Max(1, width), Height = Math.Max(1, height), Origin = DesktopCoordinateOrigin.TopLeft,
         };
+        var exact = ReadExactBounds(x, y, current.Width, current.Height, flags, maximized, fullScreen);
         if (!maximized && !fullScreen && !tiled)
         {
             _normal = current;
@@ -586,6 +587,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             IsFullScreen = fullScreen,
             MonitorId = MonitorIdOf(Api.MonitorOfWindow(_window)),
             Placement = (_normal ?? current) with { Maximized = maximized, FullScreen = fullScreen && !kiosk },
+            Bounds = exact.Bounds,
+            VisibleBounds = exact.Visible,
+            IsSnapped = exact.Snapped,
         };
         if (Equals(state, Volatile.Read(ref _state)))
         {

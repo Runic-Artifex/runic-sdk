@@ -135,6 +135,61 @@ public sealed record DesktopWindowState
     /// maximized or full-screen.
     /// </summary>
     public DesktopWindowPlacement Placement { get; init; } = new();
+
+    /// <summary>
+    /// Gets the window's frame in native units that round-trip exactly, the rectangle <see cref="DesktopWindow.SetBoundsAsync"/>
+    /// takes, or <see langword="null"/> where the window does not report it (without
+    /// <see cref="DesktopWindowCapabilities.Bounds"/>).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DesktopWindowBounds"/> lists the units. <see cref="X"/>, <see cref="Y"/>, <see cref="Width"/>,
+    /// <see cref="Height"/> and <see cref="Placement"/> keep theirs, so saved placements keep their meaning; on Windows,
+    /// where those mix physical and device-independent pixels, use these bounds to move or grow a window by an exact amount.
+    /// For a maximized or full-screen window they are the maximized or full-screen frame.
+    /// </remarks>
+    public DesktopWindowBounds? Bounds { get; init; }
+
+    /// <summary>
+    /// Gets the frame the user sees, in the units of <see cref="Bounds"/>, or <see langword="null"/> where the platform
+    /// does not report it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Place a window flush against another window, or check that it fits a monitor's work area, with these bounds:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>Windows: the frame without the invisible resize borders of Windows 10 and 11
+    /// (<c>DWMWA_EXTENDED_FRAME_BOUNDS</c>), about 7 device-independent pixels left, right and below
+    /// <see cref="Bounds"/>.</description></item>
+    /// <item><description>macOS: the frame, which has no invisible border, so the same as <see cref="Bounds"/>.</description></item>
+    /// <item><description>Linux on X11: the window manager's frame around the window, decorations included
+    /// (<c>_NET_FRAME_EXTENTS</c>), without the shadow of GTK's client-side decorations; its size is larger than the
+    /// content size of <see cref="Bounds"/> by the decorations.</description></item>
+    /// <item><description>Linux on Wayland: <see langword="null"/>; Wayland reports neither the position nor the
+    /// decorations.</description></item>
+    /// </list>
+    /// </remarks>
+    public DesktopWindowBounds? VisibleBounds { get; init; }
+
+    /// <summary>
+    /// Gets whether the desktop arranged the window against a screen edge or into a layout (snapped, tiled), where
+    /// changing its bounds would break the arrangement. Not set while the window is maximized or full-screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>Best effort where the platform has no API for it:</para>
+    /// <list type="bullet">
+    /// <item><description>Windows: <c>IsWindowArranged</c> where user32 exports it; otherwise the window's bounds differ
+    /// from its restored bounds (<c>GetWindowPlacement</c>) while it is not maximized, which is how Snap
+    /// arranges a window.</description></item>
+    /// <item><description>macOS: no public API reports window tiling, so the frame is compared with the halves and
+    /// quarters of its screen's visible frame, allowing for the margins of tiled windows. A window the user sized to a
+    /// half of the screen by hand counts as snapped; a tiling arrangement of another shape does not.</description></item>
+    /// <item><description>Linux: GTK's tiled state (<c>GDK_WINDOW_STATE_TILED</c>, <c>GDK_TOPLEVEL_STATE_TILED</c>),
+    /// which GNOME and KDE set on Wayland and Mutter on X11; on X11 also the visible frame compared with the halves and
+    /// quarters of its monitor's work area, for window managers that tile without telling GTK.</description></item>
+    /// </list>
+    /// </remarks>
+    public bool IsSnapped { get; init; }
 }
 
 /// <summary>Provides the new state of a window for <see cref="DesktopWindow.StateChanged"/>.</summary>

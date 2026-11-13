@@ -303,20 +303,24 @@ public sealed class Gtk4ProfileTests
             DesktopWindowCapabilities.PerWindowColorScheme;
         // The run-time layout direction (S3): WebView2 without conditions, GTK 3 once GTK has loaded; WKWebView has none.
         const DesktopWindowCapabilities direction = DesktopWindowCapabilities.LayoutDirection;
+        // #864 B1: every built-in host changes its minimum size at run time; the bounds come with the state.
+        const DesktopWindowCapabilities minimum = DesktopWindowCapabilities.MinimumSize;
+        const DesktopWindowCapabilities bounds = DesktopWindowCapabilities.Bounds;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction,
-                advertised);
+                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction |
+                minimum | bounds, advertised);
         else if (OperatingSystem.IsMacOS())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement
-                | DesktopWindowCapabilities.FileDrag | presentation | ownership, advertised);
+                | DesktopWindowCapabilities.FileDrag | presentation | ownership | minimum | bounds, advertised);
         else if (OperatingSystem.IsLinux())
             Assert.Equal(known | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
-                ownership, advertised);
+                ownership | minimum, advertised);
         // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
             known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction);
+            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction |
+            minimum | bounds);
     }
 
     [Test]

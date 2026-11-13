@@ -110,7 +110,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement |
         DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.Ownership |
-        DesktopWindowCapabilities.LayoutDirection |
+        DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize |
         // Per window for a generated profile; WebUiWindow removes it for a ProfilePath the application configured.
         DesktopWindowCapabilities.PerWindowColorScheme;
     // A frameless or kiosk window has no frame for a menu bar.
@@ -237,6 +237,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
         cancellationToken.ThrowIfCancellationRequested();
         _options = options;
+        InitializeMinimumSize(options);
         _selfHandle = GCHandle.Alloc(this);
         _thread = new Thread(() => Run(url))
         {
@@ -619,6 +620,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         var fullScreen = kiosk || _fullScreen;
         var zoomed = Native.IsZoomed(_window);
         var maximized = !fullScreen && zoomed;
+        var exact = ReadBounds(frame, dpi, maximized, fullScreen);
         var current = new DesktopWindowPlacement
         {
             X = frame.Left,
@@ -646,6 +648,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 Maximized = _fullScreen ? _windowedMaximized : maximized,
                 FullScreen = _fullScreen && !kiosk,
             },
+            Bounds = exact.Bounds,
+            VisibleBounds = exact.Visible,
+            IsSnapped = exact.Snapped,
         };
         if (Equals(state, Volatile.Read(ref _state)))
         {
@@ -1008,12 +1013,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 host?.UpdateState();
                 return Native.DefWindowProc(window, message, wParam, lParam);
             case WmGetMinMaxInfo:
-                if (host?._options is { MinimumWidth: { } minimumWidth, MinimumHeight: { } minimumHeight })
-                {
-                    var info = (MinMaxInfo*)lParam;
-                    info->MinimumTrackSize.X = ScaleForWindow(minimumWidth, window);
-                    info->MinimumTrackSize.Y = ScaleForWindow(minimumHeight, window);
-                }
+                host?.ApplyMinimumSize(window, (MinMaxInfo*)lParam);
                 return 0;
             case WmClose:
                 if (host?._options?.CloseRequested is { } requestClose)

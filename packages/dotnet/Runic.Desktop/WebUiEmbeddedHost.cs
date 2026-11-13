@@ -145,6 +145,14 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot place its window on a monitor."));
 
+    /// <summary>Moves and resizes in one native operation, in the units of DesktopWindowState.Bounds; requires <see cref="DesktopWindowCapabilities.Bounds"/>.</summary>
+    ValueTask SetBoundsAsync(DesktopWindowBounds bounds, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot set its bounds in one operation."));
+
+    /// <summary>Changes the minimum size while open, zero for none; requires <see cref="DesktopWindowCapabilities.MinimumSize"/>.</summary>
+    ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot change its minimum size."));
+
     /// <summary>Applies DesktopHost.SetSpellCheckingLanguagesAsync; a host whose checker has no languages ignores it.</summary>
     ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
