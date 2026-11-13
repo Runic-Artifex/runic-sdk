@@ -848,6 +848,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 host.UpdateActivity();
                 // A window back from the Dock takes the zoom state MaximizeAsync, RestoreAsync or SetPlacementAsync gave it.
                 host.QueuePendingZoom();
+                // A window unzoomed takes the frame a placement gave it while zoomed.
+                host.QueueRestoreFrame();
                 // AppKit lays the title bar out again after a resize.
                 host.ApplyTrafficLights();
             }

@@ -691,7 +691,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
-        return new(Gtk4Dispatcher.Instance.InvokeAsync(() => GetWindow().SetDefaultSize(width, height), cancellationToken));
+        return new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
+        {
+            _settlingFrame = null;
+            GetWindow().SetDefaultSize(width, height);
+        }, cancellationToken));
     }
 
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default)
@@ -702,6 +706,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         }
         return new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
+            _settlingFrame = null;
             var window = GetWindow();
             if (!window.IsVisible())
             {
@@ -730,7 +735,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             PresentCore(window);
             // A window hidden while maximized and given a normal placement (Gtk4WindowHost.Placement.cs).
-            UnmaximizeWhenShown(window);
+            StartFrameTargetWhenShown(window);
         }
         finally { BlockOwner(window.Handle.DangerousGetHandle()); }
     }
@@ -1805,15 +1810,17 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
         var maximized = window.IsMaximized();
         var fullScreen = window.IsFullscreen();
-        // A window hidden while maximized and given a normal placement takes its size once unmaximized.
-        ApplyUnmaximizedSize(window, maximized);
         var width = window.GetWidth();
         var height = window.GetHeight();
         var restoredWidth = Math.Max(1, defaultWidth > 0 ? defaultWidth : width);
         var restoredHeight = Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
         // X11 only, and only once the window is mapped: an unmapped window has no position on screen yet.
         var position = window.IsVisible() ? Gtk4X11Placement.GetPosition(SurfaceOf(window)) : null;
-        if (position is not null && !maximized && !fullScreen)
+        // A placement's frame target takes its next step (Gtk4WindowHost.Placement.cs); meanwhile the frames the window
+        // passes through are not the bounds it restores to, and it reports the target's.
+        ContinueFrameTarget(window, maximized, position, width, height);
+        var pending = PendingPlacement;
+        if (position is not null && !maximized && !fullScreen && pending is null)
         {
             _normalPosition = position;
         }
@@ -1830,11 +1837,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             MonitorId = Gtk4Monitors.IdOf(window.GetSurface()),
             Placement = new DesktopWindowPlacement
             {
-                X = _normalPosition?.X,
-                Y = _normalPosition?.Y,
-                Width = restoredWidth,
-                Height = restoredHeight,
-                Maximized = maximized,
+                X = pending is { } target ? target.X : _normalPosition?.X,
+                Y = pending is { } targetY ? targetY.Y : _normalPosition?.Y,
+                Width = pending?.Width ?? restoredWidth,
+                Height = pending?.Height ?? restoredHeight,
+                Maximized = pending?.Maximized ?? maximized,
                 FullScreen = fullScreen && _options?.Kiosk != true,
                 Origin = DesktopCoordinateOrigin.TopLeft,
             },

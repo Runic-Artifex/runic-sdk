@@ -17,6 +17,8 @@ internal sealed partial class LinuxWebKitGtkHost
     private (int? X, int? Y, int Width, int Height)? _geometryWhenShown;
     private bool? _maximizedWhenShown;
     private (int Width, int Height)? _maximizeAtSize;
+    // Which wait the one-second fallback belongs to, so an earlier wait's fallback cannot end a later one.
+    private int _maximizeAtSizeWait;
 
     public ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() =>
@@ -94,7 +96,13 @@ internal sealed partial class LinuxWebKitGtkHost
                 if (maximized) Api.GtkWindowUnmaximize(_window);
                 if (x is { } newX && y is { } newY) Api.GtkWindowMove(_window, newX, newY);
                 Api.GtkWindowResize(_window, width, height);
-                if (placement.Maximized) Api.GtkWindowMaximize(_window);
+                if (placement.Maximized)
+                {
+                    // A maximized window whose restored size changes maximizes once the window manager has the size.
+                    var sized = !maximized && (currentWidth, currentHeight) == (width, height);
+                    if (sized) Api.GtkWindowMaximize(_window);
+                    else MaximizeOnceSized(width, height);
+                }
             }
             if (placement.FullScreen && !fullScreen && Api.CanUseFullScreen) EnterFullScreen();
             _normal = new DesktopWindowPlacement { X = x, Y = y, Width = width, Height = height, Origin = DesktopCoordinateOrigin.TopLeft };
@@ -124,14 +132,22 @@ internal sealed partial class LinuxWebKitGtkHost
             Api.GtkWindowMaximize(_window);
             return;
         }
-        // GTK sends the new size at its next frame, after this turn: the window maximizes once it reports the size
-        // (UpdateState), so the window manager restores it to that size, or after a second where it never does.
-        _maximizeAtSize = (sized.Width, sized.Height);
+        MaximizeOnceSized(sized.Width, sized.Height);
+    }
+
+    // GTK thread only. gtk_window_move reaches the window manager at once, but GTK sends a resize only at its next
+    // frame, after this turn: a maximize sent now could reach the window manager first, which then keeps the new
+    // position with the old size as the bounds it restores to, and drops the resize of the maximized window. The window
+    // maximizes once it reports the size (UpdateState), or after a second where it never does.
+    private void MaximizeOnceSized(int width, int height)
+    {
+        _maximizeAtSize = (width, height);
+        var wait = ++_maximizeAtSizeWait;
         _ = Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(_ => Dispatcher.Post(() =>
         {
             try
             {
-                MaximizeAtSize(force: true);
+                if (wait == _maximizeAtSizeWait) MaximizeAtSize(force: true);
             }
             catch
             {

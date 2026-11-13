@@ -3,21 +3,40 @@ using Runic.Desktop.Internal;
 namespace Runic.Desktop.Gtk4;
 
 // DesktopWindow.MaximizeAsync, RestoreAsync and SetPlacementAsync (sdk#897, W1a; window-api-0.19/DESIGN.md §3.1). GTK 4
-// keeps the unmaximized size in the default size, which a placement sets also while the window is maximized; on X11
-// Runic sets the position through Xlib on GDK's own display connection, so an unmaximize, the move and a maximize reach
-// the window manager in that order. GTK 4 has no call to un-minimize a window: presenting it brings it back.
+// keeps the unmaximized size in the default size; on X11 Runic sets the position through Xlib. GTK 4 has no call to
+// un-minimize a window: presenting it brings it back.
+//
+// A placement that changes a maximized window's restored bounds, or maximizes a window at new bounds, waits for the
+// window at each step (a frame target): GTK sends an unmaximize or maximize at its next frame, while XMoveResizeWindow
+// goes at once, so issued together they reach the window manager in an order that depends on timing, and the window
+// manager keeps whatever frame the window had when it maximized as the bounds it restores to. The window unmaximizes,
+// takes the frame once it reports that it is unmaximized, and maximizes once it reports the frame (UpdateState).
 internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
 {
-    // GTK thread only: the size a hidden window given a normal placement takes once it is shown. GTK maps a window that
-    // was mapped before at its last size, not its default size, and a window manager may map it maximized again, so the
-    // window unmaximizes and takes the size once it is shown and reports that it is not maximized (UpdateState).
-    private (int Width, int Height)? _unmaximizedSizeWhenShown;
+    // GTK thread only: the frame target the window is waiting for, and one a hidden window starts when it is shown.
+    private FrameTarget? _frameTarget;
+    private FrameTarget? _frameTargetWhenShown;
+    // GTK thread only: a finished frame target checked once more (SettleFrameLater); any later request clears it.
+    private FrameTarget? _settlingFrame;
+
+    private sealed class FrameTarget((int X, int Y)? position, int width, int height, bool maximize)
+    {
+        internal (int X, int Y)? Position { get; } = position;
+        internal int Width { get; } = width;
+        internal int Height { get; } = height;
+        internal bool Maximize { get; } = maximize;
+        // Whether the frame was given to the unmaximized window, so the window waits for it to report the frame.
+        internal bool Applied { get; set; }
+        // How often the frame was given again after the window manager moved the window elsewhere.
+        internal int Retries { get; set; }
+    }
 
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default) =>
         new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
             var window = GetWindow();
             if (_options?.Kiosk == true) return;
+            (_frameTarget, _frameTargetWhenShown, _settlingFrame) = (null, null, null);
             if (window.IsFullscreen()) window.Unfullscreen();
             if (IsMinimized(window) && window.IsVisible()) Present(window);
             // A hidden window is placed before it is mapped, so it restores to where it was (Present).
@@ -35,13 +54,22 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
         {
             var window = GetWindow();
             if (_options?.Kiosk == true) return;
+            (_frameTarget, _frameTargetWhenShown, _settlingFrame) = (null, null, null);
             if (window.IsFullscreen()) window.Unfullscreen();
+            window.GetDefaultSize(out var width, out var height);
+            var restored = new FrameTarget(Gtk4X11Placement.IsActive ? _normalPosition : null, width, height, maximize: false);
             if (!window.IsVisible())
             {
-                window.GetDefaultSize(out var width, out var height);
-                _unmaximizedSizeWhenShown = (width, height);
+                // GTK maps a window that was mapped before at its last size: the restored frame applies once it is shown.
+                _frameTargetWhenShown = restored;
+                window.Unmaximize();
             }
-            window.Unmaximize();
+            else if (window.IsMaximized())
+            {
+                // The window manager restores the frame it saved when the window maximized, which may not be the bounds a
+                // placement or the open gave it: the window takes them once it is unmaximized.
+                BeginFrameTarget(window, restored, unmaximize: true);
+            }
             if (IsMinimized(window) && window.IsVisible()) Present(window);
             QueueStateUpdate();
         }, cancellationToken));
@@ -71,57 +99,156 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
             {
                 (width, height) = FitToLargestMonitor(width, height);
             }
+            (_frameTarget, _frameTargetWhenShown, _settlingFrame) = (null, null, null);
             var fullScreen = window.IsFullscreen();
             var maximized = window.IsMaximized();
-            _unmaximizedSizeWhenShown = !window.IsVisible() && !placement.Maximized ? (width, height) : null;
             if (fullScreen && !placement.FullScreen) window.Unfullscreen();
             window.SetDefaultSize(width, height);
-            if (position is { } target)
+            if (!window.IsVisible())
             {
-                if (!window.IsVisible())
+                if (position is { } pending)
                 {
                     // Placed before it is mapped (Present); a maximized or full-screen one restores to it.
-                    _pendingPosition = target;
+                    _pendingPosition = pending;
                     _pendingPositionIsRestoredBounds = placement.Maximized || placement.FullScreen;
+                    _normalPosition = pending;
                 }
+                if (placement.Maximized) window.Maximize();
                 else
                 {
-                    // The window manager restores a maximized window before it takes the new frame.
-                    if (maximized) window.Unmaximize();
+                    window.Unmaximize();
+                    _frameTargetWhenShown = new FrameTarget(position, width, height, maximize: false);
+                }
+            }
+            else if (!maximized && !placement.Maximized)
+            {
+                // A normal window stays normal: one XMoveResizeWindow, as SetBoundsAsync.
+                if (position is { } target)
+                {
                     if (!Gtk4X11Placement.MoveResize(SurfaceOf(window), target.X, target.Y, width, height))
                     {
                         throw new NotSupportedException("The GTK 4 window has no X11 surface.");
                     }
+                    _normalPosition = target;
                 }
-                _normalPosition = target;
             }
-            if (placement.Maximized) window.Maximize();
-            else if (maximized) window.Unmaximize();
+            else
+            {
+                BeginFrameTarget(window, new FrameTarget(position, width, height, placement.Maximized), unmaximize: maximized);
+            }
             if (placement.FullScreen && !fullScreen) EnterFullScreen(window);
             QueueStateUpdate();
         }, cancellationToken));
     }
 
-    // GTK thread only, after Present: see _unmaximizedSizeWhenShown. GTK unmaximizes at its next frame.
-    private void UnmaximizeWhenShown(Gtk.Window window)
+    // GTK thread only, after Present: a hidden window given a normal placement, or restored, takes its frame now.
+    // GTK maps it at its last size and a window manager may map it maximized again, so it unmaximizes first.
+    private void StartFrameTargetWhenShown(Gtk.Window window)
     {
-        if (_unmaximizedSizeWhenShown is null) return;
-        window.Unmaximize();
+        if (_frameTargetWhenShown is not { } target) return;
+        _frameTargetWhenShown = null;
+        BeginFrameTarget(window, target, unmaximize: true);
+    }
+
+    // GTK thread only. A check every 1.5 seconds drives a step the window did not report, as when a busy window manager
+    // or GTK let an unmaximize or the frame go missing, and gives up after six.
+    private void BeginFrameTarget(Gtk.Window window, FrameTarget target, bool unmaximize)
+    {
+        _frameTarget = target;
+        if (unmaximize) window.Unmaximize();
+        else ApplyFrame(window, target);
+        CheckFrameTargetLater(target, checks: 6);
         QueueStateUpdate();
     }
 
-    // GTK thread only, from UpdateState.
-    private void ApplyUnmaximizedSize(Gtk.Window window, bool maximized)
-    {
-        if (_unmaximizedSizeWhenShown is not { } size || maximized || !window.IsVisible()) return;
-        _unmaximizedSizeWhenShown = null;
-        window.SetDefaultSize(size.Width, size.Height);
-        if (_normalPosition is { } position && Gtk4X11Placement.IsActive)
+    private void CheckFrameTargetLater(FrameTarget target, int checks) =>
+        _ = Task.Delay(TimeSpan.FromSeconds(1.5)).ContinueWith(_ => Gtk4Dispatcher.Instance.Post(() =>
         {
-            Gtk4X11Placement.MoveResize(SurfaceOf(window), position.X, position.Y, size.Width, size.Height);
+            try
+            {
+                if (!ReferenceEquals(_frameTarget, target) || _window is not { } window || !IsOpen) return;
+                if (checks <= 1)
+                {
+                    if (!target.Applied) ApplyFrame(window, target);
+                    FinishFrameTarget(window, target);
+                    return;
+                }
+                if (window.IsMaximized()) window.Unmaximize();
+                else ApplyFrame(window, target);
+                CheckFrameTargetLater(target, checks - 1);
+            }
+            catch
+            {
+                // Never unwind through GTK.
+            }
+        }), TaskScheduler.Default);
+
+    // GTK thread only, from UpdateState: the next step once the window reports the last one.
+    private void ContinueFrameTarget(Gtk.Window window, bool maximized, (int X, int Y)? position, int width, int height)
+    {
+        if (_frameTarget is not { } target || maximized || !window.IsVisible()) return;
+        if (!target.Applied)
+        {
+            ApplyFrame(window, target);
+            return;
+        }
+        if (width != target.Width || height != target.Height) return;
+        if (target.Position is { } wanted && position != wanted)
+        {
+            // A window manager that places a newly mapped window itself can move it after the frame was given.
+            if (position is not null && target.Retries++ < 5) ApplyFrame(window, target);
+            return;
+        }
+        FinishFrameTarget(window, target);
+    }
+
+    private void ApplyFrame(Gtk.Window window, FrameTarget target)
+    {
+        target.Applied = true;
+        window.SetDefaultSize(target.Width, target.Height);
+        if (target.Position is { } position) Gtk4X11Placement.MoveResize(SurfaceOf(window), position.X, position.Y, target.Width, target.Height);
+        QueueStateUpdate();
+    }
+
+    private void FinishFrameTarget(Gtk.Window window, FrameTarget target)
+    {
+        _frameTarget = null;
+        if (target.Position is { } position) _normalPosition = position;
+        if (target.Maximize) window.Maximize();
+        else
+        {
+            _settlingFrame = target;
+            SettleFrameLater(target);
         }
         QueueStateUpdate();
     }
+
+    // A window manager that restored the window late can still move it once after it reported the frame: a second
+    // later, a window that is still normal and no other request has placed takes the frame again.
+    private void SettleFrameLater(FrameTarget target) =>
+        _ = Task.Delay(TimeSpan.FromSeconds(1.5)).ContinueWith(_ => Gtk4Dispatcher.Instance.Post(() =>
+        {
+            try
+            {
+                if (!ReferenceEquals(_settlingFrame, target) || _window is not { } window || !IsOpen) return;
+                _settlingFrame = null;
+                if (window.IsMaximized() || window.IsFullscreen() || !window.IsVisible()) return;
+                var position = Gtk4X11Placement.GetPosition(SurfaceOf(window));
+                if (window.GetWidth() == target.Width && window.GetHeight() == target.Height
+                    && (target.Position is null || position == target.Position)) return;
+                ApplyFrame(window, target);
+            }
+            catch
+            {
+                // Never unwind through GTK.
+            }
+        }), TaskScheduler.Default);
+
+    // GTK thread only, for UpdateState: the placement a window waiting for its frame target reports, the target's.
+    private (int? X, int? Y, int Width, int Height, bool Maximized)? PendingPlacement =>
+        (_frameTarget ?? _frameTargetWhenShown) is { } target
+            ? (target.Position?.X ?? _normalPosition?.X, target.Position?.Y ?? _normalPosition?.Y, target.Width, target.Height, target.Maximize)
+            : null;
 
     // GTK thread only.
     private static bool IsMinimized(Gtk.Window window) =>
