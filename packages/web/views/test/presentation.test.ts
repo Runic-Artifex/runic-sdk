@@ -7,6 +7,7 @@ import { createCommandController, isBridgeOutcome, onBridgeConnection, onBridgeD
 import { connectView } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge } from "../dist/mock.js";
+import { onBridgeDraining } from "../dist/experimental.js";
 
 type State = { readonly page: number; readonly title: string };
 const members = { page: (value: unknown) => bridgeWire.integer(value, 0, 1000), title: bridgeWire.string };
@@ -353,6 +354,73 @@ test("closing: the page delivers its state, waits a frame, replies, and reports 
   } finally {
     stop();
     frames.restore();
+  }
+});
+
+test("closing with draining: the page replies, keeps applying pushes and stays connected until the connection ends", async () => {
+  const frames = installFrames();
+  const states: BridgeConnectionState[] = [];
+  const draining: boolean[] = [];
+  let stop = () => {};
+  let stopDraining = () => {};
+  try {
+    const bridge = installBridge();
+    const client = await connectWizard();
+    stop = onBridgeConnection(state => states.push(state), { lostAfter: 0 });
+    stopDraining = onBridgeDraining(value => draining.push(value));
+    const seen: number[] = [];
+    client.subscribe(state => seen.push(state.page));
+    bridge.push({ kind: "closing", draining: true });
+    frames.run();
+    const reply = await bridge.take("closing-reply");
+    reply.resolve({ ok: true });
+    // The window drains: still connected, and the page receives its progress.
+    assert.deepEqual(states, ["connected"]);
+    assert.deepEqual(draining, [false, true]);
+    bridge.frame([{ field: "page", kind: "set", value: 2 }]);
+    await tick(5);
+    frames.run();
+    assert.deepEqual(seen, [1, 2]);
+    // The window's connection ends once the work drained: closed, not lost.
+    bridge.setConnected(false);
+    await tick(5);
+    assert.deepEqual(states, ["connected", "closed"]);
+    assert.deepEqual(draining, [false, true, false]);
+    const late: BridgeConnectionState[] = [];
+    const stopLate = onBridgeConnection(state => late.push(state));
+    assert.deepEqual(late, ["closed"]);
+    stopLate();
+    client.dispose();
+  } finally {
+    stop();
+    stopDraining();
+    frames.restore();
+  }
+});
+
+test("with the mock Bridge: closeWindow with draining pushes draining: true", async () => {
+  (host[runtimeKey] as { dispose?: () => void } | undefined)?.dispose?.();
+  delete host[runtimeKey];
+  const bridge = installMockBridge(createMockBridge());
+  const view = bridge.view("wizard", { state: { page: 1, title: "start" } });
+  const draining: boolean[] = [];
+  const stopDraining = onBridgeDraining(value => draining.push(value));
+  try {
+    const client = await connectWizard();
+    const seen: number[] = [];
+    client.subscribe(state => seen.push(state.page));
+    assert.equal(await bridge.closeWindow(1_000, { draining: true }), true);
+    assert.equal(draining.at(-1), true);
+    view.update({ page: 4 });
+    await tick(5);
+    assert.equal(seen.at(-1), 4);
+    bridge.disconnect();
+    assert.equal(draining.at(-1), false);
+    client.dispose();
+  } finally {
+    stopDraining();
+    (host[runtimeKey] as { dispose?: () => void } | undefined)?.dispose?.();
+    delete host[runtimeKey];
   }
 });
 

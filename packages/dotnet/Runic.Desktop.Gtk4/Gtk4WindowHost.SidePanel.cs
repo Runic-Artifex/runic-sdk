@@ -278,6 +278,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
     private void ApplyPanelBounds(DesktopWindowBounds target)
     {
         var window = GetWindow();
+        // The panel changes a normal window's frame, which is its restore bounds from now on.
+        ReleaseRestoreBounds();
         window.SetDefaultSize(target.Width, target.Height);
         if (target is { X: { } x, Y: { } y }) Gtk4X11Placement.MoveResize(SurfaceOf(window), x, y, target.Width, target.Height);
         QueueStateUpdate();
@@ -441,6 +443,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
         (int X, int Y)? position = _normalPosition is { } normal && panel.IsLeft ? (normal.X + panel.NativeWidth, normal.Y) : _normalPosition;
         _pendingRestore = (position, Math.Max(1, width - panel.NativeWidth), height);
         if (position is { } moved) _normalPosition = moved;
+        // The restore bounds tracker (WindowRestoreBounds) holds them too, so it gives the window the same bounds.
+        _restore.Set(new RestoreFrame(position?.X, position?.Y, Math.Max(1, width - panel.NativeWidth), height), _restoreClock.Elapsed, maximized: true);
     }
 
     // GTK thread, from UpdateState of a window that is neither maximized, full-screen nor minimized: a panel closed while

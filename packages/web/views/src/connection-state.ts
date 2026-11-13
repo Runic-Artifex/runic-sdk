@@ -73,8 +73,9 @@ function onBridgeConnectionIn(slots: Slots, listener: (state: BridgeConnectionSt
   function connectedChanged(connected: boolean): void {
     if (stopped) return;
     connectedNow = connected;
-    if (channel.closed === true) {
-      // The application closed the window: a drop that follows is the end of the window, not a lost connection.
+    if (channel.closed === true || (channel.draining === true && !connected)) {
+      // The application closed the window: a drop that follows is the end of the window, not a lost connection. A
+      // draining window stays connected until its work has drained, and its drop is its end too.
       clearTimeout(lostTimer);
       lostTimer = undefined;
       publish("closed");
@@ -163,6 +164,13 @@ interface ConnectionChannel {
    */
   closed?: boolean;
   closedListeners?: Set<(closed: boolean) => void>;
+  /**
+   * Whether the application closed the window with a close drain (presented/1, `closing` with `draining: true`, 0.19):
+   * the window stays visible and connected while its accepted work drains, and the page keeps receiving its state.
+   * From that push until the connection ends (when `closed` follows) or a new connection opens. Experimental.
+   */
+  draining?: boolean;
+  drainingListeners?: Set<(draining: boolean) => void>;
 }
 
 function connectionChannel(slots: Slots): ConnectionChannel {
@@ -172,11 +180,52 @@ function connectionChannel(slots: Slots): ConnectionChannel {
 /** @internal An instance's runtime reports that the application closed the window, and that a new connection opened. */
 export function reportWindowClosed(slots: Slots, closed: boolean): void {
   const channel = connectionChannel(slots);
+  // A new connection, or a close without a drain, ends draining.
+  reportWindowDraining(slots, false);
   if ((channel.closed === true) === closed) return;
   channel.closed = closed;
   for (const listener of [...channel.closedListeners ?? []]) {
     try { listener(closed); } catch (error) { reportBridgeError(slots, error); }
   }
+}
+
+/** @internal An instance's runtime reports that the application closed the window with a close drain, or that it ended. */
+export function reportWindowDraining(slots: Slots, draining: boolean): void {
+  const channel = connectionChannel(slots);
+  if ((channel.draining === true) === draining) return;
+  channel.draining = draining;
+  for (const listener of [...channel.drainingListeners ?? []]) {
+    try { listener(draining); } catch (error) { reportBridgeError(slots, error); }
+  }
+}
+
+/** @internal The draining window's connection ended: the window closed. */
+export function endWindowDraining(slots: Slots): void {
+  if (connectionChannel(slots).draining === true) reportWindowClosed(slots, true);
+}
+
+/**
+ * Experimental (close drain, 0.19; the .NET side is `RUNICDESK105`): observes whether the application closed the current
+ * instance's window (the page's, outside `RunicInstance.run`) with a close drain. Calls `listener` with the current value
+ * at once, then after each change, until the returned function is called. `true` from the `closing` push with
+ * `draining: true` until the window's connection ends, when `onBridgeConnection` reports `closed`, or a new connection
+ * opens. Meanwhile the window stays visible, the connection stays `connected` and the page keeps receiving the window's
+ * state, so it can show that it is finishing, with the progress of its operations.
+ */
+export function onBridgeDraining(listener: (draining: boolean) => void): () => void {
+  const slots = currentSlots();
+  const channel = connectionChannel(slots);
+  let stopped = false;
+  const changed = (draining: boolean) => {
+    if (stopped) return;
+    try { listener(draining); } catch (error) { reportBridgeError(slots, error); }
+  };
+  (channel.drainingListeners ??= new Set()).add(changed);
+  changed(channel.draining === true);
+  return () => {
+    stopped = true;
+    channel.drainingListeners?.delete(changed);
+  };
 }
 
 /** @internal Starts the connection state channel of the instance with `slots`, once. */

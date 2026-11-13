@@ -646,6 +646,14 @@ public enum DesktopWindowCapabilities
 
     /// <summary>The window's minimum size can change while it is open (<see cref="DesktopWindow.SetMinimumSizeAsync"/>).</summary>
     MinimumSize = 1 << 22,
+
+    /// <summary>
+    /// The open window maximizes and restores on request, idempotently (<see cref="DesktopWindow.MaximizeAsync"/> and
+    /// <see cref="DesktopWindow.RestoreAsync"/>), and takes a saved placement (<see cref="DesktopWindow.SetPlacementAsync"/>),
+    /// which <see cref="DesktopWindowState.Placement"/> then reports back. On Wayland, which lets no application position
+    /// its windows, GTK windows report it for a placement without a position.
+    /// </summary>
+    WindowPlacement = 1 << 23,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

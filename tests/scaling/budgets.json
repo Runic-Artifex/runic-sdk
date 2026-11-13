@@ -222,8 +222,8 @@
       "sizes": [1, 9],
       "limit": 229835,
       "measured": [29136, 225328],
-      "slack": 32768,
-      "note": "linux-x64 executable bytes above the build without fixture ViewModels; the slope from 1 to 9 is the cost per ViewModel, about 24 KiB after #901 (118 KiB before; win-x64 22.2 KiB, osx-arm64 24.4 KiB in the ci:all-platforms run of #918): the generated Bridge's constructor, codecs and lambdas and the ViewModel itself. Section alignment makes the size not exactly linear: the slack and the 2 % margin absorb it",
+      "noise": 8192,
+      "note": "linux-x64 executable bytes above the build without fixture ViewModels; the slope from 1 to 9 is the cost per ViewModel, about 24 KiB after #901 (118 KiB before; win-x64 22.2 KiB, osx-arm64 24.4 KiB in the ci:all-platforms run of #918): the generated Bridge's constructor, codecs and lambdas and the ViewModel itself. Section alignment moves each measurement by a few KiB: the 8 KiB noise and the 2 % margin absorb it",
       "margin": 0.02
     },
     "aot/bridge/view-model-types": {

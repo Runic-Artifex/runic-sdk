@@ -143,6 +143,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.Ownership |
         DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize |
+        DesktopWindowCapabilities.WindowPlacement |
         // Per window for a generated profile; WebUiWindow removes it for a ProfilePath the application configured.
         DesktopWindowCapabilities.PerWindowColorScheme;
     // A frameless or kiosk window has no frame for a menu bar.
@@ -418,8 +419,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!Native.GetMonitorInfo(Native.MonitorFromWindow(_window, MonitorDefaultToNearest), ref info)) return;
         _windowedPlacement = placement;
-        _windowedMaximized = Native.IsZoomed(_window) || _maximizeWhenShown;
-        _maximizeWhenShown = false;
+        _windowedMaximized = PlacementMaximized;
+        (_maximizeWhenShown, _restoreWhenShown) = (false, false);
         _windowedStyle = Native.GetWindowLongPtr(_window, GwlStyle);
         _fullScreen = true;
         HideBarForFullScreen();
@@ -443,6 +444,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         placement.ShowCommand = !visible ? (uint)SwHide : _windowedMaximized ? SwShowMaximized : SwShowNormal;
         if (!visible) _maximizeWhenShown = _windowedMaximized;
         Native.SetWindowPlacement(_window, ref placement);
+        // A hidden window that was maximized before full screen keeps WS_MAXIMIZE; RestoreAsync may have asked for normal.
+        if (!visible) _restoreWhenShown = !_windowedMaximized && Native.IsZoomed(_window);
         Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoOwnerZOrder | SwpFrameChanged | SwpNoActivate);
         UpdateState();
     }
@@ -514,10 +517,15 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             // one keeps covering its monitor.
             // A hidden window-modal window lets its owner take input again, as a macOS sheet that ended does.
             if (!visible) ReleaseOwner();
-            Native.ShowWindow(_window, !visible ? SwHide : _maximizeWhenShown && !_fullScreen ? SwMaximize : SwShow);
+            // A hidden window that MaximizeAsync, RestoreAsync or SetPlacementAsync gave a state takes it now.
+            if (!visible) Native.ShowWindow(_window, SwHide);
+            else if (_maximizeWhenShown && !_fullScreen) Native.ShowWindow(_window, SwMaximize);
+            else if (_restoreWhenShown && !_fullScreen && Native.IsIconic(_window)) RestoreFromMinimized();
+            else if (_restoreWhenShown && !_fullScreen) Native.ShowWindow(_window, (int)SwShowNormal);
+            else Native.ShowWindow(_window, SwShow);
             if (visible)
             {
-                _maximizeWhenShown = false;
+                (_maximizeWhenShown, _restoreWhenShown) = (false, false);
                 BlockOwner();
             }
             if (_controller is not null)
@@ -684,9 +692,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             IsFullScreen = fullScreen,
             MonitorId = WindowsMonitors.IdOf(Native.MonitorFromWindow(_window, MonitorDefaultToNearest)),
             // A full-screen window restores to the maximized state it left.
+            // A hidden window reports the state it shows in (SetVisibleAsync).
             Placement = (_normal ?? normal) with
             {
-                Maximized = _fullScreen ? _windowedMaximized : maximized,
+                Maximized = !kiosk && PlacementMaximized,
                 FullScreen = _fullScreen && !kiosk,
             },
             Bounds = exact.Bounds,

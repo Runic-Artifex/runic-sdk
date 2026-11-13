@@ -85,6 +85,12 @@ if (args.Contains("--window-bounds", StringComparer.Ordinal))
     return WindowBoundsSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
         args.Contains("--window-manager", StringComparer.Ordinal), gtk4: true);
 
+// --window-placement [--window-manager] (sdk#897 W1a): maximize, restore and placements of an open window; see
+// WindowPlacementSmoke.cs.
+if (args.Contains("--window-placement", StringComparer.Ordinal))
+    return WindowPlacementSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
+        args.Contains("--window-manager", StringComparer.Ordinal));
+
 // --side-panel (#864 P4): the side panel beside the page under a window manager; see SidePanelSmoke.cs.
 if (args.Contains("--side-panel", StringComparer.Ordinal))
     return SidePanelSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true }, gtk4: true);

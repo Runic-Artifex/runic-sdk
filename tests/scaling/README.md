@@ -18,7 +18,8 @@ A case measures its metrics at the two sizes of their budget entries (`sizes`, u
 size, and fails when a count differs between the two runs. Each metric is then checked twice:
 
 - **Class.** `O(1)`: the count at the larger size is at most the count at the smaller one. `O(n)`: at most `k` times
-  it, where `k` is the ratio of the sizes. `O(n²)`: at most `k²` times it. `slack` adds a constant.
+  it, where `k` is the ratio of the sizes. `O(n²)`: at most `k²` times it. `slack` adds a constant; `noise` (NativeAOT bytes) is how far each
+  measurement may sit off the line, added to the smaller one before the factor and to the larger one.
 - **Limit.** The count at the larger size is at most `limit`.
 
 A metric with a `margin` (allocated bytes) repeats within it, and its class and limit allow it. Its limit is the
@@ -84,7 +85,8 @@ bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, m
   with warm packages. [`aot-size/MstatReader`](aot-size/MstatReader) prints ILC's mstat records
   (`kind<TAB>size<TAB>name`).
 - `aot/bridge/executable-bytes` (O(n)): the executable bytes above the build with K = 0. Section alignment makes it
-  not exactly linear, so it has a `slack` and a 2 % `margin`.
+  not exactly linear: a 4 KiB section boundary can move either measurement by a few KiB, which the factor of 9
+  amplifies at K = 1. So it has a `noise` of 8 KiB and a 2 % `margin`; its `limit` is the gate on the size itself.
 - `aot/bridge/view-model-types` (O(n)): the mstat type records that name a fixture ViewModel.
 - `aot/bridge/generated-generic-types` (O(n)): #901's metric, the type records that instantiate a
   `Runic.Application.Views.Generated` type over a fixture ViewModel, also inside another generic.

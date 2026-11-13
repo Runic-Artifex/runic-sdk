@@ -67,8 +67,11 @@ export type Push =
     readonly name: string; readonly contract: string; readonly input: unknown }
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
-  /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
-  | Message & { readonly kind: "closing"; readonly route?: undefined }
+  /**
+   * presented/1: the application closes the window; the only push without a route, for window-level handlers.
+   * `draining: true` (0.19): the window stays visible and connected while its accepted work drains (close drain).
+   */
+  | Message & { readonly kind: "closing"; readonly route?: undefined; readonly draining?: boolean }
   /** field-flush/1: write the page's field drafts, then answer `flush-reply` with `id`; a window-level push. */
   | Message & { readonly kind: "flush"; readonly id: string; readonly route?: undefined }
   /** translation-text/1: the window's locale, or null when the application sets none; a window-level push. */

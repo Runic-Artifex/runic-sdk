@@ -12,3 +12,7 @@ export {
   type HostedRegionTitleChangeDetail,
   type RunicHostedRegionElement,
 } from "./hosted-region.js";
+
+// The close drain (0.19): whether the application closed the window with a close drain, which keeps it visible and
+// connected while its work drains; the .NET side is the experimental family RUNICDESK105.
+export { onBridgeDraining } from "./connection-state.js";

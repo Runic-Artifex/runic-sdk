@@ -19,6 +19,7 @@
     <Compile Include="../Runic.Desktop.WebViewSmoke/SurfaceScripts.cs" Link="SurfaceScripts.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WebContentSmoke.cs" Link="WebContentSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WindowBoundsSmoke.cs" Link="WindowBoundsSmoke.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/WindowPlacementSmoke.cs" Link="WindowPlacementSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.cs" Link="SidePanelSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.MacOS.cs" Link="SidePanelSmoke.MacOS.cs" />
     <!-- The clipboard format checks encode and decode small PNG files with the platform tests' helper. -->

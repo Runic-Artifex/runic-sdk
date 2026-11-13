@@ -95,6 +95,13 @@ test("the NativeAOT size measurement counts the records that name a fixture View
   expect(source).toContain("public ViewRequest<FocusRow> Focus { get; } = new();");
 });
 
+test("the NativeAOT size check adds its noise before the class factor and at the larger size", () => {
+  // #924: section alignment put K = 1 at 20960 while K = 9 stayed at 225328; 9 x 20960 x 1.02 + 32768 failed it.
+  const executable = { class: "O(n)", sizes: [1, 9], limit: 229835, margin: 0.02, noise: 8192 };
+  expect(check("e", executable, [20960, 225328]).result.status).toBe("ok");
+  expect(check("e", executable, [20960, 280000]).failure).toContain("grows faster than O(n)");
+});
+
 test("the NativeAOT size check applies the class with its slack, the limit and the total's margin", () => {
   const perViewModel = { class: "O(n)", sizes: [1, 9], limit: 1000, slack: 50 };
   expect(check("a", perViewModel, [100, 940]).result.status).toBe("ok");

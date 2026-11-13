@@ -482,8 +482,10 @@ export interface MockBridge extends RunicBridgeClient {
    * virtual time with `manual` scheduling). `false` also when the connection closes first; `true` at once when the
    * connection does not use the feature, as `RunicWindowCloseResult.PagesAcknowledged`. A second call on the same
    * connection returns the first result. The connection stays open: call `disconnect()` to end it as a host does.
+   * `{ draining: true }` closes it with a close drain (experimental, 0.19): the push says `draining: true`, and the
+   * window keeps pushing its state until `disconnect()`.
    */
-  closeWindow(timeout?: number): Promise<boolean>;
+  closeWindow(timeout?: number, options?: { readonly draining?: boolean }): Promise<boolean>;
   /**
    * Pushes the window's route path to the connection when it uses navigation-path/1, as the application's navigation of
    * the path region does, and makes it the path of later `hello` replies.
@@ -1093,7 +1095,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   // client-languages/1: the languages of the last hello that used the feature.
   let reportedLanguages: readonly string[] = [];
 
-  function closeWindow(timeout: number): Promise<boolean> {
+  function closeWindow(timeout: number, draining: boolean): Promise<boolean> {
     const owner = connection;
     if (owner.closing) return owner.closing.result;
     if (!connected || owner.session === undefined || !owner.features.has(presentedFeature)) return Promise.resolve(true);
@@ -1110,7 +1112,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       stop = timeoutAfter(timeout, () => finish(false));
     });
     owner.closing = { result, finish };
-    pushMessage({ kind: "closing" });
+    pushMessage(draining ? { kind: "closing", draining: true } : { kind: "closing" });
     return result;
   }
 
@@ -2139,7 +2141,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (!Number.isFinite(milliseconds) || milliseconds < 0) throw new RangeError("The delay must be a non-negative number of milliseconds.");
       return new Promise<void>(resolve => { schedule(now + milliseconds, resolve); });
     },
-    closeWindow: (timeout = 5_000) => closeWindow(timeout),
+    closeWindow: (timeout = 5_000, options) => closeWindow(timeout, options?.draining === true),
     pushNavigationPath(path, operation) {
       navigationPath = path;
       if (connected && connection.features.has(navigationPathFeature)) pushMessage({ kind: "navigation-path", path, operation });
