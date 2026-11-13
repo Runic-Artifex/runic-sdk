@@ -48,13 +48,14 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowBoundsHost
         }, cancellationToken));
     }
 
-    // The size request of the web view, as DesktopWindowOptions.MinimumWidth and MinimumHeight set it: GTK grows a
-    // smaller window to it and keeps the user from making it smaller.
+    // The size request of the overlay that holds the web view, as DesktopWindowOptions.MinimumWidth and MinimumHeight set
+    // it: GTK grows a smaller window to it and keeps the user from making it smaller. An open side panel adds its width.
     public ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
         new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
             GetWindow();
-            _webView?.SetSizeRequest(width == 0 ? -1 : width, height == 0 ? -1 : height);
+            (_minimumWidth, _minimumHeight) = (width, height);
+            ApplyMinimumSize();
         }, cancellationToken));
 
     // GTK thread only, for UpdateState: the bounds, the visible frame (X11 only), and whether the desktop tiled the window:

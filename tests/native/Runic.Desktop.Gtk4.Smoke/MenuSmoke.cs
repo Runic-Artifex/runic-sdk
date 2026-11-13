@@ -402,7 +402,12 @@ internal static partial class MenuSmoke
         private static nint MenuBar(nint window) =>
             Gtk3.Is(Box(window), Gtk3.BoxType()) && Gtk3.Children(Box(window)) is [var bar, _] && Gtk3.Is(bar, Gtk3.MenuBarType()) ? bar : 0;
 
-        private static nint WebView(nint window) => Gtk3.Is(Box(window), Gtk3.BoxType()) ? Gtk3.Children(Box(window))[^1] : Box(window);
+        // The view is in an overlay that lays it out beside a side panel (sdk#864): its first child without a panel.
+        private static nint WebView(nint window)
+        {
+            var content = Gtk3.Is(Box(window), Gtk3.BoxType()) ? Gtk3.Children(Box(window))[^1] : Box(window);
+            return Gtk3.Is(content, Gtk3.OverlayType()) ? Gtk3.Children(content)[0] : content;
+        }
 
         internal override bool HasBar(nint window) => MenuBar(window) != 0;
 
@@ -477,8 +482,12 @@ internal static partial class MenuSmoke
         private static Gtk.PopoverMenuBar? MenuBar(nint window) =>
             Window(window).GetChild() is Gtk.Box box ? box.GetFirstChild() as Gtk.PopoverMenuBar : null;
 
-        private static Gtk.Widget WebView(nint window) =>
-            Window(window).GetChild() is Gtk.Box box ? box.GetLastChild()! : Window(window).GetChild()!;
+        private static Gtk.Widget WebView(nint window)
+        {
+            var content = Window(window).GetChild() is Gtk.Box box ? box.GetLastChild()! : Window(window).GetChild()!;
+            // The view is in an overlay that lays it out beside a side panel (sdk#864).
+            return content is Gtk.Overlay overlay ? overlay.GetFirstChild()! : content;
+        }
 
         internal override bool HasBar(nint window) => MenuBar(window) is not null;
 
@@ -638,6 +647,7 @@ internal static partial class MenuSmoke
         [LibraryImport(Library, EntryPoint = "g_free")] private static partial void Free(nint memory);
         [LibraryImport(Library, EntryPoint = "g_type_check_instance_is_a")] private static partial int TypeCheckInstanceIsA(nint instance, nuint type);
         [LibraryImport(Library, EntryPoint = "gtk_box_get_type")] internal static partial nuint BoxType();
+        [LibraryImport(Library, EntryPoint = "gtk_overlay_get_type")] internal static partial nuint OverlayType();
         [LibraryImport(Library, EntryPoint = "gtk_menu_bar_get_type")] internal static partial nuint MenuBarType();
         [LibraryImport(Library, EntryPoint = "gtk_check_menu_item_get_type")] internal static partial nuint CheckMenuItemType();
         [LibraryImport(Library, EntryPoint = "gtk_radio_menu_item_get_type")] internal static partial nuint RadioMenuItemType();

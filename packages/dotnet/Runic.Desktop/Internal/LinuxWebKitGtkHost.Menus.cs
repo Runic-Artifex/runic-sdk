@@ -56,11 +56,11 @@ internal sealed partial class LinuxWebKitGtkHost
     internal nint ContextMenuWidget => _contextMenu?.Menu ?? 0;
 
     // Creates the box of a window that shows its bar in the window; the bar itself follows SetMenuBarAsync.
-    private nint CreateMenuBox(WebUiEmbeddedHostOptions options)
+    private nint CreateMenuBox(WebUiEmbeddedHostOptions options, nint content)
     {
         if (!GtkMenus.ShowsInWindowBar(options.MenuBarPresentation, options.Frameless, options.Kiosk) || !MenuApi.IsAvailable) return 0;
         _menuBox = MenuApi.BoxNew(vertical: true);
-        MenuApi.BoxPackStart(_menuBox, _webView, expand: true);
+        MenuApi.BoxPackStart(_menuBox, content, expand: true);
         return _menuBox;
     }
 

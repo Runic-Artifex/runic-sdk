@@ -1013,6 +1013,15 @@ jobs:
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds --window-manager'
+      # #864 P4: the WebKitGTK side panel in GTK 3 under Openbox: both edges with the exact bounds back on close, the page
+      # never resized, Tab and Shift+Tab between the views (XTEST), ATK's order of the views, window.close() in the
+      # panel, a maximized window keeping the panel, the refusals, the minimum width and WindowClosed.
+      - name: Open, move, resize and close a side panel in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --side-panel'
       # S11 window mode (runic-host/1): Runic.Application.HostedWindows.Smoke hosts itself as guests; each guest page
       # loads in a GTK 3 window of the host in an ephemeral web context, without the host's or another guest's cookies;
       # close, crash and stop.
@@ -1124,6 +1133,9 @@ jobs:
           # #864 B1: the same window building blocks in GTK 4, whose X11 bounds change is one XMoveResizeWindow.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --window-bounds --window-manager'
+          # #864 P4: the side panel in GTK 4, as in GTK 3 (GtkAccessible's order of the views).
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --side-panel'
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.
@@ -1257,7 +1269,7 @@ jobs:
       # between the page and the panel, a maximized window keeping the panel, the refusals and the minimum width. #864 P3,
       # macOS (WKWebView): the same, with the page's place on the screen checked around each setFrame:display: instead of
       # a frame capture, Tab posted to the application's queue, the accessibility order of the views, and closing the
-      # panel of a zoomed window.
+      # panel of a zoomed window. Linux (P4) runs it in the GTK 3 and GTK 4 steps above, under Openbox.
       - name: Open, move, resize and close a side panel on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5

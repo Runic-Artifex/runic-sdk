@@ -37,9 +37,13 @@ internal sealed partial class LinuxWebKitGtkHost
         }, cancellationToken);
 
     // The size request of the window, as DesktopWindowOptions.MinimumWidth and MinimumHeight set it: GTK grows a smaller
-    // window to it and keeps the user from making it smaller.
+    // window to it and keeps the user from making it smaller. An open side panel adds its width (ApplyMinimumSize).
     public ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => Api.GtkWidgetSetSizeRequest(_window, width == 0 ? -1 : width, height == 0 ? -1 : height), cancellationToken);
+        => InvokeWindowAsync(() =>
+        {
+            (_minimumWidth, _minimumHeight) = (width, height);
+            ApplyMinimumSize();
+        }, cancellationToken);
 
     // GTK thread only, for UpdateState: the bounds, the frame the user sees (X11 only), and whether the desktop tiled the
     // window: GDK's tiled state, or on X11 a visible frame that fills a half or a quarter of its monitor's work area.
