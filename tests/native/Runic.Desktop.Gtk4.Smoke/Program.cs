@@ -37,8 +37,9 @@ if (args.Contains("--web-content", StringComparer.Ordinal))
 if (Array.IndexOf(args, "--announcement") is var announcement and >= 0)
     return AnnouncementSmoke.Run(announcement + 1 < args.Length ? args[announcement + 1] : "gtk4");
 
-// --accessibility gtk3|gtk4 [--region] --probe <command>: the page read and changed through AT-SPI by the accessibility
-// probe; with --region, a guest's controls inside a region's frame (#866).
+// --accessibility gtk3|gtk4 [--region | --side-panel] --probe <command>: the page read and changed through AT-SPI by the
+// accessibility probe; with --region, a guest's controls inside a region's frame (#866); with --side-panel, a side panel
+// beside the page (#864).
 if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
 {
     var toolkit = accessibility + 1 < args.Length ? args[accessibility + 1] : "gtk4";
@@ -49,8 +50,10 @@ if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
         _ => throw new ArgumentException($"Unknown toolkit '{toolkit}'; use gtk3 or gtk4."),
     };
     var probe = AccessibilitySmoke.ProbeCommand(args);
-    var region = args.TakeWhile(static argument => argument != "--probe").Contains("--region", StringComparer.Ordinal);
-    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe, region: region));
+    var own = args.TakeWhile(static argument => argument != "--probe").ToArray();
+    var region = own.Contains("--region", StringComparer.Ordinal);
+    var sidePanel = own.Contains("--side-panel", StringComparer.Ordinal);
+    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe, region: region, sidePanel: sidePanel));
 }
 
 // --menus gtk3|gtk4 [--rtl] (B10): the in-window menu bar, its shortcuts and context menus.

@@ -8,9 +8,11 @@ using System.IO;
 // reader, VoiceOver on macOS, NVDA on Windows or Orca on Linux, and checks what it speaks (SpeechScenario.cs).
 //
 //   Runic.Desktop.AccessibilityProbe --pid <pid> --host gtk3|gtk4|webview2|wkwebview|wpf [--receipt <file>]
-//       [--screen-reader voiceover|nvda|orca] [--nvda <nvda.exe>] [--survey] [--region]
+//       [--screen-reader voiceover|nvda|orca] [--nvda <nvda.exe>] [--survey] [--region | --side-panel]
 //
-// --region reads the region fixture instead (RegionScenario): a guest's button inside a region's frame.
+// --region reads the region fixture instead (RegionScenario): a guest's button inside a region's frame. --side-panel
+// reads the side panel fixture (SidePanelScenario): a second web view beside the page, its landmark and the reading
+// order on both edges, and with --screen-reader what the screen reader says as the focus moves into it and back.
 //
 // --survey reports every check without failing, to learn what a new host or engine version exposes. The screen
 // reader's own log goes beside the receipt.
@@ -34,6 +36,10 @@ try
     {
         // The region fixture (RegionScenario): the guest's controls inside the region, through the same API.
         await new RegionScenario(client, report).RunAsync(deadline.Token);
+    }
+    else if (args.Contains("--side-panel", StringComparer.Ordinal))
+    {
+        await new SidePanelScenario(client, report, screenReader).RunAsync(deadline.Token);
     }
     else
     {

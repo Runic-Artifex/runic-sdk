@@ -75,6 +75,9 @@ internal static class SidePanelEdgeSmoke
                 return 0;
             }
             var start = window.State!;
+            // Window units per CSS px of the page, from the window as opened: WebKitGTK's page can be zoomed against the
+            // window's logical pixels.
+            var ratio = start.VisibleBounds!.Width / start.VisibleBounds.Scale / await InnerWidthAsync(surface);
             var native = (int)Math.Round(PanelWidth * start.Bounds!.Scale, MidpointRounding.AwayFromZero);
             var grown = start.Bounds with { Width = start.Bounds.Width + native };
             Console.WriteLine($"Side panel edges: window {start.Bounds}, panel {PanelWidth} ({native} native).");
@@ -87,7 +90,7 @@ internal static class SidePanelEdgeSmoke
             await WaitForAsync(() => reports.Contains("closing"), "the panel's page to call window.close()");
             Require(await reason.WaitAsync(Deadline) == DesktopSidePanelCloseReason.Closed, "Closed after window.close() in the panel");
             Volatile.Write(ref command, "");
-            await WaitForAsync(() => SameFrame(window.State!.Bounds!, start.Bounds), $"exactly the start bounds {start.Bounds} after window.close()");
+            await WaitForBoundsAsync(window, start.Bounds, "exactly the start bounds after window.close()");
             await WaitForAsync(() => surface.ConnectionCount == 1, "the panel's page to disconnect");
             Require(window.IsOpen && window.SidePanel is null, "the window still open, without a panel");
             Require(await surface.ExecuteJavaScriptAsync("return document.title;", Deadline) is "Runic side panel edges" or "\"Runic side panel edges\"",
@@ -104,10 +107,10 @@ internal static class SidePanelEdgeSmoke
             await panel.CloseAsync();
             Require(await reason.WaitAsync(Deadline) == DesktopSidePanelCloseReason.Closed, "Closed as the close reason");
             Require(window.State!.IsMaximized, "the window still maximized after the panel closed");
-            await RequirePageFillsAsync(window, surface, 0, "the maximized window without the panel");
+            await RequirePageFillsAsync(window, surface, ratio, 0, "the maximized window without the panel");
             await window.ToggleMaximizedAsync();
-            await WaitForAsync(() => !window.State!.IsMaximized && SameFrame(window.State.Bounds!, start.Bounds),
-                $"the window to restore to exactly the start bounds {start.Bounds}: its restored size shrinks by the panel");
+            await WaitForAsync(() => !window.State!.IsMaximized, "the window restored");
+            await WaitForBoundsAsync(window, start.Bounds, "the window to restore to exactly the start bounds: its restored size shrinks by the panel");
             Console.WriteLine("Side panel edges: closing a maximized window's panel shrank its restored size; it restored to the start bounds.");
 
             // A full-screen window keeps the panel.
@@ -116,16 +119,16 @@ internal static class SidePanelEdgeSmoke
             await WaitForAsync(() => window.State!.IsFullScreen, "the window full-screen");
             await Task.Delay(Settle);
             Require(panel.IsOpen, "the panel to stay open in a full-screen window");
-            await RequirePageFillsAsync(window, surface, PanelWidth, "the full-screen window beside the panel");
+            await RequirePageFillsAsync(window, surface, ratio, PanelWidth, "the full-screen window beside the panel");
             Require(await panel.SetWidthAsync(PanelWidth + 10) == DesktopSidePanelRefusal.FullScreen, "a width change refused while full-screen");
             Require(await panel.MoveToEdgeAsync(DesktopWindowEdge.Left) == DesktopSidePanelRefusal.FullScreen, "a move refused while full-screen");
             Require(window.CheckSidePanel(DesktopWindowEdge.Right, PanelWidth) == DesktopSidePanelRefusal.AlreadyOpen, "AlreadyOpen while a panel is open");
             await window.SetFullScreenAsync(false);
-            await WaitForAsync(() => !window.State!.IsFullScreen && SameFrame(window.State.Bounds!, grown),
-                $"the window to leave full screen at the grown bounds {grown}");
+            await WaitForAsync(() => !window.State!.IsFullScreen, "the window to leave full screen");
+            await WaitForBoundsAsync(window, grown, "the window to leave full screen at the grown bounds");
             Require(panel.IsOpen && panel.Width == PanelWidth && panel.Edge == DesktopWindowEdge.Right, "the panel unchanged after full screen");
             await panel.CloseAsync();
-            await WaitForAsync(() => SameFrame(window.State!.Bounds!, start.Bounds), $"exactly the start bounds {start.Bounds}");
+            await WaitForBoundsAsync(window, start.Bounds, "exactly the start bounds after the panel closed");
             Console.WriteLine("Side panel edges: a full-screen window kept the panel and refused changes; it left full screen at the grown bounds.");
 
             // Closing the panel of a full-screen window.
@@ -135,10 +138,10 @@ internal static class SidePanelEdgeSmoke
             await Task.Delay(Settle);
             await panel.CloseAsync();
             Require(window.State!.IsFullScreen, "the window still full-screen after the panel closed");
-            await RequirePageFillsAsync(window, surface, 0, "the full-screen window without the panel");
+            await RequirePageFillsAsync(window, surface, ratio, 0, "the full-screen window without the panel");
             await window.SetFullScreenAsync(false);
-            await WaitForAsync(() => !window.State!.IsFullScreen && SameFrame(window.State.Bounds!, start.Bounds),
-                $"the window to leave full screen at exactly the start bounds {start.Bounds}");
+            await WaitForAsync(() => !window.State!.IsFullScreen, "the window to leave full screen again");
+            await WaitForBoundsAsync(window, start.Bounds, "the window to leave full screen at exactly the start bounds: its restored size shrinks by the panel");
             Console.WriteLine("Side panel edges: closing a full-screen window's panel shrank its restored size; it left full screen at the start bounds.");
         }
         finally { if (window.IsOpen) await window.CloseAsync(); }
@@ -152,7 +155,7 @@ internal static class SidePanelEdgeSmoke
         reports.Clear();
         var result = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = PanelWidth, Path = "#side-panel" });
         var panel = (result as DesktopSidePanelResult.Opened)?.Panel ?? throw new InvalidOperationException($"Side panel edges: expected it to open, not {result}.");
-        await WaitForAsync(() => SameFrame(window.State!.Bounds!, grown), $"the grown bounds {grown}");
+        await WaitForBoundsAsync(window, grown, "the grown bounds");
         await WaitForAsync(() => surface.ConnectionCount == 2 && reports.Contains("loaded"), "the panel's page to connect beside the page");
         await Task.Delay(Settle);
         return panel;
@@ -165,19 +168,38 @@ internal static class SidePanelEdgeSmoke
         return reason.Task;
     }
 
-    // The page's viewport is the window's visible width less the panel (0 when it is closed), within the frame's width.
-    private static async Task RequirePageFillsAsync(DesktopWindow window, DesktopSurface surface, int panel, string what)
+    // The page's viewport, in window units (ratio), is the window's visible width less the panel (0 when it is closed),
+    // within 24: the frame's width, and the ratio measured on the small window as opened. A panel is wider (240).
+    private static async Task RequirePageFillsAsync(DesktopWindow window, DesktopSurface surface, double ratio, int panel, string what)
     {
         var expected = 0d;
         var width = 0;
-        await WaitForAsync(async () =>
+        var visible = window.State!.VisibleBounds!;
+        try
         {
-            var visible = window.State!.VisibleBounds!;
-            expected = visible.Width / visible.Scale - panel;
-            width = int.Parse((await surface.ExecuteJavaScriptAsync("return String(innerWidth);", Deadline)).Trim('"'), CultureInfo.InvariantCulture);
-            return width <= expected + 1 && width >= expected - 24;
-        }, $"the page to take {what}");
-        Console.WriteLine($"Side panel edges: the page is {width} CSS px wide in {what} ({expected:0} expected).");
+            await WaitForAsync(async () =>
+            {
+                visible = window.State!.VisibleBounds!;
+                expected = visible.Width / visible.Scale - panel;
+                width = await InnerWidthAsync(surface);
+                return Math.Abs(width * ratio - expected) <= 24;
+            }, $"the page to take {what}");
+        }
+        catch (TimeoutException error)
+        {
+            throw new TimeoutException($"{error.Message} The page is {width} CSS px wide ({width * ratio:0} at {ratio:0.###} per CSS px); "
+                + $"the visible frame {visible} less the panel ({panel}) is {expected:0}.", error);
+        }
+        Console.WriteLine($"Side panel edges: the page is {width} CSS px wide in {what} ({width * ratio:0} of {expected:0} at {ratio:0.###} per CSS px).");
+    }
+
+    private static async Task<int> InnerWidthAsync(DesktopSurface surface) =>
+        int.Parse((await surface.ExecuteJavaScriptAsync("return String(innerWidth);", Deadline)).Trim('"'), CultureInfo.InvariantCulture);
+
+    private static async Task WaitForBoundsAsync(DesktopWindow window, DesktopWindowBounds expected, string what)
+    {
+        try { await WaitForAsync(() => SameFrame(window.State!.Bounds!, expected), $"{what}, {expected}"); }
+        catch (TimeoutException error) { throw new TimeoutException($"{error.Message} The window is at {window.State?.Bounds}.", error); }
     }
 
     private static bool SameFrame(DesktopWindowBounds actual, DesktopWindowBounds expected) =>

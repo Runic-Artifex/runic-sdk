@@ -93,6 +93,30 @@ internal static class AccessibilitySmoke
         <script>document.getElementById('run').addEventListener('click', () => parent.postMessage('pressed', '*'));</script></body></html>
         """;
 
+    // --side-panel (sdk#864 P6): a page with a side panel open on its right edge (DesktopWindow.OpenSidePanelAsync). The
+    // panel's page (#side-panel) is a named complementary landmark with one button; the page's Dock panel left asks the
+    // fixture to move the panel. Where the host refuses the panel (Unsupported), the fixture adds the page's "Side panel
+    // unsupported" button instead, which tells the probe (AccessibilityProbe/SidePanelScenario.cs).
+    internal const string SidePanelPage = """
+        <!doctype html><html lang="en"><head><meta charset="utf-8"><script src="webui.js"></script>
+        <title>Runic accessibility fixture</title><style>body { font: 16px system-ui; }</style>
+        <script>
+        addEventListener('DOMContentLoaded', () => {
+          if (location.hash !== '#side-panel') return;
+          document.title = 'Side panel';
+          document.body.innerHTML = '<aside aria-label="Debug tools"><button id="panel" type="button">Panel action</button></aside>';
+        });
+        </script></head>
+        <body><main><h1>Side panel fixture</h1>
+        <button id="page" type="button">Page action</button>
+        <button id="dock" type="button">Dock panel left</button>
+        <button id="finish" type="button">Finish</button></main>
+        <script>
+        document.getElementById('dock').addEventListener('click', () => { window.__runicRequest = 'dock-left'; });
+        document.getElementById('finish').addEventListener('click', () => { window.__runicRequest = 'finish'; });
+        </script></body></html>
+        """;
+
     internal const string PoliteAnnouncement = "Runic polite announcement";
     internal const string AssertiveAnnouncement = "Runic assertive announcement";
 
@@ -109,9 +133,10 @@ internal static class AccessibilitySmoke
 
     // announce: how the host announces, when not through the window's DesktopWindow.AnnounceAsync.
     internal static async Task<int> RunAsync(DesktopHost host, string hostName, IReadOnlyList<string> probe,
-        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null, bool region = false)
+        Func<string, DesktopAnnouncementPriority, CancellationToken, Task>? announce = null, bool region = false, bool sidePanel = false)
     {
         if (region) probe = [.. probe, "--region"];
+        if (sidePanel) probe = [.. probe, "--side-panel"];
         // The probe starts first and registers for events, as a screen reader runs before the application: WebKitGTK's
         // web process reads the registered events when it starts.
         var start = new ProcessStartInfo(probe[0]) { UseShellExecute = false, RedirectStandardOutput = true };
@@ -134,7 +159,7 @@ internal static class AccessibilitySmoke
         await listening.Task.WaitScaledAsync(TimeSpan.FromSeconds(60));
 
         await using var guest = region ? await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(RegionGuestPage) }) : null;
-        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(region ? RegionPage : Page) });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(region ? RegionPage : sidePanel ? SidePanelPage : Page) });
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
         {
             Browser = BrowserKind.Embedded,
@@ -156,6 +181,32 @@ internal static class AccessibilitySmoke
                 $"document.getElementById('region').src = {System.Text.Json.Nodes.JsonValue.Create(launch.Url.AbsoluteUri).ToJsonString()}; return '';");
             Console.WriteLine($"ACCESSIBILITY region frame from {Runic.Desktop.Internal.RegionFrames.Origin(launch.Url)}{(launch.SameSite ? " (same-site)" : "")}.");
         }
+        var panelOpened = false;
+        if (sidePanel)
+        {
+#pragma warning disable RUNICDESK104 // The side panel is experimental.
+            if (window.CheckSidePanel(DesktopWindowEdge.Right, 260) == DesktopSidePanelRefusal.Unsupported)
+            {
+                await surface.ExecuteJavaScriptAsync("""
+                    const unsupported = document.createElement('button');
+                    unsupported.type = 'button';
+                    unsupported.textContent = 'Side panel unsupported';
+                    unsupported.addEventListener('click', () => { window.__runicRequest = 'finish'; });
+                    document.querySelector('main').append(unsupported);
+                    return '';
+                    """);
+                Console.WriteLine($"ACCESSIBILITY side panel: {hostName} refuses it with Unsupported.");
+            }
+            else
+            {
+                var opened = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = 260, Path = "#side-panel" });
+                if (opened is not DesktopSidePanelResult.Opened)
+                    throw new InvalidOperationException($"The side panel fixture's panel did not open: {opened}.");
+                panelOpened = true;
+                Console.WriteLine("ACCESSIBILITY side panel open on the right edge.");
+            }
+#pragma warning restore RUNICDESK104
+        }
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
         using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(5));
         var exited = process.WaitForExitAsync(deadline.Token);
@@ -175,6 +226,14 @@ internal static class AccessibilitySmoke
                 await announce(AssertiveAnnouncement, DesktopAnnouncementPriority.Assertive, deadline.Token);
                 Console.WriteLine("ACCESSIBILITY announced the assertive message.");
             }
+            else if (request == "dock-left")
+            {
+#pragma warning disable RUNICDESK104 // The side panel is experimental.
+                var refusal = await window.SidePanel!.MoveToEdgeAsync(DesktopWindowEdge.Left, deadline.Token);
+#pragma warning restore RUNICDESK104
+                if (refusal is not null) throw new InvalidOperationException($"The side panel fixture's panel did not move to the left edge: {refusal}.");
+                Console.WriteLine("ACCESSIBILITY side panel moved to the left edge.");
+            }
             else if (request == "finish")
             {
                 finished = true;
@@ -190,6 +249,13 @@ internal static class AccessibilitySmoke
             throw new InvalidOperationException("The probe exited without pressing Finish through the accessibility API.");
         if (region && await surface.ExecuteJavaScriptAsync("return String(window.__regionPressed);") != "true")
             throw new InvalidOperationException("The probe's press of the guest's button in the region did not reach the guest's page.");
+        if (sidePanel)
+        {
+            Console.WriteLine(panelOpened
+                ? $"PASS {hostName} accessibility side panel: the probe read the panel beside the page through the platform accessibility API."
+                : $"NOT VERIFIED {hostName} accessibility side panel: the host refuses the panel with Unsupported.");
+            return 0;
+        }
         if (region)
         {
             Console.WriteLine($"PASS {hostName} accessibility region: the probe found and pressed the guest's button inside the region through the platform accessibility API.");

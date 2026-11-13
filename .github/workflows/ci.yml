@@ -1436,6 +1436,9 @@ jobs:
               --accessibility --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview.json
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
               --accessibility --region --probe "${probe[@]}" --receipt artifacts/accessibility/wkwebview-region.json
+            # #864 P6: the side panel with VoiceOver; not applicable until the WKWebView host has the panel (#905).
+            eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
+              --accessibility --side-panel --probe "${probe[@]}" --screen-reader voiceover --receipt artifacts/accessibility/wkwebview-side-panel.json
             exit
           fi
           for toolkit in gtk3 gtk4; do
@@ -2437,6 +2440,11 @@ jobs:
             dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility \
               --probe "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
               --screen-reader nvda --nvda "$RUNNER_TEMP/nvda/nvda.exe" --receipt artifacts/screen-reader/webview2.json
+            # #864 P6: a side panel beside the page: its landmark, the reading order on both edges, and what NVDA says as
+            # the focus moves into the panel and back.
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility --side-panel \
+              --probe "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe" \
+              --screen-reader nvda --nvda "$RUNNER_TEMP/nvda/nvda.exe" --receipt artifacts/screen-reader/webview2-side-panel.json
             # The same page in a WPF window's RunicWebView, which announces through WpfPlatformServices (I-203).
             dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release --no-build -- \
               --treenode-filter "/*/*/*/*[Category=ScreenReader]" --output detailed \
@@ -2449,6 +2457,10 @@ jobs:
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --screen-reader orca \
               --receipt "artifacts/screen-reader/$toolkit/$toolkit.json"
+            # #864 P6: the side panel with Orca; not applicable until the WebKitGTK host has the panel (#907).
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+              -c Release --no-build -- --accessibility "$toolkit" --side-panel --probe "${probe[@]}" --screen-reader orca \
+              --receipt "artifacts/screen-reader/$toolkit/$toolkit-side-panel.json"
           done
       - name: Retain screen reader receipts and logs
         if: always()

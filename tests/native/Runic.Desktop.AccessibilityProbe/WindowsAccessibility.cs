@@ -122,6 +122,30 @@ internal sealed partial class WindowsAccessibility : AccessibilityClient
         }
     }
 
+    // The control view, as Narrator's scan mode and NVDA's object navigation walk it; the top-level window's children
+    // follow its child windows' z-order, which puts the side panel's view before or after the page's.
+    internal override Task<IReadOnlyList<Element>> ElementsAsync(CancellationToken cancellationToken)
+    {
+        var elements = new List<Element>();
+        Walk(TreeWalker.ControlViewWalker, _window, 0, elements);
+        return Task.FromResult<IReadOnlyList<Element>>(elements);
+    }
+
+    private static void Walk(TreeWalker walker, AutomationElement element, int depth, List<Element> elements)
+    {
+        if (depth > 40 || elements.Count > 5000) return;
+        try
+        {
+            elements.Add(new Element($"{element.Current.ControlType.ProgrammaticName} ({element.Current.LocalizedControlType})", element.Current.Name));
+            for (var child = walker.GetFirstChild(element); child is not null; child = walker.GetNextSibling(child))
+                Walk(walker, child, depth + 1, elements);
+        }
+        catch (ElementNotAvailableException)
+        {
+            // The element went away while it was read.
+        }
+    }
+
     internal override Task<RangeState> ReadRangeAsync(Control control, CancellationToken cancellationToken)
     {
         var element = (AutomationElement)control.Handle;

@@ -58,6 +58,10 @@ internal abstract class AccessibilityClient : IAsyncDisposable
     /// <summary>A short description of the native menu bar, or null when the host has none.</summary>
     internal virtual Task<string?> MenuBarAsync(CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 
+    /// <summary>The window's elements in the API's tree order, depth first, as a screen reader's review walks through
+    /// them: each element's role and accessible name.</summary>
+    internal abstract Task<IReadOnlyList<Element>> ElementsAsync(CancellationToken cancellationToken);
+
     /// <summary>The tree as the API exposes it (role and name per line), for the log when a control is missing.</summary>
     internal virtual Task<string> DumpAsync(CancellationToken cancellationToken) => Task.FromResult("");
 
@@ -80,6 +84,9 @@ internal enum EventKind
     LiveRegion,
     FocusChanged,
 }
+
+/// <param name="Role">The role the API reports, with its subrole or localized type where it has one.</param>
+internal sealed record Element(string Role, string Name);
 
 /// <param name="Handle">The API's element.</param>
 /// <param name="Role">The role the API reports, for the receipt.</param>

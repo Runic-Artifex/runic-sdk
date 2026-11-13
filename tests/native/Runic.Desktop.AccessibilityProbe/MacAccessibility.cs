@@ -176,6 +176,20 @@ internal sealed partial class MacAccessibility : AccessibilityClient
         }
     }
 
+    // AXChildren from the application, as VoiceOver's navigation walks them; the content view's children follow the
+    // visual order, which puts the side panel's web area before or after the page's.
+    internal override Task<IReadOnlyList<Element>> ElementsAsync(CancellationToken cancellationToken)
+    {
+        var elements = new List<Element>();
+        Walk(_application, 0, element =>
+        {
+            var role = Text(element, "AXRole") ?? "?";
+            var subrole = Text(element, "AXSubrole");
+            elements.Add(new Element(subrole is null ? role : $"{role} ({subrole})", Name(element)));
+        });
+        return Task.FromResult<IReadOnlyList<Element>>(elements);
+    }
+
     private static void Walk(nint element, int depth, Action<nint> visit)
     {
         if (depth > 40) return;
