@@ -1458,4 +1458,4 @@ internal sealed class ConformanceDropModel : IRunicFileDropTarget, System.Compon
 }
 
 internal sealed class ConformanceDropBridge(IBridgeTransport transport, ConformanceDropModel model)
-    : ViewModelBridge<ConformanceDropModel>(transport, model, "conformance-drop", [], [], [], []);
+    : ViewModelBridge(transport, model, typeof(ConformanceDropModel), "conformance-drop", [], [], [], []);

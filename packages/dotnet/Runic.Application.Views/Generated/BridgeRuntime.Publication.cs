@@ -25,7 +25,7 @@ namespace Runic.Application.Views.Generated;
 // buffers that the delivery returns once the transport took them; a full state writes its members straight into the
 // message. The route's first state, captured at attach, stays as an encoded state until the next change, so an open
 // before then copies it instead of encoding every member again.
-public partial class ViewModelBridge<T>
+public partial class ViewModelBridge
 {
     // The encoding of each compared member as last published, or null before the route's first state
     // (CaptureFirstState).
@@ -34,19 +34,19 @@ public partial class ViewModelBridge<T>
     private readonly Dictionary<string, long> _publishedVersions = new(StringComparer.Ordinal);
     // Keyed collections whose next publication is a set of the field: reset, replaced, changed in a way indexed changes
     // cannot express, or withheld because of invalid keys.
-    private readonly HashSet<BridgeCollectionDescriptor<T>> _collectionSets = [];
+    private readonly HashSet<BridgeCollectionDescriptor> _collectionSets = [];
     // The instance of each keyed collection the pending changes describe.
-    private readonly Dictionary<BridgeCollectionDescriptor<T>, object?> _collectionInstances = [];
+    private readonly Dictionary<BridgeCollectionDescriptor, object?> _collectionInstances = [];
     // The keys of each frame-publishing collection as of the last full state and the frames since, so a change that
     // adds a duplicate key is found at once.
-    private readonly Dictionary<BridgeCollectionDescriptor<T>, BridgeCollectionKeyBaseline> _collectionKeys = [];
-    private readonly List<BridgeCollectionChange<T>> _pendingCollectionChanges = [];
-    private readonly Dictionary<BridgeCollectionDescriptor<T>, Dictionary<object, int>> _collectionIndexes = [];
+    private readonly Dictionary<BridgeCollectionDescriptor, BridgeCollectionKeyBaseline> _collectionKeys = [];
+    private readonly List<BridgeCollectionChange> _pendingCollectionChanges = [];
+    private readonly Dictionary<BridgeCollectionDescriptor, Dictionary<object, int>> _collectionIndexes = [];
     // Append-only text fields and text members: the value of each as last published.
-    private readonly Dictionary<PropertyDescriptor<T>, string?> _textBaselines = [];
+    private readonly Dictionary<PropertyDescriptor, string?> _textBaselines = [];
     // Text members: the revision of the last publication that changed each, so a set's splice can name the published
     // value by a revision at or after it (specs/application/state-changes.md, "Text splices").
-    private readonly Dictionary<PropertyDescriptor<T>, long> _textChangedRevisions = [];
+    private readonly Dictionary<PropertyDescriptor, long> _textChangedRevisions = [];
     // The keys a publication was last withheld for, reported once until a publication succeeds.
     private string? _rejectedKeys;
     // Whether the route's publications are withheld because a keyed collection has invalid keys.
@@ -242,14 +242,14 @@ public partial class ViewModelBridge<T>
     {
         var changes = new List<Change>();
         // Keyed collections: their pending changes, or a set of the field.
-        var indexed = new Dictionary<BridgeCollectionDescriptor<T>, List<BridgeCollectionChange<T>>>();
+        var indexed = new Dictionary<BridgeCollectionDescriptor, List<BridgeCollectionChange>>();
         foreach (var change in _pendingCollectionChanges)
         {
             if (_collectionSets.Contains(change.Descriptor)) continue;
             if (!indexed.TryGetValue(change.Descriptor, out var list)) indexed.Add(change.Descriptor, list = []);
             list.Add(change);
         }
-        var sets = new List<BridgeCollectionDescriptor<T>>(_collectionSets);
+        var sets = new List<BridgeCollectionDescriptor>(_collectionSets);
         var count = indexed.Values.Sum(list => list.Count) + sets.Count;
         var memberSets = new List<Change>(members.Count);
         foreach (var (name, value) in members) memberSets.Add(Change.Set(name, value, VersionOf(name)));
@@ -556,7 +556,7 @@ public partial class ViewModelBridge<T>
     // blobs/1: a state member's blobs are exactly those of its latest write (BridgeBlobs, holders). A keyed collection
     // that publishes its changes holds each row's blobs by the row's key instead, so a row change replaces only that
     // row's blobs; its rows are written as its changes write them, which is the member's own encoding.
-    private void WriteMemberValue(BridgeStateMember<T> member, Utf8JsonWriter writer)
+    private void WriteMemberValue(BridgeStateMember member, Utf8JsonWriter writer)
     {
         using var route = EnterBlobs(null);
         if (IncrementalCollection(member.Name) is { } descriptor && descriptor.Get(_vm) is System.Collections.IEnumerable rows)
@@ -578,7 +578,7 @@ public partial class ViewModelBridge<T>
     }
 
     // A collection change's row: its blobs are those of the row's latest write, by its key.
-    private void WriteItemValue(BridgeCollectionDescriptor<T> descriptor, Utf8JsonWriter writer, object? item)
+    private void WriteItemValue(BridgeCollectionDescriptor descriptor, Utf8JsonWriter writer, object? item)
     {
         using var route = EnterBlobs(null);
         using var slot = BridgeBlobScope.EnterSlot(RowSlot(descriptor, descriptor.Key(item)));
@@ -586,14 +586,14 @@ public partial class ViewModelBridge<T>
     }
 
     // The rows a collection change took away release their blobs.
-    private void ReleaseRows(BridgeCollectionDescriptor<T> descriptor, IEnumerable<string> keys)
+    private void ReleaseRows(BridgeCollectionDescriptor descriptor, IEnumerable<string> keys)
     {
         foreach (var key in keys) Blobs.ReleaseSlots(this, RowSlot(descriptor, key), exact: true);
     }
 
-    private static string RowSlot(BridgeCollectionDescriptor<T> descriptor, string key) => descriptor.Name + "\u0000" + key;
+    private static string RowSlot(BridgeCollectionDescriptor descriptor, string key) => descriptor.Name + "\u0000" + key;
 
-    private BridgeCollectionDescriptor<T>? IncrementalCollection(string name)
+    private BridgeCollectionDescriptor? IncrementalCollection(string name)
     {
         foreach (var descriptor in _incrementalCollections)
             if (descriptor.Name == name) return descriptor;
@@ -682,12 +682,12 @@ public partial class ViewModelBridge<T>
     // A set request's splice names its base by a revision: the member's value in the route's state at that revision is
     // the value last published, when no publication changed the member after the revision and the revision is not
     // beyond the last publication. Null when the producer does not have that value or it is not text.
-    private string? PublishedText(PropertyDescriptor<T> member, long revision) =>
+    private string? PublishedText(PropertyDescriptor member, long revision) =>
         revision <= _publishedRevision && revision >= _textChangedRevisions.GetValueOrDefault(member)
             && _textBaselines.TryGetValue(member, out var value) ? value : null;
 
     // A keyed collection's next publication is a set of the field.
-    private void MarkCollectionSet(BridgeCollectionDescriptor<T> descriptor)
+    private void MarkCollectionSet(BridgeCollectionDescriptor descriptor)
     {
         if (_baselines is null) return;
         _collectionSets.Add(descriptor);
@@ -793,7 +793,7 @@ public partial class ViewModelBridge<T>
 
     // A change of a keyed collection instance that no notification reported yet, such as one a getter returns after
     // another member's notification, cannot be described against the previous instance: the field becomes a set.
-    private bool ReplacedUnnoticed(BridgeCollectionDescriptor<T> descriptor, object rows)
+    private bool ReplacedUnnoticed(BridgeCollectionDescriptor descriptor, object rows)
     {
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return false;
         _collectionInstances[descriptor] = rows;
@@ -816,7 +816,7 @@ public partial class ViewModelBridge<T>
 
     // Updates the key baseline for one indexed collection notification and returns whether a frame may describe it. It
     // never throws into the code that changed the collection.
-    private bool TrackCollectionKeys(BridgeCollectionDescriptor<T> descriptor, object rows, NotifyCollectionChangedEventArgs args)
+    private bool TrackCollectionKeys(BridgeCollectionDescriptor descriptor, object rows, NotifyCollectionChangedEventArgs args)
     {
         var enumerable = (System.Collections.IEnumerable)rows;
         try
@@ -844,7 +844,7 @@ public partial class ViewModelBridge<T>
 
     // Whether a frame may replace a row after its own property change: its key must be valid and still the key it was
     // tracked with.
-    private bool TrackItemKey(BridgeCollectionDescriptor<T> descriptor, object rows, object item, int index, out string key)
+    private bool TrackItemKey(BridgeCollectionDescriptor descriptor, object rows, object item, int index, out string key)
     {
         key = "";
         try { key = BridgeCollectionKeyBaseline.KeyOf(ModelName, descriptor.Name, descriptor.Key, item, index); }
@@ -918,7 +918,7 @@ public partial class ViewModelBridge<T>
         public string Field { get; }
         private byte[]? _value;
         private long? _version;
-        private BridgeCollectionChange<T>? _indexed;
+        private BridgeCollectionChange? _indexed;
         private BridgeTextDelta? _text;
         private BridgeTextSplice? _splice;
         private int _length;
@@ -929,7 +929,7 @@ public partial class ViewModelBridge<T>
 
         public static Change Set(string field, byte[] value, long? version) => new(field) { _value = value, _version = version };
 
-        public static Change Indexed(BridgeCollectionChange<T> change) => new(change.Descriptor.Name) { _indexed = change };
+        public static Change Indexed(BridgeCollectionChange change) => new(change.Descriptor.Name) { _indexed = change };
 
         public static Change Text(string field, BridgeTextDelta delta, string _) => new(field) { _text = delta };
 

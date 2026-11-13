@@ -1716,8 +1716,8 @@ export type DocumentPane = "Editor" | "Preview";
   or `input` for scalars.
 
 <a id="generated-code-support-api"></a>
-The generated C# bridge calls public runtime types such as `ViewModelBridge<T>`,
-`PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire`, `BridgeJson` and
+The generated C# bridge calls public runtime types such as `ViewModelBridge`,
+`PropertyDescriptor`, `CommandDescriptor`, `BridgeWire`, `BridgeJson` and
 `ReactiveCommandExecution`. They are in the `Runic.Application.Views.Generated`
 namespace (`Runic.Application.Views.ReactiveUI.Generated` and
 `Runic.Application.Views.ReactiveUI.Reactive.Generated` for the ReactiveUI

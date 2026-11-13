@@ -56,16 +56,16 @@ internal sealed class FilesViewModel : ConformanceModel
 }
 
 internal sealed class FilesBridge(IBridgeTransport transport, FilesViewModel vm, WindowContentSession content)
-    : ViewModelBridge<FilesViewModel>(transport, vm, "files",
+    : ViewModelBridge(transport, vm, typeof(FilesViewModel), "files",
         [
             new("avatar", static (writer, model) =>
             {
-                if (model.Avatar is { } avatar) BridgeWire.WriteBlob(writer, avatar);
+                if (((FilesViewModel)model).Avatar is { } avatar) BridgeWire.WriteBlob(writer, avatar);
                 else writer.WriteNullValue();
             }),
             new("lastUpload", ConformanceWire.Value<FilesViewModel>(model => model.LastUpload)),
         ],
-        [new("Avatar", "avatar", model => model.Avatar, null), new("LastUpload", "lastUpload", model => model.LastUpload, null)],
+        [new("Avatar", "avatar", model => ((FilesViewModel)model).Avatar, null), new("LastUpload", "lastUpload", model => ((FilesViewModel)model).LastUpload, null)],
         [],
-        [new CommandDescriptor<FilesViewModel>("Attach", model => model.AttachCommand) { ReadInput = static element => BridgeWire.ReadUpload(element) }],
+        [new CommandDescriptor("Attach", model => ((FilesViewModel)model).AttachCommand) { ReadInput = static element => BridgeWire.ReadUpload(element) }],
         "conformance-files", content);

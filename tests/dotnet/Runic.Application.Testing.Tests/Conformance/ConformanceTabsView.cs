@@ -119,20 +119,20 @@ internal sealed class TabsPageViewModel(TabsViewModel owner, string title) : Con
 }
 
 internal sealed class TabsPageBridge(IBridgeTransport transport, TabsPageViewModel vm, string route, WindowContentSession content)
-    : ViewModelBridge<TabsPageViewModel>(transport, vm, route,
+    : ViewModelBridge(transport, vm, typeof(TabsPageViewModel), route,
         [new("title", ConformanceWire.Value<TabsPageViewModel>(model => model.Title))],
-        [new("Title", "title", model => model.Title, null) { TextMember = true }],
+        [new("Title", "title", model => ((TabsPageViewModel)model).Title, null) { TextMember = true }],
         [], [], "conformance-page", content);
 
 internal sealed class TabsBridge(IBridgeTransport transport, TabsViewModel vm, WindowContentSession content)
-    : ViewModelBridge<TabsViewModel>(transport, vm, "tabs",
+    : ViewModelBridge(transport, vm, typeof(TabsViewModel), "tabs",
         [
-            new("documents", (writer, model) => WriteRegions(writer, model, model.Documents, "Documents", content)),
-            new("pinned", (writer, model) => WriteRegions(writer, model, model.Pinned, "Pinned", content)),
+            new("documents", (writer, model) => WriteRegions(writer, ((TabsViewModel)model), ((TabsViewModel)model).Documents, "Documents", content)),
+            new("pinned", (writer, model) => WriteRegions(writer, ((TabsViewModel)model), ((TabsViewModel)model).Pinned, "Pinned", content)),
         ],
         [
-            new("Documents", "documents", model => model.Documents, null, static model => model.Documents) { RegionCollection = true, RegionClose = true },
-            new("Pinned", "pinned", model => model.Pinned, null, static model => model.Pinned) { RegionCollection = true, RegionClose = false },
+            new("Documents", "documents", model => ((TabsViewModel)model).Documents, null, static model => ((TabsViewModel)model).Documents) { RegionCollection = true, RegionClose = true },
+            new("Pinned", "pinned", model => ((TabsViewModel)model).Pinned, null, static model => ((TabsViewModel)model).Pinned) { RegionCollection = true, RegionClose = false },
         ],
         [], [], "conformance-tabs", content)
 {

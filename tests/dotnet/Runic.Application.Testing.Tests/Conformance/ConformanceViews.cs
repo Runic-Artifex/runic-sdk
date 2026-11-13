@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Xml;
 using Runic.Application.Views;
 using Runic.Application.Views.Generated;
+using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;
 
 namespace Runic.Application.Testing.Tests.Conformance;
 
@@ -363,11 +364,11 @@ internal static class ConformanceWire
         else writer.WriteStringValue(value);
     }
 
-    internal static Action<Utf8JsonWriter, TModel> Value<TModel>(Func<TModel, string?> read) =>
-        (writer, vm) => Write(writer, read(vm));
+    internal static Action<Utf8JsonWriter, object> Value<TModel>(Func<TModel, string?> read) =>
+        (writer, vm) => Write(writer, read((TModel)vm));
 
-    internal static Action<Utf8JsonWriter, TModel> Boolean<TModel>(Func<TModel, bool> read) =>
-        (writer, vm) => writer.WriteBooleanValue(read(vm));
+    internal static Action<Utf8JsonWriter, object> Boolean<TModel>(Func<TModel, bool> read) =>
+        (writer, vm) => writer.WriteBooleanValue(read((TModel)vm));
 
     internal static string Duration(TimeSpan value) => XmlConvert.ToString(value);
 
@@ -421,18 +422,18 @@ internal sealed class ListViewModel : ConformanceModel
 }
 
 internal sealed class ListBridge(IBridgeTransport transport, ListViewModel vm, WindowContentSession content)
-    : ViewModelBridge<ListViewModel>(transport, vm, "list",
+    : ViewModelBridge(transport, vm, typeof(ListViewModel), "list",
         [
-            new("rows", (writer, model) => { writer.WriteStartArray(); foreach (var row in model.Rows) ConformanceRow.Write(writer, row); writer.WriteEndArray(); }),
+            new("rows", (writer, model) => { writer.WriteStartArray(); foreach (var row in ((ListViewModel)model).Rows) ConformanceRow.Write(writer, row); writer.WriteEndArray(); }),
             new("title", ConformanceWire.Value<ListViewModel>(model => model.Title)),
         ],
         [
-            new("Rows", "rows", model => model.Rows, null),
-            new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value))
-                { TextMember = true, TextSetter = static (model, value) => model.Title = value },
+            new("Rows", "rows", model => ((ListViewModel)model).Rows, null),
+            new("Title", "title", model => ((ListViewModel)model).Title, (model, value) => ((ListViewModel)model).Title = ConformanceWire.String(value))
+                { TextMember = true, TextSetter = static (model, value) => ((ListViewModel)model).Title = value },
         ],
         [], [], "conformance-list", content,
-        collections: [new("rows", model => model.Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)]);
+        collections: [new("rows", model => ((ListViewModel)model).Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)]);
 
 // The log View: the model of the protocol-3 text fixtures.
 internal sealed class LogViewModel : ConformanceModel
@@ -488,15 +489,15 @@ internal sealed class LogViewModel : ConformanceModel
 }
 
 internal sealed class LogBridge(IBridgeTransport transport, LogViewModel vm, WindowContentSession content)
-    : ViewModelBridge<LogViewModel>(transport, vm, "log",
+    : ViewModelBridge(transport, vm, typeof(LogViewModel), "log",
         [
             new("log", ConformanceWire.Value<LogViewModel>(model => model.Log)),
             new("title", ConformanceWire.Value<LogViewModel>(model => model.Title)),
         ],
         [
-            new("Log", "log", model => model.Log, null) { AppendOnlyTextField = "log" },
-            new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value))
-                { TextMember = true, TextSetter = static (model, value) => model.Title = value },
+            new("Log", "log", model => ((LogViewModel)model).Log, null) { AppendOnlyTextField = "log" },
+            new("Title", "title", model => ((LogViewModel)model).Title, (model, value) => ((LogViewModel)model).Title = ConformanceWire.String(value))
+                { TextMember = true, TextSetter = static (model, value) => ((LogViewModel)model).Title = value },
         ],
         [], [], "conformance-log", content);
 
@@ -531,14 +532,14 @@ internal sealed class DetailViewModel : ConformanceModel
 }
 
 internal sealed class DetailBridge(IBridgeTransport transport, DetailViewModel vm, string route, WindowContentSession content)
-    : ViewModelBridge<DetailViewModel>(transport, vm, route,
+    : ViewModelBridge(transport, vm, typeof(DetailViewModel), route,
         [
             new("lastAction", ConformanceWire.Value<DetailViewModel>(model => model.LastAction)),
             new("canDismiss", ConformanceWire.Boolean<DetailViewModel>(model => model.DismissCommand.CanExecute(null))),
         ],
-        [new("LastAction", "lastAction", model => model.LastAction, null) { TextMember = true }],
+        [new("LastAction", "lastAction", model => ((DetailViewModel)model).LastAction, null) { TextMember = true }],
         [],
-        [new CommandDescriptor<DetailViewModel>("Dismiss", model => model.DismissCommand)],
+        [new CommandDescriptor("Dismiss", model => ((DetailViewModel)model).DismissCommand)],
         "conformance-detail", content);
 
 // The input of the notes View's slowImport.
@@ -698,7 +699,7 @@ internal sealed partial class NotesViewModel : ConformanceModel
     partial void OnFinish(JsonObject mutation);
     partial void OnRaise(JsonObject mutation);
     private partial JsonNode? ProvideOperationId(string id);
-    internal static partial BridgeInteractionDescriptor<NotesViewModel>[]? CreateInteractions();
+    internal static partial BridgeInteractionDescriptor[]? CreateInteractions();
 }
 
 // The declared failures of the notes View's commands.
@@ -713,9 +714,9 @@ internal sealed record NotesImportFailure
 }
 
 internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm, WindowContentSession content)
-    : ViewModelBridge<NotesViewModel>(transport, vm, "notes", State(content), Properties, Checked, Commands,
+    : ViewModelBridge(transport, vm, typeof(NotesViewModel), "notes", State(content), Properties, Checked, Commands,
         "conformance-notes", content, NotesViewModel.CreateInteractions(),
-        collections: [new("rows", model => model.Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)])
+        collections: [new("rows", model => ((NotesViewModel)model).Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)])
 {
     internal static NotesPriority ReadPriority(JsonElement value) => ConformanceWire.String(value) switch
     {
@@ -725,25 +726,25 @@ internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm,
         _ => throw new FormatException("Unknown priority."),
     };
 
-    private static BridgeStateMember<NotesViewModel>[] State(WindowContentSession content) =>
+    private static BridgeStateMember[] State(WindowContentSession content) =>
     [
         new("title", ConformanceWire.Value<NotesViewModel>(model => model.Title)),
         new("note", ConformanceWire.Value<NotesViewModel>(model => model.Note)),
         new("priority", ConformanceWire.Value<NotesViewModel>(model => model.Priority.ToString())),
         new("due", ConformanceWire.Value<NotesViewModel>(model => ConformanceWire.Date(model.Due))),
         new("elapsed", ConformanceWire.Value<NotesViewModel>(model => ConformanceWire.Duration(model.Elapsed))),
-        new("rows", (writer, model) => { writer.WriteStartArray(); foreach (var row in model.Rows) ConformanceRow.Write(writer, row); writer.WriteEndArray(); }),
-        new("count", (writer, model) => writer.WriteNumberValue(model.Count)),
+        new("rows", (writer, model) => { writer.WriteStartArray(); foreach (var row in ((NotesViewModel)model).Rows) ConformanceRow.Write(writer, row); writer.WriteEndArray(); }),
+        new("count", (writer, model) => writer.WriteNumberValue(((NotesViewModel)model).Count)),
         new("summary", ConformanceWire.Value<NotesViewModel>(model => model.Summary)),
         new("detail", (writer, model) =>
         {
-            if (model.Detail is not { } detail)
+            if (((NotesViewModel)model).Detail is not { } detail)
             {
-                content.Clear(model, "Detail");
+                content.Clear(((NotesViewModel)model), "Detail");
                 writer.WriteNullValue();
                 return;
             }
-            var reference = content.Present(model, "Detail", "detail", detail,
+            var reference = content.Present(((NotesViewModel)model), "Detail", "detail", detail,
                 (detailTransport, current, route) => new DetailBridge(detailTransport, current, route, content));
             writer.WriteStartObject();
             writer.WriteString("kind", reference.Kind);
@@ -758,69 +759,69 @@ internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm,
         new("isConfirmClearExecuting", ConformanceWire.Boolean<NotesViewModel>(model => model.ConfirmClearCommand.IsExecuting)),
     ];
 
-    private static readonly PropertyDescriptor<NotesViewModel>[] Properties =
+    private static readonly PropertyDescriptor[] Properties =
     [
-        new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value))
-            { TextMember = true, TextSetter = static (model, value) => model.Title = value },
-        new("Note", "note", model => model.Note, null) { TextMember = true },
-        new("Summary", "summary", model => model.Summary, null) { TextMember = true },
-        new("Priority", "priority", model => model.Priority, (model, value) => model.Priority = ReadPriority(value)),
-        new("Due", "due", model => model.Due, (model, value) => model.Due = ConformanceWire.ReadDate(value)),
-        new("Elapsed", "elapsed", model => model.Elapsed, (model, value) => model.Elapsed = ConformanceWire.ReadDuration(value)),
-        new("Rows", "rows", model => model.Rows, null),
-        new("Detail", "detail", model => model.Detail, null),
+        new("Title", "title", model => ((NotesViewModel)model).Title, (model, value) => ((NotesViewModel)model).Title = ConformanceWire.String(value))
+            { TextMember = true, TextSetter = static (model, value) => ((NotesViewModel)model).Title = value },
+        new("Note", "note", model => ((NotesViewModel)model).Note, null) { TextMember = true },
+        new("Summary", "summary", model => ((NotesViewModel)model).Summary, null) { TextMember = true },
+        new("Priority", "priority", model => ((NotesViewModel)model).Priority, (model, value) => ((NotesViewModel)model).Priority = ReadPriority(value)),
+        new("Due", "due", model => ((NotesViewModel)model).Due, (model, value) => ((NotesViewModel)model).Due = ConformanceWire.ReadDate(value)),
+        new("Elapsed", "elapsed", model => ((NotesViewModel)model).Elapsed, (model, value) => ((NotesViewModel)model).Elapsed = ConformanceWire.ReadDuration(value)),
+        new("Rows", "rows", model => ((NotesViewModel)model).Rows, null),
+        new("Detail", "detail", model => ((NotesViewModel)model).Detail, null),
     ];
 
-    private static readonly CheckedPropertyDescriptor<NotesViewModel>[] Checked =
+    private static readonly CheckedPropertyDescriptor[] Checked =
     [
-        new("Note", "note", CheckedFieldValueKind.String, model => model.Note, (model, value) => model.Note = (string)value!),
+        new("Note", "note", CheckedFieldValueKind.String, model => ((NotesViewModel)model).Note, (model, value) => ((NotesViewModel)model).Note = (string)value!),
     ];
 
-    private static readonly CommandDescriptor<NotesViewModel>[] Commands =
+    private static readonly CommandDescriptor[] Commands =
     [
-        new("AddRow", model => model.AddRowCommand)
+        new("AddRow", model => ((NotesViewModel)model).AddRowCommand)
         {
             ReadInput = ConformanceInput.String,
             EncodeArgument = ConformanceInput.EncodeString,
         },
-        new("RemoveRow", model => model.RemoveRowCommand)
+        new("RemoveRow", model => ((NotesViewModel)model).RemoveRowCommand)
         {
             ReadInput = value => int.Parse(ConformanceWire.String(value), NumberStyles.None, CultureInfo.InvariantCulture),
             EncodeArgument = argument => JsonSerializer.Serialize(((int)argument!).ToString(CultureInfo.InvariantCulture)),
-            ResolveArgument = (model, key) => model.Rows.FirstOrDefault(row => row.Id == (int)key!),
+            ResolveArgument = (model, key) => ((NotesViewModel)model).Rows.FirstOrDefault(row => row.Id == (int)key!),
         },
-        new("Clear", model => model.ClearCommand),
-        new("Touch", model => model.TouchCommand),
-        new("Save", model => model.SaveCommand)
+        new("Clear", model => ((NotesViewModel)model).ClearCommand),
+        new("Touch", model => ((NotesViewModel)model).TouchCommand),
+        new("Save", model => ((NotesViewModel)model).SaveCommand)
         {
             EncodeFailure = failure => failure is NotesSaveFailure.TitleRequired ? """{"$case":"titleRequired"}""" : null,
         },
-        new("Annotate", model => model.AnnotateCommand)
+        new("Annotate", model => ((NotesViewModel)model).AnnotateCommand)
         {
             ReadInput = ConformanceInput.String,
             EncodeArgument = ConformanceInput.EncodeString,
         },
-        new("SlowImport", model => model.SlowImportCommand)
+        new("SlowImport", model => ((NotesViewModel)model).SlowImportCommand)
         {
             ReadInput = value => new SlowImportInput(ConformanceWire.String(value.GetProperty("source")), value.GetProperty("limit").GetInt32()),
             EncodeArgument = argument => JsonSerializer.Serialize(new { source = ((SlowImportInput)argument!).Source, limit = ((SlowImportInput)argument).Limit }),
             ExecuteResultAsync = async (model, token, argument) =>
             {
-                var count = (int)(await model.SlowImportCommand.ExecuteAsync(argument, token).ConfigureAwait(false))!;
+                var count = (int)(await ((NotesViewModel)model).SlowImportCommand.ExecuteAsync(argument, token).ConfigureAwait(false))!;
                 return BridgeOperationResult.Succeeded(count.ToString(CultureInfo.InvariantCulture));
             },
             EncodeFailure = failure => failure is NotesImportFailure ? NotesImportFailure.SourceMissing : null,
-            Subscribe = (model, changed) => Changed(model.SlowImportCommand, changed),
+            Subscribe = (model, changed) => Changed(((NotesViewModel)model).SlowImportCommand, changed),
         },
-        new("ConfirmClear", model => model.ConfirmClearCommand)
+        new("ConfirmClear", model => ((NotesViewModel)model).ConfirmClearCommand)
         {
             // confirmClear ends inside its publication unit (ConformanceOperations.cs); the reply follows it.
             ExecuteAsync = async (model, token, _) =>
             {
-                await model.ConfirmClearCommand.ExecuteAsync(null, token).ConfigureAwait(false);
+                await ((NotesViewModel)model).ConfirmClearCommand.ExecuteAsync(null, token).ConfigureAwait(false);
                 await Task.Yield();
             },
-            Subscribe = (model, changed) => Changed(model.ConfirmClearCommand, changed),
+            Subscribe = (model, changed) => Changed(((NotesViewModel)model).ConfirmClearCommand, changed),
         },
     ];
 

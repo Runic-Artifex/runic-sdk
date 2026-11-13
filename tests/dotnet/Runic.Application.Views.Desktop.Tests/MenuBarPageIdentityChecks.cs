@@ -281,13 +281,13 @@ internal sealed class MenuBarPageIdentityChecks
     }
 
     private sealed class IdentityBridge(IBridgeTransport transport, IdentityViewModel model, WindowContentSession session)
-        : ViewModelBridge<IdentityViewModel>(transport, model, Route, [new("ready", (writer, _) => writer.WriteBooleanValue(true))],
+        : ViewModelBridge(transport, model, typeof(IdentityViewModel), Route, [new("ready", (writer, _) => writer.WriteBooleanValue(true))],
             [], [], [], content: session,
             interactions:
             [
-                ViewRequestDescriptor.Create<IdentityViewModel, IdentityFocus>("focus", FocusContract, value => value.Focus,
+                ViewRequestDescriptor.Create<IdentityFocus>("focus", FocusContract, static value => ((IdentityViewModel)value).Focus,
                     static input => JsonSerializer.Serialize(new { member = input.Member })),
-                ViewQuestionDescriptor.Create<IdentityViewModel, string, bool>("confirm", ConfirmContract, value => value.Confirm,
+                ViewQuestionDescriptor.Create<string, bool>("confirm", ConfirmContract, static value => ((IdentityViewModel)value).Confirm,
                     static input => JsonSerializer.Serialize(input), static output => output.GetBoolean()),
             ]);
 }

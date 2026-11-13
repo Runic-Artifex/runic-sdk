@@ -30,6 +30,6 @@ internal sealed class RunicViewCodegenConvention : MvvmCodegenConvention
 
         internal override string Descriptor(GeneratedInteractionPlan plan, string modelType, string publicName,
             string inputCodec, string outputCodec) =>
-            $"global::Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<{modelType}, {plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", vm => vm.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
+            $"global::Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<{plan.Input.RootCSharpType()}, {plan.Output.RootCSharpType()}>(\"{publicName}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
     }
 }

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using Runic.Application.Views;
+using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;
 
 namespace Runic.Application.Views.Benchmarks;
 
@@ -116,17 +117,17 @@ public sealed class WideModel(int members) : INotifyPropertyChanged
 }
 
 // A hand-written bridge that follows the generated ones: one state member and one property descriptor per member.
-public sealed class WideBridge(IBridgeTransport transport, WideModel model) : ViewModelBridge<WideModel>(
-    transport, model, "wide",
-    [.. Enumerable.Range(0, model.Count).Select(member => new BridgeStateMember<WideModel>(Wire(member), (writer, vm) =>
+public sealed class WideBridge(IBridgeTransport transport, WideModel model) : ViewModelBridge(
+    transport, model, typeof(WideModel), "wide",
+    [.. Enumerable.Range(0, model.Count).Select(member => new BridgeStateMember(Wire(member), (writer, vm) =>
     {
-        switch (vm.Get(member))
+        switch (((WideModel)vm).Get(member))
         {
             case string text: writer.WriteStringValue(text); break;
             case int number: writer.WriteNumberValue(number); break;
         }
     }))],
-    [.. Enumerable.Range(0, model.Count).Select(member => new PropertyDescriptor<WideModel>(WideModel.Name(member), Wire(member), vm => vm.Get(member), null))],
+    [.. Enumerable.Range(0, model.Count).Select(member => new PropertyDescriptor(WideModel.Name(member), Wire(member), vm => ((WideModel)vm).Get(member), null))],
     [], [])
 {
     private static string Wire(int member) => "m" + member.ToString(CultureInfo.InvariantCulture);

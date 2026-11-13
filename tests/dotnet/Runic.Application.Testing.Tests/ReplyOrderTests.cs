@@ -275,21 +275,21 @@ internal sealed class ReplyOrderTests
         public event EventHandler? CanExecuteChanged { add { } remove { } }
     }
 
-    private sealed class ShellBridge(IBridgeTransport transport, ShellModel model) : ViewModelBridge<ShellModel>(
-        transport, model, "shell",
-        [new BridgeStateMember<ShellModel>("value", static (writer, vm) => writer.WriteNumberValue(vm.Value))], [], [], []);
+    private sealed class ShellBridge(IBridgeTransport transport, ShellModel model) : ViewModelBridge(
+        transport, model, typeof(ShellModel), "shell",
+        [new BridgeStateMember("value", static (writer, vm) => writer.WriteNumberValue(((ShellModel)vm).Value))], [], [], []);
 
-    private sealed class PageBridge(IBridgeTransport transport, PageModel model) : ViewModelBridge<PageModel>(
-        transport, model, "page",
-        [new BridgeStateMember<PageModel>("value", static (writer, _) => writer.WriteNumberValue(0))],
-        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadInt32(value))], [],
+    private sealed class PageBridge(IBridgeTransport transport, PageModel model) : ViewModelBridge(
+        transport, model, typeof(PageModel), "page",
+        [new BridgeStateMember("value", static (writer, _) => writer.WriteNumberValue(0))],
+        [new("Value", "value", vm => ((PageModel)vm).Value, (vm, value) => ((PageModel)vm).Value = BridgeWire.ReadInt32(value))], [],
         [
-            new("Bump", vm => vm.Bump),
-            new("Load", vm => vm.Bump)
+            new("Bump", vm => ((PageModel)vm).Bump),
+            new("Load", vm => ((PageModel)vm).Bump)
             {
                 ExecuteAsync = static async (vm, _, _) =>
                 {
-                    vm.Shell.Value++;
+                    ((PageModel)vm).Shell.Value++;
                     await Task.Yield();
                 },
             },

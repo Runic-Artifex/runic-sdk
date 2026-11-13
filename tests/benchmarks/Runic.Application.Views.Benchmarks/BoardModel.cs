@@ -86,25 +86,25 @@ public static class Wire
         element.GetProperty("shortcuts").EnumerateObject().ToDictionary(item => item.Name, item => item.Value.GetString()!));
 
     // The board's state members, written member by member.
-    public static readonly BridgeStateMember<BoardModel>[] State =
+    public static readonly BridgeStateMember[] State =
     [
-        new("counter", static (writer, model) => writer.WriteNumberValue(model.Counter)),
-        new("preferences", static (writer, model) => WritePreferences(writer, model.Preferences)),
+        new("counter", static (writer, model) => writer.WriteNumberValue(((BoardModel)model).Counter)),
+        new("preferences", static (writer, model) => WritePreferences(writer, ((BoardModel)model).Preferences)),
         new("rows", static (writer, model) =>
         {
             writer.WriteStartArray();
-            foreach (var row in model.Rows) WriteRow(writer, row);
+            foreach (var row in ((BoardModel)model).Rows) WriteRow(writer, row);
             writer.WriteEndArray();
         }),
     ];
 }
 
 public sealed class BoardBridge(IBridgeTransport transport, BoardModel model, WindowContentSession? content)
-    : ViewModelBridge<BoardModel>(transport, model, "board", Wire.State, [],
+    : ViewModelBridge(transport, model, typeof(BoardModel), "board", Wire.State, [],
         content is null ? [] :
         [
-            new("Preferences", "preferences", CheckedFieldValueKind.Json, vm => vm.Preferences,
-                (vm, value) => vm.Preferences = (Preferences)value!,
+            new("Preferences", "preferences", CheckedFieldValueKind.Json, vm => ((BoardModel)vm).Preferences,
+                (vm, value) => ((BoardModel)vm).Preferences = (Preferences)value!,
                 readValue: element => Wire.ReadPreferences(element),
                 writeValue: (writer, value) => Wire.WritePreferences(writer, (Preferences)value!)),
         ],

@@ -169,7 +169,7 @@ their replacement instead of `CS0246`, for one release.
 | `[assembly: RunicBridgeJsonIgnore]` | Delete it. DTO members with an unconditional `[JsonIgnore]` (condition `Always` or none) or `[JsonExtensionData]` are left out of the Bridge contract by default; `[assembly: RunicIncludeJsonIgnored]` in the ViewModel's assembly keeps them | 0.9.0 |
 | `BridgeDiagnostics.IncludeFailureDetail = x` | `RunicWindowOptions.IncludeFailureDetail` per window, or the host options' default | 0.9.0 |
 | `RunicBridgeHotReload`, `[RunicBridgeCodec]`, `IRunicBridgeCodec<T>`, `BridgeWindowCloseResult`, `BridgeValidationMessage`, `BridgeCommandResultCardinality` | `RunicViewsHotReload` (`(sender, e)` handler), `[RunicCodec]`, `IRunicCodec<T>`, `RunicWindowCloseResult`, `RunicValidationMessage`, `RunicCommandResultCardinality` | 0.9.0 |
-| `ViewModelBridge<T>`, `PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire` in hand-written code | `Runic.Application.Views.Generated`, for generated code only; rebuild | 0.9.0 |
+| `ViewModelBridge<T>`, `PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire` in hand-written code | `Runic.Application.Views.Generated`, for generated code only; rebuild. Since 0.19 the Bridge types have no type parameter (see [From 0.18 to 0.19](#from-018-to-019)) | 0.9.0 |
 | `RunicInteractionInvocation.Enter(…)` | Removed; work outside a Bridge invocation uses a .NET handler | 0.9.0 |
 | Routes bound by hand with `IBridgeTransport.Bind`/`BindAsync` and called from the page with `__runicBridge.call(name, …)` | No custom routes: expose a ViewModel command, operation or property and call it through the generated client. A custom transport: see [Views protocol 4](#views-protocol-4) | 0.13.0 |
 | `INavigationActivated`, `OnActivatedAsync`, `INavigationRegionGuard.CanLeaveAsync`, `NavigationResume`, `INavigationRegion`, `INavigationEntry` | `INavigationArrived`, `OnArrivedAsync`, `CanDepartAsync`, `NavigationArrival`, `NavigationRegion`, `NavigationEntry` | 0.9.0 |
@@ -1312,8 +1312,35 @@ modes.
 
 <!-- Draft: the 0.19.0 release PR completes this section. -->
 
-0.19.0 adds APIs. Update every Runic NuGet and npm package to 0.19.0 together and rebuild so that the generated clients
-are regenerated.
+Update every Runic NuGet and npm package to 0.19.0 together and rebuild, so that the generated clients and Bridges are
+regenerated; an assembly with Bridges that a 0.18 generator wrote must be rebuilt (below).
+
+### Rebuild every assembly with generated Bridges
+
+The Bridge runtime and its descriptors are no longer generic over the ViewModel (#901). NativeAOT used to copy about
+110 KiB of type descriptors into the executable for every bridged ViewModel; one shared runtime now serves them all.
+The Views wire protocol and the generated TypeScript client do not change, so a 0.18 page connects as before.
+
+Bridges that a 0.18 generator wrote do not run on 0.19: the types they derive from and construct are gone, so loading
+one fails with `TypeLoadException` or `MissingMethodException`. Rebuild every assembly that contains generated
+Bridges, including a separate `RunicApplicationFrontendModelAssembly` and a library of ViewModels that another
+application references. The rebuild regenerates them.
+
+| 0.18 | 0.19 |
+| --- | --- |
+| `ViewModelBridge<TViewModel>`, `PropertyDescriptor<T>`, `CheckedPropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeCollectionDescriptor<T>`, `BridgeStateMember<T>`, `BridgeInteractionDescriptor<TModel>` (`Runic.Application.Views.Generated`) | The same names without the type parameter. Their delegates take the ViewModel as `object`; generated code casts it |
+| The `ViewModelBridge<T>` constructor `(transport, vm, name, state, …)` | `(transport, vm, modelType, name, state, …)`: generated code passes `typeof` of its ViewModel |
+| `ViewRequestDescriptor.Create<TModel, T>`, `ViewQuestionDescriptor.Create<TModel, TInput, TOutput>`, `ReactiveInteractionDescriptor.Create<TModel, TInput, TOutput>` | `Create<T>`, `Create<TInput, TOutput>`: the getter takes the ViewModel as `object` |
+| `BridgeCollectionDescriptor<T>` was a record (value equality, `with`, positional parameters `Name`, `Get`, …) | A sealed class with reference equality; its constructor parameters are camelCase (`publishesChanges:`) |
+
+These types are the [generated-code support API](../packages/dotnet/Runic.Application.Views/README.md#generated-code-support-api),
+not application API. A hand-written Bridge, for example in a test, follows the generated shape: derive from
+`ViewModelBridge`, pass `typeof(TViewModel)` after the ViewModel, and cast the ViewModel in each descriptor lambda
+(`static vm => ((MyViewModel)vm).Title`). A file that imports both `System.ComponentModel` and
+`Runic.Application.Views.Generated` now has two `PropertyDescriptor` types; qualify the name or add
+`using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;`.
+
+### Side panel
 
 | 0.18 | 0.19 |
 | --- | --- |

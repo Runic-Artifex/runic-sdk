@@ -64,8 +64,10 @@ improvements and every budget that differs from the base branch's `budgets.json`
 
 ## NativeAOT size
 
-Each bridged ViewModel adds NativeAOT executable size, because the Bridge runtime is generic over the ViewModel
-([#901](https://github.com/Runic-Artifex/runic-sdk/issues/901)). The `aot/` budgets gate it on linux-x64 (D064.5):
+Each bridged ViewModel adds NativeAOT executable size. Until 0.19 the Bridge runtime was generic over the ViewModel, and
+each ViewModel brought its own copy of the runtime's type descriptors, about 118 KiB
+([#901](https://github.com/Runic-Artifex/runic-sdk/issues/901)). The runtime now holds the ViewModel as `object`, so a
+ViewModel adds only its generated Bridge and codecs. The `aot/` budgets gate it on linux-x64 (D064.5, D064.24):
 
 ```sh
 bun tests/scaling/aot-size/measure.mjs            # publish, measure, compare with budgets.json, print the report
@@ -90,16 +92,19 @@ bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, m
   so that a fixed-size regression is also caught.
 
 The report adds a table per ViewModel: each measurement at K = 0, 1 and 9 and its slope from 1 to 9. The counts are
-deterministic for a given ILCompiler; a .NET SDK update can change them and then needs `--update`. The first three
-entries are known costs: the non-generic Bridge runtime (A1-b) lowers them.
+deterministic for a given ILCompiler; a .NET SDK update can change them and then needs `--update`.
+`aot/bridge/generated-generic-types` must stay 0: a generic type of the generated-code support API closed over a
+ViewModel brings the per-ViewModel copies back.
 
 In CI the managed job's application group runs `measure.mjs` after the scaling report, and the results are part of
 the `scaling-results-<sha>` artifact.
+`--rid win-x64` or `--rid osx-arm64` measures on that runtime and only reports (D064.25). A pull request labelled
+`ci:all-platforms` runs it on the Windows x64 and macOS arm64 native legs, with `--keep`, and keeps the mstat files in
+the `aot-size-<rid>-<run>` artifact.
 
 ## Counters in the product
 
 The Bridge counts its own work in an internal `BridgeCostCounters`
 (`packages/dotnet/Runic.Application.Views/Generated/BridgeCostCounters.cs`), one per Bridge, read through the internal
 `IBridgeCostSource`. Each count is a field add in code that holds the model gate already; nothing reads them outside
-tests. When the Bridge runtime becomes non-generic (A1-b, #901), they stay an instance member of the runtime, with each
-increment at the code it counts.
+tests. They are an instance member of the non-generic runtime, with each increment at the code it counts.

@@ -23,10 +23,10 @@ internal static class BridgeModelGates
 // Generated descriptors and snapshot writers avoid runtime reflection.
 /// <summary>Describes one bridged ViewModel property. Created by generated bridges.</summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class PropertyDescriptor<T>
+public sealed class PropertyDescriptor
 {
-    private readonly Func<T, object?> _getter;
-    private readonly Action<T, JsonElement>? _setter;
+    private readonly Func<object, object?> _getter;
+    private readonly Action<object, JsonElement>? _setter;
 
     /// <summary>Describes a property whose setter reads the <c>value</c> of a <c>set</c> request.</summary>
     /// <param name="name">The .NET property name.</param>
@@ -37,7 +37,7 @@ public sealed class PropertyDescriptor<T>
     /// <see cref="FormatException"/>, <see cref="JsonException"/>, <see cref="ArgumentException"/> or
     /// <see cref="OverflowException"/> for a value that is not valid input.
     /// </param>
-    public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter)
+    public PropertyDescriptor(string name, string wireName, Func<object, object?> getter, Action<object, JsonElement>? setter)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentException.ThrowIfNullOrEmpty(wireName);
@@ -61,11 +61,11 @@ public sealed class PropertyDescriptor<T>
     /// and for a <see cref="RegionCollection"/> also when its regions or their <c>Current</c> change;
     /// another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
-    public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter, Func<T, object?> observe)
+    public PropertyDescriptor(string name, string wireName, Func<object, object?> getter, Action<object, JsonElement>? setter, Func<object, object?> observe)
         : this(name, wireName, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
 
     // The sub-object whose changes the Bridge observes, if any.
-    internal Func<T, object?>? Observe { get; }
+    internal Func<object, object?>? Observe { get; }
 
     /// <summary>The .NET property name.</summary>
     public string Name { get; }
@@ -86,7 +86,7 @@ public sealed class PropertyDescriptor<T>
     /// Writes a text member from the value a <c>set</c> request's splice produces, or from a <c>set</c> request's string
     /// value; <see langword="null"/> for a read-only property. It throws like the setter.
     /// </summary>
-    public Action<T, string>? TextSetter { get; init; }
+    public Action<object, string>? TextSetter { get; init; }
     /// <summary>
     /// Whether the property is a region collection (<see cref="RunicRegionCollectionAttribute"/>): its observed
     /// sub-object is a <see cref="NavigationSelection"/> whose regions and their content the Bridge observes, and whose
@@ -104,10 +104,10 @@ public sealed class PropertyDescriptor<T>
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
-    public object? Get(T vm) => _getter(vm);
+    public object? Get(object vm) => _getter(vm);
 
     // Writes the property from a set request's value.
-    internal void Set(T vm, JsonElement value)
+    internal void Set(object vm, JsonElement value)
     {
         if (_setter is null) throw new InvalidOperationException($"{Name} is read-only.");
         _setter(vm, value);
@@ -120,13 +120,13 @@ public sealed class PropertyDescriptor<T>
 /// <param name="name">The member's wire name.</param>
 /// <param name="write">Writes the member's value, without its name. A content slot's writer may present content.</param>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class BridgeStateMember<T>(string name, Action<Utf8JsonWriter, T> write)
+public sealed class BridgeStateMember(string name, Action<Utf8JsonWriter, object> write)
 {
     /// <summary>The member's wire name.</summary>
     public string Name { get; } = string.IsNullOrEmpty(name) ? throw new ArgumentException("A state member needs a wire name.", nameof(name)) : name;
 
     /// <summary>Writes the member's value, without its name.</summary>
-    public Action<Utf8JsonWriter, T> Write { get; } = write ?? throw new ArgumentNullException(nameof(write));
+    public Action<Utf8JsonWriter, object> Write { get; } = write ?? throw new ArgumentNullException(nameof(write));
 }
 
 // Acknowledged field writes are deliberately separate from the ordinary raw
@@ -158,12 +158,12 @@ public enum CheckedFieldValueKind
 /// <param name="readValue">Decodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
 /// <param name="writeValue">Encodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class CheckedPropertyDescriptor<T>(
+public sealed class CheckedPropertyDescriptor(
     string name,
     string wireName,
     CheckedFieldValueKind valueKind,
-    Func<T, object?> getter,
-    Action<T, object?> setter,
+    Func<object, object?> getter,
+    Action<object, object?> setter,
     Func<JsonElement, object?>? readValue = null,
     Action<Utf8JsonWriter, object?>? writeValue = null)
 {
@@ -173,8 +173,8 @@ public sealed class CheckedPropertyDescriptor<T>(
     public string WireName { get; } = wireName;
     /// <summary>The wire value type.</summary>
     public CheckedFieldValueKind ValueKind { get; } = valueKind;
-    internal Func<T, object?> Get { get; } = getter;
-    internal Action<T, object?> Set { get; } = setter;
+    internal Func<object, object?> Get { get; } = getter;
+    internal Action<object, object?> Set { get; } = setter;
     internal Func<JsonElement, object?>? Read { get; } = readValue;
     internal Action<Utf8JsonWriter, object?>? Write { get; } = writeValue;
 
@@ -199,7 +199,7 @@ public sealed class CheckedPropertyDescriptor<T>(
     internal IEqualityComparer<object?> Comparer => ValueKind is CheckedFieldValueKind.Json
         ? new WireComparer(this) : EqualityComparer<object?>.Default;
 
-    private sealed class WireComparer(CheckedPropertyDescriptor<T> owner) : IEqualityComparer<object?>
+    private sealed class WireComparer(CheckedPropertyDescriptor owner) : IEqualityComparer<object?>
     {
         public new bool Equals(object? left, object? right) => BridgeCanonicalJson.Equal(owner.Write!, left, right);
         public int GetHashCode(object? value) => BridgeCanonicalJson.Hash(owner.Write!, value);
@@ -255,16 +255,16 @@ public sealed class BridgeFieldPath(string[] path, Func<object, JsonElement, obj
 /// <param name="name">The command property name.</param>
 /// <param name="get">Reads the command object from the ViewModel.</param>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
+public sealed class CommandDescriptor(string name, Func<object, object> get)
 {
     /// <summary>The command property name.</summary>
     public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
 
     /// <summary>Reads the command object from the ViewModel.</summary>
-    public Func<T, object> Get { get; } = get ?? throw new ArgumentNullException(nameof(get));
+    public Func<object, object> Get { get; } = get ?? throw new ArgumentNullException(nameof(get));
 
     /// <summary>Executes a command without a result.</summary>
-    public Func<T, CancellationToken, object?, Task>? ExecuteAsync { get; init; }
+    public Func<object, CancellationToken, object?, Task>? ExecuteAsync { get; init; }
 
     /// <summary>The command's wire name, such as <c>save</c>; <see langword="null"/> uses <see cref="Name"/> with a lowercase first character.</summary>
     public string? WireName { get; init; }
@@ -283,22 +283,22 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     internal string Member => WireName ?? char.ToLowerInvariant(Name[0]) + Name[1..];
 
     /// <summary>Executes a command that produces a result.</summary>
-    public Func<T, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteResultAsync { get; init; }
+    public Func<object, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteResultAsync { get; init; }
 
     /// <summary>Encodes the argument for diagnostics and replay checks.</summary>
     public Func<object?, string>? EncodeArgument { get; init; }
 
     /// <summary>Evaluates whether the command can run with an argument.</summary>
-    public Func<T, object?, bool>? CanExecute { get; init; }
+    public Func<object, object?, bool>? CanExecute { get; init; }
 
     /// <summary>Observes changes of the command's executability.</summary>
-    public Func<T, Action, IDisposable>? Subscribe { get; init; }
+    public Func<object, Action, IDisposable>? Subscribe { get; init; }
 
     /// <summary>Creates the result stream of a streaming command.</summary>
     public Func<BridgeOperationStream>? CreateStream { get; init; }
 
     /// <summary>Executes a streaming command.</summary>
-    public Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync { get; init; }
+    public Func<object, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync { get; init; }
 
     /// <summary>
     /// Encodes the value of a <see cref="RunicFailureException"/> when it is the command's declared
@@ -313,21 +313,21 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     /// the Window's <see cref="Microsoft.Extensions.Logging.ILoggerFactory"/>, and disposes the result when it
     /// detaches. <see langword="null"/> when the command reports its failures only to its caller.
     /// </summary>
-    public Func<T, Microsoft.Extensions.Logging.ILogger, IDisposable>? ObserveFailures { get; init; }
+    public Func<object, Microsoft.Extensions.Logging.ILogger, IDisposable>? ObserveFailures { get; init; }
 
     /// <summary>
     /// Resolves the decoded wire key of a <see cref="RunicCommandKeyAttribute"/> command to the command's parameter
     /// in the Bridge call's model turn, or returns <see langword="null"/> when the key names no object.
     /// <see langword="null"/> for a command whose argument is its parameter.
     /// </summary>
-    public Func<T, object?, object?>? ResolveArgument { get; init; }
+    public Func<object, object?, object?>? ResolveArgument { get; init; }
 
     /// <summary>
     /// Resolves the decoded wire key of a <see cref="RunicCommandKeyAttribute"/> command to the command's parameter
     /// asynchronously, or returns <see langword="null"/> when the key names no object. It starts in the Bridge call's
     /// model turn; availability and execution run in a new turn. <see langword="null"/> unless the resolver is asynchronous.
     /// </summary>
-    public Func<T, object?, CancellationToken, ValueTask<object?>>? ResolveArgumentAsync { get; init; }
+    public Func<object, object?, CancellationToken, ValueTask<object?>>? ResolveArgumentAsync { get; init; }
 
     /// <summary>
     /// What happens to the command's running operations when the navigation entry whose content started them retires,
@@ -475,8 +475,8 @@ internal interface IBridgeRegionSlots
 /// interaction requests in BridgeRuntime.Operations.cs.
 /// </remarks>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
-    IBridgeSnapshotBatchParticipant, IBridgeRegionSlots, IBridgeCostSource where T : INotifyPropertyChanged
+public partial class ViewModelBridge : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
+    IBridgeSnapshotBatchParticipant, IBridgeRegionSlots, IBridgeCostSource
 {
     private const int MaximumFieldWriteRequestIdLength = 256;
     private readonly object _modelGate;
@@ -491,26 +491,29 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     // The window's Bridge input limit; a bridge without a window session uses the default.
     private int MaximumInputBytes => _content?.MaximumInputBytes ?? WindowContentSessionOptions.DefaultMaximumInputBytes;
     private readonly IBridgeTransport _transport;
-    private readonly T _vm;
+    // The ViewModel, held as its interface so that the runtime has one instantiation for every ViewModel type (#901).
+    private readonly INotifyPropertyChanged _vm;
     private readonly string _name;
-    private static readonly string ModelName = typeof(T).Name;
+    // The ViewModel's type; never reflected over outside Hot Reload (ContractMismatch).
+    private readonly Type _modelType;
+    private string ModelName { get; }
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
     // The state members, in state order.
-    private readonly BridgeStateMember<T>[] _stateMembers;
-    private readonly PropertyDescriptor<T>[] _properties;
+    private readonly BridgeStateMember[] _stateMembers;
+    private readonly PropertyDescriptor[] _properties;
     private readonly CheckedPropertyBinding[] _checkedProperties;
     // Checked fields of a Bridge without a window, whose writes fail.
     private readonly HashSet<string> _unownedCheckedFields = new(StringComparer.Ordinal);
-    private readonly CommandDescriptor<T>[] _commands;
+    private readonly CommandDescriptor[] _commands;
     // Settable properties, checked fields and commands by wire name.
-    private readonly Dictionary<string, PropertyDescriptor<T>> _settable = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PropertyDescriptor> _settable = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckedPropertyBinding> _checkedByMember = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, CommandDescriptor<T>> _commandsByMember = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CommandDescriptor> _commandsByMember = new(StringComparer.Ordinal);
     // field-paths/1: the members with field paths below them, by wire name, and the versions of those paths.
     private readonly Dictionary<string, FieldPathTarget> _pathTargets = new(StringComparer.Ordinal);
     private readonly BridgeFieldPathTracker _fieldPaths = new();
     // Query collections (query-collections/1) by wire name.
-    private readonly Dictionary<string, PropertyDescriptor<T>> _queryCollections = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PropertyDescriptor> _queryCollections = new(StringComparer.Ordinal);
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
@@ -521,22 +524,22 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly Dictionary<string, INotifyCollectionChanged> _collections = new();
     // Sub-objects observed through PropertyDescriptor.Observe, by property name.
     private readonly Dictionary<string, (object Source, IDisposable Subscription)> _observed = new(StringComparer.Ordinal);
-    private readonly BridgeCollectionDescriptor<T>[] _keyedCollections;
-    private readonly BridgeCollectionDescriptor<T>[] _incrementalCollections;
+    private readonly BridgeCollectionDescriptor[] _keyedCollections;
+    private readonly BridgeCollectionDescriptor[] _incrementalCollections;
     private readonly HashSet<string> _generatedCollectionNames;
     // The bridged properties and the frame-publishing keyed collections they hold, by .NET property name: a notification
     // that names a member refreshes only that member's instances (OnChanged). Keyed collections that no bridged property
     // holds are checked on every notification.
-    private readonly Dictionary<string, PropertyDescriptor<T>[]> _propertiesByName;
-    private readonly Dictionary<string, BridgeCollectionDescriptor<T>[]> _collectionsByName;
-    private readonly BridgeCollectionDescriptor<T>[] _unnamedCollections;
+    private readonly Dictionary<string, PropertyDescriptor[]> _propertiesByName;
+    private readonly Dictionary<string, BridgeCollectionDescriptor[]> _collectionsByName;
+    private readonly BridgeCollectionDescriptor[] _unnamedCollections;
     // Whether a named notification arrived since every member's instances were last refreshed. A getter may return a
     // collection or sub-object that another member's notification replaced, so the next unit refreshes every member
     // once before it publishes (RefreshPendingMembers).
     private bool _memberRefreshPending;
     // Append-only text fields, which publish their appended text.
-    private readonly PropertyDescriptor<T>[] _textFields;
-    private readonly PropertyDescriptor<T>[] _textMembers;
+    private readonly PropertyDescriptor[] _textFields;
+    private readonly PropertyDescriptor[] _textMembers;
     // The wire names of the members whose changes are published as collection or text changes, not by comparison.
     private readonly HashSet<string> _incrementalMembers = new(StringComparer.Ordinal);
     // The presentations of a Bridge without a window.
@@ -548,6 +551,10 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     /// <summary>Creates the Bridge of a ViewModel whose state is written member by member.</summary>
     /// <param name="transport">The window's transport.</param>
     /// <param name="vm">The ViewModel.</param>
+    /// <param name="modelType">
+    /// The ViewModel's declared type, which names it in the contract, logs and telemetry; the generated Bridge passes
+    /// <c>typeof</c> of its ViewModel.
+    /// </param>
     /// <param name="name">The route name.</param>
     /// <param name="state">Every state member, in state order.</param>
     /// <param name="properties">The bridged properties.</param>
@@ -566,26 +573,31 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     /// </param>
     protected ViewModelBridge(
         IBridgeTransport transport,
-        T vm,
+        INotifyPropertyChanged vm,
+        Type modelType,
         string name,
-        BridgeStateMember<T>[] state,
-        PropertyDescriptor<T>[] properties,
-        CheckedPropertyDescriptor<T>[] checkedProperties,
-        CommandDescriptor<T>[] commands,
+        BridgeStateMember[] state,
+        PropertyDescriptor[] properties,
+        CheckedPropertyDescriptor[] checkedProperties,
+        CommandDescriptor[] commands,
         string? contractFingerprint = null,
         WindowContentSession? content = null,
-        BridgeInteractionDescriptor<T>[]? interactions = null,
+        BridgeInteractionDescriptor[]? interactions = null,
         BridgeDataSubscriptionMember[]? dataSubscriptions = null,
-        BridgeCollectionDescriptor<T>[]? collections = null,
+        BridgeCollectionDescriptor[]? collections = null,
         BridgeValidationReader? validationReader = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
+        ArgumentNullException.ThrowIfNull(vm);
+        ArgumentNullException.ThrowIfNull(modelType);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(properties);
         ArgumentNullException.ThrowIfNull(checkedProperties);
         ArgumentNullException.ThrowIfNull(commands);
         _transport = transport;
         _vm = vm;
+        _modelType = modelType;
+        ModelName = modelType.Name;
         _modelGate = BridgeModelGates.For(vm);
         // Before the model turn is chosen: an unbound model would otherwise fall
         // back to a lock that orders differently from the window's turns.
@@ -599,25 +611,34 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _publishedRevision = _revision;
         // The first state begins the route's first epoch (presentation-epoch/1).
         _epoch = _revision;
+        // Plain loops, not LINQ: the constructor runs once per Bridge and needs no iterator or grouping types.
         _keyedCollections = collections ?? [];
-        _incrementalCollections = [.. _keyedCollections.Where(descriptor => descriptor.PublishesChanges)];
-        _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
-            .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
-        _propertiesByName = properties.GroupBy(property => property.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
-        var holders = properties.ToLookup(property => property.WireName, property => property.Name, StringComparer.Ordinal);
-        _collectionsByName = _incrementalCollections
-            .SelectMany(descriptor => holders[descriptor.Name].Distinct(StringComparer.Ordinal).Select(holder => (Holder: holder, Descriptor: descriptor)))
-            .GroupBy(entry => entry.Holder, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Select(entry => entry.Descriptor).ToArray(), StringComparer.Ordinal);
-        _unnamedCollections = [.. _incrementalCollections.Where(descriptor => !holders.Contains(descriptor.Name))];
+        var incrementalCollections = new List<BridgeCollectionDescriptor>(_keyedCollections.Length);
+        foreach (var descriptor in _keyedCollections)
+            if (descriptor.PublishesChanges) incrementalCollections.Add(descriptor);
+        _incrementalCollections = [.. incrementalCollections];
+        _generatedCollectionNames = new(StringComparer.Ordinal);
+        if (dataSubscriptions is not null)
+            foreach (var member in dataSubscriptions)
+                if (member.EnumerateChildren is not null) _generatedCollectionNames.Add(member.PropertyName);
+        _propertiesByName = GroupByName(properties);
+        (_collectionsByName, _unnamedCollections) = GroupByHolder(_incrementalCollections, properties);
         _logger = content?.Logger ?? TraceFallbackLogger.Instance;
         _delivery = new(transport, name, _modelTurn, CaptureRequestedState, RunRequestedUnit, ModelName, _logger);
         _replyOrder = BridgeReplyOrder.For(transport);
         _name = name;
         _stateMembers = state;
         _properties = properties;
-        _textFields = [.. properties.Where(property => property.AppendOnlyTextField is not null)];
+        var textFields = new List<PropertyDescriptor>();
+        var textMembers = new List<PropertyDescriptor>();
+        foreach (var property in properties)
+        {
+            if (property.AppendOnlyTextField is not null) textFields.Add(property);
+            // Text members are compared as strings, not by encoding, and may change with splices.
+            else if (property.TextMember) textMembers.Add(property);
+        }
+        _textFields = [.. textFields];
+        _textMembers = [.. textMembers];
         _checkedProperties = [];
         _commands = commands;
         _contractFingerprint = contractFingerprint;
@@ -625,12 +646,13 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _validationReader = validationReader;
         foreach (var descriptor in _incrementalCollections) _incrementalMembers.Add(descriptor.Name);
         foreach (var field in _textFields) _incrementalMembers.Add(field.AppendOnlyTextField!);
-        // Text members are compared as strings, not by encoding, and may change with splices.
-        _textMembers = [.. properties.Where(property => property.TextMember && property.AppendOnlyTextField is null)];
         foreach (var member in _textMembers) _incrementalMembers.Add(member.WireName);
 
-        foreach (var property in properties.Where(property => property.CanWrite))
-            _settable[property.WireName] = property;
+        foreach (var property in properties)
+        {
+            if (property.CanWrite) _settable[property.WireName] = property;
+            if (property.QueryRowWriter is not null) _queryCollections[property.WireName] = property;
+        }
         foreach (var command in commands) _commandsByMember[command.Member] = command;
         foreach (var descriptor in checkedProperties)
             if (descriptor is { FieldPaths.Count: > 0, ValueKind: CheckedFieldValueKind.Json, Write: not null })
@@ -638,8 +660,6 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var descriptor in _keyedCollections)
             if (descriptor is { FieldPaths.Count: > 0, UpdateRow: not null })
                 _pathTargets[descriptor.Name] = new(descriptor.Name, descriptor.FieldPaths, null, descriptor);
-        foreach (var property in properties.Where(property => property.QueryRowWriter is not null))
-            _queryCollections[property.WireName] = property;
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();
@@ -649,7 +669,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
                 foreach (var interaction in interactions) bindings.Add(interaction.Attach(content, vm, name));
             if (dataSubscriptions is { Length: > 0 })
                 bindings.Add(_dataSubscriptions = new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
-                    rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
+                    rootObservedExternally: true, incrementalCollectionNames: CollectionNames(_incrementalCollections),
                     observeValidation: BridgeValidation.ObserveWithPending(validationReader?.Observe), collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
             // Register the per-window observer before this Bridge subscribes
             // its publisher. A synchronous setter then advances the
@@ -664,7 +684,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
                 }
                 else
                 {
-                    var contract = $"{typeof(T).FullName}:{contractFingerprint}";
+                    var contract = $"{modelType.FullName}:{contractFingerprint}";
                     var checkedBindings = new List<CheckedPropertyBinding>(checkedProperties.Length);
                     foreach (var descriptor in checkedProperties)
                     {
@@ -735,6 +755,52 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     }
 
 
+    // The bridged properties by .NET property name, in declaration order.
+    private static Dictionary<string, PropertyDescriptor[]> GroupByName(PropertyDescriptor[] properties)
+    {
+        var lists = new Dictionary<string, List<PropertyDescriptor>>(StringComparer.Ordinal);
+        foreach (var property in properties)
+        {
+            if (!lists.TryGetValue(property.Name, out var list)) lists[property.Name] = list = [];
+            list.Add(property);
+        }
+        var groups = new Dictionary<string, PropertyDescriptor[]>(lists.Count, StringComparer.Ordinal);
+        foreach (var (name, list) in lists) groups[name] = [.. list];
+        return groups;
+    }
+
+    // The frame-publishing keyed collections by the .NET name of each property whose wire name is the collection's, and
+    // the collections that no property holds.
+    private static (Dictionary<string, BridgeCollectionDescriptor[]> ByHolder, BridgeCollectionDescriptor[] Unnamed) GroupByHolder(
+        BridgeCollectionDescriptor[] collections, PropertyDescriptor[] properties)
+    {
+        var lists = new Dictionary<string, List<BridgeCollectionDescriptor>>(StringComparer.Ordinal);
+        var unnamed = new List<BridgeCollectionDescriptor>();
+        foreach (var descriptor in collections)
+        {
+            var held = false;
+            foreach (var property in properties)
+            {
+                if (!string.Equals(property.WireName, descriptor.Name, StringComparison.Ordinal)) continue;
+                held = true;
+                if (!lists.TryGetValue(property.Name, out var list)) lists[property.Name] = list = [];
+                // Once per holder, however many of its descriptors carry the wire name.
+                if (list.Count == 0 || !ReferenceEquals(list[^1], descriptor)) list.Add(descriptor);
+            }
+            if (!held) unnamed.Add(descriptor);
+        }
+        var byHolder = new Dictionary<string, BridgeCollectionDescriptor[]>(lists.Count, StringComparer.Ordinal);
+        foreach (var (holder, list) in lists) byHolder[holder] = [.. list];
+        return (byHolder, [.. unnamed]);
+    }
+
+    private static HashSet<string> CollectionNames(BridgeCollectionDescriptor[] collections)
+    {
+        var names = new HashSet<string>(collections.Length, StringComparer.Ordinal);
+        foreach (var descriptor in collections) names.Add(descriptor.Name);
+        return names;
+    }
+
     // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: the operation and interaction requests of the route.
     private partial ValueTask<ReadOnlyMemory<byte>> HandleOperationAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
 
@@ -798,7 +864,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
 
     // A keyed collection replaced by another instance cannot be described by changes of the old one. The data graph
     // observes the new instance from now on, so its changes are published after this set.
-    private void RefreshCollectionInstance(BridgeCollectionDescriptor<T> descriptor)
+    private void RefreshCollectionInstance(BridgeCollectionDescriptor descriptor)
     {
         var rows = descriptor.Get(_vm);
         if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) return;
@@ -862,11 +928,11 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         }
     });
 
-    Type IHotReloadableBridge.ContractModelType => typeof(T);
+    Type IHotReloadableBridge.ContractModelType => _modelType;
 
     Microsoft.Extensions.Logging.ILogger IHotReloadableBridge.Logger => _logger;
 
-    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2087",
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2077",
         Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026",
         Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]
@@ -876,8 +942,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         // application process can apply edits rather than how the SDK was built.
         if (!System.Reflection.Metadata.MetadataUpdater.IsSupported) return null;
         if (_contractFingerprint is not null &&
-            !string.Equals(_contractFingerprint, BridgeContractShape.Compute(typeof(T)), StringComparison.Ordinal))
-            return $"{typeof(T).FullName} changed its generated Bridge contract. Rebuild and restart the .NET app.";
+            !string.Equals(_contractFingerprint, BridgeContractShape.Compute(_modelType), StringComparison.Ordinal))
+            return $"{_modelType.FullName} changed its generated Bridge contract. Rebuild and restart the .NET app.";
         return null;
     }
 
@@ -893,7 +959,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     }
 
     // Subscribes the collection a property holds now; returns whether it changed.
-    private bool RefreshCollectionSubscription(PropertyDescriptor<T> property)
+    private bool RefreshCollectionSubscription(PropertyDescriptor property)
     {
         if (_generatedCollectionNames.Contains(property.Name)) return false;
         var next = property.Get(_vm) as INotifyCollectionChanged;
@@ -918,7 +984,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var property in _properties) RefreshObservedSubObject(property);
     }
 
-    private void RefreshObservedSubObject(PropertyDescriptor<T> property)
+    private void RefreshObservedSubObject(PropertyDescriptor property)
     {
         if (property.Observe is not { } observe) return;
         var next = observe(_vm);
@@ -1024,21 +1090,34 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private bool IsInactive => _disposed || Volatile.Read(ref _detaching) != 0;
 
     // A member with field paths: a settable object member (Nested) or a keyed collection with a row editor (Rows).
-    private sealed class FieldPathTarget(string member, IReadOnlyList<BridgeFieldPath> paths, CheckedPropertyDescriptor<T>? nested,
-        BridgeCollectionDescriptor<T>? rows)
+    private sealed class FieldPathTarget(string member, IReadOnlyList<BridgeFieldPath> paths, CheckedPropertyDescriptor? nested,
+        BridgeCollectionDescriptor? rows)
     {
-        private readonly Dictionary<string, int> _indexes = paths.Select((path, index) => (Key: BridgeFieldPathTracker.PathKey(path.Segments), index))
-            .ToDictionary(entry => entry.Key, entry => entry.index, StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _indexes = Indexes(paths);
         public string Member { get; } = member;
         public IReadOnlyList<BridgeFieldPath> Paths { get; } = paths;
-        public string[][] Segments { get; } = [.. paths.Select(path => path.Segments)];
-        public CheckedPropertyDescriptor<T>? Nested { get; } = nested;
-        public BridgeCollectionDescriptor<T>? Rows { get; } = rows;
+        public string[][] Segments { get; } = SegmentsOf(paths);
+        public CheckedPropertyDescriptor? Nested { get; } = nested;
+        public BridgeCollectionDescriptor? Rows { get; } = rows;
         // The index of a declared path, or -1.
         public int IndexOf(string[] path) => _indexes.TryGetValue(BridgeFieldPathTracker.PathKey(path), out var index) ? index : -1;
+
+        private static Dictionary<string, int> Indexes(IReadOnlyList<BridgeFieldPath> paths)
+        {
+            var indexes = new Dictionary<string, int>(paths.Count, StringComparer.Ordinal);
+            for (var index = 0; index < paths.Count; index++) indexes.Add(BridgeFieldPathTracker.PathKey(paths[index].Segments), index);
+            return indexes;
+        }
+
+        private static string[][] SegmentsOf(IReadOnlyList<BridgeFieldPath> paths)
+        {
+            var segments = new string[paths.Count][];
+            for (var index = 0; index < paths.Count; index++) segments[index] = paths[index].Segments;
+            return segments;
+        }
     }
 
-    private sealed record CheckedPropertyBinding(CheckedPropertyDescriptor<T> Descriptor,
+    private sealed record CheckedPropertyBinding(CheckedPropertyDescriptor Descriptor,
         BridgeFieldWriteRegistry<object?> Registry);
 }
 

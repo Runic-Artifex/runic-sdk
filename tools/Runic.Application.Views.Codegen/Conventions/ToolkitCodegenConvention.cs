@@ -78,7 +78,7 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             // IsRunning can change without CanExecuteChanged (for example with
             // concurrent executions), so publish on the command's own change.
             var subscribeRunning = contract.IsAsync
-                ? $"Subscribe: (vm, changed) => new ToolkitRunningSubscription(vm.{property.Name}, changed)" : null;
+                ? $"Subscribe: static (vm, changed) => new ToolkitRunningSubscription({GeneratedModel.Access(modelType)}.{property.Name}, changed)" : null;
             var resultType = plan.ResultGraph?.RootCSharpType();
             var encodeResult = resultType is null ? null
                 : $"global::Runic.Application.Views.Generated.BridgeOperationResult.Encode(() => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)))";

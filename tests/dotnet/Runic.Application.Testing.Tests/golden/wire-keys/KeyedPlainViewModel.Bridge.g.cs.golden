@@ -2,18 +2,18 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Views.Generated.Bridges;
-internal sealed class KeyedPlainBridge : global::Runic.Application.Views.Generated.ViewModelBridge<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>
+internal sealed class KeyedPlainBridge : global::Runic.Application.Views.Generated.ViewModelBridge
 {
     internal KeyedPlainBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedPlainViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
-        transport, vm, routePrefix ?? "keyedPlain",
+        transport, vm, typeof(global::Runic.Application.Testing.Tests.KeyedPlainViewModel), routePrefix ?? "keyedPlain",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("Picked", "picked", vm => vm.Picked, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor("Picked", "picked", static vm => ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked, null),
         ],
         [
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("Pick", vm => (object)vm.PickCommand) { ReadInput = input => PickCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PickCommandInputCodec.Write(writer, (global::System.Int32)argument!)), WireName = "pick", ResolveArgument = (vm, key) => global::Runic.Application.Testing.Tests.KeyedPlainViewModel.FindSlot((global::System.Int32)key!) },
+            new global::Runic.Application.Views.Generated.CommandDescriptor("Pick", static vm => (object)((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).PickCommand) { ReadInput = input => PickCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PickCommandInputCodec.Write(writer, (global::System.Int32)argument!)), WireName = "pick", ResolveArgument = static (vm, key) => global::Runic.Application.Testing.Tests.KeyedPlainViewModel.FindSlot((global::System.Int32)key!) },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -62,9 +62,9 @@ private static class PickCommandInputCodec
 
 }
 
-    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>[] State =
+    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember[] State =
     [
-        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("picked", static (writer, vm) => PickedValueCodec.Write(writer, vm.Picked)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember("picked", static (writer, vm) => PickedValueCodec.Write(writer, ((global::Runic.Application.Testing.Tests.KeyedPlainViewModel)vm).Picked)),
     ]
     ;
 }

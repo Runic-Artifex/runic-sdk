@@ -113,7 +113,7 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(wpfOutput.Contains("skipped 2 types that depend on PresentationCore, PresentationFramework.", StringComparison.Ordinal),
                 $"The WPF window and iterator were not reported as skipped.\n{wpfOutput}");
             var editorBridge = File.ReadAllText(Path.Combine(wpfDirectory, "cs", "Fixture.EditorViewModel.Bridge.g.cs"));
-            Require(editorBridge.Contains("vm.Title", StringComparison.Ordinal) && editorBridge.Contains("SaveCommand", StringComparison.Ordinal)
+            Require(editorBridge.Contains("vm).Title", StringComparison.Ordinal) && editorBridge.Contains("SaveCommand", StringComparison.Ordinal)
                     && !editorBridge.Contains("Preview", StringComparison.Ordinal) && !editorBridge.Contains("Icon", StringComparison.Ordinal),
                 $"The Bridge does not expose exactly the ViewModel's non-ignored members.\n{editorBridge}");
             // Hot Reload computes the same contract in a process without WPF.

@@ -216,18 +216,18 @@ public sealed class ReleasedViewReplyTests
     }
 
     private sealed class PageBridge(IBridgeTransport transport, Page model, string route, WindowContentSession content)
-        : ViewModelBridge<Page>(transport, model, route, [
-            new BridgeStateMember<Page>("value", static (writer, vm) => writer.WriteNumberValue(vm.Snapshot)),
-            new BridgeStateMember<Page>("count", static (writer, vm) => writer.WriteNumberValue(vm.Count)),
+        : ViewModelBridge(transport, model, typeof(Page), route, [
+            new BridgeStateMember("value", static (writer, vm) => writer.WriteNumberValue(((Page)vm).Snapshot)),
+            new BridgeStateMember("count", static (writer, vm) => writer.WriteNumberValue(((Page)vm).Count)),
         ],
-        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadInt32(value))],
-        [new("Count", "count", CheckedFieldValueKind.Int32, vm => vm.Count, (vm, value) => vm.Count = (int)value!)],
+        [new("Value", "value", vm => ((Page)vm).Value, (vm, value) => ((Page)vm).Value = BridgeWire.ReadInt32(value))],
+        [new("Count", "count", CheckedFieldValueKind.Int32, vm => ((Page)vm).Count, (vm, value) => ((Page)vm).Count = (int)value!)],
         [
-            new("Leave", vm => vm.LeaveCommand),
-            new("LeaveAsync", vm => vm.LeaveCommand) { ExecuteAsync = async (vm, _, _) =>
+            new("Leave", vm => ((Page)vm).LeaveCommand),
+            new("LeaveAsync", vm => ((Page)vm).LeaveCommand) { ExecuteAsync = async (vm, _, _) =>
             {
                 await Task.Yield();
-                vm.Leave();
+                ((Page)vm).Leave();
             } },
         ],
         contractFingerprint: "released-view-reply", content: content);

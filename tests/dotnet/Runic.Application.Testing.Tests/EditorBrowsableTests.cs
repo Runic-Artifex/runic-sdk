@@ -4,6 +4,7 @@ using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Application.Views.ReactiveUI.Generated;
 using TUnit.Core;
+using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -14,18 +15,19 @@ internal sealed class EditorBrowsableTests
 {
     private static readonly Type[] GeneratedCodeOnly =
     [
-        typeof(PropertyDescriptor<>),
-        typeof(CheckedPropertyDescriptor<>),
+        typeof(PropertyDescriptor),
+        typeof(CheckedPropertyDescriptor),
         typeof(CheckedFieldValueKind),
-        typeof(CommandDescriptor<>),
+        typeof(CommandDescriptor),
         typeof(BridgeProtocol),
-        typeof(ViewModelBridge<>),
+        typeof(ViewModelBridge),
+        typeof(BridgeStateMember),
         typeof(BridgeJson),
         typeof(BridgeWire),
         typeof(BridgeValueCodec<>),
         typeof(BridgeDataSubscriptionMember),
-        typeof(BridgeCollectionDescriptor<>),
-        typeof(BridgeInteractionDescriptor<>),
+        typeof(BridgeCollectionDescriptor),
+        typeof(BridgeInteractionDescriptor),
         typeof(BridgeValidation),
         typeof(BridgeValidationChild),
         typeof(BridgeContractShape),
@@ -70,17 +72,17 @@ internal sealed class EditorBrowsableTests
     [Test]
     public void CommandDescriptorTakesOnlyTheNameAndGetter()
     {
-        var constructor = typeof(CommandDescriptor<object>).GetConstructors().Single();
+        var constructor = typeof(CommandDescriptor).GetConstructors().Single();
         Require(constructor.GetParameters().Select(parameter => parameter.Name).SequenceEqual(["name", "get"]),
-            "CommandDescriptor<T> must take only the command name and getter.");
-        Require(typeof(CommandDescriptor<object>).GetMethod("<Clone>$") is null, "CommandDescriptor<T> must not be a record.");
-        foreach (var property in typeof(CommandDescriptor<object>).GetProperties().Where(property => property.Name is not ("Name" or "Get")))
+            "CommandDescriptor must take only the command name and getter.");
+        Require(typeof(CommandDescriptor).GetMethod("<Clone>$") is null, "CommandDescriptor must not be a record.");
+        foreach (var property in typeof(CommandDescriptor).GetProperties().Where(property => property.Name is not ("Name" or "Get")))
             Require(property.SetMethod?.ReturnParameter.GetRequiredCustomModifiers().Contains(typeof(System.Runtime.CompilerServices.IsExternalInit)) == true,
-                $"CommandDescriptor<T>.{property.Name} must be an init property.");
-        Require(typeof(CheckedPropertyDescriptor<object>).GetConstructors().Single().GetParameters()
-                .All(parameter => char.IsLower(parameter.Name![0])), "CheckedPropertyDescriptor<T> parameters must be camelCase.");
-        Require(typeof(ViewModelBridge<>).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Count(constructor => constructor.IsFamily) == 1, "ViewModelBridge<T> must have one protected constructor.");
+                $"CommandDescriptor.{property.Name} must be an init property.");
+        Require(typeof(CheckedPropertyDescriptor).GetConstructors().Single().GetParameters()
+                .All(parameter => char.IsLower(parameter.Name![0])), "CheckedPropertyDescriptor parameters must be camelCase.");
+        Require(typeof(ViewModelBridge).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Count(constructor => constructor.IsFamily) == 1, "ViewModelBridge must have one protected constructor.");
         Require(typeof(BridgeOperationResult).GetProperty("Empty") is null, "BridgeOperationResult.Empty must be gone.");
     }
 

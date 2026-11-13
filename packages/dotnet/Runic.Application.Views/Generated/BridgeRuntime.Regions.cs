@@ -71,7 +71,7 @@ public static class BridgeRegionCollections
 // select or close the region of a region collection that a key names. It runs NavigationSelection.SelectAsync or
 // RemoveAsync, so the departure guards of the region left or closed decide, and replies with the request's outcome after
 // the route published the state that includes it.
-public partial class ViewModelBridge<T>
+public partial class ViewModelBridge
 {
     private async ValueTask<ReadOnlyMemory<byte>> RegionAsync(BridgeRouteRequest request, CancellationToken token)
     {

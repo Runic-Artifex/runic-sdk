@@ -206,8 +206,8 @@ internal sealed class Program
         public void Dispose() => Disposed = true;
     }
     private sealed class SlowBridge(IBridgeTransport transport, Model model, WindowContentSession content)
-        : ViewModelBridge<Model>(transport, model, "editor", [], [], [],
-        [new("Save", vm => vm.Save) { ExecuteAsync = (vm, _, _) => vm.SaveAsync(), CanExecute = (_, _) => true }], content: content);
+        : ViewModelBridge(transport, model, typeof(Model), "editor", [], [], [],
+        [new("Save", vm => ((Model)vm).Save) { ExecuteAsync = (vm, _, _) => ((Model)vm).SaveAsync(), CanExecute = (_, _) => true }], content: content);
     private sealed class NoopCommand : ICommand
     {
         public event EventHandler? CanExecuteChanged { add { } remove { } }
