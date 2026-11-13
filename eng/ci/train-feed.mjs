@@ -10,15 +10,18 @@
 // whose artifact has exactly that version (`run`, the default). It downloads them as the train gate does
 // (eng/train/sources.mjs, GH_TOKEN or GITHUB_TOKEN). With every version on nuget.org it does nothing.
 //
+// The npm packages of the same artifact whose version the npm registry does not have go into <output>/npm; consumers
+// install them from there (trainFeedNpmSpec()).
+//
 // It writes <output>/train-feed.json, which names each upstream run and the SHA-256 of each package. Builds use the
 // feed through RUNIC_TRAIN_FEED=<output>/nuget: eng/build/nuget-lock.targets adds it as a restore source and restores
 // unlocked, because a CI candidate is not the package nuget.org will serve (nuget.org adds its repository signature),
 // and consumers outside the repository add it to their NuGet.config (trainFeedSource()); `dotnet tool restore` of the
 // repository's manifest needs `--add-source` once. A CI run built this way
 // uploads the train-feed artifact, and Publish preview refuses it (eng/release/ci-run.mjs).
-import { appendFileSync, copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repos } from '../train/nuget.mjs';
 import { flatVersions, parseSpec, resolveRun } from '../train/sources.mjs';
@@ -60,6 +63,30 @@ export function trainFeedSource(environment = process.env) {
     source: `<add key="runic-train-feed" value="${escapeXml(feed)}"/>`,
     mapping: `<packageSource key="runic-train-feed">${patterns.map(pattern => `<package pattern="${pattern}"/>`).join('')}</packageSource>`,
   };
+}
+
+// The train feed's npm candidates, from its train-feed.json next to the NuGet folder: name -> { version, file }.
+export function trainFeedNpm(environment = process.env) {
+  const feed = activeTrainFeed(environment);
+  const marker = feed && join(dirname(feed), 'train-feed.json');
+  if (!marker || !existsSync(marker)) return {};
+  const { upstreams } = JSON.parse(readFileSync(marker, 'utf8'));
+  return Object.fromEntries(Object.values(upstreams).flatMap(upstream => upstream.npm ?? [])
+    .map(item => [item.name, { version: item.version, file: join(dirname(feed), 'npm', item.file) }]));
+}
+
+// The package.json specifier of an upstream npm package: the train feed's tarball (file:) while that version is a
+// candidate the registry does not have, the version otherwise.
+export function trainFeedNpmSpec(name, version, environment = process.env) {
+  const candidate = trainFeedNpm(environment)[name];
+  return candidate?.version === version ? `file:${candidate.file}` : version;
+}
+
+async function npmPublished(name, version) {
+  const response = await fetch(`https://registry.npmjs.org/${name.replace('/', '%2F')}`, { headers: { accept: 'application/vnd.npm.install-v1+json' } });
+  if (response.status === 404) return false;
+  if (!response.ok) throw new Error(`GET registry.npmjs.org/${name}: HTTP ${response.status}`);
+  return Object.hasOwn((await response.json()).versions ?? {}, version);
 }
 
 async function published(id, version, options) {
@@ -144,8 +171,16 @@ export async function prepare(args = [], { versions = trainVersions(), token = p
       const packages = resolved.packages.filter(item => item.version === versions[key])
         .map(item => { copyFileSync(item.file, join(feed, basename(item.file))); return { id: item.id, version: item.version, sha256: item.sha256 }; })
         .sort((a, b) => a.id.localeCompare(b.id));
-      upstreams[key] = { repository: repos[key].repository, version: versions[key], run: resolved.run, packages };
-      console.log(`${repos[key].repository} ${versions[key]}: ${packages.length} packages from ${resolved.run.url} (${resolved.run.headSha}).`);
+      const npm = [];
+      for (const item of resolved.npm.filter(entry => entry.version === versions[key])) {
+        if (await npmPublished(item.name, item.version)) continue;
+        mkdirSync(join(output, 'npm'), { recursive: true });
+        copyFileSync(item.file, join(output, 'npm', basename(item.file)));
+        npm.push({ name: item.name, version: item.version, file: basename(item.file), sha256: item.sha256 });
+      }
+      npm.sort((a, b) => a.name.localeCompare(b.name));
+      upstreams[key] = { repository: repos[key].repository, version: versions[key], run: resolved.run, packages, npm };
+      console.log(`${repos[key].repository} ${versions[key]}: ${packages.length} NuGet and ${npm.length} npm packages from ${resolved.run.url} (${resolved.run.headSha}).`);
     }
   } finally {
     rmSync(work, { recursive: true, force: true });

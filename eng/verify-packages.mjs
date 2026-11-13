@@ -16,7 +16,7 @@ import { root, workspace, run, configuration, packedNuget } from "./run.mjs";
 import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText } from "./nupkg.mjs";
 import { packageVersion } from "./version.mjs";
 import { npmReleaseAgeArguments } from "./dependencies/release-age.mjs";
-import { trainFeedSource } from "./ci/train-feed.mjs";
+import { trainFeedNpmSpec, trainFeedSource } from "./ci/train-feed.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -479,7 +479,9 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           "@sveltejs/adapter-static": "4.0.0",
           "@sveltejs/vite-plugin-svelte": "7.3.1",
           // The release of the compiler that builds the runic-views catalog (one pin, eng/workspace.test.mjs).
-          "@runic-artifex/vite-plugin-runic-translations": pinnedPackageVersion("Runic.Translations.Build"),
+          // During a train, the candidate tarball of the train feed (eng/ci/train-feed.mjs) until npm has it.
+          "@runic-artifex/vite-plugin-runic-translations": trainFeedNpmSpec("@runic-artifex/vite-plugin-runic-translations",
+            pinnedPackageVersion("Runic.Translations.Build")),
         },
       },
       null,

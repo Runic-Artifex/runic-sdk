@@ -53,14 +53,17 @@ releases of that train, which are not on nuget.org yet (COMPATIBILITY.md 3.4). `
   `nix.yml` and `dependency-audit.yml`) checks nuget.org for each of the two versions. For a missing one it downloads
   the package artifact of the newest successful `ci.yml` run on that repository's `main` with exactly that version
   (`--cli run:<id>`, `--translations run:<id>` pick a run), with `GITHUB_TOKEN` as the gate does, and uploads it with
-  `train-feed.json` (each run and package SHA-256) as the **`train-feed`** artifact. With both published it does
+  `train-feed.json` (each run and package SHA-256) as the **`train-feed`** artifact. The artifact's npm packages
+  whose version the npm registry lacks (Translations' `@runic-artifex/*-translations*`) go into its `npm/` folder. With both published it does
   nothing, and nothing else changes.
 - **Restores** (`setup-sdk` sets `RUNIC_TRAIN_FEED`): `eng/build/nuget-lock.targets` adds the feed as a source and
   restores unlocked against a lock path in `obj/`, because nuget.org re-signs packages, so no lock file can hash a
   candidate (NU1403 after publication). `setup-sdk` restores the repository's tools once with `--add-source`, caches
   NuGet packages under `nuget-train-*` so candidates never seed a later locked restore, and the consumers outside
   the repository (`tests/templates/Test-Templates.sh`, `eng/verify-packages.mjs`) add the feed to their
-  `NuGet.config`.
+  `NuGet.config`. `eng/verify-packages.mjs`, the only npm consumer of a Translations package
+  (`@runic-artifex/vite-plugin-runic-translations`), installs its tarball (`file:`) while npm lacks that version
+  (`trainFeedNpmSpec()`).
 - **Not publishable.** `eng/release/ci-run.mjs` refuses a CI run with a `train-feed` artifact, so Publish preview
   never publishes packages built on candidates.
 - **Locally:** `GH_TOKEN=$(gh auth token) bun eng/ci/train-feed.mjs prepare`, then
