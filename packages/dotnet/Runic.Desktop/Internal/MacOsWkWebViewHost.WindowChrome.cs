@@ -103,7 +103,7 @@ internal sealed partial class MacOsWkWebViewHost
     // Main thread: whether the mouse-down is in a drag region of the page's last report.
     private bool IsInDragRegion(nint webView, nint mouseEvent)
     {
-        var regions = _dragRegions;
+        var regions = DragRegionsOf(webView);
         if (!_usesDragRegions || regions.Regions.IsEmpty || mouseEvent == 0)
         {
             return false;
@@ -219,7 +219,8 @@ internal sealed partial class MacOsWkWebViewHost
                 var body = Api.SendNint(message, "body");
                 if (MacOsWindowChrome.Parse(Api.IsString(body) ? Api.Text(body) : null) is { } regions)
                 {
-                    Volatile.Write(ref host._dragRegions, regions);
+                    // The side panel's page reports its own (MacOsWkWebViewHost.SidePanel.cs).
+                    host.ReportDragRegions(Api.SendNint(message, "webView"), regions);
                 }
             }
         }

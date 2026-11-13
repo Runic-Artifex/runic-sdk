@@ -127,7 +127,7 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    ["desktop", "assets", "platform", "application", "application-wpf", "views-effect", "views-translations", "vite", "svelte", "templates", "packaging", "examples"].sort(),
+    ["desktop", "assets", "platform", "application", "scaling", "application-wpf", "views-effect", "views-translations", "vite", "svelte", "templates", "packaging", "examples"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["packages/web/svelte/src/index.ts"]).sort(),

@@ -62,6 +62,9 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal string? SidePanelCredential => _engine.PanelCredential;
 
+    // Diagnostics: the slots of the window's connected pages.
+    internal string DescribeConnectedSlots() => _engine.DescribeConnectedSlots();
+
     // runic-host/1 region/1: the window shows in a region of a host page, in a frame (WebUiWindow.EnterRegionMode).
     internal void EnterRegionMode()
     {
@@ -517,6 +520,9 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     // The current window, for the shared color schemes.
     internal DesktopWindow? CurrentWindow => Volatile.Read(ref _window);
+
+    // The host that created this surface, for Runic.Application.Views.Desktop (DesktopWindowLocality).
+    internal DesktopHost Host => _host;
 
     internal DesktopColorScheme SharedColorScheme(string scope) => _host.SharedColorScheme(scope);
 
@@ -990,6 +996,9 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     // window host of the application's own.
     internal IDisposable? AttachRegionFrame(Internal.RegionFrameRoute route) =>
         _engine.SupportsRegionFrames ? _engine.RegionFrames.Add(route) : null;
+
+    // The surface that opened this window, for Runic.Application.Views.Desktop (DesktopPlatformServices.AttachWindowServices).
+    internal DesktopSurface Surface => _surface;
 
     internal DesktopWindow(
         DesktopSurface surface,

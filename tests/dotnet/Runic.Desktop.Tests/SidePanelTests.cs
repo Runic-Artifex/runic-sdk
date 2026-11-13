@@ -341,7 +341,7 @@ public sealed class SidePanelTests
             Assert.Null(surface.SidePanelCredential);
         }
 
-        // A built-in host without a side panel (macOS until P3).
+        // A built-in host without a side panel (one that lacks the functions it needs).
         var factory = new PanelHostFactory { SupportsSidePanel = false };
         await using (var host = await DesktopHost.StartAsync(new() { BuiltInHostFactory = factory, WaitForConnection = false }))
         {

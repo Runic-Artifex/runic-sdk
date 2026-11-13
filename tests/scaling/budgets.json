@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "cases": {
+    "bridge/named-burst/burst-getter-reads[toolkit]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 120,
+      "measured": [120, 120],
+      "issue": "sdk#887",
+      "note": "60 notifications on 6 members: one read by the Bridge's refresh and one by the data graph per notification (#890)"
+    },
+    "bridge/named-burst/burst-reads-of-others[toolkit]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 0,
+      "measured": [0, 0],
+      "issue": "sdk#887",
+      "note": "members the burst did not name are not read during it (#890)"
+    },
+    "bridge/named-burst/unit-reads-per-member[toolkit]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 4,
+      "measured": [4, 4],
+      "issue": "sdk#887",
+      "note": "number members are read at most twice in the unit (#890); text members twice more, by the unit's text comparison and its baseline update"
+    },
+    "bridge/named-burst/burst-getter-reads[reactive]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 120,
+      "measured": [120, 120],
+      "issue": "sdk#887",
+      "note": "60 notifications on 6 members: one read by the Bridge's refresh and one by the data graph per notification (#890)"
+    },
+    "bridge/named-burst/burst-reads-of-others[reactive]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 0,
+      "measured": [0, 0],
+      "issue": "sdk#887",
+      "note": "members the burst did not name are not read during it (#890)"
+    },
+    "bridge/named-burst/unit-reads-per-member[reactive]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 4,
+      "measured": [4, 4],
+      "issue": "sdk#887",
+      "note": "number members are read at most twice in the unit (#890); text members twice more, by the unit's text comparison and its baseline update"
+    },
+    "bridge/named-burst/observe-calls-burst": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 0,
+      "measured": [0, 0],
+      "issue": "sdk#887",
+      "note": "no Observe accessor of another member runs during the burst (#890, #894)"
+    },
+    "bridge/named-burst/observe-calls-unit": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 1,
+      "measured": [1, 1],
+      "issue": "sdk#891",
+      "note": "the unit runs each Observe accessor once (#894)"
+    },
+    "bridge/unnamed-notification/getter-reads[toolkit]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 240,
+      "measured": [60, 240],
+      "note": "a notification without a name refreshes every member once, plus the unit's reads"
+    },
+    "bridge/unnamed-notification/getter-reads[reactive]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 240,
+      "measured": [60, 240],
+      "note": "a notification without a name refreshes every member once, plus the unit's reads"
+    },
+    "bridge/scalar-unit/members-serialized[toolkit]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 40,
+      "measured": [10, 40],
+      "target": "O(1)",
+      "known": "O(members) per unit: WriteChangedMembers encodes every compared member to find the changed one (B6)",
+      "issue": "sdk#911"
+    },
+    "bridge/scalar-unit/bytes-serialized[toolkit]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 40,
+      "measured": [10, 40],
+      "target": "O(1)",
+      "known": "O(state bytes) per unit: WriteChangedMembers encodes every compared member (B6)",
+      "issue": "sdk#911"
+    },
+    "bridge/scalar-unit/members-serialized[reactive]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 40,
+      "measured": [10, 40],
+      "target": "O(1)",
+      "known": "O(members) per unit: WriteChangedMembers encodes every compared member to find the changed one (B6)",
+      "issue": "sdk#911"
+    },
+    "bridge/scalar-unit/bytes-serialized[reactive]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 40,
+      "measured": [10, 40],
+      "target": "O(1)",
+      "known": "O(state bytes) per unit: WriteChangedMembers encodes every compared member (B6)",
+      "issue": "sdk#911"
+    },
+    "bridge/collection-burst/getter-reads": {
+      "class": "O(n)",
+      "sizes": [1, 4],
+      "limit": 1024,
+      "measured": [256, 1024],
+      "target": "O(1)",
+      "known": "O(collections) getter calls per CollectionChanged: TryPublishCollection reads every keyed collection's getter to find the changed one (B3)",
+      "issue": "sdk#910"
+    },
+    "bridge/collection-burst/pending-scans": {
+      "class": "O(n²)",
+      "sizes": [256, 1024],
+      "limit": 524800,
+      "measured": [32896, 524800],
+      "target": "O(n)",
+      "known": "O(n²) per burst: TryPublishCollection counts every pending change on each new one (B3)",
+      "issue": "sdk#910"
+    },
+    "bridge/row-edit-with-scalar/index-rebuild-rows[toolkit]": {
+      "class": "O(n)",
+      "sizes": [256, 1024],
+      "limit": 16384,
+      "measured": [4096, 16384],
+      "target": "O(1)",
+      "known": "O(rows) per row edit after a named notification: RefreshMember clears _collectionIndexes, so TryPublishItem rebuilds the row index (B2)",
+      "issue": "sdk#909"
+    },
+    "bridge/row-edit-with-scalar/index-rebuild-rows[reactive]": {
+      "class": "O(n)",
+      "sizes": [256, 1024],
+      "limit": 16384,
+      "measured": [4096, 16384],
+      "target": "O(1)",
+      "known": "O(rows) per row edit after a named notification: RefreshMember clears _collectionIndexes, so TryPublishItem rebuilds the row index (B2)",
+      "issue": "sdk#909"
+    },
+    "bridge/row-edit/frame-bytes": {
+      "class": "O(1)",
+      "sizes": [256, 1024],
+      "limit": 200,
+      "measured": [200, 200],
+      "note": "one replace change, whatever the rows"
+    },
+    "bridge/row-edit/key-scans": {
+      "class": "O(1)",
+      "sizes": [256, 1024],
+      "limit": 0,
+      "measured": [0, 0],
+      "note": "no full key scan for a row edit"
+    },
+    "bridge/add/frame-bytes": {
+      "class": "O(1)",
+      "sizes": [256, 1024],
+      "limit": 190,
+      "measured": [190, 190],
+      "note": "one add change, whatever the rows"
+    },
+    "bridge/add/key-scans": {
+      "class": "O(1)",
+      "sizes": [256, 1024],
+      "limit": 0,
+      "measured": [0, 0],
+      "note": "no full key scan for an add"
+    },
+    "bridge/graph/remove-walks-unshared": {
+      "class": "O(1)",
+      "sizes": [256, 1024],
+      "limit": 0,
+      "measured": [0, 0],
+      "note": "a removed row is released without a walk of the data graph (B11)"
+    },
+    "bridge/graph/remove-walks-shared": {
+      "class": "O(1)",
+      "sizes": [256, 1024],
+      "limit": 0,
+      "measured": [0, 0],
+      "note": "a row a second collection also holds is a separate node of that collection, so removing it from one does not walk the graph (B11)"
+    },
+    "bridge/notification-burst/burst-bytes[toolkit]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 60030,
+      "measured": [48024, 48024],
+      "margin": 0.25,
+      "note": "a burst of named notifications allocates the same whatever the members (#887)"
+    },
+    "bridge/notification-burst/unit-bytes[toolkit]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 55480,
+      "measured": [17264, 44384],
+      "margin": 0.25,
+      "note": "O(members) per unit, the allocations of B6 (sdk#911)"
+    },
+    "bridge/notification-burst/burst-bytes[reactive]": {
+      "class": "O(1)",
+      "sizes": [20, 80],
+      "limit": 58830,
+      "measured": [47064, 47064],
+      "margin": 0.25,
+      "note": "a burst of named notifications allocates the same whatever the members (#887)"
+    },
+    "bridge/notification-burst/unit-bytes[reactive]": {
+      "class": "O(n)",
+      "sizes": [20, 80],
+      "limit": 55480,
+      "measured": [17264, 44384],
+      "margin": 0.25,
+      "note": "O(members) per unit, the allocations of B6 (sdk#911)"
+    }
+  }
+}
