@@ -247,3 +247,29 @@ public sealed class RowIndexViewModel : ObservableObject
 }
 
 public sealed partial class RowIndexWindow : RunicWindow<RowIndexViewModel>;
+
+// #911: scalar members that change without their own notification, including values that are equal but encode
+// differently (0.0 and -0.0, 1.0m and 1.00m, a date's kind), and a member computed from another.
+public sealed class ScalarMembersViewModel : ObservableObject
+{
+    private int _count;
+
+    public double Ratio { get; private set; }
+    public decimal Amount { get; private set; } = 1.0m;
+    public DateTime At { get; private set; } = new(2026, 11, 13, 0, 0, 0, DateTimeKind.Unspecified);
+    public int Count { get => _count; set => SetProperty(ref _count, value); }
+    // Computed from Count; never announced.
+    public int Doubled => _count * 2;
+
+    public void Notify(string? member) => OnPropertyChanged(new PropertyChangedEventArgs(member));
+
+    // Changes the members without a notification of theirs.
+    public void SetSilently(double? ratio = null, decimal? amount = null, DateTime? at = null)
+    {
+        if (ratio is { } r) Ratio = r;
+        if (amount is { } a) Amount = a;
+        if (at is { } t) At = t;
+    }
+}
+
+public sealed partial class ScalarMembersWindow : RunicWindow<ScalarMembersViewModel>;
