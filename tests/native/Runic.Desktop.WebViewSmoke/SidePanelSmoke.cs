@@ -2,18 +2,21 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using Runic.Desktop;
 
-// sdk#864, P2, --side-panel: the side panel on WebView2 (DesktopWindow.OpenSidePanelAsync, RUNICDESK104).
+// sdk#864, P2 and P4, --side-panel: the side panel on WebView2 and WebKitGTK, GTK 3 and GTK 4 (DesktopWindow.OpenSidePanelAsync,
+// RUNICDESK104). Linked into Runic.Desktop.Gtk4.Smoke for GTK 4.
 // - Open, close, move and resize on both edges: the window's bounds change by the panel's exact native width, the page
 //   is never resized (its resize events stay at zero, its innerWidth is unchanged), closing restores the exact bounds,
 //   the panel's page connects as a second connection of the window and disconnects when it closes.
 // - Frame capture: each DWM frame (DwmFlush) one row of the screen across the page's left edge, which the page marks
 //   with a magenta bar, while the panel opens and closes on the left edge and moves between edges. The page's edge may
 //   be out of place in at most one frame (side-panel/DESIGN.md §4); the count is printed.
-// - Tab from the page's last element focuses the panel's first, Shift+Tab hands focus back (SendInput; a desktop that
-//   delivers no input to the window, as the arm64 runner's, leaves it unverified).
+// - Tab from the page's last element focuses the panel's first, Shift+Tab hands focus back (SendInput, or XTEST on X11;
+//   a desktop that delivers no input to the window, as the arm64 runner's, leaves it unverified).
+// - Linux runs under a window manager (openbox) for maximize. Frame capture is Windows only; on X11 the page's resize
+//   count and width carry the check. On Wayland the left edge is refused with PositionUnavailable (D062.4).
 // - The placement excludes the panel; a maximized window keeps the panel and the page takes the rest; refusals
 //   (no room, already open, maximized); the minimum width includes the panel; closing the window closes the panel.
-// On macOS and Linux the panel is refused with Unsupported until their engines have one (P3, P4).
+// On macOS the panel is refused with Unsupported until its engine has one (P3).
 internal static class SidePanelSmoke
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
@@ -29,6 +32,13 @@ internal static class SidePanelSmoke
         <script>
         window.__resizes = 0; addEventListener('resize', () => { window.__resizes++; });
         addEventListener('DOMContentLoaded', () => {
+          // A panel page that closes itself: window.close() closes the panel, never the window.
+          // It waits until the smoke allows it, once the panel is open.
+          if (location.hash === '#side-panel-close') {
+            const poll = () => fetch('close-now').then(r => r.text()).then(t => t === '1' ? window.close() : setTimeout(poll, 100));
+            poll();
+            return;
+          }
           if (location.hash !== '#side-panel') return;
           document.title = 'Side panel';
           document.body.innerHTML = '<aside role="complementary" aria-label="Side panel" style="padding:16px">' +
@@ -41,16 +51,19 @@ internal static class SidePanelSmoke
         <body><div id="marker"></div><main><button id="first">First</button> <button id="last">Last</button></main></body></html>
         """;
 
-    internal static int Run(DesktopHostOptions hostOptions) => DesktopEventLoop.Run(hostOptions, RunAsync);
+    internal static int Run(DesktopHostOptions hostOptions, bool gtk4 = false) =>
+        DesktopEventLoop.Run(hostOptions, host => RunAsync(host, gtk4));
 
-    private static async Task<int> RunAsync(DesktopHost host)
+    private static async Task<int> RunAsync(DesktopHost host, bool gtk4)
     {
         var reports = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        CloseNow = false;
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
             Content = new DesktopContent.Html(Page),
             Resources = (request, _) =>
             {
+                if (request.Path == "/close-now") return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text(Volatile.Read(ref CloseNow) ? "1" : "0", "text/plain"));
                 if (!request.Path.StartsWith("/report/", StringComparison.Ordinal)) return ValueTask.FromResult<ContentResponse?>(null);
                 reports.Enqueue(request.Path["/report/".Length..]);
                 return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text("ok", "text/plain"));
@@ -60,15 +73,16 @@ internal static class SidePanelSmoke
         {
             Browser = BrowserKind.Embedded, Width = 440, Height = 360, X = 280, Y = 120,
         });
+        LastWindow = window;
         try
         {
             await surface.ExecuteJavaScriptAsync("return document.readyState;", Deadline);
             await WaitForAsync(() => window.State?.Bounds is not null, "the window's bounds");
             await Task.Delay(Settle);
-            if (!OperatingSystem.IsWindows())
+            if (OperatingSystem.IsMacOS())
             {
                 Require(window.CheckSidePanel(DesktopWindowEdge.End, PanelWidth) == DesktopSidePanelRefusal.Unsupported,
-                    "macOS and Linux to refuse the side panel until P3 and P4");
+                    "macOS to refuse the side panel until P3");
                 var refused = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Width = PanelWidth, Path = "#side-panel" });
                 Require(refused is DesktopSidePanelResult.Refused { Reason: DesktopSidePanelRefusal.Unsupported }, $"Unsupported, not {refused}");
                 Console.WriteLine("PASS side panel: refused with Unsupported on this platform.");
@@ -94,31 +108,67 @@ internal static class SidePanelSmoke
             await RequirePageAsync(surface, page, "after the width changes");
             await CloseAsync(window, surface, right, start);
 
-            // The left edge with frame capture: the page's left edge stays where it is on the screen.
-            var marker = FindMarker(window.State!.VisibleBounds!);
-            Console.WriteLine($"Side panel: the page's left edge is at screen x {marker.X}, row {marker.Y}.");
-            DesktopSidePanel? left = null;
-            await CaptureAsync("open on the left edge", marker,
-                async () => left = await OpenAsync(window, surface, reports, DesktopWindowEdge.Left, start, native, page));
-            await CaptureAsync("move to the right edge", marker, async () =>
+            if (start.Bounds!.X is null)
             {
-                Require(await left!.MoveToEdgeAsync(DesktopWindowEdge.Right) is null, "the panel to move to the right edge");
+                // Wayland: no positions, so no left edge (D062.4).
+                Require(window.CheckSidePanel(DesktopWindowEdge.Left, PanelWidth) == DesktopSidePanelRefusal.PositionUnavailable,
+                    "PositionUnavailable for the left edge without positions");
+                Console.WriteLine("Side panel: the left edge was refused with PositionUnavailable on Wayland.");
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                await ExerciseLeftEdgeWithFramesAsync(window, surface, reports, start, native, page);
+            }
+            else
+            {
+                nint pageView = 0;
+                await window.InvokeNativeAsync(handle => pageView = Accessibility.OnlyView(handle, gtk4));
+                var left = await OpenAsync(window, surface, reports, DesktopWindowEdge.Left, start, native, page);
+                await RequireReadingOrderAsync(window, gtk4, pageView, panelFirst: true);
+                Require(await left.MoveToEdgeAsync(DesktopWindowEdge.Right) is null, "the panel to move to the right edge");
                 await WaitForAsync(() => window.State!.Bounds!.X == start.Bounds.X, "the window back at its start position");
-            });
-            await CaptureAsync("move to the left edge", marker, async () =>
-            {
-                Require(await left!.MoveToEdgeAsync(DesktopWindowEdge.Left) is null, "the panel to move to the left edge");
+                Require(left.Edge == DesktopWindowEdge.Right, "the panel on the right edge after the move");
+                await RequireReadingOrderAsync(window, gtk4, pageView, panelFirst: false);
+                Require(await left.MoveToEdgeAsync(DesktopWindowEdge.Left) is null, "the panel to move to the left edge");
                 await WaitForAsync(() => window.State!.Bounds!.X == start.Bounds.X - native, "the window moved left by the panel");
-            });
-            await RequirePageAsync(surface, page, "after the moves");
-            await CaptureAsync("close on the left edge", marker, () => CloseAsync(window, surface, left!, start));
+                await RequireReadingOrderAsync(window, gtk4, pageView, panelFirst: true);
+                Console.WriteLine($"Side panel: {(gtk4 ? "GtkAccessible" : "ATK")} lists the panel before the page on the left edge and after it on the right.");
+                await RequirePageAsync(surface, page, "after the moves");
+                await CloseAsync(window, surface, left, start);
+                Console.WriteLine("Side panel: opened, moved and closed on the left edge with the page unchanged (frame capture is Windows only).");
+            }
 
-            await ExerciseMaximizedAsync(window, surface, start);
-            await ExerciseMinimumAndWindowCloseAsync(window, surface, start, native);
+            if (!OperatingSystem.IsWindows()) await ExerciseWindowCloseInPanelAsync(window, surface, reports, start);
+            await ExerciseMaximizedAsync(window, surface, start, page.Width);
+            await ExerciseMinimumAndWindowCloseAsync(window, surface, start, native, gtk4);
         }
         finally { if (window.IsOpen) await window.CloseAsync(); }
         Console.WriteLine("PASS side panel: both edges, exact bounds, page unchanged, frames, focus, refusals, maximize, minimum, window close.");
         return 0;
+    }
+
+    // Windows: the left edge with frame capture; the page's left edge stays where it is on the screen.
+    private static async Task ExerciseLeftEdgeWithFramesAsync(DesktopWindow window, DesktopSurface surface,
+        System.Collections.Concurrent.ConcurrentQueue<string> reports, DesktopWindowState start, int native,
+        (int Resizes, int Width, int Height) page)
+    {
+        var marker = FindMarker(window.State!.VisibleBounds!);
+        Console.WriteLine($"Side panel: the page's left edge is at screen x {marker.X}, row {marker.Y}.");
+        DesktopSidePanel? left = null;
+        await CaptureAsync("open on the left edge", marker,
+            async () => left = await OpenAsync(window, surface, reports, DesktopWindowEdge.Left, start, native, page));
+        await CaptureAsync("move to the right edge", marker, async () =>
+        {
+            Require(await left!.MoveToEdgeAsync(DesktopWindowEdge.Right) is null, "the panel to move to the right edge");
+            await WaitForAsync(() => window.State!.Bounds!.X == start.Bounds!.X, "the window back at its start position");
+        });
+        await CaptureAsync("move to the left edge", marker, async () =>
+        {
+            Require(await left!.MoveToEdgeAsync(DesktopWindowEdge.Left) is null, "the panel to move to the left edge");
+            await WaitForAsync(() => window.State!.Bounds!.X == start.Bounds!.X - native, "the window moved left by the panel");
+        });
+        await RequirePageAsync(surface, page, "after the moves");
+        await CaptureAsync("close on the left edge", marker, () => CloseAsync(window, surface, left!, start));
     }
 
     private static async Task<DesktopSidePanel> OpenAsync(DesktopWindow window, DesktopSurface surface,
@@ -172,7 +222,7 @@ internal static class SidePanelSmoke
         await surface.ExecuteJavaScriptAsync("document.getElementById('last').focus(); return document.activeElement.id;", Deadline);
         await Task.Delay(Settle);
         reports.Clear();
-        Keyboard.Press(Keyboard.Tab);
+        Keyboard.Press(tab: true, shift: false);
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         while (!reports.Contains("focus-panel-first") && elapsed.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(50);
         if (!reports.Contains("focus-panel-first"))
@@ -182,29 +232,60 @@ internal static class SidePanelSmoke
             Console.WriteLine("Side panel: Tab unverified on this runner: its desktop does not deliver SendInput to the window.");
             return;
         }
-        Keyboard.Press(Keyboard.Tab, shift: true);
+        Keyboard.Press(tab: true, shift: true);
         await WaitForAsync(async () => (await surface.ExecuteJavaScriptAsync(
             "return document.hasFocus() + ' ' + document.activeElement.id;", Deadline)).Trim('"') == "true last",
             "Shift+Tab from the panel's first element to focus the page's last");
         Console.WriteLine("Side panel: Tab moved from the page to the panel and Shift+Tab back.");
     }
 
-    private static async Task ExerciseMaximizedAsync(DesktopWindow window, DesktopSurface surface, DesktopWindowState start)
+    // window.close() in the panel's page closes the panel with Closed, and the window shrinks back.
+    private static async Task ExerciseWindowCloseInPanelAsync(DesktopWindow window, DesktopSurface surface,
+        System.Collections.Concurrent.ConcurrentQueue<string> reports, DesktopWindowState start)
+    {
+        reports.Clear();
+        var result = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Width = PanelWidth, Path = "#side-panel-close" });
+        var panel = (result as DesktopSidePanelResult.Opened)?.Panel ?? throw new InvalidOperationException($"Side panel: expected it to open, not {result}.");
+        var reason = new TaskCompletionSource<DesktopSidePanelCloseReason>(TaskCreationOptions.RunContinuationsAsynchronously);
+        panel.Closed += (_, args) => reason.TrySetResult(args.Reason);
+        Volatile.Write(ref CloseNow, true);
+        Require(await reason.Task.WaitAsync(Deadline) == DesktopSidePanelCloseReason.Closed, "Closed when the panel's page calls window.close()");
+        Require(window.IsOpen && window.SidePanel is null, "the window open without its panel");
+        await WaitForAsync(() => SameFrame(window.State!.Bounds!, start.Bounds!), $"exactly the start bounds {start.Bounds}");
+        await WaitForAsync(() => surface.ConnectionCount == 1, "the panel's page to disconnect");
+        Console.WriteLine("Side panel: window.close() in the panel's page closed the panel, not the window.");
+    }
+
+    private static async Task ExerciseMaximizedAsync(DesktopWindow window, DesktopSurface surface, DesktopWindowState start, int startPageWidth)
     {
         var panel = await OpenQuietlyAsync(window);
+        var opened = window.State!.Bounds!;
         await window.ToggleMaximizedAsync();
         await WaitForAsync(() => window.State!.IsMaximized, "the window maximized");
         await Task.Delay(Settle);
         Require(panel.IsOpen, "the panel to stay open in a maximized window");
         var page = await ReadPageAsync(surface);
-        var visible = window.State!.VisibleBounds!;
-        var client = visible.Width / visible.Scale;
-        Require(page.Width + PanelWidth <= client + 1 && page.Width + PanelWidth >= client - 24,
-            $"the page ({page.Width}) to take the maximized window ({client:0}) beside the panel ({PanelWidth})");
+        if (OperatingSystem.IsWindows())
+        {
+            var visible = window.State!.VisibleBounds!;
+            var client = visible.Width / visible.Scale;
+            Require(page.Width + PanelWidth <= client + 1 && page.Width + PanelWidth >= client - 24,
+                $"the page ({page.Width}) to take the maximized window ({client:0}) beside the panel ({PanelWidth})");
+        }
+        else
+        {
+            // GTK's bounds are the content, which the page and the panel fill. The page's CSS pixels relate to the view's
+            // logical pixels as at the start (WebKitGTK zooms by the display's DPI).
+            var content = window.State!.Bounds!.Width;
+            var ratio = start.Bounds!.Width / (double)startPageWidth;
+            await WaitForAsync(async () => Math.Abs((await ReadPageAsync(surface)).Width * ratio + PanelWidth - content) <= 3,
+                $"the page to take the maximized window ({window.State.Bounds}) beside the panel ({PanelWidth}), at {ratio:0.###} px per CSS px");
+        }
         Require(await panel.SetWidthAsync(PanelWidth + 10) == DesktopSidePanelRefusal.Maximized, "a width change refused while maximized");
         Require(window.CheckSidePanel(DesktopWindowEdge.Left, PanelWidth) == DesktopSidePanelRefusal.AlreadyOpen, "AlreadyOpen while a panel is open");
         await window.ToggleMaximizedAsync();
-        await WaitForAsync(() => !window.State!.IsMaximized, "the window restored");
+        // GTK 4 reports the restored state before the restored size.
+        await WaitForAsync(() => !window.State!.IsMaximized && SameFrame(window.State.Bounds!, opened), $"the window restored to {opened}");
         await panel.CloseAsync();
         await WaitForAsync(() => SameFrame(window.State!.Bounds!, start.Bounds!), "the start bounds after maximize, restore and close");
         Require(window.CheckSidePanel(DesktopWindowEdge.Right, PanelWidth) is null, "a panel to fit again");
@@ -214,18 +295,32 @@ internal static class SidePanelSmoke
         var refused = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Width = PanelWidth, Path = "#side-panel" });
         Require(refused is DesktopSidePanelResult.Refused { Reason: DesktopSidePanelRefusal.Maximized }, $"Maximized, not {refused}");
         await window.ToggleMaximizedAsync();
-        await WaitForAsync(() => !window.State!.IsMaximized, "the window restored again");
+        await WaitForAsync(() => !window.State!.IsMaximized && SameFrame(window.State.Bounds!, start.Bounds!), "the window restored again");
         Console.WriteLine("Side panel: a maximized window kept the panel with the page beside it, and refused a new one.");
     }
 
     // The minimum width includes the panel; closing the window closes the panel with WindowClosed.
-    private static async Task ExerciseMinimumAndWindowCloseAsync(DesktopWindow window, DesktopSurface surface, DesktopWindowState start, int native)
+    private static async Task ExerciseMinimumAndWindowCloseAsync(DesktopWindow window, DesktopSurface surface, DesktopWindowState start,
+        int native, bool gtk4)
     {
         var panel = await OpenQuietlyAsync(window);
-        await window.InvokeNativeAsync(static handle => Win32.SetWindowPos(handle, 0, 0, 0, 100, 150, 0x0002 | 0x0004 | 0x0010));
+        if (OperatingSystem.IsWindows())
+        {
+            await window.InvokeNativeAsync(static handle => Win32.SetWindowPos(handle, 0, 0, 0, 100, 150, 0x0002 | 0x0004 | 0x0010));
+        }
+        else
+        {
+            // As a drag of the frame would, through the window manager, which applies the window's size hints.
+            nuint xid = 0;
+            await window.InvokeNativeAsync(handle => xid = WindowBoundsSmoke.X11Native.Xid(handle, gtk4));
+            WindowBoundsSmoke.X11Native.Resize(xid, 100, 150);
+            await Task.Delay(Settle);
+        }
         await Task.Delay(Settle);
         var bounds = window.State!.Bounds!;
-        Require(bounds.Width > native + 60, $"a window {bounds.Width} px wide, resized to 100 px from outside Runic, to stay wider than the panel ({native} px)");
+        // Windows keeps its system minimum for the page; GTK, without a minimum of the application's, at least a pixel.
+        var page = OperatingSystem.IsWindows() ? 60 : 0;
+        Require(bounds.Width > native + page, $"a window {bounds.Width} px wide, resized to 100 px from outside Runic, to stay wider than the panel ({native} px)");
         Console.WriteLine($"Side panel: the minimum width with the panel is {bounds.Width} px.");
 
         var reason = new TaskCompletionSource<DesktopSidePanelCloseReason>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -235,6 +330,78 @@ internal static class SidePanelSmoke
         Require(!panel.IsOpen && window.SidePanel is null, "no panel after the window closed");
         await WaitForAsync(() => surface.ConnectionCount == 0, "both pages to disconnect");
         Console.WriteLine("Side panel: closing the window closed the panel (WindowClosed).");
+    }
+
+    // AT-SPI lists the content's children in the order the toolkit's accessibility tree has them (ATK on GTK 3,
+    // GtkAccessible on GTK 4): the panel first on the left edge, last on the right.
+    private static async Task RequireReadingOrderAsync(DesktopWindow window, bool gtk4, nint pageView, bool panelFirst)
+    {
+        bool? first = null;
+        await window.InvokeNativeAsync(handle => first = Accessibility.FirstIsPanel(handle, gtk4, pageView));
+        Require(first == panelFirst, $"the accessibility tree to list the panel {(panelFirst ? "before" : "after")} the page");
+    }
+
+    // GTK thread: the window's content overlay (in the menu bar's box, if any) and its accessible children.
+    private static unsafe class Accessibility
+    {
+        internal static nint OnlyView(nint window, bool gtk4)
+        {
+            var overlay = Overlay(window, gtk4);
+            return gtk4 ? Gtk4("gtk_widget_get_first_child")(overlay) : Gtk3Children(overlay).Single();
+        }
+
+        internal static bool? FirstIsPanel(nint window, bool gtk4, nint pageView)
+        {
+            var overlay = Overlay(window, gtk4);
+            if (gtk4)
+            {
+                // GTK 4.10: the overlay's first accessible child, a reference.
+                var first = Gtk4("gtk_accessible_get_first_accessible_child")(overlay);
+                if (first == 0) return null;
+                ((delegate* unmanaged[Cdecl]<nint, void>)NativeLibrary.GetExport(NativeLibrary.Load("libgobject-2.0.so.0"), "g_object_unref"))(first);
+                return first != pageView;
+            }
+            var atk = NativeLibrary.Load("libatk-1.0.so.0");
+            var accessible = Gtk3("gtk_widget_get_accessible")(overlay);
+            if (((delegate* unmanaged[Cdecl]<nint, int>)NativeLibrary.GetExport(atk, "atk_object_get_n_accessible_children"))(accessible) != 2) return null;
+            var child = ((delegate* unmanaged[Cdecl]<nint, int, nint>)NativeLibrary.GetExport(atk, "atk_object_ref_accessible_child"))(accessible, 0);
+            ((delegate* unmanaged[Cdecl]<nint, void>)NativeLibrary.GetExport(NativeLibrary.Load("libgobject-2.0.so.0"), "g_object_unref"))(child);
+            return child != Gtk3("gtk_widget_get_accessible")(pageView);
+        }
+
+        private static nint Overlay(nint window, bool gtk4)
+        {
+            if (gtk4)
+            {
+                var child = Gtk4("gtk_window_get_child")(window);
+                return IsA(child, Gtk4Type("gtk_box_get_type"), "libgtk-4.so.1") ? Gtk4("gtk_widget_get_last_child")(child) : child;
+            }
+            var content = Gtk3("gtk_bin_get_child")(window);
+            return IsA(content, Gtk3Type("gtk_box_get_type"), "libgtk-3.so.0") ? Gtk3Children(content)[^1] : content;
+        }
+
+        private static List<nint> Gtk3Children(nint container)
+        {
+            var gtk = NativeLibrary.Load("libgtk-3.so.0");
+            var list = ((delegate* unmanaged[Cdecl]<nint, nint>)NativeLibrary.GetExport(gtk, "gtk_container_get_children"))(container);
+            List<nint> children = [];
+            for (var node = list; node != 0; node = ((nint*)node)[1]) children.Add(((nint*)node)[0]);
+            ((delegate* unmanaged[Cdecl]<nint, void>)NativeLibrary.GetExport(gtk, "g_list_free"))(list);
+            return children;
+        }
+
+        private static delegate* unmanaged[Cdecl]<nint, nint> Gtk3(string name) =>
+            (delegate* unmanaged[Cdecl]<nint, nint>)NativeLibrary.GetExport(NativeLibrary.Load("libgtk-3.so.0"), name);
+
+        private static delegate* unmanaged[Cdecl]<nint, nint> Gtk4(string name) =>
+            (delegate* unmanaged[Cdecl]<nint, nint>)NativeLibrary.GetExport(NativeLibrary.Load("libgtk-4.so.1"), name);
+
+        private static nuint Gtk3Type(string name) => ((delegate* unmanaged[Cdecl]<nuint>)NativeLibrary.GetExport(NativeLibrary.Load("libgtk-3.so.0"), name))();
+
+        private static nuint Gtk4Type(string name) => ((delegate* unmanaged[Cdecl]<nuint>)NativeLibrary.GetExport(NativeLibrary.Load("libgtk-4.so.1"), name))();
+
+        private static bool IsA(nint instance, nuint type, string _) => instance != 0 &&
+            ((delegate* unmanaged[Cdecl]<nint, nuint, int>)NativeLibrary.GetExport(NativeLibrary.Load("libgobject-2.0.so.0"), "g_type_check_instance_is_a"))(instance, type) != 0;
     }
 
     private static async Task<DesktopSidePanel> OpenQuietlyAsync(DesktopWindow window)
@@ -301,6 +468,12 @@ internal static class SidePanelSmoke
     private static bool SameFrame(DesktopWindowBounds actual, DesktopWindowBounds expected) =>
         actual.X == expected.X && actual.Y == expected.Y && actual.Width == expected.Width && actual.Height == expected.Height;
 
+    // Whether the panel page that closes itself may call window.close().
+    private static bool CloseNow;
+
+    // The window whose state a timeout reports.
+    private static DesktopWindow? LastWindow;
+
     private static Task WaitForAsync(Func<bool> condition, string expected) => WaitForAsync(() => Task.FromResult(condition()), expected);
 
     private static async Task WaitForAsync(Func<Task<bool>> condition, string expected)
@@ -316,7 +489,7 @@ internal static class SidePanelSmoke
             }
             await Task.Delay(20);
         }
-        throw new TimeoutException($"Side panel: expected {expected}.");
+        throw new TimeoutException($"Side panel: expected {expected}{(LastWindow?.State is { } state ? $"; the window's last state is {state}" : "")}.");
     }
 
     private static void Require(bool condition, string what)
@@ -324,16 +497,23 @@ internal static class SidePanelSmoke
         if (!condition) throw new InvalidOperationException("Side panel: expected " + what + ".");
     }
 
+    // Tab through SendInput on Windows, through XTEST on X11 (the test display's keyboard, never the host's).
     private static class Keyboard
     {
-        internal const ushort Tab = 0x09;
+        private const ushort Tab = 0x09;
         private const ushort Shift = 0x10;
 
-        internal static void Press(ushort key, bool shift = false)
+        internal static void Press(bool tab, bool shift = false)
         {
+            if (!tab) return;
+            if (!OperatingSystem.IsWindows())
+            {
+                XTest.Press(0xff09, shift);
+                return;
+            }
             if (shift) Send(Shift, up: false);
-            Send(key, up: false);
-            Send(key, up: true);
+            Send(Tab, up: false);
+            Send(Tab, up: true);
             if (shift) Send(Shift, up: true);
         }
 
@@ -351,6 +531,30 @@ internal static class SidePanelSmoke
             [FieldOffset(8)] internal ushort Key;
             [FieldOffset(10)] internal ushort Scan;
             [FieldOffset(12)] internal uint Flags;
+        }
+    }
+
+    private static unsafe class XTest
+    {
+        internal static void Press(uint keysym, bool shift)
+        {
+            var x11 = NativeLibrary.TryLoad(Environment.GetEnvironmentVariable("RUNIC_LIBX11") ?? "libX11.so.6", out var loaded) ? loaded : NativeLibrary.Load("libX11.so.6");
+            var xtest = NativeLibrary.TryLoad(Environment.GetEnvironmentVariable("RUNIC_LIBXTST") ?? "libXtst.so.6", out var test) ? test : NativeLibrary.Load("libXtst.so.6");
+            var display = ((delegate* unmanaged[Cdecl]<nint, nint>)NativeLibrary.GetExport(x11, "XOpenDisplay"))(0);
+            if (display == 0) throw new InvalidOperationException("Side panel: cannot open the X display.");
+            try
+            {
+                var toKeycode = (delegate* unmanaged[Cdecl]<nint, nuint, byte>)NativeLibrary.GetExport(x11, "XKeysymToKeycode");
+                var fake = (delegate* unmanaged[Cdecl]<nint, uint, int, nuint, int>)NativeLibrary.GetExport(xtest, "XTestFakeKeyEvent");
+                var key = toKeycode(display, keysym);
+                var shiftKey = toKeycode(display, 0xffe1);
+                if (shift) _ = fake(display, shiftKey, 1, 0);
+                _ = fake(display, key, 1, 0);
+                _ = fake(display, key, 0, 0);
+                if (shift) _ = fake(display, shiftKey, 0, 0);
+                _ = ((delegate* unmanaged[Cdecl]<nint, int, int>)NativeLibrary.GetExport(x11, "XSync"))(display, 0);
+            }
+            finally { _ = ((delegate* unmanaged[Cdecl]<nint, int>)NativeLibrary.GetExport(x11, "XCloseDisplay"))(display); }
         }
     }
 

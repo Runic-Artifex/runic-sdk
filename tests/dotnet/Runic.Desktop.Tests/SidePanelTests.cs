@@ -4,7 +4,7 @@ using TUnit.Core;
 
 namespace Runic.Desktop.Tests;
 
-// sdk#864, P2: the side panel's geometry (SidePanelPlanner) for every platform, and DesktopWindow's side panel API over a
+// sdk#864, P2 and P4: the side panel's geometry (SidePanelPlanner) and the GTK layout (SidePanelLayout) for every platform, and DesktopWindow's side panel API over a
 // built-in host of the test's own and over the presentations that refuse it.
 public sealed class SidePanelTests
 {
@@ -341,7 +341,7 @@ public sealed class SidePanelTests
             Assert.Null(surface.SidePanelCredential);
         }
 
-        // A built-in host without a side panel (macOS and Linux until P3 and P4).
+        // A built-in host without a side panel (macOS until P3).
         var factory = new PanelHostFactory { SupportsSidePanel = false };
         await using (var host = await DesktopHost.StartAsync(new() { BuiltInHostFactory = factory, WaitForConnection = false }))
         {
@@ -362,6 +362,173 @@ public sealed class SidePanelTests
             });
             await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
             Assert.Equal(DesktopSidePanelRefusal.Unsupported, window.CheckSidePanel(DesktopWindowEdge.End, 300));
+        }
+    }
+
+    // sdk#864, P4: the GTK hosts keep the old layout until the first allocation with the width a change asked for, so the
+    // page keeps its width while the window manager applies the new bounds.
+    [Test]
+    public void TheGtkLayoutCommitsAChangeAtTheFirstAllocationWithItsWidth()
+    {
+        var layout = new SidePanelLayout();
+        Assert.Equal((0, 860, 860, 1), layout.Allocate(860));
+        layout.BeginLoading(left: true, 300);
+        Assert.True(layout.HasPanel);
+        Assert.False(layout.IsShown);
+        // Loading: the page takes the content, the panel waits just outside it.
+        Assert.Equal((0, 860, 860, 300), layout.Allocate(860));
+
+        var opened = layout.BeginOpen(860, left: true, 300);
+        Assert.True(layout.IsPending);
+        // The window manager has not resized the window yet; GTK allocates the old width, or one in between.
+        Assert.Equal((0, 860, 860, 300), layout.Allocate(860));
+        Assert.Equal((0, 1000, 1000, 300), layout.Allocate(1000));
+        Assert.False(opened.IsCompleted);
+        Assert.Equal((300, 860, 0, 300), layout.Allocate(1160));
+        Assert.True(opened.IsCompletedSuccessfully);
+        Assert.True(layout.IsShown);
+        // Maximized (D062.5): the panel keeps its width, the page takes the rest.
+        Assert.Equal((300, 1620, 0, 300), layout.Allocate(1920));
+
+        // A wider panel on the left: the old layout until the window is 40 px wider.
+        var resized = layout.BeginResize(1160, 340);
+        Assert.Equal((300, 860, 0, 300), layout.Allocate(1160));
+        Assert.Equal((340, 860, 0, 340), layout.Allocate(1200));
+        Assert.True(resized.IsCompletedSuccessfully);
+        Assert.Equal(340, layout.Width);
+
+        // A move keeps the width and commits when the window has moved.
+        var moved = layout.BeginMove(left: false);
+        Assert.Equal((340, 860, 0, 340), layout.Allocate(1200));
+        Assert.False(moved.IsCompleted);
+        layout.CommitMove();
+        Assert.True(moved.IsCompletedSuccessfully);
+        Assert.False(layout.IsLeft);
+        Assert.Equal((0, 860, 860, 340), layout.Allocate(1200));
+
+        var closed = layout.BeginClose(1200);
+        Assert.Equal((0, 860, 860, 340), layout.Allocate(1200));
+        Assert.Equal((0, 860, 860, 340), layout.Allocate(860));
+        Assert.True(closed.IsCompletedSuccessfully);
+        Assert.False(layout.HasPanel);
+    }
+
+    [Test]
+    public void AGtkLayoutChangeTheWindowManagerDoesNotGrantCommitsOnItsTimeoutOrTheNextChange()
+    {
+        var layout = new SidePanelLayout();
+        layout.BeginLoading(left: false, 300);
+        var opened = layout.BeginOpen(860, left: false, 300);
+        // A window manager that keeps the window narrower than asked: the host commits after its timeout.
+        Assert.Equal((0, 1100, 1100, 300), layout.Allocate(1100));
+        layout.Commit();
+        Assert.True(opened.IsCompletedSuccessfully);
+        Assert.Equal((0, 800, 800, 300), layout.Allocate(1100));
+
+        // A change that starts while another is pending commits that one first, so its caller completes.
+        var first = layout.BeginResize(1100, 320);
+        var second = layout.BeginClose(1100);
+        Assert.True(first.IsCompletedSuccessfully);
+        Assert.Equal(320, layout.Width);
+        Assert.False(second.IsCompleted);
+        // A maximized window closes the panel without a change of its frame.
+        layout.CloseNow();
+        Assert.True(second.IsCompletedSuccessfully);
+        Assert.False(layout.IsShown);
+        Assert.Equal((0, 1100, 1100, 320), layout.Allocate(1100));
+        layout.Discard();
+        Assert.False(layout.HasPanel);
+    }
+
+    // Runic.Desktop.Gtk4's window host shows the panel through the internal seam; other custom hosts refuse it (D062.8).
+    [Test]
+    public async Task AFirstPartyCustomWindowHostOpensThePanelThroughTheInternalSeam()
+    {
+        var factory = new SidePanelWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<p>page</p>") });
+        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+
+        Assert.Null(window.CheckSidePanel(DesktopWindowEdge.Left, 300));
+        Assert.Equal(["check:left:300"], factory.Host!.Calls);
+        var panel = Assert.IsType<DesktopSidePanelResult.Opened>(
+            await window.OpenSidePanelAsync(new() { Edge = DesktopWindowEdge.Left, Width = 300, Path = "panel" })).Panel;
+        Assert.Equal(DesktopWindowEdge.Left, panel.Edge);
+        var request = factory.Host.Request!;
+        Assert.True(request.Left);
+        Assert.Contains(surface.SidePanelCredential!, request.DocumentStartScript);
+        await panel.CloseAsync();
+        Assert.Null(window.SidePanel);
+        Assert.Null(surface.SidePanelCredential);
+
+        // A host that cannot show one now refuses it as Unsupported.
+        factory.Host.Supports = false;
+        Assert.Equal(DesktopSidePanelRefusal.Unsupported, window.CheckSidePanel(DesktopWindowEdge.Left, 300));
+    }
+
+    private sealed class SidePanelWindowHostFactory : IDesktopWindowHostFactory
+    {
+        internal SidePanelWindowHost? Host { get; private set; }
+        public bool IsSupported => true;
+        public IDesktopWindowHost Create() => Host = new SidePanelWindowHost();
+    }
+
+    private sealed class SidePanelWindowHost : IDesktopSidePanelWindowHost
+    {
+        public event EventHandler? Closed;
+        public bool IsOpen { get; private set; }
+        public nint NativeHandle => IsOpen ? 3 : 0;
+        public bool SupportsDocumentStartScript => true;
+        internal bool Supports { get; set; } = true;
+        public bool SupportsSidePanel => Supports;
+        internal List<string> Calls { get; } = [];
+        internal WebUiSidePanelRequest? Request { get; private set; }
+
+        public DesktopSidePanelRefusal? CheckSidePanel(bool left, int width)
+        {
+            Calls.Add($"check:{(left ? "left" : "right")}:{width}");
+            return null;
+        }
+
+        public ValueTask<WebUiSidePanelOpening> OpenSidePanelAsync(WebUiSidePanelRequest request, CancellationToken cancellationToken)
+        {
+            Request = request;
+            return ValueTask.FromResult(new WebUiSidePanelOpening(new Panel(request), null));
+        }
+
+        public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
+        {
+            IsOpen = true;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        {
+            if (IsOpen) { IsOpen = false; Closed?.Invoke(this, EventArgs.Empty); }
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync() => CloseAsync();
+
+        private sealed class Panel(WebUiSidePanelRequest request) : IWebUiSidePanel
+        {
+            public bool IsLeft => request.Left;
+            public int Width => request.Width;
+            public ValueTask<DesktopSidePanelRefusal?> MoveAsync(bool left, CancellationToken cancellationToken) => ValueTask.FromResult<DesktopSidePanelRefusal?>(null);
+            public ValueTask<DesktopSidePanelRefusal?> SetWidthAsync(int width, CancellationToken cancellationToken) => ValueTask.FromResult<DesktopSidePanelRefusal?>(null);
+            public ValueTask FocusAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+            public ValueTask CloseAsync(CancellationToken cancellationToken)
+            {
+                request.Closed(DesktopSidePanelCloseReason.Closed);
+                return ValueTask.CompletedTask;
+            }
         }
     }
 

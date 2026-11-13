@@ -9,8 +9,13 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- The GTK 4 window host honours Runic Desktop's experimental runic-host/1 data store option. -->
-    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+    <!-- The GTK 4 window host honours Runic Desktop's experimental runic-host/1 data store option, and shows its
+         experimental side panel (RUNICDESK104). -->
+    <NoWarn>$(NoWarn);RUNICDESK103;RUNICDESK104</NoWarn>
+    <!-- Runic.Desktop's internals are visible here for the side panel seam (IDesktopSidePanelWindowHost). The files linked
+         below compile into this assembly as before and take precedence over Runic.Desktop's copies of the same source;
+         packing pins Runic.Desktop to the exact version, so the copies never differ. -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
@@ -29,6 +34,8 @@
     <Compile Include="../Runic.Desktop/Internal/SpellingLanguages.cs" Link="Shared/SpellingLanguages.cs" />
     <Compile Include="../Runic.Desktop/Internal/WindowPlacementClamp.cs" Link="Shared/WindowPlacementClamp.cs" />
     <Compile Include="../Runic.Desktop/Internal/WindowBoundsSupport.cs" Link="Shared/WindowBoundsSupport.cs" />
+    <Compile Include="../Runic.Desktop/Internal/SidePanelPlanner.cs" Link="Shared/SidePanelPlanner.cs" />
+    <Compile Include="../Runic.Desktop/Internal/SidePanelLayout.cs" Link="Shared/SidePanelLayout.cs" />
     <Compile Include="../Runic.Desktop/Internal/GtkColorScheme.cs" Link="Shared/GtkColorScheme.cs" />
     <Compile Include="../Runic.Desktop/Internal/ModalOwners.cs" Link="Shared/ModalOwners.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMonitorSource.cs" Link="Shared/DesktopMonitorSource.cs" />
