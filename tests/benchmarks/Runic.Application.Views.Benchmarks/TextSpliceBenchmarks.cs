@@ -134,11 +134,11 @@ public sealed class TextModel : INotifyPropertyChanged
 
 // The bridge that generated code writes for TextModel: a settable text member.
 public sealed class TextBridge(IBridgeTransport transport, TextModel model)
-    : ViewModelBridge<TextModel>(transport, model, "text",
-        [new("body", static (writer, model) => writer.WriteStringValue(model.Body))],
+    : ViewModelBridge(transport, model, typeof(TextModel), "text",
+        [new("body", static (writer, model) => writer.WriteStringValue(((TextModel)model).Body))],
         [
-            new("Body", "body", model => model.Body, (model, value) => model.Body = value.GetString()!)
-            { TextMember = true, TextSetter = static (model, value) => model.Body = value },
+            new("Body", "body", model => ((TextModel)model).Body, (model, value) => ((TextModel)model).Body = value.GetString()!)
+            { TextMember = true, TextSetter = static (model, value) => ((TextModel)model).Body = value },
         ],
         [], [], contractFingerprint: "benchmarks");
 

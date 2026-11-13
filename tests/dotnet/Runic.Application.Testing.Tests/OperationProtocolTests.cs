@@ -376,9 +376,9 @@ public sealed class OperationProtocolTests
     }
 
     private sealed class ImportBridge(IBridgeTransport transport, ImportModel model, WindowContentSession content)
-        : ViewModelBridge<ImportModel>(transport, model, Route, [], [], [],
+        : ViewModelBridge(transport, model, typeof(ImportModel), Route, [], [], [],
         [
-            new("Import", vm => vm.Import)
+            new("Import", vm => ((ImportModel)vm).Import)
             {
                 WireName = "import",
                 ReadInput = static input => input.ValueKind switch
@@ -387,10 +387,10 @@ public sealed class OperationProtocolTests
                     JsonValueKind.Object => input.GetRawText(),
                     _ => throw new FormatException("A string or an object."),
                 },
-                ExecuteResultAsync = static (vm, cancellation, input) => vm.ImportAsync((string)input!, cancellation),
-                CanExecute = static (vm, _) => !vm.Running,
+                ExecuteResultAsync = static (vm, cancellation, input) => ((ImportModel)vm).ImportAsync((string)input!, cancellation),
+                CanExecute = static (vm, _) => !((ImportModel)vm).Running,
             },
-            new("Export", vm => vm.Export)
+            new("Export", vm => ((ImportModel)vm).Export)
             {
                 WireName = "export",
                 ReadInput = static input => input.GetString(),

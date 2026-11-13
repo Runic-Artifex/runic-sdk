@@ -113,14 +113,14 @@ internal sealed partial class NotesViewModel
     };
 #pragma warning restore CA1822
 
-    internal static partial BridgeInteractionDescriptor<NotesViewModel>[]? CreateInteractions() =>
+    internal static partial BridgeInteractionDescriptor[]? CreateInteractions() =>
     [
         new ConfirmInteraction(),
-        ViewRequestDescriptor.Create<NotesViewModel, NotesFocus>("focus", FocusContract, model => model.Focus,
+        ViewRequestDescriptor.Create<NotesFocus>("focus", FocusContract, static model => ((NotesViewModel)model).Focus,
             static input => new JsonObject { ["member"] = input.Member }.ToJsonString()),
-        ViewRequestDescriptor.Create<NotesViewModel, int>("reveal", RevealContract, model => model.Reveal,
+        ViewRequestDescriptor.Create<int>("reveal", RevealContract, static model => ((NotesViewModel)model).Reveal,
             static input => new JsonObject { ["id"] = input }.ToJsonString()),
-        ViewRequestDescriptor.Create<NotesViewModel, string>("toast", ToastContract, model => model.Toast,
+        ViewRequestDescriptor.Create<string>("toast", ToastContract, static model => ((NotesViewModel)model).Toast,
             static input => new JsonObject { ["text"] = input }.ToJsonString()),
     ];
 
@@ -134,12 +134,13 @@ internal sealed partial class NotesViewModel
             : throw new FormatException("Expected {accepted: boolean}.");
 
     // The confirm interaction: input {question: string}, output {accepted: boolean}.
-    private sealed class ConfirmInteraction : BridgeInteractionDescriptor<NotesViewModel>
+    private sealed class ConfirmInteraction : BridgeInteractionDescriptor
     {
-        public override IDisposable Attach(WindowContentSession session, NotesViewModel model, string route)
+        public override IDisposable Attach(WindowContentSession session, object model, string route)
         {
-            model._session = session;
-            model._route = route;
+            var notes = (NotesViewModel)model;
+            notes._session = session;
+            notes._route = route;
             return session.Interactions.Register<string, bool>(route, "confirm", ConfirmContract, EncodeQuestion, DecodeAnswer);
         }
     }

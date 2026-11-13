@@ -280,20 +280,20 @@ internal sealed class ProducerPublicationTests
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    private sealed class ModelBridge(IBridgeTransport transport, Model model, string route = "model") : ViewModelBridge<Model>(
-        transport, model, route,
+    private sealed class ModelBridge(IBridgeTransport transport, Model model, string route = "model") : ViewModelBridge(
+        transport, model, typeof(Model), route,
         [
-            new BridgeStateMember<Model>("archive", static (writer, vm) =>
+            new BridgeStateMember("archive", static (writer, vm) =>
             {
-                vm.WroteArchive();
+                ((Model)vm).WroteArchive();
                 writer.WriteStartArray();
-                foreach (var item in vm.Archive) writer.WriteStringValue(item);
+                foreach (var item in ((Model)vm).Archive) writer.WriteStringValue(item);
                 writer.WriteEndArray();
             }),
-            new BridgeStateMember<Model>("counter", static (writer, vm) => writer.WriteNumberValue(vm.Counter)),
-            new BridgeStateMember<Model>("title", static (writer, vm) => writer.WriteStringValue(vm.Title)),
+            new BridgeStateMember("counter", static (writer, vm) => writer.WriteNumberValue(((Model)vm).Counter)),
+            new BridgeStateMember("title", static (writer, vm) => writer.WriteStringValue(((Model)vm).Title)),
         ],
-        [new("Title", "title", vm => vm.Title, (vm, value) => vm.Title = BridgeWire.ReadString(value))], [], []);
+        [new("Title", "title", vm => ((Model)vm).Title, (vm, value) => ((Model)vm).Title = BridgeWire.ReadString(value))], [], []);
 
     private sealed class Row : INotifyPropertyChanged
     {

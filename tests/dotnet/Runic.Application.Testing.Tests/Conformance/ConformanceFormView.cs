@@ -158,15 +158,15 @@ internal sealed class FormViewModel : ReactiveValidationObject, IConformanceMode
 }
 
 internal sealed class FormBridge(IBridgeTransport transport, FormViewModel vm, WindowContentSession content)
-    : ViewModelBridge<FormViewModel>(transport, vm, "form",
+    : ViewModelBridge(transport, vm, typeof(FormViewModel), "form",
         [
             new("name", ConformanceWire.Value<FormViewModel>(model => model.Name)),
-            new("nameErrors", (writer, model) => BridgeValidation.WriteMessages(writer, model.GetErrors(nameof(FormViewModel.Name)))),
-            new("validation", (writer, model) => BridgeValidation.Write(writer, model, FormViewModel.Metadata, FormViewModel.Reader.ReadErrors)),
+            new("nameErrors", (writer, model) => BridgeValidation.WriteMessages(writer, ((FormViewModel)model).GetErrors(nameof(FormViewModel.Name)))),
+            new("validation", (writer, model) => BridgeValidation.Write(writer, ((FormViewModel)model), FormViewModel.Metadata, FormViewModel.Reader.ReadErrors)),
         ],
         [
-            new("Name", "name", model => model.Name, (model, value) => model.Name = ConformanceWire.String(value))
-                { TextMember = true, TextSetter = static (model, value) => model.Name = value },
+            new("Name", "name", model => ((FormViewModel)model).Name, (model, value) => ((FormViewModel)model).Name = ConformanceWire.String(value))
+                { TextMember = true, TextSetter = static (model, value) => ((FormViewModel)model).Name = value },
         ],
         [], [], "conformance-form", content,
         dataSubscriptions: FormViewModel.Metadata,

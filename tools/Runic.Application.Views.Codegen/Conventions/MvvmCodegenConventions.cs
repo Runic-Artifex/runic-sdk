@@ -88,7 +88,7 @@ internal abstract class MvvmCommand
     /// Object-initializer assignments for the <c>CommandDescriptor</c>, such as <c>ObserveFailures</c>, or
     /// <see langword="null"/>.
     /// </summary>
-    internal virtual string? DescriptorInitializer(PropertyInfo property, GeneratedCommandPlan plan) => null;
+    internal virtual string? DescriptorInitializer(PropertyInfo property, string modelType, GeneratedCommandPlan plan) => null;
 
     /// <summary>
     /// The command's availability and execution state members: each wire name with the C# Boolean expression of its
@@ -100,6 +100,26 @@ internal abstract class MvvmCommand
     /// <summary>Availability through <see cref="System.Windows.Input.ICommand"/>, for a command without an argument.</summary>
     internal static (string Member, string Value) CanExecute(PropertyInfo command, string name) =>
         ($"can{name}", $"((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null)");
+}
+
+/// <summary>
+/// The ViewModel in a generated descriptor lambda. The Bridge runtime and its descriptors hold the ViewModel as
+/// <see cref="object"/>, so that NativeAOT shares one instantiation of them for every ViewModel (#901); a lambda's
+/// <c>vm</c> parameter is cast to the ViewModel type where it reads a member.
+/// </summary>
+internal static class GeneratedModel
+{
+    private static readonly System.Text.RegularExpressions.Regex Parameter = new(@"(?<![\w.@""])vm\b",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>The cast of the lambda parameter <c>vm</c> to <paramref name="modelType"/>.</summary>
+    internal static string Access(string modelType) => $"(({modelType})vm)";
+
+    /// <summary>
+    /// <paramref name="body"/>, a lambda body that reads the ViewModel as <c>vm</c>, with every use of <c>vm</c> cast to
+    /// <paramref name="modelType"/>.
+    /// </summary>
+    internal static string Cast(string body, string modelType) => Parameter.Replace(body, Access(modelType));
 }
 
 /// <summary>An interaction recognised by an MVVM library convention.</summary>

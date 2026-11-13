@@ -100,8 +100,8 @@ internal sealed class ConformanceTests
         const string name = "confirm";
         const string contract = "conformance.confirm.v1";
         using var fallback = model.Confirm.RegisterHandler(context => context.SetOutput(true));
-        using var descriptor = ReactiveInteractionDescriptor.Create<ConformanceInteractionModel, string, bool>(
-            name, contract, value => value.Confirm, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
+        using var descriptor = ReactiveInteractionDescriptor.Create<string, bool>(
+            name, contract, static value => ((ConformanceInteractionModel)value).Confirm, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
             .Attach(session, model, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
         // The route is served, so that open answers.
@@ -139,8 +139,8 @@ internal sealed class ConformanceTests
         const string route = "editor";
         const string name = "confirmDiscard";
         const string contract = "conformance.confirmDiscard.v1";
-        using var descriptor = ReactiveInteractionDescriptor.Create<ConformanceEditorModel, string, bool>(
-            name, contract, value => value.ConfirmDiscard, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
+        using var descriptor = ReactiveInteractionDescriptor.Create<string, bool>(
+            name, contract, static value => ((ConformanceEditorModel)value).ConfirmDiscard, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
             .Attach(session, editor, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
         using var bridge = new ConformanceInteractionBridge<ConformanceEditorModel>(transport, editor, route, session);
@@ -224,8 +224,8 @@ internal sealed class ConformanceTests
             "A stream command did not report its overflow.");
         Require(producer.Disposals == 1, "An overflowing stream command kept its execution running.");
 
-        Require(Throws<ArgumentOutOfRangeException>(() => ReactiveInteractionDescriptor.Create<ConformanceInteractionModel, string, bool>(
-            "confirm", "conformance.confirm.v1", value => value.Confirm, static value => JsonSerializer.Serialize(value),
+        Require(Throws<ArgumentOutOfRangeException>(() => ReactiveInteractionDescriptor.Create<string, bool>(
+            "confirm", "conformance.confirm.v1", static value => ((ConformanceInteractionModel)value).Confirm, static value => JsonSerializer.Serialize(value),
             static value => value.GetBoolean(), TimeSpan.Zero)),
             "An interaction descriptor accepted a non-positive timeout.");
     }
@@ -995,7 +995,7 @@ sealed class ConformanceInteractionModel : System.ComponentModel.INotifyProperty
 
 // Serves a route without state, so that open answers; the tests attach the interaction themselves.
 sealed class ConformanceInteractionBridge<TModel>(IBridgeTransport transport, TModel model, string route, WindowContentSession session)
-    : ViewModelBridge<TModel>(transport, model, route, Array.Empty<BridgeStateMember<TModel>>(), [], [], [], content: session)
+    : ViewModelBridge(transport, model, typeof(TModel), route, Array.Empty<BridgeStateMember>(), [], [], [], content: session)
     where TModel : System.ComponentModel.INotifyPropertyChanged;
 
 // Views protocol 4 requests of the interaction tests, on the connection "connection" of the client "client".

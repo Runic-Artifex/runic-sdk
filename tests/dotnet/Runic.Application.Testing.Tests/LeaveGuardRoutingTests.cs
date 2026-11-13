@@ -173,8 +173,8 @@ internal sealed class LeaveGuardRoutingTests
             Interlocked.Increment(ref fallbackAsked);
             context.SetOutput(false);
         });
-        var descriptor = ReactiveInteractionDescriptor.Create<SharedPromptModel, string, bool>("confirm", "testing.confirm.v1",
-            value => value.Confirm, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean());
+        var descriptor = ReactiveInteractionDescriptor.Create<string, bool>("confirm", "testing.confirm.v1",
+            static value => ((SharedPromptModel)value).Confirm, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean());
         using var attachedA = descriptor.Attach(windowA, model, route);
         using var attachedB = descriptor.Attach(windowB, model, route);
         using var mountsA = windowA.AttachRootInteractionPresentation(route);

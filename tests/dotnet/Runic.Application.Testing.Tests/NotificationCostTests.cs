@@ -410,14 +410,14 @@ internal sealed class NotificationCostTests
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    private sealed class ObservedBridge(IBridgeTransport transport, ObservedModel model) : ViewModelBridge<ObservedModel>(
-        transport, model, Route,
+    private sealed class ObservedBridge(IBridgeTransport transport, ObservedModel model) : ViewModelBridge(
+        transport, model, typeof(ObservedModel), Route,
         [
-            new BridgeStateMember<ObservedModel>("other", static (writer, vm) => writer.WriteNumberValue(vm.Other)),
-            new BridgeStateMember<ObservedModel>("value", static (writer, vm) => writer.WriteStringValue(vm.Sub.Value)),
+            new BridgeStateMember("other", static (writer, vm) => writer.WriteNumberValue(((ObservedModel)vm).Other)),
+            new BridgeStateMember("value", static (writer, vm) => writer.WriteStringValue(((ObservedModel)vm).Sub.Value)),
         ],
         [
-            new("Other", "other", static vm => vm.Other, null),
-            new("Sub", "value", static vm => vm.Sub.Value, null, static vm => vm.Observe()),
+            new("Other", "other", static vm => ((ObservedModel)vm).Other, null),
+            new("Sub", "value", static vm => ((ObservedModel)vm).Sub.Value, null, static vm => ((ObservedModel)vm).Observe()),
         ], [], []);
 }

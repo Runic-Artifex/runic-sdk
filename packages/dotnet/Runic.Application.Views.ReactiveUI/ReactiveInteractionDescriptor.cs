@@ -30,21 +30,20 @@ namespace Runic.Application.Views.ReactiveUI.Generated;
 [EditorBrowsable(EditorBrowsableState.Never)]
 public static class ReactiveInteractionDescriptor
 {
-    /// <summary>Creates the descriptor for one ReactiveUI interaction of <typeparamref name="TModel"/>.</summary>
+    /// <summary>Creates the descriptor for one ReactiveUI interaction of a ViewModel.</summary>
     /// <param name="name">The interaction's member name.</param>
     /// <param name="contract">The interaction contract that a browser handler must implement.</param>
     /// <param name="getInteraction">Reads the interaction from the model.</param>
     /// <param name="encodeInput">Encodes interaction input for the browser.</param>
     /// <param name="decodeOutput">Decodes the browser's answer.</param>
     /// <param name="timeout">How long the browser may take to answer; at most ten minutes.</param>
-    public static BridgeInteractionDescriptor<TModel> Create<TModel, TInput, TOutput>(
+    public static BridgeInteractionDescriptor Create<TInput, TOutput>(
         string name,
         string contract,
-        Func<TModel, IInteraction<TInput, TOutput>> getInteraction,
+        Func<object, IInteraction<TInput, TOutput>> getInteraction,
         Func<TInput, string> encodeInput,
         Func<JsonElement, TOutput> decodeOutput,
         TimeSpan? timeout = null)
-        where TModel : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(contract);
@@ -53,15 +52,15 @@ public static class ReactiveInteractionDescriptor
         ArgumentNullException.ThrowIfNull(decodeOutput);
         if (timeout is { } value && (value <= TimeSpan.Zero || value > TimeSpan.FromMinutes(10)))
             throw new ArgumentOutOfRangeException(nameof(timeout), "Interaction timeouts must be between zero and ten minutes.");
-        return new Descriptor<TModel, TInput, TOutput>(name, contract, getInteraction, encodeInput, decodeOutput, timeout);
+        return new Descriptor<TInput, TOutput>(name, contract, getInteraction, encodeInput, decodeOutput, timeout);
     }
 
-    private sealed class Descriptor<TModel, TInput, TOutput>(string name, string contract,
-        Func<TModel, IInteraction<TInput, TOutput>> getInteraction,
+    private sealed class Descriptor<TInput, TOutput>(string name, string contract,
+        Func<object, IInteraction<TInput, TOutput>> getInteraction,
         Func<TInput, string> encodeInput, Func<JsonElement, TOutput> decodeOutput,
-        TimeSpan? timeout) : BridgeInteractionDescriptor<TModel> where TModel : class
+        TimeSpan? timeout) : BridgeInteractionDescriptor
     {
-        public override IDisposable Attach(WindowContentSession session, TModel model, string route)
+        public override IDisposable Attach(WindowContentSession session, object model, string route)
         {
             ArgumentNullException.ThrowIfNull(session);
             ArgumentNullException.ThrowIfNull(model);

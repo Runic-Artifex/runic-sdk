@@ -65,18 +65,18 @@ internal sealed class WizardViewModel : ConformanceModel
 }
 
 internal sealed class WizardBridge(IBridgeTransport transport, WizardViewModel vm, WindowContentSession content)
-    : ViewModelBridge<WizardViewModel>(transport, vm, "wizard",
+    : ViewModelBridge(transport, vm, typeof(WizardViewModel), "wizard",
         [
-            new("page", (writer, model) => writer.WriteNumberValue(model.Page)),
+            new("page", (writer, model) => writer.WriteNumberValue(((WizardViewModel)model).Page)),
             new("canNext", ConformanceWire.Boolean<WizardViewModel>(model => model.NextCommand.CanExecute(null))),
             new("canBack", ConformanceWire.Boolean<WizardViewModel>(model => model.BackCommand.CanExecute(null))),
             new("canPing", ConformanceWire.Boolean<WizardViewModel>(model => model.PingCommand.CanExecute(null))),
         ],
-        [new("Page", "page", model => model.Page, null)],
+        [new("Page", "page", model => ((WizardViewModel)model).Page, null)],
         [],
         [
-            new CommandDescriptor<WizardViewModel>("Next", model => model.NextCommand),
-            new CommandDescriptor<WizardViewModel>("Back", model => model.BackCommand),
-            new CommandDescriptor<WizardViewModel>("Ping", model => model.PingCommand),
+            new CommandDescriptor("Next", model => ((WizardViewModel)model).NextCommand),
+            new CommandDescriptor("Back", model => ((WizardViewModel)model).BackCommand),
+            new CommandDescriptor("Ping", model => ((WizardViewModel)model).PingCommand),
         ],
         "conformance-wizard", content);

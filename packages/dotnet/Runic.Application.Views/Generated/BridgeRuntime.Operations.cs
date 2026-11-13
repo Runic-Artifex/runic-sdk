@@ -15,7 +15,7 @@ namespace Runic.Application.Views.Generated;
 // - status, watch, unwatch, cancel and stream go to the window's BridgeOperationRouter; a terminal status carries the
 //   revision of the route's first state that includes the operation's effects, read in a turn once the work ended.
 // - interactions and interaction-reply go to the window's BridgeInteractionRouter.
-public partial class ViewModelBridge<T>
+public partial class ViewModelBridge
 {
     // The digest of a start without an input; a canonical JSON text never equals it.
     private const string NoInputDigest = "no-input";
@@ -44,11 +44,11 @@ public partial class ViewModelBridge<T>
         _content?.Interactions.RegisterOpenHandlers(_name, presentation, connection, handlers) ?? "ignored";
 
     // The route's operation contract: "{view}:{fingerprint}".
-    private string ViewContract => $"{typeof(T).FullName}:{_contractFingerprint}";
+    private string ViewContract => $"{_modelType.FullName}:{_contractFingerprint}";
 
     // The asynchronous command a member names, when this Bridge can run it as an operation: it belongs to a window
     // and has a generated contract fingerprint.
-    private CommandDescriptor<T>? FindOperation(string member)
+    private CommandDescriptor? FindOperation(string member)
     {
         if (_content is null || _contractFingerprint is null) return null;
         foreach (var command in _commands)
@@ -58,7 +58,7 @@ public partial class ViewModelBridge<T>
         return null;
     }
 
-    private async ValueTask<ReadOnlyMemory<byte>> StartAsync(WindowContentSession content, CommandDescriptor<T> descriptor,
+    private async ValueTask<ReadOnlyMemory<byte>> StartAsync(WindowContentSession content, CommandDescriptor descriptor,
         BridgeRouteRequest request, CancellationToken cancellationToken)
     {
         var root = request.Root;
@@ -110,7 +110,7 @@ public partial class ViewModelBridge<T>
     // model turn, awaited as window work, and the operation admitted in a new turn, which still lets a repeated
     // operation id observe its operation, whatever the key resolves to now. Null when the route was released.
     private async ValueTask<BridgeOperationAdmissionReply?> AdmitResolvingAsync(WindowContentSession content,
-        CommandDescriptor<T> descriptor, BridgeConnection connection, BridgeOperationRequest operation, JsonElement? input,
+        CommandDescriptor descriptor, BridgeConnection connection, BridgeOperationRequest operation, JsonElement? input,
         CancellationToken cancellationToken)
     {
         using var awaited = content.Operations.TryBeginAwaited(cancellationToken, out var atCapacity);
@@ -159,7 +159,7 @@ public partial class ViewModelBridge<T>
     // Admits a protocol-4 operation. admit runs only for a new operation id and returns why it cannot start (null
     // when it can) and the command's parameter. The work runs in the invoking connection's interaction scope, and its
     // terminal status reads the route's revision in a turn once it ended.
-    private BridgeOperationAdmissionReply Admit(WindowContentSession content, CommandDescriptor<T> descriptor,
+    private BridgeOperationAdmissionReply Admit(WindowContentSession content, CommandDescriptor descriptor,
         BridgeConnection connection, BridgeOperationRequest operation, Func<(string? Refusal, object? Argument)> admit)
     {
         object? argument = null;
@@ -176,7 +176,7 @@ public partial class ViewModelBridge<T>
             RunicInteractionInvocation.Enter(content, _name, connection.ClientKey, connection.Key, descriptor.Name, cancellation);
         var admission = descriptor.ExecuteStreamAsync is { } executeStream
             ? content.Operations.AcceptUnlessRefused(operation, refusal, descriptor.CreateStream!(),
-                (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
+                (execution, cancellation) => ObserveOperationAsync(_logger, ModelName, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = Enter(cancellation);
                     using var blobs = EnterBlobs(null);
@@ -185,7 +185,7 @@ public partial class ViewModelBridge<T>
                     return task;
                 }), retirement, terminalRevision)
             : content.Operations.AcceptUnlessRefused(operation, refusal,
-                cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
+                cancellation => ObserveOperationAsync(_logger, ModelName, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = Enter(cancellation);
                     var task = InvokeCommandAsync(descriptor, argument, cancellation);
@@ -196,7 +196,7 @@ public partial class ViewModelBridge<T>
     }
 
     // Decodes a start's input; returns invalid-input when it does not decode, or null with the decoded value.
-    private string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, string connection, out object? value)
+    private string? TryDecodeInput(CommandDescriptor descriptor, JsonElement? input, string connection, out object? value)
     {
         value = null;
         if (input is not { } element) return null;
@@ -217,11 +217,11 @@ public partial class ViewModelBridge<T>
     // owns the terminal state and logs a failure. A declared failure reaches
     // the registry already encoded, so the registry stays type-agnostic; one
     // that cannot be sent is logged here (1008), where the model is known.
-    private static async Task<BridgeOperationResult> ObserveOperationAsync(Microsoft.Extensions.Logging.ILogger logger,
+    private static async Task<BridgeOperationResult> ObserveOperationAsync(Microsoft.Extensions.Logging.ILogger logger, string model,
         string member, string route,
         Func<object, string?>? encodeFailure, Func<Task<BridgeOperationResult>> run)
     {
-        var call = BridgeCall.Start(BridgeCallKind.Operation, ModelName, route, member);
+        var call = BridgeCall.Start(BridgeCallKind.Operation, model, route, member);
         try
         {
             var result = await run().ConfigureAwait(false);
@@ -237,7 +237,7 @@ public partial class ViewModelBridge<T>
             if (encoded is null)
             {
                 call.Complete(BridgeCallOutcome.Failed, domain);
-                ViewsLog.DomainFailureNotEncoded(logger, logged, ModelName, member, route, failureType, reason);
+                ViewsLog.DomainFailureNotEncoded(logger, logged, model, member, route, failureType, reason);
                 throw new BridgeDomainFailureNotEncodedException(domain);
             }
             call.Complete(BridgeCallOutcome.DomainFailed);

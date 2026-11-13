@@ -80,7 +80,7 @@ internal static class Benchmarks
     }
 
     private sealed class FullBridge(MeteredTransport transport, RowsViewModel model)
-        : ViewModelBridge<RowsViewModel>(transport, model, "rows", [new BridgeStateMember<RowsViewModel>("rows", WriteRows)],
+        : ViewModelBridge(transport, model, typeof(RowsViewModel), "rows", [new BridgeStateMember("rows", WriteRows)],
             [new("Rows", "rows", current => current.Rows, null)], [], [])
     {
         private static void WriteRows(Utf8JsonWriter writer, RowsViewModel current)

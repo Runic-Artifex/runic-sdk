@@ -566,13 +566,13 @@ internal sealed class NavigationPresentationTests
             .GetValue(region) as Delegate)?.GetInvocationList().Length ?? 0;
 
     private sealed class RuntimeShellBridge(IBridgeTransport transport, NavShellViewModel vm, WindowContentSession content)
-        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell",
-            [new BridgeStateMember<NavShellViewModel>("title", static (writer, vm) =>
+        : ViewModelBridge(transport, vm, typeof(NavShellViewModel), "runtimeShell",
+            [new BridgeStateMember("title", static (writer, vm) =>
             {
-                if (vm.Main?.Current is { } page) writer.WriteStringValue(page.Title);
+                if (((NavShellViewModel)vm).Main?.Current is { } page) writer.WriteStringValue(page.Title);
                 else writer.WriteNullValue();
             })],
-            [new PropertyDescriptor<NavShellViewModel>("Main", "main", static vm => vm.Main.Current, null, static vm => vm.Main)],
+            [new PropertyDescriptor("Main", "main", static vm => ((NavShellViewModel)vm).Main.Current, null, static vm => ((NavShellViewModel)vm).Main)],
             [], [], content: content)
     {
     }

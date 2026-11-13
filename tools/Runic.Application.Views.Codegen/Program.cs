@@ -900,6 +900,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         : nullability.Create(property)).ReadState == NullabilityState.Nullable;
     var contentBindings = contentProperties.Concat(contentCollections).Concat(regionCollections).ToArray();
     var fullType = $"global::{model.FullName}";
+    // A generated lambda's ViewModel parameter is an object (#901): M casts it where a body reads it.
+    string M(string body) => GeneratedModel.Cast(body, fullType);
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     var commandSources = commands.ToDictionary(command => command, command => CommandSourceMethod(model, command));
     foreach (var command in commands)
@@ -1050,7 +1052,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("#nullable enable");
     cs.AppendLine("using Runic.Application.Views;");
     AppendNamespace(cs, BridgeNamespace);
-    cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.Generated.ViewModelBridge<{fullType}>");
+    cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.Generated.ViewModelBridge");
     cs.AppendLine("{");
     if (presented)
         cs.AppendLine("    private readonly global::System.IDisposable? _rootInteractionMount;");
@@ -1060,48 +1062,48 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine($"    private readonly {fullType} _owner;");
     }
     cs.AppendLine($"    internal {shortName}Bridge(global::Runic.Application.Views.IBridgeTransport transport, {fullType} vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(");
-    cs.AppendLine($"        transport, vm, routePrefix ?? \"{prefix}\",");
+    cs.AppendLine($"        transport, vm, typeof({fullType}), routePrefix ?? \"{prefix}\",");
     cs.AppendLine(hasContent ? "        CreateState(content)," : "        State,");
     cs.AppendLine("        [");
     foreach (var property in properties)
     {
         // A setter reads the request's value with the member's codec.
         var setter = PageSettable(property) && valueProperties.ContainsKey(property)
-            ? $"(vm, value) => vm.{property.Name} = {property.Name}ValueCodec.Read(value)"
+            ? $"static (vm, value) => {M($"vm.{property.Name}")} = {property.Name}ValueCodec.Read(value)"
             : "null";
         var descriptorNames = $"\"{property.Name}\", \"{WireName(property)}\"";
         if (regionSlots.Contains(property))
         {
             // The runtime observes the region and binds the window session.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}?.Current, null, static vm => {M($"vm.{property.Name}")}),");
             continue;
         }
         if (regionCollections.ContainsKey(property))
         {
             // The runtime observes the selection, its regions and their Current, and answers region requests.
             var close = BridgeContractShape.RegionCollection(property)!.PageCanClose ? "true" : "false";
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, null, static vm => vm.{property.Name}) {{ RegionCollection = true, RegionClose = {close} }},");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}, null, static vm => {M($"vm.{property.Name}")}) {{ RegionCollection = true, RegionClose = {close} }},");
             continue;
         }
         if (queryCollections.ContainsKey(property))
         {
             // The runtime observes the collection's query, total and version, and pages read its rows with query-rows.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, null, static vm => vm.{property.Name}) {{ QueryRowWriter = {property.Name}RowsCodec.WriteItem }},");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}, null, static vm => {M($"vm.{property.Name}")}) {{ QueryRowWriter = {property.Name}RowsCodec.WriteItem }},");
             continue;
         }
         if (selectionSlots.Contains(property))
         {
             // The runtime observes the selection's SelectedIndex.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => {SelectionIndex(property)}, null, static vm => vm.{property.Name}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M(SelectionIndex(property))}, null, static vm => {M($"vm.{property.Name}")}),");
             continue;
         }
         // A frame is one publication unit, so the text's change and the validation it causes arrive together.
         var text = textFields.Contains(property) ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}"
             : textMembers.Contains(property) ? property.SetMethod?.IsPublic == true
-                ? $" {{ TextMember = true, TextSetter = static (vm, value) => vm.{property.Name} = value }}"
+                ? $" {{ TextMember = true, TextSetter = static (vm, value) => {M($"vm.{property.Name}")} = value }}"
                 : " { TextMember = true }"
             : "";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, {setter}){text},");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor({descriptorNames}, static vm => {M($"vm.{property.Name}")}, {setter}){text},");
     }
     cs.AppendLine("        ],");
     {
@@ -1110,7 +1112,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var type = valueProperties[property].RootCSharpType();
             var paths = nestedPaths.TryGetValue(property, out var nested) ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(nested, property.Name + "ValueCodec")} }}" : "";
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, readValue: element => {property.Name}ValueCodec.Read(element), writeValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)){paths},");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, static vm => {M($"vm.{property.Name}")}, static (vm, value) => {M($"vm.{property.Name}")} = ({type})value!, readValue: static element => {property.Name}ValueCodec.Read(element), writeValue: static (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)){paths},");
         }
         cs.AppendLine("        ],");
     }
@@ -1140,10 +1142,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
         // field-paths/1: a row editor receives the copied row with its key, and the edit when it takes one.
         var editable = rowEditors.TryGetValue(property, out var editor)
-            ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(rowPaths[property], property.Name + "ValueCodec")}, UpdateRow = static (vm, row, edit) => vm.{editor.Name}((({itemType})row!).{key.Name}, ({itemType})row!{(editor.GetParameters().Length == 3 ? ", edit" : "")})"
+            ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(rowPaths[property], property.Name + "ValueCodec")}, UpdateRow = static (vm, row, edit) => {M($"vm.{editor.Name}")}((({itemType})row!).{key.Name}, ({itemType})row!{(editor.GetParameters().Length == 3 ? ", edit" : "")})"
                 + (editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Conflicts == RunicRowConflicts.Row ? ", RowConflicts = global::Runic.Application.Views.RunicRowConflicts.Row" : "") + " }"
             : "";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}){editable},");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor(\"{WireName(property)}\", static vm => {M($"vm.{property.Name}")}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}){editable},");
     }
     cs.AppendLine(validationContextFlavors.Length > 0 ? "        ], validationReader: ValidationReader" : "        ]");
     cs.AppendLine("        )");
@@ -1369,7 +1371,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             : plan.HasArgument ? [] : [MvvmCommand.CanExecute(command, name)];
         foreach (var (member, value) in members) stateMembers.Add((member, $"writer.WriteBooleanValue({value})"));
     }
-    var stateMemberType = $"global::Runic.Application.Views.Generated.BridgeStateMember<{fullType}>";
+    var stateMemberType = "global::Runic.Application.Views.Generated.BridgeStateMember";
     if (hasContent)
     {
         cs.AppendLine($"    private static {stateMemberType}[] CreateState(global::Runic.Application.Views.WindowContentSession? content)");
@@ -1402,11 +1404,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var name = JsonSerializer.Serialize(member);
             if (!body.Contains('\n'))
             {
-                cs.AppendLine($"{indent}    new {stateMemberType}({name}, static (writer, vm) => {body}),");
+                cs.AppendLine($"{indent}    new {stateMemberType}({name}, static (writer, vm) => {M(body)}),");
                 continue;
             }
-            cs.AppendLine($"{indent}    new {stateMemberType}({name}, (writer, vm) =>");
+            cs.AppendLine($"{indent}    new {stateMemberType}({name}, (writer, model) =>");
             cs.AppendLine($"{indent}    {{");
+            cs.AppendLine($"{indent}        var vm = ({fullType})model;");
             foreach (var line in body.TrimEnd('\n').Split('\n')) cs.AppendLine($"{indent}        {line}");
             cs.AppendLine($"{indent}    }}),");
         }
@@ -2925,7 +2928,7 @@ sealed record GeneratedCommandPlan(
         }
         // The member name of command, can and start requests (specs/application, "Routes and members").
         var initializer = $"WireName = \"{char.ToLowerInvariant(property.Name[0])}{property.Name[1..^"Command".Length]}\"";
-        if (Command?.DescriptorInitializer(property, this) is { } library) initializer += ", " + library;
+        if (Command?.DescriptorInitializer(property, modelType, this) is { } library) initializer += ", " + library;
         if (Key is { } key)
             initializer += ", " + key.Initializer(modelType);
         if (Retirement is not RunicOperationRetirement.Keep)
@@ -2941,7 +2944,7 @@ sealed record GeneratedCommandPlan(
         var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
         var plainInputType = plainGraph.RootCSharpType();
         var name = property.Name[..^"Command".Length];
-        return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadInput: input => {property.Name}InputCodec.Read(input), EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
+        return $"new global::Runic.Application.Views.Generated.CommandDescriptor(\"{name}\", static vm => (object){GeneratedModel.Access(modelType)}.{property.Name}, ReadInput: input => {property.Name}InputCodec.Read(input), EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
     }
 }
 
@@ -2952,19 +2955,19 @@ sealed record GeneratedKeyPlan(MethodInfo Resolver, BridgeTypeGraph KeyGraph, Ty
     // The CommandDescriptor's ResolveArgument or ResolveArgumentAsync assignment.
     internal string Initializer(string modelType)
     {
-        var target = Resolver.IsStatic ? modelType : "vm";
+        var target = Resolver.IsStatic ? modelType : GeneratedModel.Access(modelType);
         var key = $"({KeyGraph.RootCSharpType()})key!";
         return IsAsync
-            ? $"ResolveArgumentAsync = async (vm, key, token) => await {target}.{Resolver.Name}({key}{(TakesToken ? ", token" : "")}).ConfigureAwait(false)"
-            : $"ResolveArgument = (vm, key) => {target}.{Resolver.Name}({key})";
+            ? $"ResolveArgumentAsync = static async (vm, key, token) => await {target}.{Resolver.Name}({key}{(TakesToken ? ", token" : "")}).ConfigureAwait(false)"
+            : $"ResolveArgument = static (vm, key) => {target}.{Resolver.Name}({key})";
     }
 }
 
 // The conventions describe a command as a constructor call with C# named arguments, such as
-// new CommandDescriptor<T>("Save", vm => vm.SaveCommand, ExecuteResultAsync: ..., CanExecute: ...).
-// CommandDescriptor<T> takes only the name and the getter; everything else is an init property, so a later
+// new CommandDescriptor("Save", static vm => ((Model)vm).SaveCommand, ExecuteResultAsync: ..., CanExecute: ...).
+// CommandDescriptor takes only the name and the getter; everything else is an init property, so a later
 // release can add members without changing its constructor. This rewrites the call into that shape:
-// new CommandDescriptor<T>("Save", vm => vm.SaveCommand) { ExecuteResultAsync = ..., CanExecute = ... }.
+// new CommandDescriptor("Save", static vm => ((Model)vm).SaveCommand) { ExecuteResultAsync = ..., CanExecute = ... }.
 internal static class CommandDescriptorSyntax
 {
     // The init properties, in the order of the former positional parameters after Name and Get.

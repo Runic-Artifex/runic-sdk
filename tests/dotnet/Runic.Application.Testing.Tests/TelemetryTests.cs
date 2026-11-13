@@ -187,11 +187,11 @@ internal sealed class TelemetryTests
     }
 
     private sealed class FailingBridge(IBridgeTransport transport, Model model, WindowContentSession content)
-        : ViewModelBridge<Model>(transport, model, "failing", [new BridgeStateMember<Model>("count", static (writer, vm) => writer.WriteNumberValue(vm.Count))],
-        [new("Count", "count", vm => vm.Count, (vm, value) => vm.Count = BridgeWire.ReadInt32(value))], [],
+        : ViewModelBridge(transport, model, typeof(Model), "failing", [new BridgeStateMember("count", static (writer, vm) => writer.WriteNumberValue(((Model)vm).Count))],
+        [new("Count", "count", vm => ((Model)vm).Count, (vm, value) => ((Model)vm).Count = BridgeWire.ReadInt32(value))], [],
         [
-            new("Throw", vm => vm.Throw),
-            new("FailAsync", vm => vm.Throw) { ExecuteAsync = (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret.")) },
+            new("Throw", vm => ((Model)vm).Throw),
+            new("FailAsync", vm => ((Model)vm).Throw) { ExecuteAsync = (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret.")) },
         ],
         contractFingerprint: "telemetry", content: content);
 

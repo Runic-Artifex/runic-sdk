@@ -68,10 +68,10 @@ internal sealed class CatalogConformanceViewModel : IConformanceModel, System.Co
 }
 
 internal sealed class CatalogConformanceBridge(IBridgeTransport transport, CatalogConformanceViewModel vm, WindowContentSession content)
-    : ViewModelBridge<CatalogConformanceViewModel>(transport, vm, "catalog",
-        [new("rows", static (writer, model) => BridgeQueryWire.WriteState(writer, model.Rows))],
+    : ViewModelBridge(transport, vm, typeof(CatalogConformanceViewModel), "catalog",
+        [new("rows", static (writer, model) => BridgeQueryWire.WriteState(writer, ((CatalogConformanceViewModel)model).Rows))],
         [
-            new("Rows", "rows", model => model.Rows, null, static model => model.Rows)
+            new("Rows", "rows", model => ((CatalogConformanceViewModel)model).Rows, null, static model => ((CatalogConformanceViewModel)model).Rows)
                 { QueryRowWriter = static (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!) },
         ],
         [], [], "conformance-catalog", content);

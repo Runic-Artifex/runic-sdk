@@ -22,12 +22,12 @@ internal sealed class InteractionFixture
         // Register an ordinary application handler first. The adapter handler
         // is later and returns without output when no browser is eligible.
         using var fallback = model.ConfirmDelete.RegisterHandler(context => context.SetOutput(true));
-        using var descriptor = ReactiveInteractionDescriptor.Create<InteractionModel, string, bool>(
-            "confirmDelete", "testing.confirmDelete.v1", value => value.ConfirmDelete,
+        using var descriptor = ReactiveInteractionDescriptor.Create<string, bool>(
+            "confirmDelete", "testing.confirmDelete.v1", static value => ((InteractionModel)value).ConfirmDelete,
             static value => JsonSerializer.Serialize(value), static value => value.GetBoolean()).Attach(session, model, route);
         Require(Throws<InvalidOperationException>(() =>
-            ReactiveInteractionDescriptor.Create<InteractionModel, string, bool>("confirmDeleteAgain",
-                "testing.confirmDeleteAgain.v1", value => value.ConfirmDelete,
+            ReactiveInteractionDescriptor.Create<string, bool>("confirmDeleteAgain",
+                "testing.confirmDeleteAgain.v1", static value => ((InteractionModel)value).ConfirmDelete,
                 static value => JsonSerializer.Serialize(value), static value => value.GetBoolean()).Attach(session, model, route)),
             "Exposing one Interaction instance through two generated members did not fail clearly.");
         using var rootMount = session.AttachRootInteractionPresentation(route);
@@ -268,6 +268,6 @@ internal sealed class InteractionFixture
     }
 
     private sealed class InteractionBridge(IBridgeTransport transport, InteractionModel model, string route, WindowContentSession session)
-        : ViewModelBridge<InteractionModel>(transport, model, route, Array.Empty<BridgeStateMember<InteractionModel>>(), [], [], [],
+        : ViewModelBridge(transport, model, typeof(InteractionModel), route, Array.Empty<BridgeStateMember>(), [], [], [],
             content: session);
 }

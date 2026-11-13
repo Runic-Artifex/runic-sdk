@@ -64,22 +64,22 @@ public sealed class ProducerModel : INotifyPropertyChanged
         writer.WriteEndObject();
     }
 
-    public static readonly BridgeStateMember<ProducerModel>[] State =
+    public static readonly BridgeStateMember[] State =
     [
         new("archive", static (writer, model) =>
         {
             writer.WriteStartArray();
-            foreach (var row in model.Archive) Wire.WriteRow(writer, row);
+            foreach (var row in ((ProducerModel)model).Archive) Wire.WriteRow(writer, row);
             writer.WriteEndArray();
         }),
-        new("counter", static (writer, model) => writer.WriteNumberValue(model.Counter)),
+        new("counter", static (writer, model) => writer.WriteNumberValue(((ProducerModel)model).Counter)),
         new("items", static (writer, model) =>
         {
             writer.WriteStartArray();
-            foreach (var item in model.Items) WriteItem(writer, item);
+            foreach (var item in ((ProducerModel)model).Items) WriteItem(writer, item);
             writer.WriteEndArray();
         }),
-        new("title", static (writer, model) => writer.WriteStringValue(model.Title)),
+        new("title", static (writer, model) => writer.WriteStringValue(((ProducerModel)model).Title)),
     ];
 
     public static readonly BridgeDataSubscriptionMember[] DataMetadata =
@@ -91,17 +91,17 @@ public sealed class ProducerModel : INotifyPropertyChanged
 }
 
 public sealed class ProducerBridge(IBridgeTransport transport, ProducerModel model, string route = "producer",
-    WindowContentSession? content = null) : ViewModelBridge<ProducerModel>(
-    transport, model, route, ProducerModel.State,
+    WindowContentSession? content = null) : ViewModelBridge(
+    transport, model, typeof(ProducerModel), route, ProducerModel.State,
     [
-        new("Items", "items", vm => vm.Items, null),
-        new("Title", "title", vm => vm.Title, (vm, value) => vm.Title = BridgeWire.ReadString(value)),
+        new("Items", "items", vm => ((ProducerModel)vm).Items, null),
+        new("Title", "title", vm => ((ProducerModel)vm).Title, (vm, value) => ((ProducerModel)vm).Title = BridgeWire.ReadString(value)),
     ],
     [], [], contractFingerprint: "benchmarks", content: content,
     dataSubscriptions: ProducerModel.DataMetadata,
     collections:
     [
-        new("items", static vm => vm.Items, ProducerModel.WriteItem,
+        new("items", static vm => ((ProducerModel)vm).Items, ProducerModel.WriteItem,
             static item => ((TaskItem)item!).Id.ToString(CultureInfo.InvariantCulture)),
     ]);
 
@@ -117,24 +117,24 @@ public sealed class RecordModel(int rows) : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 
-    public static readonly BridgeStateMember<RecordModel>[] State =
+    public static readonly BridgeStateMember[] State =
     [
         new("rows", static (writer, model) =>
         {
-            Interlocked.Increment(ref model._writes);
+            Interlocked.Increment(ref ((RecordModel)model)._writes);
             writer.WriteStartArray();
-            foreach (var row in model.Rows) Wire.WriteRow(writer, row);
+            foreach (var row in ((RecordModel)model).Rows) Wire.WriteRow(writer, row);
             writer.WriteEndArray();
         }),
     ];
 }
 
-public sealed class RecordBridge(IBridgeTransport transport, RecordModel model, string route) : ViewModelBridge<RecordModel>(
-    transport, model, route, RecordModel.State, [new("Rows", "rows", vm => vm.Rows, null)], [], [],
+public sealed class RecordBridge(IBridgeTransport transport, RecordModel model, string route) : ViewModelBridge(
+    transport, model, typeof(RecordModel), route, RecordModel.State, [new("Rows", "rows", vm => ((RecordModel)vm).Rows, null)], [], [],
     contractFingerprint: "benchmarks",
     collections:
     [
-        new("rows", static vm => vm.Rows, static (writer, item) => Wire.WriteRow(writer, (Row)item!),
+        new("rows", static vm => ((RecordModel)vm).Rows, static (writer, item) => Wire.WriteRow(writer, (Row)item!),
             static item => ((Row)item!).Id.ToString(CultureInfo.InvariantCulture)),
     ]);
 
