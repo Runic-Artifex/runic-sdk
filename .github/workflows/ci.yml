@@ -1276,7 +1276,7 @@ jobs:
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --side-panel
       # #864 P6: the side panel cases --side-panel leaves out: window.close() in the panel's page, closing the panel of a
       # maximized window (its restored size shrinks), and a full-screen window with the panel open and closed. Linux runs
-      # GTK 3 under Openbox. A host without the panel yet reports them as not verified (macOS until #905, Linux until #907).
+      # GTK 3 under Openbox.
       - name: Close a side panel from its page, while maximized and in full screen
         timeout-minutes: 5
         shell: bash
@@ -2536,8 +2536,8 @@ jobs:
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --screen-reader orca \
               --receipt "artifacts/screen-reader/$toolkit/$toolkit.json"
-            # #864 P6: the side panel with Orca; not applicable until the WebKitGTK host has the panel (#907). A screen wide
-            # enough for the 440-wide window and its 240-wide panel (xvfb-run's default screen is 640 x 480).
+            # #864 P6: the side panel with Orca: its landmark, the reading order on both edges and what Orca says as the focus
+            # moves into the panel and back. A screen wide enough for the 440-wide window and its 240-wide panel (xvfb-run's default screen is 640 x 480).
             GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a -s '-screen 0 1600x900x24' dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
               -c Release --no-build -- --accessibility "$toolkit" --side-panel --probe "${probe[@]}" --screen-reader orca \
               --receipt "artifacts/screen-reader/$toolkit/$toolkit-side-panel.json"

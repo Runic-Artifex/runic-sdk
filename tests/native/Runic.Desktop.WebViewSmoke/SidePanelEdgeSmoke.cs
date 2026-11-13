@@ -10,8 +10,7 @@ using Runic.Desktop;
 // - A full-screen window keeps the panel and the page takes the rest; width changes and moves are refused while it is
 //   full-screen; leaving full screen gives back the grown bounds. Closing the panel there and then leaving full screen
 //   gives back exactly the start bounds.
-// A platform whose host has no panel yet (CheckSidePanel is Unsupported) reports the cases as not verified: macOS until
-// #905 (P3), Linux until #907 (P4). Windows must have it.
+// Every embedded host has the panel: a refusal fails, with the window's bounds and the monitors' work areas.
 internal static class SidePanelEdgeSmoke
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
@@ -80,13 +79,6 @@ internal static class SidePanelEdgeSmoke
             await surface.ExecuteJavaScriptAsync("return document.readyState;", Deadline);
             await WaitForAsync(() => window.State?.Bounds is not null, "the window's bounds");
             await Task.Delay(Settle);
-            if (window.CheckSidePanel(DesktopWindowEdge.End, PanelWidth) == DesktopSidePanelRefusal.Unsupported)
-            {
-                if (OperatingSystem.IsWindows()) throw new InvalidOperationException("Side panel edges: WebView2 refused the panel with Unsupported.");
-                Console.WriteLine("NOT VERIFIED side panel edges: this platform's host refuses the panel with Unsupported "
-                    + "(macOS until #905, Linux until #907).");
-                return 0;
-            }
             if (window.CheckSidePanel(DesktopWindowEdge.Right, PanelWidth) is { } refusal)
                 throw new InvalidOperationException($"Side panel edges: the panel would be refused ({refusal}): {await AccessibilitySmoke.DescribeRoomAsync(host, window)}.");
             var start = window.State!;

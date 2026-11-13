@@ -13,18 +13,12 @@
 //   Tab from the page's last control (Finish) into the panel and Shift+Tab back, which the fixture presses as a user
 //   does, so the panel's focus hand-off runs. Setting AXFocused on an element of the other web view bypasses it, and
 //   VoiceOver then reads that view's web area rather than the element.
-// A host that refuses the panel (Unsupported) shows the page's "Side panel unsupported" button instead: the checks are
-// then not applicable, because that platform's host has no panel yet (macOS until #905, Linux until #907).
 internal sealed class SidePanelScenario(AccessibilityClient client, Report report, ScreenReader? reader)
 {
     internal const string PageButton = "Page action";
     internal const string PanelButton = "Panel action";
     internal const string Landmark = "Debug tools";
     internal const string DockLeft = "Dock panel left";
-    internal const string Unsupported = "Side panel unsupported";
-    private static readonly string[] Checks =
-        ["side-panel-control", "side-panel-landmark", "side-panel-order-right", "side-panel-order-left"];
-    private static readonly string[] SpeechChecks = ["side-panel-focus", "side-panel-landmark", "side-panel-return"];
     private static readonly TimeSpan FindTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SpeechTimeout = TimeSpan.FromSeconds(10);
     private readonly List<string> _phrases = [];
@@ -35,28 +29,14 @@ internal sealed class SidePanelScenario(AccessibilityClient client, Report repor
         var page = await FindAsync(PageButton, cancellationToken)
             ?? throw new InvalidOperationException($"No button named '{PageButton}' in the side panel fixture.");
         report.Pass("side-panel-page-control", $"{page.Name}: {page.Role}");
-        // The panel loads after the page; the fixture shows the other button when the host refuses it.
-        Control? panel = null, unsupported = null;
-        var until = DateTime.UtcNow + TestTimeouts.Scale(FindTimeout);
-        while (panel is null && unsupported is null)
+        // The panel's page loads after the page's.
+        var panel = await FindAsync(PanelButton, cancellationToken);
+        if (panel is null)
         {
-            panel = await client.FindAsync(ControlKind.Button, PanelButton, cancellationToken);
-            unsupported = panel is null ? await client.FindAsync(ControlKind.Button, Unsupported, cancellationToken) : null;
-            if (panel is null && unsupported is null && DateTime.UtcNow >= until)
-            {
-                Console.WriteLine("Accessibility tree:\n" + await client.DumpAsync(cancellationToken));
-                throw new InvalidOperationException($"Neither '{PanelButton}' nor '{Unsupported}' in the accessibility tree of the side panel fixture.");
-            }
+            Console.WriteLine("Accessibility tree:\n" + await client.DumpAsync(cancellationToken));
+            throw new InvalidOperationException($"No button named '{PanelButton}' in the accessibility tree of the side panel fixture.");
         }
-        if (unsupported is not null)
-        {
-            const string reason = "this platform's host refuses the side panel (Unsupported): macOS until #905, Linux until #907";
-            foreach (var check in Checks) report.NotApplicable(check, reason);
-            if (reader is not null) foreach (var check in SpeechChecks) report.NotApplicable($"{reader.Id}-{check}", reason);
-            await client.PressAsync(unsupported, cancellationToken);
-            return;
-        }
-        report.Pass("side-panel-control", $"{panel!.Name}: {panel.Role}, in the panel's view of the same window");
+        report.Pass("side-panel-control", $"{panel.Name}: {panel.Role}, in the panel's view of the same window");
 
         var elements = await ElementsAsync(element => element.Name == PanelButton, cancellationToken);
         var landmark = elements.FindIndex(element => element.Name == Landmark && !element.Role.Contains("button", StringComparison.OrdinalIgnoreCase));

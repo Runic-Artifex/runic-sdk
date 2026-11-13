@@ -95,8 +95,8 @@ internal static class AccessibilitySmoke
 
     // --side-panel (sdk#864 P6): a page with a side panel open on its right edge (DesktopWindow.OpenSidePanelAsync). The
     // panel's page (#side-panel) is a named complementary landmark with one button; the page's Dock panel left asks the
-    // fixture to move the panel. Where the host refuses the panel (Unsupported), the fixture adds the page's "Side panel
-    // unsupported" button instead, which tells the probe (AccessibilityProbe/SidePanelScenario.cs).
+    // fixture to move the panel (AccessibilityProbe/SidePanelScenario.cs). Every embedded host has the panel, so any
+    // refusal fails.
     internal const string SidePanelPage = """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><script src="webui.js"></script>
         <title>Runic accessibility fixture</title><style>body { font: 16px system-ui; }</style>
@@ -199,7 +199,6 @@ internal static class AccessibilitySmoke
                 $"document.getElementById('region').src = {System.Text.Json.Nodes.JsonValue.Create(launch.Url.AbsoluteUri).ToJsonString()}; return '';");
             Console.WriteLine($"ACCESSIBILITY region frame from {Runic.Desktop.Internal.RegionFrames.Origin(launch.Url)}{(launch.SameSite ? " (same-site)" : "")}.");
         }
-        var panelOpened = false;
         if (sidePanel)
         {
 #pragma warning disable RUNICDESK104 // The side panel is experimental.
@@ -208,29 +207,14 @@ internal static class AccessibilitySmoke
                 CancellationToken.None);
             await Task.Delay(600);
             var check = window.CheckSidePanel(DesktopWindowEdge.Right, SidePanelWidth);
-            if (check == DesktopSidePanelRefusal.Unsupported)
-            {
-                await surface.ExecuteJavaScriptAsync("""
-                    const unsupported = document.createElement('button');
-                    unsupported.type = 'button';
-                    unsupported.textContent = 'Side panel unsupported';
-                    unsupported.addEventListener('click', () => { window.__runicRequest = 'finish'; });
-                    document.querySelector('main').append(unsupported);
-                    return '';
-                    """);
-                Console.WriteLine($"ACCESSIBILITY side panel: {hostName} refuses it with Unsupported.");
-            }
-            else
-            {
-                // Any other refusal, NoRoom in particular, fails: the fixture must fit the runner's work area.
-                if (check is not null)
-                    throw new InvalidOperationException($"The side panel fixture's panel would be refused ({check}): {await DescribeRoomAsync(host, window)}.");
-                var opened = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = SidePanelWidth, Path = "#side-panel" });
-                if (opened is not DesktopSidePanelResult.Opened)
-                    throw new InvalidOperationException($"The side panel fixture's panel did not open ({opened}): {await DescribeRoomAsync(host, window)}.");
-                panelOpened = true;
-                Console.WriteLine("ACCESSIBILITY side panel open on the right edge.");
-            }
+            // Any refusal fails: every embedded host has the panel (Unsupported would be a regression), and the fixture fits
+            // the runner's work area (NoRoom).
+            if (check is not null)
+                throw new InvalidOperationException($"The side panel fixture's panel would be refused ({check}): {await DescribeRoomAsync(host, window)}.");
+            var opened = await window.OpenSidePanelAsync(new DesktopSidePanelOptions { Edge = DesktopWindowEdge.Right, Width = SidePanelWidth, Path = "#side-panel" });
+            if (opened is not DesktopSidePanelResult.Opened)
+                throw new InvalidOperationException($"The side panel fixture's panel did not open ({opened}): {await DescribeRoomAsync(host, window)}.");
+            Console.WriteLine("ACCESSIBILITY side panel open on the right edge.");
 #pragma warning restore RUNICDESK104
         }
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
@@ -283,9 +267,7 @@ internal static class AccessibilitySmoke
             throw new InvalidOperationException("The probe's press of the guest's button in the region did not reach the guest's page.");
         if (sidePanel)
         {
-            Console.WriteLine(panelOpened
-                ? $"PASS {hostName} accessibility side panel: the probe read the panel beside the page through the platform accessibility API."
-                : $"NOT VERIFIED {hostName} accessibility side panel: the host refuses the panel with Unsupported.");
+            Console.WriteLine($"PASS {hostName} accessibility side panel: the probe read the panel beside the page through the platform accessibility API.");
             return 0;
         }
         if (region)
