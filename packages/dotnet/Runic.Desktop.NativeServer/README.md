@@ -128,7 +128,7 @@ linker optimise the server together with the application's own Rust code
 
 ```toml
 [dependencies]
-runic-server = { git = "https://github.com/Runic-Artifex/runic-sdk", tag = "v0.17.1" }
+runic-server = { git = "https://github.com/Runic-Artifex/runic-sdk", tag = "v0.18.0" }
 ```
 
 Its static library crate names it, because Rust links no dependency that the
