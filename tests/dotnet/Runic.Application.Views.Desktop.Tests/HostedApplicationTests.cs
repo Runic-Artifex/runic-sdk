@@ -76,23 +76,31 @@ internal sealed class HostedApplicationTests
     [Test, NotInParallel(Order = 50)]
     public async Task AGuestWindowWithACloseDrainClosesTheHostsWindowAfterItsWorkDrained()
     {
-        await using var fixture = await HostFixture.StartAsync();
-        await fixture.RequireHostableAsync();
-        var opened = fixture.Next(opened: true);
-        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("drain"));
-        var window = await opened.WaitScaledAsync(Timeout);
-        var native = fixture.Factory.Hosts.Single();
-        var requested = Stopwatch.StartNew();
+        File.Delete(HostedGuestProgram.DrainReleasePath);
+        try
+        {
+            await using var fixture = await HostFixture.StartAsync();
+            await fixture.RequireHostableAsync();
+            var opened = fixture.Next(opened: true);
+            var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("drain"));
+            var window = await opened.WaitScaledAsync(Timeout);
+            var native = fixture.Factory.Hosts.Single();
 
-        Check(await window.RequestCloseAsync(), "The guest refused the close.");
-        await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(400)));
-        Check(window.IsOpen && native.IsOpen, "The host's window closed before the guest's Window had drained.");
-        native.UserClose();
-        await window.Closed.WaitScaledAsync(Timeout);
-        Check(requested.Elapsed >= HostedGuestProgram.DrainWorkTime - TimeSpan.FromMilliseconds(500),
-            $"The host's window closed after {requested.Elapsed}, before the guest's work could have drained.");
-        Check(!native.IsOpen, "The host's window did not close after window-closed.");
-        Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its Window drained.");
+            // The guest's work runs until this test releases it, so the window must still be open however slow the runner.
+            Check(await window.RequestCloseAsync(), "The guest refused the close.");
+            await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(400)));
+            Check(window.IsOpen && native.IsOpen && !window.Closed.IsCompleted,
+                "The host's window closed before the guest's Window had drained.");
+            native.UserClose();
+            await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(200)));
+            Check(window.IsOpen && native.IsOpen, "A second close ended the guest's drain.");
+
+            await File.WriteAllTextAsync(HostedGuestProgram.DrainReleasePath, "release");
+            await window.Closed.WaitScaledAsync(Timeout);
+            Check(!native.IsOpen, "The host's window did not close after window-closed.");
+            Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its Window drained.");
+        }
+        finally { File.Delete(HostedGuestProgram.DrainReleasePath); }
     }
 
     [Test, NotInParallel(Order = 51)]

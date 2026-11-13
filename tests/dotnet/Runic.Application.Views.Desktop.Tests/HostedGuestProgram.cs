@@ -13,8 +13,10 @@ using Runic.Platform;
 // pages are not loaded, since the host's windows are headless. Each mode is one behaviour of the guest application.
 internal static class HostedGuestProgram
 {
-    // How long the drain mode's durable work runs.
-    internal static readonly TimeSpan DrainWorkTime = TimeSpan.FromSeconds(2);
+    // The drain mode's durable work ends when the test creates this file (next to the suite, the guest's working
+    // directory), or after DrainWorkLimit.
+    internal static string DrainReleasePath => Path.Combine(AppContext.BaseDirectory, "hosted-drain.release");
+    internal static readonly TimeSpan DrainWorkLimit = TimeSpan.FromSeconds(60);
 
     internal const string Argument = "--hosted-guest";
     internal const string PuppetArgument = "--puppet-guest";
@@ -543,7 +545,7 @@ internal sealed class HostedDropModel : IRunicFileDropTarget, System.ComponentMo
     }
 }
 
-// sdk#900: a Window whose close drains durable work that runs DrainWorkTime from the start of its close. The work is
+// sdk#900: a Window whose close drains durable work that ends when the test releases it (DrainReleasePath). The work is
 // accepted in the constructor, before the host sees the window, so a close that comes at once still waits for it.
 internal sealed class HostedDrainWindow : RunicWindow<HostedDrainModel>;
 
@@ -554,8 +556,8 @@ internal sealed class HostedDrainModel : System.ComponentModel.INotifyPropertyCh
         _ = window.DrainOnClose(Work);
         _ = Work.RunAsync(async () =>
         {
-            while (window.Window is not { IsClosing: true }) await Task.Delay(20);
-            await Task.Delay(HostedGuestProgram.DrainWorkTime);
+            var limit = DateTime.UtcNow + HostedGuestProgram.DrainWorkLimit;
+            while (!File.Exists(HostedGuestProgram.DrainReleasePath) && DateTime.UtcNow < limit) await Task.Delay(20);
         });
     }
 

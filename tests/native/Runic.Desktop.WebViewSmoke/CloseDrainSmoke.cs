@@ -25,8 +25,19 @@ internal static partial class CloseDrainSmoke
 
     private static async Task<int> RunAsync(DesktopHost host, bool gtk4)
     {
-        await RunUserCloseAsync(host, gtk4);
-        return await RunShutdownAsync(host);
+        try
+        {
+            Console.WriteLine("Close drain: phase 1, the native close.");
+            await RunUserCloseAsync(host, gtk4);
+            Console.WriteLine("Close drain: phase 2, the shutdown.");
+            return await RunShutdownAsync(host);
+        }
+        catch (Exception error)
+        {
+            // Written to standard output too: on Windows a failure must not vanish into a console of the smoke's own.
+            Console.WriteLine($"FAIL close drain: {error}");
+            throw;
+        }
     }
 
     private static async Task RunUserCloseAsync(DesktopHost host, bool gtk4)
@@ -72,14 +83,17 @@ internal static partial class CloseDrainSmoke
         });
         await surface.ExecuteJavaScriptAsync("return document.readyState;", Deadline);
 
-        var signal = SendTerminationSignal();
+        Console.WriteLine("Close drain: sending a termination signal.");
+        var (signal, unavailable) = SendTerminationSignal();
         if (signal is null)
         {
-            // Without a console of its own the Windows smoke cannot send itself Ctrl+C; the unit tests cover the order.
-            drain.Release();
-            Console.WriteLine("SKIP close drain shutdown: no console for Ctrl+C on this runner.");
-            return 0;
+            // The console signal itself is unverified on this runner: the shutdown starts through the entry point the
+            // signal handler calls (ShutdownSignals → DesktopHost.RequestShutdownForSignal).
+            Console.WriteLine($"Close drain: Ctrl+C cannot be sent here ({unavailable}); requesting the shutdown as the signal handler does.");
+            signal = "the signal handler's shutdown request";
+            Require(host.RequestShutdownForSignal("SIGINT", static () => { }), "the shutdown request to start a shutdown");
         }
+        Console.WriteLine($"Close drain: {signal} sent; waiting for the drain.");
         var reason = await drain.Started.Task.WaitAsync(Deadline);
         Require(reason == DesktopCloseReason.Shutdown, $"{signal} to start a shutdown drain, not {reason}");
         Require(host.ShutdownStarting.IsCancellationRequested, "ShutdownStarting to be cancelled before the drain");
@@ -87,6 +101,7 @@ internal static partial class CloseDrainSmoke
         RequireVisible(window, $"while {signal} drains it");
         Require(!host.ShutdownRequested.IsCancellationRequested, "ShutdownRequested to wait for the drain");
 
+        Console.WriteLine("Close drain: the window stays open while the shutdown drains; releasing the work.");
         drain.Release();
         await window.WaitForCloseAsync().AsTask().WaitAsync(Deadline);
         await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitAsync(Deadline);
@@ -126,20 +141,26 @@ internal static partial class CloseDrainSmoke
         await window.InvokeNativeAsync(gtk4 ? static handle => Gtk4WindowClose(handle) : static handle => Gtk3WindowClose(handle));
     }
 
-    // SIGTERM on Linux and macOS; on Windows Ctrl+C in a console of the smoke's own, which reaches no other process.
-    private static string? SendTerminationSignal()
+    // SIGTERM on Linux and macOS; on Windows Ctrl+C in a console of the smoke's own, which reaches no other process, such
+    // as the shell that runs the smoke. AllocConsole replaces the standard handles, so the job's pipes are put back.
+    private static (string? Signal, string? Unavailable) SendTerminationSignal()
     {
         if (!OperatingSystem.IsWindows())
         {
             if (Kill(Environment.ProcessId, 15) != 0) throw new InvalidOperationException("The smoke could not send SIGTERM to itself.");
-            return "SIGTERM";
+            return ("SIGTERM", null);
         }
+        const int StdInput = -10, StdOutput = -11, StdError = -12;
+        var handles = new[] { StdInput, StdOutput, StdError }.Select(static kind => (kind, GetStdHandle(kind))).ToArray();
         _ = FreeConsole();
-        if (AllocConsole() == 0) return null;
+        var allocated = AllocConsole() != 0;
+        var allocError = Marshal.GetLastPInvokeError();
+        foreach (var (kind, handle) in handles) _ = SetStdHandle(kind, handle);
+        if (!allocated) return (null, $"AllocConsole failed with Win32 error {allocError}");
         // A process started in a new process group ignores Ctrl+C until it says otherwise.
         _ = SetConsoleCtrlHandler(0, 0);
-        if (GenerateConsoleCtrlEvent(0, 0) == 0) throw new InvalidOperationException("Ctrl+C could not be generated.");
-        return "Ctrl+C";
+        if (GenerateConsoleCtrlEvent(0, 0) == 0) return (null, $"GenerateConsoleCtrlEvent failed with Win32 error {Marshal.GetLastPInvokeError()}");
+        return ("Ctrl+C", null);
     }
 
     private sealed class Drain
@@ -164,16 +185,22 @@ internal static partial class CloseDrainSmoke
     [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
     private static partial int PostMessage(nint window, uint message, nuint wParam, nint lParam);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial int FreeConsole();
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial int AllocConsole();
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint GetStdHandle(int kind);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial int SetStdHandle(int kind, nint handle);
 
     [LibraryImport("kernel32.dll")]
     private static partial int SetConsoleCtrlHandler(nint handler, int add);
 
-    [LibraryImport("kernel32.dll")]
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     private static partial int GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
 
     [LibraryImport("libc", EntryPoint = "kill")]
