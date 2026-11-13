@@ -41,7 +41,9 @@ public partial class ViewModelBridge
     // adds a duplicate key is found at once.
     private readonly Dictionary<BridgeCollectionDescriptor, BridgeCollectionKeyBaseline> _collectionKeys = [];
     private readonly List<BridgeCollectionChange> _pendingCollectionChanges = [];
-    private readonly Dictionary<BridgeCollectionDescriptor, Dictionary<object, int>> _collectionIndexes = [];
+    // The row-to-index map of each frame-publishing collection, for the instance it was built from: a row's own change
+    // finds its index without a scan of the rows. A collection change drops it.
+    private readonly Dictionary<BridgeCollectionDescriptor, (object Rows, Dictionary<object, int> Indexes)> _collectionIndexes = [];
     // Append-only text fields and text members: the value of each as last published.
     private readonly Dictionary<PropertyDescriptor, string?> _textBaselines = [];
     // Text members: the revision of the last publication that changed each, so a set's splice can name the published
@@ -768,15 +770,17 @@ public partial class ViewModelBridge
                 foreach (var descriptor in _incrementalCollections)
                 {
                     if (descriptor.Get(_vm) is not System.Collections.IList rows) continue;
-                    if (!_collectionIndexes.TryGetValue(descriptor, out var indexes))
+                    // A getter that returns another instance, whether or not a notification said so, has another index.
+                    if (!_collectionIndexes.TryGetValue(descriptor, out var map) || !ReferenceEquals(map.Rows, rows))
                     {
-                        indexes = new(ReferenceEqualityComparer.Instance);
+                        var built = new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
                         Costs.IndexRebuilds++;
                         Costs.IndexRebuildRows += rows.Count;
                         for (var index = 0; index < rows.Count; index++)
-                            if (rows[index] is { } row) indexes[row] = index;
-                        _collectionIndexes[descriptor] = indexes;
+                            if (rows[index] is { } row) built[row] = index;
+                        _collectionIndexes[descriptor] = map = (rows, built);
                     }
+                    var indexes = map.Indexes;
                     if (!indexes.TryGetValue(item, out var at) || at >= rows.Count || !ReferenceEquals(rows[at], item)) continue;
                     handled = true;
                     if (_baselines is null || _collectionSets.Contains(descriptor) || ReplacedUnnoticed(descriptor, rows)) continue;

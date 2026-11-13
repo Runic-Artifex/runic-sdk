@@ -184,6 +184,53 @@ internal sealed class NotificationCostTests
             $"The state differs from the model: {published.GetRawText()}");
     }
 
+    // #909: a row's own change is a replace at the row's index after a notification of another member, in the same unit
+    // or an earlier one, after a collection change moved it, after its collection was replaced under another member's
+    // notification, and after a notification of every member.
+    [Test]
+    public async Task ARowEditFindsItsRowAfterAnyNotificationAsync()
+    {
+        var model = new RowIndexViewModel();
+        using var transport = new InMemoryBridgeTransport();
+        using var bridge = new RowIndexBridge(transport, model, Route);
+        await SettleAsync(transport);
+
+        await RequireRowChangeAsync(transport, () => model.Rows[2].Label = "edited", "rows", "replace", 2);
+        model.Selected = 1;
+        using (await NextAsync(transport)) { }
+        await RequireRowChangeAsync(transport, () => model.Rows[1].Label = "after a scalar", "rows", "replace", 1);
+        using (BridgeSnapshotBatch.Begin(model))
+        {
+            model.Rows[0].Label = "before a scalar";
+            model.Selected = 2;
+            model.Rows[2].Label = "after a scalar in the unit";
+        }
+        using (var unit = await NextAsync(transport))
+            Require(Changes(unit).Where(change => change.GetProperty("field").GetString() == "rows")
+                    .Select(change => (change.GetProperty("kind").GetString(), change.GetProperty("index").GetInt32())).SequenceEqual([("replace", 0), ("replace", 2)]),
+                $"Expected replaces of rows 0 and 2: {unit.RootElement.GetRawText()}");
+        model.Rows.Insert(0, new("z", "inserted"));
+        using (await NextAsync(transport)) { }
+        await RequireRowChangeAsync(transport, () => model.Rows[3].Label = "moved", "rows", "replace", 3);
+        model.ReplaceRows([new("p", "one"), new("q", "two")], nameof(model.Selected));
+        using (var replaced = await NextAsync(transport))
+            Require(SetOf(replaced, "rows") is { } set && Keys(set).SequenceEqual(["p", "q"]),
+                $"The replaced rows were not set: {replaced.RootElement.GetRawText()}");
+        await RequireRowChangeAsync(transport, () => model.Rows[1].Label = "in the new rows", "rows", "replace", 1);
+        await RequireRowChangeAsync(transport, () =>
+        {
+            model.Notify(null);
+            model.Rows[0].Label = "after every member";
+        }, "rows", "replace", 0);
+
+        // The page's state equals the model's.
+        using var state = transport.SnapshotState(Route);
+        var rows = state.RootElement.GetProperty("state").GetProperty("rows");
+        Require(rows.EnumerateArray().Select(row => (row.GetProperty("key").GetString(), row.GetProperty("label").GetString()))
+                .SequenceEqual(model.Rows.Select(row => ((string?)row.Key, (string?)row.Label))),
+            $"The state differs from the model: {rows.GetRawText()}");
+    }
+
     // A change of a keyed collection is published as one change of that kind at that index.
     private static async Task RequireRowChangeAsync(InMemoryBridgeTransport transport, Action change, string field, string kind, int index)
     {

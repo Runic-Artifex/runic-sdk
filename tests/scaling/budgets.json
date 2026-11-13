@@ -134,22 +134,20 @@
       "issue": "sdk#910"
     },
     "bridge/row-edit-with-scalar/index-rebuild-rows[toolkit]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [256, 1024],
-      "limit": 16384,
-      "measured": [4096, 16384],
-      "target": "O(1)",
-      "known": "O(rows) per row edit after a named notification: RefreshMember clears _collectionIndexes, so TryPublishItem rebuilds the row index (B2)",
-      "issue": "sdk#909"
+      "limit": 0,
+      "measured": [0, 0],
+      "issue": "sdk#909",
+      "note": "after the first row edit built the row index, a named notification of another member keeps it, also across units (B2)"
     },
     "bridge/row-edit-with-scalar/index-rebuild-rows[reactive]": {
-      "class": "O(n)",
+      "class": "O(1)",
       "sizes": [256, 1024],
-      "limit": 16384,
-      "measured": [4096, 16384],
-      "target": "O(1)",
-      "known": "O(rows) per row edit after a named notification: RefreshMember clears _collectionIndexes, so TryPublishItem rebuilds the row index (B2)",
-      "issue": "sdk#909"
+      "limit": 0,
+      "measured": [0, 0],
+      "issue": "sdk#909",
+      "note": "after the first row edit built the row index, a named notification of another member keeps it, also across units (B2)"
     },
     "bridge/row-edit/frame-bytes": {
       "class": "O(1)",
