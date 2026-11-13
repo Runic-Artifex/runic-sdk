@@ -1661,6 +1661,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         if (webView != 0)
         {
+            // Out of the closed window's content view first, so the page's view, and with it its document and its
+            // Bridge connection, ends with this release rather than whenever AppKit lets the window go.
+            Api.SendVoid(webView, "stopLoading");
+            Api.SendVoid(webView, "removeFromSuperview");
             Api.SendVoid(webView, "release");
         }
         if (window != 0)

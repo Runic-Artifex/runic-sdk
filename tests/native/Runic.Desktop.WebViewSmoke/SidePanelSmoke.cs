@@ -259,7 +259,11 @@ internal static partial class SidePanelSmoke
         await window.CloseAsync();
         Require(await reason.Task.WaitAsync(Deadline) == DesktopSidePanelCloseReason.WindowClosed, "WindowClosed when the window closes");
         Require(!panel.IsOpen && window.SidePanel is null, "no panel after the window closed");
-        await WaitForAsync(() => surface.ConnectionCount == 0, "both pages to disconnect");
+        try { await WaitForAsync(() => surface.ConnectionCount == 0, "both pages to disconnect"); }
+        catch (TimeoutException error)
+        {
+            throw new TimeoutException($"{error.Message} Still connected: {surface.DescribeConnectedSlots()}.", error);
+        }
         Console.WriteLine("Side panel: closing the window closed the panel (WindowClosed).");
     }
 
