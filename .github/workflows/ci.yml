@@ -328,8 +328,19 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: bun tests/scaling/report.mjs --require-all ${BASE:+--base "$BASE"}
+      # The NativeAOT size budgets (tests/scaling/README.md, "NativeAOT size", D064.5: linux-x64 gates): three linux-x64
+      # NativeAOT publishes of a fixture with 0, 1 and 9 bridged ViewModels, about 20 s each with warm packages. The
+      # application group has already restored the ILCompiler packages for its own NativeAOT fixture. The job summary
+      # gets the budgets and the cost per ViewModel.
+      - name: Measure the NativeAOT size budgets
+        id: aot-size
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && contains(fromJSON(needs.plan.outputs.managed), 'application') }}
+        timeout-minutes: 12
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: bun tests/scaling/aot-size/measure.mjs ${BASE:+--base "$BASE"}
       - name: Retain the scaling results
-        if: ${{ always() && steps.scaling.outcome != 'skipped' }}
+        if: ${{ always() && (steps.scaling.outcome != 'skipped' || steps.aot-size.outcome != 'skipped') }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1243,8 +1254,10 @@ jobs:
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds
       # #864 P2: the WebView2 side panel (DesktopWindow.OpenSidePanelAsync): both edges, the exact bounds back on close, the
       # page never resized, its left edge in place in every DWM frame but at most one (a GDI row per DwmFlush), Tab
-      # between the page and the panel, a maximized window keeping the panel, the refusals and the minimum width. macOS
-      # refuses with Unsupported until P3.
+      # between the page and the panel, a maximized window keeping the panel, the refusals and the minimum width. #864 P3,
+      # macOS (WKWebView): the same, with the page's place on the screen checked around each setFrame:display: instead of
+      # a frame capture, Tab posted to the application's queue, the accessibility order of the views, and closing the
+      # panel of a zoomed window.
       - name: Open, move, resize and close a side panel on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5

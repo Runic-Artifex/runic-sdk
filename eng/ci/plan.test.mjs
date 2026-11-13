@@ -281,8 +281,9 @@ test('component dependencies cover every project reference and workspace npm dep
 
 // Item transforms and paths built from these properties name restored packages,
 // generated output, pack staging or an external checkout (DynamicData fork,
-// CsWebUi), not another component's source.
-const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|RunicPackagingProbeExtraFiles\w*|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*|_?RunicPrivileged\w*|_?RunicDesktopNativeServer\w*|_?RunicNativeServer\w*)\))/;
+// CsWebUi), not another component's source. AotSizeModelsDirectory is the scaling suite's generated NativeAOT
+// fixture models under artifacts/ (tests/scaling/aot-size).
+const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|AotSizeModelsDirectory|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|RunicPackagingProbeExtraFiles\w*|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*|_?RunicPrivileged\w*|_?RunicDesktopNativeServer\w*|_?RunicNativeServer\w*)\))/;
 
 test('component dependencies cover MSBuild imports and cross-directory items', () => {
   for (const file of tracked('*.csproj', '*.props', '*.targets')) {

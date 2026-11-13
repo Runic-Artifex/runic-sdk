@@ -47,8 +47,9 @@ public sealed partial class DesktopWindow
     /// width and the page takes the rest.
     /// </para>
     /// <para>
-    /// The panel opens only in a window of its own that the built-in Windows host (WebView2) shows; every other
-    /// presentation refuses with <see cref="DesktopSidePanelRefusal.Unsupported"/>, as do macOS and Linux for now. The
+    /// The panel opens only in a window of its own that a built-in host shows: WebView2 on Windows and WKWebView on
+    /// macOS. Every other presentation refuses with <see cref="DesktopSidePanelRefusal.Unsupported"/>, as Linux does
+    /// for now. The
     /// other refusals are the window's state (<see cref="CheckSidePanel"/>), a panel that is open already, and a page that
     /// did not load. Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
     /// </para>

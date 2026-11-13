@@ -10,6 +10,7 @@ keys, row indexes rebuilt, pending changes visited, data graph walks, frame byte
 - Budgets: [`budgets.json`](budgets.json), one entry per metric.
 - Scripts: [`run.mjs`](run.mjs) (`bun run scaling`), [`report.mjs`](report.mjs) (the report and the job summary) and
   [`generate-fixtures.mjs`](generate-fixtures.mjs) (the sized ViewModels in `SizedFixtures.cs`).
+- NativeAOT size: [`aot-size/`](aot-size), the `aot/` entries of `budgets.json` (see [NativeAOT size](#nativeaot-size)).
 
 ## How a case is checked
 
@@ -60,6 +61,40 @@ The suite is part of the `application` managed group, so the `managed` job runs 
 After the group, `report.mjs --require-all --base <base>` writes the job summary: every metric, the known costs, the
 improvements and every budget that differs from the base branch's `budgets.json`. The results are kept as the
 `scaling-results-<sha>` artifact for 30 days.
+
+## NativeAOT size
+
+Each bridged ViewModel adds NativeAOT executable size, because the Bridge runtime is generic over the ViewModel
+([#901](https://github.com/Runic-Artifex/runic-sdk/issues/901)). The `aot/` budgets gate it on linux-x64 (D064.5):
+
+```sh
+bun tests/scaling/aot-size/measure.mjs            # publish, measure, compare with budgets.json, print the report
+bun tests/scaling/aot-size/measure.mjs --update   # record the results and rewrite the aot/ entries' measured and limit
+bun tests/scaling/aot-size/measure.mjs --keep     # also keep the executables, mstat files and records.tsv
+```
+
+- [`aot-size/fixture.mjs`](aot-size/fixture.mjs) writes K CommunityToolkit ViewModels of one shape: four settable
+  members (checked properties), a read-only number and text member, a keyed collection, an observed sub-object, a view
+  request and two commands. A shell of the same shape is the one window the application opens, so the Bridge runtime
+  and the host window cost the same at every K.
+- `measure.mjs` publishes [`aot-size/Fixture`](aot-size/Fixture) with `PublishAot=true` and
+  `-p:IlcGenerateMstatFile=true` for linux-x64 with K = 0 and at each size of the entries (1 and 9), about 20 s each
+  with warm packages. [`aot-size/MstatReader`](aot-size/MstatReader) prints ILC's mstat records
+  (`kind<TAB>size<TAB>name`).
+- `aot/bridge/executable-bytes` (O(n)): the executable bytes above the build with K = 0. Section alignment makes it
+  not exactly linear, so it has a `slack` and a 2 % `margin`.
+- `aot/bridge/view-model-types` (O(n)): the mstat type records that name a fixture ViewModel.
+- `aot/bridge/generated-generic-types` (O(n)): #901's metric, the type records that instantiate a
+  `Runic.Application.Views.Generated` type over a fixture ViewModel, also inside another generic.
+- `aot/executable-bytes` (class `total`, no growth check): the whole executable at the larger size, with a 2 % margin,
+  so that a fixed-size regression is also caught.
+
+The report adds a table per ViewModel: each measurement at K = 0, 1 and 9 and its slope from 1 to 9. The counts are
+deterministic for a given ILCompiler; a .NET SDK update can change them and then needs `--update`. The first three
+entries are known costs: the non-generic Bridge runtime (A1-b) lowers them.
+
+In CI the managed job's application group runs `measure.mjs` after the scaling report, and the results are part of
+the `scaling-results-<sha>` artifact.
 
 ## Counters in the product
 

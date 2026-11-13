@@ -1,6 +1,8 @@
 // The scaling suite's report (tests/scaling/README.md): turns artifacts/scaling/results.json into a Markdown table of
 // every metric, with the known costs, the improvements and every budget that changed against a base revision.
 //   bun tests/scaling/report.mjs [--base <revision>] [--require-all]
+// It reports the managed suite. The NativeAOT size budgets (aot/…) are a suite of their own, which
+// aot-size/measure.mjs measures and reports with the same functions.
 // --base compares tests/scaling/budgets.json with that revision's (fetched when the checkout does not have it).
 // --require-all fails when a budget entry has no result, so that an entry without a case is found. The report goes to
 // standard output and, in GitHub Actions, to the job summary.
@@ -13,13 +15,18 @@ const root = resolve(fileURLToPath(import.meta.url), "../../..");
 export const budgetsPath = "tests/scaling/budgets.json";
 export const resultsPath = resolve(root, "artifacts/scaling/results.json");
 
+// The suites that share budgets.json: the NativeAOT size budgets are named aot/…, the managed suite's are the others.
+export const suites = ["managed", "aot-size"];
+export const suiteOf = name => name.startsWith("aot/") ? "aot-size" : "managed";
+export const suiteCases = (cases, suite) => Object.fromEntries(Object.entries(cases).filter(([name]) => suiteOf(name) === suite));
+
 const cell = value => value === undefined || value === null ? "" : String(value).replaceAll("|", "\\|");
 const pair = values => Array.isArray(values) ? values.join(" → ") : cell(values);
 
-// The entries whose limit, class, sizes or margin differ between two budget files, and the added and removed ones.
+// The entries whose limit, class, sizes, margin or slack differ between two budget files, and the added and removed ones.
 export function budgetChanges(base, current) {
   const changes = [];
-  const fields = ["class", "sizes", "limit", "margin"];
+  const fields = ["class", "sizes", "limit", "margin", "slack"];
   for (const [name, entry] of Object.entries(current)) {
     const before = base[name];
     if (!before) {
@@ -35,9 +42,9 @@ export function budgetChanges(base, current) {
 }
 
 // The report's Markdown and the problems that fail it.
-export function report({ results, budgets, base = null, requireAll = false }) {
+export function report({ results, budgets, base = null, requireAll = false, title = "Scaling budgets" }) {
   const problems = [];
-  const lines = ["## Scaling budgets", ""];
+  const lines = [`## ${title}`, ""];
   lines.push("| Metric | Class | Sizes | Measured | Limit | Status |", "| --- | --- | --- | --- | --- | --- |");
   for (const [name, result] of Object.entries(results)) {
     const status = result.status === "ok" ? "ok" : result.status === "improved" ? `improved: ${result.message}` : `**${result.status}**: ${result.message ?? ""}`;
@@ -101,8 +108,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const base = revision ? baseBudgets(revision) ?? {} : null;
   const { markdown, problems } = report({
     results: JSON.parse(readFileSync(resultsPath, "utf8")).cases,
-    budgets: JSON.parse(readFileSync(resolve(root, budgetsPath), "utf8")).cases,
-    base,
+    budgets: suiteCases(JSON.parse(readFileSync(resolve(root, budgetsPath), "utf8")).cases, "managed"),
+    base: base && suiteCases(base, "managed"),
     requireAll: args.includes("--require-all"),
   });
   console.log(markdown);

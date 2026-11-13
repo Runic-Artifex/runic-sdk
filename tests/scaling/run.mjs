@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { report, resultsPath } from "./report.mjs";
+import { report, resultsPath, suiteCases } from "./report.mjs";
 
 const root = resolve(fileURLToPath(import.meta.url), "../../..");
 const suite = resolve(root, "tests/dotnet/Runic.Application.Scaling.Tests");
@@ -57,7 +57,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log(`Updated ${budgetsFile} from ${Object.keys(results).length} results.`);
   }
   const { markdown, problems } = report({
-    results, budgets: JSON.parse(readFileSync(budgetsFile, "utf8")).cases, requireAll: extra.length === 0,
+    results, budgets: suiteCases(JSON.parse(readFileSync(budgetsFile, "utf8")).cases, "managed"), requireAll: extra.length === 0,
   });
   console.log(markdown);
   for (const problem of problems) console.error(problem);
