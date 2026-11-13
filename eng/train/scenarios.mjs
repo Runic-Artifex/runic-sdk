@@ -70,7 +70,8 @@ function dotnet(context, scenario, check, args, options = {}) {
 }
 
 // Lines of framework text in English in output that should be German.
-const ENGLISH = /^(Run "|Usage:|Unknown option|Options:|Arguments:|Commands:|Error:|A required argument)|for more information/;
+// Command Line 0.12 rewords usage errors ("The option '--x' is not recognized."); both wordings count.
+const ENGLISH = /^(Run "|Usage:|Unknown option|The option '|The command '|Options:|Arguments:|Commands:|Error:|A required argument)|for more information|is not recognized/;
 function checkGerman(context, scenario, output) {
   for (const line of new Set(output.split(/\r?\n/).map(item => item.trim()).filter(item => ENGLISH.test(item))))
     context.fail(scenario, 'german', `English framework text in German output: ${line}`);
@@ -136,7 +137,8 @@ internal static class Commands
   if (greet.code !== 0 || greet.stdout.trim() !== 'Hallo Ada') context.fail('S1', 'run', `greet Ada printed '${greet.output.trim()}' with exit code ${greet.code}; expected 'Hallo Ada' and 0`);
   const unknown = context.run('S1', app, ['greet', '--unknown'], german);
   if (unknown.code !== 2) context.fail('S1', 'exit-code', `greet --unknown exited ${unknown.code}; expected 2 (usage error)`);
-  if (!/Unbekannte Option/.test(unknown.output)) context.fail('S1', 'german', `greet --unknown has no German diagnostic: ${unknown.output.trim().split('\n')[0]}`);
+  // Translations 0.9.1's adapter said "Unbekannte Option"; Command Line 0.12's catalog says "Die Option '--x' ist unbekannt."
+  if (!/Unbekannte Option|Die Option '[^']*' ist unbekannt/.test(unknown.output)) context.fail('S1', 'german', `greet --unknown has no German diagnostic: ${unknown.output.trim().split('\n')[0]}`);
   checkGerman(context, 'S1', unknown.output);
   const help = context.run('S1', app, ['greet', '--help'], german);
   if (help.code !== 0) context.fail('S1', 'exit-code', `greet --help exited ${help.code}; expected 0`);
