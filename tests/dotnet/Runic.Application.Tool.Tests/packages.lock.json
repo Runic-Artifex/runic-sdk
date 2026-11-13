@@ -93,8 +93,8 @@
         "type": "Project",
         "dependencies": {
           "Runic.Assets": "[0.17.1, )",
-          "Runic.CommandLine": "[0.11.0, )",
-          "Runic.CommandLine.Spectre": "[0.11.0, )"
+          "Runic.CommandLine": "[0.12.0, )",
+          "Runic.CommandLine.Spectre": "[0.12.0, )"
         }
       },
       "runic.assets": {
@@ -102,17 +102,17 @@
       },
       "Runic.CommandLine": {
         "type": "CentralTransitive",
-        "requested": "[0.11.0, )",
-        "resolved": "0.11.0",
-        "contentHash": "CZz1FZh5NC9CwsqyGsBZN5KMlgpynopvU3xMPPqxqUhQ0JalD4H84Ry0qBj560S/KUJco/dGFYFgwU0aIXaCAQ=="
+        "requested": "[0.12.0, )",
+        "resolved": "0.12.0",
+        "contentHash": "xHHJPPeP6Fe2EfC0iqO13Fm5kOxOBEQUESASEY3lrequQWMe4PVIPaKlfNMjpHsClxdayjq1Go1vi8IdqsD/Pg=="
       },
       "Runic.CommandLine.Spectre": {
         "type": "CentralTransitive",
-        "requested": "[0.11.0, )",
-        "resolved": "0.11.0",
-        "contentHash": "HSB94iNH73iBR+e46OuL/UthxrlrTklwd46nkQo3Z1jRIyC5fBdNOYabHwQV5RJaNOmHezQzMS2lzQi8GkL7fw==",
+        "requested": "[0.12.0, )",
+        "resolved": "0.12.0",
+        "contentHash": "G0qQLf9gzG9rJOoyIn9kJJCTLA/WKsRGdxv9qjLBeISyY0lwS9WvPobGU9/z2bhvG7GgE54yCvsbiY8sQjy52Q==",
         "dependencies": {
-          "Runic.CommandLine": "[0.11.0]",
+          "Runic.CommandLine": "[0.12.0]",
           "Spectre.Console": "[0.57.2, 0.58.0)"
         }
       },
