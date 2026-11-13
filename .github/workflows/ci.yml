@@ -840,6 +840,9 @@ jobs:
       # Generated Views clients import the workspace runtime from its build output; the hosted components example's
       # widget builds its component with the workspace's Vite plugin.
       - name: Build the shared Views runtime and the Vite plugin
+        # bash on every runner: in PowerShell (Windows' default) "(cd …)" is no subshell, so the second cd would
+        # resolve against the first.
+        shell: bash
         run: |
           (cd packages/web/views && bun run --bun build)
           (cd packages/web/vite-plugin-runic && bun run --bun build)
