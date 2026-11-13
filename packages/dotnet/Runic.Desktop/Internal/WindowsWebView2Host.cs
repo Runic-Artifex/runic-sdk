@@ -76,13 +76,45 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private WindowsWebView2Controller? _controller;
     private WebUiEmbeddedHostOptions? _options;
 
-    // The DWMWA_USE_IMMERSIVE_DARK_MODE value for DesktopWindowOptions.ColorScheme, or null to leave the title bar alone.
+    // The DWMWA_USE_IMMERSIVE_DARK_MODE value that Light and Dark force, or null for NoPreference, which follows the system.
     internal static int? ImmersiveDarkMode(Runic.Platform.DesktopColorScheme colorScheme) => colorScheme switch
     {
         Runic.Platform.DesktopColorScheme.Dark => 1,
         Runic.Platform.DesktopColorScheme.Light => 0,
         _ => null,
     };
+
+    // The title bar's DWMWA_USE_IMMERSIVE_DARK_MODE for a scheme (#888): Light and Dark force theirs; NoPreference takes
+    // the system's app mode (AppsUseLightTheme), and under a contrast theme Windows' default, so the title bar keeps the
+    // theme's own colours. The page's prefers-color-scheme is the WebView2 profile's and does not depend on this.
+    internal static int TitleBarDarkMode(Runic.Platform.DesktopColorScheme colorScheme, bool systemDark, bool highContrast) =>
+        ImmersiveDarkMode(colorScheme) ?? (systemDark && !highContrast ? 1 : 0);
+
+    // SPI_SETHIGHCONTRAST, the wParam of WM_SETTINGCHANGE when a contrast theme turns on or off.
+    internal const nuint SpiSetHighContrast = 0x0043;
+
+    // Whether a WM_SETTINGCHANGE (its wParam and the area that lParam names) can change the title bar of a window that
+    // follows the system: the app mode ("ImmersiveColorSet") or a contrast theme.
+    internal static bool ChangesSystemTitleBar(nuint wParam, string? area) =>
+        wParam == SpiSetHighContrast || string.Equals(area, "ImmersiveColorSet", StringComparison.Ordinal);
+
+    // Window thread only: the title bar for the scheme, from the system's settings as they are now. repaint redraws an
+    // existing frame, which shows the new mode only after a frame change.
+    private void ApplyTitleBar(Runic.Platform.DesktopColorScheme colorScheme, bool repaint)
+    {
+        if (_window == 0) return;
+        SetImmersiveDarkMode(_window, TitleBarDarkMode(colorScheme, SystemUsesDarkTheme(), WebUiSystemTheme.IsHighContrast));
+        if (repaint) Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
+    // WM_SETTINGCHANGE: a window without a forced scheme takes the system's new app mode. Its page follows the system
+    // through the WebView2 profile already.
+    private void OnSettingChange(nuint wParam, nint lParam)
+    {
+        if (_options is not { ColorScheme: Runic.Platform.DesktopColorScheme.NoPreference }) return;
+        if (!ChangesSystemTitleBar(wParam, lParam == 0 ? null : Marshal.PtrToStringUni(lParam))) return;
+        ApplyTitleBar(Runic.Platform.DesktopColorScheme.NoPreference, repaint: true);
+    }
     private Thread? _thread;
     private GCHandle _selfHandle;
     private nint _window;
@@ -158,15 +190,13 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     // DesktopWindow.SetColorSchemeAsync: the profile's preferred color scheme, which the page's prefers-color-scheme
     // follows, and the title bar's dark mode. NoPreference returns the profile to Auto, which follows the system, and
-    // gives the title bar the system's apps theme as it is now: a later change of the theme does not reach it.
+    // the title bar to the system's app mode, which it follows from then on (OnSettingChange).
     public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            SetImmersiveDarkMode(_window, ImmersiveDarkMode(colorScheme) ?? (SystemUsesDarkTheme() ? 1 : 0));
-            // The non-client area repaints with the new mode only after a frame change.
-            Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
-            _controller?.SetPreferredColorScheme(colorScheme, followSystem: true);
             if (_options is { } options) _options = options with { ColorScheme = colorScheme };
+            ApplyTitleBar(colorScheme, repaint: true);
+            _controller?.SetPreferredColorScheme(colorScheme, followSystem: true);
         }, cancellationToken);
     // DesktopWindow.SetLayoutDirectionAsync: mirrors the frame, caption buttons and system menu as the window's creation
     // does (WS_EX_LAYOUTRTL; the WebView2 child keeps its own layout), and lays the menu bar out again.
@@ -758,11 +788,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             // The shortcut labels' modifier names, from this thread's keyboard layout, before the first menu bar.
             ShortcutModifierNames.ReadKeyboardLayout();
             ShortcutModifierNames.Changed += OnModifierNamesChanged;
-            // DesktopWindowOptions.ColorScheme: a dark or light title bar. Without it a Win32 title bar stays light.
-            if (WindowsWebView2Host.ImmersiveDarkMode(options.ColorScheme) is { } darkMode)
-            {
-                SetImmersiveDarkMode(_window, darkMode);
-            }
+            // DesktopWindowOptions.ColorScheme: a dark or light title bar, and without it the system's app mode (#888).
+            ApplyTitleBar(options.ColorScheme, repaint: false);
 
             width = ScaleForWindow(logicalWidth, _window);
             height = ScaleForWindow(logicalHeight, _window);
@@ -1021,6 +1048,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     suggested.Right - suggested.Left, suggested.Bottom - suggested.Top,
                     SwpNoZOrder | SwpNoActivate);
                 return 0;
+            case WmSettingChange:
+                host?.OnSettingChange(wParam, lParam);
+                return Native.DefWindowProc(window, message, wParam, lParam);
             case WmDisplayChange:
                 WindowsMonitors.Invalidate();
                 host?.UpdateState();

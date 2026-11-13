@@ -551,7 +551,10 @@ await surface.OpenWindowAsync(new DesktopWindowOptions { ColorScheme = DesktopCo
 WebView2 keeps the preferred color scheme per profile, so windows that share a
 `ProfilePath` show the scheme of the last one opened with a scheme; each
 window has its own profile unless `ProfilePath` is set. Without the option, a
-Windows title bar stays light as before. Where the option has no effect,
+Windows title bar follows the system's app mode (Settings > Personalization >
+Colors, "Choose your app mode"), also when the user switches it while the
+window is open, and a contrast theme keeps its own title bar colours; the page's
+`prefers-color-scheme` follows the system as before. Where the option has no effect,
 `DesktopHost.Validate` warns with `color-scheme-unsupported` and the window
 follows the system. A [custom window host](#custom-window-hosts) receives the
 option in `DesktopWindowHostOptions.ColorScheme`, and reports
@@ -579,7 +582,7 @@ and changes only once the window applied it: a switch that fails leaves it.
 
 | Window host | What a switch sets |
 | --- | --- |
-| Windows, WebView2 | The profile's preferred color scheme and the title bar's dark mode (`DWMWA_USE_IMMERSIVE_DARK_MODE`, attribute 19 on Windows 10 1809 to 1909). `NoPreference` returns the profile to the system's scheme and gives the title bar the system's apps theme as it is at the time of the call; a later change of the system's theme does not reach the title bar |
+| Windows, WebView2 | The profile's preferred color scheme and the title bar's dark mode (`DWMWA_USE_IMMERSIVE_DARK_MODE`, attribute 19 on Windows 10 1809 to 1909). `NoPreference` returns the profile to the system's scheme and the title bar to the system's app mode, which it follows from then on (`WM_SETTINGCHANGE` "ImmersiveColorSet") |
 | macOS, WKWebView | `NSWindow.appearance`; the application's scheme also sets `NSApp.appearance`, which menus, alerts and panels follow |
 | Linux, GTK 3 | GTK's `gtk-application-prefer-dark-theme` setting, which WebKitGTK's `prefers-color-scheme` follows |
 | Linux, GTK 4 | GTK's `gtk-interface-color-scheme` (GTK 4.20 or later) and `gtk-application-prefer-dark-theme`; the libadwaita style manager instead when the application has initialized libadwaita |
