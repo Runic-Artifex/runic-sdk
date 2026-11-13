@@ -1367,6 +1367,13 @@ replace it:
 | `await acceptedWork.DrainAsync(cancellationToken)` inside `CanCloseAsync` or `ConfirmCloseAsync`, which closed the scope's admission before a later guard could keep the Window open | `IRunicWindowContext.DrainOnClose(acceptedWork)` and `RunicWindowOptions.CloseDrain = RunicCloseDrain.UntilDrained`; a guard that must wait without committing uses `acceptedWork.WaitForAcceptedAsync(cancellationToken)` |
 | A long `CloseAsync` timeout that also kept read-only queries running | `[RunicOperationClose(RunicOperationClose.Cancel)]` on read-only operations and `[RunicOperationClose(RunicOperationClose.Durable)]` on durable ones |
 
+| Draining inside `DesktopWindowOptions.ConfirmCloseAsync` of a window the application opened itself | `DesktopWindowOptions.CloseDrainAsync = (_, ct) => new(work.WaitForAcceptedAsync(ct))`, which runs only after every guard agreed |
+| Draining before `window.CloseAsync(timeout)` in the application's own Ctrl+C or SIGTERM handling | `RunicDesktopHostOptions.CloseDrain` (or `CloseDrainAsync`): the shutdown drains the windows visibly for up to `DesktopHostOptions.ShutdownDrainTimeout` |
+
+Runic Desktop's shutdown changes only for an application with a window that drains: `DesktopHost.ShutdownRequested`
+is then cancelled after the drains rather than at the start of the shutdown. Work that observes `ShutdownRequested`
+and should stop early, such as polling, observes the new `DesktopHost.ShutdownStarting` instead. The
+`ConfirmQuitAsync` callback's token and the quit's close guards follow `ShutdownStarting`.
+
 The API is experimental (`RUNICDESK105`, [experimental APIs](experimental.md#RUNICDESK105)): suppress the ID in the
-project that uses it. `WaitForAcceptedAsync` is stable. In 0.19 the visible drain runs in `RunicWindowTestHost`; Runic
-Desktop's windows follow in a later part of sdk#900.
+project that uses it. `WaitForAcceptedAsync` is stable.

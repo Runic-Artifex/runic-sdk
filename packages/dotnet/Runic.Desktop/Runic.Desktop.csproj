@@ -12,6 +12,8 @@
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <!-- The experimental side panel (sdk#864) is DesktopWindow's and its hosts'. -->
     <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <!-- The experimental close drain (sdk#900) is DesktopWindow's and DesktopHost's. -->
+    <NoWarn>$(NoWarn);RUNICDESK105</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
     <!-- Packs buildTransitive/$(PackageId).props with the diagnostics help links (eng/build/release-links.targets). -->

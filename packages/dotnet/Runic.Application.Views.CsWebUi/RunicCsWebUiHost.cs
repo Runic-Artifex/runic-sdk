@@ -297,6 +297,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             // A browser window closes without asking the application, and WebUI reports the close only after it
             // happened: a guarded Window opens unguarded, with a warning (D018.10).
             if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("CS-WebUI");
+            // ...and cannot stay open while the Window drains (sdk#900); the Window's scope still waits for durable work.
+#pragma warning disable RUNICDESK105 // The experimental close drain.
+            if (opening.Options.CloseDrain is { KeepsWindow: true }) opening.ReportCloseDrainUnavailable("CS-WebUI");
+#pragma warning restore RUNICDESK105
             opening.ReportOwnerIgnored("CS-WebUI cannot own windows");
 
             var options = opening.Options;

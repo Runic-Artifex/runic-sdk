@@ -12,7 +12,7 @@
          so Program.cs chooses between that fixture and the test application. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- The experimental side panel (sdk#864, docs/experimental.md). -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <NoWarn>$(NoWarn);RUNICDESK104;RUNICDESK105</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

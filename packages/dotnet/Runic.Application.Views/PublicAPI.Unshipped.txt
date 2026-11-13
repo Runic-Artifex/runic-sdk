@@ -302,3 +302,4 @@ Runic.Application.Views.AcceptedWorkScope.WaitForAcceptedAsync(System.Threading.
 [RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.operator !=(Runic.Application.Views.RunicCloseDrain? left, Runic.Application.Views.RunicCloseDrain? right) -> bool
 [RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.operator ==(Runic.Application.Views.RunicCloseDrain? left, Runic.Application.Views.RunicCloseDrain? right) -> bool
 [RUNICDESK105]static Runic.Application.Views.RunicCloseDrain.UntilDrained.get -> Runic.Application.Views.RunicCloseDrain!
+[RUNICDESK105]Runic.Application.Views.RunicWindowOpening<TViewModel>.ReportCloseDrainUnavailable(string! presentation) -> void

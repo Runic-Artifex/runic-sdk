@@ -83,6 +83,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task _browserOutputClosed = Task.CompletedTask;
     private IWebUiEmbeddedHost? _embeddedHost;
     private Func<CancellationToken, ValueTask<bool>>? _confirmClose;
+    // DesktopWindowOptions.CloseDrainAsync of the next window (sdk#900): the surface's.
+    private IWindowCloseDrain? _closeDrain;
     private WindowCloseController? _closeController;
 
     private TaskCompletionSource _browserConnected = NewCompletionSource();
@@ -2122,12 +2124,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal void SetCloseConfirmation(Func<CancellationToken, ValueTask<bool>>? confirm) => _confirmClose = confirm;
 
-    internal async Task<bool> RequestCloseAsync(CancellationToken cancellationToken)
+    internal void SetCloseDrain(IWindowCloseDrain? drain) => _closeDrain = drain;
+
+    internal async Task<bool> RequestCloseAsync(DesktopCloseReason reason, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_closeController is { } controller)
         {
-            return await controller.RequestAsync(cancellationToken).ConfigureAwait(false);
+            return await controller.RequestAsync(reason, cancellationToken).ConfigureAwait(false);
         }
         await ClosePresentationAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
         return true;
@@ -2135,12 +2139,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private void ConfigureCloseConfirmation(IWebUiEmbeddedHost host)
     {
-        if (_confirmClose is null) return;
+        if (_confirmClose is null && _closeDrain is null) return;
         if (!host.SupportsCloseConfirmation)
         {
+            // A drain alone runs once the window is gone (DesktopSurface reports close-drain-unavailable).
+            if (_confirmClose is null) return;
             throw new NotSupportedException("The embedded host does not support close confirmation.");
         }
-        _closeController = new WindowCloseController(_confirmClose, () => host.CloseAsync(), _runtimeOptions?.Logger);
+        _closeController = new WindowCloseController(_confirmClose, () => host.CloseAsync(), _runtimeOptions?.Logger, _closeDrain);
     }
 
     private void StopCloseConfirmation() => Interlocked.Exchange(ref _closeController, null)?.Dispose();

@@ -1003,6 +1003,12 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # sdk#900 W4b: after gtk_window_close the GTK 3 window stays open while its close drain runs and a second close is
+      # ignored; SIGTERM cancels ShutdownStarting, drains the window visibly, then ShutdownRequested.
+      - name: Drain a GTK 3 window after its close and SIGTERM
+        if: runner.os == 'Linux'
+        timeout-minutes: 4
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --close-drain
       # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one configure
       # request (the page resizes once); the visible frame (_NET_FRAME_EXTENTS) places a second window flush; a run-time
       # minimum size reaches WM_NORMAL_HINTS and holds against another client's resize; a maximized window refuses.
@@ -1120,6 +1126,8 @@ jobs:
           done
           # B6: an owned GTK 4 window is transient for its owner, and a window-modal one makes the owner insensitive.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --owner
+          # sdk#900 W4b: a GTK 4 window stays open while it drains after gtk_window_close and SIGTERM.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --close-drain
           # S11 window mode (runic-host/1): guest pages in GTK 4 windows of the host, each guest in an ephemeral network session.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll gtk4
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
@@ -1345,6 +1353,13 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # sdk#900 W4b: after WM_CLOSE (Windows) or performClose: (macOS) the window stays open while its close drain runs and
+      # a second close is ignored; SIGTERM (macOS) or Ctrl+C in a console of its own (Windows) drains it visibly before
+      # ShutdownRequested.
+      - name: Drain a window after its close and a termination signal on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --close-drain
       # S11 window mode (runic-host/1): the smoke hosts itself as guests, started in a job object (Windows) or a process
       # group of their own (macOS). Each guest page loads in a native window of the host with the session's own data store
       # (a WebView2 InPrivate profile, a non-persistent WKWebsiteDataStore), without the host's or another guest's

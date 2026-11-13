@@ -413,8 +413,12 @@ sealed class GuardFixture : IAsyncDisposable
     public RecordingLoggerFactory Logs { get; }
     public ConfirmingWindowHost Native { get; }
 
+    // The Runic Desktop host the Window opened on, for its shutdown.
+    public DesktopHost Desktop => _host;
+
     public static async Task<GuardFixture> OpenAsync<TWindow>(Func<CancellationToken, ValueTask<bool>>? confirmClose = null,
-        bool confirmsClose = true, NavigationAdmission admission = NavigationAdmission.Supersede) where TWindow : RunicWindow<GuardedShellModel>, new()
+        bool confirmsClose = true, NavigationAdmission admission = NavigationAdmission.Supersede, RunicCloseDrain? closeDrain = null,
+        TimeSpan? shutdownDrainTimeout = null) where TWindow : RunicWindow<GuardedShellModel>, new()
     {
         var script = new CloseGuardScript { Admission = admission };
         var logs = new RecordingLoggerFactory();
@@ -434,6 +438,7 @@ sealed class GuardFixture : IAsyncDisposable
             WindowHostFactory = factory,
             WaitForConnection = false,
             DiagnosticSink = diagnostics.Enqueue,
+            ShutdownDrainTimeout = shutdownDrainTimeout ?? TimeSpan.FromSeconds(30),
         });
         try
         {
@@ -441,6 +446,7 @@ sealed class GuardFixture : IAsyncDisposable
             {
                 SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
                 WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, ConfirmCloseAsync = confirmClose },
+                CloseDrain = closeDrain,
             });
             var window = await windows.OpenWindowAsync<TWindow>();
             return new GuardFixture(provider, host, window, window.Host, window.ViewModel, script, logs, factory.Hosts.Single(), diagnostics);
@@ -535,6 +541,9 @@ sealed class GuardedShellModel : INotifyPropertyChanged
     }
 
     public NavigationRegion<GuardedPage> Main { get; }
+
+    // The Window's context, for its close drain (DrainOnClose).
+    public IRunicWindowContext Context => _window;
 
     // What a Quit command does: the Bridge starts it in a turn of the Window's model context.
     public async Task<bool> QuitAsync() => await await _context.InvokeAsync(() => _window.RequestCloseAsync().AsTask());

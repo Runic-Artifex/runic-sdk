@@ -71,6 +71,30 @@ internal sealed class HostedApplicationTests
         Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its Window closed.");
     }
 
+    // sdk#900 W4b: a guest Window with a close drain drains after allow: true and pushes window-closed after it; the host
+    // keeps its window open until then, with no protocol change, and a second user close meanwhile changes nothing.
+    [Test, NotInParallel(Order = 50)]
+    public async Task AGuestWindowWithACloseDrainClosesTheHostsWindowAfterItsWorkDrained()
+    {
+        await using var fixture = await HostFixture.StartAsync();
+        await fixture.RequireHostableAsync();
+        var opened = fixture.Next(opened: true);
+        var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("drain"));
+        var window = await opened.WaitScaledAsync(Timeout);
+        var native = fixture.Factory.Hosts.Single();
+        var requested = Stopwatch.StartNew();
+
+        Check(await window.RequestCloseAsync(), "The guest refused the close.");
+        await Task.Delay(TestTimeouts.Scale(TimeSpan.FromMilliseconds(400)));
+        Check(window.IsOpen && native.IsOpen, "The host's window closed before the guest's Window had drained.");
+        native.UserClose();
+        await window.Closed.WaitScaledAsync(Timeout);
+        Check(requested.Elapsed >= HostedGuestProgram.DrainWorkTime - TimeSpan.FromMilliseconds(500),
+            $"The host's window closed after {requested.Elapsed}, before the guest's work could have drained.");
+        Check(!native.IsOpen, "The host's window did not close after window-closed.");
+        Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its Window drained.");
+    }
+
     [Test, NotInParallel(Order = 51)]
     public async Task AUserCloseAsksTheGuestsGuardAndAForcedCloseSkipsIt()
     {

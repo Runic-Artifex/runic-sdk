@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
     <!-- The experimental side panel (sdk#864) of the side panel smoke. -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <NoWarn>$(NoWarn);RUNICDESK104;RUNICDESK105</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

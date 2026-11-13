@@ -8,7 +8,7 @@
     <!-- AppearanceSmoke.cs leaves out its Windows and macOS checks. -->
     <DefineConstants>$(DefineConstants);RUNIC_GTK4_SMOKE</DefineConstants>
     <!-- The experimental side panel (sdk#864) of the side panel smoke. -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <NoWarn>$(NoWarn);RUNICDESK104;RUNICDESK105</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Runic.Desktop.WebViewSmoke/AccessibilitySmoke.cs" Link="AccessibilitySmoke.cs" />
@@ -20,6 +20,7 @@
     <Compile Include="../Runic.Desktop.WebViewSmoke/WebContentSmoke.cs" Link="WebContentSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WindowBoundsSmoke.cs" Link="WindowBoundsSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/WindowPlacementSmoke.cs" Link="WindowPlacementSmoke.cs" />
+    <Compile Include="../Runic.Desktop.WebViewSmoke/CloseDrainSmoke.cs" Link="CloseDrainSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.cs" Link="SidePanelSmoke.cs" />
     <Compile Include="../Runic.Desktop.WebViewSmoke/SidePanelSmoke.MacOS.cs" Link="SidePanelSmoke.MacOS.cs" />
     <!-- The clipboard format checks encode and decode small PNG files with the platform tests' helper. -->

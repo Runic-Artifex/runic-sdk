@@ -88,8 +88,9 @@ public sealed class RunicOperationCloseAttribute(RunicOperationClose close) : At
 /// without a drain: they are waited for, and at a timeout asked to cancel.
 /// </para>
 /// <para>
-/// 0.19 drains in <c>RunicWindowTestHost</c>; Runic Desktop's embedded windows follow in the next part of sdk#900.
-/// Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.
+/// Runic Desktop's embedded windows, a hosted application's Windows and <c>RunicWindowTestHost</c> drain; a host's
+/// shutdown drains them too, within <c>DesktopHostOptions.ShutdownDrainTimeout</c>. Experimental (<c>RUNICDESK105</c>);
+/// see <c>docs/experimental.md</c>.
 /// </para>
 /// </remarks>
 [Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]

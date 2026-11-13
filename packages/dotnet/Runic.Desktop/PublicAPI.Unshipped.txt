@@ -92,3 +92,25 @@ Runic.Desktop.IDesktopWindowShowStateHost
 Runic.Desktop.IDesktopWindowShowStateHost.MaximizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopWindowShowStateHost.RestoreAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopWindowShowStateHost.SetPlacementAsync(Runic.Desktop.DesktopWindowPlacement! placement, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.<Clone>$() -> Runic.Desktop.DesktopCloseDrainContext!
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.Deconstruct(out Runic.Desktop.DesktopCloseReason Reason) -> void
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.DesktopCloseDrainContext(Runic.Desktop.DesktopCloseReason Reason) -> void
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.Equals(Runic.Desktop.DesktopCloseDrainContext? other) -> bool
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.Reason.get -> Runic.Desktop.DesktopCloseReason
+[RUNICDESK105]Runic.Desktop.DesktopCloseDrainContext.Reason.init -> void
+[RUNICDESK105]Runic.Desktop.DesktopCloseReason
+[RUNICDESK105]Runic.Desktop.DesktopCloseReason.Quit = 2 -> Runic.Desktop.DesktopCloseReason
+[RUNICDESK105]Runic.Desktop.DesktopCloseReason.Request = 1 -> Runic.Desktop.DesktopCloseReason
+[RUNICDESK105]Runic.Desktop.DesktopCloseReason.Shutdown = 3 -> Runic.Desktop.DesktopCloseReason
+[RUNICDESK105]Runic.Desktop.DesktopCloseReason.User = 0 -> Runic.Desktop.DesktopCloseReason
+[RUNICDESK105]Runic.Desktop.DesktopHost.ShutdownStarting.get -> System.Threading.CancellationToken
+[RUNICDESK105]Runic.Desktop.DesktopHostOptions.ShutdownDrainTimeout.get -> System.TimeSpan
+[RUNICDESK105]Runic.Desktop.DesktopHostOptions.ShutdownDrainTimeout.init -> void
+[RUNICDESK105]Runic.Desktop.DesktopWindowOptions.CloseDrainAsync.get -> System.Func<Runic.Desktop.DesktopCloseDrainContext!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>?
+[RUNICDESK105]Runic.Desktop.DesktopWindowOptions.CloseDrainAsync.init -> void
+[RUNICDESK105]override Runic.Desktop.DesktopCloseDrainContext.Equals(object? obj) -> bool
+[RUNICDESK105]override Runic.Desktop.DesktopCloseDrainContext.GetHashCode() -> int
+[RUNICDESK105]override Runic.Desktop.DesktopCloseDrainContext.ToString() -> string!
+[RUNICDESK105]static Runic.Desktop.DesktopCloseDrainContext.operator !=(Runic.Desktop.DesktopCloseDrainContext? left, Runic.Desktop.DesktopCloseDrainContext? right) -> bool
+[RUNICDESK105]static Runic.Desktop.DesktopCloseDrainContext.operator ==(Runic.Desktop.DesktopCloseDrainContext? left, Runic.Desktop.DesktopCloseDrainContext? right) -> bool

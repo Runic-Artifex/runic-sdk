@@ -12,6 +12,7 @@ internal static class DesktopWindowOptionValidation
     internal const string GrantWithheldCode = "permission-grant-withheld";
     internal const string BrowserUnsupportedCode = "browser-unsupported";
     internal const string CloseConfirmationUnavailableCode = "close-confirmation-unavailable";
+    internal const string CloseDrainUnavailableCode = "close-drain-unavailable";
     internal const string ColorSchemeUnsupportedCode = "color-scheme-unsupported";
 
     private const string Prefix = "DesktopWindowOptions.";
@@ -296,6 +297,19 @@ internal static class DesktopWindowOptionValidation
     {
         Severity = isFallback ? DesktopDiagnosticSeverity.Warning : DesktopDiagnosticSeverity.Error,
         Option = Prefix + nameof(DesktopWindowOptions.ConfirmCloseAsync),
+    };
+
+    // DesktopWindowOptions.CloseDrainAsync on a presentation that cannot refuse a close (sdk#900): the window closes at once
+    // and the drain runs after it, so DesktopWindow.WaitForCloseAsync still returns after the work.
+    internal static DesktopDiagnostic CloseDrainUnavailable(string presentation) => new(
+        DesktopErrorCategory.CapabilityDenied,
+        CloseDrainUnavailableCode,
+        $"{presentation} cannot keep its window open while it drains: the window closes at once, and CloseDrainAsync runs after it.",
+        Retryable: false,
+        Remediation: "Require the embedded window (DesktopPresentationPolicy.RequestedOnly, no browser in Fallbacks) to keep the window visible while it drains.")
+    {
+        Severity = DesktopDiagnosticSeverity.Warning,
+        Option = Prefix + nameof(DesktopWindowOptions.CloseDrainAsync),
     };
 
     // DesktopWindowOptions.ColorScheme on a presentation that cannot set a window's light or dark appearance: the window

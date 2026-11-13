@@ -420,6 +420,10 @@ internal sealed class HostedGuest : IAsyncDisposable
 
     private async Task ExitIfStillRunningAsync()
     {
+        // The Windows that drain (RunicCloseDrain, sdk#900) first: the shutdown ends their drains at ShutdownDrainTimeout.
+        try { await Task.Delay(Timeout.Infinite, _desktop.DrainsEnded).WaitAsync(_ended.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!_ended.IsCancellationRequested) { }
+        catch (OperationCanceledException) { return; }
         try { await Task.Delay(_options.HostGoneExitTimeout, _ended.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) { return; }
         DesktopLog.HostedExit(_logger, (int)_options.HostGoneExitTimeout.TotalSeconds);

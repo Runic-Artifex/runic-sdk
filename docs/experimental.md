@@ -99,13 +99,17 @@ one minor (D064.20), because it changes how windows close and how the
 application shuts down. `AcceptedWorkScope.WaitForAcceptedAsync`, which it
 builds on, is stable. Start with
 [closing after the Window's work has drained](../packages/dotnet/Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained).
-In 0.19 the visible drain runs in `RunicWindowTestHost`; Runic Desktop's windows
-and its shutdown follow in a later part of sdk#900.
+Runic Desktop's embedded windows, a hosted application's Windows and
+`RunicWindowTestHost` drain, and so does Runic Desktop's shutdown (Ctrl+C,
+SIGTERM, quit), within `DesktopHostOptions.ShutdownDrainTimeout`.
 
 | Package | API |
 | --- | --- |
 | `Runic.Application.Views` | `RunicCloseDrain`, `RunicWindowOptions.CloseDrain`, `RunicOperationClose`, `RunicOperationCloseAttribute`, `IRunicWindowContext.DrainOnClose`, `RunicWindowCloseResult.RemainingDurableWork` and, for generated code, `CommandDescriptor.Close` |
 | `Runic.Application.Testing` | `RunicWindowTestHostOptions.CloseDrain` and `RunicTestWindow.IsDraining` |
+| `Runic.Application.Views` (hosts) | `RunicWindowOpening<TViewModel>.ReportCloseDrainUnavailable` |
+| `Runic.Application.Views.Desktop` | `RunicDesktopHostOptions.CloseDrain` |
+| `Runic.Desktop` | `DesktopWindowOptions.CloseDrainAsync`, `DesktopCloseDrainContext`, `DesktopCloseReason`, `DesktopHostOptions.ShutdownDrainTimeout` and `DesktopHost.ShutdownStarting` |
 
 A generated Bridge that emits a declared `RunicOperationClose` suppresses the ID
 in its own file; suppress it in the project that declares the attribute.

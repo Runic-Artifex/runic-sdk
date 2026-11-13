@@ -100,6 +100,11 @@ try
         // B6. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = OwnerSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--close-drain", StringComparer.Ordinal))
+    {
+        // sdk#900 W4b. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
+        Environment.ExitCode = CloseDrainSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--window-placement", StringComparer.Ordinal))
     {
         // sdk#897 W1a. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.

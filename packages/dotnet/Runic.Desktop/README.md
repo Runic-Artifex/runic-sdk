@@ -43,6 +43,9 @@ signal, ends the process at once; the copies that `dotnet run`, `dotnet watch`
 and `dotnet runic dev` forward do not. Set
 `DesktopHostOptions.HandleShutdownSignals` to `false` to handle these signals
 yourself. Hosts created with `DesktopHost.StartAsync` do not handle signals.
+Windows with a close drain stay open while their work drains first, for up to
+`DesktopHostOptions.ShutdownDrainTimeout`; see
+[closing after the work has drained](#closing-after-the-work-has-drained).
 
 On macOS, `DesktopEventLoop.Run` (both overloads) creates the shared
 `NSApplication` and sets Runic's application delegate before the application's
@@ -502,6 +505,81 @@ window.Closed += (_, _) => settings.Save(window.State?.Placement);
 await window.HideAsync();             // to the status icon
 await window.ShowAsync();             // back
 ```
+
+### Closing after the work has drained
+
+`DesktopWindowOptions.CloseDrainAsync` keeps a window open and visible after its
+close was approved until the application's work has ended, then closes it
+without asking again. Runic Windows set it from `RunicWindowOptions.CloseDrain`
+(`RunicDesktopHostOptions.CloseDrain` for every Window); a window the application
+opens itself, such as one with `DesktopPlatformServices.AttachWindowServices`,
+sets it directly:
+
+```csharp
+var work = new AcceptedWorkScope();   // the application's durable work
+var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    ConfirmCloseAsync = AskToSaveAsync,                                // decides first
+    CloseDrainAsync = (_, ct) => new(work.WaitForAcceptedAsync(ct)),   // then the window waits
+});
+```
+
+- **When it runs.** Once per window, on the thread pool, after the user's close
+  (close button, Alt+F4, Command and W, the window manager),
+  `DesktopWindow.RequestCloseAsync` or a quit's close guard was approved, and when
+  the host shuts down. `DesktopCloseDrainContext.Reason` says which
+  (`DesktopCloseReason`, an open set). A refusal of `ConfirmCloseAsync` changes
+  nothing, so admission of new work stays open until every guard agreed.
+- **While it runs.** The window moves, minimizes and repaints, and its page stays
+  connected. A second close by the user is ignored, and `RequestCloseAsync`
+  returns `true` at once: it returns at the decision, not when the window has
+  gone, so a "Save and close" command that is itself the work being waited for
+  does not wait for itself. `WaitForCloseAsync` waits for the window.
+- **How it ends.** The window closes when the callback returns, also when it
+  throws (event 3022, `WindowCloseDrainFailed`). Its token is cancelled by a
+  forced close (`CloseAsync`, disposal), the shutdown's limit and the host's
+  disposal; the window then closes even if the callback has not returned.
+  Cancellation ends the visible phase only: Runic cancels none of the
+  application's work.
+- **Every built-in host.** WebView2, WKWebView, WebKitGTK with GTK 3 and
+  `Runic.Desktop.Gtk4` refuse the native close through their close confirmation
+  (`DesktopWindowCapabilities.CloseConfirmation`), which the drain uses even
+  without `ConfirmCloseAsync`. An installed browser, or a custom window host
+  without close confirmation, cannot keep its window open: the window closes at
+  once, the drain runs after it, `WaitForCloseAsync` returns after the drain, and
+  the window opens with the warning `close-drain-unavailable`.
+
+A **shutdown** (the first Ctrl+C, SIGTERM, SIGHUP or closed Windows console, and
+a quit once `ConfirmQuitAsync` and the windows' guards agreed) drains in this
+order:
+
+1. `DesktopHost.ShutdownStarting` is cancelled.
+2. The windows without a drain close at once. The others drain in parallel
+   (`DesktopCloseReason.Shutdown`); a window already draining after a user close
+   keeps its drain. Event 3023, `DesktopShutdownDraining`, is logged.
+3. When every drain returned, or `DesktopHostOptions.ShutdownDrainTimeout` (30
+   seconds by default, `Timeout.InfiniteTimeSpan` for no limit) has passed,
+   `DesktopHost.ShutdownRequested` is cancelled and the remaining windows close.
+4. The application returns as usual; work it still owns ends on its own.
+
+Without a window that drains, both tokens are cancelled together, as before 0.19.
+Observe `ShutdownStarting` for work that should stop early, such as polling, and
+leave the work the drains wait for alone. The operating system can end the
+process earlier, whatever the application does, so keep its limits above
+`ShutdownDrainTimeout`:
+
+| Limit | Default |
+| --- | --- |
+| Closing a Windows console | about 5 seconds |
+| Windows logoff and shutdown | Windows' own |
+| systemd `TimeoutStopSec` | 90 seconds |
+| `docker stop` (`-t`) | 10 seconds |
+| A hosting application's `RunicHostedApplicationOptions.StopTimeout` | 10 seconds |
+| A second Ctrl+C | at once |
+
+On macOS a quit's reply to the system waits until the application returned, so a
+logout waits for the drain too. The close drain is experimental
+(`RUNICDESK105`).
 
 `DesktopWindow.NativeHandle` is the top-level window of an open embedded window,
 or zero for an installed browser or a closed window. Its kind depends on the
@@ -2172,7 +2250,9 @@ describes the window owner the platform services receive for a window.
 ## Experimental APIs
 
 The [side panel](#side-panel) is experimental under `RUNICDESK104` (0.19, for one
-minor), and `DesktopWindowHostOptions.EphemeralDataStore` with
+minor), the [close drain](#closing-after-the-work-has-drained) (`CloseDrainAsync`,
+`DesktopCloseDrainContext`, `DesktopCloseReason`, `ShutdownDrainTimeout` and
+`ShutdownStarting`) under `RUNICDESK105` (0.19, for one minor), and `DesktopWindowHostOptions.EphemeralDataStore` with
 `IDesktopEphemeralDataStoreWindowHost` under `RUNICDESK103` (hosted windows). The
 former IDs are retired, so remove their suppressions: `RUNICDESK100` (custom window hosts) graduated in 0.10.0, and
 `RUNICDESK101` (the low-level presentation transport) was split in 0.10.0:

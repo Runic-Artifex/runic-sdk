@@ -36,6 +36,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
     private Task? _served;
     private Task<RunicWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // RunicCloseDrain (sdk#900): ends the visible phase of a drain early, and completes when it ended.
+    private CancellationTokenSource? _endDrain;
+    private readonly TaskCompletionSource _visibleEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _completion;
     private bool _finalized;
     // Drops reach the root ViewModel one after another; closing cancels them.
@@ -190,10 +193,57 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
         Task<RunicWindowCloseResult> close;
-        lock (_closeGate) close = _close ??= BeginCloseAsync(timeout);
-        _closeStarted.TrySetResult();
+        CancellationTokenSource? drain = null;
+        lock (_closeGate)
+        {
+            if (_close is null) _close = BeginCloseAsync(timeout, draining: false, CancellationToken.None);
+            else drain = _endDrain;
+            close = _close;
+        }
+        // The application's own close during a drain keeps its timeout: the visible window closes then at the latest.
+        if (drain is not null && !_visibleEnded.Task.IsCompleted) EndDrainAfter(drain, timeout);
+        else _closeStarted.TrySetResult();
         return new(close.WaitAsync(cancellationToken));
     }
+
+    private static void EndDrainAfter(CancellationTokenSource drain, TimeSpan timeout)
+    {
+        try
+        {
+            if (timeout == TimeSpan.Zero) drain.Cancel();
+            else if (timeout != Timeout.InfiniteTimeSpan) drain.CancelAfter(timeout);
+        }
+        catch (ObjectDisposedException) { /* The drain ended meanwhile. */ }
+    }
+
+    // RunicCloseDrain on Runic Desktop (sdk#900): the visible phase of a close that was decided, which
+    // DesktopWindowOptions.CloseDrainAsync or a hosted window's close runs. Admission stops, the pages get closing with
+    // draining: true and stay attached, and this returns when the Window's work has ended, timeout passed or endDrain was
+    // cancelled (a forced close, the shutdown's limit, the host's disposal), once the window's own presentation closed. An
+    // earlier close of the application's own joins its visible phase.
+    internal async Task DrainForCloseAsync(TimeSpan timeout, CancellationToken endDrain)
+    {
+        bool started = false;
+        lock (_closeGate)
+        {
+            if (_close is null)
+            {
+                var end = _endDrain = CancellationTokenSource.CreateLinkedTokenSource(endDrain);
+                _close = BeginCloseAsync(timeout, draining: true, end.Token);
+                started = true;
+            }
+        }
+        if (!started)
+        {
+            // The application closed the Window first: its close ends the visible window.
+            await _closeStarted.Task.ConfigureAwait(false);
+            return;
+        }
+        await _visibleEnded.Task.ConfigureAwait(false);
+    }
+
+    // Whether a drain runs, between its decision and the end of its visible phase.
+    internal bool IsDraining => Volatile.Read(ref _endDrain) is not null && !_visibleEnded.Task.IsCompleted;
 
     /// <inheritdoc />
     /// <remarks>
@@ -231,7 +281,10 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
+    // draining: the visible phase of a decided close with a drain (sdk#900). The bridge attachment, appearance and
+    // connection bindings stay attached while the window is visible, so the page receives progress; the drop queue and
+    // the menu commands stop at once, as in every close.
+    private async Task<RunicWindowCloseResult> BeginCloseAsync(TimeSpan timeout, bool draining, CancellationToken endDrain)
     {
         var errors = new List<Exception>();
         Capture(_dropStop.Cancel, errors);
@@ -241,17 +294,27 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             Capture(menu.Dispose, errors);
         }
         if (_presentation is { } dropped) dropped.FilesDropped -= OnFilesDropped;
-        Capture(_connectionBinding.Dispose, errors);
-        if (_attachment is not null) Capture(_attachment.Dispose, errors);
+        if (!draining) DetachPage(errors);
 
         RunicWindowCloseResult result;
-        try { result = await _content.DrainAsync(timeout).ConfigureAwait(false); }
+        try
+        {
+            try { result = await _content.DrainAsync(timeout, draining, endDrain).ConfigureAwait(false); }
+            // The visible phase ended early: from here on a close without a timeout, which asks the remaining
+            // operations to cancel, except durable ones.
+            catch (OperationCanceledException) when (endDrain.IsCancellationRequested)
+            {
+                result = await _content.DrainAsync(TimeSpan.Zero, draining, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
         catch (Exception error)
         {
             errors.Add(error);
+            if (draining) await EndVisiblePhaseAsync(errors).ConfigureAwait(false);
             await FinalizeAsync(errors).ConfigureAwait(false);
             throw new AggregateException(errors);
         }
+        if (draining) await EndVisiblePhaseAsync(errors).ConfigureAwait(false);
 
         if (result.Drained)
         {
@@ -271,7 +334,28 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             await CaptureAsync(() => presentation.CloseAsync(), errors).ConfigureAwait(false);
         Task completion;
         lock (_closeGate) completion = _completion ??= DrainThenFinalizeAsync(errors);
-        return new(false, result.RemainingOperations, completion) { PagesAcknowledged = result.PagesAcknowledged };
+        return new(false, result.RemainingOperations, completion)
+        {
+            PagesAcknowledged = result.PagesAcknowledged,
+            RemainingDurableWork = result.RemainingDurableWork,
+        };
+    }
+
+    private void DetachPage(List<Exception> errors)
+    {
+        Capture(_connectionBinding.Dispose, errors);
+        if (_attachment is not null) Capture(_attachment.Dispose, errors);
+    }
+
+    // The end of a drain's visible phase: the page detaches and the window's presentation closes before the drain
+    // returns, so Runic Desktop's close that follows finds it closed.
+    private async Task EndVisiblePhaseAsync(List<Exception> errors)
+    {
+        DetachPage(errors);
+        if (_presentation is { } presentation)
+            await CaptureAsync(() => presentation.CloseAsync(), errors).ConfigureAwait(false);
+        _closeStarted.TrySetResult();
+        _visibleEnded.TrySetResult();
     }
 
     private async Task DrainThenFinalizeAsync(List<Exception> errors)
