@@ -1156,6 +1156,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken)
         => GetEmbeddedHost().MoveToMonitorAsync(monitorId, cancellationToken);
 
+    internal ValueTask SetBoundsAsync(DesktopWindowBounds bounds, CancellationToken cancellationToken)
+        => GetEmbeddedHost().SetBoundsAsync(bounds, cancellationToken);
+
+    internal ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken)
+        => GetEmbeddedHost().SetMinimumSizeAsync(width, height, cancellationToken);
+
+    // Why a window lacks a capability, for the window-capability-unavailable message.
+    internal string CapabilityRefusal(DesktopWindowCapabilities capability) => Volatile.Read(ref _embeddedHost) switch
+    {
+        null => "An installed browser's window is not under the application's control.",
+        DesktopWindowHostAdapter => "The custom window host does not provide it.",
+        _ when capability.HasFlag(DesktopWindowCapabilities.Move) || capability.HasFlag(DesktopWindowCapabilities.MonitorPlacement) =>
+            "This platform lets no application position its windows (Wayland).",
+        _ => "This platform's window does not provide it.",
+    };
+
     internal ValueTask SetEmbeddedVisibleAsync(bool visible, CancellationToken cancellationToken)
         => GetEmbeddedHost().SetVisibleAsync(visible, cancellationToken);
 

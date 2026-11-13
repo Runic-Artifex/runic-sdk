@@ -99,6 +99,39 @@ internal static unsafe class Gtk4X11Placement
         return true;
     }
 
+    // GTK thread. Moves and resizes the window in one XMoveResizeWindow, so a window manager receives one configure
+    // request and the window is never shown at the new position with its old size: (x, y) as for Move, and the size
+    // of the window's content in logical pixels, to which the X window adds the shadow of GTK's client-side decorations.
+    // GTK takes the new size as it takes a resize by the window manager.
+    internal static bool MoveResize(nint surface, int x, int y, int width, int height)
+    {
+        if (!IsActive || surface == 0 || Functions.Value is not { } api || !api.IsX11Surface(surface)) return false;
+        var display = api.XDisplay(surface);
+        var window = api.Xid(surface);
+        if (display == 0 || window == 0) return false;
+        var shadow = api.AllExtents(display, window, "_GTK_FRAME_EXTENTS\0"u8) ?? default;
+        var scale = Math.Max(1, api.GdkSurfaceGetScaleFactor(surface));
+        api.XMoveResizeWindow(display, window, checked(x * scale - shadow.Left), checked(y * scale - shadow.Top),
+            (uint)checked(width * scale + shadow.Left + shadow.Right), (uint)checked(height * scale + shadow.Top + shadow.Bottom));
+        api.XFlush(display);
+        return true;
+    }
+
+    // GTK thread. The window's visible frame in logical pixels: its top-left corner as GetPosition reports it, and the
+    // size of its content (GtkWindow's width and height) with the window manager's decorations (_NET_FRAME_EXTENTS).
+    // GTK's own client-side decorations are part of the content and their shadow is not counted. Null on Wayland.
+    internal static (int X, int Y, int Width, int Height)? GetVisibleFrame(nint surface, int contentWidth, int contentHeight)
+    {
+        if (GetPosition(surface) is not { } position || Functions.Value is not { } api) return null;
+        var display = api.XDisplay(surface);
+        var window = api.Xid(surface);
+        var decorations = display == 0 || window == 0 ? default : api.AllExtents(display, window, "_NET_FRAME_EXTENTS\0"u8) ?? default;
+        var scale = Math.Max(1, api.GdkSurfaceGetScaleFactor(surface));
+        return (position.X, position.Y,
+            contentWidth + (int)Math.Ceiling((decorations.Left + decorations.Right) / (double)scale),
+            contentHeight + (int)Math.Ceiling((decorations.Top + decorations.Bottom) / (double)scale));
+    }
+
     // GTK thread, before GTK maps the window (gtk_window_present). Opens the window at (x, y) instead of where the window
     // manager would place a new window. GTK 4 sets no position hint, so a window manager applies its own placement
     // policy to a new window unless WM_NORMAL_HINTS has USPosition or PPosition, as GTK 3's gtk_window_move set them; the
@@ -227,6 +260,7 @@ internal static unsafe class Gtk4X11Placement
         private readonly delegate* unmanaged[Cdecl]<nint, byte*, nint, nint, nint, int, nuint> _gSignalConnectData;
         private readonly delegate* unmanaged[Cdecl]<nint, nuint, void> _gSignalHandlerDisconnect;
         private readonly delegate* unmanaged[Cdecl]<nint, nuint, int, int, int> _xMoveWindow;
+        private readonly delegate* unmanaged[Cdecl]<nint, nuint, int, int, uint, uint, int> _xMoveResizeWindow;
         private readonly delegate* unmanaged[Cdecl]<nint, nuint, nuint*, nuint*, nuint**, uint*, int> _xQueryTree;
         private readonly delegate* unmanaged[Cdecl]<nint, nuint, nuint, int, int, int*, int*, nuint*, int> _xTranslateCoordinates;
         private readonly delegate* unmanaged[Cdecl]<nint, byte*, int, nuint> _xInternAtom;
@@ -253,6 +287,7 @@ internal static unsafe class Gtk4X11Placement
             _gSignalConnectData = (delegate* unmanaged[Cdecl]<nint, byte*, nint, nint, nint, int, nuint>)NativeLibrary.GetExport(gobject, "g_signal_connect_data");
             _gSignalHandlerDisconnect = (delegate* unmanaged[Cdecl]<nint, nuint, void>)NativeLibrary.GetExport(gobject, "g_signal_handler_disconnect");
             _xMoveWindow = (delegate* unmanaged[Cdecl]<nint, nuint, int, int, int>)NativeLibrary.GetExport(x11, "XMoveWindow");
+            _xMoveResizeWindow = (delegate* unmanaged[Cdecl]<nint, nuint, int, int, uint, uint, int>)NativeLibrary.GetExport(x11, "XMoveResizeWindow");
             _xQueryTree = (delegate* unmanaged[Cdecl]<nint, nuint, nuint*, nuint*, nuint**, uint*, int>)NativeLibrary.GetExport(x11, "XQueryTree");
             _xTranslateCoordinates = (delegate* unmanaged[Cdecl]<nint, nuint, nuint, int, int, int*, int*, nuint*, int>)NativeLibrary.GetExport(x11, "XTranslateCoordinates");
             _xInternAtom = (delegate* unmanaged[Cdecl]<nint, byte*, int, nuint>)NativeLibrary.GetExport(x11, "XInternAtom");
@@ -308,6 +343,9 @@ internal static unsafe class Gtk4X11Placement
 
         internal void XMoveWindow(nint display, nuint window, int x, int y) => _xMoveWindow(display, window, x, y);
 
+        internal void XMoveResizeWindow(nint display, nuint window, int x, int y, uint width, uint height) =>
+            _xMoveResizeWindow(display, window, x, y, Math.Max(1, width), Math.Max(1, height));
+
         internal void XFlush(nint display) => _xFlush(display);
 
         internal void XSync(nint display) => _xSync(display, 0);
@@ -354,7 +392,11 @@ internal static unsafe class Gtk4X11Placement
         // The left and top widths of a CARDINAL[4] property (left, right, top, bottom), named by a NUL-terminated string,
         // or null when the window has none: _GTK_FRAME_EXTENTS, the shadow GTK's client-side decorations draw inside the
         // X window around the visible frame, or _NET_FRAME_EXTENTS, the frame a window manager draws around it (EWMH).
-        internal (int Left, int Top)? Extents(nint display, nuint window, ReadOnlySpan<byte> name)
+        internal (int Left, int Top)? Extents(nint display, nuint window, ReadOnlySpan<byte> name) =>
+            AllExtents(display, window, name) is { } extents ? (extents.Left, extents.Top) : null;
+
+        // All four widths of such a property.
+        internal (int Left, int Right, int Top, int Bottom)? AllExtents(nint display, nuint window, ReadOnlySpan<byte> name)
         {
             nuint atom;
             fixed (byte* terminated = name) atom = _xInternAtom(display, terminated, 1);
@@ -368,7 +410,7 @@ internal static unsafe class Gtk4X11Placement
             {
                 // Format-32 properties come back as an array of C longs.
                 return data is not null && format == 32 && count == 4
-                    ? ((int)((nint*)data)[0], (int)((nint*)data)[2])
+                    ? ((int)((nint*)data)[0], (int)((nint*)data)[1], (int)((nint*)data)[2], (int)((nint*)data)[3])
                     : null;
             }
             finally

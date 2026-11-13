@@ -153,6 +153,16 @@ and whether the compositor honours the monitor for full screen is its choice.
 header bar and the view, and `Language` WebKitGTK's preferred languages
 (`navigator.language`, `Accept-Language`) for the window's own web context.
 
+The host implements `IDesktopWindowBoundsHost`. `DesktopWindow.SetBoundsAsync`
+sets the default size and, on X11, moves and resizes the X window in one
+`XMoveResizeWindow`, which GTK takes as a resize by the window manager; on
+Wayland it sets the size only and refuses a position with
+`window-position-unavailable`. `DesktopWindowState.VisibleBounds` is the X11
+frame with the window manager's decorations (`_NET_FRAME_EXTENTS`), `IsSnapped`
+GDK's tiled state or, on X11, a frame that fills a half or a quarter of its
+monitor's work area, and `SetMinimumSizeAsync` sets the size request of the web
+view. See [Exact bounds](../Runic.Desktop/README.md#exact-bounds-visible-frame-and-minimum-size).
+
 WebKitGTK's spell checker is on in every window, with enchant dictionaries for
 `DesktopHostOptions.SpellCheckingLanguages`, and the host implements
 `IDesktopSpellCheckingWindowHost` for `DesktopHost.SetSpellCheckingLanguagesAsync`.

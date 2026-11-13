@@ -2039,7 +2039,11 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <param name="height">The new height in pixels.</param>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window has been resized.</returns>
-    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Resize"/>.</remarks>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.Resize"/>. The units are those of <see cref="DesktopWindowState.Width"/>,
+    /// which on Windows round device-independent pixels; to move and resize by an exact amount in one operation, use
+    /// <see cref="SetBoundsAsync"/> with <see cref="DesktopWindowState.Bounds"/>.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
@@ -2056,12 +2060,130 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <param name="y">The new vertical position in pixels; negative values are above the primary screen's origin.</param>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window has been moved.</returns>
-    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Move"/>.</remarks>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.Move"/>. Moving and then resizing shows the window moved but not
+    /// yet resized in between; <see cref="SetBoundsAsync"/> does both in one operation.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) =>
         RequireAndMove(x, y, cancellationToken);
+
+    /// <summary>Moves and resizes the window in one native operation, in units that round-trip exactly.</summary>
+    /// <param name="bounds">
+    /// The new frame in the units of <see cref="DesktopWindowState.Bounds"/>: physical pixels on Windows, points on macOS,
+    /// logical pixels on Linux (see <see cref="DesktopWindowBounds"/>). <see cref="DesktopWindowBounds.X"/> and
+    /// <see cref="DesktopWindowBounds.Y"/> <see langword="null"/> keep the top-left corner where it is.
+    /// <see cref="DesktopWindowBounds.Scale"/> is ignored.
+    /// </param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has been asked to take the bounds; <see cref="StateChanged"/> reports them.</returns>
+    /// <remarks>
+    /// <para>
+    /// Requires <see cref="DesktopWindowCapabilities.Bounds"/>. Unlike <see cref="MoveAsync"/> followed by
+    /// <see cref="ResizeAsync"/>, the window never shows at the new position with the old size: Windows sets both with one
+    /// <c>SetWindowPos</c>, macOS with one <c>setFrame:display:</c>, GTK 3 sends one configure request
+    /// (<c>gtk_window_move</c> and <c>gtk_window_resize</c> in one main-loop turn), and GTK 4 on X11 one
+    /// <c>XMoveResizeWindow</c>. Bounds read from <see cref="DesktopWindowState.Bounds"/> set the same frame again, so a
+    /// window grown with <see cref="DesktopWindowBounds.Expand"/> and shrunk again is exactly as before:
+    /// </para>
+    /// <code>
+    /// var bounds = window.State!.Bounds!;
+    /// await window.SetBoundsAsync(bounds.Expand(DesktopWindowEdge.Left, 372)); // the right edge stays in place
+    /// </code>
+    /// <para>
+    /// The platform still applies the window's minimum size, and a window manager may adjust the frame, as it may for
+    /// <see cref="MoveAsync"/>.
+    /// </para>
+    /// <para>Refusals:</para>
+    /// <list type="bullet">
+    /// <item><description>An installed browser, a custom window host without <see cref="IDesktopWindowBoundsHost"/>, and
+    /// WPF's <c>RunicWebView</c>, whose WPF window the application sizes itself, lack the capability
+    /// (<c>window-capability-unavailable</c>). A serve-only application has no <see cref="DesktopWindow"/>, and a hosted
+    /// application's guest (<c>runic-host/1</c>) only asks its host to move or resize the window; the host application's
+    /// <see cref="DesktopWindow"/> of a hosted window sets bounds as any other.</description></item>
+    /// <item><description>On Wayland, a position fails with <c>window-position-unavailable</c>: pass bounds without
+    /// <see cref="DesktopWindowBounds.X"/> and <see cref="DesktopWindowBounds.Y"/>, which only resize the window.</description></item>
+    /// <item><description>A maximized, full-screen or minimized window fails with <see cref="InvalidOperationException"/>:
+    /// its frame belongs to the desktop until it is restored.</description></item>
+    /// </list>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="bounds"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The width or height is not positive, or only one of <see cref="DesktopWindowBounds.X"/> and
+    /// <see cref="DesktopWindowBounds.Y"/> is set.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">The window is maximized, full-screen or minimized.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">
+    /// The window lacks the required capability (<c>window-capability-unavailable</c>), or cannot be positioned
+    /// (<c>window-position-unavailable</c>).
+    /// </exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetBoundsAsync(DesktopWindowBounds bounds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bounds);
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            throw new ArgumentException($"The bounds need a positive width and height, not {bounds.Width}x{bounds.Height}.", nameof(bounds));
+        }
+        if (bounds.X is null != bounds.Y is null)
+        {
+            throw new ArgumentException("Set both X and Y of the bounds, or neither to keep the window's position.", nameof(bounds));
+        }
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Bounds, () =>
+        {
+            RequireRestored();
+            return _engine.SetBoundsAsync(bounds, cancellationToken);
+        }, cancellationToken);
+    }
+
+    /// <summary>Changes the window's minimum size while it is open.</summary>
+    /// <param name="width">The minimum width, or zero for none.</param>
+    /// <param name="height">The minimum height, or zero for none.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the platform enforces the new minimum.</returns>
+    /// <remarks>
+    /// <para>
+    /// Requires <see cref="DesktopWindowCapabilities.MinimumSize"/>. The values use the units of
+    /// <see cref="DesktopWindowOptions.MinimumWidth"/> and <see cref="DesktopWindowOptions.MinimumHeight"/>, which it
+    /// replaces, and of <see cref="ResizeAsync"/>: device-independent pixels of the outer frame on Windows, the content
+    /// size in points on macOS and in logical pixels on Linux. They stay device-independent, so the minimum keeps its
+    /// size when the window moves to a monitor of another scale.
+    /// </para>
+    /// <para>
+    /// The user cannot make the window smaller from then on: Windows answers <c>WM_GETMINMAXINFO</c> with it, macOS sets
+    /// <c>contentMinSize</c>, and GTK sets the size request of the window's content. A window that is smaller grows to the
+    /// minimum and keeps its top-left corner. A maximized or full-screen window keeps its frame and applies the minimum when
+    /// it is restored.
+    /// </para>
+    /// <para>
+    /// Refusals: an installed browser, a custom window host without <see cref="IDesktopWindowBoundsHost"/> and WPF's
+    /// <c>RunicWebView</c> lack the capability (<c>window-capability-unavailable</c>).
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="width"/> or <paramref name="height"/> is negative.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(width);
+        ArgumentOutOfRangeException.ThrowIfNegative(height);
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.MinimumSize,
+            () => _engine.SetMinimumSizeAsync(width, height, cancellationToken), cancellationToken);
+    }
+
+    // SetBoundsAsync: the frame of a maximized, full-screen or minimized window is the desktop's. The hosts check again on
+    // their own thread, where the state cannot change meanwhile.
+    private void RequireRestored()
+    {
+        if (State is { IsMaximized: true } or { IsFullScreen: true } || Activity is { IsMinimized: true })
+        {
+            throw Internal.WindowBoundsSupport.NotRestored();
+        }
+    }
 
     /// <summary>
     /// Sets the file that the window shows a document of: on macOS the title bar's proxy icon and the path menu that
@@ -2301,12 +2423,13 @@ public sealed class DesktopWindow : IAsyncDisposable
     internal void RequireCapability(DesktopWindowCapabilities capability)
     {
         // None: an operation that any open window accepts, and that does nothing where it does not apply.
-        if (capability != DesktopWindowCapabilities.None && (Capabilities & capability) == 0)
+        if (capability != DesktopWindowCapabilities.None && (Capabilities & capability) != capability)
         {
+            var missing = capability & ~Capabilities;
             throw new DesktopException(
                 DesktopErrorCategory.Unavailable,
                 "window-capability-unavailable",
-                "The requested platform-window capability is unavailable.");
+                $"The window lacks DesktopWindowCapabilities.{missing}. {_engine.CapabilityRefusal(missing)}");
         }
     }
 }

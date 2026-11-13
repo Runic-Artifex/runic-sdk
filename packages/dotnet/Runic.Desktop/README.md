@@ -969,6 +969,67 @@ same place or size.
 Without a window manager, as under Xvfb, X11 has nobody to maximize a window
 or to keep it inside a work area; the GTK hosts still report what GDK reports.
 
+### Exact bounds, visible frame and minimum size
+
+On Windows the values above mix units: the position is in physical pixels and
+the size in rounded device-independent pixels, so at 150 % a window 1001 pixels
+wide reports 667 and `ResizeAsync(667)` makes it 1000. They stay as they are,
+and so do saved placements. For exact work, `DesktopWindowState.Bounds` reports
+the frame in one native unit that round-trips, and `DesktopWindow.SetBoundsAsync`
+takes it back, moving and resizing in **one** native operation, so the window is
+never shown moved but not yet resized:
+
+```csharp
+DesktopWindowBounds before = window.State!.Bounds!;
+// Grow by 372 device-independent pixels on the left edge; the right edge stays.
+await window.SetBoundsAsync(before.Expand(DesktopWindowEdge.Left, 372));
+// ... and back to exactly the same frame.
+await window.SetBoundsAsync(window.State!.Bounds!.Expand(DesktopWindowEdge.Left, -372));
+```
+
+`Expand` converts a length with `Bounds.Scale` and rounds once, half away from
+zero, so growing and shrinking by the same length always returns the bounds it
+started from (1001 + 558 = 1559 pixels at 150 %, then 1001 again).
+`DesktopWindowEdge.Start` and `End` follow a layout direction.
+
+| Presentation | `Bounds` | One operation | `VisibleBounds` | `IsSnapped` |
+| --- | --- | --- | --- | --- |
+| Windows WebView2 | Physical pixels, `GetWindowRect`; `Scale` is DPI / 96 | `SetWindowPos` | `DWMWA_EXTENDED_FRAME_BOUNDS`, without the invisible resize borders | `IsWindowArranged`; where user32 lacks it, the window rectangle differs from its restored one (best effort) |
+| macOS WKWebView | Points: the frame, title bar included, top-left | `setFrame:display:` | The frame | The frame fills a half or a quarter of its screen's visible frame, allowing for tiling margins (best effort: macOS has no API) |
+| Linux GTK 3 (X11) | Logical pixels: frame position and content size | `gtk_window_move` and `gtk_window_resize` in one main-loop turn: one configure request | `gdk_window_get_frame_extents` (`_NET_FRAME_EXTENTS`) | `GDK_WINDOW_STATE_TILED`, or the visible frame fills a half or a quarter of its monitor's work area (best effort) |
+| Linux GTK 4 (X11) | Logical pixels: visible frame position and content size | One `XMoveResizeWindow` | Position and content with `_NET_FRAME_EXTENTS` | `GDK_TOPLEVEL_STATE_TILED`, or the work-area geometry (best effort) |
+| Linux GTK 3 and GTK 4 (Wayland) | Content size; no position | Size only; a position fails with `window-position-unavailable` | `null` | GDK's tiled state |
+| Installed browser, WPF `RunicWebView` | `null` | Refused: `window-capability-unavailable` | `null` | `false` |
+| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowBoundsHost` | Host-defined | Host-defined | Host-defined |
+
+A serve-only application has no `DesktopWindow`, and a hosted application's
+guest (`runic-host/1`) asks its host to move or resize its window but cannot set
+bounds; the host application's `DesktopWindow` of a hosted window can.
+`SetBoundsAsync` refuses a maximized, full-screen or minimized window with
+`InvalidOperationException`, and `IsSnapped` is never set for a maximized or
+full-screen window. Place a window flush against another with `VisibleBounds`:
+
+```csharp
+var anchor = first.State!.VisibleBounds!;
+var state = second.State!;
+await second.SetBoundsAsync(state.Bounds! with
+{
+    X = anchor.X + anchor.Width + (state.Bounds!.X - state.VisibleBounds!.X),
+    Y = anchor.Y + (state.Bounds.Y - state.VisibleBounds.Y),
+});
+```
+
+`DesktopWindow.SetMinimumSizeAsync(width, height)` changes the minimum size of
+an open window, in the units of `DesktopWindowOptions.MinimumWidth` and
+`MinimumHeight` (device-independent pixels of the outer frame on Windows, the
+content size elsewhere); zero removes it. The user cannot make the window
+smaller from then on (`WM_GETMINMAXINFO`, `contentMinSize`, GTK's size request),
+and a smaller window grows to it. It needs
+`DesktopWindowCapabilities.MinimumSize`, as `SetBoundsAsync` and the bounds need
+`DesktopWindowCapabilities.Bounds`; without them the call fails with
+`window-capability-unavailable`, whose message names the capability and why the
+presentation lacks it.
+
 ## Menu bar and keyboard shortcuts
 
 On macOS Runic Desktop gives the application the menus Cocoa applications are

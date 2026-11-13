@@ -101,6 +101,48 @@ public interface IDesktopWindowStateHost : IDesktopWindowHost
     event EventHandler? StateChanged;
 }
 
+/// <summary>
+/// An optional native host that moves and resizes its window in one operation and changes its minimum size while it is
+/// open.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>. Report
+/// <see cref="DesktopWindowCapabilities.Bounds"/> and <see cref="DesktopWindowCapabilities.MinimumSize"/> in
+/// <see cref="IDesktopWindowHost.Capabilities"/> for the operations the window supports; Runic Desktop calls a member only
+/// with its flag. With <see cref="DesktopWindowCapabilities.Bounds"/>, report <see cref="DesktopWindowState.Bounds"/>
+/// in the state in the units <see cref="SetBoundsAsync"/> takes, and <see cref="DesktopWindowState.VisibleBounds"/>
+/// and <see cref="DesktopWindowState.IsSnapped"/> where the toolkit knows them.
+/// </para>
+/// <para>
+/// A host without it, or without a flag, makes <see cref="DesktopWindow.SetBoundsAsync"/> and
+/// <see cref="DesktopWindow.SetMinimumSizeAsync"/> fail with <c>window-capability-unavailable</c>.
+/// </para>
+/// </remarks>
+public interface IDesktopWindowBoundsHost : IDesktopWindowHost
+{
+    /// <summary>Moves and resizes the window in one native operation, so it is never shown moved but not resized.</summary>
+    /// <param name="bounds">
+    /// The frame in the units of <see cref="DesktopWindowState.Bounds"/>, checked by Runic Desktop: a positive size, and
+    /// <see cref="DesktopWindowBounds.X"/> and <see cref="DesktopWindowBounds.Y"/> both set or both
+    /// <see langword="null"/>, which keeps the top-left corner where it is.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the window has been asked to take the bounds.</returns>
+    /// <remarks>
+    /// Fail with <see cref="InvalidOperationException"/> while the window is maximized, full-screen or minimized, and with
+    /// a <see cref="DesktopException"/> coded <c>window-position-unavailable</c> for a position the toolkit cannot set.
+    /// </remarks>
+    ValueTask SetBoundsAsync(DesktopWindowBounds bounds, CancellationToken cancellationToken = default);
+
+    /// <summary>Changes the window's minimum size, growing the window when it is smaller.</summary>
+    /// <param name="width">The minimum width in the units of <see cref="DesktopWindowHostOptions.MinimumWidth"/>, or zero for none.</param>
+    /// <param name="height">The minimum height in the units of <see cref="DesktopWindowHostOptions.MinimumHeight"/>, or zero for none.</param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the toolkit enforces the minimum.</returns>
+    ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default);
+}
+
 /// <summary>An optional native host that enters full screen and places its window on a chosen monitor.</summary>
 /// <remarks>
 /// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>. Report
@@ -656,6 +698,16 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         _host is IDesktopPlacementWindowHost placementHost
             ? placementHost.MoveToMonitorAsync(monitorId, cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot place its window on a monitor."));
+
+    public ValueTask SetBoundsAsync(DesktopWindowBounds bounds, CancellationToken cancellationToken = default) =>
+        _host is IDesktopWindowBoundsHost boundsHost
+            ? boundsHost.SetBoundsAsync(bounds, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This window host cannot set its bounds in one operation."));
+
+    public ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
+        _host is IDesktopWindowBoundsHost boundsHost
+            ? boundsHost.SetMinimumSizeAsync(width, height, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This window host cannot change its minimum size."));
 
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 

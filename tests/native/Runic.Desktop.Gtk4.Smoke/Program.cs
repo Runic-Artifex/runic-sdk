@@ -74,6 +74,12 @@ if (args.Contains("--appearance", StringComparer.Ordinal)) return AppearanceSmok
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
     return MonitorSmoke.Run(monitors + 1 < args.Length ? args[monitors + 1] : "gtk4");
 
+// --window-bounds [--window-manager] (#864 B1): exact bounds in one XMoveResizeWindow, the visible frame and the run-time
+// minimum size; see WindowBoundsSmoke.cs.
+if (args.Contains("--window-bounds", StringComparer.Ordinal))
+    return WindowBoundsSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
+        args.Contains("--window-manager", StringComparer.Ordinal), gtk4: true);
+
 // --placement [--window-manager] (#663): a restored placement's position on X11, also under a window manager.
 if (args.Contains("--placement", StringComparer.Ordinal)) return PlacementSmoke.Run(args.Contains("--window-manager", StringComparer.Ordinal));
 

@@ -927,6 +927,16 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --owner
+      # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one configure
+      # request (the page resizes once); the visible frame (_NET_FRAME_EXTENTS) places a second window flush; a run-time
+      # minimum size reaches WM_NORMAL_HINTS and holds against another client's resize; a maximized window refuses.
+      # Under Openbox, which decorates, maximizes and applies the size hints.
+      - name: Set exact bounds and a run-time minimum size in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds --window-manager'
       # S11 window mode (runic-host/1): Runic.Application.HostedWindows.Smoke hosts itself as guests; each guest page
       # loads in a GTK 3 window of the host in an ephemeral web context, without the host's or another guest's cookies;
       # close, crash and stop.
@@ -1019,6 +1029,9 @@ jobs:
           # GTK 4 window keeps it, also as the bounds a maximized window restores to, and reports it back unchanged.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --placement --window-manager'
+          # #864 B1: the same window building blocks in GTK 4, whose X11 bounds change is one XMoveResizeWindow.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --window-bounds --window-manager'
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.
@@ -1117,6 +1130,14 @@ jobs:
         if: runner.os != 'Linux'
         timeout-minutes: 4
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
+      # #864 B1: DesktopWindowState.Bounds round-trips and SetBoundsAsync moves the left edge and resizes in one
+      # SetWindowPos or setFrame:display: (the page resizes once); the visible frame (DWMWA_EXTENDED_FRAME_BOUNDS on
+      # Windows) places a second window flush; a run-time minimum holds against a SetWindowPos from outside Runic
+      # (WM_GETMINMAXINFO) and sets contentMinSize on macOS; a maximized window refuses SetBoundsAsync.
+      - name: Set exact bounds and a run-time minimum size on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-bounds
       # S10: the page's prefers-reduced-motion and forced-colors and IDesktopSettings (Contrast, the palette, a running
       # watch) follow Windows' client area animations and a contrast theme, which the smoke switches and restores
       # (--toggle-desktop); on macOS prefers-contrast, prefers-reduced-motion and IDesktopSettings agree with Increase
