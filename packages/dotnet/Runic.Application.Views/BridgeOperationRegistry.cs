@@ -105,12 +105,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
         Func<string?> refusal,
         Func<CancellationToken, Task<BridgeOperationResult>> work,
         BridgeOperationRetirement? retirement = null,
-        Func<long?>? terminalRevision = null)
+        Func<long?>? terminalRevision = null,
+        BridgeOperationClosePolicy close = BridgeOperationClosePolicy.Default)
     {
         ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(work);
         return AcceptCore(request.Identity.RegistryKey, request, refusal, stream: null,
-            (_, cancellationToken) => work(cancellationToken), retirement, terminalRevision);
+            (_, cancellationToken) => work(cancellationToken), retirement, terminalRevision, close);
     }
 
     // A stream belongs to the admitted entry before work starts. Reads can
@@ -133,12 +134,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
         BridgeOperationStream stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
         BridgeOperationRetirement? retirement = null,
-        Func<long?>? terminalRevision = null)
+        Func<long?>? terminalRevision = null,
+        BridgeOperationClosePolicy close = BridgeOperationClosePolicy.Default)
     {
         ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(work);
-        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work, retirement, terminalRevision);
+        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work, retirement, terminalRevision, close);
     }
 
     private static Func<string?> Unavailable(Func<bool> canStart) => () => canStart() ? null : "unavailable";
@@ -150,7 +152,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         BridgeOperationStream? stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
         BridgeOperationRetirement? retirement = null,
-        Func<long?>? terminalRevision = null)
+        Func<long?>? terminalRevision = null,
+        BridgeOperationClosePolicy close = BridgeOperationClosePolicy.Default)
     {
         Entry accepted;
         lock (_gate)
@@ -188,9 +191,12 @@ internal sealed class BridgeOperationRegistry : IDisposable
                  _reservedRunningStreamBytes > _maximumRunningStreamBytes - stream.MaximumBytes))
                 return new(requestId, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, "stream-capacity");
 
+            // A durable operation is never asked to cancel by its owner's close or shutdown (RunicOperationClose), so its
+            // token does not follow the owner's.
             accepted = new Entry(requestId, request, stream,
-                stream?.MaximumBytes ?? 0, _ownerShutdown.Token)
+                stream?.MaximumBytes ?? 0, close is BridgeOperationClosePolicy.Durable ? CancellationToken.None : _ownerShutdown.Token)
             {
+                Close = close,
                 Retirement = retirement,
                 Work = retirement is null ? null : new BridgeOperationWork(),
                 TerminalRevision = terminalRevision,
@@ -596,24 +602,37 @@ internal sealed class BridgeOperationRegistry : IDisposable
     // prevents a new admission and waits up to the timeout for accepted work.
     // Work still running after the timeout is asked to cancel, while the host
     // keeps its DI scope alive until it observes the terminal results.
+    // RunicOperationClose: operations declared Cancel are asked to cancel at
+    // once; Durable ones and durableWork (the scopes the window drains) are
+    // waited for within the timeout and never asked to cancel, and the result
+    // counts them apart. Without declarations this is the 0.18 close.
+    internal ValueTask<BridgeOperationCloseResult> BeginCloseAsync(TimeSpan timeout, CancellationToken callerCancellation = default) =>
+        BeginCloseAsync(timeout, durableWork: null, callerCancellation);
+
     internal async ValueTask<BridgeOperationCloseResult> BeginCloseAsync(
-        TimeSpan timeout, CancellationToken callerCancellation = default)
+        TimeSpan timeout, IReadOnlyCollection<Task>? durableWork, CancellationToken callerCancellation)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
 
         Task[] terminals;
+        List<Entry>? cancelNow = null;
         lock (_gate)
         {
             if (_disposed) return BridgeOperationCloseResult.Completed;
             _closing = true;
-            terminals = _operations.Values
-                .Where(entry => entry.Status is BridgeOperationStatusKind.Running)
+            var running = _operations.Values.Where(entry => entry.Status is BridgeOperationStatusKind.Running).ToArray();
+            foreach (var entry in running)
+                if (entry.Close is BridgeOperationClosePolicy.Cancel) (cancelNow ??= []).Add(entry);
+            terminals = running
                 .Select(entry => (Task)entry.Terminal.Task)
                 .Concat(_awaited.Select(execution => execution.Completion))
+                .Concat(durableWork?.Where(work => !work.IsCompleted) ?? [])
                 .ToArray();
         }
 
+        if (cancelNow is not null)
+            foreach (var entry in cancelNow) CancelEntry(entry);
         if (terminals.Length == 0) return BridgeOperationCloseResult.Completed;
         var all = Task.WhenAll(terminals);
         try
@@ -624,14 +643,32 @@ internal sealed class BridgeOperationRegistry : IDisposable
         catch (TimeoutException)
         {
             int remaining;
+            int durable;
             lock (_gate)
+            {
                 remaining = _awaited.Count + _operations.Values.Count(
-                    entry => entry.Status is BridgeOperationStatusKind.Running);
+                    entry => entry.Status is BridgeOperationStatusKind.Running && entry.Close is not BridgeOperationClosePolicy.Durable);
+                durable = _operations.Values.Count(
+                    entry => entry.Status is BridgeOperationStatusKind.Running && entry.Close is BridgeOperationClosePolicy.Durable)
+                    + (durableWork?.Count(work => !work.IsCompleted) ?? 0);
+            }
+            // Durable operations do not follow the owner's token.
             RequestOwnerCancellation();
             // Terminal outcomes are reported to their callers; this only observes the end.
             var settled = all.ContinueWith(static _ => { }, CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return new(Drained: false, RemainingRunningOperations: remaining, settled);
+            return new(Drained: false, RemainingRunningOperations: remaining, settled) { RemainingDurableWork = durable };
+        }
+    }
+
+    private void CancelEntry(Entry entry)
+    {
+        try { entry.Cancellation.Cancel(); }
+        // The operation ended and released its source after the selection above.
+        catch (ObjectDisposedException) { }
+        catch (Exception error)
+        {
+            ViewsLog.OperationCancellationCallbackFailed(_logger, error, BridgeTelemetry.ErrorType(error));
         }
     }
 
@@ -719,6 +756,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public BridgeOperationRetirement? Retirement { get; set; }
         // The work of an operation declared Cancel or Drain; null otherwise.
         public BridgeOperationWork? Work { get; init; }
+        // What the owner's close does to the running operation (RunicOperationClose).
+        public BridgeOperationClosePolicy Close { get; init; }
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // The last progress the running operation reported (RunicOperationProgress); null until its first report.
         public double? Progress { get; set; }
@@ -764,6 +803,9 @@ internal sealed class BridgeOperationRetirement(RunicOperationRetirement policy,
         ReferenceEquals(Owner, model) || Presenters.Any(presenter => ReferenceEquals(presenter, model));
 }
 
+// RunicOperationClose without its experimental marking, for the registry and the hosts.
+internal enum BridgeOperationClosePolicy { Default = 0, Cancel = 1, Durable = 2 }
+
 internal enum BridgeOperationAdmissionKind { Accepted, Duplicate, Expired, Rejected }
 // Wire tokens are the lowercase names, except DomainFailed ("domain-failed").
 internal enum BridgeOperationStatusKind { Unknown, Expired, Running, Succeeded, Failed, Cancelled, DomainFailed }
@@ -797,6 +839,9 @@ internal sealed record BridgeOperationStatus(
 
 internal sealed record BridgeOperationCloseResult(bool Drained, int RemainingRunningOperations, Task Remaining)
 {
+    // Durable operations and drained scopes still running; RemainingRunningOperations does not count them.
+    internal int RemainingDurableWork { get; init; }
+
     internal static BridgeOperationCloseResult Completed { get; } = new(true, 0, Task.CompletedTask);
 }
 internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status, BridgeOperationStreamRead? Stream);

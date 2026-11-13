@@ -22,6 +22,8 @@ public sealed class AcceptedWorkScope : IAsyncDisposable
     private readonly TaskCompletionSource _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly HashSet<AcceptedWork> _pending = [];
     private readonly List<(HashSet<AcceptedWork> Callers, TaskCompletionSource Drained)> _nestedDrains = [];
+    // WaitForAcceptedAsync: the accepted work each wait still waits for.
+    private readonly List<(HashSet<AcceptedWork> Waited, TaskCompletionSource Completion)> _waits = [];
     private bool _draining;
 
     /// <summary>Creates a scope that accepts work until draining begins.</summary>
@@ -79,6 +81,60 @@ public sealed class AcceptedWorkScope : IAsyncDisposable
     {
         var drained = BeginDrain();
         return cancellationToken.CanBeCanceled ? drained.WaitAsync(cancellationToken) : drained;
+    }
+
+    /// <summary>
+    /// Waits until every task this scope accepted before the call has finished, and keeps accepting work: work accepted
+    /// later is accepted as usual and not waited for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="DrainAsync(CancellationToken)"/>, it commits to nothing. A close guard can wait for the work and
+    /// still keep its window open afterwards, with the scope accepting work as before. A Window drains a scope this way
+    /// when its close waits for it (<see cref="IRunicWindowContext.DrainOnClose"/>).
+    /// </para>
+    /// <para>
+    /// When called from accepted work of this scope, including code that inherits its execution context, the wait does
+    /// not wait for the calling work, as <see cref="DrainAsync(CancellationToken)"/> does not. Faulted work is logged
+    /// once (event 1013), as for every accepted task, without failing the wait. After draining began, the wait still
+    /// waits only for the work accepted before the call.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Stops only this caller's wait; admission and the accepted work are unaffected.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public Task WaitForAcceptedAsync(CancellationToken cancellationToken = default)
+    {
+        HashSet<AcceptedWork>? callers = null;
+        for (var work = Current.Value; work is not null; work = work.Parent)
+        {
+            if (ReferenceEquals(work.Scope, this)) (callers ??= []).Add(work);
+        }
+
+        (HashSet<AcceptedWork> Waited, TaskCompletionSource Completion) wait;
+        lock (_gate)
+        {
+            var snapshot = new HashSet<AcceptedWork>(_pending);
+            if (callers is not null) snapshot.ExceptWith(callers);
+            if (snapshot.Count == 0) return Task.CompletedTask;
+            wait = (snapshot, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+            _waits.Add(wait);
+        }
+        if (!cancellationToken.CanBeCanceled) return wait.Completion.Task;
+        // A cancelled wait is forgotten at once, so repeated cancelled waits during long work keep nothing.
+        var registration = cancellationToken.Register(() =>
+        {
+            lock (_gate) _waits.Remove(wait);
+            wait.Completion.TrySetCanceled(cancellationToken);
+        });
+        _ = wait.Completion.Task.ContinueWith(static (_, state) => ((CancellationTokenRegistration)state!).Dispose(), registration,
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return wait.Completion.Task;
+    }
+
+    // Whether the scope has accepted work that has not finished; a Window's close reads it to tell whether it waits.
+    internal bool HasPendingWork
+    {
+        get { lock (_gate) return _pending.Count > 0; }
     }
 
     /// <summary>Stops accepting work and drains it without requesting cancellation.</summary>
@@ -168,6 +224,14 @@ public sealed class AcceptedWorkScope : IAsyncDisposable
         lock (_gate)
         {
             _pending.Remove(accepted);
+            // WaitForAcceptedAsync: each wait ends when the work it saw has finished.
+            for (var i = _waits.Count - 1; i >= 0; i--)
+            {
+                var (waited, completion) = _waits[i];
+                if (!waited.Remove(accepted) || waited.Count != 0) continue;
+                completion.TrySetResult();
+                _waits.RemoveAt(i);
+            }
             if (!_draining) return;
             if (_pending.Count == 0) _drained.TrySetResult();
             for (var i = _nestedDrains.Count - 1; i >= 0; i--)

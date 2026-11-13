@@ -187,6 +187,11 @@
       "title": "The build has no Runic Translations ESM for the page, or its directory holds other files"
     },
     {
+      "id": "RUNICBRIDGE038",
+      "severity": "warning",
+      "title": "A [RunicOperationClose] declaration reaches no operation"
+    },
+    {
       "id": "RUNICBRIDGE050",
       "severity": "error",
       "title": "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"

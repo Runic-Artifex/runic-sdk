@@ -132,6 +132,99 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // RUNICBRIDGE038 (#900): a RunicOperationClose declaration that reaches no operation is a located warning; the
+    // policy reaches the generated descriptor only for an operation that is not Default, the class's declaration covers
+    // the operations and a property's wins, and the generated TypeScript (with the contract hash) does not change.
+    [Test]
+    public async Task OperationCloseReachesOperationsOnlyAndLeavesTheClientUnchangedAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-close-{Guid.NewGuid():N}");
+        try
+        {
+            const string Models = """
+                public sealed class CloseViewModel : FixtureModel
+                {
+                    [RunicOperationClose(RunicOperationClose.Durable)]
+                    public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    [RunicOperationClose(RunicOperationClose.Default)]
+                    public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    public IAsyncRelayCommand PlainCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    [RunicOperationClose(RunicOperationClose.Cancel)]
+                    public IRelayCommand ToggleCommand { get; } = new RelayCommand(() => { });
+                    [RunicOperationClose(RunicOperationClose.Durable)]
+                    public string Title { get; set; } = "";
+                    [RunicOperationClose((RunicOperationClose)7)]
+                    public IAsyncRelayCommand OddCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                }
+                [RunicOperationClose(RunicOperationClose.Cancel)]
+                public sealed class ClassCloseViewModel : FixtureModel
+                {
+                    public IAsyncRelayCommand QueryCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    [RunicOperationClose(RunicOperationClose.Durable)]
+                    public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                }
+                [RunicOperationClose(RunicOperationClose.Durable)]
+                public sealed class NoCloseOperationViewModel : FixtureModel
+                {
+                    public IRelayCommand ToggleCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class CloseWindow : RunicWindow<CloseViewModel>;
+                public sealed partial class ClassCloseWindow : RunicWindow<ClassCloseViewModel>;
+                public sealed partial class NoCloseOperationWindow : RunicWindow<NoCloseOperationViewModel>;
+                """;
+            const string Source = Preamble + "#pragma warning disable RUNICDESK105\n" + Models;
+            var (exitCode, output, directory) = await RunGeneratorAsync(generator, Path.Combine(temporaryRoot, "declared"), "Close", Source).ConfigureAwait(false);
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE038:", StringComparison.Ordinal)).ToArray();
+            int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
+            bool At(string declaration, string message) => warnings.Any(text =>
+                text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
+                && text.Contains(message, StringComparison.Ordinal));
+            Require(exitCode == 0 && warnings.Length == 4
+                    && At("public IRelayCommand ToggleCommand", "CloseViewModel.ToggleCommand: RunicOperationClose applies only to a Bridge command that starts an operation")
+                    && At("public string Title", "CloseViewModel.Title: RunicOperationClose applies only to a Bridge command that starts an operation")
+                    && At("public IAsyncRelayCommand OddCommand", "CloseViewModel.OddCommand: 7 is not a RunicOperationClose value")
+                    && warnings.Any(text => text.Contains("NoCloseOperationViewModel: RunicOperationClose on the class applies to its operations", StringComparison.Ordinal))
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE038")}", StringComparison.Ordinal))
+                    && !warnings.Any(text => text.Contains("ClassCloseViewModel", StringComparison.Ordinal)),
+                $"RunicOperationClose without an operation was not reported as located RUNICBRIDGE038 warnings.\n{output}");
+
+            string Bridge(string model) => File.ReadAllText(Path.Combine(directory, "cs", $"Fixture.{model}.Bridge.g.cs"));
+            string Descriptor(string model, string command) => Bridge(model).Split('\n')
+                .Single(line => line.Contains($"(\"{command}\", static vm => (object)((global::Fixture.{model})vm).{command}Command)", StringComparison.Ordinal));
+            const string Policy = "Close = global::Runic.Application.Views.RunicOperationClose.";
+            Require(Descriptor("CloseViewModel", "Save").Contains(Policy + "Durable", StringComparison.Ordinal)
+                    && Descriptor("ClassCloseViewModel", "Query").Contains(Policy + "Cancel", StringComparison.Ordinal)
+                    && Descriptor("ClassCloseViewModel", "Save").Contains(Policy + "Durable", StringComparison.Ordinal)
+                    && new[] { ("CloseViewModel", "Load"), ("CloseViewModel", "Plain"), ("CloseViewModel", "Odd"),
+                        ("CloseViewModel", "Toggle"), ("NoCloseOperationViewModel", "Toggle") }
+                        .All(command => !Descriptor(command.Item1, command.Item2).Contains("Close = ", StringComparison.Ordinal)),
+                "The generated descriptors do not carry exactly the declared non-Default policies of operations.");
+            // A Bridge that emits a policy suppresses the experimental ID, which the application opted in to where it declared it.
+            Require(Bridge("CloseViewModel").Contains("#pragma warning disable RUNICDESK105", StringComparison.Ordinal)
+                    && !Bridge("NoCloseOperationViewModel").Contains("RUNICDESK105", StringComparison.Ordinal),
+                "The generated Bridges do not suppress RUNICDESK105 exactly where they use RunicOperationClose.");
+
+            // The same models without the declarations: the TypeScript client and its contract hash are identical.
+            var plain = Preamble + string.Join('\n', Models.Split('\n').Where(line => !line.Contains("[RunicOperationClose(", StringComparison.Ordinal)));
+            var (plainExit, plainOutput, plainDirectory) = await RunGeneratorAsync(generator, Path.Combine(temporaryRoot, "plain"), "Close", plain).ConfigureAwait(false);
+            Require(plainExit == 0, $"The undeclared models did not generate.\n{plainOutput}");
+            var declaredTs = Directory.GetFiles(Path.Combine(directory, "ts"), "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
+            var plainTs = Directory.GetFiles(Path.Combine(plainDirectory, "ts"), "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
+            Require(declaredTs.Length > 0 && declaredTs.Select(Path.GetFileName).SequenceEqual(plainTs.Select(Path.GetFileName))
+                    && declaredTs.Zip(plainTs).All(pair => File.ReadAllText(pair.First) == File.ReadAllText(pair.Second)),
+                "RunicOperationClose changed the generated TypeScript or contract hash.");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     // RUNICBRIDGE031 (D053.3): an IValidatableViewModel of neither ReactiveUI.Validation flavor is a located warning,
     // on the ViewModel and on a DTO of its state; the ViewModel gets no validation member from it.
     [Test]

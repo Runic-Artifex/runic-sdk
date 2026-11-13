@@ -231,6 +231,20 @@ public sealed record RunicWindowOptions
     public long? MaximumWindowUploadBytes { get; init; }
 
     /// <summary>
+    /// How long the Window stays visible after its close was decided, while its accepted work drains
+    /// (<see cref="RunicCloseDrain"/>). <see langword="null"/>, the default, takes the host's default, which is
+    /// <see cref="RunicCloseDrain.None"/> unless the host's options set another.
+    /// </summary>
+    /// <remarks>
+    /// Hosts read it when the window opens. 0.19 drains in <c>RunicWindowTestHost</c> (<c>RunicWindowTestHostOptions.CloseDrain</c>);
+    /// other hosts close the visible window at once, as with <see cref="RunicCloseDrain.None"/>, until they support it.
+    /// Operations keep their <see cref="RunicOperationClose"/> under every host. Experimental (<c>RUNICDESK105</c>); see
+    /// <c>docs/experimental.md</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public RunicCloseDrain? CloseDrain { get; init; }
+
+    /// <summary>
     /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
     /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
     /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.

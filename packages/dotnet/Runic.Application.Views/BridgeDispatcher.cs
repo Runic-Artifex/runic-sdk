@@ -287,8 +287,9 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
 
     // Pushes closing to every connection that uses presented/1 and returns a task that completes when each of them
     // answered closing-reply or closed. The first call pushes; later calls return the same task. A connection that
-    // completes its hello with presented/1 afterwards gets closing too, but is not waited for.
-    internal Task BeginClosing()
+    // completes its hello with presented/1 afterwards gets closing too, but is not waited for. draining: the window stays
+    // visible while its accepted work drains (RunicCloseDrain), and the push says so.
+    internal Task BeginClosing(bool draining = false)
     {
         List<string> targets = [];
         Task closing;
@@ -297,6 +298,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             if (_closing is { } started) return started.Task;
             var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _closing = completion;
+            _closingDraining = draining;
             closing = completion.Task;
             foreach (var connection in _connections.Values)
             {
@@ -307,7 +309,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             }
             if (_closingPending == 0) completion.TrySetResult();
         }
-        foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, ClosingPush());
+        foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, ClosingPush(draining));
         return closing;
     }
 
@@ -333,7 +335,11 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         set => Volatile.Write(ref _navigator, value is null ? null : new(value));
     }
 
-    private static byte[] ClosingPush() => """{"kind":"closing"}"""u8.ToArray();
+    // Whether the window's closing push said draining: true; a connection that says hello later gets the same push.
+    private bool _closingDraining;
+
+    private static byte[] ClosingPush(bool draining) =>
+        draining ? """{"kind":"closing","draining":true}"""u8.ToArray() : """{"kind":"closing"}"""u8.ToArray();
 
     // translation-text/1: the window's locale, or null when the page keeps its own.
     internal string? Locale
@@ -987,7 +993,7 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             opened = [.. _openedObservers];
         }
         // A page that connects to a closing window is told so, after its hello reply.
-        if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
+        if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush(Volatile.Read(ref _closingDraining)));
         // translation-text/1: a page that connects to a window with a locale is told it, after its hello reply. Under the
         // locale gate, so a change that raced the hello is queued after this push.
         if (usesTranslationText)

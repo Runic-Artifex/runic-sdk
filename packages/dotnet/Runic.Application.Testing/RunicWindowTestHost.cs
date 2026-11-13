@@ -378,13 +378,17 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
 
     /// <summary>
     /// Stops operation admission and waits up to <paramref name="timeout"/> for accepted Window operations, as a
-    /// closing window does (<see cref="WindowContentSession.DrainAsync"/>). The timeout runs on <see cref="Time"/>, so
+    /// closing window does (<see cref="WindowContentSession.DrainAsync(TimeSpan, CancellationToken)"/>). The timeout runs on <see cref="Time"/>, so
     /// with a fake clock it passes only when the test advances it.
     /// </summary>
     /// <param name="timeout">How long accepted operations may run, or <see cref="Timeout.InfiniteTimeSpan"/>.</param>
     /// <param name="cancellationToken">Stops the wait only; admission stays closed.</param>
     public async Task<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
         await Content.DrainAsync(timeout, cancellationToken).ConfigureAwait(false);
+
+    // The drain of a close that keeps the visible window (RunicCloseDrain): its pages' closing says draining: true.
+    internal async Task<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, bool draining, CancellationToken cancellationToken) =>
+        await Content.DrainAsync(timeout, draining, cancellationToken).ConfigureAwait(false);
 
     /// <summary>Detaches the root bridge and disposes the content session and transport.</summary>
     public void Dispose()
