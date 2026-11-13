@@ -1101,12 +1101,17 @@ internal sealed partial class WebViewEnvironmentOptions(string? arguments, strin
 }
 
 // The frames of a WebView2 document, each listened to for Runic's drop messages until it is destroyed or the window
-// closes. Nested frames arrive through ICoreWebView2Frame7 where the runtime has it. Window thread only.
+// closes. Nested frames arrive through ICoreWebView2Frame7 where the runtime has it. Window thread only: it is created
+// there, and releases a destroyed frame through that thread's synchronization context.
 // permissionRequested: a frame's PermissionRequested (ICoreWebView2Frame3) with the frame's address, as its latest
 // navigation named it; the handler may set the request's state and Handled.
 internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>? permissionRequested = null) : IDisposable
 {
     private readonly List<Frame> _frames = [];
+    // Destroyed frames whose references are released after WebView2's FrameDestroyed returned (Destroyed).
+    private readonly List<Frame> _retired = [];
+    private readonly SynchronizationContext? _thread = SynchronizationContext.Current;
+    private bool _releasePosted;
     private bool _disposed;
 
     // FrameCreated of the WebView or of a frame: the event arguments hold the new frame.
@@ -1114,7 +1119,8 @@ internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>?
     {
         if (_disposed) return;
         var frame = WindowsWebView2Interop.GetPointer(args, WindowsWebView2Interop.FrameCreatedFrameSlot);
-        WindowsWebView2Controller.RegionTrace?.Invoke($"frame created ({_frames.Count} known)");
+        WindowsWebView2Controller.RegionTrace?.Invoke($"frame created ({_frames.Count} known, {_retired.Count} retired)");
+        if (!_releasePosted) ReleaseRetired();
         if (frame == 0) return;
         try
         {
@@ -1156,16 +1162,37 @@ internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>?
         }
     }
 
+    // WebView2 raises the frame's FrameDestroyed. Removing the destroyed frame's handlers, or releasing it, from inside
+    // this callback ended the process in WebView2's client with a breakpoint trap (exit code 0x80000003, no exception and
+    // no error report; #866: a hosted region detached and attached again). So the callback only forgets the frame: the
+    // frame's handlers go with it, and this side's references to them and to the frame are released on the window thread
+    // once the callback returned, or when the frames are disposed.
     private void Destroyed(Frame entry)
     {
         WindowsWebView2Controller.RegionTrace?.Invoke($"frame destroyed: {RegionFrames.Redact(entry.Url)}");
-        if (_frames.Remove(entry)) entry.Dispose();
-        WindowsWebView2Controller.RegionTrace?.Invoke("frame released");
+        if (_disposed || !_frames.Remove(entry)) return;
+        _retired.Add(entry);
+        if (_releasePosted) return;
+        if (_thread is { } thread)
+        {
+            _releasePosted = true;
+            thread.Post(static state => ((WebViewFrames)state!).ReleaseRetired(), this);
+            WindowsWebView2Controller.RegionTrace?.Invoke("frame release posted");
+        }
+        // Without the window thread's context, the next frame or the disposal releases it, also outside this callback.
+    }
+
+    private void ReleaseRetired()
+    {
+        _releasePosted = false;
+        foreach (var entry in _retired) entry.Release();
+        _retired.Clear();
     }
 
     public void Dispose()
     {
         _disposed = true;
+        ReleaseRetired();
         foreach (var entry in _frames) entry.Dispose();
         _frames.Clear();
     }
@@ -1191,21 +1218,37 @@ internal sealed class WebViewFrames(Action<nint> receive, Action<nint, string?>?
             catch { handler.Dispose(); throw; }
         }
 
-        // A destroyed frame may refuse the removal; its handlers are released either way.
+        // A frame that is still alive, as when the window closes: its handlers are removed, then released.
         public void Dispose()
         {
             foreach (var entry in _events)
             {
+                WindowsWebView2Controller.RegionTrace?.Invoke($"frame handler removing (slot {entry.Slot + 1})");
                 try { WindowsWebView2Interop.RemoveEvent(entry.Source, entry.Slot + 1, entry.Token); }
                 catch (Exception error) when (error is COMException or InvalidOperationException or ArgumentException) { }
+            }
+            Release();
+        }
+
+        // A destroyed frame (WebViewFrames.Destroyed): no removal, since its handlers went with it; this side's references
+        // to its handlers and to the frame are released, once.
+        public void Release()
+        {
+            if (frame2 == 0) return;
+            foreach (var entry in _events)
+            {
+                WindowsWebView2Controller.RegionTrace?.Invoke($"frame handler releasing (slot {entry.Slot})");
                 entry.Handler.Dispose();
             }
             _events.Clear();
+            WindowsWebView2Controller.RegionTrace?.Invoke("frame interfaces releasing");
             WindowsWebView2Interop.Release(Nested);
             Nested = 0;
             WindowsWebView2Interop.Release(Permissions);
             Permissions = 0;
             WindowsWebView2Interop.Release(frame2);
+            frame2 = 0;
+            WindowsWebView2Controller.RegionTrace?.Invoke("frame released");
         }
     }
 }

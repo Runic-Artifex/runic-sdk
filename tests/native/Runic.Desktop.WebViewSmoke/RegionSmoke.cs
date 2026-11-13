@@ -111,7 +111,13 @@ internal static partial class RegionSmoke
     {
         // Every region frame event of the window's web view, and the process's own end, so that a window that ends the
         // process shows its last event (#866: the WebView2 host ended after a second attach).
-        WindowsWebView2Controller.RegionTrace = line => { Console.WriteLine($"REGION TRACE {hostName}: {line}"); Console.Out.Flush(); };
+        var released = 0;
+        WindowsWebView2Controller.RegionTrace = line =>
+        {
+            if (line == "frame released") Interlocked.Increment(ref released);
+            Console.WriteLine($"REGION TRACE {hostName}: {line}");
+            Console.Out.Flush();
+        };
         AppDomain.CurrentDomain.ProcessExit += (_, _) => Console.WriteLine($"REGION TRACE {hostName}: process exit, exit code {Environment.ExitCode}");
         var refused = 0;
         if (elevated && !Environment.IsPrivilegedProcess)
@@ -191,6 +197,9 @@ internal static partial class RegionSmoke
         route = await AttachAgainAsync(surface, guest, window, embedder, guestOrigin, route, Route, hostName);
         await Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(3)));
         Require(Volatile.Read(ref crashes) == 0, "the first frame's end was reported as a crash of the attached region");
+        // WebView2: the destroyed first frame's references are released after its FrameDestroyed returned, not leaked.
+        if (OperatingSystem.IsWindows())
+            Require(Volatile.Read(ref released) >= 1, "the destroyed frame's references were not released");
         Pass(hostName, "a frame detached and attached again with a new code loaded the guest's page, and the window outlived the first frame");
         route.Dispose();
         if (elevated)
