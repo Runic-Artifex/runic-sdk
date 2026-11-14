@@ -6,7 +6,7 @@ import { bootstrapApplication } from "@angular/platform-browser";
 import { connectView, type ViewConnection } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
 import * as wire from "@runic-artifex/views/generated/wire";
-import { injectTextField, injectView } from "../../dist/esm/index.js";
+import { injectTextField, injectView } from "@runic-artifex/angular";
 
 type State = { readonly title: string };
 const query = new URLSearchParams(location.search);

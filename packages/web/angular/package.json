@@ -4,19 +4,16 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/esm/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "default": "./dist/esm/index.js"
+      "types": "./dist/types/runic-artifex-angular.d.ts",
+      "default": "./dist/fesm2022/runic-artifex-angular.mjs"
     },
     "./forms": {
-      "types": "./dist/esm/forms/index.d.ts",
-      "import": "./dist/esm/forms/index.js",
-      "default": "./dist/esm/forms/index.js"
+      "types": "./dist/types/runic-artifex-angular-forms.d.ts",
+      "default": "./dist/fesm2022/runic-artifex-angular-forms.mjs"
     },
     "./experimental": {
-      "types": "./dist/esm/experimental.d.ts",
-      "import": "./dist/esm/experimental.js",
-      "default": "./dist/esm/experimental.js"
+      "types": "./dist/types/runic-artifex-angular-experimental.d.ts",
+      "default": "./dist/fesm2022/runic-artifex-angular-experimental.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -52,10 +49,10 @@
   ],
   "packageManager": "bun@1.4.4",
   "sideEffects": false,
-  "main": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
+  "main": "./dist/fesm2022/runic-artifex-angular.mjs",
+  "types": "./dist/types/runic-artifex-angular.d.ts",
   "scripts": {
-    "build": "ngc -p tsconfig.json",
+    "build": "ng-packagr -p ng-package.json -c tsconfig.json && bun scripts/finish-apf.mjs",
     "check": "ngc -p tsconfig.json --noEmit",
     "test": "bun run --bun build && tsc -p tsconfig.test.json && vitest run",
     "pack:check": "bun pm pack --dry-run"
@@ -70,7 +67,9 @@
     "@angular/platform-browser": "22.2.3",
     "esbuild": "0.28.2",
     "happy-dom": "21.0.4",
+    "ng-packagr": "22.2.6",
     "playwright-core": "1.63.0",
+    "tslib": "2.8.1",
     "typescript": "6.0.3",
     "vitest": "5.0.3"
   }

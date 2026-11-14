@@ -1,6 +1,6 @@
 import { linkedSignal, untracked, type WritableSignal } from "@angular/core";
 import { validate, type PathKind, type SchemaPath, type SchemaPathRules, type ValidationError } from "@angular/forms/signals";
-import type { FieldHandle } from "../inject-field.js";
+import type { FieldHandle } from "@runic-artifex/angular";
 
 /**
  * A `WritableSignal` over an {@link injectField} handle, for a Signal Forms `form()`: it reads the field's `value`,
