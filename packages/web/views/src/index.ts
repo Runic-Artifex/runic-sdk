@@ -13,6 +13,14 @@ export {
 } from "./errors.js";
 export { describeBridgeError, isBridgeError } from "./describe-error.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, type BridgeDiagnosticListener } from "./diagnostics.js";
+export type {
+  BridgeCallChannel,
+  BridgeCallEvent,
+  BridgeCallIdentity,
+  BridgeCallKind,
+  BridgeCallListener,
+  BridgeCallOutcome,
+} from "./calls.js";
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { runicTextKeys, type RunicTextKey } from "./runic-text.js";
