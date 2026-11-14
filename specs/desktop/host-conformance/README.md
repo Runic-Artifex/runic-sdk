@@ -322,3 +322,39 @@ New steps and actions the runners need:
   window) and `page` what the host shows in the page's region `name` (`shows`, `src`, `title`, `allow`, `height`, and for
   a component `module` and `token`, with `src` its WebSocket address); with
   `dialogOwner` the host window that owns the latest dialogs; with `departure` whether the oldest departure went ahead.
+
+## Region appearance scenarios
+
+The scenarios of [`region-appearance/1`](../host-protocol.md#appearance-in-a-region-region-appearance1) are planned, not
+yet in the corpus: the runners run every scenario of their role, and neither implements the feature yet. They go in
+`scenarios/region/`, with `requires: ["region/1", "region-appearance/1"]` (a scenario of the feature's absence requires
+`region/1` alone), together with the guest's and the host's implementations, which also add the runner steps and actions
+below and their schema. The host's implementation lists `region-appearance/1` for a browser host too, so it updates
+`region.host-browser`'s list with it.
+
+| # | Scenario | Roles | Checks |
+| --- | --- | --- | --- |
+| RA1 | `region.appearance-first-push` | guest | A region window opened with the override `contrast: "more"`, then attached: the page's first `appearance` push after its `hello` with `appearance/1` carries `contrast: "more"`, the other members the desktop's, and `override: ["contrast"]` |
+| RA2 | `region.appearance-member-removed` | guest | Attached; a `region-appearance` with `contrast: null`: the page's next push carries the desktop's contrast, and its `override` no longer lists it |
+| RA3 | `region.appearance-detached` | guest | Detached; a `region-appearance` with an override, then a new `region-attach`: no page receives a push while detached, and the new page's first push carries the override |
+| RA4 | `region.appearance-desktop-change` | guest | With an override, the host's `appearance` push changes `accentColor`: the region window's page receives the new accent colour with the override kept; a window-mode Window's page receives the desktop's appearance |
+| RA5 | `region.appearance-forced-colors-without-palette` | guest | The override `contrast: "forced-colors"` without `systemColors`, on a desktop that does not force colours: `contrast: "forced-colors"`, `systemColors: null` |
+| RA6 | `region.appearance-more-on-forced-desktop` | guest | The override `contrast: "more"` on a desktop that forces colours: `systemColors: null` |
+| RA7 | `region.appearance-out-of-range` | guest | An override with `textScale: 9` and `accentColor: "red"`: both read as `null`, the desktop's values, and the other members apply |
+| RA8 | `region.appearance-invalid` | guest | A `region-appearance` with `appearance: 3` is ignored, and the previous override stays; a `window-open` reply whose `appearance` is not an object or `null` opens the window without an override |
+| RA9 | `region.appearance-not-in-use`, `region.host-appearance-not-in-use` | guest, host | Without the feature in use, the host sends no `appearance` reply member and no `region-appearance` push, and still shows a window that its policy embeds with an override; a guest ignores both, and the unknown push kind |
+| RA10 | `region.appearance-owned-window` | guest | A Window that a region window with an override owns opens in window mode, and its page receives the desktop's appearance |
+| RA11 | `region.appearance-not-a-region` | guest | A `region-appearance` for a window shown in a window, or for an unknown id, is ignored |
+| RA12 | `region.appearance-component`, `region.host-appearance-component` | guest, host | A component attach with the override `colorScheme: "dark"`: the component connection's first push carries it, with `override: ["colorScheme"]`; the host's `hosted-region-content` to its page carries `colorScheme: "dark"`, and an override's change of scheme a `hosted-region-update` with the new one |
+
+New steps and actions the runners need:
+
+- **Guest runner.** The `appearance` action's result also carries the push's `override` member when it lists one. A
+  region window's override comes in a `send` of the `window-open` reply and of `region-appearance`, so the guest runner
+  needs no other step. A detached window has no page, so RA3 checks the first push of the page that the next attach
+  admits.
+- **Host runner.** `arrange.host.embedOptions.appearance`, the override of the regions the host's policy embeds (in
+  .NET, `RunicHostedRegionOptions.Appearance`); the host application's action `setRegionAppearance` (`window`, the
+  guest's window, and `appearance`, an override or `null`), with the result `applied`, the `bool` of
+  `RunicHostedRegion.SetAppearanceAsync`; and `expect` with `window` (a host window) and `page` also checks the
+  region's `colorScheme`.

@@ -511,8 +511,11 @@ export interface MockBridge extends RunicBridgeClient {
    * `WindowContentSession.Appearance` in .NET): pushes `appearance` with every member to the connection when it uses the
    * feature, and again after the `hello` of each later connection, which gets every member `null` before the first
    * call. A member left out is `null`; `null` makes every member `null`. Setting an equal appearance pushes nothing.
+   * `options.override` lists the members the host decided for the window rather than read from the desktop, as for a
+   * guest's page in a hosted region: the push carries them as `override`, without members whose value is `null`, and the
+   * page's appearance prefers them over its engine's media queries.
    */
-  setAppearance(appearance: Partial<HostAppearance> | null): void;
+  setAppearance(appearance: Partial<HostAppearance> | null, options?: { readonly override?: readonly ("colorScheme" | "contrast" | "reducedMotion")[] }): void;
   /** The window's appearance that {@link MockBridge.setAppearance} set, every member present, or `null`. */
   readonly appearance: HostAppearance | null;
   /**
@@ -1083,6 +1086,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   let windowLocale: string | null = null;
   // appearance/1: the window's appearance (setAppearance).
   let windowAppearance: HostAppearance | null = null;
+  // The members the host decided for the window (`override`), only ones with a value.
+  let windowOverride: readonly ("colorScheme" | "contrast" | "reducedMotion")[] = [];
   const appearancePush = (value: HostAppearance | null) => ({
     kind: "appearance",
     colorScheme: value?.colorScheme ?? null,
@@ -1091,6 +1096,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     textScale: value?.textScale ?? null,
     accentColor: value?.accentColor ?? null,
     systemColors: value?.systemColors ?? null,
+    ...windowOverride.length > 0 ? { override: windowOverride } : {},
   });
   // client-languages/1: the languages of the last hello that used the feature.
   let reportedLanguages: readonly string[] = [];
@@ -2156,7 +2162,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         pushMessage({ kind: "locale", locale });
     },
     get windowLocale() { return windowLocale; },
-    setAppearance(value) {
+    setAppearance(value, options) {
       const next: HostAppearance | null = value === null ? null : Object.freeze({
         colorScheme: value.colorScheme ?? null,
         contrast: value.contrast ?? null,
@@ -2165,8 +2171,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         accentColor: value.accentColor ?? null,
         systemColors: value.systemColors ?? null,
       });
-      if (JSON.stringify(next) === JSON.stringify(windowAppearance)) return;
+      const decided = next === null ? [] : (["colorScheme", "contrast", "reducedMotion"] as const)
+        .filter(member => options?.override?.includes(member) === true && next[member] !== null);
+      if (JSON.stringify(next) === JSON.stringify(windowAppearance) && JSON.stringify(decided) === JSON.stringify(windowOverride)) return;
       windowAppearance = next;
+      windowOverride = Object.freeze(decided);
       if (connected && connection.session !== undefined && connection.features.has(appearanceFeature)) pushMessage(appearancePush(next));
     },
     get appearance() { return windowAppearance; },
