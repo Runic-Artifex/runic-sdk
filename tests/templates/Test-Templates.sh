@@ -186,8 +186,14 @@ npm_archive_version() {
 # Runic npm packages share one release-train version.
 views_npm_version="$(npm_archive_version "${npm_archives[0]}")"
 registry_ready="$template_tmp/template-npm-registry.url"
+# During a train, the registry also serves the train feed's npm candidates of the independently released Runic packages
+# (the Translations Vite plugin of --translations); npm serves the published ones.
+mapfile -t train_npm_archives < <(cd "$repository_root" && bun -e '
+  import { trainFeedNpm } from "./eng/ci/train-feed.mjs";
+  for (const item of Object.values(trainFeedNpm())) console.log(item.file);
+')
 bun "$script_directory/template-npm-registry.mjs" \
-  "$registry_ready" "${npm_archives[@]}" &
+  "$registry_ready" "${npm_archives[@]}" "${train_npm_archives[@]}" &
 registry_pid=$!
 for _ in $(seq 1 100); do
   [[ -s "$registry_ready" ]] && break
@@ -638,6 +644,25 @@ verify_template() {
   fi
   # The referenced host's client is the page's runic-views.js.
   cmp "$output/bin/Release/net10.0/www/$host_client" "$output/bin/Release/net10.0/www/runic-views.js"
+  # #944: a translated Vite frontend compiles its catalog with the Translations Vite plugin, so the .NET build writes
+  # no page ESM of its own, and an edited message rebuilds the page. The rebuild below runs with the restored catalog.
+  if [[ "$translations" == translations && "$framework" != angular ]]; then
+    if find "$output/obj" -name 'web-module-manifest-v*.json' | grep -q .; then
+      echo "The $framework build wrote the page's Runic Translations ESM, which the Vite plugin owns." >&2
+      exit 1
+    fi
+    grep -Fq 'runicTranslations()' "$output/Frontend/vite.config.ts"
+    test -f "$output/Frontend/.runic/translations/virtual.d.ts"
+    local catalog="$output/Frontend/translations/en.rmf2"
+    cp "$catalog" "$output/en.rmf2.kept"
+    sed -i 's/^  title = Runic Views$/  title = Runic Views, rebuilt/' "$catalog"
+    dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild-translations.log"
+    if ! grep -rFq 'Runic Views, rebuilt' "$output/bin/Release/net10.0/www"; then
+      echo "An edited message did not rebuild the $framework page." >&2
+      exit 1
+    fi
+    mv "$output/en.rmf2.kept" "$catalog"
+  fi
   # A changed frontend rebuilds, and www/ mirrors the new dist/: the assets of
   # the earlier build are gone, and the host scripts stay (#236).
   local entry
@@ -702,6 +727,10 @@ verify_template() {
   if [[ "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
+  fi
+  # #944: under dotnet runic dev an edited, added or removed message reaches the page without a build.
+  if [[ "$browser_check" == 1 && "$translations" == translations && "$framework" != angular ]]; then
+    run_translations_dev_check "$output" "$framework" "$host"
   fi
   # Each frontend's page runs in Chromium under its policy on both hosts: the default Runic Desktop project and the
   # CS-WebUI variant, both with npm. The policy depends on the frontend alone, so the GTK 4 variant adds nothing.
@@ -771,6 +800,23 @@ run_browser_check() {
   if ! bun "$script_directory/check-template-page.mjs" "${options[@]}" -- \
     env -C "$output" dotnet "$output/bin/Release/net10.0/$project_name.dll" > "$log" 2>&1; then
     echo "The $framework $host page failed the browser check." >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
+}
+
+# Opens the page of a translated Vite frontend under dotnet runic dev in Chromium, edits a message of its catalog and
+# waits for the page to show it, then adds and removes a message (check-template-translations-dev.mjs). The catalog's
+# files are restored afterwards.
+run_translations_dev_check() {
+  local output="$1"
+  local framework="$2"
+  local host="$3"
+  local log="$output/translations-dev-check.log"
+  if ! bun "$script_directory/check-template-translations-dev.mjs" --host "$host" --project "$output" -- \
+    env -C "$output" dotnet runic dev > "$log" 2>&1; then
+    echo "The $framework $host page did not follow its catalog under dotnet runic dev." >&2
     cat "$log" >&2
     exit 1
   fi
@@ -979,8 +1025,9 @@ variants=(
   "vue npm desktop toolkit tests gtk4"
   "sveltekit npm cswebui toolkit tests restore"
   "sveltekit bun desktop toolkit tests"
-  # --translations: the catalog's C# API and page ESM from one runic.json, each frontend's language switch and its
-  # translated-text tests, .NET and page.
+  # --translations: the catalog's C# API and page modules from one runic.json (the Translations Vite plugin for the
+  # Vite frontends, the .NET build's ESM for Angular), each frontend's language switch and its translated-text tests,
+  # .NET and page, and the Vite frontends' development loop.
   "react pnpm desktop toolkit tests translations"
   "vue bun cswebui reactiveui tests translations"
   "svelte npm desktop reactiveui tests translations"
