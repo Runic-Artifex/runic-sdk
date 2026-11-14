@@ -28,23 +28,26 @@ internal sealed class CreateTests
     public void ModelMirrorsTemplate()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
-        Equal("frontend,package-manager,host,linux-gtk,desktop-server,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
+        Equal("frontend,angular-build,package-manager,host,linux-gtk,desktop-server,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
         // Runic Desktop and ReactiveUI are the defaults and are listed first (D018.1, D018.9); GTK 3 is the Linux default;
-        // the native Desktop server is the default server (D053.24).
-        Equal("react,npm,desktop,3,native,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
+        // the native Desktop server is the default server (D053.24); the Angular CLI builds Angular by default (D066.21).
+        Equal("react,cli,npm,desktop,3,native,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
         Equal("react,vue,svelte,sveltekit,angular", string.Join(',', model.Options[0].Choices.Select(choice => choice.Value)));
-        Equal("npm,pnpm,bun", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
+        Equal("cli,vite", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
+        Equal("npm,pnpm,bun", string.Join(',', model.Options[2].Choices.Select(choice => choice.Value)));
         // W319-003 D19 tmpl-03: the host and the Linux GTK version are separate choices; desktop-gtk4 is gone.
-        Equal("desktop,cswebui", string.Join(',', model.Options[2].Choices.Select(choice => choice.Value)));
-        Equal("3,4", string.Join(',', model.Options[3].Choices.Select(choice => choice.Value)));
-        Equal("native,kestrel", string.Join(',', model.Options[4].Choices.Select(choice => choice.Value)));
-        Equal("reactiveui,toolkit", string.Join(',', model.Options[5].Choices.Select(choice => choice.Value)));
-        Equal("Runic Desktop", model.Options[2].Find("desktop")!.DisplayName);
-        True(model.Options[2].Find("desktop")!.Description.StartsWith("Opens a native window", StringComparison.Ordinal), "Runic Desktop says it opens a native window");
-        True(model.Options[2].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
-        Equal("GTK 4", model.Options[3].Find("4")!.DisplayName);
-        Equal("Native", model.Options[4].Find("native")!.DisplayName);
-        Equal("CommunityToolkit.Mvvm", model.Options[5].Find("toolkit")!.DisplayName);
+        Equal("desktop,cswebui", string.Join(',', model.Options[3].Choices.Select(choice => choice.Value)));
+        Equal("3,4", string.Join(',', model.Options[4].Choices.Select(choice => choice.Value)));
+        Equal("native,kestrel", string.Join(',', model.Options[5].Choices.Select(choice => choice.Value)));
+        Equal("reactiveui,toolkit", string.Join(',', model.Options[6].Choices.Select(choice => choice.Value)));
+        Equal("Angular CLI", model.Options[1].Find("cli")!.DisplayName);
+        Equal("Vite", model.Options[1].Find("vite")!.DisplayName);
+        Equal("Runic Desktop", model.Options[3].Find("desktop")!.DisplayName);
+        True(model.Options[3].Find("desktop")!.Description.StartsWith("Opens a native window", StringComparison.Ordinal), "Runic Desktop says it opens a native window");
+        True(model.Options[3].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
+        Equal("GTK 4", model.Options[4].Find("4")!.DisplayName);
+        Equal("Native", model.Options[5].Find("native")!.DisplayName);
+        Equal("CommunityToolkit.Mvvm", model.Options[6].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
         Equal("tests,translations,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
@@ -181,6 +184,31 @@ internal sealed class CreateTests
         Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    [Test, DisplayName("--angular-build is asked for and printed only for Angular")]
+    public void AngularBuildPassesThrough()
+    {
+        (int exitCode, string output, string error) = Run("MyApp", "--frontend", "angular", "--angular-build", "vite", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        True(ResultProperty(output, "reproduceCommand").Contains("--frontend angular --angular-build vite --package-manager", StringComparison.Ordinal), output);
+        using (JsonDocument document = JsonDocument.Parse(output))
+            Equal("vite", document.RootElement.GetProperty("payload").GetProperty("options").GetProperty("angular-build").GetString());
+
+        // The Angular CLI is the default for Angular.
+        (exitCode, output, error) = Run("MyApp", "--frontend", "angular", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        True(ResultProperty(output, "reproduceCommand").Contains("--frontend angular --angular-build cli --package-manager", StringComparison.Ordinal), output);
+
+        // The other frontends build with Vite, so the creator leaves --angular-build out unless it is passed.
+        (exitCode, output, error) = Run("MyApp", "--frontend", "vue", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        True(!ResultProperty(output, "reproduceCommand").Contains("--angular-build", StringComparison.Ordinal), output);
+        using (JsonDocument document = JsonDocument.Parse(output))
+            True(!document.RootElement.GetProperty("payload").GetProperty("options").TryGetProperty("angular-build", out _), output);
+
+        (exitCode, _, _) = Run("MyApp", "--frontend", "angular", "--angular-build", "webpack", "--yes", "--dry-run", "--format", "json");
+        Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     [Test, DisplayName("project names start with a letter")]
     public void ProjectNamesAreValidated()
     {
@@ -216,9 +244,9 @@ internal sealed class CreateTests
         CreatePlan plan = new("MyApp", null, "1.2.3-preview.4",
             model.Options.Select(option => new OptionSelection(option, option.Choices[^1])).ToArray(), null);
         Equal("dotnet new install Runic.Application.Templates@1.2.3-preview.4", plan.InstallCommand);
-        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreateCommand);
-        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreatorCommand);
-        Equal("Angular · Bun · CS-WebUI · GTK 4 · Kestrel · CommunityToolkit.Mvvm", plan.Summary);
+        Equal("dotnet new runic-app --name MyApp --frontend angular --angular-build vite --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --angular-build vite --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreatorCommand);
+        Equal("Angular · Vite · Bun · CS-WebUI · GTK 4 · Kestrel · CommunityToolkit.Mvvm", plan.Summary);
         Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', plan.NextSteps));
     }
 
@@ -320,7 +348,7 @@ internal sealed class CreateTests
             "name,directory,fullPath,version,options,toggles,textOptions,commands,reproduceCommand,created",
             string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
         // Options and toggles are keyed by the template's option names, not by a naming policy.
-        Equal(string.Join(",", Runic.Create.Program.OptionFlags),
+        Equal(string.Join(",", Runic.Create.Program.OptionFlags.Where(flag => flag != "angular-build")),
             string.Join(",", payload.GetProperty("options").EnumerateObject().Select(property => property.Name)));
         Equal("tests=False,translations=False,nix=False,packaging=False,restore=False",
             string.Join(",", payload.GetProperty("toggles").EnumerateObject().Select(property => $"{property.Name}={property.Value.GetBoolean()}")));
@@ -332,7 +360,7 @@ internal sealed class CreateTests
     public void JsonPayloadSnapshot()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
-        OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
+        OptionSelection[] defaults = ReactDefaults(model);
         CreatePlan plan = new("MyApp", "apps/MyApp", "1.0.0", defaults, null, [model.Toggles[0]]);
         CreateResult result = CreateApplication.ResultOf(model, plan, "/work/apps/MyApp", created: true);
         Equal(
@@ -383,6 +411,10 @@ internal sealed class CreateTests
         return (exitCode, console.Output.ToString(), console.Error.ToString());
     }
 
+    // The default choices as the creator selects them for React: without --angular-build, which only Angular uses.
+    private static OptionSelection[] ReactDefaults(TemplateOptionModel model) =>
+        model.Options.Where(option => option.LongName != "angular-build").Select(option => new OptionSelection(option, option.Default)).ToArray();
+
     private static string ResultProperty(string json, string name)
     {
         using JsonDocument document = JsonDocument.Parse(json);
@@ -424,7 +456,7 @@ internal sealed class CreateTests
     public void TestsTogglePassesThrough()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
-        OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
+        OptionSelection[] defaults = ReactDefaults(model);
         CreatePlan plan = new("MyApp", null, "1.0.0", defaults, null, [model.Toggles[0]]);
         Equal("dotnet new runic-app --name MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests", plan.CreateCommand);
         Equal("dnx Runic.Create@1.0.0 -- MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests", plan.CreatorCommand);

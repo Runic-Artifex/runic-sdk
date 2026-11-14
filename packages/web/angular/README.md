@@ -13,6 +13,42 @@ bun add @runic-artifex/angular@preview @runic-artifex/views@preview
 Previews are published under the `preview` dist-tag. Install the versions that
 match your Runic SDK packages. Angular 22 is supported.
 
+## Building with the Angular CLI or Vite
+
+The package is in the Angular Package Format, so every Angular-aware build links
+it: the Angular CLI (`@angular/build`), and Vite through the Analog Angular
+plugin (`@analogjs/vite-plugin-angular`). `dotnet new runic-app --frontend
+angular` starts with the Angular CLI, and `--angular-build vite` with Vite.
+
+The Angular CLI runs no Vite plugins, so the Runic development tools come in
+through `runicDevSessionProxy()` in the dev server's `proxyConfig` and an
+import in `main.ts`
+([`@runic-artifex/vite-plugin-runic`, "SvelteKit and Angular"](../vite-plugin-runic/README.md#sveltekit-and-angular)).
+With Vite, the page uses the Vite plugins the other frameworks use:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import angular from "@analogjs/vite-plugin-angular";
+import { runic } from "@runic-artifex/vite-plugin-runic";
+import { runicTranslations } from "@runic-artifex/vite-plugin-runic-translations";
+
+export default defineConfig({
+  base: "./",
+  plugins: [angular({ liveReload: true }), runic(), runicTranslations()],
+});
+```
+
+That adds the Translations development loop (an edited message reaches the
+page without a build), the Runic DevTools dock and the
+[component build target](../vite-plugin-runic/README.md#component-build-target),
+which the Angular CLI cannot build. `vite build` checks no types: run
+`ngc -p tsconfig.app.json --noEmit` for that, as the template's `build` and
+`typecheck` scripts do. Without `angular.json`, `dotnet runic dev` serves the
+page with Vite. Tests run on Vitest with the same plugin, after
+`getTestBed().initTestEnvironment(BrowserTestingModule, platformBrowserTesting())`
+in a setup file that imports `@angular/compiler` first.
+
 ## Connecting a View
 
 `injectView(source)` connects a generated page reference, or

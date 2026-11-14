@@ -8,7 +8,8 @@
 // --policy-from one of the served document's Content-Security-Policy headers must be exactly that policy; without it
 // the document must have none (CS-WebUI sends no headers). --meta-policy requires a <meta> policy, which SvelteKit's
 // kit.csp adds. The check waits for the Bridge, shows the Counter View, increments it and fails when the page
-// reported a violation event or Chromium logged a policy message. A serve-only Runic Desktop application starts
+// reported a violation event or Chromium logged a policy message, or when the page threw an uncaught error, such as
+// Angular's "JIT compiler unavailable" for a library that a production build left unlinked. A serve-only Runic Desktop application starts
 // without DISPLAY and WAYLAND_DISPLAY, as it needs none; CS-WebUI calls gtk_init and keeps them. --host comes first
 // because Bun drops a leading "--" from a script's arguments.
 // --self-check serves a page with a blocked inline style and fails unless the collector reports it.
@@ -106,39 +107,54 @@ async function checkPage(url, expectedHeader, metaPolicy) {
   try {
     const page = await browser.newPage();
     const csp = await watchCspViolations(page);
-    const response = await page.goto(url, { waitUntil: "load", timeout });
-    if (!response?.ok()) throw new Error(`The page answered ${response?.status()}: ${url}`);
-    // Runic Desktop adds a policy of its own (frame-ancestors 'self'); the browser enforces every header.
-    const headers = await response.headerValues("content-security-policy");
-    if (expectedHeader ? !headers.includes(expectedHeader) : headers.length > 0)
-      throw new Error(`The page's Content-Security-Policy headers are ${JSON.stringify(headers)}; expected ${
-        expectedHeader ? `one to be ${JSON.stringify(expectedHeader)}` : "none"}.`);
-    const header = headers.join(" + ") || null;
-    const metas = await page.locator('meta[http-equiv="content-security-policy" i]').count();
-    if (metaPolicy && metas === 0) throw new Error("The page has no <meta> Content-Security-Policy.");
-    // The status line follows the Bridge connection, so it names the connection only once it is up.
-    await page.getByRole("status").filter({ hasText: "Connected to the .NET Window." }).waitFor({ timeout });
-    // A Bridge state push and a command round trip: the Counter button enables once the Window is connected.
-    await page.getByRole("button", { name: "Counter", exact: true }).click({ timeout });
-    await page.getByRole("heading", { name: "Counter View" }).waitFor({ timeout });
-    const count = page.locator(".count");
-    await count.filter({ hasText: /^\s*0\s*$/ }).waitFor({ timeout });
-    await page.getByRole("button", { name: "Increment", exact: true }).click({ timeout });
-    await count.filter({ hasText: /^\s*1\s*$/ }).waitFor({ timeout });
-    // The field bindings: a number field (Step) and a text field (Label) write through their setters.
-    await page.getByLabel("Step").selectOption("5", { timeout });
-    await page.getByRole("button", { name: "Increment", exact: true }).click({ timeout });
-    await count.filter({ hasText: /^\s*6\s*$/ }).waitFor({ timeout });
-    await page.getByLabel("Label").fill("Taps", { timeout });
-    await page.locator(".caption").filter({ hasText: /^\s*Taps\s*$/ }).waitFor({ timeout });
-    // Violations are reported asynchronously; give late ones, such as from a mount effect, time to arrive.
-    await page.waitForTimeout(1_000);
-    const report = csp.report();
-    if (report) throw new Error(`The page violated its Content-Security-Policy:\n${report}`);
-    return { header, metas };
+    const pageErrors = [];
+    page.on("pageerror", error => pageErrors.push(error.stack ?? error.message));
+    const failed = () => pageErrors.length ? `\nThe page threw:\n${pageErrors.join("\n")}` : "";
+    try {
+      return await exercisePage(page, csp, url, expectedHeader, metaPolicy, failed);
+    } catch (error) {
+      error.message += failed();
+      throw error;
+    }
   } finally {
     await browser.close();
   }
+}
+
+// Shows the Counter View, increments it and checks the policies; checkPage reports what the page threw.
+async function exercisePage(page, csp, url, expectedHeader, metaPolicy, failed) {
+  const response = await page.goto(url, { waitUntil: "load", timeout });
+  if (!response?.ok()) throw new Error(`The page answered ${response?.status()}: ${url}`);
+  // Runic Desktop adds a policy of its own (frame-ancestors 'self'); the browser enforces every header.
+  const headers = await response.headerValues("content-security-policy");
+  if (expectedHeader ? !headers.includes(expectedHeader) : headers.length > 0)
+    throw new Error(`The page's Content-Security-Policy headers are ${JSON.stringify(headers)}; expected ${
+      expectedHeader ? `one to be ${JSON.stringify(expectedHeader)}` : "none"}.`);
+  const header = headers.join(" + ") || null;
+  const metas = await page.locator('meta[http-equiv="content-security-policy" i]').count();
+  if (metaPolicy && metas === 0) throw new Error("The page has no <meta> Content-Security-Policy.");
+  // The status line follows the Bridge connection, so it names the connection only once it is up.
+  await page.getByRole("status").filter({ hasText: "Connected to the .NET Window." }).waitFor({ timeout });
+  // A Bridge state push and a command round trip: the Counter button enables once the Window is connected.
+  await page.getByRole("button", { name: "Counter", exact: true }).click({ timeout });
+  await page.getByRole("heading", { name: "Counter View" }).waitFor({ timeout });
+  const count = page.locator(".count");
+  await count.filter({ hasText: /^\s*0\s*$/ }).waitFor({ timeout });
+  await page.getByRole("button", { name: "Increment", exact: true }).click({ timeout });
+  await count.filter({ hasText: /^\s*1\s*$/ }).waitFor({ timeout });
+  // The field bindings: a number field (Step) and a text field (Label) write through their setters.
+  await page.getByLabel("Step").selectOption("5", { timeout });
+  await page.getByRole("button", { name: "Increment", exact: true }).click({ timeout });
+  await count.filter({ hasText: /^\s*6\s*$/ }).waitFor({ timeout });
+  await page.getByLabel("Label").fill("Taps", { timeout });
+  await page.locator(".caption").filter({ hasText: /^\s*Taps\s*$/ }).waitFor({ timeout });
+  // Violations are reported asynchronously; give late ones, such as from a mount effect, time to arrive.
+  await page.waitForTimeout(1_000);
+  const report = csp.report();
+  if (report) throw new Error(`The page violated its Content-Security-Policy:\n${report}`);
+  // An uncaught error fails the page even when it rendered (checkPage adds the errors to the message).
+  if (failed()) throw new Error("The page reported uncaught errors.");
+  return { header, metas };
 }
 
 async function main(args) {
