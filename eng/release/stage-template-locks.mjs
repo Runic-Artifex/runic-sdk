@@ -3,7 +3,7 @@ import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readNpmCandidates, templateFrontendDirectory, templateFrontends, templateRunicPackages, verifyTemplateLock } from "./template-locks.mjs";
+import { readNpmCandidates, templateLockDirectories, verifyTemplateLock } from "./template-locks.mjs";
 
 const [content, npmDirectory, output] = process.argv.slice(2);
 assert(content && npmDirectory && output,
@@ -14,15 +14,15 @@ const workspace = JSON.parse(readFileSync(join(repository, "eng/workspace.json")
 const archives = workspace.npm.map(p => join(npmDirectory,
   `${p.name.replace("@", "").replace("/", "-")}-${workspace.version}.tgz`));
 const candidates = readNpmCandidates(archives);
-for (const framework of templateFrontends) {
+for (const { directory, runicPackages, independentPackages } of templateLockDirectories) {
   for (const name of ["package-lock.json", "pnpm-lock.yaml", "bun.lock"]) {
-    const staged = join(output, templateFrontendDirectory(framework), name);
+    const staged = join(output, directory, name);
     mkdirSync(dirname(staged), { recursive: true });
-    copyFileSync(join(content, templateFrontendDirectory(framework), name), staged);
+    copyFileSync(join(content, directory, name), staged);
     execFileSync(process.execPath, [join(repository, "eng/release/stamp-template-lock.mjs"), staged, ...archives],
       { stdio: "inherit" });
     verifyTemplateLock(readFileSync(staged, "utf8"), name, candidates,
-      { expectedPackages: templateRunicPackages[framework] });
+      { expectedPackages: [...runicPackages, ...independentPackages] });
   }
 }
-console.log(`Staged all ${templateFrontends.length * 3} template locks against final npm archive bytes.`);
+console.log(`Staged all ${templateLockDirectories.length * 3} template locks against final npm archive bytes.`);

@@ -1,9 +1,12 @@
+// The types of the virtual:runic-translations modules, which the Translations Vite plugin writes when Vite runs
+// (vite build, the development server or vitest): `dotnet build` or `dotnet runic dev` writes them before a type check.
+/// <reference path="../../.runic/translations/virtual.d.ts" />
 import { configureTranslatedText, syncDocumentLocale } from "@runic-artifex/views";
 import { useTextLocale } from "@runic-artifex/svelte";
-// The catalog's ESM, which `dotnet build` generates from Frontend/translations (see the .csproj).
-import { m } from "../../.runic/translations/messages.js";
-import { configureSharedLocaleResolver, createLocaleSource, localeDirection, locales } from "../../.runic/translations/runtime.js";
-import { resolveTextReference } from "../../.runic/translations/transport.js";
+// The catalog of Frontend/translations, which runicTranslations() in vite.config.ts compiles.
+import { m } from "virtual:runic-translations/app";
+import { configureSharedLocaleResolver, createLocaleSource, localeDirection, locales } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
 
 export { m };
 

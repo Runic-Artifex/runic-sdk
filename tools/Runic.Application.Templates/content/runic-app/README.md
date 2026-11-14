@@ -173,7 +173,11 @@ clipboard on the default Runic Desktop host (create the project without
 | `ApplicationIdentity.cs` | The application ID and name from the project file. |
 <!--#endif -->
 <!--#if (translations) -->
+<!--#if (translationsVitePlugin) -->
+| `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The .NET build generates `AppText` for C#, and `runicTranslations()` in `Frontend/vite.config.ts` compiles the page's modules into `Frontend/.runic/translations`. See [Translate it](#translate-it). |
+<!--#else -->
 | `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The build generates `AppText` for C# and the page's ESM in `Frontend/.runic/translations`. See [Translate it](#translate-it). |
+<!--#endif -->
 <!--#endif -->
 | `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
 <!--#if (packaging) -->
@@ -220,7 +224,14 @@ The generated clients are not committed: `.gitignore` excludes
 `Frontend/src/generated`, and `dotnet build` or `dotnet runic dev` writes
 them again. Until the first build, your editor and
 `__PACKAGE_MANAGER_NAME__ run typecheck` report the missing modules.
-<!--#if (translations) -->
+<!--#if (translationsVitePlugin) -->
+The page's Runic Translations modules and their types are not committed either:
+`.gitignore` excludes `Frontend/.runic`, which the Translations Vite plugin
+writes from the catalog whenever Vite runs (`dotnet build`, `dotnet runic dev`,
+the frontend's `build` script and its test). The `build` script runs
+`vite build` before the type check, so they exist when the check runs on a
+clean checkout.
+<!--#elif (translations) -->
 The page's Runic Translations modules are not committed either: `.gitignore`
 excludes `Frontend/.runic`, and `dotnet build` writes them from the catalog, so
 build once before the type check or the frontend test.
@@ -256,14 +267,30 @@ the page and C# share; `dotnet build` checks every translation on both sides.
   across starts, save it and pass it to `StartLanguageAsync`.
 - **Try a language** without changing your system: `RUNIC_LOCALE=de dotnet runic dev`.
 
+<!--#if (translationsVitePlugin) -->
+To add a language, add it to `locales` in `runic.json`, then copy `en.rmf2`
+to `<locale>.rmf2` and translate it. The page imports the catalog as
+`virtual:runic-translations/app` from the
+[Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk/tree/v0.11.0/packages/web/vite-plugin-runic-translations),
+`runicTranslations()` in `Frontend/vite.config.ts`. It compiles the catalog
+with the `dotnet-runic-translations` tool of `.config/dotnet-tools.json`
+(`dotnet tool restore` installs it), the release that generates `AppText`, so
+the page and C# read the same catalog. Under `dotnet runic dev` the Vite
+development server compiles a message you edit, add or remove again, and the
+page shows it without a build (for now by reloading). C# reads the change,
+and the application offers a new language, after the next build or a restart
+of `dotnet runic dev`.
+<!--#else -->
 To add a language, add it to `locales` in `runic.json`, then copy `en.rmf2`
 to `<locale>.rmf2` and translate it; the page's language list shows it after
 the next build. The page imports the catalog from `Frontend/.runic/translations`,
 which the .NET build writes with the `dotnet-runic-translations` tool of
-`.config/dotnet-tools.json` (`dotnet tool restore` installs it), rather than
-through the Translations Vite plugin: after you edit a message, build again
-(`dotnet build`, or restart `dotnet runic dev`) to update the page; `vite dev`
-does not reload messages. Native text such as menus, a tray icon and dialogs
+`.config/dotnet-tools.json` (`dotnet tool restore` installs it). The Angular
+CLI runs no Vite plugins, so after you edit a message, build again
+(`dotnet build`, or restart `dotnet runic dev`) to update the page; `ng serve`
+does not reload messages.
+<!--#endif -->
+Native text such as menus, a tray icon and dialogs
 formats from the same catalog in C#: `new AppText(translations).Messages`.
 See [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/runic-views.md).
 
