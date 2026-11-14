@@ -52,9 +52,23 @@ internal sealed record DevProjectConfiguration(
         // The hosts whose build files the project imports, such as "desktop;cswebui", and the one it chose.
         "_RunicApplicationHostNames",
         "RunicApplicationHost",
+        // The session file's directory (obj/runic) and the program the Window process runs.
+        "BaseIntermediateOutputPath",
+        "AssemblyName",
+        "RunCommand",
     ];
 
     internal bool IsViewsWindowProject { get; init; }
+
+    /// <summary>The directory of the dev session file: <c>runic</c> below the project's <c>BaseIntermediateOutputPath</c>.</summary>
+    internal string SessionDirectory { get; init; } = Path.Combine(ProjectDirectory, "obj", "runic");
+
+    /// <summary>The generated TypeScript clients' directory; empty when MSBuild did not evaluate it.</summary>
+    internal string FrontendGeneratedDirectory { get; init; } = string.Empty;
+
+    /// <summary>The program the Window process runs, which dev finds below <c>dotnet watch</c> or <c>dotnet run</c>.</summary>
+    internal WindowProcessLocator.WindowProgram WindowProgram { get; init; } =
+        WindowProcessLocator.CreateProgram(string.Empty, Path.GetFileNameWithoutExtension(ProjectPath));
 
     /// <summary>
     /// Whether the resolved Vite configuration has <c>runic()</c> from <c>@runic-artifex/vite-plugin-runic</c>, as
@@ -202,6 +216,18 @@ internal sealed record DevProjectConfiguration(
             TargetDirectory: targetDirectory)
         {
             IsViewsWindowProject = viewsWindow,
+            SessionDirectory = Path.Combine(
+                // MSBuild's default is "obj\", with a backslash on every OS.
+                Normalize(string.IsNullOrWhiteSpace(Value("BaseIntermediateOutputPath")) ? "obj"
+                    : Value("BaseIntermediateOutputPath").Replace('\\', '/').TrimEnd('/'), evaluatedDirectory),
+                "runic"),
+            // A default built on BaseIntermediateOutputPath has its backslash.
+            FrontendGeneratedDirectory = NormalizeOptional(
+                Path.DirectorySeparatorChar == '/' ? Value("RunicApplicationFrontendGeneratedDirectory").Replace('\\', '/') : Value("RunicApplicationFrontendGeneratedDirectory"),
+                evaluatedDirectory),
+            WindowProgram = WindowProcessLocator.CreateProgram(
+                Value("RunCommand"),
+                string.IsNullOrWhiteSpace(Value("AssemblyName")) ? Path.GetFileNameWithoutExtension(evaluatedProject) : Value("AssemblyName")),
             ProjectAssetsFile = NormalizeOptional(Value("ProjectAssetsFile"), evaluatedDirectory),
             RuntimeConfigPath = NormalizeOptional(Value("ProjectRuntimeConfigFilePath"), evaluatedDirectory),
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),

@@ -344,6 +344,117 @@ in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later relea
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
+## IDE contract
+
+Since 0.20, `dev` gives IDEs, tasks and extensions stable lines to wait on and a
+session file to read. Unlike the rest of `dev`'s human text, these are a
+contract: they keep their form within `runic.application.tool.dev-session/1`.
+
+| Line (standard output) | When |
+| --- | --- |
+| `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
+| `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
+| `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
+
+`dev` finds the Window process below the `dotnet watch` or `dotnet run`
+process it started: the shallowest process that runs the project's program
+(MSBuild's `RunCommand`, so on macOS the development bundle's executable, or
+`dotnet <AssemblyName>.dll` without an application host). It looks every
+250 ms (every second on macOS, which runs `ps`), so the line follows the start
+by up to that long.
+
+A VS Code background task can wait for `Ready`, and the same task gets `dev`'s
+failures and the build's errors in the Problems panel:
+
+```jsonc
+// .vscode/tasks.json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "runic: dev",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["runic", "dev"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",
+          "endsPattern": "^\\[dev\\] Ready$"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Diagnostics.** When `dev` fails, it prints the fault as one line in MSBuild's
+canonical form before the usual fault text, on standard error:
+
+```text
+/path/to/App/App.csproj : error RAPPDEV1007: The vite development server exited unexpectedly with code 1.
+```
+
+The origin is the project file, or `dotnet-runic` when `dev` failed before it
+found one (`RAPPDEV1002`). The build output that `dev` passes through has the
+same form with a line and column (`CounterViewModel.cs(18,5): error CS1002: …`,
+`RUNICBRIDGE` codes from the Bridge generator), so one regex matches both. VS
+Code's built-in `$msCompile` matches them, and so does this pattern, for other
+tools:
+
+```text
+^\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
+```
+
+**Session file.** `dev` writes `obj/runic/dev-session.json` (below the
+project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
+development server is ready and each time the Window process starts or exits.
+When `dev` ends, the file stays with `"state": "stopped"`. Each write replaces
+the whole file, so a reader never sees half of one. Two `dev` sessions of the
+same project write the same file; the later one wins. `--dry-run` writes none.
+
+```jsonc
+{
+  "schema": "runic.application.tool.dev-session/1",
+  "state": "ready",                 // "starting", "ready" (after [dev] Ready) or "stopped"
+  "processId": 41250,               // dotnet runic dev itself
+  "startedAt": "2026-11-14T18:53:16.2642872+00:00",
+  "project": "/path/to/App/App.csproj",
+  "configuration": "Debug",
+  "frontend": {
+    "developmentServer": "vite",    // "vite", "angular", or null when a watcher or the build writes the output
+    "url": "http://127.0.0.1:5173/",// the development server's origin, null without one
+    "port": 5173,
+    "stateUrl": "http://127.0.0.1:5173/__runic/state", // when vite-plugin-runic confirms the session, else null
+    "directory": "/path/to/App/Frontend",
+    "outputDirectory": "/path/to/App/Frontend/dist",
+    "generatedDirectory": "/path/to/App/Frontend/src/generated" // the generated TypeScript clients, or null
+  },
+  "webRoot": "/path/to/App/bin/Debug/net10.0/www",
+  "pages": [
+    // Each page the Window can load: its file in the web root and, with a development server, its URL there,
+    // which a browser or a JavaScript debugger can open.
+    { "document": "index.html", "file": "/path/to/App/bin/Debug/net10.0/www/index.html", "url": "http://127.0.0.1:5173/index.html" }
+  ],
+  "window": {
+    "program": "App",               // the program dev looks for
+    "processId": 41377,             // the running Window process, or null
+    "starts": 1                     // how many Window processes have started in this session
+  },
+  "debugEndpoints": [
+    // Debugging endpoints of the page's engine that the Window's environment enables. dev enables none itself; on
+    // Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222 (or the variable in dev's own
+    // environment) lists WebView2's Chrome DevTools Protocol endpoint.
+    { "engine": "webview2", "protocol": "cdp", "url": "http://127.0.0.1:9222/" }
+  ]
+}
+```
+
+Paths are absolute. Later versions of the schema only add properties; a change
+that removes or changes one gets a new schema name.
+
 ## Output and exit codes
 
 Every command writes human-readable text unless you pass `--format json` (or set
