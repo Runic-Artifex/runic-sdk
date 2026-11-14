@@ -3818,8 +3818,8 @@ later, saving an edited message updates the page in place: the page keeps its
 component state, its language and its connection. The plugin swaps the new text
 into the loaded catalog and signals it on the global text-change channel
 `Symbol.for("runic.translations.text")`; `configureTranslatedText` follows that
-channel during development and renders the text again as a language switch
-does, through the same reactive text locale as the table above (in React, a
+channel in the browser, also when it runs before the catalog loads, and renders
+the text again as a language switch does, through the same reactive text locale as the table above (in React, a
 component that calls `useTextLocale()` and its children, except memoized ones).
 Text references (`useText`, `injectText`, the `runicText` pipe, `texts`) format
 again too. In place means a message's text, its plural and selector variants
@@ -3831,8 +3831,9 @@ one that calls it shows the new text wherever it renders again on a language
 switch.
 Text computed once, such as a `const` in a script, a SvelteKit `load` result or
 a `document.title` set in code, keeps its old text until it is computed again,
-as after a language switch. Production builds contain no channel, and the
-helpers behave as before. The Angular CLI's dev server (`ng serve`) runs no Vite
+as after a language switch. In production nothing writes the channel: the
+listener `configureTranslatedText` adds never runs, and the helpers behave as
+before. The Angular CLI's dev server (`ng serve`) runs no Vite
 plugins: a page built with it imports the ESM of the .NET build and reloads
 after `dotnet build`. In-place updates in Angular need Angular built with Vite
 (`@analogjs/vite-plugin-angular`) and the Translations Vite plugin.

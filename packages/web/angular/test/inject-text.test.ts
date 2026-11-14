@@ -176,9 +176,10 @@ describe("textLocaleSignal and in-place message updates (translations#176)", () 
     expect(element.textContent, "every update, not only the first").toBe("Our notes 3");
   });
 
-  test("without the channel, as in production, a text change that keeps the locale does not notify", () => {
+  test("in production, where nothing writes the channel, a text change that keeps the locale does not notify", () => {
     cleanup.push(configureTranslatedText(fakeTranslations()));
-    expect(textChannelKey in globalThis).toBe(false);
+    // configureTranslatedText may create the channel in a browser; nothing increments its revision in production.
+    cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
     const textLocale = textLocaleSignal();
     let evaluations = 0;
     const seen = computed(() => { evaluations++; return textLocale(); });

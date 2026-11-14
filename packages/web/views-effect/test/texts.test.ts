@@ -98,8 +98,8 @@ describe("textLocales and in-place message updates (translations#176)", () => {
     }
   });
 
-  test("without the channel, as in production, a text change that keeps the locale emits nothing", async () => {
-    expect(textChannelKey in globalThis).toBe(false);
+  test("in production, where nothing writes the channel, a text change that keeps the locale emits nothing", async () => {
+    // configureTranslatedText may create the channel in a browser; nothing increments its revision in production.
     const stop = configureTranslatedText(fakeTranslations());
     const stops: (() => void)[] = [];
     try {
@@ -107,6 +107,7 @@ describe("textLocales and in-place message updates (translations#176)", () => {
     } finally {
       for (const step of stops) step();
       stop();
+      delete (globalThis as Record<symbol, unknown>)[textChannelKey];
     }
   });
 });

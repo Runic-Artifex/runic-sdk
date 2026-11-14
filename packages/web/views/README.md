@@ -1634,7 +1634,7 @@ the framework's text locale: `useTextLocale` (React, Vue, Svelte),
 `textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). In `vite dev`
 with the Translations Vite plugin 0.12.0 or later, an edited message updates in
 place: `configureTranslatedText` follows the plugin's text-change channel
-(`Symbol.for("runic.translations.text")`, development only) and renders the text
+(`Symbol.for("runic.translations.text")`, which nothing writes in production) and renders the text
 again as a switch does, with the page's state kept; an added, removed or renamed
 message, changed inputs or markup still reload the page
 ([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).

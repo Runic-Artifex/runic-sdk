@@ -167,11 +167,12 @@ describe("useTextLocale and in-place message updates (translations#176)", () => 
     expect(container.textContent, "every update, not only the first").toBe("Our notes 3Our notes");
   });
 
-  test("without the channel, as in production, a text change that keeps the locale does not render again", async () => {
+  test("in production, where nothing writes the channel, a text change that keeps the locale does not render again", async () => {
     edited.text = "Notes";
     cleanup.push(configureTranslatedText(fakeTranslations()));
     const container = await mount(createElement(Page));
-    expect(textChannelKey in globalThis).toBe(false);
+    // configureTranslatedText may create the channel in a browser; nothing increments its revision in production.
+    cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
     const before = renders, version = textVersion();
     await act(async () => { cleanup.push(configureFieldErrorText(() => undefined)); });
     expect(textVersion(), "the text changed").toBe(version + 1);
