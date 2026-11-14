@@ -1,7 +1,8 @@
 // The page's appearance (`appearance/1`, specs/application/README.md, "Appearance"): the colour scheme, contrast,
 // reduced motion, text scale, accent colour and forced-colours palette. The engine's CSS media queries give what the
 // page's CSS sees; the host pushes what it read from the desktop, including the values no engine exposes to script.
-// The store reports both, and combines them: the latest change of a member wins.
+// The store reports both, and combines them: the latest change of a member wins, unless the host decided the member for
+// the window (the push's `override`), whose value then wins.
 //
 // The page runtime keeps only the raw push (appearance-push.ts); this module reads it when a page asks, so a page that
 // never reads the appearance does not bundle it. The state belongs to one Runic instance and is shared by every copy of
@@ -37,9 +38,16 @@ export interface AppearanceSystemColors {
   readonly buttonText: string;
 }
 
-/** The desktop's appearance as the host pushed it (`appearance/1`). `null` is a preference the host does not know. */
+/**
+ * The desktop's appearance as the host pushed it (`appearance/1`). `null` is a preference the host does not know. A host
+ * may decide some members for the window instead of reading them from the desktop, as for a guest's page in a hosted
+ * region; those values are here too.
+ */
 export interface HostAppearance {
-  /** The desktop's colour scheme. A window with a scheme of its own shows it in `prefers-color-scheme` instead. */
+  /**
+   * The desktop's colour scheme, or the one the host decided for the window. A window with a scheme of its own shows it
+   * in `prefers-color-scheme` instead.
+   */
   readonly colorScheme: AppearanceColorScheme | null;
   readonly contrast: AppearanceContrast | null;
   readonly reducedMotion: boolean | null;
@@ -73,6 +81,10 @@ export interface EngineAppearance {
  *   only when the page loads, or does not follow it at all, so reports the desktop's later changes. Without the
  *   engine's value they are the host's.
  * - `textScale`, `accentColor` and `systemColors` come from the host alone.
+ * - A member the host decided for the window (`override` in the push, as for a guest's page in a hosted region) is the
+ *   host's value, whatever the engine's media query reports, from the first push on, as long as the latest push lists
+ *   it. The engine's values stay what the page's CSS sees: such a page styles from this appearance, not from media
+ *   queries.
  *
  * `null` is a preference neither source knows, as under server rendering. To tell "the desktop asks for forced colours"
  * from "this page's colours are forced", read `host.contrast` and `engine.contrast`.
@@ -109,12 +121,18 @@ type QueryText = typeof queryTexts[number];
 // The engine's value of a member when the host's change of it took over.
 interface Takeover<T> { readonly engine: T }
 
+// The members a host may decide for the window (`override`); the others come from the host alone anyway.
+const overrideMembers = ["colorScheme", "contrast", "reducedMotion"] as const;
+type OverrideMember = typeof overrideMembers[number];
+
 interface AppearanceStore {
   // The raw push the store last read, and what it read from it.
   seen: Readonly<Record<string, unknown>> | undefined;
   host: HostAppearance | null;
   contrast: Takeover<AppearanceContrast | null> | undefined;
   reducedMotion: Takeover<boolean | null> | undefined;
+  // The members the latest push lists in `override` with a value: the host's value applies over the engine's.
+  decided: ReadonlySet<OverrideMember>;
   current: Appearance | undefined;
   readonly listeners: Set<(appearance: Appearance) => void>;
   // The media queries while someone listens, so their changes reach the listeners.
@@ -127,7 +145,8 @@ type AppearanceChannel = AppearancePushChannel & { store?: AppearanceStore };
 function channel(slots: Slots): AppearanceChannel & { store: AppearanceStore } {
   const state = appearancePushChannel(slots) as AppearanceChannel;
   if (!state.store) {
-    state.store = { seen: undefined, host: null, contrast: undefined, reducedMotion: undefined, current: undefined, listeners: new Set() };
+    state.store = { seen: undefined, host: null, contrast: undefined, reducedMotion: undefined, decided: new Set(), current: undefined,
+      listeners: new Set() };
     state.received = () => notify(slots, state as AppearanceChannel & { store: AppearanceStore });
   }
   return state as AppearanceChannel & { store: AppearanceStore };
@@ -162,7 +181,7 @@ function readEngine(state: AppearanceStore): EngineAppearance {
 }
 
 // Reads a push the store has not read yet. A member the host changed from its previous known value takes over from the
-// engine; one the host no longer knows hands back to it.
+// engine; one the host no longer knows hands back to it. A member the push lists in `override` is the host's decision.
 function readPush(channel: AppearanceChannel, state: AppearanceStore, page: EngineAppearance): void {
   if (channel.push === state.seen) return;
   state.seen = channel.push;
@@ -176,6 +195,15 @@ function readPush(channel: AppearanceChannel, state: AppearanceStore, page: Engi
   };
   state.contrast = changed("contrast", state.contrast, page.contrast);
   state.reducedMotion = changed("reducedMotion", state.reducedMotion, page.reducedMotion);
+  state.decided = next === null || channel.push === undefined ? new Set() : readOverride(channel.push, next);
+}
+
+// The members `override` lists that this version knows and the push gives a value; an `override` that is not an array
+// is absent.
+function readOverride(push: Readonly<Record<string, unknown>>, host: HostAppearance): ReadonlySet<OverrideMember> {
+  const listed = push["override"];
+  if (!Array.isArray(listed)) return new Set();
+  return new Set(overrideMembers.filter(member => listed.includes(member) && host[member] !== null));
 }
 
 function compute(channel: AppearanceChannel & { store: AppearanceStore }): Appearance {
@@ -186,13 +214,14 @@ function compute(channel: AppearanceChannel & { store: AppearanceStore }): Appea
   if (state.contrast && state.contrast.engine !== page.contrast) state.contrast = undefined;
   if (state.reducedMotion && state.reducedMotion.engine !== page.reducedMotion) state.reducedMotion = undefined;
   const host = state.host;
+  const decided = state.decided;
   const current = state.current;
   const engineValue = current && current.engine.colorScheme === page.colorScheme && current.engine.contrast === page.contrast
     && current.engine.reducedMotion === page.reducedMotion ? current.engine : Object.freeze(page);
   const next: Appearance = {
-    colorScheme: page.colorScheme ?? host?.colorScheme ?? null,
-    contrast: state.contrast ? host!.contrast : page.contrast ?? host?.contrast ?? null,
-    reducedMotion: state.reducedMotion ? host!.reducedMotion : page.reducedMotion ?? host?.reducedMotion ?? null,
+    colorScheme: decided.has("colorScheme") ? host!.colorScheme : page.colorScheme ?? host?.colorScheme ?? null,
+    contrast: decided.has("contrast") || state.contrast ? host!.contrast : page.contrast ?? host?.contrast ?? null,
+    reducedMotion: decided.has("reducedMotion") || state.reducedMotion ? host!.reducedMotion : page.reducedMotion ?? host?.reducedMotion ?? null,
     textScale: host?.textScale ?? null,
     accentColor: host?.accentColor ?? null,
     systemColors: host?.systemColors ?? null,

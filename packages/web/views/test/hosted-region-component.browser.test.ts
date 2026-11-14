@@ -153,6 +153,41 @@ test("Chromium: a component loads from its guest's origin, connects with its tok
   }
 });
 
+test("Chromium: the component's element takes the region's colorScheme as its color-scheme", { timeout: 60_000, skip }, async () => {
+  const { tab, errors, guest, close } = await open(allowGuest);
+  try {
+    // The element is in the region's closed shadow root: the test keeps the one the region creates.
+    await tab.evaluate(() => {
+      const create = document.createElement.bind(document);
+      document.createElement = ((tag: string, options?: ElementCreationOptions) => {
+        const element = create(tag, options);
+        if (tag.startsWith("guest-check")) (globalThis as unknown as { component: HTMLElement }).component = element;
+        return element;
+      }) as typeof document.createElement;
+    });
+    await push(tab, {
+      kind: "hosted-region-content", name: "check", embedding: "component",
+      module: `${guest.origin}/_runic_component/component.js`, url: guest.url, token: guest.token, colorScheme: "dark",
+    });
+    await until(async () => await state(tab) === "attached", "The region did not attach its component.");
+    const scheme = () => tab.evaluate(() => {
+      const component = (globalThis as unknown as { component: HTMLElement }).component;
+      const input = (component.shadowRoot ?? component).querySelector("input")!;
+      return [component.style.colorScheme, getComputedStyle(component).colorScheme, getComputedStyle(input).colorScheme];
+    });
+    assert.deepEqual(await scheme(), ["dark", "dark", "dark"], "the element and its form controls");
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: "light" });
+    assert.deepEqual(await scheme(), ["light", "light", "light"]);
+    await push(tab, { kind: "hosted-region-update", name: "check", title: "Checking" });
+    assert.deepEqual((await scheme())?.[0], "light", "an update without the member leaves it");
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: null });
+    assert.deepEqual(await scheme(), ["", "normal", "normal"]);
+    assert.deepEqual(errors, []);
+  } finally {
+    await close();
+  }
+});
+
 test("Chromium: a page whose Content-Security-Policy does not allow the guest leaves the region unsupported", { timeout: 60_000, skip }, async () => {
   const { tab, errors, guest, close } = await open("script-src 'self' 'unsafe-inline'; connect-src 'self'");
   try {

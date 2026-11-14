@@ -233,6 +233,39 @@ test("Chromium: the frame fills the region under a page policy without inline st
   } finally { await context.close(); }
 });
 
+test("Chromium: the frame's color-scheme follows the region's colorScheme, also under a page policy without inline styles", { timeout: 60_000, skip }, async () => {
+  // style-src falls back to 'self': the element sets the property through CSSOM, which the policy does not block.
+  const { context, tab, errors } = await open(undefined, true,
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; frame-src http:; object-src 'none'; base-uri 'self'");
+  try {
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: `${guestOrigin}/_runic_frame/code-1`, title: null,
+      allow: "", colorScheme: "dark" });
+    const frame = await guestFrame(tab);
+    const element = (await frame.frameElement()) as import("playwright-core").ElementHandle<HTMLIFrameElement>;
+    // The inline value, and what the engine uses: the plain keyword, not `only` (D066.10).
+    const scheme = () => element.evaluate(frame => [frame.style.colorScheme, getComputedStyle(frame).colorScheme]);
+    assert.deepEqual(await scheme(), ["dark", "dark"], "set before the frame loads");
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: "light" });
+    assert.deepEqual(await scheme(), ["light", "light"]);
+    // An update without the member leaves it.
+    await push(tab, { kind: "hosted-region-update", name: "check", title: "Checking" });
+    assert.deepEqual(await scheme(), ["light", "light"]);
+    // null, and a value the client does not know, clear it: the frame follows the host page.
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: null });
+    assert.deepEqual(await scheme(), ["", "normal"]);
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: "dark" });
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: "sepia" });
+    assert.deepEqual(await scheme(), ["", "normal"]);
+    // New content without the member does not keep the earlier content's scheme.
+    await push(tab, { kind: "hosted-region-update", name: "check", colorScheme: "dark" });
+    await push(tab, { kind: "hosted-region-content", name: "check", embedding: "frame", src: `${guestOrigin}/_runic_frame/code-2`, title: null, allow: "" });
+    await tab.waitForFunction(() => document.getElementById("region")!.getAttribute("state") === "attached");
+    const next = (await (await guestFrame(tab)).frameElement()) as import("playwright-core").ElementHandle<HTMLIFrameElement>;
+    assert.deepEqual(await next.evaluate(frame => [frame.src.endsWith("code-2"), frame.style.colorScheme]), [true, ""]);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 test("Chromium: content-height applies the guest's height, and a host without the feature leaves the region unsupported", { timeout: 60_000, skip }, async () => {
   const { context, tab } = await open();
   try {

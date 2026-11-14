@@ -56,7 +56,8 @@ export interface HostedRegionTitleChangeDetail {
  * region's accessible name, which overrides the guest page's title. It reflects `state` and `focused`, and dispatches
  * `runicregionstatechange` and `runicregiontitlechange`. Light-DOM children with `slot="fallback"` show unless the region
  * is attached; a child with `slot` set to a state (`loading`, `ended`, …) shows instead in that state. `::part(frame)`
- * styles the frame.
+ * styles the frame. The element sets the CSS `color-scheme` of the frame, or of a component's element, to the colour
+ * scheme the host decided for the region (`colorScheme` of the region's pushes), and clears it without one.
  */
 export interface RunicHostedRegionElement extends HTMLElement {
   /** The `name` attribute. */
@@ -102,6 +103,11 @@ const tabWindow = 1_000;
 const ownInputWindow = 5_000;
 // A report waits for the next animation frame, or at most this long where frames do not run.
 const reportFallback = 100;
+
+// The `colorScheme` of a content or update push: a value this version does not know reads as null.
+function readColorScheme(value: unknown): "light" | "dark" | null {
+  return value === "light" || value === "dark" ? value : null;
+}
 
 type FocusSource = "tab" | "shift-tab" | "pointer" | "script";
 
@@ -357,6 +363,8 @@ function createElementClass(): CustomElementConstructor {
     #component: HTMLElement | undefined;
     #componentLoad = 0;
     #guestTitle: string | null = null;
+    // The colour scheme the host decided for the region's content, or null for the host page's.
+    #colorScheme: "light" | "dark" | null = null;
     #height: number | undefined;
     #focused = false;
     #focusSource: FocusSource | null = null;
@@ -510,6 +518,8 @@ function createElementClass(): CustomElementConstructor {
     receive(push: HostedRegionPush): void {
       switch (push.kind) {
         case "hosted-region-content":
+          // Content without the member clears the scheme of earlier content.
+          this.#colorScheme = readColorScheme(push["colorScheme"]);
           if (push["embedding"] === "component") {
             this.#guestTitle = null;
             void this.#showComponent(push["module"] as string, push["url"] as string, push["token"] as string);
@@ -533,6 +543,10 @@ function createElementClass(): CustomElementConstructor {
           if (typeof push["height"] === "number" && this.regionSizing === "content-height") {
             this.#height = push["height"];
             this.#applyHeight();
+          }
+          if (Object.hasOwn(push, "colorScheme")) {
+            this.#colorScheme = readColorScheme(push["colorScheme"]);
+            this.#applyColorScheme();
           }
           return;
         case "hosted-region-empty": {
@@ -601,6 +615,7 @@ function createElementClass(): CustomElementConstructor {
       this.#frame = frame;
       this.#applyTitle();
       this.#applyHeight();
+      this.#applyColorScheme();
       this.#content.append(frame);
       this.#setState("loading");
       // Set last: the address loads once, in the frame as it is in the tree.
@@ -634,6 +649,7 @@ function createElementClass(): CustomElementConstructor {
       }
       element.setAttribute("part", "component");
       this.#component = element;
+      this.#applyColorScheme();
       this.#content.append(element);
       (element.connect as (connection: { url: string; token: string }) => void).call(element, { url, token });
       this.#setState("attached");
@@ -657,6 +673,13 @@ function createElementClass(): CustomElementConstructor {
       if (!this.#frame) return;
       const label = this.getAttribute("label");
       this.#frame.title = label !== null && label.length > 0 ? label : this.#guestTitle ?? "";
+    }
+
+    // The plain keyword, which lets the content follow the scheme where the engine passes it on (D066.10). A CSSOM write,
+    // which a page's Content-Security-Policy without inline styles allows.
+    #applyColorScheme(): void {
+      const target = this.#frame ?? this.#component;
+      if (target) target.style.colorScheme = this.#colorScheme ?? "";
     }
 
     #applyHeight(): void {

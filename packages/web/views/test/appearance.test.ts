@@ -141,6 +141,50 @@ test("the latest change wins: a host's change applies until the engine's media q
   assert.ok(seen.length > 0);
 });
 
+test("override: a member the host decided wins over the engine's media query, also on the first push", () => {
+  const media = fakeMedia(light);
+  const seen: Appearance[] = [];
+  const stop = onAppearance(next => seen.push(next));
+  // A region's override on the first push: dark and more contrast, which no media query of the frame reports.
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "more", reducedMotion: false, override: ["colorScheme", "contrast"] });
+  assert.deepEqual([appearance().colorScheme, appearance().contrast, appearance().reducedMotion], ["dark", "more", false]);
+  assert.deepEqual([appearance().engine.colorScheme, appearance().engine.contrast], ["light", "no-preference"], "the engine's values stay what the CSS sees");
+  assert.deepEqual([seen.at(-1)?.colorScheme, seen.at(-1)?.contrast], ["dark", "more"], "the first notification has it");
+  // The engine's media query changes: the host's decision still wins.
+  media.set({ "(prefers-contrast: no-preference)": false, "(prefers-contrast: more)": true });
+  media.set({ "(prefers-contrast: more)": false, "(prefers-contrast: no-preference)": true });
+  assert.equal(appearance().contrast, "more");
+  // A listed member whose value is null, and names this version does not know, are ignored.
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: null, reducedMotion: false, override: ["colorScheme", "contrast", "textScale", 3] });
+  assert.deepEqual([appearance().colorScheme, appearance().contrast], ["dark", "no-preference"]);
+  stop();
+});
+
+test("override: a member that leaves the list returns to the engine's value unless the host changed it", () => {
+  fakeMedia(light);
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "more", override: ["colorScheme", "contrast"] });
+  assert.deepEqual([appearance().colorScheme, appearance().contrast], ["dark", "more"]);
+  // The override of the colour scheme ends; the desktop's scheme is also dark: the engine's again.
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "more", override: ["contrast"] });
+  assert.deepEqual([appearance().colorScheme, appearance().contrast], ["light", "more"]);
+  // The override of the contrast ends with the desktop's contrast, a change by the host: the latest change wins.
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "no-preference" });
+  assert.deepEqual([appearance().colorScheme, appearance().contrast, appearance().host?.contrast], ["light", "no-preference", "no-preference"]);
+  // Pushes without override behave as before: the first push keeps the engine's value.
+  delete globals[channelKey];
+  receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "more" });
+  assert.deepEqual([appearance().colorScheme, appearance().contrast], ["light", "no-preference"]);
+});
+
+test("override: one that is not an array reads as absent", () => {
+  fakeMedia(light);
+  for (const override of ["colorScheme", { colorScheme: true }, null, 1]) {
+    delete globals[channelKey];
+    receiveAppearancePush(page, { kind: "appearance", colorScheme: "dark", contrast: "more", override });
+    assert.deepEqual([appearance().colorScheme, appearance().contrast], ["light", "no-preference"], JSON.stringify(override));
+  }
+});
+
 test("the reader reads a member of the wrong type, out of range or unknown as null, and the rest still applies", () => {
   assert.deepEqual({ ...readHostAppearance({ kind: "appearance", colorScheme: "sepia", contrast: "less", reducedMotion: "yes", textScale: 0,
     accentColor: "blue", systemColors: { canvas: "#000000" } }) },
@@ -173,4 +217,23 @@ test("the mock producer pushes the window's appearance after the hello and on ea
   assert.deepEqual({ ...appearance().host }, { colorScheme: null, contrast: null, reducedMotion: null, textScale: null, accentColor: null, systemColors: null });
   assert.equal(appearanceFeature, "appearance/1");
   assert.equal(client.snapshot.count, 1);
+});
+
+test("the mock producer pushes override with the members the host decided, only ones with a value", async () => {
+  fakeMedia(light);
+  const bridge = createMockBridge();
+  installMockBridge(bridge);
+  bridge.view("status", { state: { count: 1 } });
+  bridge.setAppearance({ colorScheme: "dark", contrast: "more" }, { override: ["colorScheme", "contrast", "reducedMotion"] });
+  await connectView<{ readonly count: number }>({ contract: "Tests.Status:fp-1", route: "status",
+    members: { count: (value: unknown) => bridgeWire.integer(value, 0, 10) } });
+  await bridge.flush();
+  assert.deepEqual([appearance().colorScheme, appearance().contrast, appearance().engine.colorScheme], ["dark", "more", "light"],
+    "the host's decision applies from the first push");
+  const decided = appearance();
+  // The same values without the override: the push says so, and the engine's values apply again.
+  bridge.setAppearance({ colorScheme: "dark", contrast: "more" });
+  await bridge.flush();
+  assert.deepEqual([appearance().colorScheme, appearance().contrast], ["light", "no-preference"]);
+  assert.notEqual(appearance(), decided);
 });

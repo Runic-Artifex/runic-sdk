@@ -52,3 +52,28 @@ test("the .NET runtime, the npm runtime and the specification name one protocol 
   assert.equal(dotnet, spec, "BridgeProtocol.Version differs from the specification's version");
   assert.equal(npm, spec, "bridgeProtocol differs from the specification's version");
 });
+
+// appearance/1's `override` (0.19): the members the specification lets a host decide are the ones the npm store reads.
+test("the specification's appearance override members are the npm store's", () => {
+  const spec = readFileSync(resolve(root, "specs/application/README.md"), "utf8");
+  const row = spec.split("\n").find(line => line.startsWith("| `override` |"));
+  assert.ok(row, "the appearance push's override row not found");
+  const specified = [...row.matchAll(/`"([A-Za-z]+)"`/g)].map(match => match[1]).sort();
+  const store = readFileSync(resolve(root, "packages/web/views/src/appearance.ts"), "utf8")
+    .match(/const overrideMembers = \[([^\]]*)\] as const;/)?.[1];
+  assert.ok(store, "overrideMembers not found in appearance.ts");
+  assert.deepEqual([...store.matchAll(/"([A-Za-z]+)"/g)].map(match => match[1]).sort(), specified);
+  assert.deepEqual(specified, ["colorScheme", "contrast", "reducedMotion"]);
+});
+
+// hosted-regions/1's `colorScheme` (0.19): both content rows and the update row carry it, with the values the
+// <runic-hosted-region> client reads.
+test("the specification's hosted region colorScheme is in the content and update pushes the client reads", () => {
+  const spec = readFileSync(resolve(root, "specs/application/README.md"), "utf8").split("\n");
+  const rows = spec.filter(line => /^\| `hosted-region-(content|update)` \|/.test(line));
+  assert.equal(rows.length, 3, "two content rows (frame, component) and the update row");
+  for (const row of rows) assert.match(row, /optional `colorScheme`: `"light"`, `"dark"` or `null`/, row.slice(0, 40));
+  const client = readFileSync(resolve(root, "packages/web/views/src/hosted-region.ts"), "utf8");
+  assert.match(client, /function readColorScheme\(value: unknown\): "light" \| "dark" \| null \{\n\s*return value === "light" \|\| value === "dark" \? value : null;/);
+  assert.equal(client.match(/readColorScheme\(push\["colorScheme"\]\)/g)?.length, 2, "read from the content and the update push");
+});
