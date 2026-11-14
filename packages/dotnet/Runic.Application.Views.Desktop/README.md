@@ -1244,6 +1244,43 @@ ValueTask.FromResult(request.CanEmbedComponent
 - The [hosted components example](../../../examples/hosted-components/README.md) is a dashboard with two widget
   processes as components, under the policy above.
 
+#### Appearance in a region
+
+With `region-appearance/1` (0.19), which Runic's guests of 0.19 and later implement
+(`RunicHostedWindowRequest.CanOverrideAppearance`), the host gives a region window an **appearance override**, such as a
+wizard step in the design the user picked: each member of a `RunicHostedAppearance` that is not `null` replaces the host's
+desktop value for that window's pages, and `null` keeps it
+([specification](../../../specs/desktop/host-protocol.md#appearance-in-a-region-region-appearance1)):
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+var highContrast = new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Dark, Contrast = DesktopContrast.More };
+// From the window's open:
+RunicHostedWindowDecision.Embed("check", new RunicHostedRegionOptions { Appearance = highContrast });
+// Later, attached or detached; null removes the override, and a "System" choice is DesktopColorScheme.NoPreference.
+await region.SetAppearanceAsync(new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Light });
+```
+
+- **What the guest's pages see.** The guest merges the override with the host's desktop appearance for that window only:
+  its pages, a component's included, receive the result before their first content, and their appearance store takes the
+  colour scheme, contrast and reduced motion that the override set over the engine's media queries. Windows the region
+  window owns, the guest's other windows, `RunicGuestSession.Appearance` and the host's own pages keep the desktop's.
+  With forced colours the pages get the override's `SystemColors`, else the desktop's palette when the desktop forces
+  colours too; `TextScale` is from 0.5 to 4.
+- **The frame.** The host page sets the override's colour scheme as the CSS `color-scheme` of the region's frame or
+  component. Whether the frame's `prefers-color-scheme` follows it depends on the engine and is best effort; a guest page
+  styles from its appearance store (`appearance()`, `onAppearance`), not from media queries. `prefers-contrast`,
+  `forced-colors` and `prefers-reduced-motion` cannot be set on a frame, and a desktop that forces colours keeps forcing
+  them in the frame.
+- **`SetAppearanceAsync`** replaces the override as a whole and works from any thread, attached or detached: the next
+  page receives it, and `MoveToAsync` and re-attaching keep it, since it belongs to the window. The guest receives the
+  latest of overrides set in quick succession. It returns `false` only for an ended region and for a guest without the
+  feature (`RunicHostedRegion.CanSetAppearance`).
+- **Older guests.** A 0.18 guest still shows in the region, with the desktop's appearance; the host logs event 2030 once
+  for the window, and `Appearance` records the override.
+- **Tests.** `RunicTestHost` plays the host: `RunicTestHostOptions.RegionAppearance` and `SetRegionAppearanceAsync`
+  ([Testing](../Runic.Application.Testing/README.md#a-hosted-application)).
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

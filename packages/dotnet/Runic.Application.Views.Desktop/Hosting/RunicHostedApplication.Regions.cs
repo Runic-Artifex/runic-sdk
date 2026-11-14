@@ -43,6 +43,8 @@ public sealed partial class RunicHostedApplication
         // The frame's permissions policy: only what the policy granted (host-protocol.md, Features in a region).
         var allow = grant.HasFlag(DesktopPermissionGrant.MediaCapture) ? "camera; microphone" : "";
         var region = new RunicHostedRegion(this, Regions, window, decision.Region!, decision.HostWindow, options, allow, grant, decision.IsComponent);
+        // An override for a guest that does not apply one: the window still shows, with the desktop's appearance.
+        if (options.Appearance?.ToDesktopAppearance() is not null && !UsesRegionAppearance) region.WarnAppearanceUnavailable();
         var features = IsBrowserHost ? BrowserRegionFeatures : RegionFeatures;
         window.AttachRegion(region, features);
         if (Regions.Open(region, out var slot) is { } failure)
@@ -73,15 +75,18 @@ public sealed partial class RunicHostedApplication
         _owner.RaiseWindowOpened(window);
         // A region declared now takes the window; it attaches once the guest has the reply (RunicHostedRegion.Opened).
         if (slot is not null) region.OnBound(slot);
+        var reply = new JsonObject
+        {
+            ["presentation"] = "region",
+            ["features"] = new JsonArray([.. FeatureNames(features).Select(static name => (JsonNode)name)]),
+            ["activity"] = region.ActivityMembers(),
+            ["region"] = region.OpenRegionMember(),
+        };
+        // region-appearance/1: the window's override, or null for none; the window's pushes change it from now on.
+        if (UsesRegionAppearance) reply["appearance"] = region.OpenAppearanceMember();
         try
         {
-            await request.ReplyAsync(new JsonObject
-            {
-                ["presentation"] = "region",
-                ["features"] = new JsonArray([.. FeatureNames(features).Select(static name => (JsonNode)name)]),
-                ["activity"] = region.ActivityMembers(),
-                ["region"] = region.OpenRegionMember(),
-            }).ConfigureAwait(false);
+            await request.ReplyAsync(reply).ConfigureAwait(false);
         }
         catch (HostChannelClosedException)
         {
@@ -299,6 +304,8 @@ public sealed partial class RunicHostedApplication
     internal void LogRegionAttachFailed(string region, string reason) => DesktopLog.HostedRegionAttachFailed(_logger, Guest.Name, region, reason);
 
     internal void LogRegionSameSite(string region) => DesktopLog.HostedRegionSameSite(_logger, Guest.Name, region);
+
+    internal void LogRegionAppearanceUnavailable(string region) => DesktopLog.HostedRegionAppearanceUnavailable(_logger, Guest.Name, region);
 
     internal void LogRegionFailed(Exception error) => DesktopLog.HostedRegionFailed(_logger, error, error.GetType().Name);
 }

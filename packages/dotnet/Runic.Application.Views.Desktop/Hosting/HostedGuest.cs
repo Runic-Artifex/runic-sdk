@@ -22,6 +22,19 @@ internal sealed record HostedWindowRequest(string Type, Uri Url, int Width, int 
     // The Window's surface, which serves its page in a host page's frame when the host shows the window in a region
     // (region/1); null when the Window cannot show in one.
     internal DesktopSurface? Surface { get; init; }
+
+    // The Window's content session, whose pages receive a region's appearance override (region-appearance/1) before the
+    // window opens; null for none.
+    internal WindowContentSession? Content { get; init; }
+}
+
+// Where a window is for its appearance override (region-appearance/1): waiting for its window-open reply, a region
+// window, or a window that takes none.
+internal enum HostedAppearanceState
+{
+    Opening,
+    Region,
+    None,
 }
 
 // One Window of the guest on the channel.
@@ -55,6 +68,14 @@ internal sealed class HostedWindow
 
     // region/1: the region that shows the window, when its window-open reply named presentation "region".
     internal HostedRegion? Region { get; private set; }
+
+    // region-appearance/1, under the guest's appearance gate: the window's override, and whether it is a region window.
+    // A push that arrives before the guest read the window-open reply is newer than the reply's override.
+    internal DesktopAppearance? AppearanceOverride { get; set; }
+
+    internal bool AppearancePushed { get; set; }
+
+    internal HostedAppearanceState AppearanceState { get; set; }
 
     // Completes with whether the window opened, when its window-open reply arrived.
     internal Task<bool> WhenOpened => _opened.Task;
@@ -166,7 +187,8 @@ internal sealed class HostedGuest : IAsyncDisposable
     private readonly IRunicApplicationLocale? _locale;
     // The host's appearance, which the Windows' pages show, and their content sessions.
     private readonly object _appearanceGate = new();
-    private readonly HashSet<WindowContentSession> _appearanceSessions = [];
+    // Each session's region window once its window-open reply was read, else null.
+    private readonly Dictionary<WindowContentSession, HostedWindow?> _appearanceSessions = [];
     private DesktopAppearance? _appearance;
     // One locale switch at a time, in the order the host's pushes arrived; the last locale this guest followed.
     private readonly SemaphoreSlim _localeSwitch = new(1, 1);
@@ -513,6 +535,9 @@ internal sealed class HostedGuest : IAsyncDisposable
                 "The host is newer than this application, or did not check the features in use.")]);
         }
         var region = shownIn == "region" ? new HostedRegion(this, id, request.Surface!) : null;
+        // region-appearance/1: the region window's override reaches its pages before the window opens, so before a
+        // region-attach can admit a page (host-protocol.md, Appearance in a region, Ordering).
+        OpenedForAppearance(window, request.Content, region is not null && UsesRegionAppearance ? reply : null);
         var presentation = new HostedWindowPresentation(
             HostedWindowPresentation.FeaturesOf(reply["features"] as JsonArray),
             HostedWindowPresentation.ActivityOf(reply["activity"] as JsonObject) ?? RunicWindowActivity.Assumed,
@@ -572,7 +597,7 @@ internal sealed class HostedGuest : IAsyncDisposable
     // peers alone (ComponentModeAvailable; host-protocol.md, Component mode).
     private string[] GuestFeatures(RunicHostInfo host) =>
         _options.AllowComponentEmbedding is { } allow && ComponentModeAvailable && allow(host)
-            ? [.. HostFeatures.GuestImplemented, HostFeatures.RegionComponent]
+            ? [.. HostFeatures.Implemented, HostFeatures.Region, HostFeatures.RegionComponent, HostFeatures.RegionAppearance]
             : HostFeatures.GuestImplemented;
 
     // An elevated guest's component would run in its host page's realm with the guest's token: only with elevated-peer
@@ -718,6 +743,9 @@ internal sealed class HostedGuest : IAsyncDisposable
             case "region-focus" when InUse(HostFeatures.Region):
                 FindWindow(push)?.Region?.OnFocus(push);
                 return;
+            case "region-appearance" when UsesRegionAppearance:
+                if (FindWindow(push) is { } overridden) OnRegionAppearance(overridden, push);
+                return;
             // placement and unknown pushes: ignored.
         }
     }
@@ -725,31 +753,87 @@ internal sealed class HostedGuest : IAsyncDisposable
     // ----- Appearance and locale (host-protocol.md, Appearance and locale)
 
     // The host's appearance reaches the Window's pages (appearance/1) while it is open, instead of this process's own
-    // desktop settings: the hosted windows show on the host's desktop.
+    // desktop settings: the hosted windows show on the host's desktop. A region window's pages receive it merged with the
+    // window's override (region-appearance/1), once its window-open reply bound the session to the window.
     internal IDisposable FollowAppearance(WindowContentSession session)
     {
         lock (_appearanceGate)
         {
-            _appearanceSessions.Add(session);
-            session.Appearance = _appearance;
+            _appearanceSessions[session] = null;
+            ApplyAppearance(session, null);
         }
         return new AppearanceRegistration(this, session);
     }
 
+    // region-appearance/1 in use: the host lists it, and region/1, which it requires.
+    private bool UsesRegionAppearance => InUse(HostFeatures.RegionAppearance) && InUse(HostFeatures.Region);
+
     private void OnAppearance(DesktopAppearance? appearance)
     {
-        WindowContentSession[] sessions;
+        Session.Update(appearance, Session.Locale, Session.Languages);
+        // Under the gate, so a window's override and a desktop change reach its pages in the order the guest read them.
         lock (_appearanceGate)
         {
             _appearance = appearance;
-            sessions = [.. _appearanceSessions];
+            foreach (var (session, window) in _appearanceSessions) ApplyAppearance(session, window);
         }
-        Session.Update(appearance, Session.Locale, Session.Languages);
-        foreach (var session in sessions)
+    }
+
+    // The window-open reply was read: a region window takes the reply's override, unless a region-appearance push
+    // arrived first, which is newer; any other window takes none. reply is null for a window that takes none. Its session
+    // (content) is bound to the window from now on.
+    private void OpenedForAppearance(HostedWindow window, WindowContentSession? content, JsonObject? reply)
+    {
+        lock (_appearanceGate)
         {
-            try { session.Appearance = appearance; }
-            catch (ObjectDisposedException) { }
+            if (reply is null)
+            {
+                window.AppearanceState = HostedAppearanceState.None;
+                window.AppearanceOverride = null;
+                return;
+            }
+            window.AppearanceState = HostedAppearanceState.Region;
+            // An appearance that is neither an object nor null opens the window without an override.
+            if (!window.AppearancePushed)
+                window.AppearanceOverride = HostServices.CheckAppearance(reply["appearance"]) ? HostServices.ReadOverride(reply["appearance"]) : null;
+            if (content is not null && _appearanceSessions.ContainsKey(content))
+            {
+                _appearanceSessions[content] = window;
+                ApplyAppearance(content, window);
+            }
         }
+    }
+
+    // region-appearance: the region window's new override, which replaces the last one as a whole. An appearance that is
+    // neither an object nor null is ignored, and so is a push for a window that is not a region window.
+    private void OnRegionAppearance(HostedWindow window, JsonObject push)
+    {
+        if (!HostServices.CheckAppearance(push["appearance"])) return;
+        var appearanceOverride = HostServices.ReadOverride(push["appearance"]);
+        lock (_appearanceGate)
+        {
+            switch (window.AppearanceState)
+            {
+                case HostedAppearanceState.Opening:
+                    window.AppearanceOverride = appearanceOverride;
+                    window.AppearancePushed = true;
+                    return;
+                case HostedAppearanceState.Region:
+                    window.AppearanceOverride = appearanceOverride;
+                    foreach (var (session, bound) in _appearanceSessions)
+                        if (ReferenceEquals(bound, window)) ApplyAppearance(session, window);
+                    return;
+            }
+        }
+    }
+
+    // Under the gate: the desktop appearance, merged with the window's override when it is a region window's.
+    private void ApplyAppearance(WindowContentSession session, HostedWindow? window)
+    {
+        var (appearance, decided) = HostServices.Merge(_appearance,
+            window is { AppearanceState: HostedAppearanceState.Region } ? window.AppearanceOverride : null);
+        try { session.SetAppearance(appearance, decided); }
+        catch (ObjectDisposedException) { }
     }
 
     private sealed class AppearanceRegistration(HostedGuest guest, WindowContentSession session) : IDisposable

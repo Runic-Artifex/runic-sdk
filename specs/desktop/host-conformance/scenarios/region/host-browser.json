@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "region",
   "roles": ["host"],
-  "description": "A browser (serve-only) host lists region/1 and region-component/1 alone in its hello, shows a guest's window only in a region, without present or owned windows, attaches it with browser true and never allows the same site, answers present and announce unavailable with backend-unavailable, and refuses a window of the guest's own.",
+  "description": "A browser (serve-only) host lists region/1, region-component/1 and region-appearance/1 alone in its hello, shows a guest's window only in a region, without present or owned windows, attaches it with browser true and never allows the same site, answers present and announce unavailable with backend-unavailable, and refuses a window of the guest's own.",
   "requires": ["region/1"],
   "ids": {
     "c1": {"kind":"connection"},
@@ -22,7 +22,7 @@
     {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
     {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
     {"accept":"c1"},
-    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["region/1","region-component/1"],"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["region/1","region-component/1","region-appearance/1"],"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
     {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1","window-services/1","region/1"]},"connection":"c1"},
     {"expect":{"started":true}},
     {"user":{"action":"declareRegion","window":"h1","name":"check"},"note":"The host's page runs in the user's browser; no native window shows it."},

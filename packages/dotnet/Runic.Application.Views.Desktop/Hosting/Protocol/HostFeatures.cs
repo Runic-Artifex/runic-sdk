@@ -14,19 +14,23 @@ internal static class HostFeatures
     // A Window shown in a region as a component in the host page's own document (host-protocol.md, Component mode). A
     // guest lists it only when its application opted in (RunicGuestOptions.AllowComponentEmbedding).
     internal const string RegionComponent = "region-component/1";
+    // An appearance override for a region window, which the guest merges with the host's appearance for that window's
+    // pages only; requires region/1 (host-protocol.md, Appearance in a region).
+    internal const string RegionAppearance = "region-appearance/1";
 
     // What Runic's guest and host implement, in the order their hellos list them.
     internal static readonly string[] Implemented = [Menus, Dialogs, HostServices.Feature];
 
-    // What Runic's guest implements, in the order its hello lists them, and what its host implements, in the order its
-    // hello lists them: the shared features and region/1, whose two sides are Runic's guest's and host's alone.
-    internal static readonly string[] GuestImplemented = [.. Implemented, Region];
-    internal static readonly string[] HostImplemented = [.. Implemented, Region, RegionComponent];
+    // What Runic's guest implements, in the order its hello lists them (region-component/1, which the application allows,
+    // goes before region-appearance/1), and what its host implements, in the order its hello lists them: the shared
+    // features and the region features, whose two sides are Runic's guest's and host's alone.
+    internal static readonly string[] GuestImplemented = [.. Implemented, Region, RegionAppearance];
+    internal static readonly string[] HostImplemented = [.. Implemented, Region, RegionComponent, RegionAppearance];
 
     // A browser (serve-only) host's: no native window owns dialogs or menus, or tells which window the user works in, so
-    // it lists only region/1 and region-component/1, and the guest's services report OwnerUnavailable, as in serve-only
-    // mode. A guest serves a browser host's components cross-site (D059.18).
-    internal static readonly string[] BrowserHostImplemented = [Region, RegionComponent];
+    // it lists only the region features, and the guest's services report OwnerUnavailable, as in serve-only mode. A guest
+    // serves a browser host's components cross-site (D059.18).
+    internal static readonly string[] BrowserHostImplemented = [Region, RegionComponent, RegionAppearance];
 
     // A menu bar: at most 8 levels of entry lists and 1,000 entries in all. A context menu: at most 5 levels (four nested
     // submenus) and 256 entries, as IWindowPlatformServices.ShowContextMenuAsync allows.

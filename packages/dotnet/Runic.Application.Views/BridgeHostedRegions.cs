@@ -87,9 +87,11 @@ internal sealed class BridgeHostedRegions
         }
     }
 
-    // hosted-region-content: the region shows a new frame with src. False when no connection declares the name.
-    internal bool ShowFrame(string name, string src, string? title, string allow)
+    // hosted-region-content: the region shows a new frame with src, in colorScheme ("light" or "dark", the colour scheme of
+    // the region's appearance override; null for none, which sends no member). False when no connection declares the name.
+    internal bool ShowFrame(string name, string src, string? title, string allow, string? colorScheme = null)
     {
+        CheckColorScheme(colorScheme);
         ArgumentNullException.ThrowIfNull(src);
         ArgumentNullException.ThrowIfNull(allow);
         if (src.Length is 0 or > MaximumSourceLength)
@@ -106,13 +108,15 @@ internal sealed class BridgeHostedRegions
             if (title is null) writer.WriteNull("title");
             else writer.WriteString("title", title);
             writer.WriteString("allow", allow);
+            if (colorScheme is not null) writer.WriteString("colorScheme", colorScheme);
         });
     }
 
     // hosted-region-content with the embedding "component" (region-component/1): the region shows the guest's component,
     // which the page imports from module and connects to url with token. False when no connection declares the name.
-    internal bool ShowComponent(string name, string module, string url, string token)
+    internal bool ShowComponent(string name, string module, string url, string token, string? colorScheme = null)
     {
+        CheckColorScheme(colorScheme);
         ArgumentNullException.ThrowIfNull(module);
         ArgumentNullException.ThrowIfNull(url);
         ArgumentNullException.ThrowIfNull(token);
@@ -130,14 +134,16 @@ internal sealed class BridgeHostedRegions
             writer.WriteString("module", module);
             writer.WriteString("url", url);
             writer.WriteString("token", token);
+            if (colorScheme is not null) writer.WriteString("colorScheme", colorScheme);
         });
     }
 
-    // hosted-region-update: the members given; Title.HasValue false leaves the title, null clears it. False when no
-    // connection declares the name.
-    internal bool Update(string name, HostedRegionTitle title = default, int? height = null)
+    // hosted-region-update: the members given; Title.HasValue false leaves the title, null clears it, and so for the
+    // colour scheme. False when no connection declares the name.
+    internal bool Update(string name, HostedRegionTitle title = default, int? height = null, HostedRegionColorScheme colorScheme = default)
     {
         if (title.HasValue) CheckTitle(title.Value);
+        if (colorScheme.HasValue) CheckColorScheme(colorScheme.Value);
         if (height is < 0 or > MaximumSize)
             throw new ArgumentOutOfRangeException(nameof(height), height, $"The region's height is not from 0 to {MaximumSize}.");
         return Push(name, writer =>
@@ -150,6 +156,11 @@ internal sealed class BridgeHostedRegions
                 else writer.WriteString("title", title.Value);
             }
             if (height is { } value) writer.WriteNumber("height", value);
+            if (colorScheme.HasValue)
+            {
+                if (colorScheme.Value is null) writer.WriteNull("colorScheme");
+                else writer.WriteString("colorScheme", colorScheme.Value);
+            }
         });
     }
 
@@ -167,6 +178,12 @@ internal sealed class BridgeHostedRegions
         writer.WriteString("kind", "hosted-region-focus");
         writer.WriteString("name", name);
     });
+
+    private static void CheckColorScheme(string? colorScheme)
+    {
+        if (colorScheme is not (null or "light" or "dark"))
+            throw new ArgumentException($"'{colorScheme}' is not a region's colour scheme: light, dark or none.", nameof(colorScheme));
+    }
 
     private static void CheckTitle(string? title)
     {
@@ -444,6 +461,14 @@ internal readonly record struct HostedRegionTitle(string? Value)
     internal bool HasValue { get; } = true;
 
     internal static HostedRegionTitle Set(string? value) => new(value);
+}
+
+// A colorScheme member of hosted-region-update: absent (default), null or "light" or "dark".
+internal readonly record struct HostedRegionColorScheme(string? Value)
+{
+    internal bool HasValue { get; } = true;
+
+    internal static HostedRegionColorScheme Set(string? value) => new(value);
 }
 
 // A region that a connection declared, with the last report of the declaration, if any.

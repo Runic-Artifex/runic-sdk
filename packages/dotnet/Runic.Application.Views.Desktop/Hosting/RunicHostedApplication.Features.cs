@@ -21,6 +21,10 @@ public sealed partial class RunicHostedApplication
 
     private bool InUse(string feature) => Features.Contains(feature, StringComparer.Ordinal);
 
+    // region-appearance/1 in use: the guest lists it, and region/1, which it requires (host-protocol.md, Appearance in
+    // a region).
+    internal bool UsesRegionAppearance => InUse(HostFeatures.RegionAppearance) && InUse(HostFeatures.Region);
+
     // The request kinds of menus/1 and dialogs/1; false for another kind.
     private async Task<bool> OnFeatureRequestAsync(HostRequest request)
     {

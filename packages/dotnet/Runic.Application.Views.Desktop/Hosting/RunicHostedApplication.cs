@@ -597,6 +597,7 @@ public sealed partial class RunicHostedApplication : IAsyncDisposable
             CanEmbed = InUse(HostFeatures.Region),
             CanEmbedComponent = InUse(HostFeatures.Region) && InUse(HostFeatures.RegionComponent),
             CanOpenWindow = !_host.ServeOnly,
+            CanOverrideAppearance = UsesRegionAppearance,
         };
         RunicHostedWindowDecision decision;
         try { decision = await Policy.OpenWindowAsync(windowRequest, _ending.Token).ConfigureAwait(false); }

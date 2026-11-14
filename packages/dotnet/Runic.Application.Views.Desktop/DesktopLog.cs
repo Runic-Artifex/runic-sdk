@@ -126,6 +126,11 @@ internal static partial class DesktopLog
         Message = "A region of a hosted application failed with {ErrorType}.")]
     internal static partial void HostedRegionFailed(ILogger logger, Exception? exception, string errorType);
 
+    // region-appearance/1: a region's appearance override for a guest that does not apply one.
+    [LoggerMessage(EventId = 2030, EventName = "DesktopHostedRegionAppearanceUnavailable", Level = LogLevel.Warning,
+        Message = "{Name} does not apply appearance overrides (region-appearance/1, from 0.19): its window in the region '{Region}' shows the desktop's appearance.")]
+    internal static partial void HostedRegionAppearanceUnavailable(ILogger logger, string name, string region);
+
     [LoggerMessage(EventId = 2029, EventName = "DesktopHostedPeerRefused", Level = LogLevel.Warning,
         Message = "The elevated hosted application refused a connection from {Peer}: the process at that end does not run elevated, or Runic cannot show that it does (elevated-peer-refused).")]
     internal static partial void HostedPeerRefused(ILogger logger, string peer);

@@ -719,6 +719,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             Locale = content.Locale,
             Drop = content.AcceptsFileDrops ? owner.DeliverHostedDrop : null,
             Surface = surface,
+            Content = content,
         };
         // The host can close the window as soon as it answered window-open, before the Window finished opening here: the
         // close then waits until it has (IRunicWindow.CloseWhenOpen), as a result completed during the open does.

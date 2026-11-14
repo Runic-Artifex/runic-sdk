@@ -76,12 +76,36 @@ sealed class DesktopWireClient : IDisposable
         var frame = new Uri(frameLaunch, "../");
         var bootstrap = await http.GetStringAsync(new Uri(frame, "webui.js"), cancellationToken);
         var check = uint.Parse(Between(bootstrap, "const TOKEN = ", ";"), System.Globalization.CultureInfo.InvariantCulture);
-        var socket = new ClientWebSocket();
-        try
+        var address = new UriBuilder(frame) { Scheme = "ws", Path = $"{frame.AbsolutePath}_webui_ws_connect" }.Uri;
+        // A page of an earlier attachment can hold the surface's only connection a moment after its close reached the
+        // client, until the surface has released it: the upgrade is then refused with 403, and the page's Bridge
+        // reconnects (Runic.Desktop README). The frame's token stays valid, so this client reconnects the same way.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        ClientWebSocket socket;
+        while (true)
         {
+            socket = new ClientWebSocket();
+            socket.Options.CollectHttpResponseDetails = true;
             socket.Options.SetRequestHeader("Origin", frame.GetLeftPart(UriPartial.Authority));
             socket.Options.AddSubProtocol($"runic-desktop.{token}");
-            await socket.ConnectAsync(new UriBuilder(frame) { Scheme = "ws", Path = $"{frame.AbsolutePath}_webui_ws_connect" }.Uri, cancellationToken);
+            try
+            {
+                await socket.ConnectAsync(address, cancellationToken);
+                break;
+            }
+            catch (WebSocketException) when (socket.HttpStatusCode == System.Net.HttpStatusCode.Forbidden && DateTime.UtcNow < deadline)
+            {
+                socket.Dispose();
+                await Task.Delay(50, cancellationToken);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+        try
+        {
             var client = new DesktopWireClient(socket, check);
             await client.SendAsync(0, CheckToken, [0], cancellationToken);
             _ = await client.ReceiveAsync(cancellationToken);

@@ -30,7 +30,7 @@ internal sealed class HostedApplicationTests
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"));
         Check(application.Guest == new RunicGuestInfo("Hosted guest", "1.0.0", HostedGuestProgram.ApplicationId),
             $"The guest named itself {application.Guest}.");
-        Check(application.Protocol == 1 && application.Features.SequenceEqual(["menus/1", "dialogs/1", "window-services/1", "region/1"]), $"The channel uses protocol {application.Protocol} with the features {string.Join(", ", application.Features)}.");
+        Check(application.Protocol == 1 && application.Features.SequenceEqual(["menus/1", "dialogs/1", "window-services/1", "region/1", "region-appearance/1"]), $"The channel uses protocol {application.Protocol} with the features {string.Join(", ", application.Features)}.");
         Check(fixture.Applications.Applications.Contains(application), "The running guest is not listed.");
 
         var window = await opened.WaitScaledAsync(Timeout);

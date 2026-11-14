@@ -37,6 +37,10 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
         internal string? Module { get; set; }
         internal string? Token { get; set; }
         internal string? Title { get; set; }
+        // The colour scheme of the content (region-appearance/1): "light", "dark" or null.
+        internal string? ColorScheme { get; set; }
+        // The colour schemes of hosted-region-update, in order.
+        internal List<string?> SchemeUpdates { get; } = [];
         internal int? AppliedHeight { get; set; }
         internal int FocusRequests { get; set; }
 
@@ -123,26 +127,33 @@ internal sealed class HostedRegionTestPage(HostedRegionDirectory directory, Desk
     // The host window closed.
     internal void Close() => directory.PageClosed(this);
 
-    public bool ShowFrame(string name, string src, string? title, string allow) => Push(name, region =>
+    public bool ShowFrame(string name, string src, string? title, string allow, string? colorScheme = null) => Push(name, region =>
     {
         region.Shows = "content";
         region.Src = src;
         region.Title = title;
         region.Allow = allow;
+        region.ColorScheme = colorScheme;
     });
 
-    public bool ShowComponent(string name, string module, string url, string token) => Push(name, region =>
+    public bool ShowComponent(string name, string module, string url, string token, string? colorScheme = null) => Push(name, region =>
     {
         region.Shows = "component";
         region.Src = url;
         region.Module = module;
         region.Token = token;
+        region.ColorScheme = colorScheme;
     });
 
-    public bool Update(string name, HostedRegionTitle title, int? height) => Push(name, region =>
+    public bool Update(string name, HostedRegionTitle title, int? height, HostedRegionColorScheme colorScheme = default) => Push(name, region =>
     {
         if (title.HasValue) region.Title = title.Value;
         if (height is { } value) region.AppliedHeight = value;
+        if (colorScheme.HasValue)
+        {
+            region.ColorScheme = colorScheme.Value;
+            region.SchemeUpdates.Add(colorScheme.Value);
+        }
     });
 
     public bool Empty(string name, HostedRegionEmptyReason reason) => Push(name, region =>

@@ -13,13 +13,55 @@ public sealed partial class RunicTestHost
         Features.Contains(HostFeatures.Region, StringComparer.Ordinal) && _options.EmbedWindow?.Invoke(window) == true;
 
     // The reply of a region window's window-open: no window features, not visible until a region shows it.
-    private static JsonObject RegionReply(Views.RunicWindowPresentationFeatures features) => new()
+    // With region-appearance/1 in use, the window's appearance override (RunicTestHostOptions.RegionAppearance).
+    private JsonObject RegionReply(RunicTestHostedWindow window)
     {
-        ["presentation"] = "region",
-        ["features"] = new JsonArray([.. FeatureNames(features).Select(static name => (JsonNode)name)]),
-        ["activity"] = new JsonObject { ["active"] = false, ["minimized"] = false, ["visible"] = false },
-        ["region"] = null,
-    };
+        var reply = new JsonObject
+        {
+            ["presentation"] = "region",
+            ["features"] = new JsonArray([.. FeatureNames(window.Features).Select(static name => (JsonNode)name)]),
+            ["activity"] = new JsonObject { ["active"] = false, ["minimized"] = false, ["visible"] = false },
+            ["region"] = null,
+        };
+        if (UsesRegionAppearance) reply["appearance"] = HostServices.WriteOverride(_options.RegionAppearance?.Invoke(window));
+        return reply;
+    }
+
+    // region-appearance/1 in use, with region/1, which it requires.
+    private bool UsesRegionAppearance =>
+        Features.Contains(HostFeatures.RegionAppearance, StringComparer.Ordinal) && Features.Contains(HostFeatures.Region, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Changes the appearance override of a region window (<c>region-appearance</c>), as a host does with
+    /// <c>RunicHostedRegion.SetAppearanceAsync</c>: the guest merges it with the host's appearance
+    /// (<see cref="RunicTestHostOptions.Appearance"/>, <see cref="SetAppearanceAsync"/>) for that window's pages only, whether
+    /// a region shows the window or not.
+    /// </summary>
+    /// <param name="window">The region window.</param>
+    /// <param name="appearance">
+    /// The override: each member that is known replaces the host's value, and an unknown one, such as
+    /// <see cref="Runic.Platform.DesktopColorScheme.NoPreference"/> or <see langword="null"/>, keeps it;
+    /// <see langword="null"/> removes the override. It replaces the previous one as a whole.
+    /// </param>
+    /// <param name="cancellationToken">Cancels sending.</param>
+    /// <returns>A task that completes when the push was sent.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The window is not a region window, or <c>region-appearance/1</c> is not in use (<see cref="RunicTestHostOptions.Features"/>
+    /// and the guest's <c>hello</c> do not both list it).
+    /// </exception>
+    public Task SetRegionAppearanceAsync(RunicTestHostedWindow window, Runic.Platform.DesktopAppearance? appearance,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!window.IsRegion) throw new InvalidOperationException("The window shows in a window of its own, not in a region.");
+        if (!UsesRegionAppearance) throw new InvalidOperationException($"{HostFeatures.RegionAppearance} is not in use on the channel.");
+        return PushAsync(new JsonObject
+        {
+            ["kind"] = "region-appearance",
+            ["window"] = window.Id,
+            ["appearance"] = HostServices.WriteOverride(appearance),
+        }, cancellationToken);
+    }
 
     // The features a region window never has (host-protocol.md, Presentation of a window).
     private const Views.RunicWindowPresentationFeatures RegionlessFeatures =

@@ -49,6 +49,10 @@ public sealed class RunicHostedRegion
     private readonly DesktopPermissionGrant _grant;
     private readonly object _stateGate = new();
     private readonly object _queueGate = new();
+    // Orders the colour scheme the host page receives: reading it and sending it (hosted-region-content on an attach,
+    // hosted-region-update on a change) happen together, so an older scheme never reaches the page after a newer one.
+    // Taken before _stateGate, and never while _stateGate is held.
+    private readonly object _schemeGate = new();
     private Task _queue = Task.CompletedTask;
 
     // Under the directory's gate: the slot the window shows now, the host page it is bound to (the one it showed last),
@@ -81,6 +85,11 @@ public sealed class RunicHostedRegion
     private (bool Active, bool Visible, bool Minimized)? _sentActivity;
     private DesktopWindow? _observedWindow;
     private readonly Queue<long> _revokes = new();
+    // region-appearance/1: the window's appearance override, the colour scheme the page shows for it with the current
+    // content, and whether the host warned that the guest does not apply one.
+    private RunicHostedAppearance? _appearance;
+    private string? _shownScheme;
+    private int _appearanceWarned;
     // Under _stateGate: the attached frame's route in its host window (RegionFrames): its drops, permission requests
     // and menu keys, and the end of its content process.
     private IDisposable? _frameRoute;
@@ -101,6 +110,7 @@ public sealed class RunicHostedRegion
         _allow = allow;
         _grant = grant;
         _title = null;
+        _appearance = options.Appearance;
     }
 
     /// <summary>The name of the region that shows the window, or that it waits for.</summary>
@@ -168,6 +178,67 @@ public sealed class RunicHostedRegion
     public bool IsDocumentEdited
     {
         get { lock (_stateGate) return _documentEdited; }
+    }
+
+    /// <summary>
+    /// The appearance override of the region's window (<see cref="RunicHostedRegionOptions.Appearance"/>,
+    /// <see cref="SetAppearanceAsync"/>), or <see langword="null"/> for none. It belongs to the window: it stays across a
+    /// detach, a re-attach and <see cref="MoveToAsync"/>.
+    /// </summary>
+    public RunicHostedAppearance? Appearance
+    {
+        get { lock (_stateGate) return _appearance; }
+    }
+
+    /// <summary>
+    /// Whether the guest applies an appearance override: it implements <c>region-appearance/1</c>
+    /// (<see cref="RunicHostedWindowRequest.CanOverrideAppearance"/>). A guest of an older release shows the desktop's
+    /// appearance.
+    /// </summary>
+    public bool CanSetAppearance => _application.UsesRegionAppearance;
+
+    /// <summary>
+    /// Sets the appearance override of the region's window, or removes it (<see langword="null"/>), whether a region shows
+    /// the window now or not: its pages receive the host's desktop appearance with the override's members in place of the
+    /// desktop's, and a page that connects later receives it first. The host page sets the override's
+    /// <see cref="RunicHostedAppearance.ColorScheme"/> as the CSS <c>color-scheme</c> of the region's frame or component.
+    /// </summary>
+    /// <param name="appearance">The override; it replaces the previous one as a whole.</param>
+    /// <param name="cancellationToken">Cancels the wait; the override still applies.</param>
+    /// <returns>
+    /// <see langword="true"/> once the guest was told, or when the override did not change; <see langword="false"/> when the
+    /// region has ended, or when the guest does not apply overrides (<see cref="CanSetAppearance"/>), which then logs a
+    /// warning once for the window. <see cref="Appearance"/> records the override in that case too.
+    /// </returns>
+    /// <remarks>
+    /// It can be called from any thread. Overrides that the guest has not read yet are coalesced: the guest receives the
+    /// latest. It does not wait for an attach or a detach in progress.
+    /// </remarks>
+    public async Task<bool> SetAppearanceAsync(RunicHostedAppearance? appearance, CancellationToken cancellationToken = default)
+    {
+        bool changed;
+        lock (_stateGate)
+        {
+            if (_ended) return false;
+            changed = !Equals(_appearance?.ToDesktopAppearance(), appearance?.ToDesktopAppearance());
+            _appearance = appearance;
+        }
+        if (!CanSetAppearance)
+        {
+            if (appearance?.ToDesktopAppearance() is not null) WarnAppearanceUnavailable();
+            return false;
+        }
+        if (!changed) return true;
+        Window.Push("region-appearance", () => new JsonObject
+        {
+            ["kind"] = "region-appearance",
+            ["window"] = Window.Id,
+            ["appearance"] = OpenAppearanceMember(),
+        });
+        // The page's colour scheme follows once the guest was told, so the frame and the guest's page change together.
+        await Window.PushesSent().ContinueWith(_ => UpdatePageScheme(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).WaitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     /// <summary>Whether the keyboard focus is in the region, as the host page reported it last.</summary>
@@ -521,6 +592,7 @@ public sealed class RunicHostedRegion
             }
         }
         lock (_directory.Gate) _attachedOnce = true;
+        string? scheme;
         // The host window's engine routes the frame to this guest (RegionFrames), until the detach.
         var route = Uri.TryCreate(url, UriKind.Absolute, out var frameUrl)
             ? slot.Page.NativeWindow?.AttachRegionFrame(new Runic.Desktop.Internal.RegionFrameRoute(frameUrl, _grant,
@@ -535,15 +607,22 @@ public sealed class RunicHostedRegion
         replaced?.Dispose();
         // The page removed the region while the guest answered: the detach that follows in the queue tells the guest.
         if (!IsCurrent(slot)) return;
-        string? title;
-        lock (_stateGate) title = _title;
-        try
+        lock (_schemeGate)
         {
-            _ = attach.Component is { } component
-                ? slot.Page.ShowComponent(slot.Name, component.Module, url, component.Token)
-                : slot.Page.ShowFrame(slot.Name, url, title, _allow);
+            string? title;
+            lock (_stateGate)
+            {
+                title = _title;
+                scheme = _shownScheme = PageSchemeLocked();
+            }
+            try
+            {
+                _ = attach.Component is { } component
+                    ? slot.Page.ShowComponent(slot.Name, component.Module, url, component.Token, scheme)
+                    : slot.Page.ShowFrame(slot.Name, url, title, _allow, scheme);
+            }
+            catch (ArgumentException error) { _application.LogRegionFailed(error); }
         }
-        catch (ArgumentException error) { _application.LogRegionFailed(error); }
         Raise(Attached, null);
         _application.RaiseRegionAttached(this);
         // A size the page reported while the guest answered.
@@ -636,6 +715,44 @@ public sealed class RunicHostedRegion
         if (report is null) return null;
         var size = SizeOf(report);
         return new JsonObject { ["width"] = size.Width, ["height"] = size.Height, ["scale"] = size.Scale };
+    }
+
+    // region-appearance/1: the window-open reply's appearance member, and the region-appearance push's: the override, or
+    // null for none.
+    internal JsonNode? OpenAppearanceMember()
+    {
+        RunicHostedAppearance? appearance;
+        lock (_stateGate) appearance = _appearance;
+        return HostServices.WriteOverride(appearance?.ToDesktopAppearance());
+    }
+
+    // The override for a guest that does not apply one: logged once for the window.
+    internal void WarnAppearanceUnavailable()
+    {
+        if (Interlocked.Exchange(ref _appearanceWarned, 1) == 0) _application.LogRegionAppearanceUnavailable(Name);
+    }
+
+    // Under _stateGate: the colour scheme the host page sets on the region's content, "light", "dark" or null; none for a
+    // guest that does not apply the override.
+    private string? PageSchemeLocked() => CanSetAppearance ? RunicHostedAppearance.SchemeToken(_appearance) : null;
+
+    // hosted-region-update with the override's colour scheme, when it changed for the content the page shows.
+    private void UpdatePageScheme()
+    {
+        lock (_schemeGate)
+        {
+            HostedRegionSlot? slot;
+            string? scheme;
+            lock (_stateGate)
+            {
+                slot = _attachedSlot;
+                scheme = PageSchemeLocked();
+                if (slot is null || _shownScheme == scheme) return;
+                _shownScheme = scheme;
+            }
+            try { _ = slot.Page.Update(slot.Name, default, null, Bridge.HostedRegionColorScheme.Set(scheme)); }
+            catch (ArgumentException error) { _application.LogRegionFailed(error); }
+        }
     }
 
     // present, or the host's own decision: the page moves the focus into the region, only when it holds none (host-protocol.md,
@@ -948,6 +1065,14 @@ public sealed record RunicHostedRegionOptions
     /// own, and the focus counts as the host's, not the user's, for the guest's window services.
     /// </summary>
     public bool FocusOnAttach { get; init; }
+
+    /// <summary>
+    /// The appearance override of the region's window from its open (<c>region-appearance/1</c>), such as the design a
+    /// wizard's user picked; <see langword="null"/>, the default, for none. <see cref="RunicHostedRegion.SetAppearanceAsync"/>
+    /// changes it later. A guest that does not apply overrides (<see cref="RunicHostedWindowRequest.CanOverrideAppearance"/>)
+    /// still shows in the region, with the desktop's appearance, and the host logs a warning once for the window.
+    /// </summary>
+    public RunicHostedAppearance? Appearance { get; init; }
 
     private static int? RequireHeight(int? value, string name)
     {

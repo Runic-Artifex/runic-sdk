@@ -279,7 +279,7 @@ makes the host a browser (serve-only) host, whose pages no native window shows, 
 | `region.host-embed-options` | host | Focus on attach, and no re-attach on reload |
 | `region.browser-attach` | guest | A `region-attach` with `browser: true` and `allowSameSite: false` answers a frame launch address cross-site to the embedder; a `browser` that is not a boolean is `rejected` with `invalid-request` |
 | `region.browser-elevated` | guest | An elevated guest refuses a `region-attach` with `browser: true` with `rejected` and `guest-elevated`, and its Window stays open |
-| `region.host-browser` | host | A [browser host](../host-protocol.md#browser-hosts) lists only `region/1` and `region-component/1`, opens region windows without `present` and `owned-windows`, attaches them with `browser: true` and `allowSameSite: false`, answers `present` and `announce` `unavailable` with `backend-unavailable`, and refuses a window of the guest's own |
+| `region.host-browser` | host | A [browser host](../host-protocol.md#browser-hosts) lists only `region/1`, `region-component/1` and `region-appearance/1`, opens region windows without `present` and `owned-windows`, attaches them with `browser: true` and `allowSameSite: false`, answers `present` and `announce` `unavailable` with `backend-unavailable`, and refuses a window of the guest's own |
 | `region.component-attach` | guest | With both opt-ins, a component attach answers the module, the WebSocket address and a new token, from the guest's own `127.0.0.1` listener for an embedder of that site that allows it; the module is served to the embedder alone with CORS; the WebSocket is admitted only from the embedder's `Origin` with the token, one page at a time; after `region-detach` both are refused |
 | `region.component-cross-site` | guest | A component attach that does not allow the embedder's own site is served from `[::1]` with `sameSite: false` |
 | `region.component-browser` | guest | A component attach with `browser: true` for a `localhost` host page is served from `[::1]` with `sameSite: false` |
@@ -325,12 +325,10 @@ New steps and actions the runners need:
 
 ## Region appearance scenarios
 
-The scenarios of [`region-appearance/1`](../host-protocol.md#appearance-in-a-region-region-appearance1) are planned, not
-yet in the corpus: the runners run every scenario of their role, and neither implements the feature yet. They go in
+The scenarios of [`region-appearance/1`](../host-protocol.md#appearance-in-a-region-region-appearance1) are in
 `scenarios/region/`, with `requires: ["region/1", "region-appearance/1"]` (a scenario of the feature's absence requires
-`region/1` alone), together with the guest's and the host's implementations, which also add the runner steps and actions
-below and their schema. The host's implementation lists `region-appearance/1` for a browser host too, so it updates
-`region.host-browser`'s list with it.
+`region/1` alone, and one of component mode `region-component/1` too). Runic's guest and host, its browser host
+included (`region.host-browser`), list the feature from 0.19.
 
 | # | Scenario | Roles | Checks |
 | --- | --- | --- | --- |
@@ -347,7 +345,7 @@ below and their schema. The host's implementation lists `region-appearance/1` fo
 | RA11 | `region.appearance-not-a-region` | guest | A `region-appearance` for a window shown in a window, or for an unknown id, is ignored |
 | RA12 | `region.appearance-component`, `region.host-appearance-component` | guest, host | A component attach with the override `colorScheme: "dark"`: the component connection's first push carries it, with `override: ["colorScheme"]`; the host's `hosted-region-content` to its page carries `colorScheme: "dark"`, and an override's change of scheme a `hosted-region-update` with the new one |
 
-New steps and actions the runners need:
+What the runners do for them:
 
 - **Guest runner.** The `appearance` action's result also carries the push's `override` member when it lists one. A
   region window's override comes in a `send` of the `window-open` reply and of `region-appearance`, so the guest runner
@@ -355,6 +353,6 @@ New steps and actions the runners need:
   admits.
 - **Host runner.** `arrange.host.embedOptions.appearance`, the override of the regions the host's policy embeds (in
   .NET, `RunicHostedRegionOptions.Appearance`); the host application's action `setRegionAppearance` (`window`, the
-  guest's window, and `appearance`, an override or `null`), with the result `applied`, the `bool` of
-  `RunicHostedRegion.SetAppearanceAsync`; and `expect` with `window` (a host window) and `page` also checks the
-  region's `colorScheme`.
+  guest's window, and `appearance`, an override or `null`), whose result, the `bool` of
+  `RunicHostedRegion.SetAppearanceAsync`, an `expect` with `applied` checks, one per action in their order; and `expect`
+  with `window` (a host window) and `page` also checks the region's `colorScheme`.

@@ -25,12 +25,15 @@ internal interface IHostedRegionPage
     // embedded host allows it, a browser host never does.
     bool AllowsSameSite { get; }
 
-    bool ShowFrame(string name, string src, string? title, string allow);
+    // colorScheme: the colour scheme of the region's appearance override, "light", "dark" or null for none
+    // (region-appearance/1).
+    bool ShowFrame(string name, string src, string? title, string allow, string? colorScheme = null);
 
     // region-component/1: shows the guest's component in the region: its module, its WebSocket address and its token.
-    bool ShowComponent(string name, string module, string url, string token);
+    bool ShowComponent(string name, string module, string url, string token, string? colorScheme = null);
 
-    bool Update(string name, Runic.Application.Views.HostedRegionTitle title, int? height);
+    bool Update(string name, Runic.Application.Views.HostedRegionTitle title, int? height,
+        Runic.Application.Views.HostedRegionColorScheme colorScheme = default);
 
     bool Empty(string name, Runic.Application.Views.HostedRegionEmptyReason reason);
 

@@ -246,6 +246,7 @@ The host logs these events (`Runic.Application.Views.Desktop`; the
 | 2027 `DesktopHostedRegionSameSite` | The guest serves the frame from the host page's own loopback family, since it cannot listen on the other (no IPv6): the frame receives the host page's cookies. Embedded hosts only. |
 | 2028 `DesktopHostedRegionFailed` | Region handling failed with an exception. |
 | 2029 `DesktopHostedPeerRefused` | An elevated guest (of the elevated pair) refused a connection from a process that does not run elevated, or whose process it cannot look up. Logged by the guest, at most ten a minute. |
+| 2030 `DesktopHostedRegionAppearanceUnavailable` | The host gave a region window an appearance override, but the guest does not apply one (0.18 or older): the window shows the desktop's appearance. Once per window. |
 | 2020 `DesktopHostedWindowPolicyFailed` | Also when a browser host's policy decided a window mode (`WindowModeUnavailable`) or an `Embed` that cannot apply (`EmbedUnavailable`). |
 
 | Reason of 2026 | Cause | Fix |

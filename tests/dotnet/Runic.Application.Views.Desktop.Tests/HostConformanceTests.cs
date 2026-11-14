@@ -765,7 +765,14 @@ internal sealed class HostConformanceTests
                 {
                     var content = (WindowContentSession)result!;
                     var expected = expect["appearance"];
-                    JsonNode? Actual() => content.Appearance is { } appearance ? HostServices.WriteAppearance(appearance) : null;
+                    // With the push's override member when it lists one (region-appearance/1).
+                    JsonNode? Actual()
+                    {
+                        if (content.Appearance is not { } appearance) return null;
+                        var push = JsonNode.Parse(BridgeDispatcher.AppearancePush(appearance, content.DecidedAppearance))!.AsObject();
+                        push.Remove("kind");
+                        return push;
+                    }
                     Check(await TestTimeouts.UntilAsync(() => JsonNode.DeepEquals(Actual(), expected), StepTimeout),
                         $"The Window's pages show {Actual()?.ToJsonString() ?? "null"}, not {expected?.ToJsonString() ?? "null"}.");
                     return;
