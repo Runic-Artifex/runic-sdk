@@ -11,6 +11,7 @@ import { root } from "../../eng/run.mjs";
 // filled manifests, and the packaging CI job builds, installs and opens the packages on each platform.
 const packaging = resolve(root, "tools/Runic.Application.Templates/content/runic-app/packaging");
 const translationsVersion = JSON.parse(readFileSync(resolve(root, ".config/dotnet-tools.json"), "utf8")).tools["dotnet-runic-translations"].version;
+const translationsPlugin = "@runic-artifex/vite-plugin-runic-translations";
 
 test("the template's packaging folder holds the manifests the command embeds, without package.mjs", () => {
   const files = readdirSync(packaging, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile())
@@ -288,11 +289,61 @@ test("--translations scaffolds a translated application for every frontend", () 
         assert.equal(tools["dotnet-runic-translations"].version, translationsVersion);
         assert.deepEqual(Object.keys(JSON.parse(plain[".config/dotnet-tools.json"]).tools), ["dotnet-runic"]);
         assert.match(translated[".gitignore"], /Frontend\/\.runic\//);
+        // #944: the Vite frontends compile the catalog with the Translations Vite plugin of the same release; the
+        // Angular CLI runs no Vite plugins, so Angular imports the ESM that the .NET build mirrors into Frontend/.runic.
+        const page = Object.entries(translated).filter(([path]) => path.startsWith("Frontend/src/")).map(([, text]) => text).join("\n");
+        if (frontend === "angular") {
+          assert.match(translated["Translated.csproj"], /<RunicTranslationsEmitEsm>true<\/RunicTranslationsEmitEsm>/);
+          assert.match(translated["Translated.csproj"], /<RunicApplicationFrontendTranslations>true<\/RunicApplicationFrontendTranslations>/);
+          assert.match(page, /from "\.\.\/\.runic\/translations\/messages\.js"/);
+          assert.equal(translated["Frontend/package.json"], plain["Frontend/package.json"]);
+        } else {
+          assert.doesNotMatch(translated["Translated.csproj"], /RunicTranslationsEmitEsm|RunicApplicationFrontendTranslations/);
+          assert.doesNotMatch(page, /\.runic\/translations\/[a-z]+\.js/);
+          assert.match(page, /from "virtual:runic-translations\/app"/);
+          assert.match(page, /\/\/\/ <reference path="(\.\.\/)+\.runic\/translations\/virtual\.d\.ts" \/>/);
+          assert.match(translated["Frontend/vite.config.ts"], /^    runicTranslations\(\),$/m);
+          // The frontend's own package.json and lock with the plugin, pinned to the release of the .NET tool.
+          const manifest = JSON.parse(translated["Frontend/package.json"]);
+          assert.equal(manifest.devDependencies[translationsPlugin], translationsVersion);
+          delete manifest.devDependencies[translationsPlugin];
+          assert.deepEqual(manifest, JSON.parse(plain["Frontend/package.json"]));
+          const lock = JSON.parse(translated["Frontend/package-lock.json"]);
+          assert.equal(lock.packages[`node_modules/${translationsPlugin}`].version, translationsVersion);
+          assert.ok(!translated["Frontend/pnpm-lock.yaml"] && !translated["Frontend/bun.lock"], `${label}: other lock files`);
+          assert.doesNotMatch(plain["Frontend/package.json"] + plain["Frontend/package-lock.json"] + plain["Frontend/vite.config.ts"], /translations/i);
+        }
         for (const [path, text] of Object.entries(translated))
           assert.doesNotMatch(text, /#if \(translations\)|\/\/#endif/, `${label}: ${path} keeps a template condition`);
       }
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// #944: --translations replaces a Vite frontend's package.json and lock files with runic-app/translations/<framework>'s,
+// which add the Translations Vite plugin; eng/dependencies/update-template-locks.mjs regenerates both sets together.
+// Each is the frontend's own with the plugin added, so the two cannot drift apart.
+test("the translated Vite frontends' package.json and locks are the frontend's own with the Translations Vite plugin", () => {
+  const content = resolve(root, "tools/Runic.Application.Templates/content/runic-app");
+  for (const framework of ["react", "vue", "svelte", "sveltekit"]) {
+    const read = (variant, file) => readFileSync(resolve(content, variant, framework, file), "utf8");
+    const manifest = JSON.parse(read("translations", "package.json"));
+    assert.equal(manifest.devDependencies[translationsPlugin], translationsVersion, framework);
+    delete manifest.devDependencies[translationsPlugin];
+    assert.deepEqual(manifest, JSON.parse(read("frontends", "package.json")), framework);
+    for (const file of ["package-lock.json", "pnpm-lock.yaml", "bun.lock"]) {
+      const translated = read("translations", file).split("\n");
+      assert.ok(translated.some(line => line.includes(`${translationsPlugin}@${translationsVersion}`) ||
+        line.includes(`vite-plugin-runic-translations-${translationsVersion}.tgz`)), `${framework}/${file}: no plugin ${translationsVersion}`);
+      // Every line of the frontend's lock, in order: the translated lock only adds the plugin.
+      let next = 0;
+      for (const line of read("frontends", file).split("\n")) {
+        while (next < translated.length && translated[next] !== line) next++;
+        assert.ok(next < translated.length, `${framework}/${file} lacks the frontend's line ${JSON.stringify(line)}`);
+        next++;
+      }
+    }
   }
 });
