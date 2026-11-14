@@ -1,9 +1,10 @@
 // translation-text/1: injectText and the runicText pipe follow a language switch.
 import "@angular/compiler";
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, signal } from "@angular/core";
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { configureFieldErrorText, textVersion } from "@runic-artifex/views";
 import { connectView } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
 import { configureTranslatedText, injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal } from "../dist/esm/index.js";
@@ -125,5 +126,67 @@ describe("textLocaleSignal", () => {
     await bridge.flush();
     fixture.detectChanges();
     expect(element.textContent).toBe("Saved Atlas.");
+  });
+});
+
+// The Runic Translations text-change channel as the Vite plugin's development client creates it (Translations 0.12.0):
+// an in-place update swaps the message's text, increments `revision` and calls every listener.
+const textChannelKey = Symbol.for("runic.translations.text");
+function installTextChannel() {
+  const channel = { version: 1, revision: 0, listeners: new Set<() => void>() };
+  (globalThis as Record<symbol, unknown>)[textChannelKey] = channel;
+  cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
+  return () => { channel.revision++; for (const listener of [...channel.listeners]) listener(); };
+}
+
+// An edited message, as the swapped table of a generated message module formats it: it reads the text locale through
+// the page's locale resolver, as `m.*()` does.
+const edited = { text: "Notes" };
+class EditedTitle {
+  readonly count = signal(0);
+  private readonly textLocale = textLocaleSignal();
+  title(): string { void this.textLocale(); return edited.text; }
+}
+Component({
+  selector: "test-edited-title",
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<h1>{{ title() }} {{ count() }}</h1>`,
+})(EditedTitle);
+
+describe("textLocaleSignal and in-place message updates (translations#176)", () => {
+  test("an OnPush template renders the edited text again with the same locale and keeps its state", () => {
+    edited.text = "Notes";
+    const update = installTextChannel();
+    cleanup.push(configureTranslatedText(fakeTranslations()));
+    const fixture = TestBed.createComponent(EditedTitle);
+    fixture.detectChanges();
+    fixture.componentInstance.count.set(3);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toBe("Notes 3");
+    edited.text = "My notes";
+    update();
+    fixture.detectChanges();
+    expect(element.textContent).toBe("My notes 3");
+    expect(textLocaleSignal()()).toBe("en");
+    edited.text = "Our notes";
+    update();
+    fixture.detectChanges();
+    expect(element.textContent, "every update, not only the first").toBe("Our notes 3");
+  });
+
+  test("without the channel, as in production, a text change that keeps the locale does not notify", () => {
+    cleanup.push(configureTranslatedText(fakeTranslations()));
+    expect(textChannelKey in globalThis).toBe(false);
+    const textLocale = textLocaleSignal();
+    let evaluations = 0;
+    const seen = computed(() => { evaluations++; return textLocale(); });
+    expect(seen()).toBe("en");
+    const version = textVersion();
+    cleanup.push(configureFieldErrorText(() => undefined));
+    expect(textVersion(), "the text changed").toBe(version + 1);
+    expect(seen()).toBe("en");
+    expect(evaluations, "the locale stayed: no notification").toBe(1);
   });
 });

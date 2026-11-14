@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // translation-text/1: useText renders a text reference in the window's language and follows a language switch.
 import * as React from "react";
-import { createElement, type ReactNode } from "react";
+import { createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { connectView } from "@runic-artifex/views/generated";
@@ -10,6 +10,7 @@ import {
   configureFieldErrorText, configureTranslatedText, FieldError, useText, useTextLocale, useWindowLocale, ViewOutlet,
   type TextReference,
 } from "../dist/index.js";
+import { textVersion } from "@runic-artifex/views";
 // The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
 import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
 import { configureLocaleResolver, createLocaleSource, localeDirection } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";
@@ -119,6 +120,63 @@ describe("useTextLocale", () => {
     expect(renders, "de-AT resolves to de: no change, no render").toBe(before);
     await act(async () => { bridge.setWindowLocale(null); bridge.setWindowLocale("en"); await bridge.flush(); });
     expect(container.textContent).toBe("Saved Atlas.");
+  });
+});
+
+// The Runic Translations text-change channel as the Vite plugin's development client creates it (Translations 0.12.0):
+// an in-place update swaps the message's text, increments `revision` and calls every listener.
+const textChannelKey = Symbol.for("runic.translations.text");
+function installTextChannel() {
+  const channel = { version: 1, revision: 0, listeners: new Set<() => void>() };
+  (globalThis as Record<symbol, unknown>)[textChannelKey] = channel;
+  cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
+  return () => { channel.revision++; for (const listener of [...channel.listeners]) listener(); };
+}
+
+describe("useTextLocale and in-place message updates (translations#176)", () => {
+  // An edited message, as the swapped table of a generated message module formats it.
+  const edited = { text: "Notes" };
+  const title = () => edited.text;
+
+  function Plain() {
+    return createElement("p", null, title());
+  }
+  let increment!: () => void;
+  let renders = 0;
+  function Page() {
+    const locale = useTextLocale();
+    const [count, setCount] = useState(0);
+    increment = () => setCount(value => value + 1);
+    renders++;
+    return createElement("main", { lang: locale }, createElement("h1", null, `${title()} ${count}`), createElement(Plain));
+  }
+
+  test("a component that calls useTextLocale renders the edited text again and keeps its state", async () => {
+    edited.text = "Notes";
+    const update = installTextChannel();
+    cleanup.push(configureTranslatedText(fakeTranslations()));
+    const container = await mount(createElement(Page));
+    await act(async () => { increment(); increment(); increment(); });
+    expect(container.textContent).toBe("Notes 3Notes");
+    edited.text = "My notes";
+    await act(async () => { update(); });
+    expect(container.textContent, "the hook's component and its child without the hook").toBe("My notes 3My notes");
+    expect(container.querySelector("main")!.getAttribute("lang")).toBe("en");
+    edited.text = "Our notes";
+    await act(async () => { update(); });
+    expect(container.textContent, "every update, not only the first").toBe("Our notes 3Our notes");
+  });
+
+  test("without the channel, as in production, a text change that keeps the locale does not render again", async () => {
+    edited.text = "Notes";
+    cleanup.push(configureTranslatedText(fakeTranslations()));
+    const container = await mount(createElement(Page));
+    expect(textChannelKey in globalThis).toBe(false);
+    const before = renders, version = textVersion();
+    await act(async () => { cleanup.push(configureFieldErrorText(() => undefined)); });
+    expect(textVersion(), "the text changed").toBe(version + 1);
+    expect(renders, "the locale stayed: no render").toBe(before);
+    expect(container.textContent).toBe("Notes 0Notes");
   });
 });
 

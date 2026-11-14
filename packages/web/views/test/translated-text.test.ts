@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
   bindField, configureTranslatedText, createFieldController, onWindowLocale, resolveText, subscribeText, syncDocumentLocale,
-  textDirection, textLocale, windowLocale,
+  textDirection, textLocale, textVersion, windowLocale,
   type BridgeValidationState, type TextReference, type TextTranslations,
 } from "../dist/index.js";
 import { connectView, decodeBridgeValidation, fieldErrors } from "../dist/generated.js";
@@ -111,6 +111,57 @@ test("a configured runtime formats references in its locale, and a locale switch
   assert.equal(textLocale(), "de");
   assert.equal(resolveText(titleTooLong), "Der Titel darf höchstens 80 Zeichen lang sein.");
   assert.equal(resolveText({ ...saved, key: "missing", fallbackText: "Fallback" }), "Fallback", "a key the runtime cannot format");
+});
+
+// The Runic Translations text-change channel as the Vite plugin's development client creates it (Translations 0.12.0):
+// an in-place update increments `revision` and calls every listener.
+const textChannelKey = Symbol.for("runic.translations.text");
+function installTextChannel() {
+  const channel = { version: 1, revision: 0, listeners: new Set<() => void>() };
+  (globalThis as Record<symbol, unknown>)[textChannelKey] = channel;
+  cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
+  return {
+    channel,
+    update() { channel.revision++; for (const listener of [...channel.listeners]) listener(); },
+  };
+}
+
+test("an in-place message update during development notifies text subscribers like a locale switch (translations#176)", () => {
+  const { channel, update } = installTextChannel();
+  const runtime = translations();
+  const stop = configureTranslatedText(runtime);
+  cleanup.push(stop);
+  assert.equal(channel.listeners.size, 1, "configureTranslatedText follows the channel");
+  let notified = 0;
+  cleanup.push(subscribeText(() => { notified++; }));
+  const version = textVersion();
+  update();
+  assert.equal(notified, 1);
+  assert.equal(textVersion(), version + 1);
+  assert.equal(textLocale(), "en", "the locale stays");
+  // A later configureTranslatedText replaces the earlier one, and its stop leaves the channel.
+  const replacement = configureTranslatedText(translations());
+  assert.equal(channel.listeners.size, 1, "the replaced runtime left the channel");
+  replacement();
+  assert.equal(channel.listeners.size, 0);
+  notified = 0;
+  update();
+  assert.equal(notified, 0, "nothing follows the channel after stop");
+});
+
+test("without the text-change channel, as in production, configureTranslatedText creates and follows nothing (translations#176)", () => {
+  assert.equal(textChannelKey in globalThis, false);
+  const runtime = translations();
+  cleanup.push(configureTranslatedText(runtime));
+  assert.equal(textChannelKey in globalThis, false, "no global is created");
+  let notified = 0;
+  cleanup.push(subscribeText(() => { notified++; }));
+  runtime.setLocale!("de");
+  assert.equal(notified, 1, "a locale switch notifies as before");
+  // A value that is not the channel is ignored.
+  (globalThis as Record<symbol, unknown>)[textChannelKey] = { revision: 1 };
+  cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
+  cleanup.push(configureTranslatedText(runtime));
 });
 
 test("the window's locale sets the runtime's locale, also one pushed before the runtime was configured", async () => {

@@ -103,6 +103,25 @@ function channel(slots: Slots = currentSlots()): TranslatedTextChannel {
   return (slots[channelKey] ??= { windowLocale: null, listeners: new Set(), localeListeners: new Set(), version: 0 }) as TranslatedTextChannel;
 }
 
+// The text-change channel of Runic Translations (0.12.0, `docs/guides/translations/esm.md`): during development the
+// Vite plugin swaps an edited message's text into the loaded catalog, increments `revision` and calls `listeners`. Only
+// development code creates it, so a production page has none and subscribes to nothing. Members are only ever added.
+interface TranslationsTextChannel {
+  readonly version: number;
+  readonly revision: number;
+  readonly listeners: Set<() => void>;
+}
+
+const translationsTextKey = Symbol.for("runic.translations.text");
+
+function translationsTextChannel(): TranslationsTextChannel | undefined {
+  const value = (globalThis as Record<symbol, unknown>)[translationsTextKey] as Partial<TranslationsTextChannel> | null | undefined;
+  if (typeof value !== "object" || value === null) return undefined;
+  const listeners = value.listeners;
+  return typeof value.version === "number" && value.version >= 1 && typeof listeners?.add === "function"
+    && typeof listeners.delete === "function" ? value as TranslationsTextChannel : undefined;
+}
+
 function changed(slots: Slots): void {
   const state = channel(slots);
   state.version++;
@@ -126,10 +145,15 @@ export function configureTranslatedText(translations: TextTranslations): () => v
   state.translations = translations;
   let stopped = false;
   const stopLocale = translations.subscribe?.(() => { if (!stopped) changed(slots); });
+  // An edited message updated in place during development renders again like a locale switch.
+  const textChannel = translationsTextChannel();
+  const onTextChange = () => { if (!stopped) changed(slots); };
+  textChannel?.listeners.add(onTextChange);
   const stop = () => {
     if (stopped) return;
     stopped = true;
     stopLocale?.();
+    textChannel?.listeners.delete(onTextChange);
     if (state.translations === translations) {
       state.translations = undefined;
       state.stopTranslations = undefined;
