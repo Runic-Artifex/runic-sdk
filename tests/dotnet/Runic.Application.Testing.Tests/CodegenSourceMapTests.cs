@@ -107,15 +107,16 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(Directory.GetFiles(Path.Combine(directory, "ts")).All(path => !File.ReadAllText(path).Contains(directory, StringComparison.Ordinal)),
                 "The generated TypeScript names a source path.");
 
-            // Without a PDB the generator still succeeds and writes the map, with no locations; the client is the same.
+            // Without a PDB the generator still succeeds and writes the map, with no locations; the client is the same, and
+            // its contract only lacks the declaration map's comment (#952).
             var withoutSymbols = await GenerateSourceMapFixtureAsync(temporaryRoot, "without-pdb", symbols: false).ConfigureAwait(false);
             using var bare = JsonDocument.Parse(File.ReadAllText(Path.Combine(withoutSymbols, "cs", "sources.json")));
             var bareMembers = bare.RootElement.GetProperty("members").EnumerateArray().ToArray();
             Require(bareMembers.Length == members.Count && bareMembers.All(entry => !entry.TryGetProperty("location", out _))
                     && bare.RootElement.GetProperty("viewModels").EnumerateArray().All(entry => !entry.TryGetProperty("location", out _)),
                 $"Without a PDB the map should list every member without a location:\n{bare.RootElement}");
-            foreach (var path in Directory.GetFiles(Path.Combine(directory, "ts")))
-                Require(File.ReadAllText(path) == File.ReadAllText(Path.Combine(withoutSymbols, "ts", Path.GetFileName(path))),
+            foreach (var path in Directory.GetFiles(Path.Combine(directory, "ts")).Where(path => !path.EndsWith(".map", StringComparison.Ordinal)))
+                Require(WithoutMapComment(File.ReadAllText(path)) == File.ReadAllText(Path.Combine(withoutSymbols, "ts", Path.GetFileName(path))),
                     $"{Path.GetFileName(path)} differs with and without the PDB.");
         }
         finally
@@ -149,13 +150,14 @@ internal sealed partial class CodegenDiagnosticsTests
 
     // Compiles the fixture to <root>/<name>/FixtureSourceMap.dll (with a PDB over Fixture.cs on disk, or none) and
     // runs the generator into cs/ and ts/ there.
-    private static async Task<string> GenerateSourceMapFixtureAsync(string temporaryRoot, string name, bool symbols, bool cache = false)
+    private static async Task<string> GenerateSourceMapFixtureAsync(string temporaryRoot, string name, bool symbols, bool cache = false,
+        string fixture = SourceMapFixture, string generatedSource = SourceMapGenerated)
     {
         var directory = Path.Combine(temporaryRoot, name);
         Directory.CreateDirectory(directory);
         var sourcePath = Path.Combine(directory, "Fixture.cs");
-        File.WriteAllText(sourcePath, SourceMapFixture);
-        var compilation = Compile("SourceMap", SourceMapFixture, sourcePath).AddSyntaxTrees(CSharpSyntaxTree.ParseText(SourceMapGenerated,
+        File.WriteAllText(sourcePath, fixture);
+        var compilation = Compile("SourceMap", fixture, sourcePath).AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource,
             new CSharpParseOptions(LanguageVersion.Latest), Path.Combine(directory, "generated", "MapViewModel.g.cs"), System.Text.Encoding.UTF8));
         var assembly = Path.Combine(directory, "FixtureSourceMap.dll");
         Microsoft.CodeAnalysis.Emit.EmitResult emitted;
