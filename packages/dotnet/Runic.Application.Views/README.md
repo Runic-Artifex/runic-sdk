@@ -2231,7 +2231,7 @@ an extension point.
 | `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
-| `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as the `runic-app` template's `--translations` option and a Bun or Angular page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
+| `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as an Angular CLI page (the `runic-app` template's `--frontend angular --translations`) or a Bun page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
 | `RunicApplicationFrontendTranslationsDirectory` | `<frontend>/.runic/translations` | Where `RunicApplicationFrontendTranslations` mirrors the ESM; the page imports `messages.js`, `runtime.js` and `transport.js` from it. Keep it out of version control. |
 | `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
 | `RunicApplicationFrontendDelivery` | `Files` | `Files` copies the frontend to the web root. `Embedded` packs the same tree (referenced projects' frontends, this project's output and the host's `runic-views.js`) into the assembly with Runic.Assets, and the Runic Desktop, WPF and CS-WebUI hosts serve it; see [Ship the frontend inside the executable](#ship-the-frontend-inside-the-executable). Closed: another value, no single Desktop or CS-WebUI host, or a project that sets `RunicAssetsDist` itself warns with [`RUNICBRIDGE030`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge030) and builds as `Files`. |
@@ -3461,24 +3461,37 @@ in the .NET project, which then gets the generated C# API for every message
 
 The page gets the same catalog's ESM one of two ways:
 
-- **From the .NET build**, as `dotnet new runic-app --translations` and the
-  multi-window example do. The build writes the ESM with the
-  `dotnet-runic-translations` tool of `.config/dotnet-tools.json`, and
-  `RunicApplicationFrontendTranslations` copies it to
-  `Frontend/.runic/translations` (gitignored) before the frontend builds; the
-  page imports `../.runic/translations/messages.js`, `runtime.js` and
-  `transport.js`. It works with every bundler, Angular's included, and needs no
-  npm package, but `vite dev` does not reload an edited message: build again.
+- **From the Translations Vite plugin**, for a Vite page, as
+  `dotnet new runic-app --translations` does with React, Vue, Svelte and
+  SvelteKit. `runicTranslations()` from
+  `@runic-artifex/vite-plugin-runic-translations` compiles the catalog with the
+  `dotnet-runic-translations` tool of `.config/dotnet-tools.json` (keep the tool,
+  the plugin and `Runic.Translations.Build` on one release) into
+  `Frontend/.runic/translations` (gitignored), serves it as
+  `virtual:runic-translations/<catalog>`, and writes the modules' types to
+  `.runic/translations/virtual.d.ts`, which a type check references. Under
+  `dotnet runic dev` (or `vite dev`) it compiles an edited, added or removed
+  message again and the page shows it without a build. The .NET project then
+  sets neither property below, so its build does not run the tool.
+
+  ```ts
+  // vite.config.ts
+  plugins: [react(), runic(), runicTranslations()],
+  ```
+
+- **From the .NET build**, for a page that cannot run Vite plugins, such as an
+  Angular CLI page (as `dotnet new runic-app --frontend angular --translations`
+  creates) or a Bun-bundled one, as the multi-window example does. The build
+  writes the ESM with the same tool, and `RunicApplicationFrontendTranslations`
+  copies it to `Frontend/.runic/translations` (gitignored) before the frontend
+  builds; the page imports `../.runic/translations/messages.js`, `runtime.js`
+  and `transport.js`. It works with every bundler and needs no npm package, but
+  the development server does not reload an edited message: build again.
 
   ```xml
   <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
   <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
   ```
-
-- **From the Translations Vite plugin**, which compiles the catalog for a Vite
-  page, reloads messages in `vite dev`, and serves the modules as
-  `virtual:runic-translations/<catalog>`, as in the examples below. Leave
-  `RunicApplicationFrontendTranslations` off then.
 
 **Values.** A member, DTO member, command input or result of type
 `Runic.Translations.TranslationReference` crosses the Bridge as the reference's

@@ -4,7 +4,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, test, vi } from "vitest";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
-import { createTextReference } from "../.runic/translations/transport.js";
+import { createTextReference } from "virtual:runic-translations/app/transport";
 import { startTranslations } from "./translations";
 import App from "./App";
 import { mockCounter } from "./generated/counter.mock.js";
