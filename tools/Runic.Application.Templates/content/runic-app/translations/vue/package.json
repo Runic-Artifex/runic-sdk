@@ -1,0 +1,31 @@
+{
+  "name": "@runic-artifex/runic-app-starter",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "__PACKAGE_MANAGER__",
+  "engines": {
+    "node": "^24.18.0 || ^26.0.0"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "vite build && vue-tsc --noEmit",
+    "dev": "vite",
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@runic-artifex/views": "__RUNIC_NPM_VERSION__",
+    "@runic-artifex/vue": "__RUNIC_NPM_VERSION__",
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
+    "@runic-artifex/vite-plugin-runic-translations": "0.11.0",
+    "@vitejs/plugin-vue": "6.0.9",
+    "happy-dom": "21.0.4",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.3",
+    "vue-tsc": "3.3.12"
+  }
+}
