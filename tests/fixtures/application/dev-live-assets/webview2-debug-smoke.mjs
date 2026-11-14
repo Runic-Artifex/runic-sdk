@@ -46,8 +46,9 @@ for (const name of Object.keys(environment)) if (name.toUpperCase() === variable
 environment.DEV_LIVE_ASSETS_TRACE = "1";
 const executable = join(fixture, "bin/Release/net10.0/DevLiveAssets.exe");
 
-// Failure detail: every process below `root` with its command line, the ports they listen on, each WebView2 browser
-// process's user data folder and DevToolsActivePort, and WebView2 browser processes outside the tree.
+// Failure detail: the processes below `root` (a process ID, or every process of that file name with what runs below
+// it) with their command lines, the ports they listen on, each WebView2 browser process's user data folder and
+// DevToolsActivePort, and WebView2 browser processes outside the tree.
 async function describeTree(root) {
   const script = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress; " +
     "'---'; Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess | ConvertTo-Json -Compress";
@@ -58,9 +59,10 @@ async function describeTree(root) {
     const processes = [JSON.parse(processText)].flat(), listening = [JSON.parse(listenText?.trim() || "[]")].flat();
     const children = new Map();
     for (const entry of processes) children.set(entry.ParentProcessId, [...children.get(entry.ParentProcessId) ?? [], entry]);
-    const tree = [], queue = [...children.get(root) ?? []];
+    const named = typeof root === "string" ? processes.filter(entry => entry.Name?.toLowerCase() === root.toLowerCase()) : [];
+    const tree = [...named], queue = typeof root === "number" ? [...children.get(root) ?? []] : named.flatMap(entry => children.get(entry.ProcessId) ?? []);
     while (queue.length) { const entry = queue.shift(); tree.push(entry); queue.push(...children.get(entry.ProcessId) ?? []); }
-    const pids = new Set([root, ...tree.map(entry => entry.ProcessId)]);
+    const pids = new Set([...(typeof root === "number" ? [root] : []), ...tree.map(entry => entry.ProcessId)]);
     const browserProcesses = processes.filter(entry => /^msedgewebview2\.exe$/i.test(entry.Name) && !/\s--type=/.test(entry.CommandLine ?? ""));
     const folders = [];
     for (const browser of browserProcesses.filter(entry => pids.has(entry.ProcessId))) {
@@ -69,8 +71,9 @@ async function describeTree(root) {
       const active = path ? await readFile(join(path, "DevToolsActivePort"), "utf8").catch(error => `(none: ${error.code})`) : "(no --user-data-dir)";
       folders.push(`  browser ${browser.ProcessId}: user data ${path}; DevToolsActivePort: ${JSON.stringify(active)}`);
     }
-    return [`process tree below ${root}:`,
-      ...tree.map(entry => `  ${entry.ProcessId} (parent ${entry.ParentProcessId}) ${entry.Name}: ${(entry.CommandLine ?? "").slice(0, 2000)}`),
+    return [`process tree of ${root}:`,
+      ...tree.filter(entry => !/\s--type=(renderer|gpu-process|utility|crashpad-handler)/.test(entry.CommandLine ?? ""))
+        .map(entry => `  ${entry.ProcessId} (parent ${entry.ParentProcessId}) ${entry.Name}: ${(entry.CommandLine ?? "").slice(0, 1200)}`),
       `listening in the tree: ${JSON.stringify(listening.filter(entry => pids.has(entry.OwningProcess)))}`,
       `listening on ${port}: ${JSON.stringify(listening.filter(entry => entry.LocalPort === port))}`,
       ...folders,
@@ -81,19 +84,31 @@ async function describeTree(root) {
   }
 }
 
-// Diagnosis after a failed endpoint check: DevLiveAssets.exe started directly, so dotnet run plays no part, with
-// WebView2's variable alone, with the variable and the application's own arguments, and with the port in the
-// application's own arguments alone.
+// Diagnosis after a failed endpoint check, with DevLiveAssets.exe started directly (no dotnet run) and without the
+// application's own arguments: E1 the variable alone; E4 the same as the CI step's standard user, unelevated
+// (HostedWindows.Smoke --run-unelevated; the runner's steps run elevated); E5 the variable with
+// WEBVIEW2_USER_DATA_FOLDER, whether the loader applies any variable here; E6 no variable but the loader's documented
+// registry override, HKCU\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments for DevLiveAssets.exe.
 async function experiments() {
   const base = { ...environment };
   delete base.DEV_LIVE_ASSETS_BROWSER_ARGUMENTS;
   const value = debugging.environment[variable];
-  for (const [label, extra, probe] of [
-    ["E1 variable only", { [variable]: value }, port],
-    ["E2 variable + own arguments", { [variable]: value, DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: ownArguments }, port],
-    ["E3 port in own arguments only", { DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: `${ownArguments} --remote-debugging-port=${port + 1}` }, port + 1],
+  const unelevated = join(root, "tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll");
+  const policy = "HKCU\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments";
+  const folder = join(process.env.RUNNER_TEMP ?? fixture, "wv2-diagnosis-user-data");
+  for (const [label, extra, probe, unelevatedRun, registry] of [
+    ["E1 variable only (elevated)", { [variable]: value }, port, false, false],
+    ["E4 variable only (unelevated)", { [variable]: value }, port, true, false],
+    ["E5 variable + WEBVIEW2_USER_DATA_FOLDER (elevated)", { [variable]: value, WEBVIEW2_USER_DATA_FOLDER: folder }, port, false, false],
+    ["E6 registry AdditionalBrowserArguments only (elevated)", {}, port + 2, false, true],
   ]) {
-    const child = spawn(executable, [], { cwd: fixture, env: { ...base, ...extra }, stdio: ["ignore", "pipe", "pipe"] });
+    if (unelevatedRun && (!process.env.RUNIC_TEST_UNELEVATED_USER || !existsSync(unelevated))) {
+      console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|${label}|skipped: no standard user or HostedWindows.Smoke build`);
+      continue;
+    }
+    if (registry) spawnSync("reg.exe", ["add", policy, "/v", "DevLiveAssets.exe", "/t", "REG_SZ", "/d", `--remote-debugging-port=${probe}`, "/f"], { stdio: "inherit" });
+    const [command, args] = unelevatedRun ? ["dotnet", [unelevated, "--run-unelevated", executable]] : [executable, []];
+    const child = spawn(command, args, { cwd: fixture, env: { ...base, ...extra }, stdio: ["ignore", "pipe", "pipe"] });
     const started = { label, child, output: "" };
     child.stdout.on("data", chunk => { started.output += chunk; });
     child.stderr.on("data", chunk => { started.output += chunk; });
@@ -105,8 +120,11 @@ async function experiments() {
     }
     console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|${label}|${cdpEndpoint(probe)} ${open ? "answers" : "does not answer"}|` +
       `${child.exitCode === null ? "running" : `exited ${child.exitCode}`}`);
-    console.log(`${await describeTree(child.pid)}\noutput:\n${tail(started.output, 3000)}`);
+    console.log(`${await describeTree("DevLiveAssets.exe")}\noutput:\n${tail(started.output, 3000)}`);
     await stop(started);
+    // The unelevated application is not below `child` (CreateProcessWithLogonW); only this script's fixture runs as DevLiveAssets.exe.
+    spawnSync("taskkill.exe", ["/IM", "DevLiveAssets.exe", "/T", "/F"], { stdio: "ignore", timeout: 10_000 });
+    if (registry) spawnSync("reg.exe", ["delete", policy, "/v", "DevLiveAssets.exe", "/f"], { stdio: "inherit" });
     await waitFor(async () => !await answers(cdpEndpoint(probe)), { label: `${probe} to close`, timeout: 30_000 }).catch(() => {});
   }
 }

@@ -880,18 +880,6 @@ jobs:
         run: |
           (cd packages/web/views && bun run --bun build)
           (cd packages/web/vite-plugin-runic && bun run --bun build)
-      # TEMPORARY (diagnosis): early in the job so a failure ends it quickly; moves back below the IDE check.
-      # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
-      # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
-      # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
-      # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
-      - name: Check the template's WebView2 script-debugging profile
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        timeout-minutes: 15
-        run: |
-          dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
-          node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
       - name: Build managed desktop contracts
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       # --timeout bounds the whole session, including test-host startup and exit. MTP resolves a
@@ -1419,6 +1407,21 @@ jobs:
           New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
           icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
           icacls $env:GITHUB_WORKSPACE
+      # TEMPORARY (diagnosis): after the standard user exists, for the unelevated experiment; moves back below the IDE check.
+      # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
+      # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
+      # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
+      # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
+      - name: Check the template's WebView2 script-debugging profile
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        timeout-minutes: 15
+        env:
+          RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
+          RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
+        run: |
+          dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
+          node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
       - name: Show hosted application windows on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 5
