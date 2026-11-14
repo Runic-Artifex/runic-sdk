@@ -257,6 +257,39 @@ internal sealed class NotificationCostTests
         return previous;
     }
 
+    // #911: a unit compares a scalar member by its value instead of encoding it, and still publishes every member whose
+    // encoding changed: members changed without their own notification, values that are equal but encode differently,
+    // and a member computed from another. After each unit, the state the frames produce is the route's state.
+    [Test]
+    public async Task ScalarMembersComparedByValuePublishEveryChangedEncodingAsync()
+    {
+        var model = new ScalarMembersViewModel();
+        using var transport = new InMemoryBridgeTransport();
+        using var bridge = new ScalarMembersBridge(transport, model, Route);
+        await SettleAsync(transport);
+        Dictionary<string, string> client;
+        using (var first = transport.SnapshotState(Route))
+            client = first.RootElement.GetProperty("state").EnumerateObject().ToDictionary(member => member.Name, member => member.Value.GetRawText());
+
+        foreach (var (step, change) in (ValueTuple<string, Action>[])[
+                     ("count", () => model.Count = 1),
+                     ("negative zero", () => { model.SetSilently(ratio: -0.0); model.Count = 2; }),
+                     ("decimal scale", () => { model.SetSilently(amount: 1.00m); model.Count = 3; }),
+                     ("date kind", () => { model.SetSilently(at: DateTime.SpecifyKind(model.At, DateTimeKind.Utc)); model.Count = 4; }),
+                     ("unannounced", () => { model.SetSilently(ratio: 0.5, amount: 2m); model.Notify("Unbridged"); })])
+        {
+            change();
+            using (var frame = await NextAsync(transport))
+                foreach (var set in Changes(frame).Where(entry => entry.GetProperty("kind").GetString() == "set"))
+                    client[set.GetProperty("field").GetString()!] = set.GetProperty("value").GetRawText();
+            using var state = transport.SnapshotState(Route);
+            foreach (var member in state.RootElement.GetProperty("state").EnumerateObject())
+                Require(client.GetValueOrDefault(member.Name) == member.Value.GetRawText(),
+                    $"After {step}, {member.Name} is {client.GetValueOrDefault(member.Name)} on the page and {member.Value.GetRawText()} in the state.");
+        }
+        Require(client["doubled"] == "8" && client["ratio"] == "0.5" && client["amount"] == "\"2\"", $"The page's state is not the model's: {string.Join(", ", client)}");
+    }
+
     // A change of a keyed collection is published as one change of that kind at that index.
     private static async Task RequireRowChangeAsync(InMemoryBridgeTransport transport, Action change, string field, string kind, int index)
     {
