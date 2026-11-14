@@ -10,6 +10,7 @@ import { root } from "../../eng/run.mjs";
 // packaging/ manifests and fills them; Runic.Application.Tool.Tests (PackageTests.cs) checks the identity rules and the
 // filled manifests, and the packaging CI job builds, installs and opens the packages on each platform.
 const packaging = resolve(root, "tools/Runic.Application.Templates/content/runic-app/packaging");
+const translationsVersion = JSON.parse(readFileSync(resolve(root, ".config/dotnet-tools.json"), "utf8")).tools["dotnet-runic-translations"].version;
 
 test("the template's packaging folder holds the manifests the command embeds, without package.mjs", () => {
   const files = readdirSync(packaging, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile())
@@ -269,7 +270,9 @@ test("--translations scaffolds a translated application for every frontend", () 
         assert.match(translated[`Frontend/${files[0]}`], /export const languages = locales\.map/);
         for (const file of files.slice(1, -1)) assert.doesNotMatch(translated[`Frontend/${file}`], /"English"|>Counter<|Connecting to the/, `${label}: ${file}`);
         // The C# side: the packages, the catalog and the generated API.
-        assert.match(translated["Translated.csproj"], /<PackageReference Include="Runic\.Translations" Version="0\.10\.0" \/>/);
+        // The template pins the repository's own Translations (.config/dotnet-tools.json agrees with Directory.Packages.props).
+        assert.ok(translated["Translated.csproj"].includes(`<PackageReference Include="Runic.Translations" Version="${translationsVersion}" />`),
+          `${label}: Translated.csproj does not pin Runic.Translations ${translationsVersion}`);
         assert.match(translated["Translated.csproj"], /<RunicTranslationProject Include="Frontend\/translations\/runic\.json" \/>/);
         assert.doesNotMatch(plain["Translated.csproj"], /Translations/);
         assert.match(translated["WorkspaceViewModel.cs"], /AppText\.References\.welcome_greeting\(\)/);
@@ -282,9 +285,7 @@ test("--translations scaffolds a translated application for every frontend", () 
         // The tool manifest stays JSON and gains the Translations tool.
         const tools = JSON.parse(translated[".config/dotnet-tools.json"]).tools;
         assert.deepEqual(Object.keys(tools), ["dotnet-runic", "dotnet-runic-translations"]);
-        // The template pins the repository's own Translations tool (.config/dotnet-tools.json, Directory.Packages.props).
-        const pinned = JSON.parse(readFileSync(resolve(root, ".config/dotnet-tools.json"), "utf8")).tools["dotnet-runic-translations"].version;
-        assert.equal(tools["dotnet-runic-translations"].version, pinned);
+        assert.equal(tools["dotnet-runic-translations"].version, translationsVersion);
         assert.deepEqual(Object.keys(JSON.parse(plain[".config/dotnet-tools.json"]).tools), ["dotnet-runic"]);
         assert.match(translated[".gitignore"], /Frontend\/\.runic\//);
         for (const [path, text] of Object.entries(translated))

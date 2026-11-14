@@ -51,9 +51,9 @@
       },
       "Runic.Translations": {
         "type": "Direct",
-        "requested": "[0.10.0, )",
-        "resolved": "0.10.0",
-        "contentHash": "39p9hBWVvM2xnF8yIXCAcWhbr4RX7DeMcEGc4ajPr+F9c5fqWxooRwdZhwLOz7Z110GMa24hpHemCgROkLfhZg=="
+        "requested": "[0.11.0, )",
+        "resolved": "0.11.0",
+        "contentHash": "lLNYCnEiP0NY7tzpEW5P7vB5o3GPbXJrF82dgweoO2fpfLTzrni9wCyd2Wqq6mHezf+4dXxuGvGumtJOZ96lww=="
       },
       "RunicArtifex.ReactiveUI.Validation": {
         "type": "Direct",
