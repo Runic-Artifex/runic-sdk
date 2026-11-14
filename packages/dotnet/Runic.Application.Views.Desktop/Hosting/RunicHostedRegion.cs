@@ -49,6 +49,10 @@ public sealed class RunicHostedRegion
     private readonly DesktopPermissionGrant _grant;
     private readonly object _stateGate = new();
     private readonly object _queueGate = new();
+    // Orders the colour scheme the host page receives: reading it and sending it (hosted-region-content on an attach,
+    // hosted-region-update on a change) happen together, so an older scheme never reaches the page after a newer one.
+    // Taken before _stateGate, and never while _stateGate is held.
+    private readonly object _schemeGate = new();
     private Task _queue = Task.CompletedTask;
 
     // Under the directory's gate: the slot the window shows now, the host page it is bound to (the one it showed last),
@@ -603,19 +607,22 @@ public sealed class RunicHostedRegion
         replaced?.Dispose();
         // The page removed the region while the guest answered: the detach that follows in the queue tells the guest.
         if (!IsCurrent(slot)) return;
-        string? title;
-        lock (_stateGate)
+        lock (_schemeGate)
         {
-            title = _title;
-            scheme = _shownScheme = PageSchemeLocked();
+            string? title;
+            lock (_stateGate)
+            {
+                title = _title;
+                scheme = _shownScheme = PageSchemeLocked();
+            }
+            try
+            {
+                _ = attach.Component is { } component
+                    ? slot.Page.ShowComponent(slot.Name, component.Module, url, component.Token, scheme)
+                    : slot.Page.ShowFrame(slot.Name, url, title, _allow, scheme);
+            }
+            catch (ArgumentException error) { _application.LogRegionFailed(error); }
         }
-        try
-        {
-            _ = attach.Component is { } component
-                ? slot.Page.ShowComponent(slot.Name, component.Module, url, component.Token, scheme)
-                : slot.Page.ShowFrame(slot.Name, url, title, _allow, scheme);
-        }
-        catch (ArgumentException error) { _application.LogRegionFailed(error); }
         Raise(Attached, null);
         _application.RaiseRegionAttached(this);
         // A size the page reported while the guest answered.
@@ -732,17 +739,20 @@ public sealed class RunicHostedRegion
     // hosted-region-update with the override's colour scheme, when it changed for the content the page shows.
     private void UpdatePageScheme()
     {
-        HostedRegionSlot? slot;
-        string? scheme;
-        lock (_stateGate)
+        lock (_schemeGate)
         {
-            slot = _attachedSlot;
-            scheme = PageSchemeLocked();
-            if (slot is null || _shownScheme == scheme) return;
-            _shownScheme = scheme;
+            HostedRegionSlot? slot;
+            string? scheme;
+            lock (_stateGate)
+            {
+                slot = _attachedSlot;
+                scheme = PageSchemeLocked();
+                if (slot is null || _shownScheme == scheme) return;
+                _shownScheme = scheme;
+            }
+            try { _ = slot.Page.Update(slot.Name, default, null, Bridge.HostedRegionColorScheme.Set(scheme)); }
+            catch (ArgumentException error) { _application.LogRegionFailed(error); }
         }
-        try { _ = slot.Page.Update(slot.Name, default, null, Bridge.HostedRegionColorScheme.Set(scheme)); }
-        catch (ArgumentException error) { _application.LogRegionFailed(error); }
     }
 
     // present, or the host's own decision: the page moves the focus into the region, only when it holds none (host-protocol.md,
