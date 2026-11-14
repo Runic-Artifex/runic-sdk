@@ -8,13 +8,20 @@ import { join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
 import { readToolchain } from "../toolchain.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
-import { templateFrontendDirectory, templateFrontends } from "../release/template-locks.mjs";
+import { isIndependentRunicPackage, templateLockDirectories } from "../release/template-locks.mjs";
+import { trainFeedNpm } from "../ci/train-feed.mjs";
 import { firstPartyScope, minimumReleaseAge, publishedBefore } from "./release-age.mjs";
 
 const toolchain = readToolchain(root);
 // D038 (release-age.mjs): third-party packages resolve to versions published at least a day ago. The Runic packages
-// come from the candidate registry, which lists no publish times; the age check skips them.
+// come from the candidate registry, which lists no publish times; the age check skips them. The independently released
+// Runic packages (the Translations Vite plugin of the --translations variants) are first-party too: the registry passes
+// them through from npm, or from the train feed, without publish times.
 const runicPackages = workspace.npm.map(entry => entry.name);
+const independentArchives = Object.values(trainFeedNpm()).map(item => item.file);
+function independentRunicPackages(manifest) {
+  return Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).filter(isIndependentRunicPackage);
+}
 const temporary = await mkdtemp(join(tmpdir(), "runic-template-locks-"));
 let registry;
 try {
@@ -24,7 +31,7 @@ try {
     archives.push(join(temporary, `${entry.name.replace('@', '').replace('/', '-')}-${workspace.version}.tgz`));
   }
   const ready = join(temporary, "registry.url");
-  registry = spawn(process.execPath, [join(root, "tests/templates/template-npm-registry.mjs"), ready, ...archives], { stdio: "inherit" });
+  registry = spawn(process.execPath, [join(root, "tests/templates/template-npm-registry.mjs"), ready, ...archives, ...independentArchives], { stdio: "inherit" });
   let address;
   const deadline = Date.now() + 10_000;
   while (!address && Date.now() < deadline && registry.exitCode === null) {
@@ -32,22 +39,23 @@ try {
     if (!address) await new Promise(resolve => setTimeout(resolve, 25));
   }
   if (!address) throw new Error("Candidate registry did not become ready.");
-  for (const framework of templateFrontends) {
-    const source = join(root, "tools/Runic.Application.Templates/content", templateFrontendDirectory(framework));
+  for (const { directory: templateDirectory } of templateLockDirectories) {
+    const source = join(root, "tools/Runic.Application.Templates/content", templateDirectory);
     const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
     for (const section of ["dependencies", "devDependencies"]) {
       for (const name of Object.keys(manifest[section] ?? {})) {
-        if (name.startsWith("@runic-artifex/")) manifest[section][name] = workspace.version;
+        // An independently released package keeps the published version the template pins.
+        if (name.startsWith("@runic-artifex/") && !isIndependentRunicPackage(name)) manifest[section][name] = workspace.version;
       }
     }
     for (const [manager, filename, args] of [
       ["bun", "bun.lock", ["install", "--lockfile-only", "--ignore-scripts", `--minimum-release-age=${minimumReleaseAge}`,
-        ...runicPackages.map(name => `--minimum-release-age-excludes=${name}`)]],
+        ...[...runicPackages, ...independentRunicPackages(manifest)].map(name => `--minimum-release-age-excludes=${name}`)]],
       ["npm", "package-lock.json", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", `--before=${publishedBefore()}`]],
       ["pnpm", "pnpm-lock.yaml", ["install", "--lockfile-only", "--ignore-scripts", `--config.minimumReleaseAge=${minimumReleaseAge / 60}`,
         `--config.minimumReleaseAgeExclude=${firstPartyScope}`]],
     ]) {
-      const directory = join(temporary, framework, manager);
+      const directory = join(temporary, templateDirectory, manager);
       await mkdir(directory, { recursive: true });
       manifest.packageManager = `${manager}@${toolchain[manager]}`;
       await writeFile(join(directory, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
@@ -63,7 +71,7 @@ try {
         else if (manager === "pnpm") lock = lock.replaceAll(`, tarball: ${local}`, "");
         else lock = lock.replaceAll(local, `https://registry.npmjs.org/${entry.name}/-/${basename}-${workspace.version}.tgz`);
       }
-      if (lock.includes(address) || lock.includes(temporary)) throw new Error(`Local path escaped into ${framework}/${filename}.`);
+      if (lock.includes(address) || lock.includes(temporary)) throw new Error(`Local path escaped into ${templateDirectory}/${filename}.`);
       await writeFile(join(source, filename), lock);
     }
   }
