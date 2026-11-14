@@ -34,12 +34,21 @@ export const traceAllowList = [
     'TraceError($"DesktopHostOptions.ConfirmQuitAsync failed; the application keeps running: {error}")',
     'TraceError($"A DesktopHost.ReopenRequested handler failed with {error.GetType().FullName}.")',
     'TraceError($"Closing Desktop windows for shutdown failed: {error}")',
+    // A shutdown that waits for windows to drain (event 3023, sdk#900).
+    'TraceInformation($"Waiting up to {timeout.TotalSeconds} seconds for {count} Desktop windows to drain',
     'TraceWarning($"{diagnostic.Code}: {diagnostic.Message}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/DesktopHost.cs', fragment })),
   ...[
     'TraceError($"A window close cancellation callback failed: {error}")',
     'TraceError($"Window close confirmation failed; the window was kept open: {error}")',
+    // The native close after a window's close drain (sdk#900), logged as 3001 with a logger.
+    'TraceError($"Window close after its drain failed: {error}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/Internal/WindowCloseController.cs', fragment })),
+  // A DesktopWindowOptions.CloseDrainAsync that threw, or a cancellation callback of its token (event 3022).
+  ...[
+    'TraceError($"A window\'s close drain failed with',
+    'TraceError($"A cancellation callback of a window\'s close drain failed with',
+  ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/DesktopWindow.CloseDrain.cs', fragment })),
   // A DesktopWindow.StateChanged handler that threw (event 3011).
   { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
     fragment: 'TraceError($"A DesktopWindow.StateChanged handler failed with' },

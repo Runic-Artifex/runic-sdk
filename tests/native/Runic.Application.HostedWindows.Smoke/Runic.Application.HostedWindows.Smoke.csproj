@@ -6,7 +6,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
     <!-- The smoke checks the experimental runic-host/1 window mode. -->
-    <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
+    <NoWarn>$(NoWarn);RUNICDESK103;RUNICDESK105</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

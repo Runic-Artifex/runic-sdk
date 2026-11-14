@@ -14,6 +14,11 @@ public sealed class DesktopHost : IAsyncDisposable
     private readonly ILogger? _logger;
     // Not disposed: a late termination signal may still cancel it after the host is disposed.
     private readonly CancellationTokenSource _shutdown = new();
+    // ShutdownStarting, and the end of the shutdown's drains (sdk#900); not disposed, as _shutdown.
+    private readonly CancellationTokenSource _shutdownStarting = new();
+    private readonly CancellationTokenSource _drainsEnded = new();
+    // Drains that run without a DesktopWindow of this host, such as a hosted guest's Windows (TrackDrain).
+    private readonly ConcurrentDictionary<Task, byte> _drains = new();
     private int _shutdownRequested;
     private int _signalQuitPending;
     private int _disposed;
@@ -391,8 +396,42 @@ public sealed class DesktopHost : IAsyncDisposable
     /// that runs behind a status icon, and set <see cref="DesktopHostOptions.HandlesShutdownWithoutWindow"/> so a
     /// signal that arrives while the host has no surface requests shutdown too.
     /// See <see cref="DesktopHostOptions.HandleShutdownSignals"/>.
+    /// <para>
+    /// With windows that drain (<see cref="DesktopWindowOptions.CloseDrainAsync"/>) it is cancelled after their drains,
+    /// when every drain returned or <see cref="DesktopHostOptions.ShutdownDrainTimeout"/> passed, so work the drains wait
+    /// for can still use it; <see cref="ShutdownStarting"/> is cancelled when the shutdown starts. Without such a window
+    /// both are cancelled together.
+    /// </para>
     /// </remarks>
     public CancellationToken ShutdownRequested => _shutdown.Token;
+
+    /// <summary>
+    /// Gets a token that is cancelled when a shutdown starts, before the windows drain: the first Ctrl+C, SIGTERM,
+    /// SIGHUP or closed Windows console, a quit once every guard agreed, or the host protocol's shutdown.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ShutdownRequested"/> follows once the windows that drain (<see cref="DesktopWindowOptions.CloseDrainAsync"/>)
+    /// have drained or <see cref="DesktopHostOptions.ShutdownDrainTimeout"/> passed, and together with this token when no
+    /// window drains. Observe this one to stop work that should end early, such as polling or a background refresh;
+    /// work that the drains wait for observes <see cref="ShutdownRequested"/> or nothing. Experimental
+    /// (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public CancellationToken ShutdownStarting => _shutdownStarting.Token;
+
+    // Cancelled when the shutdown's drains end: every one returned, ShutdownDrainTimeout passed, or the host was disposed.
+    // A drain that does not belong to a DesktopWindow of this host, such as a hosted guest Window's, ends with it.
+    internal CancellationToken DrainsEnded => _drainsEnded.Token;
+
+    // A drain the shutdown waits for besides this host's windows' (a hosted guest's Window, which the host's own window
+    // shows): registered while it runs.
+    internal void TrackDrain(Task drain)
+    {
+        if (drain.IsCompleted) return;
+        _drains[drain] = 0;
+        _ = drain.ContinueWith(static (done, state) => ((ConcurrentDictionary<Task, byte>)state!).TryRemove(done, out _), _drains,
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
 
     // Whether a shutdown request reaches the application: it presents a surface, in a native or browser window or
     // served at its URL (serve-only mode), which the shutdown closes or stops serving; or it declared that it ends on
@@ -660,6 +699,8 @@ public sealed class DesktopHost : IAsyncDisposable
         }
         lock (LiveGate) Live.Remove(this);
         if (OperatingSystem.IsMacOS()) MacOsApplication.HostsChanged();
+        // Disposal ends every drain that is still running (DesktopWindowOptions.CloseDrainAsync).
+        Cancel(_drainsEnded);
 
         var calledFromCallback = _surfaces.Values.Any(static surface => surface.IsExecutingCallback);
         var dispose = DisposeCoreAsync();
@@ -722,7 +763,7 @@ public sealed class DesktopHost : IAsyncDisposable
         if (_options.ConfirmQuitAsync is not { } confirm) return true;
         try
         {
-            return await confirm(new DesktopQuitRequest(source), _shutdown.Token).ConfigureAwait(false) || IsShutdownRequested;
+            return await confirm(new DesktopQuitRequest(source), _shutdownStarting.Token).ConfigureAwait(false) || IsShutdownRequested;
         }
         catch (OperationCanceledException) when (IsShutdownRequested)
         {
@@ -747,7 +788,7 @@ public sealed class DesktopHost : IAsyncDisposable
             if (IsShutdownRequested) return true;
             try
             {
-                if (!await surface.ConfirmCloseForQuitAsync(_shutdown.Token).ConfigureAwait(false)) return false;
+                if (!await surface.ConfirmCloseForQuitAsync(_shutdownStarting.Token).ConfigureAwait(false)) return false;
             }
             catch (OperationCanceledException) when (IsShutdownRequested)
             {
@@ -761,17 +802,22 @@ public sealed class DesktopHost : IAsyncDisposable
         return true;
     }
 
+    // D064.15: ShutdownStarting, then the windows that drain do so in parallel while the others close, then, when every
+    // drain returned or ShutdownDrainTimeout passed, ShutdownRequested and the remaining windows close. Runic cancels no
+    // work at the limit; only the visible windows close. Without a drain both tokens are cancelled together, as before.
     private async Task ShutdownAsync()
     {
-        try
+        Cancel(_shutdownStarting);
+        var surfaces = _surfaces.Values.ToArray();
+        var draining = surfaces.Select(static surface => surface.DrainingWindowForShutdown()).OfType<DesktopWindow>().ToArray();
+        var external = _drains.Keys.ToArray();
+        if (draining.Length > 0 || external.Length > 0)
         {
-            _shutdown.Cancel();
+            await DrainForShutdownAsync(surfaces, draining, external).ConfigureAwait(false);
         }
-        catch (AggregateException error)
-        {
-            ReportShutdownFailure(error);
-        }
-        foreach (var surface in _surfaces.Values.ToArray())
+        Cancel(_shutdown);
+        Cancel(_drainsEnded);
+        foreach (var surface in surfaces)
         {
             try
             {
@@ -781,6 +827,40 @@ public sealed class DesktopHost : IAsyncDisposable
             {
                 ReportShutdownFailure(error);
             }
+        }
+    }
+
+    private async Task DrainForShutdownAsync(DesktopSurface[] surfaces, DesktopWindow[] draining, Task[] external)
+    {
+        var timeout = _options.ShutdownDrainTimeout;
+        var count = draining.Length + external.Length;
+        if (_logger is { } logger) DesktopLog.ShutdownDraining(logger, count, timeout.TotalSeconds);
+        else System.Diagnostics.Trace.TraceInformation($"Waiting up to {timeout.TotalSeconds} seconds for {count} Desktop windows to drain before the shutdown closes them.");
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(_drainsEnded.Token);
+        if (timeout != Timeout.InfiniteTimeSpan) limit.CancelAfter(timeout);
+        // The windows without a drain close at once, as before 0.19.
+        foreach (var surface in surfaces)
+        {
+            if (surface.DrainingWindowForShutdown() is not null) continue;
+            try { await surface.CloseWindowForShutdownAsync().ConfigureAwait(false); }
+            catch (Exception error) { ReportShutdownFailure(error); }
+        }
+        var drains = draining.Select(window => window.DrainForShutdownAsync(limit.Token))
+            .Concat(external.Select(drain => drain.WaitAsync(limit.Token)));
+        try { await Task.WhenAll(drains).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested) { }
+        catch (Exception error) { ReportShutdownFailure(error); }
+    }
+
+    private void Cancel(CancellationTokenSource source)
+    {
+        try
+        {
+            source.Cancel();
+        }
+        catch (AggregateException error)
+        {
+            ReportShutdownFailure(error);
         }
     }
 
@@ -871,6 +951,10 @@ public sealed class DesktopHost : IAsyncDisposable
         if (options.ConnectionTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "ConnectionTimeout must be positive.");
+        }
+        if (options.ShutdownDrainTimeout < TimeSpan.Zero && options.ShutdownDrainTimeout != Timeout.InfiniteTimeSpan)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "ShutdownDrainTimeout must be zero, positive or Timeout.InfiniteTimeSpan.");
         }
         ArgumentNullException.ThrowIfNull(options.MenuBar);
         _ = DesktopMenuBar.Check(options.MenuBar, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);

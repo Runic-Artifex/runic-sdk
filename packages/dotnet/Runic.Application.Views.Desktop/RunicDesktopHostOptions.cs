@@ -116,6 +116,28 @@ public sealed record RunicDesktopHostOptions
     public long? MaximumUploadBytes { get; init; }
 
     /// <summary>
+    /// How long Windows whose <see cref="RunicWindowOptions.CloseDrain"/> is <see langword="null"/> stay visible after
+    /// their close was decided, while their accepted work drains. <see langword="null"/>, the default, is
+    /// <see cref="RunicCloseDrain.None"/>: the window closes at once, as before 0.19. The host reads it when each Window
+    /// opens.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// With a drain, a user close that the Window's guards approved, <c>RequestCloseAsync</c> and a quit leave the
+    /// embedded window open and its page connected until the Window's operations, its awaited commands and the scopes it
+    /// drains (<see cref="IRunicWindowContext.DrainOnClose"/>) have ended or the drain's timeout passed
+    /// (<see cref="DesktopWindowOptions.CloseDrainAsync"/>). A Ctrl+C, SIGTERM or quit drains the same way, for up to
+    /// <see cref="DesktopHostOptions.ShutdownDrainTimeout"/>. An installed browser, serve-only mode and a hosted
+    /// application's region keep no window of their own open: they log <c>WindowCloseDrainUnavailable</c> (event 1055),
+    /// and the process still waits for durable work before the Window's scope is released. A hosted application's Window
+    /// drains before it reports <c>window-closed</c>, and the host keeps its window until then.
+    /// </para>
+    /// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public RunicCloseDrain? CloseDrain { get; init; }
+
+    /// <summary>
     /// The <c>Content-Security-Policy</c> that every Window's surface sends with its HTML
     /// (<see cref="DesktopSurfaceOptions.ContentSecurityPolicy"/>), or <see langword="null"/>, the default, for none.
     /// </summary>

@@ -236,10 +236,12 @@ public sealed record RunicWindowOptions
     /// <see cref="RunicCloseDrain.None"/> unless the host's options set another.
     /// </summary>
     /// <remarks>
-    /// Hosts read it when the window opens. 0.19 drains in <c>RunicWindowTestHost</c> (<c>RunicWindowTestHostOptions.CloseDrain</c>);
-    /// other hosts close the visible window at once, as with <see cref="RunicCloseDrain.None"/>, until they support it.
-    /// Operations keep their <see cref="RunicOperationClose"/> under every host. Experimental (<c>RUNICDESK105</c>); see
-    /// <c>docs/experimental.md</c>.
+    /// Hosts read it when the window opens. Runic Desktop's embedded windows (<c>RunicDesktopHostOptions.CloseDrain</c>),
+    /// a hosted application's Windows and <c>RunicWindowTestHost</c> (<c>RunicWindowTestHostOptions.CloseDrain</c>) drain.
+    /// A presentation that cannot keep its window open, such as an installed browser, serve-only mode or CS-WebUI, closes
+    /// it at once and logs <c>WindowCloseDrainUnavailable</c> (event 1055); the Window's scope still waits for durable
+    /// work. Operations keep their <see cref="RunicOperationClose"/> under every host. Experimental (<c>RUNICDESK105</c>);
+    /// see <c>docs/experimental.md</c>.
     /// </remarks>
     [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public RunicCloseDrain? CloseDrain { get; init; }
@@ -423,6 +425,22 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
         var logger = Scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(RunicViewsTelemetry.LogCategory)
             ?? TraceFallbackLogger.Instance;
         ViewsLog.WindowCloseGuardUnavailable(logger, Window.GetType().Name, presentation);
+    }
+
+    /// <summary>
+    /// Logs <c>WindowCloseDrainUnavailable</c> (event 1055): the Window has a close drain
+    /// (<see cref="RunicWindowOptions.CloseDrain"/>), but <paramref name="presentation"/>, such as <c>CS-WebUI</c> or a
+    /// browser, cannot keep its window open, so the window closes at once and its work drains without it.
+    /// </summary>
+    /// <remarks>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</remarks>
+    /// <param name="presentation">The presentation that cannot keep the window open, as it reads in a sentence.</param>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public void ReportCloseDrainUnavailable(string presentation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(presentation);
+        var logger = Scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(RunicViewsTelemetry.LogCategory)
+            ?? TraceFallbackLogger.Instance;
+        ViewsLog.WindowCloseDrainUnavailable(logger, Window.GetType().Name, presentation);
     }
 }
 

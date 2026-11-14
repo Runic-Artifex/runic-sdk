@@ -17,6 +17,8 @@
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <!-- ...and its experimental side panel API (sdk#864). -->
     <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <!-- ...and the experimental close drain (sdk#900). -->
+    <NoWarn>$(NoWarn);RUNICDESK105</NoWarn>
     <!-- A host starts each guest application with posix_spawn in a process group of its own on Linux and macOS. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

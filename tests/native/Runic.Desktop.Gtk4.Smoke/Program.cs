@@ -91,6 +91,11 @@ if (args.Contains("--window-placement", StringComparer.Ordinal))
     return WindowPlacementSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true },
         args.Contains("--window-manager", StringComparer.Ordinal));
 
+// --close-drain (sdk#900 W4b): a GTK 4 window stays open while it drains after gtk_window_close and SIGTERM; see
+// CloseDrainSmoke.cs.
+if (args.Contains("--close-drain", StringComparer.Ordinal))
+    return CloseDrainSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true }, gtk4: true);
+
 // --side-panel (#864 P4): the side panel beside the page under a window manager; see SidePanelSmoke.cs.
 if (args.Contains("--side-panel", StringComparer.Ordinal))
     return SidePanelSmoke.Run(new DesktopHostOptions().WithGtk4() with { WaitForConnection = true }, gtk4: true);

@@ -13,7 +13,7 @@
     <!-- The hosted-mode checks use the experimental runic-host/1 API. -->
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
     <!-- The side panel API (sdk#864) is experimental. -->
-    <NoWarn>$(NoWarn);RUNICDESK104</NoWarn>
+    <NoWarn>$(NoWarn);RUNICDESK104;RUNICDESK105</NoWarn>
     <!-- Program.cs is hand-written: the hosted application cases start this executable as their guest. -->
     <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- InheritedHandles' LibraryImport declarations. -->

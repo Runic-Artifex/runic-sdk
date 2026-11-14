@@ -13,6 +13,11 @@ using Runic.Platform;
 // pages are not loaded, since the host's windows are headless. Each mode is one behaviour of the guest application.
 internal static class HostedGuestProgram
 {
+    // The drain mode's durable work ends when the test creates this file (next to the suite, the guest's working
+    // directory), or after DrainWorkLimit.
+    internal static string DrainReleasePath => Path.Combine(AppContext.BaseDirectory, "hosted-drain.release");
+    internal static readonly TimeSpan DrainWorkLimit = TimeSpan.FromSeconds(60);
+
     internal const string Argument = "--hosted-guest";
     internal const string PuppetArgument = "--puppet-guest";
     internal const string PuppetPortVariable = "RUNIC_TEST_PUPPET_PORT";
@@ -71,6 +76,8 @@ internal static class HostedGuestProgram
             _ => (transport, model) => new OrderedCollectionBridge(transport, model));
         services.AddScoped<HostedMenuModel>();
         services.AddScoped<Func<IBridgeTransport, HostedMenuModel, IDisposable>>(_ => (transport, model) => new HostedMenuBridge(transport, model));
+        services.AddScoped<HostedDrainModel>();
+        services.AddScoped<Func<IBridgeTransport, HostedDrainModel, IDisposable>>(_ => (transport, model) => new HostedDrainBridge(transport, model));
         services.AddScoped<HostedDropModel>();
         services.AddScoped<Func<IBridgeTransport, HostedDropModel, IDisposable>>(_ => (transport, model) => new HostedDropBridge(transport, model));
         // The application's locale, which follows the host's (host-protocol.md, Appearance and locale).
@@ -103,6 +110,8 @@ internal static class HostedGuestProgram
                     WindowOptions = mode == "media"
                         ? RunicDesktopHost.DefaultWindowOptions with { AllowedPermissions = DesktopPermissionGrant.MediaCapture }
                         : RunicDesktopHost.DefaultWindowOptions,
+                    // The drain mode's Window stays open after its close was decided until its work has drained (sdk#900).
+                    CloseDrain = mode == "drain" ? RunicCloseDrain.UntilDrained : null,
                     Guest = RunicGuestOptions.FromStandardInput() with
                     {
                         ApplicationName = "Hosted guest",
@@ -144,6 +153,14 @@ internal static class HostedGuestProgram
             {
                 await using var window = await host.OpenWindowAsync<ConformanceMainWindow>();
                 await window.WaitForCloseAsync();
+                return 0;
+            }
+            case "drain":
+            {
+                // The Window's ViewModel accepts durable work before the host sees the window; window-closed follows it.
+                await using var window = await host.OpenWindowAsync<HostedDrainWindow>();
+                await window.WaitForCloseAsync();
+                await window.ViewModel.Work.DrainAsync();
                 return 0;
             }
             case "guarded":
@@ -527,6 +544,30 @@ internal sealed class HostedDropModel : IRunicFileDropTarget, System.ComponentMo
         return ValueTask.CompletedTask;
     }
 }
+
+// sdk#900: a Window whose close drains durable work that ends when the test releases it (DrainReleasePath). The work is
+// accepted in the constructor, before the host sees the window, so a close that comes at once still waits for it.
+internal sealed class HostedDrainWindow : RunicWindow<HostedDrainModel>;
+
+internal sealed class HostedDrainModel : System.ComponentModel.INotifyPropertyChanged
+{
+    public HostedDrainModel(IRunicWindowContext window)
+    {
+        _ = window.DrainOnClose(Work);
+        _ = Work.RunAsync(async () =>
+        {
+            var limit = DateTime.UtcNow + HostedGuestProgram.DrainWorkLimit;
+            while (!File.Exists(HostedGuestProgram.DrainReleasePath) && DateTime.UtcNow < limit) await Task.Delay(20);
+        });
+    }
+
+    public AcceptedWorkScope Work { get; } = new();
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+internal sealed class HostedDrainBridge(IBridgeTransport transport, HostedDrainModel model)
+    : ViewModelBridge(transport, model, typeof(HostedDrainModel), "hosted-drain", [], [], [], []);
 
 internal sealed class HostedDropBridge(IBridgeTransport transport, HostedDropModel model)
     : ViewModelBridge(transport, model, typeof(HostedDropModel), "hosted-drop", [], [], [], []);

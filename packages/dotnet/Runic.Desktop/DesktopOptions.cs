@@ -198,6 +198,34 @@ public sealed record DesktopHostOptions
     public Func<DesktopQuitRequest, CancellationToken, ValueTask<bool>>? ConfirmQuitAsync { get; init; }
 
     /// <summary>
+    /// Gets how long a shutdown keeps the windows that drain (<see cref="DesktopWindowOptions.CloseDrainAsync"/>) open and
+    /// visible before it closes them. Defaults to 30 seconds; <see cref="Timeout.InfiniteTimeSpan"/> waits until every
+    /// drain has returned.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A shutdown is Ctrl+C, SIGTERM, SIGHUP or a closed Windows console (<see cref="HandleShutdownSignals"/>), and a
+    /// quit once <see cref="ConfirmQuitAsync"/> and the windows' close guards agreed. It cancels
+    /// <see cref="DesktopHost.ShutdownStarting"/>, closes the windows without a drain at once and lets the others drain
+    /// in parallel, then, when all have returned or this time has passed, closes the rest and cancels
+    /// <see cref="DesktopHost.ShutdownRequested"/>. Without a window that drains, both tokens are cancelled together, as
+    /// before 0.19. The time runs from the start of the shutdown; a window's own, shorter drain still applies.
+    /// </para>
+    /// <para>
+    /// Runic cancels none of the application's work at this limit; only the visible windows close. The process ends
+    /// earlier only through the operating system or a second Ctrl+C: Windows ends a process about 5 seconds after its
+    /// console was closed and at logoff or shutdown, systemd sends SIGKILL after <c>TimeoutStopSec</c> (90 seconds by
+    /// default), <c>docker stop</c> after 10 seconds, and a hosting application after its stop timeout. Keep those
+    /// limits above this one.
+    /// </para>
+    /// <para>Zero closes the draining windows at once. Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public TimeSpan ShutdownDrainTimeout { get; init; } = DefaultShutdownDrainTimeout;
+
+    internal static readonly TimeSpan DefaultShutdownDrainTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Gets the application's menus for the menu bar: on macOS beside the standard application, File, Edit, View and
     /// Window menus, in a Windows window on their own; empty by default. The GTK windows show no native menu bar in this
     /// release.
@@ -677,6 +705,39 @@ public sealed record DesktopWindowOptions
     /// Concurrent requests share a decision. The token is cancelled when the window is forcibly closed.
     /// CloseAsync and disposal bypass confirmation; marshal native UI work to its owning thread.</remarks>
     public Func<CancellationToken, ValueTask<bool>>? ConfirmCloseAsync { get; init; }
+
+    /// <summary>
+    /// Gets the close drain: after a close was approved, the native window stays open and visible until this returns,
+    /// and then closes without asking again. <see langword="null"/>, the default, closes the window at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It runs once per window, on the thread pool, when the user's close, <see cref="DesktopWindow.RequestCloseAsync"/>
+    /// or a quit's close guard has been approved (after <see cref="ConfirmCloseAsync"/>, so a refusal changes nothing),
+    /// and when the host shuts down (<see cref="DesktopCloseReason.Shutdown"/>). Wait here for the application's work
+    /// that must not stop halfway, such as <c>AcceptedWorkScope.WaitForAcceptedAsync</c>:
+    /// <c>CloseDrainAsync = (_, ct) =&gt; new(work.WaitForAcceptedAsync(ct))</c>. The window stays responsive
+    /// meanwhile: it moves, minimizes and repaints, and its page stays connected. A second close by the user while it
+    /// runs is ignored, and <see cref="DesktopWindow.RequestCloseAsync"/> returns <see langword="true"/> as soon as the
+    /// close was approved.
+    /// </para>
+    /// <para>
+    /// The token is cancelled when the window is closed by force (<see cref="DesktopWindow.CloseAsync"/>, disposal),
+    /// when the host's shutdown reaches <see cref="DesktopHostOptions.ShutdownDrainTimeout"/>, and when the host is
+    /// disposed; the window then closes even if the callback has not returned. Cancellation ends only the visible phase:
+    /// Runic cancels none of the application's work. An exception is logged (event 3022,
+    /// <c>WindowCloseDrainFailed</c>) and the window closes.
+    /// </para>
+    /// <para>
+    /// The window must be able to refuse a close: the embedded window of every built-in host does
+    /// (<see cref="DesktopWindowCapabilities.CloseConfirmation"/>). An installed browser cannot keep its window open: there
+    /// the drain runs after the window is gone, and <see cref="DesktopWindow.WaitForCloseAsync"/> returns after it. The
+    /// window then opens with the warning <c>close-drain-unavailable</c>.
+    /// </para>
+    /// <para>Experimental (<c>RUNICDESK105</c>); see <c>docs/experimental.md</c>.</para>
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("RUNICDESK105", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+    public Func<DesktopCloseDrainContext, CancellationToken, ValueTask>? CloseDrainAsync { get; init; }
 
     /// <summary>Gets the presentation: the platform's embedded WebView by default, or an installed browser.</summary>
     /// <remarks>On Linux, the embedded WebView requires <see cref="DesktopHostOptions.Linux"/> to select a toolkit.</remarks>

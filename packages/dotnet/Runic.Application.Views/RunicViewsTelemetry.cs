@@ -414,6 +414,11 @@ internal static partial class ViewsLog
         Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]
     internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
 
+    // A Window with a close drain (RunicWindowOptions.CloseDrain) opened on a presentation that cannot keep its window open.
+    [LoggerMessage(EventId = 1055, EventName = "WindowCloseDrainUnavailable", Level = LogLevel.Warning,
+        Message = "{Window} drains its close, but {Presentation} cannot keep its window open, so the window closes at once and the work drains without it.")]
+    internal static partial void WindowCloseDrainUnavailable(ILogger logger, string window, string presentation);
+
     // region-collections/1: SelectAsync or RemoveAsync of a region collection threw for a page's region request.
     [LoggerMessage(EventId = 1210, EventName = "BridgeRegionRequestFailed", Level = LogLevel.Error,
         Message = "A region request of {Model}.{Member} on route {Route} failed with {ErrorType}.")]

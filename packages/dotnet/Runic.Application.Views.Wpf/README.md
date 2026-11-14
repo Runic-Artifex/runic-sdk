@@ -50,7 +50,11 @@ The host owns the hosting lifecycle:
   and changes that queue behind a running one collapse into the latest.
 - Closing releases the Bridge session first, which drains its accepted
   operations, then its Desktop surface and its own `DesktopHost`, and only then
-  removes and disposes the native child.
+  removes and disposes the native child. The operations' `RunicOperationClose`
+  declarations apply to it. The WPF window is the application's, so a close
+  drain (sdk#900) is its `Window.Closing` handler: cancel the first close, await
+  the work's `AcceptedWorkScope.WaitForAcceptedAsync()`, then close again; see
+  [Closing after the Window's work has drained](../Runic.Application.Views/README.md#closing-after-the-windows-work-has-drained).
 - When the presentation can't open (no WebView2 Runtime, no Bridge registered
   for the model, a missing frontend), the host shows its content, the
   **fallback**, sets `State` to `Failed` and keeps the exception in `Error`.

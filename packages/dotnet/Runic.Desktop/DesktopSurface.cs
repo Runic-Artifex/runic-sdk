@@ -6,7 +6,7 @@ using Runic.Desktop.Internal;
 namespace Runic.Desktop;
 
 /// <summary>Owns content, capabilities, sessions, requests, and optional presentations for one namespace.</summary>
-public sealed class DesktopSurface : IAsyncDisposable
+public sealed class DesktopSurface : IAsyncDisposable, Internal.IWindowCloseDrain
 {
     private const string ConnectionTimeoutCode = "presentation-connection-timeout";
     private const string ConnectionTimeoutMessage =
@@ -293,6 +293,14 @@ public sealed class DesktopSurface : IAsyncDisposable
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
             window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
+            // DesktopWindowOptions.CloseDrainAsync (sdk#900): an embedded window that can refuse a close stays open while it
+            // drains; any other drains after it is gone, with a warning.
+            if (configured.CloseDrainAsync is { } closeDrain)
+            {
+                var visible = actualBrowser == BrowserKind.Embedded && _engine.HasCloseConfirmation;
+                window.UseCloseDrain(closeDrain, visible);
+                if (!visible) ReportCloseDrainUnavailable(actualBrowser, fellBack);
+            }
             // The window's own confirmation, which its owner's close asks before its owner's (ConfirmOwnedAsync).
             if (actualBrowser == BrowserKind.Embedded && _engine.HasCloseConfirmation) window.OwnConfirmation = configured.ConfirmCloseAsync;
             window.InitializeColorScheme(configured.ColorScheme,
@@ -461,7 +469,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         finally { _windowGate.Release(); }
     }
 
-    internal async ValueTask<bool> RequestCloseWindowAsync(DesktopWindow window, CancellationToken cancellationToken)
+    internal async ValueTask<bool> RequestCloseWindowAsync(DesktopWindow window, DesktopCloseReason reason, CancellationToken cancellationToken)
     {
         Task<bool> decision;
         await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -474,7 +482,7 @@ public sealed class DesktopSurface : IAsyncDisposable
                 _window = null;
                 return true;
             }
-            decision = _engine.RequestCloseAsync(cancellationToken);
+            decision = _engine.RequestCloseAsync(reason, cancellationToken);
         }
         finally
         {
@@ -489,7 +497,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal async ValueTask<bool> ConfirmCloseForQuitAsync(CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _window) is not { IsOpen: true } window || window.Owner?.Window is not null) return true;
-        if (_engine.HasCloseConfirmation) return await RequestCloseWindowAsync(window, cancellationToken).ConfigureAwait(false);
+        if (_engine.HasCloseConfirmation) return await RequestCloseWindowAsync(window, DesktopCloseReason.Quit, cancellationToken).ConfigureAwait(false);
         return await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -497,6 +505,28 @@ public sealed class DesktopSurface : IAsyncDisposable
     // opening checks the shutdown itself once it is published.
     internal ValueTask CloseWindowForShutdownAsync() =>
         Volatile.Read(ref _window) is { } window ? window.CloseAsync() : ValueTask.CompletedTask;
+
+    // The current window drains before the shutdown closes it (DesktopWindowOptions.CloseDrainAsync): it is open, or it
+    // is a browser's that drains after it closed.
+    internal DesktopWindow? DrainingWindowForShutdown() =>
+        Volatile.Read(ref _window) is { HasCloseDrain: true } window && (window.IsOpen || window.IsDraining) ? window : null;
+
+    internal bool IsShuttingDown => _host.IsShutdownRequested;
+
+    // The close controller's drain (IWindowCloseDrain): the current window's.
+    bool Internal.IWindowCloseDrain.IsDraining => Volatile.Read(ref _window)?.IsDraining == true;
+
+    Task Internal.IWindowCloseDrain.DrainAsync(DesktopCloseReason reason) =>
+        Volatile.Read(ref _window)?.DrainAsync(reason) ?? Task.CompletedTask;
+
+    // A presentation that cannot refuse a close cannot keep its window open while it drains.
+    private void ReportCloseDrainUnavailable(BrowserKind browser, bool fellBack) =>
+        _host.ReportConfiguration(Internal.DesktopWindowOptionValidation.CloseDrainUnavailable(
+            browser == BrowserKind.Embedded ? "The embedded window's host" : fellBack ? "The browser fallback" : $"The {browser} browser")
+        with
+        {
+            CorrelationId = Guid.NewGuid().ToString("N"),
+        });
 
     // A window's own scheme, else the application's (DesktopHost.ColorScheme).
     internal DesktopColorScheme EffectiveColorScheme(DesktopColorScheme own) =>
@@ -566,6 +596,8 @@ public sealed class DesktopSurface : IAsyncDisposable
         {
             return;
         }
+        // Disposing the surface or its host ends a window's close drain (DesktopWindowOptions.CloseDrainAsync).
+        Volatile.Read(ref _window)?.EndDrain();
 
         // Reject new admission first, then drain admitted mutations before native teardown.
         // Native release callbacks use the owner's dispatcher directly and do not acquire this gate.
@@ -648,6 +680,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetAllowedPermissions(options.AllowedPermissions);
         _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(AskingOwnedWindows(options.ConfirmCloseAsync));
+        _engine.SetCloseDrain(options.CloseDrainAsync is null ? null : this);
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
         _engine.SetColorScheme(EffectiveColorScheme(options.ColorScheme),
             fromApplication: options.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
@@ -1137,6 +1170,8 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     {
         if (IsOpen) return;
         _engine.PresentationClosed -= OnEnginePresentationClosed;
+        // A visible drain ends with its window, such as one the platform destroyed (sdk#900).
+        if (DrainsVisibly) EndDrain();
         CloseSidePanelWithWindow();
         ReportClosedActivity();
     }
@@ -2367,8 +2402,15 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// <param name="cancellationToken">Stops this caller's wait; it does not close the window.</param>
     /// <returns>A task that completes when the window has closed and its native resources have been released.</returns>
     /// <remarks>
+    /// <para>
     /// On macOS and with the GTK 4 host the process main thread must run <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>,
     /// which services native window events while the application awaits this method.
+    /// </para>
+    /// <para>
+    /// A window with a close drain (<see cref="DesktopWindowOptions.CloseDrainAsync"/>) stays open while it drains, so
+    /// this returns once the drain ended and the window closed. An installed browser cannot stay open: there the drain
+    /// runs once its window is gone, and this returns after it.
+    /// </para>
     /// </remarks>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default)
@@ -2379,6 +2421,11 @@ public sealed partial class DesktopWindow : IAsyncDisposable
             ServiceNativeEvents();
             await Task.Delay(10, cancellationToken).ConfigureAwait(false);
         }
+
+        // A window that could not stay open drains once it is gone (DesktopWindowOptions.CloseDrainAsync, sdk#900).
+        if (HasCloseDrain && !DrainsVisibly)
+            await DrainAsync(_surface.IsShuttingDown ? DesktopCloseReason.Shutdown : DesktopCloseReason.User)
+                .WaitAsync(cancellationToken).ConfigureAwait(false);
 
         // Native destruction can precede asynchronously queued native release work.
         // Join that cleanup while the process main thread can still service it.
@@ -2402,9 +2449,14 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     }
 
     /// <summary>Requests closing, awaiting the same confirmation as the native close button.</summary>
-    /// <remarks>Cancelling the caller stops its wait, without cancelling another caller's shared decision.</remarks>
+    /// <remarks>
+    /// Cancelling the caller stops its wait, without cancelling another caller's shared decision. A window with a close
+    /// drain (<see cref="DesktopWindowOptions.CloseDrainAsync"/>) returns <see langword="true"/> as soon as the close was
+    /// approved, while it stays open and drains; a request during the drain also returns <see langword="true"/> and
+    /// changes nothing. <see cref="WaitForCloseAsync"/> waits for the window itself.
+    /// </remarks>
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
-        => IsOpen ? _surface.RequestCloseWindowAsync(this, cancellationToken) : ValueTask.FromResult(true);
+        => IsOpen ? _surface.RequestCloseWindowAsync(this, DesktopCloseReason.Request, cancellationToken) : ValueTask.FromResult(true);
 
     /// <summary>Forcibly closes this window without awaiting confirmation. Use RequestCloseAsync for user actions.</summary>
     /// <param name="cancellationToken">Stops this caller's wait. The close itself always proceeds and is shared by every caller.</param>
@@ -2414,6 +2466,8 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
+            // A forced close ends a visible drain (DesktopWindowOptions.CloseDrainAsync); the window closes at once.
+            if (DrainsVisibly) EndDrain();
             _ = CloseCoreAsync();
         }
         return new ValueTask(_closed.Task.WaitAsync(cancellationToken));
