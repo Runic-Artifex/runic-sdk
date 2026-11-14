@@ -17,8 +17,9 @@ internal static class BridgeGenerationCache
     private const string ManifestFileName = ".runic-bridge-generation-cache.json";
     // Version 3: generated TypeScript gained named types and XML documentation,
     // so outputs recorded by earlier generators must regenerate. Version 4:
-    // generated content failures name their type, and warnings are recorded.
-    private const int SchemaVersion = 4;
+    // generated content failures name their type, and warnings are recorded. Version 5: the development source map
+    // (sources.json) is an output.
+    private const int SchemaVersion = 5;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -118,6 +119,11 @@ internal static class BridgeGenerationCache
                      .Select(Path.GetFullPath).OrderBy(path => path, StringComparer.Ordinal))
             inputs.Add("model-documentation:" + documentation + ":" + HashFile(documentation));
 
+        // The development source map reads lines from the model's PDB. An edit that only moves lines changes the
+        // PDB, and a deterministic build's assembly with it, but a PDB written separately must also regenerate.
+        var modelSymbols = Path.ChangeExtension(fullModel, ".pdb");
+        if (File.Exists(modelSymbols)) inputs.Add("model-symbols:" + HashFile(modelSymbols));
+
         foreach (var runtime in GeneratorAndRuntimeAssemblies()
                      .OrderBy(path => path, StringComparer.Ordinal))
             inputs.Add("generator-runtime:" + runtime + ":" + HashFile(runtime));
@@ -174,7 +180,8 @@ internal static class BridgeGenerationCache
         var fileName = Path.GetFileName(path);
         return fileName.EndsWith(".Bridge.g.cs", StringComparison.Ordinal)
             || fileName.EndsWith(".View.g.cs", StringComparison.Ordinal)
-            || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal);
+            || string.Equals(fileName, "RunicBridgeComposition.g.cs", StringComparison.Ordinal)
+            || string.Equals(fileName, BridgeSourceMap.FileName, StringComparison.Ordinal);
     }
 
     // The TypeScript directory can be application source. Hand-written modules

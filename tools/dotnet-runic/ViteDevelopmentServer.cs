@@ -30,6 +30,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     /// </summary>
     internal const string SessionEnvironmentVariable = "RUNIC_APPLICATION_DEV_SESSION";
     internal const string SessionHeader = "X-Runic-Dev-Session";
+    internal const string SourceMapEnvironmentVariable = "RUNIC_APPLICATION_DEV_SOURCE_MAP";
     internal const string StatePath = "__runic/state";
     internal const string RunicVitePluginPackage = "@runic-artifex/vite-plugin-runic";
     private readonly RunningProcess _process;
@@ -217,6 +218,8 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             ["DEBUG"] = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_VITE_DEBUG")
                 ?? Environment.GetEnvironmentVariable("DEBUG"),
             ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
+            // vite-plugin-runic serves the Bridge generator's development source map from here (#951).
+            [SourceMapEnvironmentVariable] = configuration.BridgeSourceMapPath.Length == 0 ? null : configuration.BridgeSourceMapPath,
         };
 
     internal static IReadOnlyList<string> CreateArguments(
