@@ -99,6 +99,17 @@ The inspector runs only where the development client does: never in a build.
 (`runic.views.inspector` in the
 [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)).
 
+### Bridge calls in the Performance panel
+
+With `@runic-artifex/views` 0.20 or later the development client also listens
+to the Bridge-call channel (`runic.views.calls`). It draws each settled call
+on a **Bridge calls** track in a **Runic** track group of a Chromium engine's
+Performance recording (turn on "Show custom tracks"), and its listening turns
+on the async stack segments that lead from a reply back to the click that made
+the call. See
+[Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
+The dock does not show these calls yet.
+
 ## Source map and open in editor
 
 The Bridge generator writes a development source map beside its generated C#
