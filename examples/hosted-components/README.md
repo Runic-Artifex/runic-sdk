@@ -16,6 +16,7 @@ widget's token. Hosted applications are experimental: both projects suppress
 | [`Widget/Frontend/vite.config.ts`](Widget/Frontend/vite.config.ts) | `vite build` with the `component` target of `@runic-artifex/vite-plugin-runic`: the widget's page, and its component in `dist/_runic_component/`. |
 | [`Widget/Frontend/src/component.ts`](Widget/Frontend/src/component.ts) | The component's mount function: it renders the widget into the element's shadow root, in the element's own Runic instance. |
 | [`Widget/Frontend/src/widget.ts`](Widget/Frontend/src/widget.ts) | The widget's view, shared by its own page and its component. |
+| [`Widget/Angular/`](Widget/Angular/vite.config.ts) | The same widget in Angular, built by Vite with the Analog plugin ([an Angular widget](#an-angular-widget)). |
 | [`Dashboard/WidgetPolicy.cs`](Dashboard/WidgetPolicy.cs) | The dashboard's policy: `EmbedComponent(region)` when `CanEmbedComponent`, otherwise `Embed(region)`. |
 | [`Dashboard/Program.cs`](Dashboard/Program.cs) | The host and its page's Content-Security-Policy, which admits the widgets' origin. |
 | [`Dashboard/Frontend/index.html`](Dashboard/Frontend/index.html) | Two `<runic-hosted-region>` elements, with content for each state. |
@@ -78,6 +79,39 @@ dotnet run --project examples/hosted-components/Widget -c Release -- Indexer
   drops and keys; `RunicHostedRegionOptions.Permissions` and
   `sizing="content-height"` do not apply, and the guest sends no title.
 
+## An Angular widget
+
+`Widget/Angular` is the widget's frontend in Angular: the same page and
+component, built by Vite with the Analog Angular plugin and the `component`
+target. Build the widget with it, and the dashboard shows both widgets as
+Angular components:
+
+```sh
+dotnet run --project examples/hosted-components/Dashboard -c Release -p:WidgetFrontend=Angular
+```
+
+`-p:WidgetFrontend=Angular` sets `RunicApplicationFrontendDirectory` to
+`Angular` in [`WidgetTool.csproj`](Widget/WidgetTool.csproj); the generated client
+stays in `Frontend/src/generated`, which both frontends import.
+
+- [`src/app/widget.ts`](Widget/Angular/src/app/widget.ts) is a standalone
+  component with `injectView({ connect: connectWidget })` and its own `styles`.
+  On the widget's own page ([`src/main.ts`](Widget/Angular/src/main.ts)) it
+  also names the window.
+- [`src/component.ts`](Widget/Angular/src/component.ts) exports
+  `runicComponentMount(Widget)` from `@runic-artifex/angular/experimental`: each
+  element gets an Angular application with the element's Runic instance, and
+  Angular's component styles become stylesheets of the element's shadow root
+  instead of `<style>` elements in the dashboard's `<head>`. The dashboard's
+  policy admits no inline styles, and needs none.
+- [`vite.config.ts`](Widget/Angular/vite.config.ts) adds `angular()` before
+  `runic({ component })`. Its `resolve.dedupe` is for this repository only, whose
+  workspace packages bring Angular of their own; a copied project takes
+  `@runic-artifex/angular`, `@runic-artifex/views` and
+  `@runic-artifex/vite-plugin-runic` from npm instead.
+- `vite build` checks no types: the `build` script also runs
+  `ngc -p tsconfig.app.json --noEmit`.
+
 ## Checks
 
 ```sh
@@ -92,6 +126,21 @@ scoped custom element registries: WebKitGTK 2.54 does not. CI runs it in the
 native job's Linux legs, and as the elevated pair (`--probe --elevated`) in its
 Windows x64 leg, whose steps run elevated: there WebView2 imports the widget's
 loopback module under the page's policy.
+
+```sh
+(cd examples/hosted-components/Widget/Angular && bun install --frozen-lockfile && bun run build)
+node examples/hosted-components/angular-component-smoke.mjs
+```
+
+The Angular widget's smoke runs its component in Chromium, and in WebKit when
+Playwright's WebKit is installed, in a host page under the dashboard's policy,
+with two origins serving the build as the two widget processes do. It checks the
+build (a generated tag, no stylesheet file, Angular linked ahead of time), the
+tags of both elements, the styles in each shadow root with the host page's
+`--dashboard-accent`, updates and commands that reach each element's own mock
+ViewModel, a host document whose `<head>`, `<html>`, title, stylesheets and
+history do not change, and a teardown that leaves no stylesheet, instance or
+global listener behind. CI runs it in the views job.
 
 The example builds the Runic packages from source, and the widget's frontend
 takes Vite and `@runic-artifex/vite-plugin-runic` from the repository's

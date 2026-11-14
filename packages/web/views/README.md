@@ -1830,6 +1830,11 @@ const mount: RunicComponentMount = ({ container, instance }) => {
 export default mount;
 ```
 
+An Angular guest's entry exports `runicComponentMount(App)` from
+`@runic-artifex/angular/experimental`, which starts an Angular application per
+element and keeps Angular's component styles in the shadow root
+([Angular components](../angular/README.md#components-experimental)).
+
 Each element has an open shadow root with the bundle's CSS as constructable
 stylesheets, and its own instance on the Bridge it is connected with
 (`element.connect({ bridge })`). The element mounts while it is in the document and

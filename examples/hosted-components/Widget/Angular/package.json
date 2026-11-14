@@ -1,0 +1,26 @@
+{
+  "name": "@runic-artifex/hosted-components-widget-angular",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && ngc --project tsconfig.app.json --noEmit",
+    "typecheck": "ngc --project tsconfig.app.json --noEmit"
+  },
+  "dependencies": {
+    "@angular/common": "22.2.3",
+    "@angular/core": "22.2.3",
+    "@angular/platform-browser": "22.2.3",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "2.9.7",
+    "@angular/build": "22.2.4",
+    "@angular/compiler": "22.2.3",
+    "@angular/compiler-cli": "22.2.3",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  },
+  "overrides": {
+    "vite": "8.3.4"
+  }
+}

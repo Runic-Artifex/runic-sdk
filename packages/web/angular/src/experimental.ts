@@ -10,6 +10,8 @@ import {
 } from "@runic-artifex/views/experimental";
 
 export type { HostedRegionSizing, HostedRegionState, RunicHostedRegionElement } from "@runic-artifex/views/experimental";
+// Trusted component mode (0.20): an Angular guest's component build.
+export { runicComponentMount, type RunicComponentMountOptions } from "./component.js";
 
 /** The `stateChange` output of {@link RunicHostedRegion}. */
 export interface HostedRegionStateChange {
