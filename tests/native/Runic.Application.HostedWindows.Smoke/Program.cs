@@ -2,11 +2,12 @@ using Runic.Desktop;
 using Runic.Desktop.Gtk4;
 
 // runic-host/1 window mode (S11) in the built-in web views; see HostedSmoke. With no argument the platform's web view
-// (WebView2, WKWebView, WebKitGTK 4.1); with gtk4 WebKitGTK 6 through Runic.Desktop.Gtk4.
+// (WebView2, WKWebView, WebKitGTK 4.1); with gtk4 WebKitGTK 6 through Runic.Desktop.Gtk4. With --region-appearance,
+// region mode with an appearance override instead (RegionAppearanceSmoke).
 
 // A guest application: it shows no window of its own, so it needs no web view and no event loop.
 if (Array.IndexOf(args, HostedSmoke.GuestArgument) is var guest and >= 0 && guest + 2 < args.Length)
-    return HostedSmoke.RunGuest(args[guest + 1], args[guest + 2]);
+    return args[guest + 2] == RegionAppearanceSmoke.GuestBehaviour ? RegionAppearanceSmoke.RunGuest() : HostedSmoke.RunGuest(args[guest + 1], args[guest + 2]);
 
 // --run-unelevated <command> [arguments]: runs a command, such as the host cases, as the runner's user without its
 // elevation (Unelevated); an elevated guest refuses hosted mode.
@@ -69,7 +70,9 @@ var options = (gtk4 ? new DesktopHostOptions().WithGtk4() : new DesktopHostOptio
 };
 try
 {
-    // Before any await: on macOS the AppKit loop owns the main thread.
+    // --region-appearance (#917): a guest's Window in a region of the host's page with an appearance override; see
+    // RegionAppearanceSmoke. Before any await: on macOS the AppKit loop owns the main thread.
+    if (args.Contains(RegionAppearanceSmoke.Argument, StringComparer.Ordinal)) return RegionAppearanceSmoke.Run(options, toolkit);
     var result = HostedSmoke.Run(options, toolkit);
     if (result == 0) Console.WriteLine($"Runic hosted windows smoke passed ({toolkit}{(HostedSmoke.ElevatedPair ? ", elevated pair" : "")}).");
     return result;
