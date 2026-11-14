@@ -2795,7 +2795,11 @@ internal sealed partial class ToolTests
         Directory.CreateDirectory(Path.Combine(proc, "self-not-a-pid"));
         File.WriteAllText(Path.Combine(proc, "uptime"), "1.0 2.0");
 
-        var processes = ProcessTreeSignal.ReadProcSnapshot(proc).OrderBy(process => process.Id).ToArray();
+        var processes = ProcessTreeSignal.ReadProcSnapshot(proc).OrderBy(process => process.Id)
+            .Select(process => process with { Arguments = null }).ToArray();
+        // The exact arguments, which the Window process lookup reads, keep a path with spaces whole.
+        SequenceEqual(["/usr/share/dotnet/dotnet", "run", "--no-launch-profile"],
+            ProcessTreeSignal.ReadProcSnapshot(proc).Single(process => process.Id == 102).Arguments!.ToArray());
         SequenceEqual(
             [new ProcessTreeSignal.ProcessEntry(2, 0, ""), new(100, 1, "dotnet watch run"), new(102, 100, "/usr/share/dotnet/dotnet run --no-launch-profile")],
             processes);
