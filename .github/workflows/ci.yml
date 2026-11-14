@@ -1046,8 +1046,9 @@ jobs:
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll
       # Region appearance (#917): a guest's window in a region with an appearance override. The guest page's first
-      # appearance push carries it before its first paint marker, and SetAppearanceAsync changes it; ENGINE-RECORD
-      # lines record whether the frame's prefers-color-scheme follows the frame's color-scheme (not asserted).
+      # appearance push carries it before its first content, and SetAppearanceAsync changes it; ENGINE-RECORD lines,
+      # printed before any assertion, record whether the frame's prefers-color-scheme follows the frame's color-scheme
+      # and whether the push came before the page's first animation frame (not asserted).
       - name: Probe the region appearance override in GTK 3
         if: runner.os == 'Linux'
         timeout-minutes: 5

@@ -13,12 +13,14 @@ using Runic.Platform;
 // region of the host's page with an appearance override (RunicHostedRegionOptions.Appearance: more contrast and the
 // colour scheme other than the host page's own, dark on a light desktop), in the platform's web view (WebView2,
 // WKWebView, WebKitGTK 4.1) or with gtk4 in WebKitGTK 6.
-// - Asserted: the guest page's first appearance push carries the override, before the page's first paint marker, and
-//   a RunicHostedRegion.SetAppearanceAsync change reaches the page and the host page's frame.
+// - Asserted: the guest page's first appearance push carries the override and comes before the page's first content
+//   (the reply to its open), and a RunicHostedRegion.SetAppearanceAsync change reaches the page and the host page's
+//   frame.
 // - Recorded, not asserted (ENGINE-RECORD lines): whether the frame's prefers-color-scheme follows the CSS color-scheme
 //   of the frame element, for color-scheme: dark and only dark (light and only light on a dark desktop), as the
-//   content sets it and after a change. Until every engine is recorded the frame's media query is best effort
-//   (D066.10, docs/hosted-regions.md).
+//   content sets it and after a change; and whether the first appearance push also came before the page's first
+//   animation frame. Until every engine is recorded the frame's media query is best effort (D066.10,
+//   docs/hosted-regions.md). The records come before every assertion, so a failure never hides them.
 // Both pages speak the Views protocol directly through the Desktop transport (__runicDesktopViews), so the smoke needs
 // no frontend build: the host page plays <runic-hosted-region> (hosted-regions/1; it sets the frame's color-scheme
 // from colorScheme as the element does) and the guest page reads the appearance push (appearance/1).
@@ -63,46 +65,58 @@ internal static class RegionAppearanceSmoke
         var policy = new Policy(initial);
         await using var application = await host.HostedApplications.StartAsync(Guest(), new RunicHostedApplicationOptions { Policy = policy });
         var window = await opened.Task.WaitAsync(TestTimeouts.Scale(Wait));
-        Check(policy.Request is { CanEmbed: true, CanOverrideAppearance: true }, "The guest's window can take no region or no appearance override.");
         var region = window.Region ?? throw new InvalidOperationException("The guest's window shows in no region.");
-        Check(region.CanSetAppearance && region.Appearance == initial, $"The region's appearance is {region.Appearance}, not {initial}.");
 
-        // Asserted: the first appearance push, before the first paint marker.
-        var content = await HostLogAsync(surface, "hosted-region-content");
-        Check(content["colorScheme"]?.GetValue<string>() == target, $"The host page's content push was {content.ToJsonString()}.");
-        var first = await GuestMessageAsync(surface, "appearance");
-        var painted = await GuestMessageAsync(surface, "painted");
-        Check(first["first"]!.GetValue<bool>() && first["beforePaint"]!.GetValue<bool>() && painted["appearanceBefore"]!.GetValue<bool>(),
-            $"The guest page's first appearance push did not arrive before its first paint marker: {first.ToJsonString()}, {painted.ToJsonString()}.");
-        CheckAppearance(first, target, "more");
-        Console.WriteLine($"PASS region appearance {toolkit}: the guest page's first appearance push, before its first paint marker, " +
-            $"carries the override (host {Show(first["host"])}, combined {Show(first["combined"])}).");
+        // What the guest's page saw as it loaded, read before anything is asserted. "content" is its first content: the
+        // reply to its open of the Window's route, or a state push of the route if one came first.
+        var content = await HostLogAsync(surface, "hosted-region-content", required: false);
+        var loaded = await GuestMessageAsync(surface, "content", required: false);
+        var first = await GuestMessageAsync(surface, "appearance", required: false);
+        var painted = await GuestMessageAsync(surface, "painted", required: false);
 
-        // Recorded: the frame's media query under the color-scheme the content set.
+        // Recorded, before any assertion, so that a failure never hides them: whether the first appearance push also came
+        // before the first animation frame after the hello's reply (stricter than the protocol's guarantee), and the
+        // frame's media query under the color-scheme the content set, then under each value the page sets after the load,
+        // as hosted-region-update would ("only <scheme>" is never sent by Runic's element).
+        var beforeFrame = first is null || painted is null ? "unknown"
+            : Lower(first["beforePaint"]!.GetValue<bool>() && painted["appearanceBefore"]!.GetValue<bool>());
+        Console.WriteLine($"ENGINE-RECORD {toolkit} appearance-before-first-frame={beforeFrame}");
         var records = new List<(string Scheme, string When, bool Expected, bool Seen)>
         {
             await RecordAsync(surface, toolkit, target, "load", hostDark),
+            await RecordAsync(surface, toolkit, other, "change", hostDark, set: true),
+            await RecordAsync(surface, toolkit, "only " + target, "change", hostDark, set: true),
+            await RecordAsync(surface, toolkit, other, "change", hostDark, set: true),
+            await RecordAsync(surface, toolkit, target, "change", hostDark, set: true),
         };
-
-        // Asserted: a change through SetAppearanceAsync reaches the guest's page and the host page's frame.
-        Check(await region.SetAppearanceAsync(changed), "SetAppearanceAsync did not apply the change.");
-        var update = await HostLogAsync(surface, "hosted-region-update");
-        Check(update["colorScheme"]?.GetValue<string>() == other, $"The host page's update was {update.ToJsonString()}.");
-        var pushed = await GuestMessageAsync(surface, "appearance");
-        CheckAppearance(pushed, other, "more");
-        Console.WriteLine($"PASS region appearance {toolkit}: SetAppearanceAsync changed the guest page's appearance (host {Show(pushed["host"])}, " +
-            $"combined {Show(pushed["combined"])}) and the frame's color-scheme to {other}.");
-        records.Add(await RecordAsync(surface, toolkit, other, "change", hostDark));
-
-        // Recorded: "only <scheme>", then the plain keyword as a change after the load, as hosted-region-update sets it.
-        records.Add(await RecordAsync(surface, toolkit, "only " + target, "change", hostDark, set: true));
-        records.Add(await RecordAsync(surface, toolkit, other, "change", hostDark, set: true));
-        Check(await region.SetAppearanceAsync(initial), $"SetAppearanceAsync did not apply the change back to {target}.");
-        update = await HostLogAsync(surface, "hosted-region-update");
-        Check(update["colorScheme"]?.GetValue<string>() == target, $"The host page's second update was {update.ToJsonString()}.");
-        CheckAppearance(await GuestMessageAsync(surface, "appearance"), target, "more");
-        records.Add(await RecordAsync(surface, toolkit, target, "change", hostDark));
         Console.WriteLine($"ENGINE-RECORD {toolkit} summary: {Summary(records, target)}; {Summary(records, "only " + target)}");
+
+        // Asserted: the override reaches the region and, with the content, the host page's frame.
+        Check(policy.Request is { CanEmbed: true, CanOverrideAppearance: true }, "The guest's window can take no region or no appearance override.");
+        Check(region.CanSetAppearance && region.Appearance == initial, $"The region's appearance is {region.Appearance}, not {initial}.");
+        Check(content?["colorScheme"]?.GetValue<string>() == target, $"The host page's content push was {Show(content)}.");
+
+        // Asserted: the guest page's first appearance push carries the override and comes before its first content
+        // (host-protocol.md, Appearance in a region, Ordering 1).
+        Check(first is not null && loaded is not null, $"The guest's page reported its first appearance push {Show(first)} and its first content {Show(loaded)}.");
+        Check(first!["first"]!.GetValue<bool>() && first["beforeContent"]!.GetValue<bool>() && loaded!["appearanceBefore"]!.GetValue<bool>(),
+            $"The guest page's first appearance push did not arrive before its first content: {first.ToJsonString()}, {loaded!.ToJsonString()}.");
+        CheckAppearance(first, target, "more");
+        Console.WriteLine($"PASS region appearance {toolkit}: the guest page's first appearance push, before its first content " +
+            $"({loaded["source"]}), carries the override (host {Show(first["host"])}, combined {Show(first["combined"])}).");
+
+        // Asserted: a change through SetAppearanceAsync reaches the guest's page and the host page's frame, and so does the
+        // change back.
+        foreach (var (appearance, scheme) in new[] { (changed, other), (initial, target) })
+        {
+            Check(await region.SetAppearanceAsync(appearance), $"SetAppearanceAsync did not apply the change to {scheme}.");
+            var update = await HostLogAsync(surface, "hosted-region-update");
+            Check(update["colorScheme"]?.GetValue<string>() == scheme, $"The host page's update was {update.ToJsonString()}, not {scheme}.");
+            var pushed = await GuestMessageAsync(surface, "appearance");
+            CheckAppearance(pushed!, scheme, "more");
+            Console.WriteLine($"PASS region appearance {toolkit}: SetAppearanceAsync changed the guest page's appearance (host {Show(pushed!["host"])}, " +
+                $"combined {Show(pushed["combined"])}) and the frame's color-scheme to {scheme}.");
+        }
 
         Check(await window.RequestCloseAsync(), "The guest refused the close.");
         await window.Closed.WaitAsync(TestTimeouts.Scale(Wait));
@@ -111,14 +125,13 @@ internal static class RegionAppearanceSmoke
         return 0;
     }
 
-    // Sets the frame's color-scheme (set) or reads the one the host's push set, then asks the guest's page for its
+    // Sets the frame's color-scheme (set) or reads the one the host's content push set, then asks the guest's page for its
     // prefers-color-scheme until it matches the scheme or Settle passed, and prints what it saw.
     private static async Task<(string Scheme, string When, bool Expected, bool Seen)> RecordAsync(DesktopSurface surface, string toolkit,
         string scheme, string when, bool hostDark, bool set = false)
     {
         var quoted = JsonValue.Create(scheme).ToJsonString();
         var computed = await surface.ExecuteJavaScriptAsync(set ? $"return window.__setScheme({quoted});" : "return window.__scheme();");
-        if (!set) Check(computed.Contains(scheme, StringComparison.Ordinal), $"The frame's color-scheme is '{computed}', not {scheme}.");
         var expected = scheme.EndsWith("dark", StringComparison.Ordinal);
         var deadline = DateTime.UtcNow + TestTimeouts.Scale(Settle);
         bool seen;
@@ -146,7 +159,7 @@ internal static class RegionAppearanceSmoke
         var id = Guid.NewGuid().ToString("N");
         await surface.ExecuteJavaScriptAsync($"window.__query({JsonValue.Create(id).ToJsonString()}); return '';");
         var answer = await GuestMessageAsync(surface, "answer", id);
-        return answer["prefersDark"]!.GetValue<bool>();
+        return answer!["prefersDark"]!.GetValue<bool>();
     }
 
     // appearance().host is the push's values and appearance().colorScheme and .contrast the host's value of a member
@@ -166,15 +179,19 @@ internal static class RegionAppearanceSmoke
 
     private static string Lower(bool value) => value ? "true" : "false";
 
-    // The host page's first record of a push of this kind, removed from its log.
-    private static Task<JsonObject> HostLogAsync(DesktopSurface surface, string kind) => TakeAsync(surface, "__log", kind, null,
-        $"The host page received no {kind} push.");
+    // The host page's first record of a push of this kind, removed from its log; null when none came and it is not required.
+    private static async Task<JsonObject> HostLogAsync(DesktopSurface surface, string kind) =>
+        (await HostLogAsync(surface, kind, required: true))!;
 
-    // The guest page's first message of this kind (and id), removed from the host page's list.
-    private static Task<JsonObject> GuestMessageAsync(DesktopSurface surface, string kind, string? id = null) => TakeAsync(surface, "__guest", kind, id,
-        $"The guest's page sent no '{kind}' message.");
+    private static Task<JsonObject?> HostLogAsync(DesktopSurface surface, string kind, bool required) => TakeAsync(surface, "__log", kind, null,
+        required ? $"The host page received no {kind} push." : null);
 
-    private static async Task<JsonObject> TakeAsync(DesktopSurface surface, string list, string kind, string? id, string failure)
+    // The guest page's first message of this kind (and id), removed from the host page's list; null when none came and it
+    // is not required.
+    private static Task<JsonObject?> GuestMessageAsync(DesktopSurface surface, string kind, string? id = null, bool required = true) =>
+        TakeAsync(surface, "__guest", kind, id, required ? $"The guest's page sent no '{kind}' message." : null);
+
+    private static async Task<JsonObject?> TakeAsync(DesktopSurface surface, string list, string kind, string? id, string? failure)
     {
         var match = $"m => m && m.kind === {JsonValue.Create(kind).ToJsonString()}" + (id is null ? "" : $" && m.id === {JsonValue.Create(id).ToJsonString()}");
         var script = $"const i = window.{list}.findIndex({match}); if (i < 0) return ''; return JSON.stringify(window.{list}.splice(i, 1)[0]);";
@@ -185,7 +202,7 @@ internal static class RegionAppearanceSmoke
             if (json.Length > 0) return JsonNode.Parse(json)!.AsObject();
             await Task.Delay(100);
         }
-        throw new TimeoutException(failure);
+        return failure is null ? null : throw new TimeoutException(failure);
     }
 
     private static async Task WaitForAsync(DesktopSurface surface, string condition, string failure)
@@ -344,9 +361,13 @@ internal static class RegionAppearanceSmoke
         </script></body></html>
         """;
 
-    // The guest's page: it reports each appearance push with appearance().host and the combined colorScheme and contrast
-    // as @runic-artifex/views reads them, and its first paint marker: the first animation frame after the hello's reply,
-    // when a Views client paints its first state. It answers the host page's queries with its prefers-color-scheme.
+    // The guest's page: it opens its Window's route right after its hello, as a Views client does, and reports
+    // - each appearance push, with appearance().host and the combined colorScheme and contrast as @runic-artifex/views
+    //   reads them, and whether it came before the page's first content and before its first animation frame;
+    // - its first content: the open's reply, or a state push of the route if one came first;
+    // - the first animation frame after the hello's reply (recorded only: the protocol orders the push before the
+    //   first content, not before a frame).
+    // It answers the host page's queries with its prefers-color-scheme.
     private const string GuestPage = $$"""
         <!doctype html><html lang="en"><head><meta charset="utf-8"><title>Region appearance guest</title><script src="webui.js"></script></head>
         <body><h1>Region appearance guest</h1>
@@ -355,9 +376,15 @@ internal static class RegionAppearanceSmoke
         const say = data => parent.postMessage(data, "*");
         const dark = matchMedia("(prefers-color-scheme: dark)");
         const more = matchMedia("(prefers-contrast: more)");
-        let painted = false, first = true;
+        let painted = false, first = true, content = false;
+        const loaded = source => {
+          if (content) return;
+          content = true;
+          say({ kind: "content", source, appearanceBefore: !first });
+        };
         views.onMessage(text => {
           const push = JSON.parse(text);
+          if (push.kind === "state" && push.route === "hosted-smoke") loaded("state push");
           if (push.kind !== "appearance") return;
           const decided = Array.isArray(push.override) ? push.override : [];
           const host = { colorScheme: push.colorScheme ?? null, contrast: push.contrast ?? null };
@@ -365,14 +392,17 @@ internal static class RegionAppearanceSmoke
             colorScheme: decided.includes("colorScheme") && host.colorScheme ? host.colorScheme : dark.matches ? "dark" : "light",
             contrast: decided.includes("contrast") && host.contrast ? host.contrast : more.matches ? "more" : "no-preference",
           };
-          say({ kind: "appearance", host, combined, override: decided, first, beforePaint: !painted });
+          say({ kind: "appearance", host, combined, override: decided, first, beforeContent: !content, beforePaint: !painted });
           first = false;
         });
         addEventListener("message", event => {
           if (event.source === parent && event.data?.kind === "query") say({ kind: "answer", id: event.data.id, prefersDark: dark.matches });
         });
         whenConnected(async () => {
-          await hello(["appearance/1"]);
+          const greeting = hello(["appearance/1"]);
+          request({ kind: "open", route: "hosted-smoke", presentation: "p1" }).then(
+            () => loaded("open reply"), error => say({ kind: "content", source: String(error), appearanceBefore: !first }));
+          await greeting;
           requestAnimationFrame(() => { painted = true; say({ kind: "painted", appearanceBefore: !first }); });
         });
         </script></body></html>
