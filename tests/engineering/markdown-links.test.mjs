@@ -96,7 +96,10 @@ test("the link checker reports missing relative targets only", () => {
 test("tracked Markdown files have no broken relative links", () => {
   const files = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
   const tracked = trackedPaths(files);
-  const documents = files.filter(file => file.endsWith(".md") && existsSync(resolve(root, file)));
+  // Release-note fragments (eng/release/notes/<version>/) link as the assembled
+  // <version>.md does; eng/release/notes.test.mjs checks them there.
+  const documents = files.filter(file => file.endsWith(".md") && !/^eng\/release\/notes\/[^/]+\//.test(file)
+    && existsSync(resolve(root, file)));
   expect(documents.length).toBeGreaterThan(0);
   expect(documents.flatMap(file => brokenLinks(file, readFileSync(resolve(root, file), "utf8"), tracked))).toEqual([]);
 });
