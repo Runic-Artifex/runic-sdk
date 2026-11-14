@@ -71,6 +71,16 @@ the release notes, which give the full detail and the pull requests:
   [Runic's own text in German](../eng/release/notes/0.18.0.md#runics-own-text-in-german-881),
   [Smaller changes](../eng/release/notes/0.18.0.md#smaller-changes),
   [Known issues](../eng/release/notes/0.18.0.md#known-issues)
+- 0.19.0: [Upgrading from 0.18](../eng/release/notes/0.19.0.md#upgrading-from-018),
+  [Bridge costs](../eng/release/notes/0.19.0.md#bridge-costs-that-grew-with-the-viewmodel-909-910-911),
+  [Side panel](../eng/release/notes/0.19.0.md#side-panel-864-experimental),
+  [Appearance per hosted region](../eng/release/notes/0.19.0.md#an-appearance-override-per-hosted-region-917-experimental),
+  [Maximize, restore and placement](../eng/release/notes/0.19.0.md#maximize-restore-and-placement-of-an-open-window-897),
+  [Per-window services](../eng/release/notes/0.19.0.md#per-window-services-for-a-window-the-application-opened-itself-896),
+  [Windows title bar](../eng/release/notes/0.19.0.md#windows-title-bar-and-the-systems-dark-mode-888),
+  [Close drain](../eng/release/notes/0.19.0.md#close-drain-900-experimental),
+  [Fixes](../eng/release/notes/0.19.0.md#fixes),
+  [Known issues](../eng/release/notes/0.19.0.md#known-issues)
 
 ## Before you start
 
@@ -81,9 +91,10 @@ the release notes, which give the full detail and the pull requests:
    prerelease version of its own; take the one listed in the release notes.
 2. Remove every `RUNICDESK100`, `RUNICDESK101` and `RUNICASSETS001` suppression
    and every `./experimental` import of 0.9 (see [npm packages](#npm-packages)).
-   What is experimental now, hosted applications (`RUNICDESK103`) and from 0.18
-   the npm packages' new `./experimental` entries for hosted regions, is listed
-   in [experimental APIs](experimental.md).
+   What is experimental now, hosted applications (`RUNICDESK103`), from 0.18
+   the npm packages' new `./experimental` entries for hosted regions, and from
+   0.19 the side panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`), is
+   listed in [experimental APIs](experimental.md).
 3. Commit your frontend's lock file (see [MSBuild](#msbuild)).
 4. Builds with `TreatWarningsAsErrors` meet the new warnings `RUNICNAV002`,
    `RUNICBRIDGE029` and `RUNICDBUS013`; see the [diagnostics catalog](diagnostics.md).
@@ -92,9 +103,9 @@ Compatible versions: CsWebUi 2.5.0-beta.4.8 or later, Vite `>=8.3.3 <9`,
 TypeScript 5.2 or later, Node `^24.18.0 || ^26.0.0` (Node 24 is the certified
 version). The SDK tools (`dotnet-runic`, `Runic.Create` and the asset packer
 that `Runic.Assets` runs during the build) are built with Runic Command Line
-0.11.0 (since 0.14; 0.9.1 before) and carry their own copy; no SDK library
-references Command Line, so an application may use any Command Line version
-itself (0.11.0 is current).
+0.13.0 (since 0.19; 0.12.0 in 0.18, 0.11.0 from 0.14, 0.9.1 before) and carry
+their own copy; no SDK library references Command Line, so an application may
+use any Command Line version itself (0.13.0 is current).
 
 The toolchain floor is .NET SDK 10.0.403 or later (runtime 10.0.14), or since
 0.18 the .NET 11 SDK with the .NET 10 runtime installed, and, for a
@@ -1310,10 +1321,11 @@ modes.
 
 ## From 0.18 to 0.19
 
-<!-- Draft: the 0.19.0 release PR completes this section. -->
-
-Update every Runic NuGet and npm package to 0.19.0 together and rebuild, so that the generated clients and Bridges are
-regenerated; an assembly with Bridges that a 0.18 generator wrote must be rebuilt (below).
+0.19.0 changes the generated-code support API, so every assembly with Bridges that a 0.18 generator wrote must be
+rebuilt (below). Its other changes add APIs or are opt-in, and the side panel and the close drain are experimental.
+Update every Runic NuGet and npm package to 0.19.0 together and rebuild, so that the generated clients and
+Bridges are regenerated. An application that uses Runic Translations moves every Translations package to 0.11.0, and
+one that uses Runic Command Line to 0.13.0.
 
 ### Rebuild every assembly with generated Bridges
 
@@ -1350,6 +1362,26 @@ not application API. A hand-written Bridge, for example in a test, follows the g
 `Runic.Application.Views.Generated` now has two `PropertyDescriptor` types; qualify the name or add
 `using PropertyDescriptor = Runic.Application.Views.Generated.PropertyDescriptor;`.
 
+### Behaviour
+
+| 0.18 | 0.19 |
+| --- | --- |
+| `Runic.Application.Views.Translations` required Runic Translations `[0.10.0, 0.11.0)`; `dotnet-runic`, `Runic.Create` and the `Runic.Assets` packer bundled Runic Command Line 0.12.0 | It requires Translations `[0.11.0, 0.12.0)`, and the tools bundle Command Line 0.13.0: move every Translations package to 0.11.0 and Runic Command Line to 0.13.0 ([Command Line 0.13.0 notes](https://github.com/Runic-Artifex/runic-cli-sdk/blob/v0.13.0/eng/release/notes/0.13.0.md)) |
+| A script that read the argument's ID from `arguments` of the tools' `RCLI1005` usage diagnostic (`--format json`) | `arguments` holds the placeholder (`["<source-directory>"]`); read the new `binding` member. Help lists arguments by placeholder and no longer shows `[default: False]` |
+| A WebView2 window with `DesktopColorScheme.NoPreference` had a light title bar on a dark Windows | The title bar follows the system's app mode; set `Light` for a light title bar, which also pins the page's `prefers-color-scheme` |
+| A WPF window after `IRunicWindowPresentation.SetColorSchemeAsync(NoPreference)` kept a light title bar | It follows the system's app mode, as a WebView2 window does |
+| A test compared `RunicTestWindowPresentation.Features` or `AllFeatures` with a list of its own | `AllFeatures` also has `SidePanel`, `Maximize` and `Placement` |
+
+Details: 0.19.0 [Upgrading from 0.18](../eng/release/notes/0.19.0.md#upgrading-from-018).
+
+### Windows the application opened itself
+
+Nothing has to change. This row is optional:
+
+| 0.18 | 0.19 |
+| --- | --- |
+| A `DesktopWindow` opened with `DesktopSurface.OpenWindowAsync` had no `IRunicWindowPresentation`, locale or connections for its ViewModels | `DesktopPlatformServices.AttachWindowServices(window, scope.ServiceProvider, content)` gives it a DI scope's per-window services; without a scope, `DesktopPlatformServices.ForWindowPresentation(window)` |
+
 ### Maximize, restore and placement
 
 Nothing has to change. These rows are optional:
@@ -1381,7 +1413,6 @@ replace it:
 | --- | --- |
 | `await acceptedWork.DrainAsync(cancellationToken)` inside `CanCloseAsync` or `ConfirmCloseAsync`, which closed the scope's admission before a later guard could keep the Window open | `IRunicWindowContext.DrainOnClose(acceptedWork)` and `RunicWindowOptions.CloseDrain = RunicCloseDrain.UntilDrained`; a guard that must wait without committing uses `acceptedWork.WaitForAcceptedAsync(cancellationToken)` |
 | A long `CloseAsync` timeout that also kept read-only queries running | `[RunicOperationClose(RunicOperationClose.Cancel)]` on read-only operations and `[RunicOperationClose(RunicOperationClose.Durable)]` on durable ones |
-
 | Draining inside `DesktopWindowOptions.ConfirmCloseAsync` of a window the application opened itself | `DesktopWindowOptions.CloseDrainAsync = (_, ct) => new(work.WaitForAcceptedAsync(ct))`, which runs only after every guard agreed |
 | Draining before `window.CloseAsync(timeout)` in the application's own Ctrl+C or SIGTERM handling | `RunicDesktopHostOptions.CloseDrain` (or `CloseDrainAsync`): the shutdown drains the windows visibly for up to `DesktopHostOptions.ShutdownDrainTimeout` |
 
@@ -1391,4 +1422,18 @@ and should stop early, such as polling, observes the new `DesktopHost.ShutdownSt
 `ConfirmQuitAsync` callback's token and the quit's close guards follow `ShutdownStarting`.
 
 The API is experimental (`RUNICDESK105`, [experimental APIs](experimental.md#RUNICDESK105)): suppress the ID in the
-project that uses it. `WaitForAcceptedAsync` is stable.
+project that uses it. `WaitForAcceptedAsync` is stable. A `[RunicOperationClose]` declaration that reaches no operation
+is reported by the new generator warning [`RUNICBRIDGE039`](diagnostics.md#runicbridge039), which fails a build with
+`TreatWarningsAsErrors`; move the declaration to an asynchronous Bridge command or remove it.
+
+### Hosted applications
+
+Nothing changes for a host that does not opt in. The API stays experimental
+([`RUNICDESK103`](experimental.md#RUNICDESK103)).
+
+| 0.18 | 0.19 |
+| --- | --- |
+| A guest's window in a region always showed the desktop's appearance, also when the host's page used another design | `RunicHostedRegionOptions.Appearance` and `RunicHostedRegion.SetAppearanceAsync` give it an appearance of its own (`region-appearance/1`). For a 0.18 guest, `RunicHostedWindowRequest.CanOverrideAppearance` is `false` and the region keeps the desktop's appearance |
+| A test compared a host's or a guest's `hello` exactly | Runic's hosts and guests also list `region-appearance/1` |
+
+Details: 0.19.0 [An appearance override per hosted region](../eng/release/notes/0.19.0.md#an-appearance-override-per-hosted-region-917-experimental).

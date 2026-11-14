@@ -384,7 +384,7 @@ whose release guides add only their own rules. The
 same policy.
 
 Applications on 0.9 follow the [migration guide to 1.0](../../docs/migration-1.0.md),
-which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0 and 0.18.0.
+which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0 and 0.19.0.
 
 ### Version numbers
 
@@ -650,7 +650,8 @@ requirement, not a consumer one.
   never reused. IDs follow the numbering in `docs/experimental.md` (from `100`
   where the prefix already names diagnostics, such as `RUNICDBUS100`).
   Experimental now: `RUNICDESK103` (hosted application windows and the Runic
-  host protocol, through 1.0).
+  host protocol, through 1.0), and from 0.19 `RUNICDESK104` (the side panel)
+  and `RUNICDESK105` (the close drain), each for one minor.
   Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
   `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
   `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0),
@@ -658,8 +659,9 @@ requirement, not a consumer one.
   rest internal in 0.10.0) and `RUNICASSETS001` (the development-directory asset
   source, graduated in 0.10.0). An npm package exports its
   experimental APIs only from its `./experimental` subpath, which may change in
-  a minor release; graduation moves an export to the root entry. No npm API is
-  experimental since 0.10.0, which removed every `./experimental` entry.
+  a minor release; graduation moves an export to the root entry. 0.10.0 removed
+  every `./experimental` entry; 0.18 added new ones for hosted regions, and 0.19
+  `onBridgeDraining` for the close drain.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each release on a
   prerelease version, `<release major.minor.patch>-preview.N` with a counter of its
