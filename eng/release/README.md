@@ -6,8 +6,11 @@ releases and their evidence remain historical records.
 
 ## Routine preview release
 
-1. Commit the intended preview version and user-facing changes. Package versions
-   must agree with `eng/workspace.json`; published versions cannot be overwritten.
+1. Commit the release's user-facing changes: its notes in
+   `eng/release/notes/<version>.md` and the [migration guide](../../docs/migration-1.0.md).
+   `main` already carries the version, set after the previous release (step 6);
+   package versions must agree with `eng/workspace.json`, and published versions
+   cannot be overwritten.
 2. Wait for a `ci.yml` run of that commit on `main` to succeed with every Windows and
    macOS job. A push runs only the Windows and macOS legs its changes need, so if it
    skipped one, run **SDK CI** on `main` manually (`gh workflow run ci.yml --ref main`)
@@ -46,6 +49,15 @@ releases and their evidence remain historical records.
    `WindowsDomainClient.DiscoverControllerAsync` with a `DomainControllerNameFormat`
    (`Runic.Platform.Administration.Windows`). `git grep -n RS0026 -- '*.cs'` lists the
    attributes that remain.
+   In the same post-release work, move `main` to the next candidate: after `0.y.z`
+   it is the next minor, `bun run version:bump 0.(y+1).0`, which advances
+   `Runic.Application.Views.CsWebUi` to `0.(y+1).0-preview.1`, as Command Line and
+   Translations do after their releases (D063.6, D066.13). Add
+   `eng/release/notes/0.(y+1).0.md` with its title and install lines; changes record
+   their notes there. The candidate stays until a pull request schedules the first
+   release candidate (see [Release candidates and 1.0.0](#release-candidates-and-100)).
+   Install instructions in the guides keep naming the published release, or no
+   version, until the candidate is published.
 7. Refresh the docs catalog (see the end of this page).
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. The
@@ -317,7 +329,9 @@ prerelease such as `1.0.0-rc.1`, or a stable `x.y.z`.
 1.0.0 follows `1.0.0-rc.N` (D026.5, D028.6). Each rc, and 1.0.0 itself, is a routine
 release with these differences:
 
-1. `bun run version:bump 1.0.0-rc.N` (then `1.0.0`). `Runic.Application.Views.CsWebUi`
+1. `bun run version:bump 1.0.0-rc.N` (then `1.0.0`): the pull request that schedules
+   rc.1 replaces the `0.(y+1).0` candidate on `main`, and the release pull request
+   of each later rc, and of 1.0.0, sets its version. `Runic.Application.Views.CsWebUi`
    stays a prerelease with its own counter (D043.6): `1.0.0-preview.N` would sort
    below `1.0.0-rc.N`, so it keeps the `preview` label throughout. Its version is
    always `<train major.minor.patch>-preview.N` (`bun eng/version.mjs check` enforces
