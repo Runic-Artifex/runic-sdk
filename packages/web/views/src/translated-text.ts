@@ -118,8 +118,8 @@ function translationsTextChannel(): TranslationsTextChannel | undefined {
   const value = (globalThis as Record<symbol, unknown>)[translationsTextKey] as Partial<TranslationsTextChannel> | null | undefined;
   if (typeof value !== "object" || value === null) return undefined;
   const listeners = value.listeners;
-  return typeof value.version === "number" && value.version >= 1 && typeof listeners?.add === "function"
-    && typeof listeners.delete === "function" ? value as TranslationsTextChannel : undefined;
+  return typeof listeners?.add === "function" && typeof listeners.delete === "function"
+    ? value as TranslationsTextChannel : undefined;
 }
 
 function changed(slots: Slots): void {
