@@ -78,7 +78,12 @@ internal sealed partial class CodegenDiagnosticsTests
             var contract = File.ReadAllText(contractPath);
             Require(contract.EndsWith("\n//# sourceMappingURL=link.contract.d.ts.map\n", StringComparison.Ordinal),
                 $"The contract does not name its declaration map:\n{contract}");
-            using var map = JsonDocument.Parse(File.ReadAllText(contractPath + ".map"));
+            // LF only and forward slashes, so a committed client is the same whichever OS generated it.
+            var mapText = File.ReadAllText(contractPath + ".map");
+            Require(!contract.Contains('\r', StringComparison.Ordinal) && !mapText.Contains('\r', StringComparison.Ordinal)
+                    && !mapText.Contains("\\\\", StringComparison.Ordinal),
+                $"The contract or its map has a CR or a backslash:\n{mapText}");
+            using var map = JsonDocument.Parse(mapText);
             var segments = DecodeDeclarationMap(map.RootElement, contract, typescript);
             var sources = map.RootElement.GetProperty("sources").EnumerateArray().Select(source => source.GetString()!).ToArray();
             Require(sources.SequenceEqual(["../Fixture.cs"]) && !map.RootElement.TryGetProperty("sourcesContent", out _)
