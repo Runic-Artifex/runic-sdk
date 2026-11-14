@@ -26,17 +26,20 @@ if(args[0]==='api'){
 `;
 const assets = [`runic-sdk-${VERSION}-packages.tar.gz`, `runic-sdk-${VERSION}.cdx.json`, 'SHA256SUMS'];
 // Runs github.mjs release over a release directory that holds the described assets.
-function fixture(mode, check, extra = [], {described = true} = {}) {
+function fixture(mode, check, extra = [], {described = true, fragments = false} = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'runic-release-test-'));
   try {
     const bin = join(directory, 'bin'), output = join(directory, 'output');
     mkdirSync(bin); mkdirSync(output);
     if (described) for (const name of assets) writeFileSync(join(output, name), `${name} fixture`);
+    const notes = join(directory, 'notes');
+    mkdirSync(notes);
+    if (fragments) mkdirSync(join(notes, VERSION, 'fixes'), {recursive: true});
     const calls = join(directory, 'calls.jsonl');
     writeFileSync(calls, '');
     writeFileSync(join(bin, 'gh'), `#!${process.execPath}\n${ghScript}`, {mode: 0o755});
     const result = spawnSync(process.execPath, [join(root, 'eng/release/github.mjs'), 'release', output, ...extra], {
-      cwd: root, encoding: 'utf8', env: {...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, TEST_MODE: mode, TEST_SOURCE: source, TEST_CALLS: calls},
+      cwd: root, encoding: 'utf8', env: {...process.env, RUNIC_RELEASE_NOTES: notes, PATH: `${bin}${delimiter}${process.env.PATH}`, TEST_MODE: mode, TEST_SOURCE: source, TEST_CALLS: calls},
     });
     check(result, output, readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)));
   } finally { rmSync(directory, {recursive: true, force: true}); }
@@ -56,6 +59,13 @@ test('a release without described assets stops before writing, also in a dry run
     expect(result.stderr).toContain('run github.mjs describe first');
     expect(calls.some(args => ['create', 'upload', 'edit'].includes(args[1]))).toBe(false);
   }, extra, {described: false});
+});
+test('unassembled release-note fragments stop a release, also in a dry run', () => {
+  for (const extra of [[], ['--dry-run']]) fixture('new', (result, output, calls) => {
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`run bun eng/release/notes.mjs assemble ${VERSION}`);
+    expect(calls.some(args => ['create', 'upload', 'edit'].includes(args[1]))).toBe(false);
+  }, extra, {fragments: true});
 });
 test('retry preserves existing release while conflicting release or tag prevents creation', () => {
   fixture('existing', (result, output, calls) => {
