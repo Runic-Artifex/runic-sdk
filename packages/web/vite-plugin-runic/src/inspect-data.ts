@@ -4,6 +4,7 @@
 // own; inspect.ts reads the page and draws the overview.
 
 import type { RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel } from "./sources.js";
+import type { SourceBindings } from "./inspect-handlers.js";
 
 /**
  * A source location of the overview, with how "open in editor" opens it: `runic` posts the source map entry's `id` to
@@ -72,6 +73,15 @@ export interface RunicInspectCommand {
   readonly route: string;
   readonly viewModel?: string;
   readonly member: string;
+  /**
+   * How the overview knows it: `call` (the element made a Bridge call to it) or `source` (its event handler reaches
+   * the client call in the component's file, found before any click).
+   */
+  readonly evidence: "call" | "source";
+  /** Where the handler reaches the client call (`client.increment()`), when the source shows it. */
+  readonly frontend?: RunicInspectLocation;
+  /** `direct`: in the handler; `helper`: through `useCommand`/`injectCommand`-style helpers; `local`: through another declaration of the file. */
+  readonly via?: "direct" | "helper" | "local";
   /** The handler, such as `Demo.CounterViewModel.Increment()`, and the command property. */
   readonly symbol?: string;
   readonly property?: string;
@@ -176,6 +186,8 @@ export interface InspectInput {
   /** Why there is no source map, for the notes. */
   readonly sourceMapStatus?: "missing" | "unavailable";
   readonly component?: RunicInspectComponent | undefined;
+  /** The element's event bindings in its components' source and the client calls they reach (handlers.ts). */
+  readonly source?: SourceBindings | undefined;
   /** The messages the element's markers name, with their sources where the Translations dev server knows them. */
   readonly messages?: readonly RunicInspectMessage[] | undefined;
   /**
@@ -388,6 +400,10 @@ function runicLocation(entry: RunicSourceMember | RunicSourceViewModel): RunicIn
     : { file: location.file, line: location.line, column: location.column, editor: "runic", id: entry.id };
 }
 
+function frontendLocation(call: { readonly file: string; readonly line: number; readonly column: number }): RunicInspectLocation {
+  return { file: call.file, line: call.line, column: call.column, editor: "vite" };
+}
+
 function capitalize(name: string): string {
   return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
 }
@@ -453,10 +469,13 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
       if (commands.some((command) => command.route === binding.route && command.member === binding.member)) continue;
       const canName = `can${capitalize(binding.member)}`;
       const canExecute = stateValue(state, canName);
+      const call = input.source?.calls.find((candidate) => candidate.member === binding.member);
       commands.push({
         route: binding.route,
         ...(viewModel === undefined ? {} : { viewModel: viewModel.id }),
         member: binding.member,
+        evidence: "call",
+        ...(call === undefined ? {} : { frontend: frontendLocation(call), via: call.via }),
         ...(entry === undefined ? {} : { symbol: entry.symbol }),
         ...(entry?.property === undefined ? {} : { property: entry.property }),
         ...(location === undefined ? {} : { location }),
@@ -476,6 +495,39 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
         ...(entry === undefined ? {} : { symbol: entry.symbol }),
         ...(location === undefined ? {} : { location }),
       });
+    }
+  }
+
+  // What the element's handlers reach in the source, before any call: the client calls that are commands of a
+  // ViewModel of the page (an open route's), else of the source map.
+  const sourceCommands: string[] = [];
+  for (const call of input.source?.calls ?? []) {
+    if (index === undefined) break;
+    if (commands.some((command) => command.member === call.member)) continue;
+    const isCommand = (viewModel: RunicSourceViewModel | undefined): boolean =>
+      viewModel !== undefined && index.members.has(`${viewModel.id}/command/${call.member}`);
+    let routes = [...input.states.keys()].filter((route) => isCommand(viewModelOf(route)));
+    if (routes.length === 0) {
+      routes = [...new Set(index.map.viewModels.filter((viewModel) => isCommand(viewModel)).map((viewModel) => viewModel.route))];
+    }
+    for (const route of routes) {
+      const viewModel = input.states.has(route) ? useRoute(route)
+        : index.map.viewModels.find((candidate) => candidate.route === route && isCommand(candidate));
+      if (viewModel === undefined) continue;
+      if (input.states.has(route) === false) useRoute(route);
+      const entry = sourceMember(viewModel, ["command"], call.member);
+      const location = entry === undefined ? undefined : runicLocation(entry);
+      const canExecute = stateValue(input.states.get(route), `can${capitalize(call.member)}`);
+      commands.push({
+        route, viewModel: viewModel.id, member: call.member, evidence: "source",
+        frontend: frontendLocation(call), via: call.via,
+        ...(entry === undefined ? {} : { symbol: entry.symbol }),
+        ...(entry?.property === undefined ? {} : { property: entry.property }),
+        ...(location === undefined ? {} : { location }),
+        ...(canExecute === undefined ? {} : { canExecute }),
+        calls: 0,
+      });
+      sourceCommands.push(call.member);
     }
   }
 
@@ -531,8 +583,16 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
   } else if (input.sourceMapStatus === "unavailable") {
     notes.push("This development server does not serve the Bridge source map (/__runic/sources), so no C# locations.");
   }
-  if (input.element.interactive && input.learned.length === 0) {
-    notes.push("No Bridge call from this element yet: use it once outside Runic Inspect, and the overview shows the command or setter it calls.");
+  const external = input.source?.external ?? [];
+  if (input.element.interactive && input.learned.length === 0 && sourceCommands.length === 0) {
+    if (external.length > 0) {
+      notes.push(`Its handler uses ${external.slice(0, 3).map((entry) => `${entry.name} from ${entry.source}`).join(", ")}: `
+        + "a command reached through another file is learned on first click. Use it once outside Runic Inspect.");
+    } else {
+      notes.push("No Bridge call from this element yet: use it once outside Runic Inspect, and the overview shows the command or setter it calls.");
+    }
+  } else if (sourceCommands.length > 0 && input.learned.length === 0) {
+    notes.push("Commands found in the component's source before any click; calls through other files are learned on first click.");
   }
   if (input.component === undefined) {
     notes.push("No framework component found for this element (React, Vue, Svelte or Angular in development mode).");

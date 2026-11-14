@@ -501,7 +501,12 @@ internal sealed partial class ToolTests
         workspace.Write("Frontend/package.json", """{"devDependencies":{"@runic-artifex/vite-plugin-runic":"0.11.0"}}""");
         True(AngularDevelopmentServer.ConfirmsSession(configuration), "The template's proxyConfig answers with runicDevSessionProxy().");
         string session = ViteDevelopmentServer.CreateSession();
-        Equal(session, AngularDevelopmentServer.CreateEnvironment(session)[ViteDevelopmentServer.SessionEnvironmentVariable]);
+        Equal(session, AngularDevelopmentServer.CreateEnvironment(configuration, session)[ViteDevelopmentServer.SessionEnvironmentVariable]);
+        // #976: runicDevSessionProxy() learns where the development source map is, as runic() does.
+        string sourceMap = Path.Combine(workspace.Root, "obj", "Debug", "net10.0", "runic-bridge", "sources.json");
+        Equal(sourceMap, AngularDevelopmentServer.CreateEnvironment(configuration with { BridgeSourceMapPath = sourceMap })
+            [ViteDevelopmentServer.SourceMapEnvironmentVariable]);
+        Equal(configuration.ProjectPath, AngularDevelopmentServer.CreateEnvironment(configuration)["RUNIC_APPLICATION_DEV_PROJECT"]);
 
         var origin = new Uri("http://127.0.0.1:12345/");
         var running = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);

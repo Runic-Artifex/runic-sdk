@@ -90,12 +90,12 @@ its own server process is still running. The plugin and the tool must come from
 the same release; an older plugin does not answer, and readiness times out with
 `RAPPDEV1007`.
 
-A Vite development server also gets `RUNIC_APPLICATION_DEV_SOURCE_MAP` (0.20):
-the path of the development source map that the Bridge generator writes to the
-project's intermediate directory (`obj/<Configuration>/<TargetFramework>/runic-bridge/sources.json`),
-which `runic()` serves at `/__runic/sources` and opens in the editor through
-`/__runic/open` (see "Source map and open in editor" in the
-`@runic-artifex/vite-plugin-runic` README).
+A Vite or Angular development server also gets `RUNIC_APPLICATION_DEV_SOURCE_MAP`
+(0.20): the path of the development source map that the Bridge generator writes
+to the project's intermediate directory (`obj/<Configuration>/<TargetFramework>/runic-bridge/sources.json`),
+which `runic()` and, under the Angular CLI, `runicDevSessionProxy()` serve at
+`/__runic/sources` and open in the editor through `/__runic/open` (see "Source
+map and open in editor" in the `@runic-artifex/vite-plugin-runic` README).
 
 Without a Vite or Angular development server, `dev` runs the frontend watcher
 instead: the `RunicApplicationFrontendDevWatchTarget` MSBuild target, or the

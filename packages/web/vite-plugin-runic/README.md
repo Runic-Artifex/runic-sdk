@@ -191,9 +191,9 @@ it.
   address), else 403; an id or location the map does not list, an entry
   without a location, and a file that no longer exists answer 404. The map
   itself answers only same-origin requests from this machine too.
-- **Only `vite dev`.** Both endpoints exist only on the development server, not
-  in `vite build`, `vite preview` or `runicDevSessionProxy()` (the Angular
-  CLI).
+- **Only development servers.** Both endpoints exist only on the development
+  server (`vite dev`, and `ng serve` through `runicDevSessionProxy()`), not in
+  `vite build` or `vite preview`.
 
 ## Runic Inspect
 
@@ -236,6 +236,85 @@ them. **Esc** or Alt+Shift+X turns it off. The overview shows:
 C# locations open in your editor through [`/__runic/open`](#source-map-and-open-in-editor);
 frontend files through Vite's `/__open-in-editor`.
 
+**Before the first click.** The development server reads the element's
+component file and finds which of its event handlers reach which client call:
+directly (`client.save()`, `client.command("save")`), through Runic's helpers
+(`useCommand`, `useOperation`, `injectCommand`, `injectOperation`), or through
+other declarations of the same file (a function, a variable, a destructured
+`run`, a class method, `this.x`). The overview lists the calls that are
+commands of a ViewModel in the [source map](#source-map-and-open-in-editor),
+with the C# handler, "from the source, not called yet", and a link to the
+line that calls the client:
+
+```tsx
+const increment = useCommand(() => client?.increment()); // ← found here
+return <button onClick={() => void increment.run()}>Increment</button>;
+```
+
+| Framework | Handlers read | How the element is found |
+| --- | --- | --- |
+| React (JSX/TSX) | `onClick={…}` and every other `on…` prop, of elements and components | The element's JSX line (`_debugStack`); for a `<button onClick={props.onClick}>`, the `<Button onClick={…}>` around it |
+| Vue 3 (SFC) | `@click`/`v-on:click` in the template, with `<script setup>` and the Options API (`methods`, `setup()`) | The element's compiled listeners (`$setup.increment()`), else its component's only binding of the event |
+| Svelte 5 | `onclick={…}` and `on:click={…}`, of elements and components | The element's file, line and column (`__svelte_meta`), then the component tags around it |
+| Angular 17.1+ | `(click)="…"` in `template` and `templateUrl` files, with the class's fields and methods | The component file (`ɵcmp.debugInfo`) and `ng.getListeners`: the template's binding of the event and tag, by its order when there are several |
+
+Svelte and Vue files are read with the application's own `svelte/compiler`
+and `vue/compiler-sfc`, scripts with Vite's parser. Served modules are not
+changed: the analysis answers `GET /__runic/handlers?file=…` for pages of this
+machine, for frontend source files below the Vite root (not `node_modules`).
+
+What it does not see, so the command is learned on first click:
+
+- calls in other files: a store, a service, a custom hook or a function
+  imported from another module. The overview names the import
+  (`saveAll from ./store`);
+- handlers that come from outside the component: a prop passed down several
+  components, a context, an event bus;
+- elements that a template repeats with different handlers where the
+  framework does not say which one it is: an Angular `@for` with listeners that
+  differ per item, a Vue listener whose compiled code is the method itself
+  (`@click="save"`) when the component has several such bindings;
+- render functions (`h("button", { onClick })`) and Vue JSX.
+
+**On first click.** The development client also listens to the Bridge-call
+channel (`runic.views.calls`), whose `start` report arrives in the stack of
+the code that made the call. The DOM event being dispatched names the element
+(its `target`, so React's delegation to the root does not matter), and the
+nearest button, link or form field is recorded as calling that member. A
+command found this way is marked with its call count; it covers what the
+source analysis does not see. Use the element once with the mode off, then
+inspect it. A call that does not run during the event, such as a write a
+field controller sends after its previous one finished, is not attributed.
+
+**For agents and tests**, the development client puts an API on the page at
+`globalThis[Symbol.for("runic.vite.inspect")]`:
+
+```ts
+const inspect = (globalThis as any)[Symbol.for("runic.vite.inspect")];
+inspect.toggle(true);        // select mode on, which marks m.*() text; returns whether it is on
+const overview = await inspect.describe(document.querySelector("#save"));
+// { element, component, viewModels, members, commands, calls, texts, messages, notes }
+await inspect.select(document.querySelector("#save")); // shows the overview card
+await inspect.open(overview.commands[0].location); // opens it in the editor
+```
+
+`describe(element)` resolves to JSON-safe data (the type is exported as
+`RunicInspectDescription`); values are shortened, and `notes` says what the
+overview cannot tell, such as a missing source map. `messages` is filled only
+while select mode is on: call `toggle(true)` and let the page render once
+before `describe`. With `chrome-devtools-mcp` or Playwright, evaluate it in
+the page.
+
+Runic Inspect is plain DOM in a shadow root, so it works in every engine
+`dotnet runic dev` runs: an installed browser, WebView2, WKWebView and
+WebKitGTK. It is part of the development client, which a build replaces with
+an empty module: `vite build` output is byte-identical with and without it.
+`runic({ inspect: false })` leaves it out of the client and turns off
+`/__runic/handlers`. Under the Angular CLI, `runicDevSessionProxy()` answers
+`/__runic/sources`, `/__runic/open` and `/__runic/handlers` too
+([SvelteKit and Angular](#sveltekit-and-angular)), so the overview has the C#
+handlers and the commands before the first click there as well.
+
 ### Messages of `m.*()` calls
 
 A generated message function returns a plain string, so nothing in the page
@@ -268,43 +347,6 @@ component that does not render again, or a value computed once (such as
 `document.title`), keeps its text unmarked. Text formatted from a ViewModel's
 text reference is listed under **Texts from the ViewModel** instead. With an
 earlier plugin, the overview has no messages and its notes say why.
-
-**How an element's commands are known.** The development client listens to
-the Bridge-call channel (`runic.views.calls`), whose `start` report arrives in
-the stack of the code that made the call. The DOM event being dispatched names
-the element (its `target`, so React's delegation to the root does not matter),
-and the nearest button, link or form field is recorded as calling that member.
-A button therefore shows its command **after it was used once** in the page;
-before that, the overview says so. Use the element once with the mode off,
-then inspect it. A call that does not run during the event, such as a write a
-field controller sends after its previous one finished, is not attributed.
-
-**For agents and tests**, the development client puts an API on the page at
-`globalThis[Symbol.for("runic.vite.inspect")]`:
-
-```ts
-const inspect = (globalThis as any)[Symbol.for("runic.vite.inspect")];
-inspect.toggle(true);        // select mode on, which marks m.*() text; returns whether it is on
-const overview = await inspect.describe(document.querySelector("#save"));
-// { element, component, viewModels, members, commands, calls, texts, messages, notes }
-await inspect.select(document.querySelector("#save")); // shows the overview card
-await inspect.open(overview.commands[0].location); // opens it in the editor
-```
-
-`describe(element)` resolves to JSON-safe data (the type is exported as
-`RunicInspectDescription`); values are shortened, and `notes` says what the
-overview cannot tell, such as a missing source map. `messages` is filled only
-while select mode is on: call `toggle(true)` and let the page render once
-before `describe`. With `chrome-devtools-mcp` or Playwright, evaluate it in
-the page.
-
-Runic Inspect is plain DOM in a shadow root, so it works in every engine
-`dotnet runic dev` runs: an installed browser, WebView2, WKWebView and
-WebKitGTK. It is part of the development client, which a build replaces with
-an empty module: `vite build` output is byte-identical with and without it.
-`runic({ inspect: false })` leaves it out of the client. Under the Angular CLI
-(`runicDevSessionProxy()`) it works without C# locations, which need
-`/__runic/sources` of `vite dev`.
 
 ## Component build target
 
@@ -424,9 +466,18 @@ The entries keep the development state in the `ng serve` process and answer:
       at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12
   ```
 
-`runicDevSessionProxy({ maxTimelineEntries, printFailures })` takes the same
-timeline limit as `runic()` and `printFailures: false` to keep the terminal
-quiet. The `stale-input` warning works the same as with `runic()`; turn it off
+For [Runic Inspect](#runic-inspect), the entries also answer
+`/__runic/sources` (the development source map, found as `runic()` finds it,
+relative to the `ng serve` working directory), `/__runic/open` (a C# location,
+opened through the Angular development server's `/__open-in-editor`) and
+`/__runic/handlers` (the handler analysis of a component and its
+`templateUrl`), each for pages of this machine only.
+
+`runicDevSessionProxy({ maxTimelineEntries, printFailures, sourceMap, inspect })`
+takes the same timeline limit as `runic()`, `printFailures: false` to keep the
+terminal quiet, `sourceMap` as `runic({ sourceMap })` takes it (`false` turns
+off `/__runic/sources` and `/__runic/open`), and `inspect: false` to turn off
+`/__runic/handlers`. The `stale-input` warning works the same as with `runic()`; turn it off
 from the page with the registered symbol above.
 
 ### The client's channel

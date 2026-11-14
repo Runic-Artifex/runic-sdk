@@ -49,22 +49,20 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   assert.equal(handlers.has("runic:state"), false, "the page no longer reports a runtime state");
   // The open action is mounted at the root (sources.ts), so that an accepted request continues to /__open-in-editor.
   assert.deepEqual(middleware.map(([path]) => typeof path === "function" ? path.name : path),
-    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "runicOpenInEditor"]);
-  const withoutSources = [];
-  runic({ sourceMap: false }).configureServer({
-    ws: { on: () => undefined, send: () => undefined },
-    middlewares: { use: (path) => withoutSources.push(path) },
-    httpServer: undefined,
-  });
-  assert.deepEqual(withoutSources.map((path) => typeof path === "function" ? path.name : path),
-    ["/__runic/state", "/__runic/diagnostics", "runicOpenInEditor"], "sourceMap: false serves no map; Runic Inspect still opens Translations sources");
-  const withoutEither = [];
-  runic({ sourceMap: false, inspect: false }).configureServer({
-    ws: { on: () => undefined, send: () => undefined },
-    middlewares: { use: (path) => withoutEither.push(path) },
-    httpServer: undefined,
-  });
-  assert.deepEqual(withoutEither, ["/__runic/state", "/__runic/diagnostics"], "without the map and Runic Inspect, no endpoint");
+    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "runicOpenInEditor", "/__runic/handlers"]);
+  const endpoints = (options) => {
+    const paths = [];
+    runic(options).configureServer({
+      ws: { on: () => undefined, send: () => undefined },
+      middlewares: { use: (path) => paths.push(typeof path === "function" ? path.name : path) },
+      httpServer: undefined,
+    });
+    return paths;
+  };
+  assert.deepEqual(endpoints({ sourceMap: false }), ["/__runic/state", "/__runic/diagnostics", "runicOpenInEditor", "/__runic/handlers"],
+    "sourceMap: false serves no map; Runic Inspect still opens Translations sources");
+  assert.deepEqual(endpoints({ sourceMap: false, inspect: false }), ["/__runic/state", "/__runic/diagnostics"],
+    "without the map and Runic Inspect, no endpoint");
 });
 
 test("injects the Desktop bootstrap while leaving Vite and HMR ownership intact", async () => {
@@ -840,6 +838,7 @@ await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect-handlers.js", "plugin/inspect-handlers");
 await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
@@ -923,6 +922,7 @@ await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect-handlers.js", "plugin/inspect-handlers");
 await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
