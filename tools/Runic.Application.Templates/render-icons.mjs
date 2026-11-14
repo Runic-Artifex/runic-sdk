@@ -1,6 +1,7 @@
 // Renders the runic-app template's placeholder icon, content/runic-app/icons/icon.svg, into the files the project
 // and its packages use: icon.png (512 px, the desktop entry, Flatpak and window icons) and icon.ico (16 to 256 px,
-// the Windows executable's icon). As Windows' own icons do, the ICO holds 32-bit bitmaps up to 48 px and a PNG at
+// the Windows executable's icon), and the templates' .template.config/icon.png (64 px, Visual Studio's New Project and
+// Add New Item dialogs). As Windows' own icons do, the ICO holds 32-bit bitmaps up to 48 px and a PNG at
 // 64 px and above, which keeps it small. Needs ImageMagick 7 (`magick`) with SVG support. Run it after changing icon.svg:
 //
 //   bun tools/Runic.Application.Templates/render-icons.mjs
@@ -9,7 +10,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const icons = join(dirname(fileURLToPath(import.meta.url)), "content/runic-app/icons");
+const content = join(dirname(fileURLToPath(import.meta.url)), "content");
+const icons = join(content, "runic-app/icons");
+// The icon that ide.host.json names, for each template.
+const templateIcons = ["runic-app", "runic-view"].map(template => join(content, template, ".template.config/icon.png"));
 
 function render(size, format = "png") {
   const result = spawnSync("magick", ["-background", "none", "-density", "384", join(icons, "icon.svg"),
@@ -66,5 +70,6 @@ if (import.meta.main) {
   writeFileSync(join(icons, "icon.png"), render(512));
   writeFileSync(join(icons, "icon.ico"), ico([256, 128, 64, 48, 32, 24, 16].map(size =>
     ({ size, png: size >= 64 ? render(size) : dib(size, render(size, "rgba")) }))));
-  console.log(`Rendered ${join(icons, "icon.png")} and icon.ico from icon.svg (${readFileSync(join(icons, "icon.svg")).length} bytes).`);
+  for (const icon of templateIcons) writeFileSync(icon, render(64));
+  console.log(`Rendered ${join(icons, "icon.png")}, icon.ico and the templates' icon.png from icon.svg (${readFileSync(join(icons, "icon.svg")).length} bytes).`);
 }

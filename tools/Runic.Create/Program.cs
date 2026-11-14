@@ -91,6 +91,7 @@ internal static class Program
         [Option("--linux-gtk", Description = "GTK version of Runic Desktop on Linux: 3 or 4.")] string? linuxGtk = null,
         [Option("--desktop-server", Description = "Server Runic Desktop serves the page from: native or kestrel.")] string? desktopServer = null,
         [Option("--view-models", Description = "MVVM library for the C# ViewModels.")] string? viewModels = null,
+        [Option("--editor", Description = "Editor files: none, or vscode for .vscode/ tasks and debug configurations.")] string? editor = null,
         [Option("--tests", Description = "Add a TUnit test project for the Window.")] bool tests = false,
         [Option("--translations", Description = "Translate the application with Runic Translations: one catalog in English and German for the page and C#, and a language switch.")] bool translations = false,
         [Option("--nix", Description = "Add a Nix flake that builds the application with the Runic SDK's builder.")] bool nix = false,
@@ -113,6 +114,7 @@ internal static class Program
                 ["linux-gtk"] = linuxGtk ?? "",
                 ["desktop-server"] = desktopServer ?? "",
                 ["view-models"] = viewModels ?? "",
+                ["editor"] = editor ?? "",
             },
             yes,
             dryRun,
@@ -127,7 +129,7 @@ internal static class Program
     }
 
     /// <summary>The template options the creator exposes as flags, by long name.</summary>
-    internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "linux-gtk", "desktop-server", "view-models"];
+    internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "linux-gtk", "desktop-server", "view-models", "editor"];
 
     /// <summary>The template's Boolean parameters the creator exposes as presence flags, by long name.</summary>
     internal static IReadOnlyList<string> ToggleFlags { get; } = ["tests", "translations", "nix", "packaging", "restore"];

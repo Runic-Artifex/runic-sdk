@@ -35,7 +35,8 @@
       "modifiers": [
         { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] },
         { "condition": "(!nix)", "exclude": [ "flake.nix" ] },
-        { "condition": "(!packaging)", "exclude": [ "packaging/**/*" ] }
+        { "condition": "(!packaging)", "exclude": [ "packaging/**/*" ] },
+        { "condition": "(editor != 'vscode')", "exclude": [ ".vscode/**/*" ] }
       ]
     },
     {
@@ -241,6 +242,17 @@
       "choices": [
         { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "ReactiveUI 26 Primitives: reactive objects and commands on the Window's model context" },
         { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" }
+      ]
+    },
+    "editor": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "none",
+      "displayName": "Editor files",
+      "description": "Editor configuration to add beside Properties/launchSettings.json, which Visual Studio, Rider and dotnet run read.",
+      "choices": [
+        { "choice": "none", "displayName": "None", "description": "No editor folder; Visual Studio and Rider use the launch profiles" },
+        { "choice": "vscode", "displayName": "VS Code", "description": "Adds .vscode/ with tasks for dotnet runic dev, debug configurations for the C# extension and the recommended extensions" }
       ]
     },
     "tests": {

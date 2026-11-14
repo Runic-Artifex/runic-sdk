@@ -40,6 +40,76 @@ the frontend's lock file; a restore that would resolve a different package
 fails until you restore again on purpose, for example with
 `dotnet restore --force-evaluate` after changing a package reference.
 
+## Debug it in your IDE
+
+`Properties/launchSettings.json` has the project's launch profiles. Visual
+Studio and Rider list them next to their Start button, and `dotnet run` uses
+the first one:
+
+| Profile | What it starts |
+| --- | --- |
+| `RunicWindowApp` | The Window with `DOTNET_ENVIRONMENT=Development`: the page's DevTools and detailed Bridge errors. |
+<!--#if (desktopHost) -->
+| `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). Not yet checked by hand on Windows. |
+<!--#endif -->
+
+To debug the C# code while the page comes live from the
+__DEVELOPMENT_SERVER_NAME__ development server:
+
+1. Run `dotnet runic dev --no-window` in a terminal. It serves only the
+   frontend and prints `[dev] Ready` when the page can load.
+2. Start the `RunicWindowApp` profile with the debugger (F5). The IDE's build
+   keeps the development page that `dev` wrote, so frontend edits appear in
+   the Window while you debug. Apply C# edits with the IDE's Hot Reload, and
+   restart the Window after a change Hot Reload cannot apply, such as a new
+   ViewModel member.
+
+Without step 1, F5 builds the production frontend and the Window shows that.
+In Rider, you can add `dotnet runic dev --no-window` to the run configuration's
+"Before launch" list as an external tool.
+
+To keep `dotnet runic dev` starting the Window instead, attach the IDE's
+debugger to the process that `[dev] Window started: process <pid>` names. That
+debugger ends when `dotnet watch` restarts the Window after a C# edit.
+
+<!--#if (editor == "vscode") -->
+### VS Code
+
+`.vscode/` (`--editor vscode`) has tasks and debug configurations for the C#
+extension (`ms-dotnettools.csharp`), which `extensions.json` recommends; C# Dev
+Kit is not needed. Choose a configuration in Run and Debug:
+
+| Configuration | What it does |
+| --- | --- |
+| `Window` | Runs the `runic: dev --no-window` task until `[dev] Ready`, builds, and starts the Window under the debugger: the steps above. |
+| `Attach to the Window (dotnet runic dev)` | Runs the `runic: dev` task and attaches to the Window process you pick, the one `[dev] Window started: process <pid>` names. |
+<!--#if (desktopHost) -->
+| `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Not yet checked by hand on Windows. |
+<!--#endif -->
+
+The tasks (Terminal > Run Task) are `runic: dev`, `runic: dev --no-window`,
+`build` and `runic: doctor`. Failures of `dotnet runic dev` (its `RAPPDEV` codes)
+and build errors appear in the Problems panel. The `dev` tasks keep running
+after a debug session ends, so the next F5 starts faster; stop them with
+Terminal > Terminate Task. The launch configurations start the build output in
+`bin/Debug/`, which on macOS is not the development bundle that `dotnet run`
+and `dotnet runic dev` start. VS Code builds from other vendors, such as
+VSCodium, cannot run Microsoft's .NET debugger; use netcoredbg there.
+
+<!--#else -->
+`dotnet new runic-app --editor vscode` adds VS Code tasks and debug
+configurations for these steps to a new project.
+
+<!--#endif -->
+The [IDE contract](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/tools/dotnet-runic/README.md#ide-contract)
+describes the lines and the `obj/runic/dev-session.json` file that tasks and
+extensions read.
+<!--#if (desktopHost) -->
+On Linux and macOS the page's engine has its own inspector in Development
+(WebKit's on Linux, Safari's Web Inspector on macOS) but no DevTools Protocol
+endpoint, so IDE JavaScript debuggers attach only on Windows.
+<!--#endif -->
+
 ## What opens
 
 `RunAsync` in `Program.cs` opens `WorkspaceWindow` with
@@ -178,6 +248,10 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#else -->
 | `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The build generates `AppText` for C# and the page's ESM in `Frontend/.runic/translations`. See [Translate it](#translate-it). |
 <!--#endif -->
+<!--#endif -->
+| `Properties/launchSettings.json` | Launch profiles for Visual Studio, Rider and `dotnet run`. See [Debug it in your IDE](#debug-it-in-your-ide). |
+<!--#if (editor == "vscode") -->
+| `.vscode/` | VS Code tasks for `dotnet runic dev`, debug configurations and the recommended extensions. See [VS Code](#vs-code). |
 <!--#endif -->
 | `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
 <!--#if (packaging) -->

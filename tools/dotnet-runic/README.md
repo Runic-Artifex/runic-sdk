@@ -379,6 +379,12 @@ the options that describe how `dev` starts the Window (`RAPPDEV1014`).
 2. Start the Window with the IDE's debugger (F5) from a launch profile with
    `DOTNET_ENVIRONMENT=Development`.
 
+Since 0.20, projects from the `runic-app` template have that launch profile,
+named after the project, and with `--editor vscode` VS Code tasks and
+configurations like the ones below: see the template README's
+[Debug it in your IDE](../Runic.Application.Templates/content/runic-app/README.md#debug-it-in-your-ide).
+For another project, add the snippets below.
+
 A launch profile for Visual Studio and Rider (and `dotnet run`), in
 `Properties/launchSettings.json`:
 

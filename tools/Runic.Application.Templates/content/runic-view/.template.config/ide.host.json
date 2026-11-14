@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/ide.host.json",
+  "icon": "icon.png",
+  "defaultSymbolVisibility": true,
+  "symbolInfo": [
+    { "id": "viewModels" },
+    { "id": "window" },
+    { "id": "namespace", "isVisible": false }
+  ]
+}
