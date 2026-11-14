@@ -167,16 +167,17 @@ test("message markers: stripped from the text, grouped by message, with sources 
   // The reply of GET /__runic-translations/message (runic-translations-sdk#182).
   const reply = { message: { catalog: "app", key: "heading", baseLocale: "en", locales: [
     { locale: "en", origin: "catalog", text: "Counter", source: { path: "/app/translations/en.rmf2", line: 2, column: 1 } },
-    { locale: "de", origin: "catalog", text: "Zähler", source: { path: "/app/translations/de.rmf2", line: 4, column: 3 } },
+    { locale: "de", origin: "catalog", text: "Zähler", source: { path: "/app/translations/de.rmf2", line: 4, column: 3 }, editable: true },
   ] } };
   assert.deepEqual(messageSource(reply, { catalog: "app", key: "heading", locale: "de" }), {
     source: "Zähler",
     location: { file: "/app/translations/de.rmf2", line: 4, column: 3, editor: "translations", message: { catalog: "app", key: "heading", locale: "de" } },
+    editable: true,
   });
   assert.equal(messageSource(reply, { catalog: "app", key: "heading", locale: "" }).location.message.locale, "en", "no locale: the base locale");
-  assert.deepEqual(messageSource(reply, { catalog: "app", key: "heading", locale: "fr" }), {});
+  assert.deepEqual(messageSource(reply, { catalog: "app", key: "heading", locale: "fr" }), { editable: true }, "another locale is editable");
   assert.deepEqual(messageSource(undefined, heading), {});
-  assert.deepEqual(messageSource({ message: { locales: [{ locale: "en", text: null, source: null }] } }, heading), {}, "a missing locale has neither");
+  assert.deepEqual(messageSource({ message: { locales: [{ locale: "en", text: null, source: null }] } }, heading), { editable: false }, "a missing locale has neither");
 
   const description = assembleDescription(input({ element: element({ text: "Counter", ownText: "Counter" }),
     messages: [{ ...heading, in: ["text"], ...messageSource(reply, heading) }], markerStatus: "on" }));
@@ -190,6 +191,15 @@ test("message markers: stripped from the text, grouped by message, with sources 
     "no note for an element without text");
   assert.match(assembleDescription(input({ messages: [{ ...heading, in: ["text"] }], markerStatus: "on", messageSourcesStatus: "unavailable" })).notes.join("\n"),
     /No \.rmf2 locations/u);
+  // From another machine (#957): what was refused, and that editor links do not open there.
+  const remote = assembleDescription(input({ messages: [{ ...heading, in: ["text"] }], markerStatus: "on", messageSourcesStatus: "forbidden",
+    sourceMapStatus: "forbidden", handlersStatus: "forbidden", remote: true })).notes.join("\n");
+  assert.match(remote, /refused this machine the Bridge source map \(403\).*runic\(\{ allow \}\) or RUNIC_DEV_ALLOW/u);
+  assert.match(remote, /refused this machine the handler analysis/u);
+  assert.match(remote, /Translations dev server refused this machine its message API \(403\)/u);
+  assert.match(remote, /opened from another machine.*\/__runic\/open/u);
+  assert.doesNotMatch(remote, /No \.rmf2 locations/u, "one note for the refusal");
+  assert.doesNotMatch(notes("on"), /another machine|403/u);
 });
 
 test("open in editor for a message: a well-formed reference, and only a .rmf2/.mf2 source the Translations dev server names", async () => {
@@ -343,21 +353,30 @@ test("Vue, Svelte and Angular components from their development metadata", () =>
     "/app", undefined)?.component.name, "A");
 });
 
-test("vite build output is byte-identical with and without Runic Inspect", async () => {
+test("vite build output is byte-identical with and without Runic Inspect and its translation editor", async () => {
   const root = fileURLToPath(new URL("./fixtures/vite/", import.meta.url));
   const directory = await mkdtemp(join(tmpdir(), "runic-inspect-build-"));
   const builds = {};
+  const previous = process.env.RUNIC_DEV_ALLOW;
   try {
-    for (const [name, options] of [["inspect", {}], ["without-inspect", { inspect: false }], ["without-client", { devtools: false }]]) {
+    for (const [name, options, allow] of [["inspect", {}], ["without-inspect", { inspect: false }], ["without-client", { devtools: false }],
+      ["remote", { allow: ["100.64.0.0/10"] }, "192.168.1.20"]]) {
+      if (allow === undefined) delete process.env.RUNIC_DEV_ALLOW; else process.env.RUNIC_DEV_ALLOW = allow;
       await build({ root, configFile: false, logLevel: "silent", plugins: [runic(options)], build: { outDir: join(directory, name) } });
       builds[name] = await files(join(directory, name));
     }
     assert.ok(Object.keys(builds.inspect).length > 0);
     assert.deepEqual(builds.inspect, builds["without-inspect"]);
     assert.deepEqual(builds.inspect, builds["without-client"]);
+    assert.deepEqual(builds.inspect, builds.remote, "the allow list changes nothing in a build");
     const text = Object.values(builds.inspect).map((content) => content.toString("utf8")).join("\n");
     assert.doesNotMatch(text, /runic\.vite\.inspect|runic-inspect|Runic Inspect|__open-in-editor|__runic\/|runic\.translations\.text|__runic-translations|\u2063/u);
-  } finally { await rm(directory, { recursive: true, force: true }); }
+    // The translation editor (#957) and the allow list.
+    assert.doesNotMatch(text, /expectedHash|Reapply my text|MF2 source|RUNIC_DEV_ALLOW|100\.64\.0\.0|192\.168\.1\.20|loopback-only/u);
+  } finally {
+    if (previous === undefined) delete process.env.RUNIC_DEV_ALLOW; else process.env.RUNIC_DEV_ALLOW = previous;
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("inspect: false tells the development client to leave Runic Inspect out", () => {

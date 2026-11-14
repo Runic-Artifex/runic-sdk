@@ -1652,7 +1652,9 @@ the messages of generated `m.*()` calls it shows with their `.rmf2` lines, each
 with an "open in editor" link. Message keys need Runic Translations' Vite plugin
 0.12, which marks message text only while select mode is on; `configureTranslatedText`
 follows its text-change channel, so the page renders again with and without the
-markers. The selecting click does not reach the
+markers. **Edit** next to a message edits its MF2 source in every locale and
+saves it to the `.rmf2`/`.mf2` file; the page shows the new text in place. The
+selecting click does not reach the
 page's handlers. `globalThis[Symbol.for("runic.vite.inspect")].describe(element)`
 returns the same overview as data, for agents and tests.
 

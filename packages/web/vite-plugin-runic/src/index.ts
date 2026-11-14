@@ -11,6 +11,7 @@ import { answerClientMessage, answerState, devSessionValue, devSessionVariable, 
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
 import { findMessageSource, type MessageReference } from "./translations-source.js";
+import { allowVariable, parseAllowList, resolveAccessList } from "./access.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
@@ -115,6 +116,14 @@ export interface RunicViteOptions {
    * The build never contains it.
    */
   readonly inspect?: boolean;
+  /**
+   * Hosts and networks besides this machine whose pages may read Runic Inspect's data (`/__runic/sources`,
+   * `/__runic/handlers`) when the development server is reachable from them (`server.host`): IPv4 or IPv6 addresses,
+   * CIDR networks (a Tailscale network: `100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and host names, resolved when a request
+   * arrives. The `RUNIC_DEV_ALLOW` environment variable adds to them; Runic Translations' in-page editing API reads the
+   * same variable. Loopback only by default. `/__runic/open` stays loopback-only: it launches the editor on this machine.
+   */
+  readonly allow?: readonly string[];
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
@@ -134,6 +143,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     throw new TypeError("sourceMap must be a path or false.");
   }
   const client = options.devtools !== false;
+  const allowRules = options.allow === undefined ? [] : parseAllowList(options.allow, "allow");
   let server: ViteDevServer | undefined;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
@@ -263,9 +273,15 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         answerClientMessage(request, response, deliver).catch(next);
       });
       const readSourceMap = options.sourceMap === false ? () => undefined : createSourceMapReader(options.sourceMap, () => resolvedRoot);
+      // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
+      const access = resolveAccessList(allowRules);
+      if (access.remote && (options.sourceMap !== false || (client && options.inspect !== false))) {
+        viteServer.config?.logger?.info(`[runic] Runic Inspect's data (/__runic/sources, /__runic/handlers) accepts requests from loopback and ${
+          access.rules.map((rule) => rule.text).join(", ")} (runic({ allow }), ${allowVariable}); /__runic/open stays loopback-only`, { timestamp: true });
+      }
       if (options.sourceMap !== false) {
-        viteServer.middlewares.use(sourcesPath, (request, response) => {
-          answerSources(request, response, readSourceMap);
+        viteServer.middlewares.use(sourcesPath, (request, response, next) => {
+          answerSources(request, response, readSourceMap, access).catch(next);
         });
       }
       // The open action, for the source map's C# locations and Runic Inspect's Translations messages. Mounted at the
@@ -289,7 +305,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         viteServer.middlewares.use(handlersPath, (request, response, next) => {
           // A mounted handler sees the URL without the mount path.
           request.url = `${handlersPath}${request.url ?? ""}`;
-          answerHandlers(request, response, analyze, resolvedRoot).catch(next);
+          answerHandlers(request, response, analyze, resolvedRoot, access).catch(next);
         });
       }
       viteServer.httpServer?.once("close", () => {

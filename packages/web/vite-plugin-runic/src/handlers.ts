@@ -15,7 +15,8 @@ import { createRequire } from "node:module";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
-import { mayReadLocally } from "./requests.js";
+import { mayRead as mayReadRequest } from "./requests.js";
+import type { AccessList } from "./access.js";
 import type { parseSync } from "vite";
 
 /** A position in a file: 1-based line and column. */
@@ -746,19 +747,20 @@ function answerJson(response: ServerResponse, status: number, body?: unknown): v
 }
 
 /**
- * Answers `GET /__runic/handlers?file=…` with the file's analysis: for a page of this server on this machine, and a
+ * Answers `GET /__runic/handlers?file=…` with the file's analysis: for a page of this server on this machine or a
+ * client the allow list admits (access.ts), and a
  * frontend source file below the root (not `node_modules`); 404 otherwise.
  */
 export async function answerHandlers(
   request: IncomingMessage, response: ServerResponse, analyze: (file: string) => Promise<RunicHandlerAnalysis | undefined>,
-  root: string,
+  root: string, access?: AccessList,
 ): Promise<void> {
   request.resume();
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.setHeader("Allow", "GET, HEAD");
     return answerJson(response, 405);
   }
-  if (!mayReadLocally(request)) return answerJson(response, 403);
+  if (!(await mayReadRequest(request, access))) return answerJson(response, 403);
   let file: string | null;
   try { file = new URL(request.url ?? "", "http://localhost").searchParams.get("file"); }
   catch { file = null; }
