@@ -58,7 +58,7 @@ test('malformed transitive pnpm and Bun resolutions cannot hide beside a valid d
 });
 test('the translated Vite frontends resolve the published Translations Vite plugin, not a candidate', () => {
   const translated = templateLockDirectories.filter(entry => entry.translations);
-  expect(translated.map(entry => entry.framework)).toEqual(['react', 'vue', 'svelte', 'sveltekit']);
+  expect(translated.map(entry => entry.framework)).toEqual(['react', 'vue', 'svelte', 'sveltekit', 'angular-vite']);
   for (const entry of translated) expect(entry.independentPackages).toEqual([templateTranslationsVitePlugin]);
   const plugin = `node_modules/${templateTranslationsVitePlugin}`;
   const lock = JSON.parse(fixtures['package-lock.json']);
