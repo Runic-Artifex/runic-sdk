@@ -52,6 +52,12 @@ imports, benchmark receipts and archived source trees are excluded from updates.
 Native SDK headers, Nix inputs, runtime releases and the local container image also
 need the checks below.
 
+## November 2026 decisions
+
+| Area | Decision and compatibility reason |
+| --- | --- |
+| ng-packagr | `@runic-artifex/angular` builds with ng-packagr 22.2.6 (published 2026-11-04), the release line of the repository's Angular 22, to ship the Angular Package Format (#945, D066.16). It peers on `@angular/compiler-cli ^22.0.0`, TypeScript `>=6.0 <6.1` and tslib, so tslib 2.8.1, already in the lockfile, is a development dependency too. Both are development dependencies only: the package's bundles import no tslib helpers (`importHelpers` stays off), and the published package keeps no runtime dependencies. |
+
 ## October 2026 security update (D050)
 
 | Area | Decision and compatibility reason |

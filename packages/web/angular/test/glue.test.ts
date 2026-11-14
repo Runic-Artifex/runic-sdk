@@ -7,8 +7,8 @@ import {
   injectBridgeConnection, injectCollectionViewport, injectCommand, injectQueryCollection, injectLatestOperation, injectMenuBar, injectOperation, injectView,
   RunicViewOutlet, ViewOutlet, RegionOutlets, regionEntries, selectedRegion, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle,
   type RegionCollection, type RegionOutletsMode, type RegionPanelAttributes, type ViewRegistry,
-} from "../dist/esm/index.js";
-import * as root from "../dist/esm/index.js";
+} from "@runic-artifex/angular";
+import * as root from "@runic-artifex/angular";
 import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
 import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {

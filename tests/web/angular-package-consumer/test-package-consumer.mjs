@@ -30,8 +30,19 @@ try {
     : await pack("@runic-artifex/views");
   assert.equal(manifest.private, undefined);
   assert.equal(manifest.license, "MIT");
-  const archiveJs = (await execute("tar", ["-xOf", archive, "package/dist/esm/view-outlet.js"])).stdout;
-  const archiveTypes = (await execute("tar", ["-xOf", archive, "package/dist/esm/view-outlet.d.ts"])).stdout;
+  // The Angular Package Format (#945): one partially compiled FESM bundle and one typings bundle per entry point.
+  // Bundlers that run the Angular linker only on APF paths (`/fesm20…/`, such as @analogjs/vite-plugin-angular) link
+  // them; the Angular CLI links by content.
+  const entries = ["runic-artifex-angular", "runic-artifex-angular-forms", "runic-artifex-angular-experimental"];
+  const listed = (await execute("tar", ["-tzf", archive])).stdout.split("\n").filter(Boolean).sort();
+  assert.deepEqual(listed, ["package/LICENSE", "package/README.md", "package/package.json",
+    ...entries.flatMap(entry => [`package/dist/fesm2022/${entry}.mjs`, `package/dist/fesm2022/${entry}.mjs.map`]),
+    ...entries.map(entry => `package/dist/types/${entry}.d.ts`)].sort());
+  assert.deepEqual(manifest.exports["."], { types: "./dist/types/runic-artifex-angular.d.ts", default: "./dist/fesm2022/runic-artifex-angular.mjs" });
+  for (const [subpath, target] of Object.entries(manifest.exports))
+    if (subpath !== "./package.json") assert.match(target.default, /\/fesm20\d\d\//, `${subpath} is not an APF bundle`);
+  const archiveJs = (await execute("tar", ["-xOf", archive, "package/dist/fesm2022/runic-artifex-angular.mjs"])).stdout;
+  const archiveTypes = (await execute("tar", ["-xOf", archive, "package/dist/types/runic-artifex-angular.d.ts"])).stdout;
   assert.match(archiveJs, /ɵɵngDeclareComponent/);
   assert.match(archiveJs, /isStandalone: true/);
   assert.match(archiveTypes, /static ɵcmp:/);

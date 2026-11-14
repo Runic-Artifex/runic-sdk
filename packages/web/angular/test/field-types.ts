@@ -1,7 +1,7 @@
 // Type-level checks for injectField; compiled by `tsc -p tsconfig.test.json` in the test script, never run.
 import type { Injector } from "@angular/core";
 import type { BridgeField, ViewClient } from "@runic-artifex/views";
-import { injectField, type FieldHandle, type ViewHandle } from "../dist/esm/index.js";
+import { injectField, type FieldHandle, type ViewHandle } from "@runic-artifex/angular";
 
 // The shapes the generator emits for a View with a `title` and a `step`.
 interface EditorState { readonly title: string; readonly step: number }

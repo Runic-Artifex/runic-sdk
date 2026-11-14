@@ -12,7 +12,7 @@ import {
   configureTranslatedText, createRunicInstance, injectBridgeConnection, injectRunicInstance, injectText, injectView,
   injectWindowLocale, pageInstance, provideRunicInstance, RUNIC_INSTANCE, RunicTextPipe, textLocaleSignal,
   type RunicInstance, type TextReference,
-} from "../dist/esm/index.js";
+} from "@runic-artifex/angular";
 
 type Counter = { readonly count: number; readonly status: TextReference };
 const members = { count: (value: unknown) => bridgeWire.integer(value, 0, 1_000), status: bridgeWire.textReference };
