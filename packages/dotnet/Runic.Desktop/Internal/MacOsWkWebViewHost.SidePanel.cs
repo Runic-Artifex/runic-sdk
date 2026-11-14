@@ -14,8 +14,9 @@ namespace Runic.Desktop.Internal;
 // - Focus: as WebView2's MoveFocusRequested, Tab past a document's last tab stop focuses the other view's first, and
 //   Shift+Tab before its first the other's last. WebKit hands focus out of a WKWebView only through the private
 //   _webView:takeFocus: (its key-view fallback leaves no element focused, osx-arm64), so FocusScript, in a content world
-//   of its own in both views, reports a Tab that left its document, and MoveFocusOut moves the first responder and
-//   focuses the tab stop. The views are also each other's next key view, for AppKit's own key-view loop.
+//   of its own in both views, reports a Tab that left its document, and MoveFocusOut selects the other view as AppKit's
+//   next or previous key view: WebKit then focuses its first or last element and tells accessibility (#929). The views
+//   are each other's next key view, for that and for AppKit's own key-view loop.
 // - Accessibility: the content view's children are listed in subview order, so the panel is below the page on the left
 //   edge and above it on the right: the reading order is the visual order.
 // - The panel's view shares the window's delegates through the WebViews map; PanelViews tells them it is the panel.
@@ -544,10 +545,12 @@ internal sealed partial class MacOsWkWebViewHost
         })();
         """;
 
-    // The first (forward) or last tab stop of a document, in tab order: positive tabindex values first, then document
-    // order; it is focused.
+    // The fallback where WebKit's initial focus focused no element: the first (forward) or last tab stop of a document,
+    // in tab order (positive tabindex values first, then document order) is focused.
     private static string FocusEdgeScript(bool forward) => $$"""
         (() => {
+          const active = document.activeElement;
+          if (active && active !== document.body && active !== document.documentElement) return "";
           const candidates = [...document.querySelectorAll('a[href],area[href],button,input,select,textarea,iframe,summary,audio[controls],video[controls],[tabindex],[contenteditable]:not([contenteditable="false"])')]
             .filter(element => element.tabIndex >= 0 && !element.disabled && element.type !== "hidden" && element.getClientRects().length > 0
               && !element.closest("[inert]"));
@@ -561,12 +564,22 @@ internal sealed partial class MacOsWkWebViewHost
 
     // Main thread: Tab left view's document forward or backward; the other view of the window takes the focus at its
     // first or last tab stop. Without a shown panel nothing changes, as before.
+    //
+    // #929: making the other view first responder and then focusing an element by script raced VoiceOver. VoiceOver
+    // read the first responder change as the view's web area ("… web content group") when the element's focus came
+    // later, or did not change because the element had kept its focus in that document. AppKit's key-view selection
+    // records the direction while the other view becomes first responder. WKWebView's becomeFirstResponder then runs
+    // WebKit's initial focus, as for Tab into a web view from a native control: it clears the document's focus, focuses
+    // the first or last element in WebKit's Tab order, and posts the focused element change to accessibility even when
+    // that element had the focus already. The script only focuses a tab stop when WebKit focused none. It runs after
+    // the initial focus, because WebKit delivers both to the web content process in order.
     private void MoveFocusOut(nint view, bool forward)
     {
         if (!IsOpen || _panel is not { IsShown: true, View: not 0 } panel) return;
         var target = view == panel.View ? _webView : view == _webView ? panel.View : 0;
         if (target == 0) return;
-        Api.SendNintNint(_window, "makeFirstResponder:", target);
+        Api.SendVoidNint(_window, forward ? "selectKeyViewFollowingView:" : "selectKeyViewPrecedingView:", view);
+        if (Api.SendNint(_window, "firstResponder") != target) Api.SendNintNint(_window, "makeFirstResponder:", target);
         var script = Api.CreateString(FocusEdgeScript(forward));
         try
         {

@@ -210,9 +210,11 @@ The enum is open: treat a reason you do not know as `Unsupported`.
   tiling: best effort.
 - **GTK 4 regions** route nothing on the GTK 4 window host, in the panel as in
   the page.
-- **macOS Tab hand-off** finds the first and last tab stops with a selector, so
-  tab stops in a shadow DOM are skipped, and an element focused this way may not
-  show `:focus-visible`.
+- **macOS Tab hand-off** selects the other view as AppKit's next or previous key
+  view, and WebKit focuses its first or last element in its own Tab order. Where
+  WebKit focuses none, a selector finds the first or last tab stop: tab stops in a
+  shadow DOM are skipped then, and an element focused this way may not show
+  `:focus-visible`.
 - **Not verified by CI:**
   - on Windows on Arm (win-arm64), the frame capture and Tab between the views,
     because the runner's desktop shows GDI nothing and delivers no `SendInput`;
