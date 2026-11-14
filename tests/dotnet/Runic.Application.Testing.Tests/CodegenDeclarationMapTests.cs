@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using System.Text.RegularExpressions;
 using TUnit.Core;
 
@@ -30,6 +31,11 @@ internal sealed partial class CodegenDiagnosticsTests
             private static void Rename(string? name) { }
             public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(LoadAsync);
             private static System.Threading.Tasks.Task LoadAsync() => System.Threading.Tasks.Task.CompletedTask;
+            public IRelayCommand ArchiveCommand { get; } = new RelayCommand(Archive);
+            private static void Archive()
+            {
+                System.Console.WriteLine("archived");
+            }
             public ViewRequest<string> Focus { get; } = new();
             public ViewQuestion<string, bool> Confirm { get; } = new((_, _) => System.Threading.Tasks.ValueTask.FromResult(false));
         }
@@ -55,6 +61,7 @@ internal sealed partial class CodegenDiagnosticsTests
         ("LinkCheckedFields.title", "setter/title"), ("LinkCheckedFields.total", "setter/total"),
         ("save", "command/save"), ("rename", "command/rename"), ("canRename", "command/rename"), ("load", "command/load"),
         ("startLoad", "command/load"), ("recoverLoad", "command/load"),
+        ("archive", "command/archive"), ("canArchive", "commandState/canArchive"),
         ("confirm", "interaction/confirm"), ("focus", "request/focus"),
     ];
 
@@ -191,6 +198,33 @@ internal sealed partial class CodegenDiagnosticsTests
             // Disposable, and tsserver has no type definition for an intersection, so a variable is typed LinkClient here.)
             Require(results[6].Length > 0 && results[6].All(definition => definition.Contains("link.ts:", StringComparison.Ordinal)),
                 $"connectLink left link.ts: {string.Join(", ", results[6])}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    // A client committed with its map must not change between a developer's Debug build and CI's Release build with
+    // deterministic (/_/) paths, or CI's check of committed generated files fails.
+    [Test]
+    public async Task DeclarationMapIsTheSameForEveryConfigurationAsync()
+    {
+        var temporaryRoot = DeclarationMapRoot();
+        try
+        {
+            async Task<(string Contract, string Map)> GenerateAsync(string name, OptimizationLevel optimization, bool mapPaths)
+            {
+                var directory = await GenerateSourceMapFixtureAsync(temporaryRoot, name, symbols: true, fixture: DeclarationMapFixture,
+                    generatedSource: DeclarationMapGenerated, optimization: optimization, mapPaths: mapPaths).ConfigureAwait(false);
+                var contract = Path.Combine(directory, "ts", "link.contract.d.ts");
+                return (File.ReadAllText(contract), File.ReadAllText(contract + ".map"));
+            }
+            var debug = await GenerateAsync("debug", OptimizationLevel.Debug, mapPaths: false).ConfigureAwait(false);
+            var release = await GenerateAsync("release", OptimizationLevel.Release, mapPaths: false).ConfigureAwait(false);
+            var deterministic = await GenerateAsync("deterministic", OptimizationLevel.Release, mapPaths: true).ConfigureAwait(false);
+            Require(release == debug, $"A Release build's declaration map differs from a Debug build's:\n{debug.Map}\n{release.Map}");
+            Require(deterministic == debug, $"A deterministic Release build's declaration map differs from a Debug build's:\n{debug.Map}\n{deterministic.Map}");
         }
         finally
         {

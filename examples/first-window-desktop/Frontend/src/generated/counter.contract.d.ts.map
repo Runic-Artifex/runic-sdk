@@ -1,1 +1,1 @@
-{"version":3,"file":"counter.contract.d.ts","sourceRoot":"","sources":["../../../CounterViewModel.cs"],"names":[],"mappings":"A;A;A;A,iBAQoB,Y;A,WAaL,K;A,WAJkB,Y;A,WAAA,oB;A;A;A;A;A;A,iBATb,a;A,EASa,S;A;A;A;A;A,EAAA,c;A;A,EAAA,gB;A;A;A,iBATb,oB;A;A;A;A"}
+{"version":3,"file":"counter.contract.d.ts","sourceRoot":"","sources":["../../../CounterViewModel.cs"],"names":[],"mappings":"A;A;A;A,iBAQoB,Y;A,WAaZ,K;A,WAJyB,Y;A,WAAA,oB;A;A;A;A;A;A,iBATb,a;A,EASa,S;A;A;A;A;A,EAAA,c;A;A,EAAA,gB;A;A;A,iBATb,oB;A;A;A;A"}
