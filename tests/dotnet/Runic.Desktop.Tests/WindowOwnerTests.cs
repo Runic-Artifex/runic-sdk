@@ -97,6 +97,23 @@ public sealed class WindowOwnerTests
     }
 
     [Test]
+    public async Task AClosedOwnedWindowIsNotListedBeforeItsClosedEventRuns()
+    {
+        // sdk#965: the owner forgets a window in its Closed handler, which runs on the thread pool after the close.
+        var factory = new OwningFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        await using var ownerSurface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("owner") });
+        await using var ownedSurface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("owned") });
+        var owner = await ownerSurface.OpenWindowAsync();
+        var owned = await ownedSurface.OpenWindowAsync(new DesktopWindowOptions { Owner = DesktopWindowOwner.FromWindow(owner) });
+        Assert.Same(owned, Assert.Single(owner.OwnedWindows));
+
+        await owned.CloseAsync();
+        Assert.False(owned.IsOpen);
+        Assert.Empty(owner.OwnedWindows);
+    }
+
+    [Test]
     public async Task AnOwnerThatIsNotOpenIsIgnored()
     {
         var factory = new OwningFactory();
