@@ -5,16 +5,17 @@ window ([region mode](../../docs/hosted-regions.md)). The installer's header,
 step indicator and footer stay; the check tool's page fills the content area
 between them. The check tool is a Runic Desktop application of its own, with its
 own process and ViewModel, and it also runs on its own. Hosted applications and
-regions are experimental: both projects suppress
-[`RUNICDESK103`](../../docs/experimental.md#RUNICDESK103).
+regions are experimental, and so is a region's appearance override: both
+projects suppress [`RUNICDESK103`](../../docs/experimental.md#RUNICDESK103).
 
 | File | What it does |
 | --- | --- |
 | [`Check/Program.cs`](Check/Program.cs) | The guest. Its own `hosted` parameter accepts a host; without it the check opens its own window. It accepts an elevated host (`AllowElevatedHost`, see [Elevated](#elevated)). |
 | [`Check/CheckViewModel.cs`](Check/CheckViewModel.cs) | Three checks, which run when the Window opens. Its close guard asks, with a message box, before a running check is given up. It does not know whether it is in a region. |
-| [`Check/Tests`](Check/Tests/HostedCheckTests.cs) | The check in a region without an installer: `RunicTestHost` attaches it to a region and plays the installer's departures. |
-| [`Installer/CheckPolicy.cs`](Installer/CheckPolicy.cs) | The installer's policy: `RunicHostedWindowDecision.Embed("check", options)` when `CanEmbed`, with the frame's permissions. |
-| [`Installer/InstallerViewModel.cs`](Installer/InstallerViewModel.cs) | The wizard: Welcome, System check, Finish in a navigation region. Its check step is a departure guard that asks the check (`RunicHostedRegion.AsDepartureGuard`). It follows the region's state, title, attaches and detaches, and starts the check again after it ended. |
+| [`Check/Frontend/src/app.ts`](Check/Frontend/src/app.ts) | The check's page. It maps its appearance onto its root with `onAppearance`, so it shows the installer's design in the region ([Design](#design)). |
+| [`Check/Tests`](Check/Tests/HostedCheckTests.cs) | The check in a region without an installer: `RunicTestHost` attaches it to a region, plays the installer's departures and gives it the installer's design. |
+| [`Installer/CheckPolicy.cs`](Installer/CheckPolicy.cs) | The installer's policy: `RunicHostedWindowDecision.Embed("check", options)` when `CanEmbed`, with the frame's permissions and the current design as the appearance override. |
+| [`Installer/InstallerViewModel.cs`](Installer/InstallerViewModel.cs) | The wizard: Welcome, System check, Finish in a navigation region. Its check step is a departure guard that asks the check (`RunicHostedRegion.AsDepartureGuard`). It follows the region's state, title, attaches and detaches, and starts the check again after it ended. Its design menu sets the check's appearance (`SetAppearanceAsync`). |
 | [`Installer/InstallerWindow.cs`](Installer/InstallerWindow.cs) | The installer's window: its close asks the current step first, as Back and Next do. |
 | [`Installer/Frontend/index.html`](Installer/Frontend/index.html) | The step page: `<runic-hosted-region name="check">` with content for each state. |
 | [`Installer/Program.cs`](Installer/Program.cs) | The host: GTK 3 on Linux, the page's Content-Security-Policy, the host-wide region events, `--elevated` and `--probe`. |
@@ -34,6 +35,8 @@ check asks, in a message box owned by the installer's window, whether to stop it
 **Keep checking** keeps the wizard on the step. Once the check allows it, its
 Window closes, the check exits and the wizard moves on. **Back** from Finish
 starts the check again. Closing the installer's window asks the same way.
+Choose a **Design** in the header: the installer's page and the check's page
+both change to it at once, as one window ([Design](#design)).
 
 Run the check on its own, in a window of its own:
 
@@ -93,6 +96,38 @@ dotnet run --project examples/hosted-region/Check -c Release
   installer's page. A guest page whose policy says `frame-ancestors 'none'`
   blocks its own region.
 
+## Design
+
+Both applications offer the same designs: Light, Dark, High contrast and
+System. High contrast is their own palette, the light design with stronger
+contrast rules, which the desktop never reports. The installer's design menu
+decides for both, because to the user they are one window. This is
+[design and appearance](../../docs/hosted-regions.md#design-and-appearance) in
+the hosted regions guide.
+
+- **The installer's page** applies the chosen design to itself
+  ([`Installer/Frontend/src/app.ts`](Installer/Frontend/src/app.ts)), and for
+  System its own appearance.
+- **The check's window** gets the design as an appearance override
+  (`InstallerViewModel.AppearanceOf`): Light and Dark set `ColorScheme`, High
+  contrast sets `ColorScheme = Light` and `Contrast = More`, and System is
+  `null`, no override, so the check shows the desktop's appearance. The policy
+  passes the current design when the check's window opens
+  (`RunicHostedRegionOptions.Appearance`), and the menu changes it with
+  `RunicHostedRegion.SetAppearanceAsync`, also while the region is detached:
+  the next page shows it from its first render.
+- **The check's page** reads the design as its appearance, which the store
+  reports over the engine's media queries, and maps it onto its root with three
+  lines, once at the start and on each change (`onAppearance`). Runic sets
+  nothing on the guest's root. Its CSS styles `[data-contrast="more"]`, since
+  `prefers-contrast` cannot be set on a frame from outside, and its
+  `color-scheme` follows the design.
+- **Only the region's window.** The override applies to the check's window in
+  the region. A window that it owned would open as a window of its own, in the
+  desktop's appearance, as the check's other windows would. A check of 0.18
+  still shows in the region, in the desktop's appearance; the installer then
+  logs event 2030 once.
+
 ## Elevated
 
 The issue this example follows (#866) is an installer that runs as
@@ -134,8 +169,11 @@ xvfb-run -a dotnet run --project examples/hosted-region/Installer -c Release -- 
 The check's tests start the built check with `RunicTestHost` and need no
 display. `--probe` is CI's check on a real desktop: the installer goes to the
 check step, the check's Window attaches to the region and its page reports its
-title from the frame, the installer detaches it and attaches it again
-(`DetachAsync`, `MoveToAsync`), and Next leaves the step through the check's
+title from the frame, the installer switches the design to High contrast and
+the check's page reports that it applied it (the check writes the page's
+appearance to standard error, which the installer logs as event 2022), the
+installer detaches it and attaches it again (`DetachAsync`, `MoveToAsync`) and
+the new page starts in the design, and Next leaves the step through the check's
 close guard until the region ends and the check exits. CI runs the tests in the
 Window and View journeys job, the probe in the native job's Linux legs (GTK 3
 and WebKitGTK 4.1), and `--probe --elevated` in its Windows x64 leg, whose steps

@@ -1694,14 +1694,19 @@ the media queries, which an override cannot change in a frame
 (`prefers-contrast`, `forced-colors` and `prefers-reduced-motion` cannot be set
 from outside it). Such a page therefore styles from the appearance rather than
 from media queries. Runic sets nothing on the page's root, so map it there
-yourself:
+yourself, once at the start and on each change (`onAppearance` calls its
+listener only on a change):
 
 ```ts
-onAppearance(look => {
+import { appearance, onAppearance, type Appearance } from "@runic-artifex/views";
+
+const mapAppearance = (look: Appearance) => {
   document.documentElement.style.colorScheme = look.colorScheme ?? "";
   document.documentElement.dataset["contrast"] = look.contrast ?? "no-preference";
   document.documentElement.toggleAttribute("data-reduced-motion", look.reducedMotion === true);
-});
+};
+mapAppearance(appearance());
+onAppearance(mapAppearance);
 ```
 
 and write the CSS against `[data-contrast="more"]` and `[data-reduced-motion]`

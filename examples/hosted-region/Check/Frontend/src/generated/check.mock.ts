@@ -5,7 +5,7 @@ import type { MockBridge, MockTypedView, MockCommandHandler, MockTypedOperation,
 import type { CheckClient, CheckState } from "./check.js";
 
 /** The state of a mock Check: the client state, with content as `{ kind, id }` and command state optional. */
-export type CheckMockState = Omit<CheckState, "canRun" | "isRunExecuting"> & Partial<Pick<CheckState, "canRun" | "isRunExecuting">>;
+export type CheckMockState = Omit<CheckState, "canRun" | "isRunExecuting" | "isReportAppearanceExecuting"> & Partial<Pick<CheckState, "canRun" | "isRunExecuting" | "isReportAppearanceExecuting">>;
 
 export interface CheckMockDefinition {
   /** Presents the mock as content on route `content{id}`; omit it for the root route `check`. */
@@ -13,21 +13,27 @@ export interface CheckMockDefinition {
   readonly state: CheckMockState;
   readonly commands?: {
     readonly run?: MockCommandHandler<CheckMockState>;
+    readonly reportAppearance?: MockCommandHandler<CheckMockState, [input: string]>;
+  };
+  /** Availability of commands with an argument. */
+  readonly canExecute?: {
+    readonly reportAppearance?: (state: CheckMockState, input: string) => boolean;
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
     readonly run?: MockTypedOperationHandler<CheckMockState, void, void> | "manual";
+    readonly reportAppearance?: MockTypedOperationHandler<CheckMockState, string, void> | "manual";
   };
 }
 
 export interface CheckMock extends MockTypedView<CheckMockState, CheckClient, "check"> {
-  readonly operations: { readonly run: readonly MockTypedOperation<void, void>[]; };
+  readonly operations: { readonly run: readonly MockTypedOperation<void, void>[]; readonly reportAppearance: readonly MockTypedOperation<string, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {
   kind: "check",
   route: "check",
-  contract: "CheckTool.CheckViewModel:F3356FD1FCF6B7DE0EB3614C4716579D1AE9F266FCE4816E66C87CB562920E08",
+  contract: "CheckTool.CheckViewModel:C8865DDF87FCB3EBED9EC659AE1652163BF37BD3F3439A34013E0C4BC59AD941",
   fields: {
     space: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     spaceDetail: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -37,13 +43,15 @@ const spec: MockTypedViewSpec = {
     accountDetail: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     outcome: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
-  defaults: { canRun: true, isRunExecuting: false },
+  defaults: { canRun: true, isRunExecuting: false, isReportAppearanceExecuting: false },
   texts: ["space", "spaceDetail", "folder", "folderDetail", "account", "accountDetail", "outcome"],
   commands: {
     run: { member: "run", available: "canRun" },
+    reportAppearance: { member: "reportAppearance", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
   operations: {
     run: { member: "run" },
+    reportAppearance: { member: "reportAppearance", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
 };
 

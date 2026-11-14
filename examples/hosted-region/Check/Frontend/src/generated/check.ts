@@ -13,13 +13,17 @@ export interface CheckState {
   readonly outcome: string;
   readonly canRun: boolean;
   readonly isRunExecuting: boolean;
+  readonly isReportAppearanceExecuting: boolean;
 }
 
 export interface CheckRunOperation extends BridgeOperation<void> {}
+export interface CheckReportAppearanceOperation extends BridgeOperation<void> {}
 
 /** A connected Check ViewModel. Dispose it when its presentation ends. */
 export interface CheckClient extends ViewClient<CheckState> {
   run(): Promise<CheckState>;
+  reportAppearance(input: string): Promise<CheckState>;
+  canReportAppearance(input: string): Promise<boolean>;
   /**
    * Starts `Run` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
    * the default is a random id. A start with a request id that .NET already admitted returns that operation.
@@ -27,6 +31,13 @@ export interface CheckClient extends ViewClient<CheckState> {
   startRun(options?: BridgeOperationStartOptions): Promise<CheckRunOperation>;
   /** Returns the `Run` operation started with `requestId`, for example after the page reloaded. */
   recoverRun(requestId: string): Promise<CheckRunOperation>;
+  /**
+   * Starts `ReportAppearance` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startReportAppearance(input: string, options?: BridgeOperationStartOptions): Promise<CheckReportAppearanceOperation>;
+  /** Returns the `ReportAppearance` operation started with `requestId`, for example after the page reloaded. */
+  recoverReportAppearance(requestId: string): Promise<CheckReportAppearanceOperation>;
 }
 
 export interface CheckPageReference {
@@ -46,9 +57,11 @@ const members: BridgeMemberDecoders<CheckState> = {
   outcome: (wire: unknown) => bridgeWire.string(wire),
   canRun: (wire: unknown) => bridgeWire.boolean(wire),
   isRunExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  isReportAppearanceExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "CheckTool.CheckViewModel:F3356FD1FCF6B7DE0EB3614C4716579D1AE9F266FCE4816E66C87CB562920E08";
+const bridgeContract = "CheckTool.CheckViewModel:C8865DDF87FCB3EBED9EC659AE1652163BF37BD3F3439A34013E0C4BC59AD941";
 const runOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const reportAppearanceOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**
  * Connects a Check client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -63,7 +76,11 @@ async function connectCheckAt(route: string, options?: BridgeConnectOptions): Pr
     subscribe: view.subscribe,
     dispose: view.dispose,
     async run() { return view.command("run"); },
+    async reportAppearance(input) { return view.command("reportAppearance", input); },
+    async canReportAppearance(input) { return view.can("reportAppearance", input); },
     startRun(options?: BridgeOperationStartOptions) { return view.start("run", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, runOperation); },
     recoverRun(requestId: string) { return view.recover("run", requestId, runOperation); },
+    startReportAppearance(input: string, options?: BridgeOperationStartOptions) { return view.start("reportAppearance", options?.requestId ?? globalThis.crypto.randomUUID(), input, reportAppearanceOperation); },
+    recoverReportAppearance(requestId: string) { return view.recover("reportAppearance", requestId, reportAppearanceOperation); },
   });
 }

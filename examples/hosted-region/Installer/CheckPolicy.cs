@@ -5,7 +5,8 @@ namespace HostedInstaller;
 
 // The installer's rules for the check's windows: its main window shows in the region "check" of the installer's step
 // page, never in a window of its own. Every member it does not implement keeps its default.
-public sealed class CheckPolicy : IRunicHostedWindowPolicy
+// The check's window shows the installer's design: design reads the current one (InstallerViewModel.CheckAppearance).
+public sealed class CheckPolicy(Func<RunicHostedAppearance?> design) : IRunicHostedWindowPolicy
 {
     public const string Region = "check";
 
@@ -23,8 +24,11 @@ public sealed class CheckPolicy : IRunicHostedWindowPolicy
     public ValueTask<RunicHostedWindowDecision> OpenWindowAsync(RunicHostedWindowRequest request, CancellationToken cancellationToken) =>
         ValueTask.FromResult(request.Owner is null && request.CanEmbed
             // The installer has one window, so the region's name finds it. ReattachOnReload, on by default, shows the
-            // check again when the page reloads.
-            ? RunicHostedWindowDecision.Embed(Region, RegionOptions)
+            // check again when the page reloads. The appearance override gives the check's page the installer's design
+            // before its first render. A check of 0.18 (request.CanOverrideAppearance is false) still shows, in the
+            // desktop's appearance, and the installer logs event 2030 once; a policy that needs the design could
+            // refuse it instead.
+            ? RunicHostedWindowDecision.Embed(Region, RegionOptions with { Appearance = design() })
             // A check older than region/1 (0.17) cannot show in a region; the installer then shows none.
             : RunicHostedWindowDecision.Refuse("The installer shows the system check only in its step page."));
 }

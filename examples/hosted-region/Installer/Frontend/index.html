@@ -13,7 +13,19 @@
   </head>
   <body>
     <header>
-      <h1>Contoso Tools setup</h1>
+      <div class="title">
+        <h1>Contoso Tools setup</h1>
+        <!-- The design menu. The installer's page applies the choice to itself (src/app.ts); the check's page in the
+             region receives it as its appearance (InstallerViewModel.AppearanceOf). -->
+        <label>Design
+          <select id="design">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="high-contrast">High contrast</option>
+          </select>
+        </label>
+      </div>
       <ol class="steps">
         <li id="step-welcome">Welcome</li>
         <li id="step-check">System check <span id="check-title"></span></li>
