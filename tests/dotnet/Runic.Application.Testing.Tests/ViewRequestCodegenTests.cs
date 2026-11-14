@@ -44,7 +44,7 @@ internal sealed class ViewRequestCodegenTests
         foreach (var (model, module) in Models)
         {
             var fingerprint = BridgeContractShape.Compute(model);
-            var client = File.ReadAllText(Path.Combine(GeneratedDirectory(), module + ".ts"));
+            var client = GeneratedClientSource.Read(GeneratedDirectory(), module);
             var bridge = File.ReadAllText(Path.Combine(BridgeDirectory(), model.FullName + ".Bridge.g.cs"));
             Require(client.Contains($"const bridgeContract = \"{model.FullName}:{fingerprint}\";", StringComparison.Ordinal)
                 && bridge.Contains($"\"{fingerprint}\", content,", StringComparison.Ordinal),
