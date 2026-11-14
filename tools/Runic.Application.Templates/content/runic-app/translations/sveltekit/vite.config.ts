@@ -1,0 +1,28 @@
+import { defineConfig } from "vite";
+import { sveltekit } from "@sveltejs/kit/vite";
+import { runicAdapter } from "@runic-artifex/sveltekit";
+import { runic } from "@runic-artifex/vite-plugin-runic";
+import { runicTranslations } from "@runic-artifex/vite-plugin-runic-translations";
+
+export default defineConfig(({ command }) => ({
+  plugins: [
+    // The Runic adapter prerenders the page into dist/, the folder the Views build copies to www/. SvelteKit
+    // writes relative asset URLs, so the page is relocatable: Runic Desktop serves each window below its own
+    // path. The page names no host, so one build runs on Runic Desktop and CS-WebUI.
+    // A production build adds a page policy that allows SvelteKit's inline start script by its hash; Program.cs
+    // sends the rest of the Content-Security-Policy outside Development. The Views Bridge needs no
+    // 'unsafe-eval': its state arrives as data. The development server adds none.
+    sveltekit(command === "build"
+      ? { adapter: runicAdapter({ out: "dist" }), csp: { mode: "hash", directives: { "script-src": ["self"] } } }
+      : { adapter: runicAdapter({ out: "dist" }) }),
+    // Runic development diagnostics for the client that src/hooks.client.ts loads, and lets `dotnet runic dev`
+    // confirm that the development server on its port is the one it started. html: false, because SvelteKit renders
+    // the page itself and warns about a transformIndexHtml hook.
+    runic({ html: false }),
+    // Compiles the catalog, translations/runic.json, with the dotnet-runic-translations tool of the project's
+    // .config/dotnet-tools.json into .runic/translations, and serves it as virtual:runic-translations/app with its types
+    // in .runic/translations/virtual.d.ts. The development server compiles a changed, added or removed message again
+    // and the page shows it, without a dotnet build.
+    runicTranslations(),
+  ],
+}));
