@@ -37,6 +37,23 @@ internal sealed partial class CodegenDiagnosticsTests
                 ShoutCommand = ReactiveUI.ReactiveCommand.Create<string, string>(value => value.ToUpperInvariant());
             }
             private string Echo(string value) => value;
+            public IRelayCommand ArchiveCommand { get; } = new RelayCommand(Archive);
+            private static void Archive()
+            {
+                System.Console.WriteLine("archived");
+            }
+            private string notes = "";
+            public string Notes
+            {
+                get
+                {
+                    return notes;
+                }
+                set
+                {
+                    notes = value;
+                }
+            }
         }
         public sealed partial class MapWindow : RunicWindow<MapViewModel>;
         """;
@@ -63,7 +80,9 @@ internal sealed partial class CodegenDiagnosticsTests
             var root = map.RootElement;
             Require(root.GetProperty("format").GetString() == "runic-bridge-sources/1", "The map has no runic-bridge-sources/1 format.");
             var lines = SourceMapFixture.Split('\n');
-            int Line(string text) => Array.FindIndex(lines, line => line.Contains(text, StringComparison.Ordinal)) + 1;
+            // A text ending in a line break is a whole line.
+            int Line(string text) => Array.FindIndex(lines, line => text.EndsWith('\n')
+                ? line.TrimEnd('\r') == text[..^1] : line.Contains(text, StringComparison.Ordinal)) + 1;
             int Column(string text, string name) => lines[Line(text) - 1].IndexOf(name, StringComparison.Ordinal) + 1;
 
             var viewModel = root.GetProperty("viewModels").EnumerateArray().Single();
@@ -99,6 +118,11 @@ internal sealed partial class CodegenDiagnosticsTests
             Expect("command/echo", "Fixture.MapViewModel.Echo(String)", "private string Echo(string value)", "Fixture.MapViewModel.EchoCommand");
             Expect("command/shout", "Fixture.MapViewModel.ShoutCommand", "ShoutCommand = ReactiveUI.ReactiveCommand", columnName: "ShoutCommand");
             Expect("commandState/canSave", "Fixture.MapViewModel.Save()", "private void Save()", "Fixture.MapViewModel.SaveCommand");
+            // A block body: the declaration, not the body's first sequence point, which a Debug and a Release build put on
+            // different lines.
+            Expect("command/archive", "Fixture.MapViewModel.Archive()", "private static void Archive()", "Fixture.MapViewModel.ArchiveCommand", columnName: "Archive()");
+            Expect("state/notes", "Fixture.MapViewModel.Notes", "        get\n", columnName: "get");
+            Expect("setter/notes", "Fixture.MapViewModel.Notes.set", "        set\n", columnName: "set");
             Require(members.Values.All(entry => entry.GetProperty("id").GetString()
                     == $"{entry.GetProperty("viewModel").GetString()}/{entry.GetProperty("kind").GetString()}/{entry.GetProperty("member").GetString()}"),
                 "A member id is not {viewModel}/{kind}/{member}.");
@@ -118,6 +142,32 @@ internal sealed partial class CodegenDiagnosticsTests
             foreach (var path in Directory.GetFiles(Path.Combine(directory, "ts")).Where(path => !path.EndsWith(".map", StringComparison.Ordinal)))
                 Require(WithoutMapComment(File.ReadAllText(path)) == File.ReadAllText(Path.Combine(withoutSymbols, "ts", Path.GetFileName(path))),
                     $"{Path.GetFileName(path)} differs with and without the PDB.");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    // CI builds Release with deterministic paths, a developer usually Debug with local ones; a map committed with
+    // generated output (#952) must be the same for both. A method's first sequence point differs between them (the
+    // body's "{" in Debug, its first statement in Release), so locations are declarations.
+    [Test]
+    public async Task SourceMapIsTheSameForEveryConfigurationAsync()
+    {
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-source-map-configurations-{Guid.NewGuid():N}");
+        try
+        {
+            string Map(string directory) => File.ReadAllText(Path.Combine(directory, "cs", "sources.json"))
+                .Replace(JsonSerializer.Serialize(directory)[1..^1], "<fixture>", StringComparison.Ordinal);
+            var debug = Map(await GenerateSourceMapFixtureAsync(temporaryRoot, "debug", symbols: true).ConfigureAwait(false));
+            var release = Map(await GenerateSourceMapFixtureAsync(temporaryRoot, "release", symbols: true,
+                optimization: OptimizationLevel.Release).ConfigureAwait(false));
+            var deterministic = Map(await GenerateSourceMapFixtureAsync(temporaryRoot, "deterministic", symbols: true,
+                optimization: OptimizationLevel.Release, mapPaths: true).ConfigureAwait(false));
+            Require(debug.Contains("\"line\"", StringComparison.Ordinal), $"The Debug map has no locations:\n{debug}");
+            Require(release == debug, $"A Release build's map differs from a Debug build's:\n{debug}\n---\n{release}");
+            Require(deterministic == debug, $"A deterministic Release build's map differs from a Debug build's:\n{debug}\n---\n{deterministic}");
         }
         finally
         {
@@ -150,15 +200,20 @@ internal sealed partial class CodegenDiagnosticsTests
 
     // Compiles the fixture to <root>/<name>/FixtureSourceMap.dll (with a PDB over Fixture.cs on disk, or none) and
     // runs the generator into cs/ and ts/ there.
+    // With mapPaths, the PDB names the documents under /_/ as a deterministic CI build does (PathMap), and the generator
+    // gets the build's --path-map.
     private static async Task<string> GenerateSourceMapFixtureAsync(string temporaryRoot, string name, bool symbols, bool cache = false,
-        string fixture = SourceMapFixture, string generatedSource = SourceMapGenerated)
+        string fixture = SourceMapFixture, string generatedSource = SourceMapGenerated,
+        OptimizationLevel optimization = OptimizationLevel.Debug, bool mapPaths = false)
     {
         var directory = Path.Combine(temporaryRoot, name);
         Directory.CreateDirectory(directory);
         var sourcePath = Path.Combine(directory, "Fixture.cs");
         File.WriteAllText(sourcePath, fixture);
-        var compilation = Compile("SourceMap", fixture, sourcePath).AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource,
-            new CSharpParseOptions(LanguageVersion.Latest), Path.Combine(directory, "generated", "MapViewModel.g.cs"), System.Text.Encoding.UTF8));
+        var documents = mapPaths ? "/_/" : directory + Path.DirectorySeparatorChar;
+        var compilation = Compile("SourceMap", fixture, documents + "Fixture.cs").AddSyntaxTrees(CSharpSyntaxTree.ParseText(generatedSource,
+            new CSharpParseOptions(LanguageVersion.Latest), documents + "generated/MapViewModel.g.cs", System.Text.Encoding.UTF8));
+        compilation = compilation.WithOptions(compilation.Options.WithOptimizationLevel(optimization));
         var assembly = Path.Combine(directory, "FixtureSourceMap.dll");
         Microsoft.CodeAnalysis.Emit.EmitResult emitted;
         using (var image = File.Create(assembly))
@@ -177,13 +232,15 @@ internal sealed partial class CodegenDiagnosticsTests
         foreach (var reference in compilation.GetUsedAssemblyReferences().OfType<PortableExecutableReference>())
             if (reference.FilePath is { } path && Path.GetDirectoryName(path) == Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)), overwrite: true);
-        var (exitCode, output) = await RunSourceMapGeneratorAsync(directory, cache).ConfigureAwait(false);
+        var (exitCode, output) = await RunSourceMapGeneratorAsync(directory, cache,
+            mapPaths ? ["--path-map", $"{directory}{Path.DirectorySeparatorChar}=/_/"] : []).ConfigureAwait(false);
         Require(exitCode == 0 && !output.Contains("warning", StringComparison.OrdinalIgnoreCase),
             $"{name}: the generator did not accept the source map fixture cleanly.\n{output}");
         return directory;
     }
 
-    private static async Task<(int ExitCode, string Output)> RunSourceMapGeneratorAsync(string directory, bool cache)
+    private static async Task<(int ExitCode, string Output)> RunSourceMapGeneratorAsync(string directory, bool cache,
+        IReadOnlyList<string>? options = null)
     {
         var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
             typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
@@ -198,6 +255,7 @@ internal sealed partial class CodegenDiagnosticsTests
                     Path.Combine(directory, "ts") },
             },
         };
+        foreach (var option in options ?? []) process.StartInfo.ArgumentList.Add(option);
         process.StartInfo.Environment["RUNIC_BRIDGE_CODEGEN_CACHE"] = cache ? "1" : "0";
         process.StartInfo.Environment.Remove("RUNIC_BRIDGE_CODEGEN_FORCE");
         process.Start();
