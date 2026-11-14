@@ -2143,6 +2143,13 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
+Since 0.20 the package also ships Roslyn analyzers for the errors that the
+source alone shows, such as a command named `NewCommand` or a `ViewRequest<T>`
+with a public setter. Your IDE reports them while you type, with the same ID
+and message, and offers a code fix where it is mechanical. The
+[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-while-you-type)
+lists them.
+
 `RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The

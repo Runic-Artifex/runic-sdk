@@ -34,9 +34,11 @@ treats warnings as errors; the generator's warnings repeat on builds that reuse
 the cached generation. Every other code fails the build, except
 `RUNICBRIDGE038`, which the runtime throws when an application runs Bridges
 built against another Runic release. `RUNICBRIDGE` errors
-come from this post-compile step, not from a Roslyn analyzer: they appear after a
-build, not while you type, link to the source line, and a warning is suppressed
-per project with `NoWarn`. The
+come from this post-compile step: they appear after a build, link to the source
+line, and a warning is suppressed per project with `NoWarn`. Since 0.20 a Roslyn
+analyzer in `Runic.Application.Views` also reports the errors that the source
+alone shows, while you type, with code fixes for the mechanical ones: see
+[Errors while you type](#errors-while-you-type). The
 [generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
 of the Runic.Application.Views guide links here.
 
@@ -51,15 +53,15 @@ and severities are open.
 | [`RUNICBRIDGE001`](#runicbridge001) | Error | Generator, or the build targets when the generator is missing | Invalid generator invocation or build configuration, generated output that cannot be written, or a missing generator |
 | [`RUNICBRIDGE002`](#runicbridge002) | Error | Generator | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish |
 | [`RUNICBRIDGE003`](#runicbridge003) | Error | Generator | A value type that is not a supported bridge value |
-| [`RUNICBRIDGE004`](#runicbridge004) | Error | Generator | Two generated names collide, or a command's client member is reserved in TypeScript |
+| [`RUNICBRIDGE004`](#runicbridge004) | Error | Generator; the analyzer while you type | Two generated names collide, or a command's client member is reserved in TypeScript |
 | [`RUNICBRIDGE005`](#runicbridge005) | Error | Generator | An assembly, a Runic View or a bridged member's type could not be loaded |
-| [`RUNICBRIDGE006`](#runicbridge006) | Error | Generator | No Window or View class, or an invalid class or View contract |
-| [`RUNICBRIDGE007`](#runicbridge007) | Error | Generator | A ViewModel class has an unsupported shape |
-| [`RUNICBRIDGE008`](#runicbridge008) | Error | Generator | A state property, ViewModel content member or append-only text has an unsupported shape |
-| [`RUNICBRIDGE009`](#runicbridge009) | Error | Generator | A command has an unsupported name or shape |
-| [`RUNICBRIDGE010`](#runicbridge010) | Error | Generator | A `[RunicCollection]` member is not a keyed collection of DTO rows |
-| [`RUNICBRIDGE011`](#runicbridge011) | Error | Generator | A ReactiveUI interaction is not a get-only property |
-| [`RUNICBRIDGE012`](#runicbridge012) | Error | Generator | A `[RunicFailure]` declaration is misplaced, repeated or names an unsupported type |
+| [`RUNICBRIDGE006`](#runicbridge006) | Error | Generator; the analyzer while you type | No Window or View class, or an invalid class or View contract |
+| [`RUNICBRIDGE007`](#runicbridge007) | Error | Generator; the analyzer while you type | A ViewModel class has an unsupported shape |
+| [`RUNICBRIDGE008`](#runicbridge008) | Error | Generator; the analyzer while you type | A state property, ViewModel content member or append-only text has an unsupported shape |
+| [`RUNICBRIDGE009`](#runicbridge009) | Error | Generator; the analyzer while you type | A command has an unsupported name or shape |
+| [`RUNICBRIDGE010`](#runicbridge010) | Error | Generator; the analyzer while you type | A `[RunicCollection]` member is not a keyed collection of DTO rows |
+| [`RUNICBRIDGE011`](#runicbridge011) | Error | Generator; the analyzer while you type | A ReactiveUI interaction is not a get-only property |
+| [`RUNICBRIDGE012`](#runicbridge012) | Error | Generator; the analyzer while you type | A `[RunicFailure]` declaration is misplaced, repeated or names an unsupported type |
 | [`RUNICBRIDGE013`](#runicbridge013) | Warning | Generator | A ViewModel that a content slot admits has no View |
 | [`RUNICBRIDGE014`](#runicbridge014) | Error | Build targets | The frontend directory or its `package.json` is missing |
 | [`RUNICBRIDGE015`](#runicbridge015) | Warning | Build targets | A project declares Views, but generation is off |
@@ -74,7 +76,7 @@ and severities are open.
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
 | [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
 | [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
-| [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
+| [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator; the analyzer while you type | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
 | [`RUNICBRIDGE028`](#runicbridge028) | Warning | Generator | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
 | [`RUNICBRIDGE030`](#runicbridge030) | Warning | Build targets | `RunicApplicationFrontendDelivery` is unknown, or Embedded cannot apply |
@@ -82,7 +84,7 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
-| [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
+| [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator; the analyzer while you type | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
 | [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
 | [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
 | [`RUNICBRIDGE038`](#runicbridge038) | Error | Runtime | Generated Bridges were built against another Runic release than the running runtime |
@@ -91,10 +93,54 @@ and severities are open.
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 | [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
 | [`RUNICBRIDGE053`](#runicbridge053) | Warning | Generator | An object inside an editable row cannot be copied, so it has no fields below it |
-| [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator | A `RunicQueryCollection` member has an unsupported shape |
+| [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator; the analyzer while you type | A `RunicQueryCollection` member has an unsupported shape |
 | [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
-| [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
+| [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator; the analyzer while you type | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
 | [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
+
+### Errors while you type
+
+The generator runs after a build's bootstrap compile and is skipped in the
+design-time builds that IDEs run, so on its own it reports these errors only
+after a build. Since 0.20, `Runic.Application.Views` also ships Roslyn
+analyzers that check the rules the source alone shows. Visual Studio, Rider and
+VS Code's C# extension report them as you type, with the generator's ID,
+message and help link, and offer a code fix where the fix is mechanical. A
+project that references `Runic.Application.Views` through a host adapter gets
+them too.
+
+They check the ViewModels of the Windows and Views that the project declares,
+in a project whose build generates its own Bridges
+(`RunicApplicationFrontendGenerationEnabled`, without
+`RunicApplicationFrontendModelAssembly`), as the generator does.
+
+| ID | Reported while you type | Code fix |
+| --- | --- | --- |
+| `RUNICBRIDGE004` | A command whose client member is reserved in TypeScript, such as `NewCommand` or `ThenCommand` | Rename the command, or its CommunityToolkit `[RelayCommand]` method, to the suggested name |
+| `RUNICBRIDGE006` | A Window or View that is not public and top-level, or a `[RunicViewContract]` name that is not letters and digits | Make the class public |
+| `RUNICBRIDGE007` | A ViewModel that does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction | Make the class public |
+| `RUNICBRIDGE008` | A public setter on a `NavigationRegion<T>`, `NavigationSelection`, ViewModel content or ViewModel collection; a `NavigationRegion<object>`; a `[RunicAppendOnlyText]` member that is not a read-only `string` | Make the setter private |
+| `RUNICBRIDGE009` | A command whose name does not end with `Command`; a plain `ICommand` without `[RunicCommandInput]` or `[RunicCommandKey]`; `[RunicCommandResult]` on a command that is not a ReactiveUI command | Add the `Command` suffix |
+| `RUNICBRIDGE010` | A `[RunicCollection]` with a public setter | Make the setter private |
+| `RUNICBRIDGE011` | A ReactiveUI interaction with a public setter | Make the setter private |
+| `RUNICBRIDGE012`, `RUNICBRIDGE027` | `[RunicFailure]` or `[RunicCommandKey]` on a ViewModel member that is not a Bridge command or its `[RelayCommand]` method | None |
+| `RUNICBRIDGE035` | A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` that is not get-only | Make the setter private |
+| `RUNICBRIDGE060` | A `RunicQueryCollection<TRow, TKey>` with a public setter, with `[RunicCollection]` or `[RunicAppendOnlyText]`, or with a key that is not a `string`, `Guid` or `Int32` | Make the setter private |
+| `RUNICBRIDGE070` | `[RunicRegionCollection]` on a property that is not a `NavigationSelection`, on one with a public setter, or with the content type `object` | Make the setter private |
+
+A private setter keeps the property assignable from the ViewModel and takes it
+off the page. A rename of a CommunityToolkit command renames its method, so the
+generated command property changes its name too.
+
+The generator stays the authority. It checks everything else after a build,
+such as value types (`RUNICBRIDGE003`), DTO rows and keys, row editors, shared
+clients, a slot whose ViewModels have no View, and the ViewModels of another
+assembly, and it reports these errors as before. A build reports each error
+once: the generator runs before the compiler and stops the build at its first
+error for each ViewModel, so the compiler, which runs the analyzer, never
+reaches them. The analyzer reports every problem it finds at once, where the
+generator reports a ViewModel's first. The generator's warnings are not
+reported while you type yet.
 
 ### RUNICBRIDGE001
 
