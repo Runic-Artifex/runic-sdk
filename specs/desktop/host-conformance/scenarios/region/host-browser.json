@@ -4,7 +4,7 @@
   "contract": {"id":"runic-host","version":1},
   "set": "region",
   "roles": ["host"],
-  "description": "A browser (serve-only) host lists region/1 and region-component/1 alone in its hello, shows a guest's window only in a region, without present or owned windows, attaches it with browser true and never allows the same site, answers present and announce unavailable with backend-unavailable, and refuses a window of the guest's own.",
+  "description": "A browser (serve-only) host lists region/1, region-component/1 and region-appearance/1 alone in its hello, shows a guest's window only in a region, without present or owned windows, attaches it with browser true and never allows the same site, answers present and announce unavailable with backend-unavailable, and refuses a window of the guest's own.",
   "requires": ["region/1"],
   "ids": {
     "c1": {"kind":"connection"},

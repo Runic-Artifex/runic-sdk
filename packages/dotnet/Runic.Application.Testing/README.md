@@ -1379,6 +1379,28 @@ public async Task ClosesWhenTheHostAsks()
   `element.connect({ url, token })`; the guest admits the connection only from
   that origin, and serves its component build only to it. The page's
   Content-Security-Policy must allow the guest's origin.
+- A region's appearance override (`region-appearance/1`, from 0.19.0; add it to
+  `Features` with `region/1`): `RunicTestHostOptions.RegionAppearance` gives each
+  region window an override from its open, as a host's
+  `RunicHostedRegionOptions.Appearance` does, and
+  `host.SetRegionAppearanceAsync(window, appearance)` changes it, attached or
+  detached, as `RunicHostedRegion.SetAppearanceAsync` does. Each known member of
+  the `DesktopAppearance` replaces the host's `Appearance` for that window's
+  pages; `null` members and `DesktopColorScheme.NoPreference` keep it, and
+  `null` removes the override. The guest's page receives the merged appearance
+  with the override's colour scheme, contrast and reduced motion listed in the
+  `appearance` push's `override`.
+
+  ```csharp
+  await using var host = await RunicTestHost.StartGuestAsync(start, new RunicTestHostOptions
+  {
+      Features = ["menus/1", "dialogs/1", "window-services/1", "region/1", "region-appearance/1"],
+      EmbedWindow = _ => true,
+      RegionAppearance = _ => new DesktopAppearance(DesktopColorScheme.Dark) { Contrast = DesktopContrast.More },
+  });
+  var window = await host.WaitForWindowAsync("MainWindow", TimeSpan.FromSeconds(30));
+  await host.SetRegionAppearanceAsync(window, new DesktopAppearance(DesktopColorScheme.Light));
+  ```
 - The application's `OpenWindowAsync` waits for the page to connect when its
   `DesktopHostOptions.WaitForConnection` is set, the default, as it does with a
   real host. Load `LaunchUrl` in the browser under test, or start the
