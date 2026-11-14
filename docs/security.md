@@ -484,6 +484,35 @@ What it means for applications:
 - **Prefer frame mode** for a guest of another vendor, for a guest the user installs separately, and for a host page
   that renders remote or user content.
 
+### Appearance in a region
+
+With `region-appearance/1` (0.19), a host gives a region window an appearance of its own, such as a wizard step in the
+design the user picked: members that replace the host's desktop values for that window's pages
+([appearance in a region](../specs/desktop/host-protocol.md#appearance-in-a-region-region-appearance1)). What Runic
+enforces:
+
+- **Only the host's application sets it.** The override comes from the host's backend, over the authenticated channel
+  (`RunicHostedRegionOptions.Appearance`, `RunicHostedRegion.SetAppearanceAsync`). No page message sets or changes it:
+  a compromised host page cannot restyle a guest (T29), and the guest cannot send an override back.
+- **One window.** The guest applies it to that region window's pages only, a component's included. The guest's other
+  Windows, the windows the region window owns and the host's own pages keep the desktop's appearance.
+- **Bounded values.** `textScale` is from 0.5 to 4 and colours are `#rrggbb`; the guest reads any other value as the
+  desktop's (T27). A host can still choose an unreadable palette, as it can lay out the frame badly: a guest trusts its
+  host (T7).
+- **What each side learns.** The host page receives only the override's colour scheme, which its own host chose, to
+  set the frame's `color-scheme`. Desktop members merged with the override follow the locality rule: a guest that
+  pushes `null` for pages other computers can reach keeps them `null` (T28).
+
+What it means for applications:
+
+- **Style from the appearance, not media queries.** `prefers-contrast`, `forced-colors` and `prefers-reduced-motion`
+  cannot be set on a frame from outside, and whether a frame's `prefers-color-scheme` follows its `color-scheme` is best
+  effort until it is recorded for every engine. A guest page reads its appearance from the Views appearance store, which
+  takes the host-decided members over the engine's, and maps it to hooks of its own, such as a `data-contrast`
+  attribute. Runic sets none on the guest page's root. A component's media queries are the host page's.
+- **Forced colours win.** A desktop that forces colours keeps forcing them in the frame, whatever the override says,
+  since the engine paints them.
+
 ### File access
 
 File access is not handed over: a guest receives the paths the host's dialog returned, not the host's access to them,
