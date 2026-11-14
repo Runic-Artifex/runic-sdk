@@ -4,6 +4,7 @@ import { connectView, disposable, viewReferences, type BridgeMemberDecoders, typ
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 
 export interface InstallerState {
+  readonly design: string;
   readonly step: string;
   readonly checkState: string;
   readonly checkTitle: string;
@@ -15,17 +16,21 @@ export interface InstallerState {
   readonly isBackExecuting: boolean;
   readonly canRestartCheck: boolean;
   readonly isRestartCheckExecuting: boolean;
+  readonly isChooseDesignExecuting: boolean;
 }
 
 export interface InstallerNextOperation extends BridgeOperation<void> {}
 export interface InstallerBackOperation extends BridgeOperation<void> {}
 export interface InstallerRestartCheckOperation extends BridgeOperation<void> {}
+export interface InstallerChooseDesignOperation extends BridgeOperation<void> {}
 
 /** A connected Installer ViewModel. Dispose it when its presentation ends. */
 export interface InstallerClient extends ViewClient<InstallerState> {
   next(): Promise<InstallerState>;
   back(): Promise<InstallerState>;
   restartCheck(): Promise<InstallerState>;
+  chooseDesign(input: string): Promise<InstallerState>;
+  canChooseDesign(input: string): Promise<boolean>;
   /**
    * Starts `Next` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
    * the default is a random id. A start with a request id that .NET already admitted returns that operation.
@@ -47,6 +52,13 @@ export interface InstallerClient extends ViewClient<InstallerState> {
   startRestartCheck(options?: BridgeOperationStartOptions): Promise<InstallerRestartCheckOperation>;
   /** Returns the `RestartCheck` operation started with `requestId`, for example after the page reloaded. */
   recoverRestartCheck(requestId: string): Promise<InstallerRestartCheckOperation>;
+  /**
+   * Starts `ChooseDesign` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startChooseDesign(input: string, options?: BridgeOperationStartOptions): Promise<InstallerChooseDesignOperation>;
+  /** Returns the `ChooseDesign` operation started with `requestId`, for example after the page reloaded. */
+  recoverChooseDesign(requestId: string): Promise<InstallerChooseDesignOperation>;
 }
 
 export interface InstallerPageReference {
@@ -57,6 +69,7 @@ const pageInstallerReferences = viewReferences<InstallerPageReference>(id => ({ 
 export function pageInstaller(id: string): InstallerPageReference { return pageInstallerReferences(id); }
 
 const members: BridgeMemberDecoders<InstallerState> = {
+  design: (wire: unknown) => bridgeWire.string(wire),
   step: (wire: unknown) => bridgeWire.string(wire),
   checkState: (wire: unknown) => bridgeWire.string(wire),
   checkTitle: (wire: unknown) => bridgeWire.string(wire),
@@ -68,11 +81,13 @@ const members: BridgeMemberDecoders<InstallerState> = {
   isBackExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   canRestartCheck: (wire: unknown) => bridgeWire.boolean(wire),
   isRestartCheckExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  isChooseDesignExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "HostedInstaller.InstallerViewModel:0CA6B2403F1E7079EEDAAD0978A622707F7CEF605441B03F3CE8E1817D9E6F5F";
+const bridgeContract = "HostedInstaller.InstallerViewModel:FCDD6F4E08352ACB1E87AC946615016973FEBE8B25E1CC5D28BDC9EF82AA5CE5";
 const nextOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const backOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const restartCheckOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const chooseDesignOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**
  * Connects a Installer client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -81,7 +96,7 @@ const restartCheckOperation: BridgeOperationCodec<void> = { decode: value => und
  */
 export function connectInstaller(options?: BridgeConnectOptions): Promise<InstallerClient & globalThis.Disposable> { return connectInstallerAt("installer", options); }
 async function connectInstallerAt(route: string, options?: BridgeConnectOptions): Promise<InstallerClient & globalThis.Disposable> {
-  const view = await connectView<InstallerState>({ contract: bridgeContract, route, members, texts: ["step", "checkState", "checkTitle", "checkEvent", "checkNote"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<InstallerState>({ contract: bridgeContract, route, members, texts: ["design", "step", "checkState", "checkTitle", "checkEvent", "checkNote"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<InstallerClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -89,11 +104,15 @@ async function connectInstallerAt(route: string, options?: BridgeConnectOptions)
     async next() { return view.command("next"); },
     async back() { return view.command("back"); },
     async restartCheck() { return view.command("restartCheck"); },
+    async chooseDesign(input) { return view.command("chooseDesign", input); },
+    async canChooseDesign(input) { return view.can("chooseDesign", input); },
     startNext(options?: BridgeOperationStartOptions) { return view.start("next", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, nextOperation); },
     recoverNext(requestId: string) { return view.recover("next", requestId, nextOperation); },
     startBack(options?: BridgeOperationStartOptions) { return view.start("back", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, backOperation); },
     recoverBack(requestId: string) { return view.recover("back", requestId, backOperation); },
     startRestartCheck(options?: BridgeOperationStartOptions) { return view.start("restartCheck", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, restartCheckOperation); },
     recoverRestartCheck(requestId: string) { return view.recover("restartCheck", requestId, restartCheckOperation); },
+    startChooseDesign(input: string, options?: BridgeOperationStartOptions) { return view.start("chooseDesign", options?.requestId ?? globalThis.crypto.randomUUID(), input, chooseDesignOperation); },
+    recoverChooseDesign(requestId: string) { return view.recover("chooseDesign", requestId, chooseDesignOperation); },
   });
 }

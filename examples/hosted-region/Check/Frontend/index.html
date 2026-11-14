@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- In a region the page follows the installer window's colour scheme, as in a window of its own. -->
+    <!-- Light and dark until src/app.ts sets the scheme from the page's appearance: the desktop's in a window of its own,
+         the installer's design in its region. -->
     <meta name="color-scheme" content="light dark" />
     <title>System check</title>
     <!-- No frame-ancestors here: Runic sets the frame's own for the one page that embeds it. A page whose policy says
@@ -16,6 +17,11 @@
       td[data-status="passed"]::before { content: "✓ "; color: green; }
       td[data-status="failed"]::before { content: "✗ "; color: crimson; }
       td[data-status="running"]::before { content: "… "; }
+      /* High contrast (src/app.ts sets data-contrast from the page's appearance): stronger rules and colours. */
+      :root[data-contrast="more"] th, :root[data-contrast="more"] td { border-bottom: 2px solid CanvasText; }
+      :root[data-contrast="more"] td[data-status="passed"]::before { color: CanvasText; }
+      :root[data-contrast="more"] td[data-status="failed"]::before { color: CanvasText; font-weight: 700; }
+      :root[data-contrast="more"] button { border: 2px solid CanvasText; font-weight: 600; }
     </style>
     <script src="webui.js"></script>
     <script src="runic-desktop-views.js"></script>

@@ -1281,6 +1281,10 @@ await region.SetAppearanceAsync(new RunicHostedAppearance { ColorScheme = Deskto
 - **Tests.** `RunicTestHost` plays the host: `RunicTestHostOptions.RegionAppearance` and `SetRegionAppearanceAsync`
   ([Testing](../Runic.Application.Testing/README.md#a-hosted-application)).
 
+The hosted regions guide's [design and appearance](../../../docs/hosted-regions.md#design-and-appearance) walks through
+a design menu, the guest page's side and the CSS limits, and the
+[hosted region example](../../../examples/hosted-region/README.md#design) runs it.
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

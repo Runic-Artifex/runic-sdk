@@ -18,7 +18,8 @@ first: starting guests, policies and window mode work as there. The reference is
 [hosted regions](../specs/application/README.md#hosted-regions). Two runnable examples go with it:
 
 - [Hosted region](../examples/hosted-region/README.md): an installer whose wizard shows a check tool's Window in a
-  region, with departure guards, fallback content per state, permissions and an elevated variant.
+  region, with departure guards, fallback content per state, permissions, a design menu that both show
+  ([design and appearance](#design-and-appearance)) and an elevated variant.
 - [Hosted components](../examples/hosted-components/README.md): a dashboard that shows two widget processes as
   components, with the page's Content-Security-Policy and the Vite `component` build target.
 
@@ -223,6 +224,98 @@ load, and the region shows its `unsupported` content. A browser host's component
 can admit only with `http:` and `ws:`; prefer frame mode there. In a component, `RunicHostedRegion.IsComponent` is
 `true`; `RegionOptions.Permissions` and `sizing="content-height"` do not apply, and the guest sends no title.
 
+## Design and appearance
+
+From 0.19 a host can give a region's window an **appearance override** of its own (`region-appearance/1`, part of
+[`RUNICDESK103`](experimental.md#RUNICDESK103)). The case is an installer whose wizard step shows a check tool's
+Window, where both offer the same design menu: Light, Dark, High contrast and System. "High contrast" is the
+applications' own palette, not a contrast theme of the desktop, so the desktop's appearance never reports it. The
+installer's menu decides for both, because to the user they are one window. The
+[hosted region example](../examples/hosted-region/README.md#design) does this.
+
+**The host** maps each design to a `RunicHostedAppearance`. Each member that is set replaces the host's desktop value
+for the region window's pages, and `null` keeps it, so the desktop's text scale and accent colour still reach the guest.
+"System" is no override: `null`, or `DesktopColorScheme.NoPreference`, which reads as `null`.
+
+```csharp
+#pragma warning disable RUNICDESK103 // Hosted application windows are experimental.
+static RunicHostedAppearance? AppearanceOf(string design) => design switch
+{
+    "light" => new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Light },
+    "dark" => new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Dark },
+    "high-contrast" => new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Light, Contrast = DesktopContrast.More },
+    _ => null, // System: the desktop's appearance.
+};
+
+// The policy passes the current design when the guest's window opens, so its page starts in it.
+RunicHostedWindowDecision.Embed("check", new RunicHostedRegionOptions { Appearance = AppearanceOf(design) });
+
+// The design menu changes it later, attached or detached.
+await region.SetAppearanceAsync(AppearanceOf(design), cancellationToken);
+```
+
+**The guest's page** receives the merged appearance as its own, before its first content: `appearance()` and
+`onAppearance` report the colour scheme, contrast and reduced motion that the host set over the engine's media queries.
+Runic sets no attribute or colour scheme on the guest page's root, so the page maps the appearance there itself, once at
+the start and on each change, and styles from that:
+
+```ts
+import { appearance, onAppearance, type Appearance } from "@runic-artifex/views";
+
+const mapAppearance = (look: Appearance) => {
+  document.documentElement.style.colorScheme = look.colorScheme ?? "";
+  document.documentElement.dataset["contrast"] = look.contrast ?? "no-preference";
+  document.documentElement.toggleAttribute("data-reduced-motion", look.reducedMotion === true);
+};
+mapAppearance(appearance());
+onAppearance(mapAppearance);
+```
+
+The same page in a window of its own then follows the desktop with the same code; it needs nothing specific to regions.
+
+What the override does and does not do:
+
+- **Per window.** It applies to the region window's pages only, a component's included. Windows that the region window
+  owns open as windows of their own, in the desktop's appearance. So do the guest's other windows, and
+  `RunicGuestSession.Appearance` stays the desktop's. The host's own pages are untouched: the host page applies its
+  design itself.
+- **Replaced as a whole.** `SetAppearanceAsync` replaces the override; `null` removes it. It works from any thread, and
+  the guest receives the latest of overrides set in quick succession. `RunicHostedRegion.Appearance` is the current one.
+- **Detached is allowed.** Setting it while the region is detached is recorded for the window: the next page that an
+  attach loads starts in it. `MoveToAsync` and re-attaching keep it, since it belongs to the window, not to the slot.
+  `SetAppearanceAsync` returns `false` only for an ended region and for a guest without the feature.
+- **Older guests.** A guest of 0.18 does not apply overrides. `RunicHostedWindowRequest.CanOverrideAppearance` and
+  `RunicHostedRegion.CanSetAppearance` are `false`. An `Embed` with an `Appearance` still embeds the window, in the
+  desktop's appearance, and the host logs event 2030 once for it. A policy for which the design matters decides with
+  `CanOverrideAppearance`:
+
+  ```csharp
+  request.CanOverrideAppearance
+      ? RunicHostedWindowDecision.Embed("check", options with { Appearance = AppearanceOf(design) })
+      : RunicHostedWindowDecision.Refuse("This installer needs a check of 0.19 or later.");
+  ```
+
+- **Tests.** `RunicTestHost` plays the host: `RunicTestHostOptions.RegionAppearance` gives a region window its
+  override from its open, and `SetRegionAppearanceAsync` changes it
+  ([Testing](../packages/dotnet/Runic.Application.Testing/README.md#a-hosted-application)).
+
+**CSS limits.** A host can't change a frame's media queries from outside, so the override reaches the guest's page
+through its appearance store, not through CSS:
+
+- `prefers-contrast`, `forced-colors` and `prefers-reduced-motion` can't be set on a frame. A page that styles from
+  them doesn't follow the override: style from the store instead, `[data-contrast="more"]` and `[data-reduced-motion]`
+  after the mapping above in place of `@media (prefers-contrast: more)` and `@media (prefers-reduced-motion: reduce)`.
+- A desktop that **forces** colours, such as a Windows contrast theme, keeps forcing them in the frame, whatever the
+  override says: the engine paints them, and `appearance().engine.contrast` is `"forced-colors"`.
+- `<runic-hosted-region>` sets the override's colour scheme as the CSS `color-scheme` of the frame, or of a component's
+  element, and clears it without one. The engine's own rendering at the frame follows it, such as its scrollbars and a
+  component's form controls. Whether the frame's `prefers-color-scheme` follows it too depends on the engine:
+  `prefers-color-scheme` in a region is best effort, per
+  [engine support for `prefers-color-scheme` in a region](#engine-support-for-prefers-color-scheme-in-a-region). Set
+  the page's `color-scheme` from its appearance, as the mapping does.
+- A component lives in the host page's document, so its media queries are the host page's. Style a component from the
+  store, never from `prefers-color-scheme`.
+
 ## Security notes
 
 The [security guide](security.md) has the details: [hosted windows in a region](security.md#hosted-windows-in-a-region)
@@ -263,6 +356,7 @@ Other symptoms:
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| The guest's page does not change with the host's design, or only after a change. | It styles from `prefers-contrast` or `prefers-color-scheme`, which a frame cannot be given; it maps `onAppearance` without applying `appearance()` at the start; or the guest is 0.18 (event 2030). | Style from the appearance store ([design and appearance](#design-and-appearance)); update the guest. |
 | The region stays `loading`. | The host page's Content-Security-Policy blocks the frame; or the guest's page sets `frame-ancestors 'none'`. | `frame-src http:`; remove the guest's `frame-ancestors`. |
 | The frame is smaller than the region. | A `sizing="fill"` region without a height of its own, such as a block in a page without one. | Give the element a height, or make it a flex item that fills the space. |
 | The region stays `waiting`. | No window was decided for it: the guest did not start, its policy refused it, two host windows declared the name (`region-ambiguous`), or `CanEmbed` was `false`. | Check the start's exception, event 2019 and the decision. |
