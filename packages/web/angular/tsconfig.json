@@ -5,11 +5,15 @@
     "moduleResolution": "NodeNext",
     "declaration": true,
     "rootDir": "src",
-    "outDir": "dist/esm",
     "strict": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "paths": {
+      "@runic-artifex/angular": [
+        "./src/index.ts"
+      ]
+    }
   },
   "angularCompilerOptions": {
     "compilationMode": "partial",

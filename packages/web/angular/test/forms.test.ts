@@ -5,9 +5,9 @@ import { FormControl, ReactiveFormsModule } from "@angular/forms";
 import { form, FormField } from "@angular/forms/signals";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
-import { injectField } from "../dist/esm/index.js";
-import * as forms from "../dist/esm/forms/index.js";
-import { RunicFieldDirective, runicFieldModel, validateRunicField } from "../dist/esm/forms/index.js";
+import { injectField } from "@runic-artifex/angular";
+import * as forms from "@runic-artifex/angular/forms";
+import { RunicFieldDirective, runicFieldModel, validateRunicField } from "@runic-artifex/angular/forms";
 import { FakeEditor, Fields, settle, viewOf } from "./fields.js";
 
 beforeAll(() => {

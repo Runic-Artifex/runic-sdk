@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import { configureFieldErrorText, textVersion } from "@runic-artifex/views";
 import { connectView } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
-import { configureTranslatedText, injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal } from "../dist/esm/index.js";
+import { configureTranslatedText, injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal } from "@runic-artifex/angular";
 // The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
 import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
 import { configureLocaleResolver, createLocaleSource } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";

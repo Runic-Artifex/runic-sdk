@@ -4,7 +4,7 @@ import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { FieldError, type FieldBaseline, type FieldState } from "@runic-artifex/views";
-import { injectField, injectForm, type FieldHandle } from "../dist/esm/index.js";
+import { injectField, injectForm, type FieldHandle } from "@runic-artifex/angular";
 import { checkedTitle, FakeEditor, Fields, settle, viewOf } from "./fields.js";
 
 beforeAll(() => {

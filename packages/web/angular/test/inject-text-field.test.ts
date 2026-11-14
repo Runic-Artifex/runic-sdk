@@ -7,7 +7,7 @@ import { bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type V
 import { connectView, type ViewConnection } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge, type MockBridge } from "@runic-artifex/views/mock";
 import * as wire from "@runic-artifex/views/generated/wire";
-import { injectOperation, injectTextField, injectView, type TextFieldHandle } from "../dist/esm/index.js";
+import { injectOperation, injectTextField, injectView, type TextFieldHandle } from "@runic-artifex/angular";
 
 type State = { readonly title: string };
 

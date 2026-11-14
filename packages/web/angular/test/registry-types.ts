@@ -1,7 +1,7 @@
 // Type-level checks for ViewRegistry; compiled by `tsc -p tsconfig.test.json` in the test script, never run.
 import type { InputSignal } from "@angular/core";
 import { registryEntries, type sharedPageReferences } from "@runic-artifex/views";
-import type { ViewRegistry } from "../dist/esm/index.js";
+import type { ViewRegistry } from "@runic-artifex/angular";
 
 type Counter = { readonly kind: "counter"; connect(): Promise<unknown> };
 type Welcome = { readonly kind: "welcome"; connect(): Promise<unknown> };

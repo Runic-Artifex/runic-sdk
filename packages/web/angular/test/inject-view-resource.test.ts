@@ -3,7 +3,7 @@ import { Injector, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
-import { injectView, injectViewResource } from "../dist/esm/index.js";
+import { injectView, injectViewResource } from "@runic-artifex/angular";
 
 type State = { readonly count: number };
 

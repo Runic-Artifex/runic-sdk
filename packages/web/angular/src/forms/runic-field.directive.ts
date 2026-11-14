@@ -8,7 +8,7 @@ import {
   type ValidationErrors,
   type Validator,
 } from "@angular/forms";
-import type { FieldHandle } from "../inject-field.js";
+import type { FieldHandle } from "@runic-artifex/angular";
 
 type Wiring = "text" | "checkbox" | "radio" | "select";
 
