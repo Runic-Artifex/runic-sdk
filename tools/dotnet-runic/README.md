@@ -382,7 +382,7 @@ the options that describe how `dev` starts the Window (`RAPPDEV1014`).
 Since 0.20, projects from the `runic-app` template have that launch profile,
 named after the project, and with `--editor vscode` VS Code tasks and
 configurations like the ones below: see the template README's
-[Debug it in your IDE](../Runic.Application.Templates/content/runic-app/README.md#debug-it-in-your-ide).
+[Debug it in your IDE](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Application.Templates/content/runic-app/README.md#debug-it-in-your-ide).
 For another project, add the snippets below.
 
 A launch profile for Visual Studio and Rider (and `dotnet run`), in
