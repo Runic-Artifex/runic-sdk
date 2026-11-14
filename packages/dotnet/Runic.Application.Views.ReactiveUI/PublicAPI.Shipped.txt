@@ -23,7 +23,6 @@ static Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.IsE
 static Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Observe<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, System.Action! changed) -> System.IDisposable!
 static Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.ObserveFailures<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, Microsoft.Extensions.Logging.ILogger! logger, string! source) -> System.IDisposable!
 Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor
-static Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, ReactiveUI.Binding.IInteraction<TInput, TOutput>!>! getInteraction, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput, System.TimeSpan? timeout = null) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
 Runic.Application.Views.ReactiveUI.IReactiveSchedulerProvider
 Runic.Application.Views.ReactiveUI.IReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
 Runic.Application.Views.ReactiveUI.ReactiveBridgeExceptionExtensions
@@ -44,3 +43,4 @@ static Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(object! viewMod
 Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider
 Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider
 static Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
+static Runic.Application.Views.ReactiveUI.Generated.ReactiveInteractionDescriptor.Create<TInput, TOutput>(string! name, string! contract, System.Func<object!, ReactiveUI.Binding.IInteraction<TInput, TOutput>!>! getInteraction, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput, System.TimeSpan? timeout = null) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor!
