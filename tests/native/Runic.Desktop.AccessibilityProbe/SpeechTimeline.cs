@@ -4,8 +4,8 @@ using System.Linq;
 using System.Threading;
 
 // What a screen reader has said during the speech checks, in order, and when the probe last heard it or acted on the
-// page. SpeechScenario.cs waits on it; the times are passed in, so Runic.Desktop.Tests checks the waits without a
-// screen reader (AccessibilityProbeSpeechTests.cs).
+// page. SpeechScenario.cs waits on it; the times are passed in, so Runic.Platform.Runtime.Tests checks the waits without
+// a screen reader (AccessibilityProbeSpeechTests.cs).
 internal sealed class SpeechTimeline(DateTime start)
 {
     private readonly List<string> _phrases = [];
