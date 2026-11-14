@@ -67,7 +67,7 @@ test("a learned command shows its C# handler, availability and calls", () => {
     contracts: new Map([["editor", "Demo.EditorViewModel:F1"]]),
   }));
   assert.deepEqual(description.commands, [{
-    route: "editor", viewModel: "Demo.EditorViewModel", member: "save", symbol: "Demo.EditorViewModel.SaveAsync()",
+    route: "editor", viewModel: "Demo.EditorViewModel", member: "save", evidence: "call", symbol: "Demo.EditorViewModel.SaveAsync()",
     property: "Demo.EditorViewModel.SaveCommand",
     location: { file, line: 42, column: 5, editor: "runic", id: "Demo.EditorViewModel/command/save" },
     canExecute: false, calls: 2,
@@ -142,7 +142,7 @@ test("notes say what the overview cannot tell", () => {
     learned: [{ route: "editor", contract: "Demo.EditorViewModel:F1", kind: "command", member: "save" }],
     contracts: new Map([["editor", "Demo.EditorViewModel:F1"]]),
   }));
-  assert.deepEqual(learned.commands, [{ route: "editor", member: "save", calls: 0 }]);
+  assert.deepEqual(learned.commands, [{ route: "editor", member: "save", evidence: "call", calls: 0 }]);
   assert.deepEqual(learned.viewModels, [{ route: "editor", contract: "Demo.EditorViewModel:F1" }]);
   assert.match(learned.notes[0], /does not serve the Bridge source map/u);
 });

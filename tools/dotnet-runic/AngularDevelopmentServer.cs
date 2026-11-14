@@ -69,7 +69,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             packageManager.Executable,
             configuration.WorkspaceRoot,
             CreateArguments(configuration, port),
-            CreateEnvironment(session),
+            CreateEnvironment(configuration, session),
             observeLine: conflict.Observe);
         var server = new AngularDevelopmentServer(process, origin);
         try
@@ -129,12 +129,17 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             Path.Combine(configuration.FrontendPackageDirectory, "package.json"),
             ViteDevelopmentServer.RunicVitePluginPackage);
 
-    internal static IReadOnlyDictionary<string, string?> CreateEnvironment(string? session = null) =>
+    internal static IReadOnlyDictionary<string, string?> CreateEnvironment(
+        DevProjectConfiguration configuration, string? session = null) =>
         new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             [ViteDevelopmentServer.SessionEnvironmentVariable] = session,
             ["BROWSER"] = "none",
             ["NG_CLI_ANALYTICS"] = "false",
+            // runicDevSessionProxy() serves the development source map to Runic Inspect, as runic() does (#976).
+            ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
+            [ViteDevelopmentServer.SourceMapEnvironmentVariable] =
+                configuration.BridgeSourceMapPath.Length == 0 ? null : configuration.BridgeSourceMapPath,
         };
 
     internal static IReadOnlyList<string> CreateArguments(

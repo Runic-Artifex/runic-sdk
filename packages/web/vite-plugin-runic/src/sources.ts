@@ -6,7 +6,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
+import { isLoopbackRequest, mayReadLocally, readLimitedBody, sameOrigin } from "./requests.js";
 import { openPath, sourcesPath } from "./channel.js";
 
 export { openPath, sourcesPath };
@@ -205,23 +205,11 @@ function answer(response: ServerResponse, status: number, body?: unknown, header
   response.end(JSON.stringify(body));
 }
 
-/**
- * Whether a GET may read the map: a request of this machine, and not a page of another origin. A browser marks a
- * cross-origin fetch with `Sec-Fetch-Site` and `Origin`; neither is required, so that a tool such as `curl` reads it.
- */
-function mayRead(request: IncomingMessage): boolean {
-  const site = request.headers["sec-fetch-site"];
-  if (site !== undefined && site !== "same-origin" && site !== "none") return false;
-  const origin = request.headers.origin;
-  if (origin !== undefined && !sameOrigin(request)) return false;
-  return isLoopbackRequest(request);
-}
-
 /** Answers `GET /__runic/sources` with the map, or 404 without one. */
 export function answerSources(request: IncomingMessage, response: ServerResponse, read: () => RunicSourceMap | undefined): void {
   request.resume();
   if (request.method !== "GET" && request.method !== "HEAD") return answer(response, 405, undefined, { Allow: "GET, HEAD" });
-  if (!mayRead(request)) return answer(response, 403);
+  if (!mayReadLocally(request)) return answer(response, 403);
   const map = read();
   if (map === undefined) return answer(response, 404);
   answer(response, 200, map);

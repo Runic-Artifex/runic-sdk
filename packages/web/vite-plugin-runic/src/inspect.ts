@@ -4,9 +4,9 @@
 // and the texts its ViewModel sent, each location with an "open in editor" link. While it is on, the page's own
 // handlers see no pointer event: a transparent layer takes them, and the window's capture phase stops them.
 //
-// What an element calls is learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in
-// the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. A button therefore
-// shows its command once it was used. States come from the state inspector channel (`runic.views.inspector`), C#
+// What an element calls is found before any click in its component's source (`/__runic/handlers`, handlers.ts and
+// inspect-handlers.ts), and learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in
+// the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. States come from the state inspector channel (`runic.views.inspector`), C#
 // locations from the development source map (`/__runic/sources`), opening from `/__runic/open` (C#) and Vite's
 // `/__open-in-editor` (frontend files).
 //
@@ -15,7 +15,9 @@
 // module; it uses only the DOM, so every engine under `dotnet runic dev` runs it.
 
 import type { RunicSourceMap } from "./sources.js";
-import { openPath, sourcesPath } from "./channel.js";
+import { handlersPath, openPath, sourcesPath } from "./channel.js";
+import type { RunicHandlerAnalysis } from "./handlers.js";
+import { findProbes, matchBindings, probeFiles, type RequestedAnalysis, type SourceBindings } from "./inspect-handlers.js";
 import {
   assembleDescription, normalizeText, type LearnedBinding, type RunicInspectCall, type RunicInspectDescription,
   type RunicInspectLocation, type TextReferenceLike,
@@ -201,6 +203,30 @@ export function installInspect(options: InspectOptions = {}): () => void {
     }
   }
 
+  async function readAnalysis(file: string): Promise<RequestedAnalysis | undefined> {
+    try {
+      const response = await fetch(`${handlersPath}?file=${encodeURIComponent(file)}`, { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) return undefined;
+      const analysis = await response.json() as RunicHandlerAnalysis;
+      return analysis?.format === "runic-handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // The element's event bindings in its components' source (`/__runic/handlers`), before any click.
+  async function readSourceBindings(element: Element): Promise<SourceBindings | undefined> {
+    try {
+      const probes = await findProbes(element as unknown as NodeLike, { root, ng: host.ng, fetchText });
+      if (probes.length === 0) return undefined;
+      const analyses = (await Promise.all(probeFiles(probes).slice(0, 6).map(readAnalysis)))
+        .filter((analysis): analysis is RequestedAnalysis => analysis !== undefined);
+      return matchBindings(probes, analyses);
+    } catch {
+      return undefined;
+    }
+  }
+
   function resolveText(reference: TextReferenceLike): { text: string; locale?: string } | undefined {
     const channel = host[translatedTextKey] as TranslatedText | undefined;
     const translations = channel?.translations;
@@ -232,9 +258,10 @@ export function installInspect(options: InspectOptions = {}): () => void {
     const control = element as Partial<HTMLInputElement>;
     const hasValue = (element instanceof HTMLInputElement && element.type !== "password" && element.type !== "checkbox" && element.type !== "radio")
       || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement;
-    const [sourceMap, component] = await Promise.all([
+    const [sourceMap, component, source] = await Promise.all([
       readSourceMap(),
       findComponent(element as unknown as NodeLike, { root, ng: host.ng, fetchText }),
+      readSourceBindings(bindingElement(element)),
     ]);
     const role = element.getAttribute("role");
     return assembleDescription({
@@ -255,6 +282,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
       sourceMap: sourceMap.map,
       ...(sourceMap.status === undefined ? {} : { sourceMapStatus: sourceMap.status }),
       component,
+      source,
       resolveText,
     });
   }
@@ -406,7 +434,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
     section("Commands", description.commands.map((command) => [
       code(`${command.member}()`), " → ", code(command.symbol ?? "?"),
       ...(command.location === undefined ? [] : [" ", link(command.location)]),
-      muted(` · ${command.calls} call${command.calls === 1 ? "" : "s"}`),
+      command.evidence === "source" ? muted(" · from the source, not called yet") : muted(` · ${command.calls} call${command.calls === 1 ? "" : "s"}`),
+      ...(command.frontend === undefined ? [] : [muted(" · called at "), link(command.frontend)]),
       ...(command.canExecute === undefined ? [] : [muted(` · can run: ${text(command.canExecute)}`)]),
     ]));
     section("ViewModel members", description.members.map((member) => [
