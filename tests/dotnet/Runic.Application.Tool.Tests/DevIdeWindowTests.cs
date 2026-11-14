@@ -150,7 +150,8 @@ internal sealed partial class ToolTests
         (string Build, string Copy, string Live) Detect(params string[] extra)
         {
             CommandResult result = CommandRunner.RunAsync("dotnet", projectDirectory,
-                ["msbuild", project, "-nologo", "-t:RunicViewsDetectDevSession;RunicViewsRestoreDevSessionPages",
+                // Debug unless a case says otherwise: CI exports CONFIGURATION=Release, which MSBuild reads as a property.
+                ["msbuild", project, "-nologo", "-t:RunicViewsDetectDevSession;RunicViewsRestoreDevSessionPages", "-p:Configuration=Debug",
                     "-getProperty:RunicApplicationFrontendBuildEnabled,RunicApplicationFrontendCopyEnabled,_RunicDevSessionLive", .. extra],
                 CancellationToken.None).GetAwaiter().GetResult();
             True(result.ExitCode == 0, $"MSBuild failed: {result.CombinedOutput}");
