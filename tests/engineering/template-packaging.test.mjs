@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { root } from "../../eng/run.mjs";
+import { attachSelects, cdpEndpoint, webView2Debugging } from "../fixtures/application/dev-live-assets/webview2-debugging.mjs";
 
 // The runic-app template's packaging inputs. dotnet runic package (tools/dotnet-runic/Packaging) embeds the template's
 // packaging/ manifests and fills them; Runic.Application.Tool.Tests (PackageTests.cs) checks the identity rules and the
@@ -471,6 +472,14 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
       name: "Window + WebView2 (Windows)", configurations: ["Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"],
       preLaunchTask: "runic: window", stopAll: true,
     }]);
+    // The endpoint that tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs proves against WebView2 on
+    // Windows with the same rules, and that dev's session file lists: js-debug's attach reaches it and selects the page.
+    const debugging = webView2Debugging(JSON.parse(plain["Properties/launchSettings.json"]), launch);
+    assert.deepEqual([debugging.profileName, debugging.port, debugging.endpoint, debugging.windowConfiguration, debugging.attach.name],
+      ["Ide.App (WebView2 script debugging)", port, cdpEndpoint(port), "Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"]);
+    assert.equal(cdpEndpoint(port), `http://127.0.0.1:${port}/`);
+    assert.ok(attachSelects(webView2, { type: "page", url: "http://127.0.0.1:49152/index.html" }));
+    assert.ok(!attachSelects(webView2, { type: "service_worker", url: "http://127.0.0.1:49152/sw.js" }));
 
     // CS-WebUI has no WebView2 of its own: no script-debugging profile or configurations.
     const cswebui = create("cswebui", "--editor", "vscode", "--host", "cswebui");

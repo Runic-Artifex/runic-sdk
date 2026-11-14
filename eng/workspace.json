@@ -461,7 +461,9 @@
         "examples/NuGet.config",
         "tests/fixtures/application/dynamicdata",
         "tests/fixtures/application/dynamicdata-reactive",
-        "tests/fixtures/application/dev-live-assets"
+        "tests/fixtures/application/dev-live-assets",
+        "tools/Runic.Application.Templates/content/runic-app/Properties/launchSettings.json",
+        "tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json"
       ]
     },
     "platform": {
