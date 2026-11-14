@@ -345,6 +345,46 @@
     </PropertyGroup>
   </Target>
 
+  <!-- While `dotnet runic dev` serves the frontend, a build of the same output that dev did not start, such as an IDE's
+       build before F5 while dev runs without its Window, keeps the session's frontend: dev writes obj/runic/dev-frontend (one
+       line, the web root it serves) and renews it every 5 seconds, so a marker older than 30 seconds, from a dev that
+       was killed, is ignored. The build then skips the production frontend build (the development server or watcher
+       owns the frontend), and with a development server (obj/runic/dev-pages) it does not copy dist/ over the
+       development pages in www/ and puts those pages back after the build, also after a clean. Generated TypeScript
+       is still written. Publish is never affected; RunicApplicationFrontendDevSessionEnabled=false turns this off.
+       Declared before the other targets that run before PrepareForBuild, so RunicViewsResolveFrontendDelivery and
+       the frontend targets see the result. -->
+  <Target Name="RunicViewsDetectDevSession" BeforeTargets="PrepareForBuild" DependsOnTargets="_RunicViewsIntermediatePaths"
+          Condition="'$(RunicApplicationFrontendDevSessionEnabled)' != 'false' and '$(_IsPublishing)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(OutputType)' != 'Library'">
+    <PropertyGroup>
+      <_RunicDevSessionDirectory>$(_RunicBridgeBaseIntermediateDirectory)runic/</_RunicDevSessionDirectory>
+      <_RunicDevSessionMarker>$(_RunicDevSessionDirectory)dev-frontend</_RunicDevSessionMarker>
+      <_RunicDevSessionPages>$(_RunicDevSessionDirectory)dev-pages/</_RunicDevSessionPages>
+      <_RunicDevSessionWebRoot>$([System.IO.Path]::GetFullPath('$(TargetDir)$(_RunicApplicationFrontendWebRoot)'))</_RunicDevSessionWebRoot>
+      <_RunicDevSessionMarkerAge Condition="Exists('$(_RunicDevSessionMarker)')">$([System.DateTime]::Now.Subtract($([System.IO.File]::GetLastWriteTime('$(_RunicDevSessionMarker)'))).TotalSeconds)</_RunicDevSessionMarkerAge>
+      <_RunicDevSessionMarkerWebRoot Condition="'$(_RunicDevSessionMarkerAge)' != '' and $(_RunicDevSessionMarkerAge) &lt; 30">$([System.IO.File]::ReadAllText('$(_RunicDevSessionMarker)').Trim())</_RunicDevSessionMarkerWebRoot>
+      <!-- Only for the output dev serves: another configuration, framework or runtime identifier builds as usual.
+           MSBuild compares without case, as Windows and macOS paths do. -->
+      <_RunicDevSessionLive Condition="'$(_RunicDevSessionMarkerWebRoot)' != '' and '$(_RunicDevSessionMarkerWebRoot)' == '$(_RunicDevSessionWebRoot)'">true</_RunicDevSessionLive>
+      <_RunicDevSessionPagesKept Condition="'$(_RunicDevSessionLive)' == 'true' and Exists('$(_RunicDevSessionPages)')">true</_RunicDevSessionPagesKept>
+      <RunicApplicationFrontendBuildEnabled Condition="'$(_RunicDevSessionLive)' == 'true'">false</RunicApplicationFrontendBuildEnabled>
+      <RunicApplicationFrontendCopyEnabled Condition="'$(_RunicDevSessionPagesKept)' == 'true'">false</RunicApplicationFrontendCopyEnabled>
+    </PropertyGroup>
+    <Message Importance="high" Condition="'$(_RunicDevSessionPagesKept)' == 'true'"
+             Text="$(MSBuildProjectName): dotnet runic dev serves the frontend; the build keeps its development pages in $(_RunicDevSessionWebRoot) and skips the frontend build." />
+    <Message Importance="high" Condition="'$(_RunicDevSessionLive)' == 'true' and '$(_RunicDevSessionPagesKept)' != 'true'"
+             Text="$(MSBuildProjectName): dotnet runic dev watches the frontend; the build copies its output and skips the frontend build." />
+  </Target>
+
+  <Target Name="RunicViewsRestoreDevSessionPages" AfterTargets="Build" Condition="'$(_RunicDevSessionPagesKept)' == 'true'">
+    <ItemGroup>
+      <_RunicDevSessionPage Include="$(_RunicDevSessionPages)**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RunicDevSessionPage)"
+          DestinationFiles="@(_RunicDevSessionPage->'$(_RunicDevSessionWebRoot)/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
   <!-- An application uses one ReactiveUI flavor. The resolved references show the Runic adapters that arrive
        directly, through packages or through other projects, so a mix fails here whatever brought it. -->
   <Target Name="RunicViewsRejectMixedReactiveUiFlavors" AfterTargets="ResolveAssemblyReferences"

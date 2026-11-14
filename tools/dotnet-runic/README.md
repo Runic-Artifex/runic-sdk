@@ -22,7 +22,9 @@ frontend build and leaves the development document in `www/`
 (`RunicApplicationFrontendBuildEnabled=false`, `RunicApplicationFrontendCopyEnabled=false`); the Views
 MSBuild targets still generate the typed TypeScript clients. `dotnet watch`
 restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
-`--no-dotnet-watch`, and `--dry-run` select parts of that loop. `dev` installs
+`--no-dotnet-watch`, and `--dry-run` select parts of that loop; `--no-window`
+runs only the frontend, for a Window that your IDE starts under its debugger
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). `dev` installs
 the frontend packages itself and passes
 `RunicApplicationFrontendInstallEnabled=false`, so the build does not install
 them a second time (and `RunicApplicationFrontendDelivery=Files`, so a project
@@ -344,6 +346,118 @@ in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later relea
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 
+## Debug the Window in your IDE
+
+Since 0.20, `dotnet runic dev --no-window` runs only the frontend (its Vite or
+Angular development server, or its watcher) and leaves the Window to your IDE:
+F5 builds and starts the Window under the IDE's .NET debugger, with breakpoints
+from the first line, and frontend edits still reach the page live. `dev` does
+not restart the Window after C# edits, so the debugger is never dropped; use
+the IDE's Hot Reload, and restart the Window yourself after a change that
+Hot Reload cannot apply, such as a new or renamed ViewModel member (the build
+then writes the matching TypeScript client, which the development server
+picks up).
+
+While `dev` runs, it marks the frontend in `obj/runic/` (renewed every 5
+seconds) and the session file says `"window": { "owner": "ide", "environment": … }`.
+A build of the same output, such as the IDE's, then skips the production
+frontend build and does not copy `dist/` over the development pages in `www/`;
+it also puts those pages back after a clean or Rebuild. The build prints
+`<Project>: dotnet runic dev serves the frontend; the build keeps its development pages …`.
+Without `dev`, or 30 seconds after a `dev` that was killed, builds are
+unchanged; publish never changes, and
+`RunicApplicationFrontendDevSessionEnabled=false` turns it off. The Window
+needs only `DOTNET_ENVIRONMENT=Development` (DevTools and detailed Bridge
+errors). For a frontend without a development server, set
+`RUNIC_APPLICATION_DEVELOPMENT_ASSETS` to the absolute path of the frontend's
+output directory as well, so a Runic Desktop window serves it live; the session
+file's `window.environment` lists both. `--no-window` cannot be combined with
+the options that describe how `dev` starts the Window (`RAPPDEV1014`).
+
+1. Start the frontend: `dotnet runic dev --no-window`, in a terminal or as an
+   IDE task. It prints `[dev] Ready` when the frontend is served.
+2. Start the Window with the IDE's debugger (F5) from a launch profile with
+   `DOTNET_ENVIRONMENT=Development`.
+
+A launch profile for Visual Studio and Rider (and `dotnet run`), in
+`Properties/launchSettings.json`:
+
+```json
+{
+  "profiles": {
+    "Window (dotnet runic dev --no-window)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+```
+
+**VS Code** (C# extension): a background task that waits for `Ready`, then a
+build, as the debug configuration's `preLaunchTask`:
+
+```jsonc
+// .vscode/tasks.json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "runic: dev --no-window",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["runic", "dev", "--no-window"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": { "activeOnStart": true, "beginsPattern": "^\\[dev\\] Evaluating", "endsPattern": "^\\[dev\\] Ready$" }
+      }
+    },
+    { "label": "build", "type": "shell", "command": "dotnet", "args": ["build"], "problemMatcher": "$msCompile" },
+    { "label": "runic: window", "dependsOn": ["runic: dev --no-window", "build"], "dependsOrder": "sequence" }
+  ]
+}
+// .vscode/launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Window",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "runic: window",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/App", // App.exe on Windows
+      "cwd": "${workspaceFolder}",
+      "env": { "DOTNET_ENVIRONMENT": "Development" }
+    }
+  ]
+}
+```
+
+With C# Dev Kit, a `"type": "dotnet"` configuration can start the launch
+profile above instead.
+
+**Rider**: start `dotnet runic dev --no-window` in Rider's terminal (or add it
+to the run configuration's "Before launch" list as an external tool), then
+debug the "Window (dotnet runic dev --no-window)" launch profile.
+
+**Visual Studio**: start `dotnet runic dev --no-window` in the Developer
+PowerShell or a terminal, choose the "Window (dotnet runic dev --no-window)"
+profile next to the Start button, and press F5.
+
+To keep `dev` starting the Window and attach instead, use the
+[IDE contract](#ide-contract): `[dev] Window started: process <pid>` names the
+process to attach to; an attached debugger ends when `dotnet watch` restarts the
+Window (`--no-dotnet-watch` avoids that).
+
+Verified by hand in 0.20 on Linux with VS Code 1.144 and the C# extension
+(2.160, `coreclr`): F5 ran the task, waited for `Ready`, built without
+replacing the development page, stopped on a breakpoint in `Program.cs`, and
+the Window showed the page from the Vite server and a frontend edit live.
+The C# Dev Kit `dotnet` configuration, Rider, Visual Studio and Windows
+(WebView2) are not yet verified by hand.
+
 ## IDE contract
 
 Since 0.20, `dev` gives IDEs, tasks and extensions stable lines to wait on and a
@@ -411,7 +525,9 @@ tools:
 **Session file.** `dev` writes `obj/runic/dev-session.json` (below the
 project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
 development server is ready and each time the Window process starts or exits.
-When `dev` ends, the file stays with `"state": "stopped"`. Each write replaces
+When `dev` ends, the file stays with `"state": "stopped"`. Beside it, `dev`
+keeps `dev-frontend` and `dev-pages/` while it serves the frontend, for the
+build ([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write replaces
 the whole file, so a reader never sees half of one. Two `dev` sessions of the
 same project write the same file; the later one wins. `--dry-run` writes none.
 
@@ -439,9 +555,14 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     { "document": "index.html", "file": "/path/to/App/bin/Debug/net10.0/www/index.html", "url": "http://127.0.0.1:5173/index.html" }
   ],
   "window": {
+    "owner": "dev",                 // "dev", or "ide" with --no-window: the IDE starts the Window
     "program": "App",               // the program dev looks for
     "processId": 41377,             // the running Window process, or null
-    "starts": 1                     // how many Window processes have started in this session
+    "starts": 1,                    // how many Window processes have started in this session
+    "environment": {                // what a Window that the IDE starts needs, as dev would set it
+      "DOTNET_ENVIRONMENT": "Development"
+      // and RUNIC_APPLICATION_DEVELOPMENT_ASSETS without a development server, for Runic Desktop
+    }
   },
   "debugEndpoints": [
     // Debugging endpoints of the page's engine that the Window's environment enables. dev enables none itself; on

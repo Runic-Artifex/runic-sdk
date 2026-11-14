@@ -31,6 +31,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendNodeModulesDirectory` | property | none | A `node_modules` installed elsewhere, such as by the Nix builder. |
 | `RunicApplicationFrontendBuildEnabled` | property | `true` | `false` when another tool builds the frontend. |
 | `RunicApplicationFrontendCopyEnabled` | property | `true` | Mirror the frontend output to the web root. |
+| `RunicApplicationFrontendDevSessionEnabled` | property | `true` | `false` makes a build ignore a running `dotnet runic dev` session, which otherwise skips the frontend build and keeps dev's development pages in the web root (since 0.20). |
 | `RunicApplicationFrontendOutputDirectory` | property | `dist` | The frontend build's output, relative to the frontend directory. |
 | `RunicApplicationFrontendWebRoot` | property | `www` | The web root below the build and publish output. |
 | `RunicApplicationFrontendTranslations` | property | `false` | `true` mirrors the Runic Translations ESM of the project's catalog into the frontend before it builds, for a page that imports it without the Translations Vite plugin. Needs `RunicTranslationsEmitEsm=true`. |
