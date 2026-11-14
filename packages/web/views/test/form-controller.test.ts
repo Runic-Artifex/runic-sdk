@@ -9,11 +9,13 @@ import {
   FieldError,
   formStateOf,
   type BridgeValidationState,
+  type FieldController,
   type FieldState,
 } from "../dist/index.js";
 import { connectView, fieldValidating } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge } from "../dist/mock.js";
+import { collectUntil, forcedCollection } from "./support/collection.js";
 
 type State = { readonly title: string; readonly step: number; readonly validation: BridgeValidationState; readonly isDirty: boolean };
 const valid: BridgeValidationState = { hasErrors: false, truncated: false, errors: [] };
@@ -247,19 +249,30 @@ test("submit waits for pending validation with waitForValidation, and gives up w
   field.dispose();
 });
 
-test("a controller dropped without dispose leaves the page's fields once collected (C2 review)", async () => {
-  const gc = (globalThis as { readonly Bun?: { gc(force: boolean): void } }).Bun?.gc;
-  if (gc === undefined) return;
+// A runtime without a forced collection (Bun.gc, or Node's gc under --expose-gc) reports this test as skipped.
+const noForcedCollection = forcedCollection() === undefined && "the runtime cannot force a garbage collection";
+test("a controller dropped without dispose leaves the page's fields once collected (C2 review)", { skip: noForcedCollection }, async () => {
   const before = liveFieldCount();
+  // The test's own weak references tell which controllers stay reachable if a field is not released.
+  const dropped: WeakRef<FieldController<{ readonly title: string }, object, string>>[] = [];
   (() => {
-    for (let index = 0; index < 20; index++) createFieldController<{ readonly title: string }, object, string>({ kind: "text", read: state => state.title, write: async () => undefined });
+    for (let index = 0; index < 20; index++)
+      dropped.push(new WeakRef(createFieldController<{ readonly title: string }, object, string>({ kind: "text", read: state => state.title, write: async () => undefined })));
   })();
-  assert.ok(liveFieldCount() >= before + 20 || liveFieldCount() >= 20);
-  for (let attempt = 0; attempt < 10 && liveFieldCount() > before; attempt++) {
-    gc(true);
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-  assert.ok(liveFieldCount() <= before, `${liveFieldCount()} fields remain of ${before}`);
+  assert.ok(liveFieldCount() >= before + 20, `${liveFieldCount()} fields after creating 20 on top of ${before}`);
+  const wait = (await collectUntil(() => liveFieldCount() <= before))!;
+  if (wait.released) return;
+  const reachable = dropped.flatMap((reference, index) => {
+    const controller = reference.deref();
+    return controller === undefined ? [] : [`#${index} (editing: ${controller.current.editing})`];
+  });
+  assert.fail(`${liveFieldCount()} fields remain of ${before} after ${wait.rounds} forced collections in ${Math.round(wait.elapsedMs)} ms. `
+    + "The page's field set (Symbol.for(\"runic.views.fields/2\")) holds each field's entry only through a WeakRef, and the controller keeps no "
+    + "reference to its entry (the entry refers to the controller, not back), so a timer, a pending write or a subscription of a controller cannot "
+    + "hold it: what keeps it is a reference outside the package, such as a stack or register slot the collector scans conservatively. "
+    + (reachable.length > 0
+      ? `Of the 20 dropped controllers, ${reachable.join(", ")} ${reachable.length === 1 ? "is" : "are"} still reachable.`
+      : "None of the 20 dropped controllers is reachable, so the remaining fields may belong to another test that did not dispose its fields."));
 });
 
 test("field-flush/1: the page writes its pause drafts and answers flush; a keyboard shortcut writes them too (C2 review)", async () => {
