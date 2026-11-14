@@ -361,7 +361,7 @@
         "type": "CentralTransitive",
         "requested": "[0.11.0, )",
         "resolved": "0.11.0",
-        "contentHash": "lLNYCnEiP0NY7tzpEW5P7vB5o3GPbXJrF82dgweoO2fpfLTzrni9wCyd2Wqq6mHezf+4dXxuGvGumtJOZ96lww=="
+        "contentHash": "X1JiCkq72tRq6YX1opWUWmJtSWY0Lg+zvbLQbayZ5Bd7A3ZvLWfi6wz+dQDvcCl6vg/zET8Yax7TywKI1ypQeg=="
       },
       "Splat": {
         "type": "CentralTransitive",
