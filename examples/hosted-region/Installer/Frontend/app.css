@@ -1,6 +1,7 @@
 html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; font-family: system-ui, sans-serif; background: Canvas; color: CanvasText; }
 header, footer { padding: .75rem 1.25rem; background: color-mix(in srgb, CanvasText 6%, Canvas); }
+header .title { display: flex; gap: 1rem; justify-content: space-between; align-items: center; }
 header h1 { margin: 0; font-size: 1.1rem; }
 ol.steps { display: flex; gap: 1.5rem; margin: .5rem 0 0; padding: 0; list-style: none; }
 ol.steps li[aria-current="step"] { font-weight: 600; text-decoration: underline; }
@@ -13,3 +14,7 @@ runic-hosted-region { flex: 1; display: block; min-height: 12rem; }
 runic-hosted-region::part(frame) { border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); border-radius: 6px; }
 footer { display: flex; gap: .5rem; justify-content: flex-end; align-items: center; }
 footer output { margin-inline-end: auto; font-size: .9rem; }
+/* High contrast: the applications' own palette, the light design with stronger rules (src/app.ts sets data-contrast). */
+:root[data-contrast="more"] header, :root[data-contrast="more"] footer { background: Canvas; border-block: 2px solid CanvasText; }
+:root[data-contrast="more"] runic-hosted-region::part(frame) { border: 2px solid CanvasText; }
+:root[data-contrast="more"] button, :root[data-contrast="more"] select { border: 2px solid CanvasText; font-weight: 600; }

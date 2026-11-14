@@ -29,6 +29,7 @@ public sealed class CheckViewModel : ReactiveObject, IDisposable
         _context = context;
         _messageBoxes = messageBoxes;
         RunCommand = ReactiveCommand.Create(Run, this.WhenAnyValue(model => model.Outcome, outcome => outcome != "running"));
+        ReportAppearanceCommand = ReactiveCommand.Create<string>(ReportAppearance);
     }
 
     // Each check: "pending", "running", "passed", "failed" or "info", with a detail for the page.
@@ -49,6 +50,9 @@ public sealed class CheckViewModel : ReactiveObject, IDisposable
 
     public ReactiveCommand<RxVoid, RxVoid> RunCommand { get; }
 
+    // The page reports the appearance it applied, such as "light more" (Frontend/src/app.ts).
+    public ReactiveCommand<string, RxVoid> ReportAppearanceCommand { get; }
+
     // Starts the checks from outside the Window's model context, as Program.cs does when the Window opened.
     public ValueTask StartAsync(CancellationToken cancellationToken = default) => _context.InvokeAsync(Run, cancellationToken);
 
@@ -61,6 +65,13 @@ public sealed class CheckViewModel : ReactiveObject, IDisposable
         Space = Folder = Account = "pending";
         SpaceDetail = FolderDetail = AccountDetail = "";
         _ = RunAsync(run.Token);
+    }
+
+    // Writes the page's appearance to standard error, where a Runic host logs a guest's lines (event 2022). The installer's
+    // probe reads it to check that the page shows the installer's design.
+    private static void ReportAppearance(string appearance)
+    {
+        if (appearance.Length <= 40) Console.Error.WriteLine($"check page appearance: {appearance}");
     }
 
     // The Window's close guard (CheckWindow): a check that runs is not given up without asking. In a region, the installer
@@ -154,5 +165,6 @@ public sealed class CheckViewModel : ReactiveObject, IDisposable
     {
         _run?.Cancel();
         RunCommand.Dispose();
+        ReportAppearanceCommand.Dispose();
     }
 }

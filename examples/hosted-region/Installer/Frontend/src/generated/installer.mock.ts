@@ -5,7 +5,7 @@ import type { MockBridge, MockTypedView, MockCommandHandler, MockTypedOperation,
 import type { InstallerClient, InstallerState } from "./installer.js";
 
 /** The state of a mock Installer: the client state, with content as `{ kind, id }` and command state optional. */
-export type InstallerMockState = Omit<InstallerState, "canNext" | "isNextExecuting" | "canBack" | "isBackExecuting" | "canRestartCheck" | "isRestartCheckExecuting"> & Partial<Pick<InstallerState, "canNext" | "isNextExecuting" | "canBack" | "isBackExecuting" | "canRestartCheck" | "isRestartCheckExecuting">>;
+export type InstallerMockState = Omit<InstallerState, "canNext" | "isNextExecuting" | "canBack" | "isBackExecuting" | "canRestartCheck" | "isRestartCheckExecuting" | "isChooseDesignExecuting"> & Partial<Pick<InstallerState, "canNext" | "isNextExecuting" | "canBack" | "isBackExecuting" | "canRestartCheck" | "isRestartCheckExecuting" | "isChooseDesignExecuting">>;
 
 export interface InstallerMockDefinition {
   /** Presents the mock as content on route `content{id}`; omit it for the root route `installer`. */
@@ -15,41 +15,50 @@ export interface InstallerMockDefinition {
     readonly next?: MockCommandHandler<InstallerMockState>;
     readonly back?: MockCommandHandler<InstallerMockState>;
     readonly restartCheck?: MockCommandHandler<InstallerMockState>;
+    readonly chooseDesign?: MockCommandHandler<InstallerMockState, [input: string]>;
+  };
+  /** Availability of commands with an argument. */
+  readonly canExecute?: {
+    readonly chooseDesign?: (state: InstallerMockState, input: string) => boolean;
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
     readonly next?: MockTypedOperationHandler<InstallerMockState, void, void> | "manual";
     readonly back?: MockTypedOperationHandler<InstallerMockState, void, void> | "manual";
     readonly restartCheck?: MockTypedOperationHandler<InstallerMockState, void, void> | "manual";
+    readonly chooseDesign?: MockTypedOperationHandler<InstallerMockState, string, void> | "manual";
   };
 }
 
 export interface InstallerMock extends MockTypedView<InstallerMockState, InstallerClient, "installer"> {
-  readonly operations: { readonly next: readonly MockTypedOperation<void, void>[]; readonly back: readonly MockTypedOperation<void, void>[]; readonly restartCheck: readonly MockTypedOperation<void, void>[]; };
+  readonly operations: { readonly next: readonly MockTypedOperation<void, void>[]; readonly back: readonly MockTypedOperation<void, void>[]; readonly restartCheck: readonly MockTypedOperation<void, void>[]; readonly chooseDesign: readonly MockTypedOperation<string, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {
   kind: "installer",
   route: "installer",
-  contract: "HostedInstaller.InstallerViewModel:0CA6B2403F1E7079EEDAAD0978A622707F7CEF605441B03F3CE8E1817D9E6F5F",
+  contract: "HostedInstaller.InstallerViewModel:FCDD6F4E08352ACB1E87AC946615016973FEBE8B25E1CC5D28BDC9EF82AA5CE5",
   fields: {
+    design: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     step: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     checkState: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     checkTitle: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     checkEvent: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     checkNote: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
-  defaults: { canNext: true, isNextExecuting: false, canBack: true, isBackExecuting: false, canRestartCheck: true, isRestartCheckExecuting: false },
-  texts: ["step", "checkState", "checkTitle", "checkEvent", "checkNote"],
+  defaults: { canNext: true, isNextExecuting: false, canBack: true, isBackExecuting: false, canRestartCheck: true, isRestartCheckExecuting: false, isChooseDesignExecuting: false },
+  texts: ["design", "step", "checkState", "checkTitle", "checkEvent", "checkNote"],
   commands: {
     next: { member: "next", available: "canNext" },
     back: { member: "back", available: "canBack" },
     restartCheck: { member: "restartCheck", available: "canRestartCheck" },
+    chooseDesign: { member: "chooseDesign", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
   operations: {
     next: { member: "next" },
     back: { member: "back" },
     restartCheck: { member: "restartCheck" },
+    chooseDesign: { member: "chooseDesign", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
 };
 

@@ -1,3 +1,4 @@
+import { appearance, onAppearance, type Appearance } from "@runic-artifex/views";
 import { connectCheck } from "./generated/check";
 
 const check = await connectCheck();
@@ -34,3 +35,18 @@ check.subscribe(render);
 render();
 
 run.addEventListener("click", async () => { await check.run(); });
+
+// The page's design. In a window of its own it is the desktop's appearance; in the installer's region it is the design
+// the installer chose, which the page's appearance already holds when the page starts (an appearance override). Runic
+// sets no attribute or colour scheme on the page itself: these three lines map the appearance onto the root, once now
+// and on each change, and the CSS styles [data-contrast="more"] instead of @media (prefers-contrast: more), which a
+// frame cannot be given from outside.
+const mapAppearance = (look: Appearance) => {
+  document.documentElement.style.colorScheme = look.colorScheme ?? "";
+  document.documentElement.dataset["contrast"] = look.contrast ?? "no-preference";
+  document.documentElement.toggleAttribute("data-reduced-motion", look.reducedMotion === true);
+  // The check writes what the page applied to its log, which the installer's probe reads (CheckViewModel).
+  void check.reportAppearance(`${look.colorScheme ?? "unknown"} ${look.contrast ?? "unknown"}`);
+};
+mapAppearance(appearance());
+onAppearance(mapAppearance);

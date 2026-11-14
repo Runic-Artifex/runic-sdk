@@ -6,7 +6,8 @@ namespace HostedInstaller;
 
 // `HostedInstaller --probe [--elevated]`: CI's check on a real desktop. The installer opens its window and goes to the
 // check step; the check's Window attaches to the page's region, its page loads in the frame and reports its title; the
-// installer detaches it and attaches it again; Next asks the check's close guard, the check closes, and the region ends.
+// installer switches its design, which the check's page shows; it detaches the check and attaches it again; Next asks
+// the check's close guard, the check closes, and the region ends.
 // With --elevated, installer and check run as the elevated pair (CI's Windows runner runs elevated).
 internal static class InstallerProbe
 {
@@ -17,7 +18,7 @@ internal static class InstallerProbe
         try
         {
             await RunCoreAsync(host, options, failures);
-            Console.WriteLine($"HOSTED_REGION_OK|attach|title|detach|reattach|departure|end{(elevated ? "|elevated" : "")}");
+            Console.WriteLine($"HOSTED_REGION_OK|attach|title|appearance|detach|reattach|departure|end{(elevated ? "|elevated" : "")}");
             return 0;
         }
         catch (ProbeException error)
@@ -63,6 +64,15 @@ internal static class InstallerProbe
             At("receive the check page's title");
             await UntilAsync(() => region.Title is "System check: passed" or "System check: problems found" ? region : null, failures, installer, timeout.Token);
 
+            // The design menu: the check's page receives "High contrast" (the light design with more contrast) as its
+            // appearance, its store reports it over the engine's media queries, and the check writes it to its log.
+            At("show the check in the high contrast design");
+            Check(region.CanSetAppearance, "The check does not apply an appearance override.");
+            Check(await installer.ChooseDesignAsync("high-contrast", timeout.Token), "The check's region did not take the design.");
+            Check(region.Appearance == InstallerViewModel.AppearanceOf("high-contrast"), $"The region's appearance is {region.Appearance}.");
+            const string HighContrast = "check page appearance: light more";
+            await UntilAsync(() => failures.Count(HighContrast) > 0 ? region : null, failures, installer, timeout.Token);
+
             At("detach the check");
             var detached = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
             region.Detached += (_, e) => detached.TrySetResult(e.Reason);
@@ -70,9 +80,15 @@ internal static class InstallerProbe
             Check(await detached.Task.WaitAsync(timeout.Token) == "host", "The detach did not report the host as its reason.");
             Check(region.State == RunicHostedRegionState.Detached && !region.Window.Closed.IsCompleted, "The detached window is not open and detached.");
 
+            // The detached page's reports are in; the next one comes from the page that the attach loads.
+            var reported = failures.Count(HighContrast);
+
             At("attach the check again");
             await region.MoveToAsync(window, CheckPolicy.Region, timeout.Token);
             await UntilAsync(() => region.State == RunicHostedRegionState.Attached ? region : null, failures, installer, timeout.Token);
+            // The new page in the frame starts in the design: the override belongs to the check's window.
+            At("show the attached check in the design");
+            await UntilAsync(() => failures.Count(HighContrast) > reported ? region : null, failures, installer, timeout.Token);
 
             // Next asks the check's close guard (CheckStep); the checks have finished, so the check allows it and closes.
             At("leave the check step");
@@ -124,8 +140,15 @@ internal sealed class ProbeLog : ILoggerProvider
     private static readonly HashSet<string> Failures = ["DesktopHostedRegionAttachFailed", "DesktopHostedRegionFailed", "DesktopHostedWindowFailed"];
     private static readonly Lock Gate = new();
     private readonly TaskCompletionSource<(string Message, Exception? Exception)> _first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly List<string> _guestLines = [];
 
     public Task<(string Message, Exception? Exception)> First => _first.Task;
+
+    // How many lines that contain the text the guests wrote (events 2021 and 2022).
+    public int Count(string text)
+    {
+        lock (_guestLines) return _guestLines.Count(line => line.Contains(text, StringComparison.Ordinal));
+    }
 
     public static void Write(string line)
     {
@@ -154,6 +177,10 @@ internal sealed class ProbeLog : ILoggerProvider
             var message = formatter(state, exception);
             Write($"{logLevel} {category}[{eventId.Id}]: {message}{(exception is null ? "" : Environment.NewLine + exception)}");
             if (eventId.Name is { } name && Failures.Contains(name)) owner._first.TrySetResult((message, exception));
+            if (eventId.Name is "DesktopHostedGuestOutput" or "DesktopHostedGuestError")
+            {
+                lock (owner._guestLines) owner._guestLines.Add(message);
+            }
         }
     }
 }

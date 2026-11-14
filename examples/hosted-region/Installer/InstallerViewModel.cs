@@ -3,6 +3,7 @@ using ReactiveUI.Primitives;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Navigation;
+using Runic.Platform;
 
 namespace HostedInstaller;
 
@@ -22,6 +23,9 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
     private string _checkState = "stopped";
     private string _checkTitle = "";
     private string _checkEvent = "";
+    private string _design = "system";
+    // The latest choice, which the policy and the region read off the model context.
+    private volatile string _chosenDesign = "system";
 
     public InstallerViewModel(RunicNavigator navigator, IRunicHostedApplications applications, IRunicModelContext context, InstallerOptions options)
     {
@@ -38,7 +42,15 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
         BackCommand = ReactiveCommand.CreateFromTask(async token => { await BackAsync(token); },
             this.WhenAnyValue(model => model.Step, step => step != "welcome"));
         RestartCheckCommand = ReactiveCommand.CreateFromTask(StartCheckAsync);
+        ChooseDesignCommand = ReactiveCommand.CreateFromTask<string>(async (design, token) => { await ChooseDesignAsync(design, token); });
     }
+
+    // The installer's design menu, which the check in its step shows too: "system", "light", "dark" or "high-contrast".
+    public static readonly IReadOnlyList<string> Designs = ["system", "light", "dark", "high-contrast"];
+
+    // The design the user chose. The installer's page applies it to itself (Frontend/src/app.ts), and the check's page
+    // receives it as its appearance (AppearanceOf).
+    public string Design { get => _design; private set => this.RaiseAndSetIfChanged(ref _design, value); }
 
     // "welcome", "check" or "finish".
     public string Step { get => _step; private set => this.RaiseAndSetIfChanged(ref _step, value); }
@@ -67,6 +79,24 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
     // Starts the check again after it ended, such as after a crash or after the user closed it.
     public ReactiveCommand<RxVoid, RxVoid> RestartCheckCommand { get; }
 
+    // Chooses a design of the menu.
+    public ReactiveCommand<string, RxVoid> ChooseDesignCommand { get; }
+
+    // A design as the check's appearance override. Each member that is set replaces the desktop's value for the check's
+    // page; the rest stay the desktop's, such as its text scale and accent colour. "High contrast" is the applications' own
+    // palette, the light design with stronger contrast rules, which the desktop never reports. "System" is no override
+    // (null): the check shows the desktop's appearance, as DesktopColorScheme.NoPreference would.
+    internal static RunicHostedAppearance? AppearanceOf(string design) => design switch
+    {
+        "light" => new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Light },
+        "dark" => new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Dark },
+        "high-contrast" => new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Light, Contrast = DesktopContrast.More },
+        _ => null,
+    };
+
+    // The check's appearance for the current design, which the policy gives its window from its open (CheckPolicy).
+    internal RunicHostedAppearance? CheckAppearance => AppearanceOf(_chosenDesign);
+
     // The region that shows the check's Window, while one does; the probe follows it.
     internal RunicHostedRegion? CheckRegion => _check.Region;
 
@@ -83,6 +113,18 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
     // The installer window's close guard (InstallerWindow): the current step departs as for Back or Next.
     internal async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken) =>
         await _steps.ConfirmDepartureAsync(NavigationDepartureKind.Retire, cancellationToken: cancellationToken) is NavigationResult<object>.Committed;
+
+    // Switches the design. The installer's page follows from the state; the check's page follows through its region's
+    // override, also while the region is detached: its next page shows it first.
+    internal async Task<bool> ChooseDesignAsync(string design, CancellationToken cancellationToken = default)
+    {
+        if (!Designs.Contains(design)) return false;
+        _chosenDesign = design;
+        _context.TryPost(() => Design = design);
+        // False for an ended region, which the next check's open gets the design for, and for a check older than 0.19,
+        // which shows the desktop's appearance (CheckPolicy).
+        return _check.Region is { } region && await region.SetAppearanceAsync(AppearanceOf(design), cancellationToken);
+    }
 
     private async Task<bool> GoAsync(InstallerStep? target, CancellationToken cancellationToken)
     {
@@ -101,7 +143,7 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
         try
         {
             var check = await _applications.StartAsync(Guests.Check(_options.Elevated),
-                new RunicHostedApplicationOptions { HostName = "Hosted region installer", Policy = new CheckPolicy() }, cancellationToken);
+                new RunicHostedApplicationOptions { HostName = "Hosted region installer", Policy = new CheckPolicy(() => CheckAppearance) }, cancellationToken);
             _checkApplication = check;
             _ = WatchAsync(check);
         }
@@ -118,6 +160,9 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
         // The installer hosts only the check, and shows only its main window, in a region (CheckPolicy).
         if (e.Window.Region is not { } region) return;
         _check.Region = region;
+        // A design chosen between the policy's decision and this event reached no region yet. An unchanged override
+        // sends nothing.
+        _ = region.SetAppearanceAsync(CheckAppearance);
         // The region's events arrive in order, off the model context.
         region.StateChanged += (_, _) => _context.TryPost(() => CheckState = region.State.ToString().ToLowerInvariant());
         region.TitleChanged += (_, _) => _context.TryPost(() => CheckTitle = region.Title ?? "");
@@ -145,6 +190,7 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
         NextCommand.Dispose();
         BackCommand.Dispose();
         RestartCheckCommand.Dispose();
+        ChooseDesignCommand.Dispose();
     }
 }
 

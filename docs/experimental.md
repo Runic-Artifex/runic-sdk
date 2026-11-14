@@ -60,7 +60,9 @@ guest's Window in a region of a host page, are part of the same family: see the
 [hosted region](../examples/hosted-region/README.md) and
 [hosted components](../examples/hosted-components/README.md) examples. An
 appearance override per region (0.19, sdk#917, feature `region-appearance/1`)
-is part of it too.
+is part of it too: see
+[design and appearance](hosted-regions.md#design-and-appearance) and the hosted
+region example's [design menu](../examples/hosted-region/README.md#design).
 
 | Package | API |
 | --- | --- |
@@ -162,7 +164,7 @@ Experimental npm APIs:
 
 | Package | `./experimental` exports | Since |
 |---|---|---|
-| `@runic-artifex/views` | Hosted regions: `defineHostedRegion`, `hostedRegionTag`, `HostedRegionSizing`, `HostedRegionState`, `HostedRegionStateChangeDetail`, `HostedRegionTitleChangeDetail` and `RunicHostedRegionElement`, the `<runic-hosted-region>` element that shows a hosted guest's Window in a region of a host page ([hosted regions](../specs/application/README.md#hosted-regions), feature `hosted-regions/1`). Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 |
+| `@runic-artifex/views` | Hosted regions: `defineHostedRegion`, `hostedRegionTag`, `HostedRegionSizing`, `HostedRegionState`, `HostedRegionStateChangeDetail`, `HostedRegionTitleChangeDetail` and `RunicHostedRegionElement`, the `<runic-hosted-region>` element that shows a hosted guest's Window in a region of a host page ([hosted regions](../specs/application/README.md#hosted-regions), feature `hosted-regions/1`). From 0.19 it sets the CSS `color-scheme` of the frame, or of a component's element, from the region's appearance override. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 |
 | `@runic-artifex/views` | The close drain: `onBridgeDraining`, whether the application closed the window with a close drain, which keeps it visible and connected while its work drains (`closing` with `draining: true`, [window close](../specs/application/README.md#window-close)). Its .NET side is [`RUNICDESK105`](#RUNICDESK105). | 0.19.0 |
 | `@runic-artifex/react`, `@runic-artifex/vue`, `@runic-artifex/svelte`, `@runic-artifex/angular` | `RunicHostedRegion`, the framework's component for `<runic-hosted-region>`, and the element's types (Angular also `HostedRegionStateChange`) | 0.18.0 |
 
