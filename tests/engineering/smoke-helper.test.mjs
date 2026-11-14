@@ -7,32 +7,49 @@ import { launchChromium, scaled, waitFor, within } from "../../examples/shared/s
 // A Chromium stand-in. Each launch takes the next mode from
 // RUNIC_STANDIN_MODES: "stall" writes DevToolsActivePort for a port that
 // accepts connections and never answers, "serve" answers the DevTools
-// requests launchChromium makes, and "exit" exits at once.
+// requests launchChromium makes, "redirect" does too but opens the page
+// without its query, as a server redirect that drops it does, and "exit"
+// exits at once. Each launch logs its start page and the DevTools commands
+// it answered.
 const standIn = `#!${process.execPath}
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 const log = process.env.RUNIC_STANDIN_LOG;
-const launch = readFileSync(log, "utf8").split("\\n").filter(Boolean).length;
+const launch = readFileSync(log, "utf8").split("\\n").filter(line => line.includes('"mode"')).length;
 const mode = process.env.RUNIC_STANDIN_MODES.split(",")[launch] ?? "exit";
 const profile = process.argv.find(arg => arg.startsWith("--user-data-dir=")).slice("--user-data-dir=".length);
 const url = process.argv.at(-1);
-appendFileSync(log, JSON.stringify({ mode, pid: process.pid, profile }) + "\\n");
+appendFileSync(log, JSON.stringify({ mode, pid: process.pid, profile, url }) + "\\n");
+const answered = method => appendFileSync(log, JSON.stringify({ pid: process.pid, method }) + "\\n");
 const announce = port => writeFileSync(join(profile, "DevToolsActivePort"), port + "\\n/devtools/browser/stand-in\\n");
 if (mode === "exit") process.exit(3);
 if (mode === "stall") {
   const server = createServer(() => {}).listen(0, "127.0.0.1", () => announce(server.address().port));
 } else {
+  let location = url;
   const server = Bun.serve({
     hostname: "127.0.0.1", port: 0,
     fetch(request, server) {
       const path = new URL(request.url).pathname;
-      if (path === "/json/list") return Response.json([{ type: "page", url,
+      if (path === "/json/list") return Response.json([{ type: "page", url: location,
         webSocketDebuggerUrl: "ws://127.0.0.1:" + server.port + "/devtools/page/1" }]);
       if (server.upgrade(request)) return;
       return new Response("not found", { status: 404 });
     },
-    websocket: { message(socket, data) { socket.send(JSON.stringify({ id: JSON.parse(data).id, result: {} })); } },
+    websocket: {
+      message(socket, data) {
+        const { id, method, params } = JSON.parse(data);
+        answered(method);
+        if (method === "Page.navigate") {
+          const opened = new URL(params.url);
+          if (mode === "redirect") opened.search = "";
+          location = opened.href;
+        }
+        const result = method === "Runtime.evaluate" ? { result: { type: "string", value: location } } : {};
+        socket.send(JSON.stringify({ id, result }));
+      },
+    },
   });
   announce(server.port);
 }
@@ -40,7 +57,9 @@ if (mode === "stall") {
 
 let directory, log;
 const saved = {};
-const launches = () => readFileSync(log, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+const entries = () => readFileSync(log, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+const launches = () => entries().filter(entry => entry.mode);
+const commands = pid => entries().filter(entry => entry.pid === pid && entry.method).map(entry => entry.method);
 const running = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const warnings = [];
 const warn = console.warn;
@@ -67,7 +86,31 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-const url = "http://127.0.0.1:9/app";
+const url = "http://127.0.0.1:9/app?mode=variant";
+
+test("launchChromium starts on about:blank and opens the page once it is connected", async () => {
+  process.env.RUNIC_STANDIN_MODES = "serve";
+  const browser = await launchChromium(url, { profilePrefix: "runic-smoke-helper-", timeout: 1_500 });
+  try {
+    const [launch] = launches();
+    expect(launch.url).toBe("about:blank");
+    expect(commands(launch.pid)).toEqual(["Runtime.enable", "Log.enable", "Page.bringToFront", "Page.navigate", "Runtime.evaluate"]);
+    expect(await browser.evaluate("location.href")).toBe(url);
+  } finally { await browser.close(); }
+}, 30_000);
+
+test("launchChromium fails when a redirect dropped the page's query", async () => {
+  process.env.RUNIC_STANDIN_MODES = "redirect,serve";
+  const error = await launchChromium(url, { profilePrefix: "runic-smoke-helper-", timeout: 1_500 }).catch(caught => caught);
+  expect(error).toBeInstanceOf(Error);
+  expect(error.message).toBe(`Chromium opened http://127.0.0.1:9/app for ${url}: a redirect dropped mode=variant, so the page ` +
+    "would not see them. Request the page the server redirects to.");
+  const all = launches();
+  expect(all.map(launch => launch.mode)).toEqual(["redirect"]);
+  expect(running(all[0].pid)).toBe(false);
+  expect(existsSync(all[0].profile)).toBe(false);
+  expect(warnings).toHaveLength(0);
+}, 30_000);
 
 test("launchChromium relaunches a Chromium whose DevTools never answered with a fresh profile", async () => {
   process.env.RUNIC_STANDIN_MODES = "stall,serve";
