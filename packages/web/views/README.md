@@ -1683,6 +1683,33 @@ style what the CSS sees, for example to skip your own high-contrast styles while
 | Linux, WebKitGTK 6.0 (GTK 4) | Read when the process's first web view starts | Follow the host's changes |
 | Installed browsers, serve-only | The browser's own | The engine's; the host pushes no values |
 
+**Members the host decided.** A host can decide `colorScheme`, `contrast` or
+`reducedMotion` for a window rather than read them from the desktop, as for a
+guest's page in a [hosted region](#hosted-regions-experimental) whose host set
+an appearance override. Its push lists those members in `override`, and the
+store reports the host's value for them whatever the engine's media query
+says, from the first push on, so the page's first render already has it. A
+member that leaves the list returns to the rules above. `engine` still reports
+the media queries, which an override cannot change in a frame
+(`prefers-contrast`, `forced-colors` and `prefers-reduced-motion` cannot be set
+from outside it). Such a page therefore styles from the appearance rather than
+from media queries. Runic sets nothing on the page's root, so map it there
+yourself:
+
+```ts
+onAppearance(look => {
+  document.documentElement.style.colorScheme = look.colorScheme ?? "";
+  document.documentElement.dataset["contrast"] = look.contrast ?? "no-preference";
+  document.documentElement.toggleAttribute("data-reduced-motion", look.reducedMotion === true);
+});
+```
+
+and write the CSS against `[data-contrast="more"]` and `[data-reduced-motion]`
+instead of `@media (prefers-contrast: more)` and
+`@media (prefers-reduced-motion: reduce)`. A desktop that forces colours
+(`engine.contrast === "forced-colors"`) keeps forcing them in the frame,
+whatever the host decided.
+
 See [what each engine reports](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#contrast-forced-colors-and-reduced-motion)
 for the media queries themselves. The page runtime keeps only the host's raw
 push; a page bundles the store only when it imports `appearance`,
@@ -1701,7 +1728,8 @@ The framework packages wrap it as `useAppearance` (React, Vue, Svelte),
 `injectAppearance` (Angular) and the `appearances()` stream (Effect). The mock
 bridge's `setAppearance({ textScale: 1.5, contrast: "more" })` pushes an
 appearance in page tests, as `WindowContentSession.Appearance` does in .NET
-tests.
+tests, and `setAppearance({ contrast: "more" }, { override: ["contrast"] })`
+pushes one whose contrast the host decided.
 
 ## Connection state
 
@@ -1877,6 +1905,17 @@ entries, which define the element themselves.
   without it the element shows its fallback as `unsupported`. The guest's code runs
   in the page's realm: embed components only of applications you trust as your own
   page.
+- **Colour scheme.** When the host decided the region's colour scheme (an
+  appearance override, `RunicHostedRegionOptions.Appearance` in .NET), the element
+  sets the CSS `color-scheme` of the frame, or of a component's element, to
+  `light` or `dark`, and clears it otherwise. The engine's rendering at the
+  region's boundary follows it: the frame's backdrop and scrollbars, and a
+  component's form controls. Whether the guest page's `prefers-color-scheme`
+  follows it depends on the engine and is best effort until it is recorded for
+  every engine Runic supports. The guest's page reads its scheme from
+  [`appearance()`](#appearance) either way. A component lives in the host page's
+  document, so its media queries are the host page's: style a component from
+  `appearance()`, never from `prefers-color-scheme`.
 - **Without a host.** On a page whose host does not implement hosted regions, or
   without a Bridge, the element is `unsupported` and shows its fallback.
 - **The page's Content-Security-Policy.** The element styles its shadow root with a

@@ -29,3 +29,9 @@ test("malformed hosted region pushes are invalid", () => {
     { ...component, token: undefined }, { ...component, token: "a b" }, { ...component, token: "t".repeat(257) }])
     assert.equal(readPush(JSON.stringify(push)).result, "invalid", JSON.stringify(push));
 });
+
+test("colorScheme in content and update pushes keeps them valid, also with a value the client does not know", () => {
+  for (const colorScheme of ["light", "dark", null, "sepia", 3])
+    for (const push of [{ ...content, colorScheme }, { ...component, colorScheme }, { kind: "hosted-region-update", name: "check", colorScheme }])
+      assert.equal(readPush(JSON.stringify(push)).result, "valid", JSON.stringify(push));
+});
