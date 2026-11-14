@@ -126,6 +126,33 @@ guest's page as part of the host's window. What Runic routes per engine:
 | A shortcut the guest's page leaves unhandled | Runs the host window's menu item | Native key equivalents | Native unhandled-key path | — |
 | The frame's content process ends | Detach `crashed`, attach again | Detach `crashed`; the page reloads | Detach `crashed`; the page reloads | Detach `reload` |
 
+### Engine support for `prefers-color-scheme` in a region
+
+With an appearance override (`RunicHostedRegionOptions.Appearance`, `SetAppearanceAsync`) that sets a colour scheme,
+`<runic-hosted-region>` sets the CSS `color-scheme` of the frame to it, with the plain keyword (`dark`, not
+`only dark`). CSS Color Adjustment says that the framed document then prefers that scheme, but whether its
+`prefers-color-scheme` media query follows depends on the engine. The guest's page always receives the scheme in its
+appearance (`appearance().colorScheme`), whatever the engine does, so style a guest's page from the appearance.
+
+The native smoke records each engine (`Runic.Application.HostedWindows.Smoke --region-appearance`, its
+`ENGINE-RECORD` lines) on a light desktop, with the frame set to dark:
+
+| Engine | `color-scheme: dark` as the frame loads | `dark` set after the load | `only dark` set after the load |
+| --- | --- | --- | --- |
+| WebView2 (Windows x64 and Arm64) | Follows | Follows | Follows |
+| WKWebView (macOS 26.7) | Does not follow | Does not follow | Does not follow |
+| WebKitGTK 4.1 (GTK 3), 2.54 | Follows | Follows | Follows |
+| WebKitGTK 6 (`Runic.Desktop.Gtk4`), 2.54 | Follows | Follows | Follows |
+| WebKitGTK 4.1 (GTK 3) and 6 (`Runic.Desktop.Gtk4`), 2.52.6 (Ubuntu 24.04) | Does not follow | Does not follow | Does not follow |
+| Chromium 154 (browser hosts) | Follows | Follows | Follows |
+
+Chromium follows only while nothing emulates a colour scheme: Playwright's `colorScheme` emulation, for example,
+overrides every frame. On a dark desktop, WebKitGTK 4.1 follows a frame set to `light` or `only light` in the same
+way. `only dark` changes nothing on any recorded engine, so Runic keeps the plain keyword. Because WKWebView and
+WebKitGTK before 2.54 don't follow, a guest's `prefers-color-scheme` in a region is best effort: style the guest's page
+from its appearance. On every engine above, the appearance with the override reached the guest's page before its first
+content, and even before its first animation frame.
+
 ### Browser (serve-only) hosts
 
 A serve-only application hosts guests only in regions of its pages, which run in the user's browser
@@ -282,3 +309,7 @@ Automation checks that the guest's controls inside a region's frame appear in th
 the macOS accessibility API, AT-SPI). Whether a screen reader speaks them in document order is checked by hand: NVDA
 and Narrator on Windows, VoiceOver on macOS. Tab from the host's control before the region into the guest's page and
 out to the next host control, and listen that the frame is announced by the guest's title.
+
+The frame's colour scheme is also checked by hand, in WebView2, WKWebView and WebKitGTK: on a light desktop, give a
+region an override with `ColorScheme = DesktopColorScheme.Dark` and check that the frame's backdrop and scrollbars, and
+the guest page's form controls, show dark; `SetAppearanceAsync` with `Light` shows them light again.
