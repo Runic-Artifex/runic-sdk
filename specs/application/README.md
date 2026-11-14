@@ -1331,22 +1331,24 @@ desktop:
 
 | Member | Value |
 | --- | --- |
-| `colorScheme` | `"light"`, `"dark"`, or `null`: the desktop's colour scheme. A window that shows a scheme of its own reports it in `prefers-color-scheme`, not here. |
+| `colorScheme` | `"light"`, `"dark"`, or `null`: the desktop's colour scheme. A window that shows a scheme of its own reports it in `prefers-color-scheme`, not here, unless the host decided it for the window (`override`). |
 | `contrast` | `"no-preference"`, `"more"`, `"forced-colors"`, or `null`: the desktop asks for no particular contrast, for more contrast with the application's own colours, or replaces the application's colours with `systemColors`. |
 | `reducedMotion` | `true` when the desktop asks for less motion, `false`, or `null`. |
 | `textScale` | A number greater than 0, the desktop's text size as a factor of the default (1 for the default, 1.5 for half as large again), or `null`. |
 | `accentColor` | The desktop's accent colour as `#rrggbb` in lowercase, or `null`. |
 | `systemColors` | While `contrast` is `"forced-colors"`, the palette the desktop forces, as an object of `#rrggbb` colours named after the CSS system colours: `canvas`, `canvasText`, `linkText`, `grayText`, `highlight`, `highlightText`, `buttonFace`, `buttonText`; otherwise `null`. |
+| `override` | Optional. An array of member names, among `"colorScheme"`, `"contrast"` and `"reducedMotion"`, whose value the host decided for this window rather than read from the desktop, such as the [appearance override of a hosted region](../desktop/host-protocol.md#appearance-in-a-region-region-appearance1). Absent means none. |
 
 `null`, and a member that is absent, mean that the host does not know the preference. A window-level push without a
 `route`.
 
 - **When.** The producer pushes `appearance` to a connection after its `hello` succeeded, with every member `null`
   while the window has no appearance, and to every connection that uses the feature each time it changes. Every push
-  carries every member, so the last push a connection receives is the window's appearance, also for a page that
+  carries every member, `override` only when it lists a member, so the last push a connection receives is the window's appearance, also for a page that
   reconnects after a change it missed. When the window's appearance becomes unknown again, the push has every member
   `null`. A producer may send the first push before the `hello` reply reaches the page.
-- **The host owns it.** The values are what the host read from the desktop; the page cannot change them. A read that
+- **The host owns it.** The values are what the host read from the desktop, or decided for the window where `override`
+  lists them; the page cannot change them. A read that
   fails keeps the last appearance read. The desktop's accessibility settings and palette describe the user at that
   computer, so a host pushes them only to pages that nothing but that computer can reach: a host that serves pages to
   browsers on other machines, listens on other network interfaces or makes a window public pushes every member `null`
@@ -1354,7 +1356,9 @@ desktop:
 - **Client.** A client that uses the feature keeps the last push. It applies it whatever the features it has read so
   far, since the push may come before the `hello` reply, and keeps it across a reconnect until the next push. A
   member of the wrong type, out of its range or with a value the client does not know, such as a later contrast
-  value, is read as `null`; the rest of the push still applies. A client without the feature ignores the push kind.
+  value, is read as `null`; the rest of the push still applies. An `override` that is not an array reads as absent,
+  and a name in it that the client does not know, or that names a member whose value is `null`, is ignored. A client
+  without the feature ignores the push kind.
 - **The page's appearance.** A client that reports the page's appearance reports both sources, the engine's media
   queries (what the page's CSS sees) and the host's push, and combines them. Where the page's engine evaluates the
   media query, the client reports the engine's value for `colorScheme`. For `contrast` and `reducedMotion` the latest
@@ -1362,6 +1366,12 @@ desktop:
   then applies until the engine's media query changes; an engine may read the desktop's setting only when the page
   loads. Without the engine's value it reports the host's. `textScale`, `accentColor` and `systemColors` come from the
   host alone.
+- **Host-decided members.** A client that reports the page's appearance applies the host's value of a member that
+  `override` lists over the engine's, as long as the latest push lists it, whatever the engine's media query reports,
+  also on the first push. A member that leaves the list returns to the rules above. The engine's values stay what the
+  page's CSS sees: a page whose host decides its appearance, such as a guest's page in a hosted region, styles from the
+  reported appearance rather than from media queries. Desktop members that a host pushes as `null` under the locality
+  rule stay `null` when the host decides others.
 
 ## Client languages
 
@@ -1802,9 +1812,9 @@ Pushes (producer → the connection that declared the region):
 
 | `kind` | Members | The page |
 | --- | --- | --- |
-| `hosted-region-content` | `name`; `embedding`: `"frame"`; `src`: the frame launch address; `title`: the guest's title or `null`; `allow`: the frame's permissions policy, at most 1,024 characters | Shows a new frame with that `src`, replacing the region's content |
-| `hosted-region-content` | `name`; `embedding`: `"component"` ([component mode](../desktop/host-protocol.md#component-mode-region-component1)); `module`: the address of the guest's component module, `http:` or `https:`, at most 2,048 characters; `url`: the WebSocket address of the guest's surface, `ws:` or `wss:`, at most 2,048 characters; `token`: the component token, 1 to 256 base64url characters | Shows the guest's component, replacing the region's content |
-| `hosted-region-update` | `name`; optional `title`: a string or `null`; optional `height`: the region's height in CSS pixels, an integer from 0 to 32,767 | Applies the members it carries: the frame's accessible name, and with `sizing: "content-height"` the region's height |
+| `hosted-region-content` | `name`; `embedding`: `"frame"`; `src`: the frame launch address; `title`: the guest's title or `null`; `allow`: the frame's permissions policy, at most 1,024 characters; optional `colorScheme`: `"light"`, `"dark"` or `null` | Shows a new frame with that `src`, replacing the region's content |
+| `hosted-region-content` | `name`; `embedding`: `"component"` ([component mode](../desktop/host-protocol.md#component-mode-region-component1)); `module`: the address of the guest's component module, `http:` or `https:`, at most 2,048 characters; `url`: the WebSocket address of the guest's surface, `ws:` or `wss:`, at most 2,048 characters; `token`: the component token, 1 to 256 base64url characters; optional `colorScheme`: `"light"`, `"dark"` or `null` | Shows the guest's component, replacing the region's content |
+| `hosted-region-update` | `name`; optional `title`: a string or `null`; optional `height`: the region's height in CSS pixels, an integer from 0 to 32,767; optional `colorScheme`: `"light"`, `"dark"` or `null` | Applies the members it carries: the frame's accessible name, with `sizing: "content-height"` the region's height, and the content's colour scheme |
 | `hosted-region-empty` | `name`; `reason`: `"waiting"` (no Window shows in the region yet), `"detached"` (its Window is detached and may come back) or `"ended"` (its Window closed or its guest went away) | Removes the frame and shows the region's fallback content |
 | `hosted-region-focus` | `name` | Moves the keyboard focus into the region, as the host decided ([focus in a region](../desktop/host-protocol.md#focus-in-a-region)) |
 
@@ -1843,6 +1853,14 @@ Pushes (producer → the connection that declared the region):
   not load, or exports no tag of a defined element with `connect`, leaves the region unsupported, with an error in the
   console. Removing the region's content removes the element, which closes its connection. A component is part of the
   page's focus order: `hosted-region-focus` does not move the focus into it.
+- **Colour scheme.** `colorScheme` is the colour scheme of the region's [appearance override](../desktop/host-protocol.md#appearance-in-a-region-region-appearance1),
+  which the producer sends with the content and in an update when it changes. The client sets the CSS `color-scheme`
+  property of the frame, or of the component's element, to it (a CSSOM write, which `style-src` does not block), and
+  clears it for `null`, also when `hosted-region-content` has no `colorScheme`; an update without the member leaves it.
+  A value the client does not know reads as `null`. The engine's rendering at the region's boundary follows it, such
+  as the frame's backdrop and scrollbars and a component's form controls; whether the frame's `prefers-color-scheme`
+  follows it depends on the engine, and is best effort until it is recorded for every engine Runic supports. The guest's
+  page reads the scheme from its own [appearance](#appearance). The page never receives the rest of the override.
 - **Focus.** On `hosted-region-focus`, the client focuses the frame (`iframe.focus()`) only while the page holds no
   focus: its `document.activeElement` is none, its body or the region; otherwise it does nothing, and the focus stays where
   the user has it. When it moved the focus, its next `hosted-region-state` reports it with `focusSource: "script"`, and the
@@ -2009,4 +2027,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`. |
