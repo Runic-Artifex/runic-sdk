@@ -21,7 +21,7 @@ namespace Runic.Application.Views.Analyzers;
 /// IDE shows while you type. Rules that need the compiled assembly stay the generator's alone.
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
+public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
 {
     internal const string GenerationEnabledProperty = "build_property.RunicApplicationFrontendGenerationEnabled";
     internal const string ModelAssemblyProperty = "build_property.RunicApplicationFrontendModelAssembly";
@@ -32,7 +32,10 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
     /// <inheritdoc />
     public override void Initialize(AnalysisContext context)
     {
-        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        // Generated code is analyzed and may carry a warning: the generator leaves the warnings of the project's own
+        // declarations to this analyzer (OwnedWarning), so one that only generated code declares is reported there.
+        // The errors are reported only at hand-written source (SourceLocation).
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze | GeneratedCodeAnalysisFlags.ReportDiagnostics);
         context.EnableConcurrentExecution();
         context.RegisterCompilationStartAction(start =>
         {
@@ -44,16 +47,25 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 return;
             if (BridgeSymbols.Create(start.Compilation) is not { } symbols) return;
             var cancellation = start.CancellationToken;
-            var models = new Lazy<HashSet<INamedTypeSymbol>>(() => symbols.FindViewModels(cancellation));
-            start.RegisterSymbolAction(symbol => Analyze(symbol, symbols, models), SymbolKind.NamedType);
+            var application = new Lazy<BridgeApplication>(() => new BridgeApplication(symbols, cancellation));
+            start.RegisterSymbolAction(symbol => Analyze(symbol, symbols, application), SymbolKind.NamedType);
         });
     }
 
-    private static void Analyze(SymbolAnalysisContext context, BridgeSymbols symbols, Lazy<HashSet<INamedTypeSymbol>> models)
+    private static void Analyze(SymbolAnalysisContext context, BridgeSymbols symbols, Lazy<BridgeApplication> application)
     {
         var type = (INamedTypeSymbol)context.Symbol;
-        if (!type.IsAbstract && symbols.ViewModelOf(type) is not null) AnalyzeView(context, type);
-        if (models.Value.Contains(type)) new ViewModelAnalysis(context, symbols, type, models.Value).Run();
+        if (!type.IsAbstract && symbols.ViewModelOf(type) is not null)
+        {
+            AnalyzeView(context, type);
+            AnalyzeApplicationView(context, type, application.Value);
+        }
+        if (application.Value.Models.Contains(type))
+        {
+            new ViewModelAnalysis(context, symbols, type, application.Value).Run();
+            AnalyzeApplicationModel(context, type, application.Value);
+        }
+        ReportMissingViews(context, type, application.Value);
     }
 
     // Program.cs, the View discovery loop and ContractFor.
@@ -77,9 +89,11 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
         !string.IsNullOrWhiteSpace(contract) && char.IsLetter(contract![0]) && contract.All(char.IsLetterOrDigit);
 
     /// <summary>The checks of one ViewModel, in the order GenerateOne makes them.</summary>
-    private sealed class ViewModelAnalysis(SymbolAnalysisContext context, BridgeSymbols symbols, INamedTypeSymbol model,
-        HashSet<INamedTypeSymbol> models)
+    private sealed partial class ViewModelAnalysis(SymbolAnalysisContext context, BridgeSymbols symbols, INamedTypeSymbol model,
+        BridgeApplication application)
     {
+        private HashSet<INamedTypeSymbol> models => application.Models;
+
         private string Name => model.MetadataName;
 
         internal void Run()
@@ -112,21 +126,13 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 CheckCommand(command, sources[command] = SourceMethod(command));
             CheckCommandAttributes(commands, sources, BridgeSymbols.RunicFailure, BridgeRules.Failure, "RunicFailure");
             CheckCommandAttributes(commands, sources, BridgeSymbols.RunicCommandKey, BridgeRules.CommandKey, "RunicCommandKey");
+            CheckReactiveAdapter(commands, declared);
+            CheckOperationDeclaration(commands, BridgeSymbols.RunicOperationRetirement, "RunicOperationRetirement", BridgeRules.OperationRetirement);
+            CheckOperationDeclaration(commands, BridgeSymbols.RunicOperationClose, "RunicOperationClose", BridgeRules.OperationClose);
+            CheckPresentationScoped(commands, sources);
         }
 
-        // Program.cs BridgedProperties: public, declared, instance, not [RunicIgnore] and not indexers.
-        private IPropertySymbol[] BridgedProperties() => model.GetMembers().OfType<IPropertySymbol>()
-            .Where(property => !property.IsStatic && !property.IsIndexer
-                && (IsPublic(property.GetMethod) || IsPublic(property.SetMethod))
-                && !IsRunicIgnored(property))
-            .ToArray();
-
-        private static bool IsRunicIgnored(IPropertySymbol property)
-        {
-            for (IPropertySymbol? current = property; current is not null; current = current.OverriddenProperty)
-                if (BridgeSymbols.Attribute(current, BridgeSymbols.RunicIgnore) is not null) return true;
-            return false;
-        }
+        private IPropertySymbol[] BridgedProperties() => BridgeShapeAnalyzer.BridgedProperties(model);
 
         // CommunityToolkit members whose generated properties may not exist yet, as while the IDE's generators run.
         private bool HasToolkitMembers() => model.GetMembers().Any(member =>
@@ -214,6 +220,13 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
                     && regionCollection.ConstructorArguments[0].Value is ITypeSymbol { SpecialType: SpecialType.System_Object })
                     Report(context, BridgeRules.RegionCollection, property,
                         $"{Name}.{property.Name}: a region collection of object has no known content. Name an interface or base class that the regions' ViewModels share.");
+                else if (regionCollection.ConstructorArguments.Length == 1 && regionCollection.ConstructorArguments[0].Value is ITypeSymbol content)
+                {
+                    if (!HasContentModel(content))
+                        Report(context, BridgeRules.RegionCollection, property,
+                            $"{Name}.{property.Name}: no ViewModel with a registered View is a {ReflectionName(content)}, so the region collection can present nothing.");
+                    else CheckSlotContract(property, content);
+                }
                 return;
             }
             if (BridgeSymbols.Is(type, symbols.QueryCollection) && type is INamedTypeSymbol { TypeArguments.Length: 2 } query)
@@ -241,6 +254,10 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 else if (content.SpecialType == SpecialType.System_Object)
                     Report(context, BridgeRules.State, property,
                         $"{Name}.{property.Name}: a NavigationRegion<object> slot has no known content. Use an interface or base class that the region's ViewModels share.");
+                else if (!HasContentModel(content))
+                    Report(context, BridgeRules.State, property,
+                        $"{Name}.{property.Name}: no ViewModel with a registered View is a {ReflectionName(content)}, so the NavigationRegion slot can present nothing.");
+                else CheckSlotContract(property, content);
                 return;
             }
             if (BridgeSymbols.Is(type, symbols.NavigationSelection))
@@ -257,16 +274,28 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 if (publicSetter)
                     Report(context, BridgeRules.State, property, $"{Name}.{property.Name}: ViewModel content must be set by .NET, not the web view.",
                         BridgeRules.FixPrivateSetter);
+                else CheckSlotContract(property, type);
                 return;
             }
-            if (BridgeSymbols.Is(type, symbols.ReadOnlyList) && type is INamedTypeSymbol { TypeArguments.Length: 1 } list
-                && list.TypeArguments[0] is var item && item.SpecialType != SpecialType.System_Object
-                && models.Any(other => !SymbolEqualityComparer.Default.Equals(other, model) && IsAssignable(other, item)))
+            if (BridgeSymbols.Is(type, symbols.ReadOnlyList) && type is INamedTypeSymbol { TypeArguments.Length: 1 } list)
             {
-                if (publicSetter)
-                    Report(context, BridgeRules.State, property, $"{Name}.{property.Name}: ViewModel collections must be set by .NET, not the web view.",
-                        BridgeRules.FixPrivateSetter);
-                return;
+                var item = list.TypeArguments[0];
+                if (item.SpecialType != SpecialType.System_Object && HasContentModel(item))
+                {
+                    if (publicSetter)
+                        Report(context, BridgeRules.State, property, $"{Name}.{property.Name}: ViewModel collections must be set by .NET, not the web view.",
+                            BridgeRules.FixPrivateSetter);
+                    else CheckSlotContract(property, item);
+                    return;
+                }
+                // A list of ViewModels that no View presents. A [RunicCollection] of ViewModel rows is reported as a value.
+                if (item.SpecialType == SpecialType.System_Object || BridgeSymbols.Implements(item, symbols.NotifyPropertyChanged)
+                    && BridgeSymbols.InheritedAttribute(property, BridgeSymbols.RunicCollection) is null)
+                {
+                    Report(context, BridgeRules.State, property,
+                        $"{Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.");
+                    return;
+                }
             }
             // A value property. Only the setter is certain from the source: whether the rows are DTOs is the generator's.
             if (publicSetter && BridgeSymbols.InheritedAttribute(property, BridgeSymbols.RunicCollection) is not null && HasDataRows(type))
@@ -318,14 +347,53 @@ public sealed class BridgeShapeAnalyzer : DiagnosticAnalyzer
             return !model.GetMembers(generated).OfType<IPropertySymbol>().Any();
         }
 
-        private bool IsAssignable(ITypeSymbol source, ITypeSymbol destination)
+        private bool IsAssignable(ITypeSymbol source, ITypeSymbol destination) => symbols.IsAssignable(source, destination);
+
+        // Program.cs ContractFor and the content switches of the generated Bridge (RUNICBRIDGE006): a slot's
+        // [RunicViewContract] is valid, and each ViewModel it admits, most derived first, has a View of that contract.
+        private void CheckSlotContract(IPropertySymbol property, ITypeSymbol slot)
         {
-            var conversion = symbols.Compilation.ClassifyCommonConversion(source, destination);
-            return conversion.IsIdentity || conversion.IsImplicit && conversion.IsReference;
+            if (!TryContract(property, out var contract))
+            {
+                Report(context, BridgeRules.View, property,
+                    $"{Name}.{property.Name}: a View contract must contain only letters and digits and start with a letter.");
+                return;
+            }
+            var missing = models.Where(other => !SymbolEqualityComparer.Default.Equals(other, model) && IsAssignable(other, slot))
+                .OrderByDescending(InheritanceDepth).ThenBy(BridgeSymbols.MetadataName, StringComparer.Ordinal)
+                .FirstOrDefault(other => !application.ValidViews(other).Any(view => ContractOf(view) == contract));
+            if (missing is not null)
+                Report(context, BridgeRules.View, property,
+                    $"{Name}.{property.Name}: no {missing.MetadataName} View has contract '{contract ?? "default"}'.");
         }
+
+        private static int InheritanceDepth(INamedTypeSymbol type)
+        {
+            var depth = 0;
+            for (var current = type.BaseType; current is not null; current = current.BaseType) depth++;
+            return depth;
+        }
+
+        // A ViewModel with a View, other than this one, that the slot type admits.
+        private bool HasContentModel(ITypeSymbol slot) =>
+            models.Any(other => !SymbolEqualityComparer.Default.Equals(other, model) && IsAssignable(other, slot));
     }
 
     private static bool IsPublic(IMethodSymbol? accessor) => accessor?.DeclaredAccessibility == Accessibility.Public;
+
+    // Program.cs BridgedProperties: public, declared, instance, not [RunicIgnore] and not indexers.
+    internal static IPropertySymbol[] BridgedProperties(INamedTypeSymbol model) => model.GetMembers().OfType<IPropertySymbol>()
+        .Where(property => !property.IsStatic && !property.IsIndexer
+            && (IsPublic(property.GetMethod) || IsPublic(property.SetMethod))
+            && !IsRunicIgnored(property))
+        .ToArray();
+
+    private static bool IsRunicIgnored(IPropertySymbol property)
+    {
+        for (IPropertySymbol? current = property; current is not null; current = current.OverriddenProperty)
+            if (BridgeSymbols.Attribute(current, BridgeSymbols.RunicIgnore) is not null) return true;
+        return false;
+    }
 
     // CommunityToolkitConventions.CommandName: [RelayCommand] turns Save, SaveAsync or OnSave into SaveCommand.
     internal static string ToolkitCommandName(string method)

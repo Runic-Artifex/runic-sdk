@@ -661,11 +661,29 @@
     <PropertyGroup>
       <_RunicBridgeFrameworkArgument>@(_RunicBridgeSharedFramework->'--framework &quot;%(Identity)&quot;', ' ')</_RunicBridgeFrameworkArgument>
     </PropertyGroup>
+    <!-- The warnings that the RUNICBRIDGE analyzer reports (BridgeDiagnosticCodes.AnalyzerWarnings): when this compile
+         runs it on the project's own source, the generator leaves them to it, so each is reported once, by the
+         compiler, and #pragma warning disable, .editorconfig severities, NoWarn and TreatWarningsAsErrors apply as to
+         any compiler warning. The generator keeps them when analyzers are off: RunAnalyzers, RunAnalyzersDuringBuild, or
+         an implicitly triggered Visual Studio build, the conditions of Roslyn's _ComputeSkipAnalyzers (which runs
+         just before CoreCompile, after this target), and for a model assembly
+         (RunicApplicationFrontendModelAssembly), whose source the analyzer does not see, and when an error stops the
+         build before the compiler. -->
+    <ItemGroup>
+      <_RunicBridgeShapeAnalyzer Include="@(Analyzer)" Condition="'%(Filename)' == 'Runic.Application.Views.Analyzers'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicBridgeAnalyzersSkipped>false</_RunicBridgeAnalyzersSkipped>
+      <_RunicBridgeAnalyzersSkipped Condition="'$(RunAnalyzers)' == 'false' or ('$(RunAnalyzers)' == '' and '$(RunAnalyzersDuringBuild)' == 'false')">true</_RunicBridgeAnalyzersSkipped>
+      <_RunicBridgeAnalyzersSkipped Condition="'$(IsImplicitlyTriggeredBuild)' == 'true' and '$(UsingMicrosoftNETSdk)' == 'true' and '$(OptimizeImplicitlyTriggeredBuild)' != 'false' and ('$(TreatWarningsAsErrors)' != 'true' or '$(OptimizeImplicitlyTriggeredBuild)' == 'true')">true</_RunicBridgeAnalyzersSkipped>
+      <_RunicBridgeAnalyzerWarningsArgument></_RunicBridgeAnalyzerWarningsArgument>
+      <_RunicBridgeAnalyzerWarningsArgument Condition="'@(_RunicBridgeShapeAnalyzer)' != '' and '$(_RunicBridgeAnalyzersSkipped)' != 'true' and '$(RunicApplicationFrontendModelAssembly)' == ''">--analyzer-warnings</_RunicBridgeAnalyzerWarningsArgument>
+    </PropertyGroup>
     <Delete Files="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" Condition="'$(_RunicBridgeReuseGenerated)' != 'true'" />
     <!-- The generator reports its diagnostics in canonical form. They are
          logged once with their codes (see RunicViewsReportCommandResult);
          a failure that reported none is RUNICBRIDGE024, an internal error. -->
-    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgeAnalyzerWarningsArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
           Condition="'$(_RunicBridgeReuseGenerated)' != 'true'">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeCodegenExitCode" />

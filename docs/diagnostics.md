@@ -30,15 +30,16 @@ build. An error names the type and member, points at its source line when the
 assembly has a portable PDB (the default), and ends with the link to its entry.
 The `Runic.Application.Views` build targets report the codes that concern the
 frontend and the build itself. Warnings don't fail the build unless the project
-treats warnings as errors; the generator's warnings repeat on builds that reuse
-the cached generation. Every other code fails the build, except
+treats warnings as errors; the warnings the generator reports itself repeat on
+builds that reuse the cached generation. Every other code fails the build, except
 `RUNICBRIDGE038`, which the runtime throws when an application runs Bridges
 built against another Runic release. `RUNICBRIDGE` errors
 come from this post-compile step: they appear after a build, link to the source
 line, and a warning is suppressed per project with `NoWarn`. Since 0.20 a Roslyn
 analyzer in `Runic.Application.Views` also reports the errors that the source
-alone shows, while you type, with code fixes for the mechanical ones: see
-[Errors while you type](#errors-while-you-type). The
+alone shows, while you type, with code fixes for the mechanical ones, and some
+warnings, which it then reports in the build too: see
+[Errors and warnings while you type](#errors-and-warnings-while-you-type). The
 [generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
 of the Runic.Application.Views guide links here.
 
@@ -62,7 +63,7 @@ and severities are open.
 | [`RUNICBRIDGE010`](#runicbridge010) | Error | Generator; the analyzer while you type | A `[RunicCollection]` member is not a keyed collection of DTO rows |
 | [`RUNICBRIDGE011`](#runicbridge011) | Error | Generator; the analyzer while you type | A ReactiveUI interaction is not a get-only property |
 | [`RUNICBRIDGE012`](#runicbridge012) | Error | Generator; the analyzer while you type | A `[RunicFailure]` declaration is misplaced, repeated or names an unsupported type |
-| [`RUNICBRIDGE013`](#runicbridge013) | Warning | Generator | A ViewModel that a content slot admits has no View |
+| [`RUNICBRIDGE013`](#runicbridge013) | Warning | The analyzer, while you type and in the build; the generator without it | A ViewModel that a content slot admits has no View |
 | [`RUNICBRIDGE014`](#runicbridge014) | Error | Build targets | The frontend directory or its `package.json` is missing |
 | [`RUNICBRIDGE015`](#runicbridge015) | Warning | Build targets | A project declares Views, but generation is off |
 | [`RUNICBRIDGE016`](#runicbridge016) | Error | Build targets | The frontend install or build command failed without a located error |
@@ -74,21 +75,21 @@ and severities are open.
 | [`RUNICBRIDGE022`](#runicbridge022) | Error | Build targets | `NoBuild=true` finds no generated Bridge code to reuse |
 | [`RUNICBRIDGE023`](#runicbridge023) | Error | Build targets | The application references Runic ReactiveUI adapters of both ReactiveUI flavors |
 | [`RUNICBRIDGE024`](#runicbridge024) | Error | Generator, or the build targets when the generator fails without reporting an error | An internal generator error |
-| [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
+| [`RUNICBRIDGE025`](#runicbridge025) | Error | Generator; the analyzer while you type | A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor |
 | [`RUNICBRIDGE026`](#runicbridge026) | Error | Build targets | The frontend declares dependencies but has no lock file for the default install |
 | [`RUNICBRIDGE027`](#runicbridge027) | Error | Generator; the analyzer while you type | A `[RunicCommandKey]` declaration is misplaced, or its resolver is missing or has an unsupported shape |
-| [`RUNICBRIDGE028`](#runicbridge028) | Warning | Generator | A `[RunicOperationRetirement]` declaration reaches no operation |
+| [`RUNICBRIDGE028`](#runicbridge028) | Warning | The analyzer, while you type and in the build; the generator without it | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
 | [`RUNICBRIDGE030`](#runicbridge030) | Warning | Build targets | `RunicApplicationFrontendDelivery` is unknown, or Embedded cannot apply |
 | [`RUNICBRIDGE031`](#runicbridge031) | Warning | Generator | A type implements an IValidatableViewModel that is not ReactiveUI.Validation's |
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
-| [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE034`](#runicbridge034) | Warning | The analyzer, while you type and in the build; the generator without it | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator; the analyzer while you type | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
 | [`RUNICBRIDGE036`](#runicbridge036) | Error | Generator | A ViewModel does not publish a member of a `[RunicSharedClient]` interface alike, or the interface cannot have a shared client |
 | [`RUNICBRIDGE037`](#runicbridge037) | Error | Build targets | The build has no Runic Translations ESM for the page, or its directory holds other files |
 | [`RUNICBRIDGE038`](#runicbridge038) | Error | Runtime | Generated Bridges were built against another Runic release than the running runtime |
-| [`RUNICBRIDGE039`](#runicbridge039) | Warning | Generator | A `[RunicOperationClose]` declaration reaches no operation |
+| [`RUNICBRIDGE039`](#runicbridge039) | Warning | The analyzer, while you type and in the build; the generator without it | A `[RunicOperationClose]` declaration reaches no operation |
 | [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
 | [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 | [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
@@ -98,7 +99,7 @@ and severities are open.
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator; the analyzer while you type | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
 | [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
 
-### Errors while you type
+### Errors and warnings while you type
 
 The generator runs after a build's bootstrap compile and is skipped in the
 design-time builds that IDEs run, so on its own it reports these errors only
@@ -116,17 +117,21 @@ in a project whose build generates its own Bridges
 
 | ID | Reported while you type | Code fix |
 | --- | --- | --- |
-| `RUNICBRIDGE004` | A command whose client member is reserved in TypeScript, such as `NewCommand` or `ThenCommand` | Rename the command, or its CommunityToolkit `[RelayCommand]` method, to the suggested name |
-| `RUNICBRIDGE006` | A Window or View that is not public and top-level, or a `[RunicViewContract]` name that is not letters and digits | Make the class public |
+| `RUNICBRIDGE004` | A command whose client member is reserved in TypeScript, such as `NewCommand` or `ThenCommand`; two ViewModels with the same Bridge name; two Views with the same presentation kind | Rename the command, or its CommunityToolkit `[RelayCommand]` method, to the suggested name |
+| `RUNICBRIDGE006` | A Window or View that is not public and top-level; a `[RunicViewContract]` name that is not letters and digits; a second View of a ViewModel with the same contract; a content slot with a contract that a ViewModel it admits has no View for | Make the class public |
 | `RUNICBRIDGE007` | A ViewModel that does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction | Make the class public |
-| `RUNICBRIDGE008` | A public setter on a `NavigationRegion<T>`, `NavigationSelection`, ViewModel content or ViewModel collection; a `NavigationRegion<object>`; a `[RunicAppendOnlyText]` member that is not a read-only `string` | Make the setter private |
+| `RUNICBRIDGE008` | A public setter on a `NavigationRegion<T>`, `NavigationSelection`, ViewModel content or ViewModel collection; a `NavigationRegion<object>`; a region whose content no ViewModel with a View has; a list of ViewModels that no View presents; a `[RunicAppendOnlyText]` member that is not a read-only `string` | Make the setter private |
 | `RUNICBRIDGE009` | A command whose name does not end with `Command`; a plain `ICommand` without `[RunicCommandInput]` or `[RunicCommandKey]`; `[RunicCommandResult]` on a command that is not a ReactiveUI command | Add the `Command` suffix |
 | `RUNICBRIDGE010` | A `[RunicCollection]` with a public setter | Make the setter private |
 | `RUNICBRIDGE011` | A ReactiveUI interaction with a public setter | Make the setter private |
 | `RUNICBRIDGE012`, `RUNICBRIDGE027` | `[RunicFailure]` or `[RunicCommandKey]` on a ViewModel member that is not a Bridge command or its `[RelayCommand]` method | None |
+| `RUNICBRIDGE025` | A ReactiveUI command or interaction without a Runic ReactiveUI adapter, or an interaction of the other flavor than the adapter's | None |
 | `RUNICBRIDGE035` | A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` that is not get-only | Make the setter private |
 | `RUNICBRIDGE060` | A `RunicQueryCollection<TRow, TKey>` with a public setter, with `[RunicCollection]` or `[RunicAppendOnlyText]`, or with a key that is not a `string`, `Guid` or `Int32` | Make the setter private |
-| `RUNICBRIDGE070` | `[RunicRegionCollection]` on a property that is not a `NavigationSelection`, on one with a public setter, or with the content type `object` | Make the setter private |
+| `RUNICBRIDGE070` | `[RunicRegionCollection]` on a property that is not a `NavigationSelection`, on one with a public setter, with the content type `object`, or with content that no ViewModel with a View has | Make the setter private |
+| `RUNICBRIDGE013` (warning) | A ViewModel without a View that a content slot or navigation region admits, at that ViewModel | None |
+| `RUNICBRIDGE028`, `RUNICBRIDGE039` (warnings) | `[RunicOperationRetirement]` or `[RunicOperationClose]` that reaches no operation, or whose value is not one of the enum's | None |
+| `RUNICBRIDGE034` (warning) | `[RunicPresentationScoped]` on a member that is not a Bridge command or its `[RelayCommand]` method, also in a base class | None |
 
 A private setter keeps the property assignable from the ViewModel and takes it
 off the page. A rename of a CommunityToolkit command renames its method, so the
@@ -134,13 +139,28 @@ generated command property changes its name too.
 
 The generator stays the authority. It checks everything else after a build,
 such as value types (`RUNICBRIDGE003`), DTO rows and keys, row editors, shared
-clients, a slot whose ViewModels have no View, and the ViewModels of another
-assembly, and it reports these errors as before. A build reports each error
-once: the generator runs before the compiler and stops the build at its first
-error for each ViewModel, so the compiler, which runs the analyzer, never
-reaches them. The analyzer reports every problem it finds at once, where the
-generator reports a ViewModel's first. The generator's warnings are not
-reported while you type yet.
+clients and the ViewModels of another assembly, and it reports these errors as
+before. A build reports each error once: the generator runs before the compiler
+and stops the build at its first error for each ViewModel, so the compiler,
+which runs the analyzer, never reaches them. The analyzer reports every problem
+it finds at once, where the generator reports a ViewModel's first.
+
+The warnings in the table are the analyzer's in the build too. When the
+project's compile runs the analyzer, the generator leaves these warnings about
+the project's own declarations to it, so the compiler reports each once, in the
+build and while you type. Like any compiler warning they follow `NoWarn`,
+`TreatWarningsAsErrors`, `WarningsAsErrors`, `.editorconfig` severities
+(`dotnet_diagnostic.RUNICBRIDGE013.severity = none`) and `#pragma warning
+disable`, and they are reported only when the compiler runs, not on a build that
+finds the project up to date. The generator reports them itself when analyzers
+are off (`RunAnalyzers=false`, `RunAnalyzersDuringBuild=false`, or a build that
+Visual Studio starts for running or testing), for a `RunicApplicationFrontendModelAssembly`
+or a ViewModel of another assembly, and next to an error, which stops the build
+before the compiler. Before 0.20 the generator reported them in every build,
+and `TreatWarningsAsErrors`, `.editorconfig` and `#pragma` did not apply to
+them. The generator's other warnings (`RUNICBRIDGE020`, `RUNICBRIDGE031`,
+`RUNICBRIDGE032` and `RUNICBRIDGE053`) need the compiled assembly or its value
+types, appear only after a build, and still ignore `TreatWarningsAsErrors`.
 
 ### RUNICBRIDGE001
 
@@ -311,8 +331,9 @@ it, so pushing or presenting it there throws `NotSupportedException` naming the
 slot and the type. Broad slot types are not checked: framework types (System,
 ReactiveUI, CommunityToolkit), a type the slot's owner or a Window's ViewModel
 also derives from or implements, and a type that more than eight ViewModels
-without a View could fill. The warning repeats on builds that reuse the cached
-generation.
+without a View could fill. The analyzer reports it at that ViewModel while you
+type and in the build (see
+[Errors and warnings while you type](#errors-and-warnings-while-you-type)).
 
 **Fix:** add a View, such as
 `public sealed partial class SettingsView : RunicView<SettingsViewModel>;`, with

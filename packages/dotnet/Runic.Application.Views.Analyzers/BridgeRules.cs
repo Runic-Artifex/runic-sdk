@@ -36,6 +36,8 @@ internal static class BridgeRules
         "A ReactiveUI interaction is not a get-only property");
     internal static readonly DiagnosticDescriptor Failure = Rule("RUNICBRIDGE012",
         "A [RunicFailure] declaration is misplaced, repeated or names an unsupported type");
+    internal static readonly DiagnosticDescriptor ReactiveUiAdapter = Rule("RUNICBRIDGE025",
+        "A ReactiveUI command or interaction without the Runic ReactiveUI adapter of its flavor");
     internal static readonly DiagnosticDescriptor CommandKey = Rule("RUNICBRIDGE027",
         "A [RunicCommandKey] declaration is misplaced, or its resolver is missing or has an unsupported shape");
     internal static readonly DiagnosticDescriptor ViewMember = Rule("RUNICBRIDGE035",
@@ -45,10 +47,21 @@ internal static class BridgeRules
     internal static readonly DiagnosticDescriptor RegionCollection = Rule("RUNICBRIDGE070",
         "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported");
 
+    // Warnings. The generator leaves them to this analyzer when the compile runs it (BridgeDiagnosticCodes.AnalyzerWarnings,
+    // --analyzer-warnings), so the analyzer reports every one the generator would for the project's own declarations.
+    internal static readonly DiagnosticDescriptor MissingView = Rule("RUNICBRIDGE013",
+        "A ViewModel that a content slot admits has no View", DiagnosticSeverity.Warning);
+    internal static readonly DiagnosticDescriptor OperationRetirement = Rule("RUNICBRIDGE028",
+        "A [RunicOperationRetirement] declaration reaches no operation", DiagnosticSeverity.Warning);
+    internal static readonly DiagnosticDescriptor PresentationScoped = Rule("RUNICBRIDGE034",
+        "A [RunicPresentationScoped] declaration reaches no Bridge command", DiagnosticSeverity.Warning);
+    internal static readonly DiagnosticDescriptor OperationClose = Rule("RUNICBRIDGE039",
+        "A [RunicOperationClose] declaration reaches no operation", DiagnosticSeverity.Warning);
+
     internal static readonly ImmutableArray<DiagnosticDescriptor> All =
     [
-        NameCollision, View, ViewModel, State, Command, Collection, Interaction, Failure, CommandKey, ViewMember,
-        QueryCollection, RegionCollection,
+        NameCollision, View, ViewModel, State, Command, Collection, Interaction, Failure, ReactiveUiAdapter, CommandKey, ViewMember,
+        QueryCollection, RegionCollection, MissingView, OperationRetirement, PresentationScoped, OperationClose,
     ];
 
     // Generated client members that are valid C# names but break the client object type or object literal, with the
@@ -65,8 +78,8 @@ internal static class BridgeRules
     };
 
     // One descriptor per ID: the message is the generator's, built per member, so the format is the whole message.
-    private static DiagnosticDescriptor Rule(string id, string title) => new(
-        id, title, "{0}", Category, DiagnosticSeverity.Error, isEnabledByDefault: true,
+    private static DiagnosticDescriptor Rule(string id, string title, DiagnosticSeverity severity = DiagnosticSeverity.Error) => new(
+        id, title, "{0}", Category, severity, isEnabledByDefault: true,
         description: "Reported by the Bridge generator after a build and, for the rules it can check from source, by this analyzer while you type.",
         helpLinkUri: RunicReleaseLinks.Diagnostic(id));
 }
