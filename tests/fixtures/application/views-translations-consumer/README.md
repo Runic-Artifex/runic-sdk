@@ -3,7 +3,7 @@
 An application that uses the packed `Runic.Application.Views.Translations` package as an application would: German as
 its language, its own wording of two `runic-views` messages, and French, which the package lacks, through `runic.json`
 `overrides`
-([Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.10.0/docs/guides/translations/libraries.md#the-application)).
+([Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/libraries.md#the-application)).
 `bun run verify-packages Runic.Application.Views.Translations` copies this directory next to a project that references
 the packed candidate and runs it; CI runs it with every package consumer.
 

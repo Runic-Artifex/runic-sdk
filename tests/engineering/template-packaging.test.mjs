@@ -282,7 +282,9 @@ test("--translations scaffolds a translated application for every frontend", () 
         // The tool manifest stays JSON and gains the Translations tool.
         const tools = JSON.parse(translated[".config/dotnet-tools.json"]).tools;
         assert.deepEqual(Object.keys(tools), ["dotnet-runic", "dotnet-runic-translations"]);
-        assert.equal(tools["dotnet-runic-translations"].version, "0.10.0");
+        // The template pins the repository's own Translations tool (.config/dotnet-tools.json, Directory.Packages.props).
+        const pinned = JSON.parse(readFileSync(resolve(root, ".config/dotnet-tools.json"), "utf8")).tools["dotnet-runic-translations"].version;
+        assert.equal(tools["dotnet-runic-translations"].version, pinned);
         assert.deepEqual(Object.keys(JSON.parse(plain[".config/dotnet-tools.json"]).tools), ["dotnet-runic"]);
         assert.match(translated[".gitignore"], /Frontend\/\.runic\//);
         for (const [path, text] of Object.entries(translated))

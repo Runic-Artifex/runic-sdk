@@ -25,8 +25,8 @@ dotnet add package Runic.Application.Views.Translations
 npm install @runic-artifex/views-translations
 ```
 
-The package depends on `Runic.Translations` `[0.10.0, 0.11.0-0.0)` (before its
-1.0, a Runic Translations minor may break), `Runic.Translations.Hosting` 0.10.0 or
+The package depends on `Runic.Translations` `[0.11.0, 0.12.0-0.0)` (before its
+1.0, a Runic Translations minor may break), `Runic.Translations.Hosting` 0.11.0 or
 later, and the `Runic.Application.Views` of its release.
 
 **It has English and German only, so your language list shrinks to them.**
@@ -35,7 +35,7 @@ catalog shows its own text, so with this package it lists at most `en` and `de`.
 A language picker built from it loses your other languages, and negotiating
 against it (`LocaleNegotiation.Negotiate(DesktopLanguages.Preferred,
 translations.SupportedLocales, …)`, as the
-[runic-views guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.10.0/docs/guides/translations/runic-views.md#4-the-applications-language)
+[runic-views guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/runic-views.md#4-the-applications-language)
 does) picks English for a French user. Add one override file per extra
 language; see [Your other languages](#your-other-languages). The first window
 logs the languages that need one (event 1261).
@@ -227,7 +227,7 @@ on the Hosting builder or the `TranslationContext` builder. Overrides apply
 locale-first: a German user sees this package's German text where you override
 only the English one. `runic-translations overrides add runic-views --locale en --key platform.untitled_file_name`
 scaffolds an override. See
-[Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.10.0/docs/guides/translations/libraries.md#the-application)
+[Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.11.0/docs/guides/translations/libraries.md#the-application)
 and the [consumer fixture](../../../tests/fixtures/application/views-translations-consumer/README.md),
 which CI builds against the packed package.
 
