@@ -880,6 +880,18 @@ jobs:
         run: |
           (cd packages/web/views && bun run --bun build)
           (cd packages/web/vite-plugin-runic && bun run --bun build)
+      # TEMPORARY (diagnosis): early in the job so a failure ends it quickly; moves back below the IDE check.
+      # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
+      # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
+      # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
+      # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
+      - name: Check the template's WebView2 script-debugging profile
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
+          node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
       - name: Build managed desktop contracts
         run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release
       # --timeout bounds the whole session, including test-host startup and exit. MTP resolves a
@@ -2043,17 +2055,6 @@ jobs:
           dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
           node examples/notes-reactive-views/ide-host-smoke.mjs
           RUNIC_HMR_FRONTEND=angular RUNIC_HMR_VIA_IDE=1 node examples/notes-reactive-views/hmr-smoke.mjs
-      # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
-      # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
-      # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
-      # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
-      - name: Check the template's WebView2 script-debugging profile
-        if: runner.os == 'Windows' && runner.arch == 'X64'
-        shell: bash
-        timeout-minutes: 15
-        run: |
-          dotnet build tools/dotnet-runic/Runic.Application.Tool.csproj -c Release
-          node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
       # The RID-specific and NativeAOT publishes download runtime and ILCompiler packs.
       - name: Check PackageDownload packages against their pinned hashes
         shell: bash

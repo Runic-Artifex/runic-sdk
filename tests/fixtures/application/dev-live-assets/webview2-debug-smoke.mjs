@@ -10,13 +10,13 @@
 //      debugEndpoints (#959), and the endpoint is the Window's page.
 // Run from the SDK root after a Release build of tools/dotnet-runic:
 //   node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree, scaled, tail, waitFor, waitForExit, within } from "../../../../examples/shared/smoke.mjs";
-import { attachSelects, parseTemplateJson, variable, webView2Debugging } from "./webview2-debugging.mjs";
+import { attachSelects, cdpEndpoint, parseTemplateJson, variable, webView2Debugging } from "./webview2-debugging.mjs";
 
 const fixture = fileURLToPath(new URL(".", import.meta.url));
 const root = join(fixture, "../../../..");
@@ -42,6 +42,74 @@ const ownArguments = "--js-flags=--expose-gc";
 const environment = { ...process.env, DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: ownArguments };
 // Only the profile, or dev's -e, sets WebView2's variable.
 for (const name of Object.keys(environment)) if (name.toUpperCase() === variable) delete environment[name];
+// The fixture writes what it received and its Desktop diagnostics to standard error (Program.cs).
+environment.DEV_LIVE_ASSETS_TRACE = "1";
+const executable = join(fixture, "bin/Release/net10.0/DevLiveAssets.exe");
+
+// Failure detail: every process below `root` with its command line, the ports they listen on, each WebView2 browser
+// process's user data folder and DevToolsActivePort, and WebView2 browser processes outside the tree.
+async function describeTree(root) {
+  const script = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress; " +
+    "'---'; Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess | ConvertTo-Json -Compress";
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script],
+    { encoding: "utf8", timeout: 60_000, maxBuffer: 64 << 20 });
+  try {
+    const [processText, listenText] = result.stdout.split(/^---\r?$/m);
+    const processes = [JSON.parse(processText)].flat(), listening = [JSON.parse(listenText?.trim() || "[]")].flat();
+    const children = new Map();
+    for (const entry of processes) children.set(entry.ParentProcessId, [...children.get(entry.ParentProcessId) ?? [], entry]);
+    const tree = [], queue = [...children.get(root) ?? []];
+    while (queue.length) { const entry = queue.shift(); tree.push(entry); queue.push(...children.get(entry.ProcessId) ?? []); }
+    const pids = new Set([root, ...tree.map(entry => entry.ProcessId)]);
+    const browserProcesses = processes.filter(entry => /^msedgewebview2\.exe$/i.test(entry.Name) && !/\s--type=/.test(entry.CommandLine ?? ""));
+    const folders = [];
+    for (const browser of browserProcesses.filter(entry => pids.has(entry.ProcessId))) {
+      const folder = /--user-data-dir=(?:"([^"]+)"|(\S+))/.exec(browser.CommandLine ?? "");
+      const path = folder?.[1] ?? folder?.[2];
+      const active = path ? await readFile(join(path, "DevToolsActivePort"), "utf8").catch(error => `(none: ${error.code})`) : "(no --user-data-dir)";
+      folders.push(`  browser ${browser.ProcessId}: user data ${path}; DevToolsActivePort: ${JSON.stringify(active)}`);
+    }
+    return [`process tree below ${root}:`,
+      ...tree.map(entry => `  ${entry.ProcessId} (parent ${entry.ParentProcessId}) ${entry.Name}: ${(entry.CommandLine ?? "").slice(0, 2000)}`),
+      `listening in the tree: ${JSON.stringify(listening.filter(entry => pids.has(entry.OwningProcess)))}`,
+      `listening on ${port}: ${JSON.stringify(listening.filter(entry => entry.LocalPort === port))}`,
+      ...folders,
+      `WebView2 browser processes outside the tree: ${JSON.stringify(browserProcesses.filter(entry => !pids.has(entry.ProcessId))
+        .map(entry => `${entry.ProcessId}: ${(entry.CommandLine ?? "").slice(0, 600)}`))}`].join("\n");
+  } catch (error) {
+    return `process snapshot failed: ${error.message}\n${tail(result.stdout ?? "", 2000)}\n${tail(result.stderr ?? "", 2000)}`;
+  }
+}
+
+// Diagnosis after a failed endpoint check: DevLiveAssets.exe started directly, so dotnet run plays no part, with
+// WebView2's variable alone, with the variable and the application's own arguments, and with the port in the
+// application's own arguments alone.
+async function experiments() {
+  const base = { ...environment };
+  delete base.DEV_LIVE_ASSETS_BROWSER_ARGUMENTS;
+  const value = debugging.environment[variable];
+  for (const [label, extra, probe] of [
+    ["E1 variable only", { [variable]: value }, port],
+    ["E2 variable + own arguments", { [variable]: value, DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: ownArguments }, port],
+    ["E3 port in own arguments only", { DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: `${ownArguments} --remote-debugging-port=${port + 1}` }, port + 1],
+  ]) {
+    const child = spawn(executable, [], { cwd: fixture, env: { ...base, ...extra }, stdio: ["ignore", "pipe", "pipe"] });
+    const started = { label, child, output: "" };
+    child.stdout.on("data", chunk => { started.output += chunk; });
+    child.stderr.on("data", chunk => { started.output += chunk; });
+    let open = false;
+    const deadline = Date.now() + scaled(12_000);
+    while (!open && Date.now() < deadline && child.exitCode === null) {
+      open = await answers(cdpEndpoint(probe));
+      if (!open) await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|${label}|${cdpEndpoint(probe)} ${open ? "answers" : "does not answer"}|` +
+      `${child.exitCode === null ? "running" : `exited ${child.exitCode}`}`);
+    console.log(`${await describeTree(child.pid)}\noutput:\n${tail(started.output, 3000)}`);
+    await stop(started);
+    await waitFor(async () => !await answers(cdpEndpoint(probe)), { label: `${probe} to close`, timeout: 30_000 }).catch(() => {});
+  }
+}
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
@@ -125,7 +193,7 @@ const pageState = `({ href: location.href, marker: document.querySelector("#mark
 async function proveEndpoint(base, started) {
   const detail = detailOf(started);
   const version = await waitFor(signal => getJson(base, "json/version", signal),
-    { label: `${base}json/version`, timeout: 60_000, attemptTimeout: 5_000, detail });
+    { label: `${base}json/version`, timeout: 30_000, attemptTimeout: 5_000, detail });
   if (!version.webSocketDebuggerUrl) throw new Error(`${base}json/version names no browser endpoint: ${JSON.stringify(version)}`);
   // The attach configuration leaves js-debug's default address, localhost; its HTTP client retries the other loopback
   // family, as Node's fetch does.
@@ -187,7 +255,13 @@ try {
   await writeFile(profileFile,
     JSON.stringify(parseTemplateJson(launchSettings.replaceAll("RunicWindowApp", "DevLiveAssets")), null, 2));
   launched = start("dotnet run --launch-profile", ["run", "--project", project, "-c", "Release", "--no-build", "--launch-profile", profileName]);
-  const page = await proveEndpoint(endpoint, launched);
+  const page = await proveEndpoint(endpoint, launched).catch(async error => {
+    console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|launch profile failed: ${error.message.split("\n")[0]}`);
+    console.log(`${await describeTree(launched.child.pid)}\ndotnet run output:\n${tail(launched.output, 4000)}`);
+    await stop(launched);
+    await experiments();
+    throw error;
+  });
   console.log(`WEBVIEW2_DEBUG_PROFILE_OK|${profileName}|${page.url}`);
   await stop(launched);
   await waitFor(async () => !await answers(endpoint), { label: `${endpoint} to close after the Window stopped`, timeout: 30_000 });
@@ -203,7 +277,11 @@ try {
   const expected = [{ engine: "webview2", protocol: "cdp", url: endpoint }];
   if (session.state !== "ready" || JSON.stringify(session.debugEndpoints) !== JSON.stringify(expected))
     throw new Error(`dev-session.json: state ${session.state}, debugEndpoints ${JSON.stringify(session.debugEndpoints)}; expected ${JSON.stringify(expected)}`);
-  const devPage = await proveEndpoint(session.debugEndpoints[0].url, dev);
+  const devPage = await proveEndpoint(session.debugEndpoints[0].url, dev).catch(async error => {
+    console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|dotnet runic dev failed: ${error.message.split("\n")[0]}`);
+    console.log(`${await describeTree(dev.child.pid)}\ndev output:\n${tail(dev.output, 4000)}`);
+    throw error;
+  });
   console.log(`WEBVIEW2_DEBUG_DEV_SESSION_OK|${session.debugEndpoints[0].url}|${devPage.url}`);
   console.log("WEBVIEW2_DEBUG_OK|launch-profile|json-version|json-list|page-target|runtime-evaluate|debugger|own-arguments|dev-session");
 } finally {
