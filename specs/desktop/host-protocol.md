@@ -389,6 +389,7 @@ the feature is in use.
 | `window-services/1` | The host's clipboard, its monitors, opening files and links, and files dropped onto a hosted window: [window services](#window-services-window-services1) |
 | `region/1` | A guest Window shown in a region of a host page, in a frame, instead of in a window of its own: [regions](#regions-region1) |
 | `region-component/1` | A guest Window shown in a region as a component in the host page's own document, for applications of the same vendor; a guest lists it only when its application allows it: [component mode](#component-mode-region-component1) |
+| `region-appearance/1` | An appearance override for a region window, which the guest merges with the host's appearance for that window's pages only; requires `region/1`: [appearance in a region](#appearance-in-a-region-region-appearance1) |
 
 A guest service whose feature is not in use reports `OwnerUnavailable`, as in serve-only mode.
 
@@ -430,6 +431,7 @@ native window, navigates it to `url` and answers:
 | `colorScheme` | Optional. The window's colour scheme, as in the [`color-scheme` push](#activity-and-placement). |
 | `presentation` | Optional, with [`region/1`](#regions-region1) in use. `"window"`, the default, or `"region"`: the window shows in a region of a host page ([presentation of a window](#presentation-of-a-window)). |
 | `region` | With `presentation: "region"`: the region's size, or `null` ([presentation of a window](#presentation-of-a-window)). |
+| `appearance` | Optional, with [`region-appearance/1`](#appearance-in-a-region-region-appearance1) in use and only with `presentation: "region"`: the region window's appearance override, or `null` for none. |
 
 A refusal is answered `rejected` with `refused`, and the guest's open fails (`RunicWindowConfigurationException` with
 the code `hosted-window-refused`); the guest closes the Window's surface. A `window` already used, an `owner` that is
@@ -579,6 +581,9 @@ pushes each change.
   A member a receiver cannot read, such as a colour that is not `#rrggbb`, is unknown; an `appearance` that is not an
   object is unknown as a whole. The window's colour scheme override stays the [`color-scheme`](#activity-and-placement)
   push's, as the window's web view applies it.
+- **A region's override.** With [`region-appearance/1`](#appearance-in-a-region-region-appearance1), a host can
+  override members of the appearance for one region window. The guest merges the override into what that window's
+  pages receive; the `appearance` push itself, and `RunicGuestSession.Appearance`, stay the host's desktop appearance.
 - **Locale.** The guest's application locale (`IRunicApplicationLocale`) follows `locale`, unless the guest application
   set a locale of its own; an application that sets none again (`null`) follows the host's again. A `locale` of `null`
   changes the guest's locale only when it followed a host locale before. A tag that is not one, and a language that is
@@ -908,6 +913,7 @@ The `window-open` reply of a region window names its presentation:
 | --- | --- |
 | `presentation` | `"window"`, the default when absent, or `"region"`. An open set: a guest that reads a value it does not know closes the Window, as an open it gave up ([window-open](#window-open)). |
 | `region` | With `"region"`: `{width, height, scale}`, as in [`region-bounds`](#region-bounds), when a region of the host page shows the window already, or `null` while the window waits for one. Informational: the guest's page loads only after a `region-attach`. |
+| `appearance` | With `"region"` and [`region-appearance/1`](#appearance-in-a-region-region-appearance1) in use: the window's appearance override, or `null`. A guest ignores it in a reply without `"region"`. |
 
 - **Features.** A region window's `features` never list `minimize`, `visibility`, `full-screen`, `color-scheme` or
   `per-window-color-scheme`, and a [browser host](#browser-hosts)'s list neither `present` nor `owned-windows`.
@@ -935,6 +941,7 @@ The `window-open` reply of a region window names its presentation:
 | `region-focus` | guest → host request | `window`; `focus`: `"leave"`; `direction` | A [platform outcome](#platform-outcomes) |
 | `region-page` | guest → host push | `window`; `page`: `"connected"`, `"disconnected"` or `"revoked"` | — |
 | `set-title` | guest → host request | `window`; `title` | A platform outcome |
+| `region-appearance` | host → guest push, with [`region-appearance/1`](#appearance-in-a-region-region-appearance1) | `window`; `appearance`: the override or `null` | — |
 
 A region message for a window that is not a region window of the channel is `rejected` with `invalid-request` (a
 request) or ignored (a push).
@@ -1122,13 +1129,128 @@ The [presentation requests](#presentation) of a region window:
 | `resize` | The guest's **preferred size**. With `sizing: "content-height"` the host applies the height within its minimum and maximum, and the region's width keeps following the host page. Runic's guest sends its page's content height. Under the rate of requests that can activate a window. | `success` when the region follows the guest's height, else `unavailable` with `embedded` |
 | `set-document-edited` | In `features`; the host may show it, such as a mark on a wizard's step | `success` |
 | `set-title` | The page's title, for the region's accessible name | `success` |
-| `set-color-scheme` | Not in `features`: the region shows the host window's scheme | `unavailable` with `backend-unavailable` |
+| `set-color-scheme` | Not in `features`: the region shows the host window's scheme, or the one of its [appearance override](#appearance-in-a-region-region-appearance1), which only the host sets | `unavailable` with `backend-unavailable` |
 | `set-layout-direction` | Applies to the guest's page; the host window keeps its own direction | `success` |
 | `announce` | As in a window, through the host window | as in a window |
 
 The `appearance` and `locale` pushes are as for any guest: the guest follows the host. Runic's guest page in a region
 also sets `overscroll-behavior: contain` on its root, so scrolling at the frame's end does not scroll the host page, and
-registers no `beforeunload` listener: a region window guards its close with `close-request`.
+registers no `beforeunload` listener: a region window guards its close with `close-request`. With
+[`region-appearance/1`](#appearance-in-a-region-region-appearance1), a region window's pages receive the host's
+appearance merged with the region's override.
+
+### Appearance in a region (`region-appearance/1`)
+
+With `region-appearance/1`, which requires `region/1`, a host gives a region window an **appearance override**: members
+of the appearance that replace the host's desktop values for that window's pages, such as an installer whose wizard
+step shows the design the user picked. The guest merges the override with the host's desktop appearance for that
+window only, and its pages receive the result through the Views protocol's [`appearance` push](../application/README.md#appearance)
+before their first content. Runic's guest, its host and its [browser host](#browser-hosts) implement it from 0.19.
+
+```json
+{"id":4,"ok":true,"presentation":"region","features":["present","document-edited","activity","owned-windows"],"activity":{"active":false,"minimized":false,"visible":false},"region":null,"appearance":{"colorScheme":"dark","contrast":"more","reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}}
+{"kind":"region-appearance","window":"w1","appearance":{"colorScheme":"light","contrast":null,"reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}}
+```
+
+| Message | Direction | Members | Meaning |
+| --- | --- | --- | --- |
+| `window-open` reply | host → guest | `appearance`: the override or `null`, only with `presentation: "region"` | The region window's initial override |
+| `region-appearance` | host → guest push | `window`; `appearance`: the override or `null` | The override changed. It replaces the previous one as a whole; `null` removes it |
+
+**The override** is an object with the members of the [`appearance` push](#appearance-and-locale). Each member is a
+value or `null`, which keeps the host's desktop value; an absent member is `null`:
+
+| Member | Value | `null` or absent |
+| --- | --- | --- |
+| `colorScheme` | `"light"` or `"dark"` | the desktop's |
+| `contrast` | `"no-preference"`, `"more"` or `"forced-colors"` | the desktop's |
+| `reducedMotion` | boolean | the desktop's |
+| `textScale` | a number from 0.5 to 4 | the desktop's |
+| `accentColor` | `#rrggbb`, lowercase | the desktop's |
+| `systemColors` | the palette object of the `appearance` push; only with `contrast: "forced-colors"` | see the merge rule |
+
+- **Values a receiver cannot read.** A member that a receiver cannot read, such as an out-of-range value or a contrast
+  token it does not know, reads as `null`; the rest of the override still applies, as for the `appearance` push.
+- **Not an object.** An `appearance` that is neither an object nor `null` is invalid. In the `window-open` reply, the
+  guest reads it as no override. In a `region-appearance` push, the guest ignores the push and keeps the last override.
+- **Merge.** The guest merges per region window: `effective.m = override.m ?? desktop.m` for each member, except
+  `systemColors`. While the effective `contrast` is `"forced-colors"`, `systemColors` is the override's palette when it
+  sets one, else the desktop's when the desktop forces colours, else `null`. Otherwise it is `null`.
+- **Host-decided members.** The guest's push to the window's pages lists the members whose value the override decided,
+  among `colorScheme`, `contrast` and `reducedMotion`, in the push's `override` member, so that a page's combined
+  appearance takes them over the engine's media queries ([appearance](../application/README.md#appearance)).
+
+**Scope.**
+
+- **One window.** The override applies to the named region window's pages only, also to a
+  [component](#component-mode-region-component1)'s connection. Windows that the region window owns open in window mode
+  with the desktop's appearance, and so do the guest's other windows. `RunicGuestSession.Appearance` stays the
+  desktop's, and the host's own pages are untouched.
+- **Window-mode windows.** A host sends neither member for a window shown in a window. A guest ignores `appearance` in
+  a reply without `"region"`, and a `region-appearance` push for a window that is not a region window of the channel,
+  or for an unknown id, as for any [region push](#region-messages).
+- **Attached or not.** The override belongs to the window, not to the region that shows it: a host may push it while
+  the window is detached, and it stays across a detach, a re-attach and a move to another region.
+- **Only the host sets it.** No guest message and no page message sets or reads back an override. The host page
+  learns only the override's colour scheme ([the frame's colour scheme](#the-frames-colour-scheme)).
+- **Coalescing.** The host coalesces `region-appearance` pushes per window, latest wins, as it does `color-scheme` and
+  `placement`.
+
+**Ordering.**
+
+1. **Before the first page.** A region window's page loads only through a `region-attach`, frame or component, which
+   follows the `window-open` reply. A host sends a window's pending pushes before its `region-attach`, so the reply's
+   override and any `region-appearance` sent before the attach reach the guest before the page's `hello`, and the
+   page's first `appearance` push carries the merged value.
+2. **While attached.** The guest applies a push on its receive loop and pushes the merged value to the window's
+   connected pages; a page whose `hello` races the change receives the latest value last.
+3. **While detached.** The guest records the override for the window. No page is connected; the next attach's page
+   receives it first.
+4. **Desktop changes.** On each `appearance` push of the host, the guest merges again for every window that has an
+   override, and pushes to its pages where the merged value changed.
+5. **`hello`.** There is nothing to order: `hello` carries only the desktop appearance, and an override exists only
+   once a region window exists.
+
+#### The frame's colour scheme
+
+The host tells the page that declared the region the override's `colorScheme`, as the `colorScheme` member of
+[`hosted-region-content` and `hosted-region-update`](../application/README.md#hosted-regions), and the page sets CSS
+`color-scheme` on the region's frame, or on a component's element. `null` means no override, and the frame follows the
+host page as without the feature.
+
+- **Best effort.** Whether an engine passes the frame's used `color-scheme` into the framed document's
+  `prefers-color-scheme` is not settled: CSS Color Adjustment Level 1 says it does, and engines differ. Until the
+  `prefers-color-scheme` of a region's frame is recorded for WebView2, WKWebView and WebKitGTK, it is best effort, and
+  a guest page reads the scheme from its appearance (the `appearance` push and its `override`), not from the media
+  query. What the property always changes is the engine's own rendering at the frame's boundary: the opaque backdrop
+  when the frame's and the host document's schemes differ, the frame element's scrollbars and, in a component, form
+  controls. The wire carries the scheme, not CSS text, so a client may choose another keyword, such as
+  `<scheme> only`, without a protocol change.
+- **Other media queries.** `prefers-contrast`, `forced-colors` and `prefers-reduced-motion` cannot be set on a frame
+  from outside. A desktop that forces colours keeps forcing them in the frame, whatever the override says.
+- **No hooks on the guest's root.** Runic sets no `color-scheme` and no attribute on the guest page's root for the
+  override. A guest that styles from media queries maps its appearance to a hook of its own instead, such as a
+  `data-contrast` attribute that it sets from `onAppearance`.
+- **Components.** A component lives in the host page's document, so its `prefers-*` media queries are the host page's,
+  and its engine values describe the host page: only its appearance's host-decided members can differ. A component is
+  styled from its appearance, never from `prefers-color-scheme`.
+
+#### Older and newer peers
+
+- **A guest without the feature**, such as Runic's 0.18 guest: the feature is not in use, so the host sends neither
+  member. Runic's host still shows a window that its policy embeds with an override, with the desktop's appearance,
+  and logs one warning for the window; its policy can see beforehand whether the override applies
+  (`RunicHostedWindowRequest.CanOverrideAppearance`).
+- **A host without the feature** never lists it, and nothing changes.
+- **Pages.** The Views `override` member and the `hosted-regions/1` `colorScheme` member are additive: older clients
+  ignore them, as both sides ignore members they do not know. An older guest page still receives the merged values,
+  but its combined appearance prefers the engine's media queries.
+
+In .NET the host sets the override with `RunicHostedRegionOptions.Appearance` and `RunicHostedRegion.SetAppearanceAsync`,
+which takes a `RunicHostedAppearance`, a record whose `null` members keep the desktop's values and whose
+`DesktopColorScheme.NoPreference` reads as `null`. `SetAppearanceAsync` accepts an override while the region window is
+detached and records it for the next page; it returns `false` only for a region that ended and for a guest that does
+not implement the feature (`RunicHostedRegion.CanSetAppearance`). All of it is experimental under `RUNICDESK103`.
 
 ### Features in a region
 
@@ -1208,7 +1330,7 @@ A **browser host** is a host whose pages run in the user's installed browser, su
 serve-only (`RUNIC_APPLICATION_SERVE_ONLY=1`). It has no native window of its own, so it shows a guest's Windows only
 in regions of its pages, with fewer features than a host with native windows:
 
-- **Features.** Its `hello` lists `region/1` and `region-component/1` alone. Without `menus/1`, `dialogs/1` and `window-services/1`, a guest's
+- **Features.** Its `hello` lists `region/1`, `region-component/1` and `region-appearance/1` alone. Without `menus/1`, `dialogs/1` and `window-services/1`, a guest's
   menus, dialogs and window services report `OwnerUnavailable`, as in serve-only mode.
 - **No windows of their own.** It answers a `window-open` that its policy does not show in a region `rejected` with
   `refused`, so the guest's open fails with `hosted-window-refused`. Owned windows are among them. In .NET,
@@ -1507,6 +1629,7 @@ page.
 | `resize` of a region window | Counts toward the requests that can activate a window | `rejected` with `capacity` |
 | `region-bounds` pushes | Coalesced per window, at most one per animation frame of the host page | — |
 | `region-attach` per window | One waiting for its reply | — |
+| `region-appearance` pushes | Coalesced per window, latest wins ([appearance in a region](#appearance-in-a-region-region-appearance1)) | — |
 | Frame launch code | One-time; 30 seconds from the `region-attach` reply | 403; a spent code revokes the token |
 | Pages a frame token admits | One connected page at a time | 403 |
 | `embedder`, frame launch address, title | 256, 2,048 and 1,024 characters | `rejected` with `invalid-request` |
@@ -1544,7 +1667,7 @@ that is not valid).
 
 | Version | Release | Change |
 | --- | --- | --- |
-| 1 | 0.17 | First version, experimental (`RUNICDESK103`). 0.18 added, without a version change, the features `region/1` and `region-component/1`. |
+| 1 | 0.17 | First version, experimental (`RUNICDESK103`). 0.18 added, without a version change, the features `region/1` and `region-component/1`, and 0.19 added `region-appearance/1`. |
 
 ## Security requirements
 
@@ -1640,7 +1763,7 @@ boundary.
 
 #### Threats in a region
 
-The threats of [regions](#regions-region1) (`region/1`) and of [component mode](#component-mode-region-component1) (`region-component/1`, T24–T26):
+The threats of [regions](#regions-region1) (`region/1`), of [component mode](#component-mode-region-component1) (`region-component/1`, T24–T26) and of [appearance in a region](#appearance-in-a-region-region-appearance1) (`region-appearance/1`, T27–T29):
 
 | # | Threat | Mitigation |
 | --- | --- | --- |
@@ -1652,3 +1775,10 @@ The threats of [regions](#regions-region1) (`region/1`) and of [component mode](
 | T24 | A component's code reads or changes the host page, uses its Bridge, or keeps running after the region went; the host page reads the guest's token or state and acts as the guest's page | Inherent to [component mode](#component-mode-region-component1), which merges the two trust domains at the page: both sides opt in, for applications of the same vendor, and each backend keeps its own policy for what the other's page asks. The token dies at detach, and the component's connection with it. Residual: a host that embeds a component trusts the guest's code as its own page's, and the reverse |
 | T25 | Another page or process connects as the component: another local application's page in the user's browser, a web page, a process that is not a browser and sends the embedder's `Origin`, or a replay of a token after the region went | The upgrade needs both `Origin` equal to the embedder, which a browser cannot forge, and the token, which only the host's backend and page hold; the token is never in a URL; one page at a time; the token dies at detach and at the next attach. Residual: a process of the same user that reads the host's memory, outside what Runic protects |
 | T26 | Another origin loads the guest's component build or reaches its blobs and uploads through CORS | The build, blob reads that name an origin and uploads are granted to the embedder of the current attach alone, with `Vary: Origin`; nothing before an attach or after a detach. Residual: a no-cors embedding of a blob, such as an `<img>` on another page, works with its URL alone while the component is attached, as the URL is the capability |
+| T27 | A host sets an appearance that makes the guest misleading or unreadable: a forced palette with low contrast, an extreme text scale, a dark scheme with a light page | Inside T7: the guest trusts its host, which already shows and lays out its frame. The values are bounded (`textScale` 0.5 to 4, `#rrggbb` colours), and the guest reads anything else as the desktop's. Residual: a host can still pick an ugly palette |
+| T28 | The override, or the desktop appearance it is merged with, reaches someone it should not | The override is the host application's own choice, not desktop data, and reaches only the region window's pages. The desktop members merged with it follow the [locality rule](../application/README.md#appearance): a guest that pushes `null` for pages that other computers can reach keeps doing so for those members. The host page never sees the override; it receives only `colorScheme`, which its own host already knows. The guest cannot send an override back |
+| T29 | A compromised host page sets or changes a region's appearance | No page message sets it, only the host application (in .NET, `RunicHostedRegionOptions.Appearance` and `RunicHostedRegion.SetAppearanceAsync`); `hosted-region-content` and `hosted-region-update` carry `colorScheme` from the producer to the page only |
+
+A flood of overrides is bounded like any push: the host coalesces them per window, and the channel's message limits
+apply; pushes from a trusted host are not rate-limited further. An override from the host of an
+elevated guest, an [elevated peer](#elevated-peer-admission), is just another push over the authenticated channel.
