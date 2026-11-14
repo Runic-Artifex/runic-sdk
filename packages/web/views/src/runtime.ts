@@ -25,6 +25,7 @@ import { endWindowDraining, reportWindowClosed, reportWindowDraining } from "./c
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitDrafts } from "./field-controller.js";
 import { blobsFeature, readBlobGrant, type BlobGrant } from "./blob-wire.js";
+import { handlerTimingFeature, traceContextFeature } from "./calls.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
 // How long a window close waits for the page's field drafts to be written, within the host's 5-second limit.
@@ -78,6 +79,8 @@ export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
   translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature, hostedRegionsFeature,
+  // Development only in effect: a request carries them only while a reader of the Bridge-call channel follows it.
+  traceContextFeature, handlerTimingFeature,
 ];
 
 /** A push handler, registered per push kind and route. */

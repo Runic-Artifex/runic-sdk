@@ -10,7 +10,7 @@ import { reportBridgeError, waitForBridgeIn } from "./transport.js";
 import { currentSlots, type Slots } from "./scope.js";
 import { publishConnectionState } from "./connection-state.js";
 import { reportToInspector } from "./inspector.js";
-import { beginCall, endCall, noteCancelled, noteReply, traced, withinCall, type BridgeCall } from "./calls.js";
+import { beginCall, endCall, noteCancelled, noteReply, requestCall, traced, withinCall, type BridgeCall } from "./calls.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
 import { deferNotification, flushNotifications, nextFrame } from "./notifications.js";
@@ -190,6 +190,8 @@ export interface RouteOperationScope extends OperationScope {
   ready(): Promise<void>;
   /** Resolves once the route reached `revision`, at once when the route is not open. */
   waitForRevision(revision: number): Promise<void>;
+  /** @internal The call of an operation start that a reader of the development Bridge-call channel follows (calls.ts). */
+  readonly call?: BridgeCall;
 }
 
 type State = Record<string, unknown>;
@@ -833,9 +835,12 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     if (!runtime.connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", { route });
     if (!live()) throw new BridgeError("released", "This View was released. Connect its current reference for the current state.", { route });
   }
-  const request = async (message: Message): Promise<Reply> => {
+  // A call that a reader of the development Bridge-call channel follows carries its trace context and asks for its
+  // handler's timing (calls.ts).
+  const request = async (message: Message, call?: BridgeCall): Promise<Reply> => {
     assertConnected();
-    return runtime.request(message, route);
+    return call === undefined ? runtime.request(message, route)
+      : requestCall(call, runtime.features, sent => runtime.request(sent, route), message);
   };
   const { contract } = options;
   // Starts a call on the development Bridge-call channel; `undefined` without a reader.
@@ -916,12 +921,12 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
   const scoped = new Set(options.scopedCommands ?? []);
   // A superseded command (presentation-epoch/1) ran nothing and resolves like one that ran: after the route reached the
   // reply's revision, with the exposed state (specs/application/README.md, "Presentation epochs").
-  async function command(member: string, input: unknown): Promise<Reply> {
+  async function command(member: string, input: unknown, call: BridgeCall | undefined): Promise<Reply> {
     assertConnected();
     // The epoch of the state this presentation's subscribers last received, which the call was made on.
     const epoch = scoped.has(member) && runtime.features?.has(presentationEpochFeature) === true ? lease.epoch : undefined;
     await ready();
-    const reply = await request({ kind: "command", route, member, ...(input === undefined ? {} : { input }), ...(epoch === undefined ? {} : { epoch }) });
+    const reply = await request({ kind: "command", route, member, ...(input === undefined ? {} : { input }), ...(epoch === undefined ? {} : { epoch }) }, call);
     // The call resolves like one that ran; the development state inspector shows that it did not (D053.25).
     if (reply.ok && reply["superseded"] === true) {
       reportToInspector(slots, () => ({ kind: "superseded", route, member, epoch, revision: reply.revision }));
@@ -952,13 +957,13 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       let edit = entry.beginEdit(member, value);
       let reply: Reply;
       try {
-        reply = await request(splice === undefined ? { kind: "set", route, member, value, edit } : { kind: "set", route, member, edit, splice });
+        reply = await request(splice === undefined ? { kind: "set", route, member, value, edit } : { kind: "set", route, member, edit, splice }, call);
         if (!reply.ok && reply.error?.reason === "splice-base") {
           // The producer no longer has the splice's base, and admitted nothing. A later edit carries a newer value;
           // otherwise this value is sent in full as a new edit.
           if (entry.latestEdit(member) !== edit) { noteCancelled(call, "superseded"); flushNotifications(); return current(); }
           edit = entry.beginEdit(member, value);
-          reply = await request({ kind: "set", route, member, value, edit });
+          reply = await request({ kind: "set", route, member, value, edit }, call);
         }
       }
       catch (error) { entry.endEdit(member, edit, undefined); throw error; }
@@ -973,7 +978,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       return current();
     }, call); },
     command: (member, input) => { const call = begin("command", "command", member); return observed(slots, route, async () => {
-      const reply = await command(member, input);
+      const reply = await command(member, input, call);
       if (!reply.ok) return failure(reply, "The command failed.", call);
       await settled(reply, call);
       return current();
@@ -981,7 +986,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     commandOutcome<TFailure>(member: string, decodeFailure: (value: unknown) => TFailure, input?: unknown) {
       const call = begin("command", "command", member);
       return observed(slots, route, async (): Promise<BridgeOutcome<TState, TFailure>> => {
-        const reply = await command(member, input);
+        const reply = await command(member, input, call);
         if (!reply.ok && reply.error?.kind === "domain-failed") {
           await settled(reply, call);
           let declared: TFailure;
@@ -1005,7 +1010,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       if (runtime.features?.has(regionCollectionsFeature) !== true)
         throw new BridgeError("failed", "The .NET host does not implement region-collections/1. Use the Runic packages of one release.", { route });
       await ready();
-      const reply = await request({ kind: "region", route, member, action, key });
+      const reply = await request({ kind: "region", route, member, action, key }, call);
       if (!reply.ok) return failure(reply, action === "select" ? "The region could not be selected." : "The region could not be closed.", call);
       await settled(reply, call);
       if (reply["outcome"] === undefined) {
@@ -1017,7 +1022,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid region outcome: ${errorMessage(cause)}`, { cause, route }); }
     }, call); },
     can: (member, input) => { const call = begin("can", "can", member); return observed(slots, route, async () => {
-      const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) });
+      const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) }, call);
       noteReply(call, reply);
       if (!reply.ok) throw replyError(reply.error, route, "The command availability could not be read.");
       return reply["value"] as boolean;
@@ -1038,9 +1043,9 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         const single = singleSplice(expectedValue, value);
         if (expectedValue.length - single.delete >= minimumKept) splice = { length: expectedValue.length, ...single };
       }
-      let reply = await request(splice === undefined ? full : { ...identity, splice });
+      let reply = await request(splice === undefined ? full : { ...identity, splice }, call);
       // The producer's value at expectedVersion is not the splice's base, and it retained nothing: send the write in full.
-      if (splice !== undefined && !reply.ok && reply.error?.reason === "splice-base") reply = await request(full);
+      if (splice !== undefined && !reply.ok && reply.error?.reason === "splice-base") reply = await request(full, call);
       if (!reply.ok) return failure(reply, "The checked write failed.", call);
       await settled(reply, call);
       try {
@@ -1075,10 +1080,10 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         throw runtime.connected ? new BridgeError("released", "This View was released.", { route }) : new BridgeError("disconnected", "The Bridge is disconnected.", { route });
       return entry.revision;
     },
-    start: (member, operation, input, codec) => observed(slots, route, () => {
+    start: (member, operation, input, codec) => { const call = begin("operation", "start", member); return observed(slots, route, () => {
       if (operation.length === 0) throw new RangeError("An operation id is required.");
-      return operations().start(operationScope, member, operation, input, codec);
-    }, begin("operation", "start", member)),
+      return operations().start(call === undefined ? operationScope : { ...operationScope, call }, member, operation, input, codec);
+    }, call); },
     recover: (member, operation, codec) =>
       observed(slots, route, () => operations().recover(operationScope, member, operation, codec), begin("operation", "status", member)),
     queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow> {
@@ -1096,11 +1101,11 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
           supported();
           const call = begin("query", message["kind"] as string, member);
           if (call === undefined) return request(message);
-          return traced(call, async () => { const reply = await request(message); noteReply(call, reply); return reply; });
+          return traced(call, async () => { const reply = await request(message, call); noteReply(call, reply); return reply; });
         },
         setQuery: query => { const call = begin("query", "query-set", member); return observed(slots, route, async () => {
           supported();
-          const reply = await request({ kind: "query-set", route, member, query });
+          const reply = await request({ kind: "query-set", route, member, query }, call);
           if (!reply.ok) return failure(reply, "The query could not be set.", call);
           await settled(reply, call);
         }, call); },

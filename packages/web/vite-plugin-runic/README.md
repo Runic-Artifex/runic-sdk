@@ -108,7 +108,31 @@ Performance recording (turn on "Show custom tracks"), and its listening turns
 on the async stack segments that lead from a reply back to the click that made
 the call. See
 [Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
-The dock does not show these calls yet.
+The dock does not show these calls yet. A .NET host in Development names each
+call's C# handler and its duration, which the client lists on the call's entry
+and draws on a **C# handlers** track below it.
+
+### OTLP export of the page's spans
+
+While serving, the plugin exports a span per Bridge call to an OTLP/HTTP
+endpoint, so the page's call, the .NET `runic.bridge.*` span and the
+ViewModel's own spans form one trace. It is on when `OTEL_EXPORTER_OTLP_ENDPOINT`
+or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set in the development server's
+environment (and off with `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none`):
+the development client then gives each call a W3C trace context, which its
+requests carry to .NET, and sends the settled call to the development server,
+which posts it as OTLP/JSON. The page loads no OpenTelemetry code and posts
+nothing cross-origin; a production build contains none of it.
+
+```ts
+runic({ otlp: false });                                         // never
+runic({ otlp: { url: "http://localhost:4318/v1/traces", serviceName: "notes-page" } });
+```
+
+`url` is the full traces URL; `headers` defaults to `OTEL_EXPORTER_OTLP_HEADERS`,
+and `serviceName` to `OTEL_SERVICE_NAME`, or else the root's package name, with
+`-page` appended. [Tracing Bridge calls](../../../docs/tracing.md) sets it up
+with the Aspire dashboard.
 
 ## Component build target
 

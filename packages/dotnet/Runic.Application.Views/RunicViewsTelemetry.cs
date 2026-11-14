@@ -162,7 +162,10 @@ internal static class BridgeCallOutcome
 }
 
 // One traced and measured Bridge call. Start before the work and Complete it
-// once; a mutable local, so a second Complete is ignored.
+// once; a mutable local, so a second Complete is ignored. The first call of a
+// request that carries a trace context or asks for handler timing
+// (BridgeRequestTrace) takes the page's span as its parent and records its
+// duration for the reply.
 internal struct BridgeCall
 {
     private readonly string _kind;
@@ -170,23 +173,34 @@ internal struct BridgeCall
     private readonly string _member;
     private readonly Activity? _activity;
     private readonly long _started;
+    private readonly BridgeRequestTrace? _request;
+    private readonly long _handlerStarted;
     private bool _completed;
 
-    private BridgeCall(string kind, string model, string member, Activity? activity, long started)
+    private BridgeCall(string kind, string model, string member, Activity? activity, long started,
+        BridgeRequestTrace? request, long handlerStarted)
     {
         _kind = kind;
         _model = model;
         _member = member;
         _activity = activity;
         _started = started;
+        _request = request;
+        _handlerStarted = handlerStarted;
         _completed = false;
     }
 
     internal static BridgeCall Start(string kind, string model, string route, string member)
     {
-        var activity = BridgeTelemetry.Source.HasListeners()
-            ? BridgeTelemetry.Source.StartActivity("runic.bridge." + kind)
-            : null;
+        var request = BridgeRequestTrace.Claim();
+        Activity? activity = null;
+        if (BridgeTelemetry.Source.HasListeners())
+        {
+            // The page's span is remote, so this span is the server side of the page's call.
+            activity = request is { HasParent: true }
+                ? BridgeTelemetry.Source.StartActivity("runic.bridge." + kind, ActivityKind.Server, request.Parent)
+                : BridgeTelemetry.Source.StartActivity("runic.bridge." + kind);
+        }
         if (activity is not null)
         {
             activity.DisplayName = $"{kind} {model}.{member}";
@@ -199,13 +213,16 @@ internal struct BridgeCall
             }
         }
         var started = BridgeTelemetry.Calls.Enabled || BridgeTelemetry.CallDuration.Enabled ? Stopwatch.GetTimestamp() : 0;
-        return new(kind, model, member, activity, started);
+        var handlerStarted = request is { Timing: true } ? (started != 0 ? started : Stopwatch.GetTimestamp()) : 0;
+        return new(kind, model, member, activity, started, request?.Timing == true ? request : null, handlerStarted);
     }
 
     internal void Complete(string outcome, Exception? error = null)
     {
         if (_kind is null || _completed) return;
         _completed = true;
+        // handler-timing/1 (Development only): the reply names the handler and how long it took.
+        _request?.RecordHandler($"{_model}.{_member}", Stopwatch.GetElapsedTime(_handlerStarted).TotalMilliseconds);
         if (_activity is not null)
         {
             _activity.SetTag(BridgeTelemetry.OutcomeTag, outcome);

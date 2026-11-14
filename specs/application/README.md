@@ -135,7 +135,7 @@ Another client implementation for the web SHOULD use the same keys.
 | `runic.views.diagnostics` | `globalThis` | A `Set` of listener functions. Each is called with a `BridgeDiagnostic`: `kind` (`error` or `operation`), `code`, `message`, and optionally `route`, `detail`, `member`, `requestId` and, for local observers only, `error`. `code` is an open set; a listener ignores codes and fields it does not know. |
 | `runic.views.connection` | `globalThis` | `{ listeners, state, requested, start, closed, closedListeners, draining, drainingListeners }`: a `Set` of listener functions called with the page's `BridgeConnectionState` on each change, and the latest state. `closed` is `true` from a [`closing`](#window-close) push until the next connection, and `closedListeners` is a `Set` of functions called with each change of it, through which every copy reports the state `closed`. `draining` (0.19) is `true` from a `closing` push with `draining: true` until that connection ends or a new one opens, and `drainingListeners` is a `Set` of functions called with each change of it. The first View that connects starts it. A copy of `@runic-artifex/views` sets `start`, a function that starts it, when it loads; a reader that wants the state before a View connects (the Vite development client) sets `requested` to `true`, which a copy that loads later honours, and calls `start` if it is set. |
 | `runic.views.inspector` | `globalThis` | `{ listeners, requested }`: the development state inspector. A reader (the Vite development client) adds a listener function to the `Set` and sets `requested` to `true`; only then does each copy of `@runic-artifex/views` call the listeners, with `{ kind: "state", route, revision, epoch, presentations, state }` when the state its presentations receive changes, `{ kind: "closed", route }` when a route closes, and `{ kind: "superseded", route, member, epoch, revision }` when the producer answered a `command` `superseded`. `state` is the exposed state; a listener must not change it. A listener ignores kinds and fields it does not know. Since 0.15. |
-| `runic.views.calls` | An instance's slots (`globalThis` for the page instance) | `{ listeners, requested, devtools, sequence }`: the development Bridge-call channel. A reader (the Vite development client) adds a listener function to the `Set` and sets `requested` to `true`; only then does each copy of `@runic-artifex/views` report each call of a generated client twice: `{ phase: "start", id, kind, request, route, contract, member, start }`, synchronously in the caller's stack, and `{ phase: "end", …, end, duration, outcome, revision?, reason?, error? }` once it settled. `kind` is `command`, `set`, `write`, `can`, `region`, `operation` or `query`; `request` is the wire request kind; `outcome` is `ok`, `error` or `cancelled`; times are `performance.now()` milliseconds. `id` is the next value of `sequence`, which every copy shares; it is local to the page and not sent. While a reader listens and `devtools` is not `false`, each copy also runs the call in a `console.createTask` task where the engine has it; drawing the calls, such as the Vite development client's Performance track, is the reader's. Without a reader a copy reads only this key. A listener ignores phases and fields it does not know. Since 0.20. |
+| `runic.views.calls` | An instance's slots (`globalThis` for the page instance) | `{ listeners, requested, devtools, sequence }`: the development Bridge-call channel. A reader (the Vite development client) adds a listener function to the `Set` and sets `requested` to `true`; only then does each copy of `@runic-artifex/views` report each call of a generated client twice: `{ phase: "start", id, kind, request, route, contract, member, start }`, synchronously in the caller's stack, and `{ phase: "end", …, end, duration, outcome, revision?, reason?, error? }` once it settled. `kind` is `command`, `set`, `write`, `can`, `region`, `operation` or `query`; `request` is the wire request kind; `outcome` is `ok`, `error` or `cancelled`; times are `performance.now()` milliseconds. `id` is the next value of `sequence`, which every copy shares; it is local to the page and not sent. A reader that exports traces sets `trace`, a function that returns a call's W3C trace context `{ traceparent, tracestate? }`; each event then carries it as `trace`, and the call's requests carry it to the producer ([trace context](#trace-context)). The end event carries `handler: { name, start, end, duration }` when the producer named the call's handler ([handler timing](#handler-timing)). While a reader listens and `devtools` is not `false`, each copy also runs the call in a `console.createTask` task where the engine has it; drawing the calls, such as the Vite development client's Performance track, is the reader's. Without a reader a copy reads only this key. A listener ignores phases and fields it does not know. Since 0.20. |
 | `runic.views.diagnosticReported` | An error | `true` once a diagnostic reported the error, so each error is reported once. |
 | `runic.views.unavailableReported` | `globalThis` | `true` once the page reported that it has no `__runicBridge`. |
 | `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |
@@ -285,6 +285,8 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `appearance/1` | The desktop's appearance preferences that a page's engine may not expose, such as the text scale, the accent colour and the forced-colours palette: [appearance](#appearance) | 0.17 |
 | `client-languages/1` | The page reports its browser's preferred languages in `hello`: [client languages](#client-languages) | 0.17 |
 | `hosted-regions/1` | The page declares regions where the host shows a guest application's Window, and reports their size, visibility and focus: [hosted regions](#hosted-regions) | 0.18 |
+| `trace-context/1` | A call's request carries the page's W3C trace context, the parent of the producer's span for the call: [trace context](#trace-context) | 0.20 |
+| `handler-timing/1` | A call's request asks for its handler's name and duration, which the reply carries; a producer offers it only in development: [handler timing](#handler-timing) | 0.20 |
 
 ### Request sessions
 
@@ -1462,6 +1464,49 @@ The `.NET` producer logs each report as event 1150 `PageError` (Error) in the ca
 `PageErrorsSuppressed` or 1152 `WindowPageErrorsSuppressed` (Warning) once a minute when it starts counting. It cuts
 `message` and `url` at 2048 characters, `stack` at 8192 and `name` at 128, and starts every stack line with `    | `.
 
+## Trace context and handler timing
+
+Two features for development tools. Neither changes what a request does: a producer that implements them answers every
+request exactly as one that does not, apart from the reply member `handler`. Both apply to the requests of a call:
+`set`, `write`, `command`, `can`, `region`, `start`, `query-set`, `query-rows` and `query-index`.
+
+### Trace context
+
+Feature `trace-context/1`. A client lists it when it implements it; a producer that lists it reads the member below.
+
+- **Client.** On a connection that uses the feature, a request of a call MAY carry `trace`: `{ traceparent,
+  tracestate? }`, strings in the formats of [W3C Trace Context](https://www.w3.org/TR/trace-context/) (`traceparent` of
+  at most 256 characters, `tracestate` of at most 512). It identifies the client's span for the call, which is the parent
+  of the producer's span. `@runic-artifex/views` sends it only for a call that a reader of the development Bridge-call
+  channel gave a trace context ([Shared globals](#shared-globals)), so a page without the Vite development client and an
+  OTLP export sends none.
+- **Producer.** It MAY ignore the member; it reads it only while it records spans. `Runic.Application.Views` parses it
+  only while its `ActivitySource` (`Runic.Application.Views`) has a listener, and makes it the remote parent of the
+  request's first `runic.bridge.*` span (kind `Server`), which the call's own spans, such as those of the ViewModel, then
+  follow. A `trace` that is not an object, or whose `traceparent` does not parse, is ignored: tracing never fails a
+  request.
+
+### Handler timing
+
+Feature `handler-timing/1`. A client lists it when it implements it. A producer lists it **only in development**:
+`Runic.Application.Views` lists it when `DOTNET_ENVIRONMENT`, or else `ASPNETCORE_ENVIRONMENT`, is `Development`, which
+`dotnet runic dev` sets, as for failure detail.
+
+- **Client.** On a connection that uses the feature, a request of a call MAY carry `timing: true`, which asks for the
+  handler's timing. `@runic-artifex/views` sends it only for calls that a reader of the development Bridge-call channel
+  follows.
+- **Producer.** The successful or failed reply to a request with `timing: true` carries `handler: { name, duration }`
+  when the producer ran a handler for it: `name` is the handler, such as `EditorViewModel.Save` (the ViewModel type and
+  the C# member), and `duration` the milliseconds from the start of the call to its end, as the producer measured them.
+  `Runic.Application.Views` times the commands, setters, checked writes and operation admissions, the requests it
+  traces as `runic.bridge.*`; other requests carry no `handler`. A producer without the feature in use never sends it.
+- The client places the handler on its own clock between sending the request and receiving its reply; the producer's
+  clock is never compared with the page's.
+
+Both directions of version skew keep working: a producer of an earlier release ignores `trace` and `timing` as unknown
+members (and a client sends them only on a connection that uses the features), and a client of an earlier release
+neither sends them nor receives `handler`.
+
 ## Navigation paths
 
 With the feature `navigation-path/1`, the page can ask the window to go back, as its Back button does, and keep its
@@ -1922,7 +1967,9 @@ Requests:
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and
-`implementation`. With [`request-session/1`](#request-sessions), every request but `hello` also carries `session`.
+`implementation`. With [`request-session/1`](#request-sessions), every request but `hello` also carries `session`. With
+[`trace-context/1`](#trace-context) and [`handler-timing/1`](#handler-timing), the request of a call may carry `trace`
+and `timing`, and its reply `handler`.
 
 Pushes:
 
@@ -2027,4 +2074,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the features `appearance/1` and `client-languages/1`, and 0.18 the feature `hosted-regions/1`, and 0.19 the `appearance` push's `override` member and the `colorScheme` member of `hosted-region-content` and `hosted-region-update`, and 0.20 the features `trace-context/1` and `handler-timing/1`. |

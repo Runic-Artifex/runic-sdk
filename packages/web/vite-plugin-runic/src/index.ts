@@ -4,17 +4,20 @@ import type { Plugin, UserConfig, ViteDevServer } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
+import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
 import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
+import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
   type RunicComponentOptions,
 } from "./component.js";
 
 export type { RunicComponentOptions } from "./component.js";
+export type { RunicOtlpOptions } from "./otlp.js";
 
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
@@ -89,6 +92,15 @@ export interface RunicViteOptions {
    * development server serves the page only.
    */
   readonly component?: RunicComponentOptions;
+  /**
+   * Exports the page's spans of Bridge calls over OTLP while serving, so they join the .NET host's spans in one trace
+   * (W3C trace context in each call's request, `trace-context/1`). By default it is on when `OTEL_EXPORTER_OTLP_ENDPOINT`
+   * or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set in the development server's environment, and off with
+   * `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none`. The development server posts OTLP/HTTP JSON, so the endpoint
+   * is an OTLP/HTTP receiver. `false` turns it off; an object sets the URL, headers or service name. Requires the
+   * development client (`devtools` not `false`).
+   */
+  readonly otlp?: boolean | RunicOtlpOptions;
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
@@ -99,9 +111,14 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   if (options.html !== undefined && typeof options.html !== "boolean") {
     throw new TypeError("html must be true or false.");
   }
+  if (options.otlp !== undefined && typeof options.otlp !== "boolean" && (typeof options.otlp !== "object" || options.otlp === null)) {
+    throw new TypeError("otlp must be true, false or { url?, headers?, serviceName? }.");
+  }
   const html = options.html !== false;
   const client = options.devtools !== false;
   let server: ViteDevServer | undefined;
+  // The OTLP export of the page's spans, while serving with the development client.
+  let otlp: OtlpForwarder | undefined;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
   let resolvedRoot = process.cwd();
@@ -126,6 +143,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     if (event === connectionEvent) timeline.applyConnection(data);
     else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
     else if (event === viewEvent) timeline.applyView(data);
+    else if (event === spanEvent) otlp?.add(data);
   };
   const command = (): string => timeline.state.vite.command;
 
@@ -209,6 +227,13 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         throw new Error('RUNICP007: devtools: true requires DevTools() from @vitejs/devtools in the Vite plugins array.');
       }
       resolvedRoot = resolved.root;
+      if (resolved.command === "serve" && client) {
+        const exported = resolveOtlp(options.otlp, process.env, resolved.root);
+        if (exported !== undefined) {
+          otlp = createOtlpForwarder(exported, { version: pluginVersion(), warn: (message) => resolved.logger.warn(message) });
+          resolved.logger.info(`[runic] Exporting the page's Bridge call spans to ${exported.url} as ${exported.serviceName} (OTLP/HTTP JSON).`);
+        }
+      }
       const configuredBase = resolved.base || "/";
       base = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
       timeline.configure((state) => ({
@@ -221,6 +246,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.ws.on(connectionEvent, (payload) => deliver(connectionEvent, payload));
       viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
       viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
+      viteServer.ws.on(spanEvent, (payload) => deliver(spanEvent, payload));
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
         answerState(response, timeline.state, devSession);
@@ -231,6 +257,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       });
       viteServer.httpServer?.once("close", () => {
         server = undefined;
+        void otlp?.close();
       });
     },
     resolveId(id, importer, resolveOptions) {
@@ -254,7 +281,9 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
-        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = { channel: "hot" };`];
+        // trace: the client gives each Bridge call a trace context and sends its span, which the server exports.
+        const clientOptions = otlp === undefined ? `{ channel: "hot" }` : `{ channel: "hot", trace: true }`;
+        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${clientOptions};`];
         if (options.staleInputWarning === false) {
           statements.push(`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`);
         }
@@ -292,6 +321,15 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       },
     },
   };
+}
+
+function pluginVersion(): string {
+  try {
+    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: unknown };
+    return typeof manifest.version === "string" ? manifest.version : "0";
+  } catch {
+    return "0";
+  }
 }
 
 function resolveDesktopBootstrapUrl(
