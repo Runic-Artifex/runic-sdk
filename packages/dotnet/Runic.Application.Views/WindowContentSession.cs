@@ -216,6 +216,13 @@ public sealed class WindowContentSession : IDisposable
         set => BridgeDispatcher.For(_transport).SetAppearance(value);
     }
 
+    // The window's appearance with the members its host decided for it, such as a hosted region's appearance override:
+    // the pages take those over their engine's media queries (the appearance push's override member).
+    internal void SetAppearance(Runic.Platform.DesktopAppearance? appearance, HostDecidedAppearance decided) =>
+        BridgeDispatcher.For(_transport).SetAppearance(appearance, decided);
+
+    internal HostDecidedAppearance DecidedAppearance => BridgeDispatcher.For(_transport).DecidedAppearance;
+
     /// <summary>Gets whether the window's root ViewModel receives dropped files (<see cref="IRunicFileDropTarget"/>).</summary>
     public bool AcceptsFileDrops => _rootModel is IRunicFileDropTarget;
 

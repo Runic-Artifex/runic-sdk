@@ -503,7 +503,7 @@ public sealed partial class RunicTestHost : IAsyncDisposable
                 await request.FailAsync("rejected", "refused", "The test host's policy refused the window.").ConfigureAwait(false);
                 return;
             }
-            await request.ReplyAsync(window.IsRegion ? RegionReply(window.Features) : new JsonObject
+            await request.ReplyAsync(window.IsRegion ? RegionReply(window) : new JsonObject
             {
                 ["features"] = new JsonArray([.. FeatureNames(_options.WindowFeatures).Select(static name => (JsonNode)name)]),
                 ["activity"] = new JsonObject { ["active"] = true, ["minimized"] = false, ["visible"] = true },
@@ -687,6 +687,17 @@ public sealed record RunicTestHostOptions
     /// a window.
     /// </summary>
     public Func<RunicTestHostedWindow, bool>? EmbedWindow { get; init; }
+
+    /// <summary>
+    /// The appearance override of each region window from its open (<c>region-appearance/1</c>), as a host's
+    /// <c>RunicHostedRegionOptions.Appearance</c> gives it: the guest merges it with <see cref="Appearance"/> for that
+    /// window's pages only. Each known member replaces the host's value; an unknown one, such as
+    /// <see cref="DesktopColorScheme.NoPreference"/> or <see langword="null"/>, keeps it. Needs <c>region-appearance/1</c>
+    /// and <c>region/1</c> in <see cref="Features"/> and in the guest's <c>hello</c>. <see langword="null"/>, the default,
+    /// or a <see langword="null"/> result opens the window without an override; <see cref="RunicTestHost.SetRegionAppearanceAsync"/>
+    /// changes it later.
+    /// </summary>
+    public Func<RunicTestHostedWindow, DesktopAppearance?>? RegionAppearance { get; init; }
 
     /// <summary>
     /// Answers each presentation request with a platform outcome; <see langword="null"/>, the default, answers success.

@@ -104,6 +104,62 @@ internal static class HostServices
     // An appearance member is null or an object; its members are checked as they are read.
     internal static bool CheckAppearance(JsonNode? node) => node is null || node is JsonObject;
 
+    // ----- A region's appearance override (host-protocol.md, Appearance in a region)
+
+    // The override's text scale: from 0.5 to 4.
+    internal const double MinimumOverrideTextScale = 0.5;
+    internal const double MaximumOverrideTextScale = 4;
+
+    // An override as a DesktopAppearance whose unknown members (null, NoPreference for the colour scheme) keep the
+    // desktop's values; a palette belongs to an override with forced colours, as DesktopAppearance keeps it. null for
+    // null, or when every member is unknown. A member out of its range, such as a text scale of 9, is unknown; the caller
+    // checks that the node is null or an object (CheckAppearance).
+    internal static DesktopAppearance? ReadOverride(JsonNode? node)
+    {
+        if (ReadAppearance(node) is not { } read) return null;
+        if (read.TextScale is not (>= MinimumOverrideTextScale and <= MaximumOverrideTextScale))
+            read = read with { TextScale = null };
+        return IsUnknown(read) ? null : read;
+    }
+
+    // An override's wire object, every member present, or null for none.
+    internal static JsonNode? WriteOverride(DesktopAppearance? appearance) =>
+        appearance is null || IsUnknown(appearance) ? null : WriteAppearance(appearance);
+
+    internal static bool IsUnknown(DesktopAppearance appearance) =>
+        appearance.ColorScheme is not (DesktopColorScheme.Light or DesktopColorScheme.Dark) && appearance.Contrast is null &&
+        appearance.ReducedMotion is null && appearance.TextScale is null && appearance.AccentColor is null && appearance.SystemColors is null;
+
+    // What a region window's pages receive: effective.m = override.m ?? desktop.m for each member. While the effective
+    // contrast forces colours, the palette is the override's when it sets one, else the desktop's when the desktop forces
+    // colours, else none; otherwise none. Decided lists the colour scheme, contrast and reduced motion that the override
+    // set, which the pages take over their engine's media queries.
+    internal static (DesktopAppearance? Appearance, Views.HostDecidedAppearance Decided) Merge(DesktopAppearance? desktop,
+        DesktopAppearance? appearanceOverride)
+    {
+        if (appearanceOverride is null) return (desktop, Views.HostDecidedAppearance.None);
+        var decided = Views.HostDecidedAppearance.None;
+        var colorScheme = desktop?.ColorScheme ?? DesktopColorScheme.NoPreference;
+        if (appearanceOverride.ColorScheme is DesktopColorScheme.Light or DesktopColorScheme.Dark)
+        {
+            colorScheme = appearanceOverride.ColorScheme;
+            decided |= Views.HostDecidedAppearance.ColorScheme;
+        }
+        if (appearanceOverride.Contrast is not null) decided |= Views.HostDecidedAppearance.Contrast;
+        if (appearanceOverride.ReducedMotion is not null) decided |= Views.HostDecidedAppearance.ReducedMotion;
+        var contrast = appearanceOverride.Contrast ?? desktop?.Contrast;
+        var palette = contrast != DesktopContrast.ForcedColors ? null
+            : appearanceOverride.SystemColors ?? (desktop?.Contrast == DesktopContrast.ForcedColors ? desktop.SystemColors : null);
+        var merged = new DesktopAppearance(colorScheme, appearanceOverride.AccentColor ?? desktop?.AccentColor,
+            ReducedMotion: appearanceOverride.ReducedMotion ?? desktop?.ReducedMotion)
+        {
+            Contrast = contrast,
+            SystemColors = palette,
+            TextScale = appearanceOverride.TextScale ?? desktop?.TextScale,
+        };
+        return (IsUnknown(merged) ? null : merged, decided);
+    }
+
     // #rrggbb, as the Views protocol writes it.
     private static DesktopAccentColor? Color(string? text) =>
         text is { Length: 7 } && text[0] == '#'

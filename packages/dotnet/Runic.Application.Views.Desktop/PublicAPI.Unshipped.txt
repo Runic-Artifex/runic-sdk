@@ -16,3 +16,31 @@ static Runic.Application.Views.Desktop.DesktopWindowPlacementExtensions.ToRunicP
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationKind.SetPlacement = 14 -> Runic.Application.Views.Desktop.RunicHostedPresentationKind
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationRequest.Placement.get -> Runic.Desktop.DesktopWindowPlacement?
 [RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedPresentationRequest.Placement.init -> void
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedAppearance.Equals(object? obj) -> bool
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedAppearance.GetHashCode() -> int
+[RUNICDESK103]override Runic.Application.Views.Desktop.RunicHostedAppearance.ToString() -> string!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.AccentColor.get -> Runic.Platform.DesktopAccentColor?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.AccentColor.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.<Clone>$() -> Runic.Application.Views.Desktop.RunicHostedAppearance!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.ColorScheme.get -> Runic.Platform.DesktopColorScheme?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.ColorScheme.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.Contrast.get -> Runic.Platform.DesktopContrast?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.Contrast.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.Equals(Runic.Application.Views.Desktop.RunicHostedAppearance? other) -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.ReducedMotion.get -> bool?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.ReducedMotion.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.RunicHostedAppearance() -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.SystemColors.get -> Runic.Platform.DesktopSystemColors?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.SystemColors.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.TextScale.get -> double?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedAppearance.TextScale.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.Appearance.get -> Runic.Application.Views.Desktop.RunicHostedAppearance?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.CanSetAppearance.get -> bool
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Appearance.get -> Runic.Application.Views.Desktop.RunicHostedAppearance?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionOptions.Appearance.init -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.SetAppearanceAsync(Runic.Application.Views.Desktop.RunicHostedAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindowRequest.CanOverrideAppearance.get -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedAppearance.None.get -> Runic.Application.Views.Desktop.RunicHostedAppearance!
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedAppearance.operator !=(Runic.Application.Views.Desktop.RunicHostedAppearance? left, Runic.Application.Views.Desktop.RunicHostedAppearance? right) -> bool
+[RUNICDESK103]static Runic.Application.Views.Desktop.RunicHostedAppearance.operator ==(Runic.Application.Views.Desktop.RunicHostedAppearance? left, Runic.Application.Views.Desktop.RunicHostedAppearance? right) -> bool

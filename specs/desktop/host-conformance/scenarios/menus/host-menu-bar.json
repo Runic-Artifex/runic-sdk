@@ -20,7 +20,7 @@
     {"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}},
     {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
     {"accept":"c1"},
-    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["menus/1","dialogs/1","window-services/1","region/1","region-component/1"],"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["menus/1","dialogs/1","window-services/1","region/1","region-component/1","region-appearance/1"],"locale":{"$any":["string","null"]},"languages":{"$any":"array"},"appearance":{"$any":["object","null"]}},"connection":"c1"},
     {"send":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":["menus/1","dialogs/1"]},"connection":"c1"},
     {"expect":{"started":true}},
     {"send":{"id":{"$id":"open-w1"},"kind":"window-open","window":"w1","type":"Conformance.Main","url":"http://127.0.0.1:38211/_runic_launch/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},

@@ -754,6 +754,13 @@ public sealed class RunicHostedWindowRequest
     public bool CanEmbedComponent { get; internal init; }
 
     /// <summary>
+    /// Whether a region window of this guest can take an appearance override (<see cref="RunicHostedRegionOptions.Appearance"/>,
+    /// <see cref="RunicHostedRegion.SetAppearanceAsync"/>): the guest implements <c>region-appearance/1</c>. A guest of an
+    /// older release still shows in a region, with the desktop's appearance.
+    /// </summary>
+    public bool CanOverrideAppearance { get; internal init; }
+
+    /// <summary>
     /// Whether the window can open as a window of its own (<see cref="RunicHostedWindowDecision.Allow"/>):
     /// <see langword="false"/> in a browser host, an application that runs serve-only
     /// (<see cref="RunicDesktopHostOptions.ServeOnly"/>) and shows its pages in the user's browser. There only

@@ -42,3 +42,6 @@ Runic.Application.Testing.RunicWindowPresentationRequestKind.SetPlacement = 13 -
 [RUNICDESK105]Runic.Application.Testing.RunicTestWindow.IsDraining.get -> bool
 [RUNICDESK105]Runic.Application.Testing.RunicWindowTestHostOptions.CloseDrain.get -> Runic.Application.Views.RunicCloseDrain?
 [RUNICDESK105]Runic.Application.Testing.RunicWindowTestHostOptions.CloseDrain.init -> void
+[RUNICDESK103]Runic.Application.Testing.RunicTestHost.SetRegionAppearanceAsync(Runic.Application.Testing.RunicTestHostedWindow! window, Runic.Platform.DesktopAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.RegionAppearance.get -> System.Func<Runic.Application.Testing.RunicTestHostedWindow!, Runic.Platform.DesktopAppearance?>?
+[RUNICDESK103]Runic.Application.Testing.RunicTestHostOptions.RegionAppearance.init -> void

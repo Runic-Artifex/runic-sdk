@@ -229,6 +229,13 @@
                 },
                 "reattachOnReload": {
                   "type": "boolean"
+                },
+                "appearance": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "region-appearance/1: the override of the regions the policy embeds (RunicHostedRegionOptions.Appearance), with the members of the region-appearance push."
                 }
               }
             }
@@ -1279,7 +1286,8 @@
                     "focusHost",
                     "departRegion",
                     "detachRegion",
-                    "moveRegion"
+                    "moveRegion",
+                    "setRegionAppearance"
                   ]
                 },
                 "window": {
@@ -1344,27 +1352,11 @@
                   ]
                 },
                 "appearance": {
-                  "type": "object",
-                  "required": [
-                    "colorScheme",
-                    "contrast"
+                  "type": [
+                    "object",
+                    "null"
                   ],
-                  "additionalProperties": false,
-                  "properties": {
-                    "colorScheme": {
-                      "enum": [
-                        "light",
-                        "dark"
-                      ]
-                    },
-                    "contrast": {
-                      "enum": [
-                        "no-preference",
-                        "more",
-                        "forced-colors"
-                      ]
-                    }
-                  }
+                  "description": "setAppearance: the host's desktop appearance; setRegionAppearance: a region's override, with the members of the region-appearance push, or null."
                 },
                 "name": {
                   "type": "string",
@@ -1567,7 +1559,32 @@
                   "then": {
                     "required": [
                       "appearance"
-                    ]
+                    ],
+                    "properties": {
+                      "appearance": {
+                        "type": "object",
+                        "required": [
+                          "colorScheme",
+                          "contrast"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "colorScheme": {
+                            "enum": [
+                              "light",
+                              "dark"
+                            ]
+                          },
+                          "contrast": {
+                            "enum": [
+                              "no-preference",
+                              "more",
+                              "forced-colors"
+                            ]
+                          }
+                        }
+                      }
+                    }
                   }
                 },
                 {
@@ -1681,6 +1698,21 @@
                       "window",
                       "to",
                       "name"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "setRegionAppearance"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "window",
+                      "appearance"
                     ]
                   }
                 }
@@ -2076,6 +2108,13 @@
                             "integer",
                             "null"
                           ]
+                        },
+                        "colorScheme": {
+                          "enum": [
+                            "light",
+                            "dark",
+                            null
+                          ]
                         }
                       }
                     }
@@ -2102,6 +2141,18 @@
                   "additionalProperties": false,
                   "properties": {
                     "departure": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "applied"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "applied": {
                       "type": "boolean"
                     }
                   }

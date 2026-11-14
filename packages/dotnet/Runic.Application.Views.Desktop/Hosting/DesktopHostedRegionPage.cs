@@ -111,11 +111,14 @@ internal sealed class DesktopHostedRegionPage : IHostedRegionPage, IHostedRegion
         }
     }
 
-    public bool ShowFrame(string name, string src, string? title, string allow) => _regions.ShowFrame(name, src, title, allow);
+    public bool ShowFrame(string name, string src, string? title, string allow, string? colorScheme = null) =>
+        _regions.ShowFrame(name, src, title, allow, colorScheme);
 
-    public bool ShowComponent(string name, string module, string url, string token) => _regions.ShowComponent(name, module, url, token);
+    public bool ShowComponent(string name, string module, string url, string token, string? colorScheme = null) =>
+        _regions.ShowComponent(name, module, url, token, colorScheme);
 
-    public bool Update(string name, HostedRegionTitle title, int? height) => _regions.Update(name, title, height);
+    public bool Update(string name, HostedRegionTitle title, int? height, HostedRegionColorScheme colorScheme = default) =>
+        _regions.Update(name, title, height, colorScheme);
 
     public bool Empty(string name, HostedRegionEmptyReason reason) => _regions.Empty(name, reason);
 

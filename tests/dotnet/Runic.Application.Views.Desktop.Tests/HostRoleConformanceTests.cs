@@ -70,6 +70,8 @@ internal sealed class HostRoleConformanceTests
         private readonly List<DesktopWindow> _dialogOwners = [];
         // The host application's departures (RunicHostedRegion.AsDepartureGuard), in order.
         private readonly Queue<Task<bool>> _departures = new();
+        // The results of the host application's setRegionAppearance actions, in order.
+        private readonly Queue<Task<bool>> _appearanceResults = new();
         private long _nextRequest = 1000;
         private byte[]? _nonce;
         private string? _key;
@@ -179,6 +181,7 @@ internal sealed class HostRoleConformanceTests
                     {
                         FocusOnAttach = host["embedOptions"]?["focusOnAttach"]?.GetValue<bool>() ?? false,
                         ReattachOnReload = host["embedOptions"]?["reattachOnReload"]?.GetValue<bool>() ?? true,
+                        Appearance = HostedAppearance(host["embedOptions"]?["appearance"]),
                     }),
             }).AsTask();
             using var accept = TestTimeouts.Cancellation(StepTimeout);
@@ -323,6 +326,20 @@ internal sealed class HostRoleConformanceTests
             _pages[name] = page;
             return page;
         }
+
+        // An override as a scenario writes it (the region-appearance members), or null for none.
+        private static RunicHostedAppearance? HostedAppearance(JsonNode? node) =>
+            HostServices.ReadOverride(node) is { } read
+                ? new RunicHostedAppearance
+                {
+                    ColorScheme = read.ColorScheme,
+                    Contrast = read.Contrast,
+                    ReducedMotion = read.ReducedMotion,
+                    TextScale = read.TextScale,
+                    AccentColor = read.AccentColor,
+                    SystemColors = read.SystemColors,
+                }
+                : null;
 
         private static HostedRegionFocusSource FocusSource(string source) => source switch
         {
@@ -500,6 +517,10 @@ internal sealed class HostRoleConformanceTests
                 case "focusHost":
                     _pages[user["window"]!.GetValue<string>()].Page.FocusHost(user["focused"]?.GetValue<bool>() ?? true);
                     break;
+                // region-appearance/1: the host application changes the region's override; expect applied reads its result.
+                case "setRegionAppearance":
+                    _appearanceResults.Enqueue(Window(user["window"]!.GetValue<string>()).Region!.SetAppearanceAsync(HostedAppearance(user["appearance"])));
+                    break;
                 default: throw new InvalidOperationException($"The host runner does not implement the user action '{action}'.");
             }
         }
@@ -588,6 +609,7 @@ internal sealed class HostRoleConformanceTests
                         ["title"] = declared.Title,
                         ["allow"] = declared.Allow,
                         ["height"] = declared.AppliedHeight,
+                        ["colorScheme"] = declared.ColorScheme,
                     }
                     : new JsonObject { ["name"] = name };
                 bool Matches()
@@ -598,6 +620,12 @@ internal sealed class HostRoleConformanceTests
                         : JsonNode.DeepEquals(member.Value, actual[member.Key]));
                 }
                 Check(await TestTimeouts.UntilAsync(Matches, StepTimeout), $"The page's region is {Actual().ToJsonString()}, not {shown.ToJsonString()}.");
+                return;
+            }
+            if (expect["applied"] is { } applied)
+            {
+                var result = await _appearanceResults.Dequeue().WaitScaledAsync(StepTimeout);
+                Check(result == applied.GetValue<bool>(), $"SetAppearanceAsync returned {result}.");
                 return;
             }
             if (expect["departure"] is { } departure)

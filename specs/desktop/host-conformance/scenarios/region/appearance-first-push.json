@@ -1,0 +1,40 @@
+{
+  "format": "runic.host.scenario/1",
+  "id": "region.appearance-first-push.v1",
+  "contract": {"id":"runic-host","version":1},
+  "set": "region",
+  "roles": ["guest"],
+  "description": "A region window opened with the override contrast more, then attached: what its page receives after its hello with appearance/1 carries contrast more, the desktop's other members, and override [\"contrast\"]. The override is in the Window's content before the region-attach admits the page.",
+  "requires": ["region/1","region-appearance/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello": {"kind":"request"},
+    "w1": {"kind":"window"},
+    "open-w1": {"kind":"request"},
+    "open-w1-action": {"kind":"action"},
+    "attach-1": {"kind":"request"},
+    "a1": {"kind":"action"},
+    "a2": {"kind":"action"}
+  },
+  "arrange": {"limits":{"startTimeout":2000,"stopTimeout":2000,"unauthenticatedTimeout":1000},"application":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"}},
+  "steps": [
+    {"start":{"offer":{"protocols":[1],"nonce":{"$secret":"nonce"},"host":{"name":"Conformance Host","version":"1.0.0"}}}},
+    {"line":{"channel":{"url":{"$any":"string"},"key":{"$any":"string"},"protocol":1}}},
+    {"connect":"c1"},
+    {"send":{"id":{"$id":"hello"},"kind":"hello","protocol":1,"key":{"$secret":"key"},"proof":{"$secret":"host-proof"},"host":{"name":"Conformance Host","version":"1.0.0"},"features":["region/1","region-appearance/1"],"locale":null,"languages":[],"appearance":{"colorScheme":"light","contrast":"no-preference","reducedMotion":false,"textScale":1.25,"accentColor":"#3366cc","systemColors":null}},"connection":"c1"},
+    {"receive":{"id":{"$id":"hello"},"ok":true,"protocol":1,"proof":{"$secret":"guest-proof"},"guest":{"name":"Conformance Guest","version":"1.0.0","applicationId":"dev.runic.conformance-guest"},"features":{"$any":"array","default":[]}},"connection":"c1"},
+    {"guest":{"action":"open","window":"w1","type":"Main"},"as":"open-w1-action"},
+    {"receive":{"id":{"$id":"open-w1"},"kind":"window-open","window":{"$id":"w1"},"type":{"$any":"string","default":"Conformance.Main"},"url":{"$secret":"launch-url"},"width":{"$any":"integer","default":800},"height":{"$any":"integer","default":600},"owner":null,"modality":"none","guardClose":false,"permissions":[]},"connection":"c1"},
+    {"send":{"id":{"$id":"open-w1"},"ok":true,"presentation":"region","features":["present","document-edited","activity","owned-windows"],"activity":{"active":false,"minimized":false,"visible":false},"region":null,"appearance":{"colorScheme":null,"contrast":"more","reducedMotion":null,"textScale":null,"accentColor":null,"systemColors":null}},"connection":"c1"},
+    {"expect":{"action":"open-w1-action","opened":true}},
+    {"guest":{"action":"appearance","window":"w1"},"as":"a1"},
+    {"expect":{"action":"a1","appearance":{"colorScheme":"light","contrast":"more","reducedMotion":false,"textScale":1.25,"accentColor":"#3366cc","systemColors":null,"override":["contrast"]}},"note":"Before any page: the first page's first push carries it."},
+    {"send":{"id":{"$id":"attach-1"},"kind":"region-attach","window":{"$id":"w1"},"embedding":"frame","embedder":"http://127.0.0.1:38200","width":800,"height":520,"scale":1.5,"sizing":"fill"},"connection":"c1"},
+    {"receive":{"id":{"$id":"attach-1"},"ok":true,"frame":{"url":{"$secret":"frame-url"},"sameSite":false}},"connection":"c1"},
+    {"frame":{"request":"launch","status":303}},
+    {"frame":{"request":"upgrade","token":{"$secret":"frame-token"},"status":101}},
+    {"receive":{"kind":"region-page","window":{"$id":"w1"},"page":"connected"},"connection":"c1"},
+    {"guest":{"action":"appearance","window":"w1"},"as":"a2"},
+    {"expect":{"action":"a2","appearance":{"colorScheme":"light","contrast":"more","reducedMotion":false,"textScale":1.25,"accentColor":"#3366cc","systemColors":null,"override":["contrast"]}}}
+  ]
+}
