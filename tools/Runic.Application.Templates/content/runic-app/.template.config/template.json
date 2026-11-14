@@ -43,7 +43,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'react')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.tsx", "src/App.tsx", "src/pages/WelcomePage.tsx", "src/pages/CounterPage.tsx", "src/App.test.tsx", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -54,7 +54,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'vue')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.vue", "src/pages/WelcomePage.vue", "src/pages/CounterPage.vue", "src/App.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -65,7 +65,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'svelte')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "src/App.svelte", "src/pages/WelcomePage.svelte", "src/pages/CounterPage.svelte", "src/App.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -76,7 +76,7 @@
       "target": "./Frontend/",
       "condition": "(frontend == 'sveltekit')",
       "modifiers": [
-        { "condition": "(translations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts" ] },
+        { "condition": "(translations)", "exclude": [ "src/hooks.client.ts", "src/routes/+page.svelte", "src/lib/pages/WelcomePage.svelte", "src/lib/pages/CounterPage.svelte", "src/routes/page.test.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
@@ -101,22 +101,42 @@
     {
       "source": "./translations/react/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'react')"
+      "condition": "(translations && frontend == 'react')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
     },
     {
       "source": "./translations/vue/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'vue')"
+      "condition": "(translations && frontend == 'vue')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
     },
     {
       "source": "./translations/svelte/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'svelte')"
+      "condition": "(translations && frontend == 'svelte')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
     },
     {
       "source": "./translations/sveltekit/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'sveltekit')"
+      "condition": "(translations && frontend == 'sveltekit')",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
     },
     {
       "source": "./translations/angular/",
@@ -236,6 +256,11 @@
       "defaultValue": "false",
       "displayName": "Translations",
       "description": "Translates the application with Runic Translations 0.9: one catalog in English and German for the page and C#, a language switch, the application's language for every window, RUNIC_LOCALE for test runs, and a test of the translated text."
+    },
+    "translationsVitePlugin": {
+      "type": "computed",
+      "value": "(translations && frontend != 'angular')",
+      "description": "The page compiles the catalog with the Translations Vite plugin (the Vite frontends); the Angular CLI imports the ESM that the .NET build generates."
     },
     "nix": {
       "type": "parameter",
