@@ -221,7 +221,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const workspace = JSON.parse(readFileSync(resolve(root, "eng/workspace.json"), "utf8"));
     const separate = Object.keys(separateVersions).filter(name => packageVersion(workspace, name) !== version)
       .map(name => ` ${name} is ${packageVersion(workspace, name)}.`).join("");
-    console.log(`Set the release-train version to ${version}.${separate} Record user-facing changes in eng/release/notes/${version}.md; RunicPackageValidationBaselineVersion stays at the last published release (from 1.0, the last stable one).`);
+    console.log(`Set the release-train version to ${version}.${separate} Record user-facing changes as fragments in eng/release/notes/${version}/ (eng/release/README.md, "Release notes"); RunicPackageValidationBaselineVersion stays at the last published release (from 1.0, the last stable one).`);
   } else {
     throw new Error(usage);
   }
