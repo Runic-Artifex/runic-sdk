@@ -45,7 +45,7 @@ internal sealed class HostedRegionBrowserHostTests
         var application = await fixture.Applications.StartAsync(HostedGuestProgram.Guest("main"),
             new RunicHostedApplicationOptions { Policy = new EmbedPolicy("check") });
         // No native window owns dialogs or menus, or tells which window the user works in.
-        Check(application.Features.SequenceEqual(["region/1"]), $"A browser host uses [{string.Join(", ", application.Features)}].");
+        Check(application.Features.SequenceEqual(["region/1", "region-appearance/1"]), $"A browser host uses [{string.Join(", ", application.Features)}].");
         var window = await opened.WaitScaledAsync(Timeout);
         Check(window.PresentationKind == RunicHostedWindowPresentationKind.Region && window.Region is { Name: "check" },
             "The window does not show in the region.");

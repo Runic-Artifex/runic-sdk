@@ -84,6 +84,50 @@ public sealed class AppearanceTests
             $"The push is {push}.");
     }
 
+    // The members the host decided for the window (a hosted region's appearance override) are listed in override, in the
+    // order colorScheme, contrast, reducedMotion, and only while the push carries their value; a window without decided
+    // members pushes no override member, so the exact pushes of other windows stay as they were.
+    [Test]
+    public async Task TheHostDecidedMembersAreListedInOverride()
+    {
+        using var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),
+            (transport, content, vm) => new TranslatedTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedText" });
+        var dark = new DesktopAppearance(DesktopColorScheme.Dark, ReducedMotion: false) { Contrast = DesktopContrast.More, TextScale = 1 };
+        host.Content.SetAppearance(dark, HostDecidedAppearance.ReducedMotion | HostDecidedAppearance.Contrast | HostDecidedAppearance.ColorScheme);
+        Require(host.Content.DecidedAppearance == (HostDecidedAppearance.ColorScheme | HostDecidedAppearance.Contrast | HostDecidedAppearance.ReducedMotion),
+            "The session did not keep the decided members.");
+        host.Transport.HelloWith("page", ["appearance/1"]);
+        await WaitAsync(() => Pushes(host, "page").Length == 1, "the push after the hello");
+        Require(Pushes(host, "page")[0] ==
+            """{"kind":"appearance","colorScheme":"dark","contrast":"more","reducedMotion":false,"textScale":1,"accentColor":null,"systemColors":null,"override":["colorScheme","contrast","reducedMotion"]}""",
+            $"The first push is {Pushes(host, "page")[0]}.");
+
+        // The same appearance with other decided members is a change; the same both is none.
+        host.Content.SetAppearance(dark, HostDecidedAppearance.Contrast);
+        host.Content.SetAppearance(dark with { }, HostDecidedAppearance.Contrast);
+        await WaitAsync(() => Pushes(host, "page").Length == 2, "the push of the decided members' change");
+        Require(Pushes(host, "page")[1].EndsWith("\"systemColors\":null,\"override\":[\"contrast\"]}", StringComparison.Ordinal),
+            $"The change is {Pushes(host, "page")[1]}.");
+
+        // A decided member whose value is unknown is not listed, and an empty list is no member at all.
+        host.Content.SetAppearance(new DesktopAppearance { TextScale = 2 }, HostDecidedAppearance.ColorScheme | HostDecidedAppearance.ReducedMotion);
+        await WaitAsync(() => Pushes(host, "page").Length == 3, "the push of unknown decided members");
+        Require(Pushes(host, "page")[2] ==
+            """{"kind":"appearance","colorScheme":null,"contrast":null,"reducedMotion":null,"textScale":2,"accentColor":null,"systemColors":null}""",
+            $"The push is {Pushes(host, "page")[2]}.");
+
+        // Setting the public Appearance clears the decided members.
+        host.Content.SetAppearance(dark, HostDecidedAppearance.Contrast);
+        host.Content.Appearance = dark;
+        await WaitAsync(() => Pushes(host, "page").Length == 5, "the pushes of the public setter");
+        Require(!Pushes(host, "page")[4].Contains("override", StringComparison.Ordinal) && host.Content.DecidedAppearance == HostDecidedAppearance.None,
+            $"The public setter pushed {Pushes(host, "page")[4]}.");
+    }
+
+    private static string[] Pushes(RunicWindowTestHost<TranslatedTextViewModel> host, string connection) =>
+        [.. host.Transport.Messages.Where(message => message.Kind == "appearance" && message.ConnectionKey == connection).Select(static message => message.Json)];
+
     private static async Task WaitAsync(Func<bool> condition, string what)
     {
         for (var attempt = 0; attempt < 500 && !condition(); attempt++) await Task.Delay(10);
