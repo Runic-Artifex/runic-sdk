@@ -25,6 +25,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The accessibility probe's speech timeline, whose waits AccessibilityProbeSpeechTests checks without a screen reader. -->
+    <Compile Include="../../native/Runic.Desktop.AccessibilityProbe/SpeechTimeline.cs" Link="AccessibilityProbe/SpeechTimeline.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
