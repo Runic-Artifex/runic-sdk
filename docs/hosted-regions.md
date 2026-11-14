@@ -139,16 +139,19 @@ The native smoke records each engine (`Runic.Application.HostedWindows.Smoke --r
 
 | Engine | `color-scheme: dark` as the frame loads | `dark` set after the load | `only dark` set after the load |
 | --- | --- | --- | --- |
-| WebView2 | Not recorded yet | Not recorded yet | Not recorded yet |
-| WKWebView | Not recorded yet | Not recorded yet | Not recorded yet |
+| WebView2 (Windows x64 and Arm64) | Follows | Follows | Follows |
+| WKWebView (macOS 26.7) | Does not follow | Does not follow | Does not follow |
 | WebKitGTK 4.1 (GTK 3), 2.54 | Follows | Follows | Follows |
 | WebKitGTK 6 (`Runic.Desktop.Gtk4`), 2.54 | Follows | Follows | Follows |
+| WebKitGTK 4.1 (GTK 3) and 6 (`Runic.Desktop.Gtk4`), 2.52.6 (Ubuntu 24.04) | Does not follow | Does not follow | Does not follow |
 | Chromium 154 (browser hosts) | Follows | Follows | Follows |
 
 Chromium follows only while nothing emulates a colour scheme: Playwright's `colorScheme` emulation, for example,
 overrides every frame. On a dark desktop, WebKitGTK 4.1 follows a frame set to `light` or `only light` in the same
-way. Until every engine is
-recorded, a guest's `prefers-color-scheme` in a region is best effort.
+way. `only dark` changes nothing on any recorded engine, so Runic keeps the plain keyword. Because WKWebView and
+WebKitGTK before 2.54 don't follow, a guest's `prefers-color-scheme` in a region is best effort: style the guest's page
+from its appearance. On every engine above, the appearance with the override reached the guest's page before its first
+content, and even before its first animation frame.
 
 ### Browser (serve-only) hosts
 
