@@ -6,7 +6,7 @@ import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
+import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent, type RunicClientOptions } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
@@ -20,6 +20,11 @@ export type { RunicComponentOptions } from "./component.js";
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
+export type { RunicInspectApi } from "./inspect.js";
+export type {
+  RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
+  RunicInspectLocation, RunicInspectMember, RunicInspectText, RunicInspectViewModel,
+} from "./inspect-data.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
 } from "./sources.js";
@@ -101,6 +106,12 @@ export interface RunicViteOptions {
    * never reads it.
    */
   readonly sourceMap?: string | false;
+  /**
+   * `false` leaves Runic Inspect out of the development client: the select mode (Alt+Shift+X) that shows how an
+   * element is connected to its ViewModels, and `globalThis[Symbol.for("runic.vite.inspect")]`. Defaults to `true`.
+   * The build never contains it.
+   */
+  readonly inspect?: boolean;
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
@@ -112,6 +123,9 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     throw new TypeError("html must be true or false.");
   }
   const html = options.html !== false;
+  if (options.inspect !== undefined && typeof options.inspect !== "boolean") {
+    throw new TypeError("inspect must be true or false.");
+  }
   if (options.sourceMap !== undefined && options.sourceMap !== false &&
       (typeof options.sourceMap !== "string" || options.sourceMap.length === 0)) {
     throw new TypeError("sourceMap must be a path or false.");
@@ -285,7 +299,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
-        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = { channel: "hot" };`];
+        const clientOptions: RunicClientOptions = {
+          channel: "hot", base, root: resolvedRoot, ...(options.inspect === false ? { inspect: false } : {}),
+        };
+        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${JSON.stringify(clientOptions)};`];
         if (options.staleInputWarning === false) {
           statements.push(`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`);
         }

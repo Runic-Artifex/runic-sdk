@@ -195,6 +195,77 @@ it.
   in `vite build`, `vite preview` or `runicDevSessionProxy()` (the Angular
   CLI).
 
+## Runic Inspect
+
+**Runic Inspect** is a select mode of the development client: press
+**Alt+Shift+X** in the page (or call `toggle()`, below), hover an element to
+outline it, and click it to see how it is connected. The selecting click
+reaches no handler of the page: while the mode is on, a transparent layer of
+the overlay takes every pointer event, and the window's capture phase stops
+them. **Esc** or Alt+Shift+X turns it off. The overview shows:
+
+- **Component**: the element's framework component and the components around
+  it, from each framework's own development metadata, with an editor link:
+
+  | Framework | What it shows |
+  | --- | --- |
+  | React 19 | The component and its owners from the element's fiber, and the file:line of the element's JSX: the fiber's `_debugStack` frame resolved through the served module's source map. |
+  | Svelte 5 | The component and the file:line:column of the element (`__svelte_meta`). |
+  | Vue 3 | The component (`__vueParentComponent`) and its file (`__file`, from the SFC compiler), without a line. |
+  | Angular 17.1+ | The component class (`ng.getComponent`/`ng.getOwningComponent`) and, with the compiler's debug info, its file:line (`ɵcmp.debugInfo`). |
+
+- **Commands**: the commands the element calls, each with its C# handler (such
+  as the `[RelayCommand]` method) and file:line from the
+  [source map](#source-map-and-open-in-editor), how often the element called
+  it, and its availability state (`canSave`) when the ViewModel has one.
+- **ViewModel members**: the members the element sets (`set…`/`write…`, with
+  the C# setter), and state members whose value is the element's text or a
+  form control's value, each with its current value and C# member. A value
+  match is marked as such: it is a match, not proof.
+- **ViewModels** the element is connected to, with the C# class.
+- **Recent Bridge calls** the element made: kind, member, duration, outcome and
+  the reply's revision.
+- **Texts from the ViewModel**: text references (`TextReference` members) the
+  element shows, with their catalog, key, locale and arguments.
+
+C# locations open in your editor through [`/__runic/open`](#source-map-and-open-in-editor);
+frontend files through Vite's `/__open-in-editor`.
+
+**How an element's commands are known.** The development client listens to
+the Bridge-call channel (`runic.views.calls`), whose `start` report arrives in
+the stack of the code that made the call. The DOM event being dispatched names
+the element (its `target`, so React's delegation to the root does not matter),
+and the nearest button, link or form field is recorded as calling that member.
+A button therefore shows its command **after it was used once** in the page;
+before that, the overview says so. Use the element once with the mode off,
+then inspect it. A call that does not run during the event, such as a write a
+field controller sends after its previous one finished, is not attributed.
+
+**For agents and tests**, the development client puts an API on the page at
+`globalThis[Symbol.for("runic.vite.inspect")]`:
+
+```ts
+const inspect = (globalThis as any)[Symbol.for("runic.vite.inspect")];
+const overview = await inspect.describe(document.querySelector("#save"));
+// { element, component, viewModels, members, commands, calls, texts, notes }
+inspect.toggle(true);        // select mode on; returns whether it is on
+await inspect.select(document.querySelector("#save")); // shows the overview card
+await inspect.open(overview.commands[0].location); // opens it in the editor
+```
+
+`describe(element)` resolves to JSON-safe data (the type is exported as
+`RunicInspectDescription`); values are shortened, and `notes` says what the
+overview cannot tell, such as a missing source map. With
+`chrome-devtools-mcp` or Playwright, evaluate it in the page.
+
+Runic Inspect is plain DOM in a shadow root, so it works in every engine
+`dotnet runic dev` runs: an installed browser, WebView2, WKWebView and
+WebKitGTK. It is part of the development client, which a build replaces with
+an empty module: `vite build` output is byte-identical with and without it.
+`runic({ inspect: false })` leaves it out of the client. Under the Angular CLI
+(`runicDevSessionProxy()`) it works without C# locations, which need
+`/__runic/sources` of `vite dev`.
+
 ## Component build target
 
 Trusted component mode embeds a guest's Views as a custom element in a host

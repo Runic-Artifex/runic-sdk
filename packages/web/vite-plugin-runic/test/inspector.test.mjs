@@ -169,6 +169,9 @@ const load = async (path, identifier, meta) => {
 await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
+await load("dist/inspect-data.js", "inspect-data");
+await load("dist/inspect-frameworks.js", "inspect-frameworks");
+await load("dist/inspect.js", "inspect");
 const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
 await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
 await client.evaluate();
@@ -232,6 +235,9 @@ const load = async (path, identifier, meta) => {
 await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
+await load("dist/inspect-data.js", "inspect-data");
+await load("dist/inspect-frameworks.js", "inspect-frameworks");
+await load("dist/inspect.js", "inspect");
 const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
 await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
 await client.evaluate();

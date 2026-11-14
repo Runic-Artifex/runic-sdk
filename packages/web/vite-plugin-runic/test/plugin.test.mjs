@@ -830,6 +830,9 @@ const connectionState = await load(views + "connection-state.js", "views/connect
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
+await load("dist/inspect-data.js", "plugin/inspect-data");
+await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
@@ -910,6 +913,9 @@ const connectionState = await load(views + "connection-state.js", "views/connect
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
+await load("dist/inspect-data.js", "plugin/inspect-data");
+await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
