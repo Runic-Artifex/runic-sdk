@@ -103,6 +103,36 @@ function channel(slots: Slots = currentSlots()): TranslatedTextChannel {
   return (slots[channelKey] ??= { windowLocale: null, listeners: new Set(), localeListeners: new Set(), version: 0 }) as TranslatedTextChannel;
 }
 
+// The text-change channel of Runic Translations (0.12.0, `docs/guides/translations/esm.md`, "Text changes during
+// development"): under `vite dev` the plugin swaps an edited message's text into the loaded catalog, increments
+// `revision` and calls `listeners`. Whoever comes first creates it, the plugin's development client or a listener that
+// subscribes before any message module loads; code that finds it keeps it and adds only missing members. Nothing
+// writes it in production, where the listener costs a set entry and never runs. Browser only: on a server it would be
+// process-wide.
+interface TranslationsTextChannel {
+  version: number;
+  revision: number;
+  listeners: Set<() => void>;
+}
+
+const translationsTextKey = Symbol.for("runic.translations.text");
+
+function translationsTextChannel(): TranslationsTextChannel | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const root = globalThis as Record<symbol, unknown>;
+    let value = root[translationsTextKey] as Partial<TranslationsTextChannel> | null | undefined;
+    if (typeof value !== "object" || value === null)
+      root[translationsTextKey] = value = { version: 1, revision: 0, listeners: new Set() };
+    if (typeof value.version !== "number") value.version = 1;
+    if (typeof value.revision !== "number") value.revision = 0;
+    if (!(value.listeners instanceof Set)) value.listeners = new Set();
+    return value as TranslationsTextChannel;
+  } catch {
+    return undefined;   // A frozen or foreign value: the page reloads on an edit, as before.
+  }
+}
+
 function changed(slots: Slots): void {
   const state = channel(slots);
   state.version++;
@@ -126,10 +156,15 @@ export function configureTranslatedText(translations: TextTranslations): () => v
   state.translations = translations;
   let stopped = false;
   const stopLocale = translations.subscribe?.(() => { if (!stopped) changed(slots); });
+  // An edited message updated in place during development renders again like a locale switch.
+  const textChannel = translationsTextChannel();
+  const onTextChange = () => { if (!stopped) changed(slots); };
+  textChannel?.listeners.add(onTextChange);
   const stop = () => {
     if (stopped) return;
     stopped = true;
     stopLocale?.();
+    textChannel?.listeners.delete(onTextChange);
     if (state.translations === translations) {
       state.translations = undefined;
       state.stopTranslations = undefined;
