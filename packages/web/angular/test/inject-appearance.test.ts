@@ -6,7 +6,7 @@ import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-
 import { afterEach, beforeAll, expect, test } from "vitest";
 import { connectView } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
-import { injectAppearance } from "../dist/esm/index.js";
+import { injectAppearance } from "@runic-artifex/angular";
 
 beforeAll(() => {
   TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());

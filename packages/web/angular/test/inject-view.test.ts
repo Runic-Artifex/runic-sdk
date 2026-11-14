@@ -4,7 +4,7 @@ import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import type { ViewSource } from "@runic-artifex/views";
-import { injectView } from "../dist/esm/index.js";
+import { injectView } from "@runic-artifex/angular";
 
 type State = { readonly count: number };
 

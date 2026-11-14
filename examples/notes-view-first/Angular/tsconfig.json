@@ -5,7 +5,8 @@
   "compilerOptions": {
     "paths": {
       "@angular/*": ["./node_modules/@angular/*"],
-      "tslib": ["./node_modules/tslib"]
+      "tslib": ["./node_modules/tslib"],
+      "@runic-artifex/angular": ["../../../packages/web/angular/src/index.ts"]
     },
     "strict": true,
     "noImplicitOverride": true,

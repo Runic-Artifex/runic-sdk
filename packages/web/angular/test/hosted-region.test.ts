@@ -4,7 +4,7 @@ import { Component } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, expect, test } from "vitest";
-import { RunicHostedRegion, type HostedRegionStateChange } from "../dist/esm/experimental.js";
+import { RunicHostedRegion, type HostedRegionStateChange } from "@runic-artifex/angular/experimental";
 
 // A producer with hosted-regions/1 behind the page's Bridge: it records requests, and the test pushes.
 const listeners = new Set<(message: string) => void>();
