@@ -279,7 +279,8 @@ async function desktopTemplate(context) {
   const app = join(output, `bin/Debug/net10.0/${name}.dll`);
   if (!built && !existsSync(app)) return;
   const missing = context.run('S3', 'dotnet', [app, 'cli', 'hello'], { env: { RUNIC_LOCALE: 'de' } });
-  // Translations 0.9.1's adapter said "Ein erforderliches Argument fehlt"; Command Line 0.12's catalog says "Das Argument name fehlt."
+  // Translations 0.9.1's adapter said "Ein erforderliches Argument fehlt"; Command Line 0.12's catalog says "Das Argument name fehlt.",
+  // and 0.13 names the argument by its placeholder, "Das Argument <name> fehlt." (runic-cli-sdk#98).
   if (missing.code !== 2 || !/Ein erforderliches Argument fehlt|Das Argument \S+ fehlt/.test(missing.output))
     context.fail('S3', 'german', `cli hello without its argument: exit code ${missing.code} and '${missing.output.trim().split('\n')[0]}'; expected 2 and the German missing-argument diagnostic`);
   checkGerman(context, 'S3', missing.output);

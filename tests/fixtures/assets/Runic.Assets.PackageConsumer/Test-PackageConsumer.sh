@@ -70,7 +70,7 @@ cmp "$test_root/packaged-tool-first.runic-assets" "$tool_archive"
 
 # Human output writes the message first; a usage error then adds the usage line and the help command, a fault its
 # "Help for" link (Command Line 0.10 and later).
-usage="The source-directory argument is missing."
+usage="The <source-directory> argument is missing."
 check_failure() {
   local expected_exit="$1"
   shift

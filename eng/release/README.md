@@ -549,7 +549,7 @@ Third-party packages:
   | `CsWebUi` (`WebUiWindow`) | `[2.5.0-beta.4.9, 3)` | `Runic.Application.Views.CsWebUi` (preview) |
   | `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`) | `[10.10.0, 11)` | `Runic.Application.Testing` |
   | `effect` (npm) | `^4.0.1` | `@runic-artifex/views-effect` |
-  | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.10.0, 0.11.0-0.0)` | `Runic.Application.Views.Translations` |
+  | `Runic.Translations`, `Runic.Translations.Hosting` | `[0.11.0, 0.12.0-0.0)` | `Runic.Application.Views.Translations` |
 
 - Runic Translations releases on its own timeline. Before its 1.0 a minor release
   may break, so `Runic.Application.Views.Translations` is bounded to the
