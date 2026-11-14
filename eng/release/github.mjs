@@ -53,11 +53,16 @@ if (release && !release.isDraft) {
   if (tagged !== undefined) assert.equal(tagged, source, 'Tag belongs to different source');
   for (const name of assets) assert(existsSync(join(directory, name)), `Missing ${name}; run github.mjs describe first`);
   const kind = prerelease ? 'prerelease' : 'release';
+  // Tests point RUNIC_RELEASE_NOTES at a scratch directory.
+  const notesDirectory = process.env.RUNIC_RELEASE_NOTES ?? resolve('eng', 'release', 'notes');
+  const notes = join(notesDirectory, `${VERSION}.md`);
+  // The release pull request assembles the fragments into <version>.md (D066.33).
+  assert(!existsSync(join(notesDirectory, VERSION)),
+    `eng/release/notes/${VERSION}/ holds unassembled release-note fragments; run bun eng/release/notes.mjs assemble ${VERSION} in the release pull request`);
   if (dryRun) {
     console.log(`Would ${release ? 'resume the draft' : `create the ${kind}`} ${tag} at ${source} with ${assets.join(', ')}.`);
     process.exit(0);
   }
-  const notes = resolve('eng', 'release', 'notes', `${VERSION}.md`);
   const noteArguments = existsSync(notes) ? ['--notes-file', notes]
     : ['--notes', `Install matching ${VERSION} packages from NuGet and npm. See the repository README for getting started.`];
   if (!release) gh(['release', 'create', tag, '--repo', REPOSITORY, '--target', source, '--title', `Runic SDK ${VERSION}`,
