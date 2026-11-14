@@ -1781,14 +1781,15 @@ public sealed partial class DesktopWindow : IAsyncDisposable
 
     /// <summary>Gets the open windows that this window owns, in the order they opened.</summary>
     /// <remarks>
-    /// A window owned through <see cref="DesktopWindowOwner.FromWindow"/> is listed from its open until it closes. Closing
-    /// this window closes them without asking.
+    /// A window owned through <see cref="DesktopWindowOwner.FromWindow"/> is listed from its open until it closes, so not
+    /// once <see cref="WaitForCloseAsync"/> returned for it. Closing this window closes them without asking.
     /// </remarks>
     public IReadOnlyList<DesktopWindow> OwnedWindows
     {
         get
         {
-            lock (_ownedGate) return [.. _owned];
+            // The owner forgets a window in its Closed handler, which can run after WaitForCloseAsync returned (sdk#965).
+            lock (_ownedGate) return [.. _owned.Where(static window => window.IsOpen)];
         }
     }
 
