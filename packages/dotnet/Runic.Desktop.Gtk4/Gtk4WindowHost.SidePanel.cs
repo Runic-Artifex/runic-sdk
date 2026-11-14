@@ -9,8 +9,8 @@ namespace Runic.Desktop.Gtk4;
 // side panel seam (IDesktopSidePanelWindowHost). As on GTK 3 (LinuxWebKitGtkHost.SidePanel.cs): a GtkOverlay holds the
 // page's view and the panel's, and places both from its width and SidePanelLayout; the panel is a related view of the
 // page with a user content manager of its own; it loads outside the content and the window grows once it loaded, on X11
-// with the default size and one XMoveResizeWindow (as SetBoundsAsync), on Wayland with the default size alone, so the
-// left edge is refused there (D062.4). GTK's focus chain moves Tab between the two views, which are both focusable; the
+// with one XMoveResizeWindow and then the default size (RequestFrame, as SetBoundsAsync), on Wayland with the default
+// size alone, so the left edge is refused there (D062.4). GTK's focus chain moves Tab between the two views, which are both focusable; the
 // keyboard scripts hand the focus off instead of wrapping inside their page, and the view that receives the focus after
 // a Tab focuses its first control, or its last after Shift+Tab (WatchFocus).
 internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
@@ -273,15 +273,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
         return placement with { X = excluded.X, Width = excluded.Width };
     }
 
-    // GTK thread: the default size and, on X11, one XMoveResizeWindow; the commit after PanelCommitTimeout when the
-    // window manager does not give the bounds.
+    // GTK thread: on X11 one XMoveResizeWindow (RequestFrame), on Wayland the default size; the commit after
+    // PanelCommitTimeout when the window manager does not give the bounds.
     private void ApplyPanelBounds(DesktopWindowBounds target)
     {
         var window = GetWindow();
         // The panel changes a normal window's frame, which is its restore bounds from now on.
         ReleaseRestoreBounds();
-        window.SetDefaultSize(target.Width, target.Height);
-        if (target is { X: { } x, Y: { } y }) Gtk4X11Placement.MoveResize(SurfaceOf(window), x, y, target.Width, target.Height);
+        if (target is not { X: { } x, Y: { } y } || !RequestFrame(window, x, y, target.Width, target.Height))
+            window.SetDefaultSize(target.Width, target.Height);
         QueueStateUpdate();
         var generation = ++_commitGeneration;
         // A reparenting window manager may move the frame after the last event the window gets: read the state again.
@@ -448,17 +448,16 @@ internal sealed partial class Gtk4WindowHost : IDesktopSidePanelWindowHost
     }
 
     // GTK thread, from UpdateState of a window that is neither maximized, full-screen nor minimized: a panel closed while
-    // it was gives it the restored bounds without the panel, the default size and on X11 one XMoveResizeWindow. True when
-    // it changed the window, whose next notification reports the new state.
+    // it was gives it the restored bounds without the panel: on X11 one XMoveResizeWindow (RequestFrame), otherwise the
+    // default size. True when it changed the window, whose next notification reports the new state.
     private bool ApplyPendingRestore(Gtk.Window window, (int X, int Y)? current, int width, int height)
     {
         if (_pendingRestore is not { } restore) return false;
         _pendingRestore = null;
         var moves = restore.Position is { } target && current is { } now && target != now;
         if (!moves && restore.Width == width && restore.Height == height) return false;
-        window.SetDefaultSize(restore.Width, restore.Height);
-        if (restore.Position is { } position && current is not null)
-            Gtk4X11Placement.MoveResize(SurfaceOf(window), position.X, position.Y, restore.Width, restore.Height);
+        if (restore.Position is not { } position || current is null || !RequestFrame(window, position.X, position.Y, restore.Width, restore.Height))
+            window.SetDefaultSize(restore.Width, restore.Height);
         QueueStateUpdate();
         return true;
     }
