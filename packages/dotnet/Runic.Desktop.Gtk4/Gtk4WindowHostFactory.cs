@@ -684,6 +684,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             }
             else
             {
+                // As MaximizeAsync: the bounds it maximizes from are the ones it restores to (WindowRestoreBounds). Openbox
+                // reports the window unmaximized before it gives it its frame back, and GDK can resize the window at the
+                // maximized position meanwhile, which then becomes its frame (#926): the window is given them again.
+                EndFrameTargetEarly(window);
+                if (!window.IsFullscreen()) _restore.Set(CurrentRestore(window), _restoreClock.Elapsed);
                 window.Maximize();
             }
         }, cancellationToken));
@@ -694,7 +699,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         return new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
-            _settlingFrame = null;
+            (_settlingFrame, _frameRequest) = (null, null);
             ReleaseRestoreBounds();
             GetWindow().SetDefaultSize(width, height);
         }, cancellationToken));
@@ -708,7 +713,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         }
         return new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
-            _settlingFrame = null;
+            (_settlingFrame, _frameRequest) = (null, null);
             ReleaseRestoreBounds();
             var window = GetWindow();
             if (!window.IsVisible())
@@ -1828,6 +1833,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         var restoredHeight = Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
         // X11 only, and only once the window is mapped: an unmapped window has no position on screen yet.
         var position = window.IsVisible() ? Gtk4X11Placement.GetPosition(SurfaceOf(window)) : null;
+        // Bounds requested from the window manager become the default size once the window has them (RequestFrame).
+        SettleFrameRequest(window, maximized || fullScreen, position, width, height);
         // A placement's frame target takes its next step (Gtk4WindowHost.Placement.cs); meanwhile the frames the window
         // passes through are not the bounds it restores to, and it reports the target's.
         ContinueFrameTarget(window, maximized, position, width, height);

@@ -136,7 +136,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
             {
                 (width, height) = FitToLargestMonitor(width, height);
             }
-            (_frameTarget, _frameTargetWhenShown, _settlingFrame) = (null, null, null);
+            (_frameTarget, _frameTargetWhenShown, _settlingFrame, _frameRequest) = (null, null, null, null);
             // The placement's bounds replace any earlier restore bounds (WindowRestoreBounds).
             _restore.Set(new RestoreFrame(position?.X, position?.Y, width, height), _restoreClock.Elapsed);
             var fullScreen = window.IsFullscreen();
@@ -227,7 +227,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
             window.SetDefaultSize(target.Width, target.Height);
             if (target.Position is { } position) _normalPosition = position;
         }
-        (_frameTarget, _frameTargetWhenShown, _settlingFrame) = (null, null, null);
+        (_frameTarget, _frameTargetWhenShown, _settlingFrame, _frameRequest) = (null, null, null, null);
     }
 
     // GTK thread only, from UpdateState: the next step once the window reports the last one.
@@ -253,8 +253,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
     {
         target.Applied = true;
         target.LastApplied = Environment.TickCount64;
-        window.SetDefaultSize(target.Width, target.Height);
-        if (target.Position is { } position) Gtk4X11Placement.MoveResize(SurfaceOf(window), position.X, position.Y, target.Width, target.Height);
+        if (target.Position is not { } position || !RequestFrame(window, position.X, position.Y, target.Width, target.Height))
+            window.SetDefaultSize(target.Width, target.Height);
         QueueStateUpdate();
     }
 
@@ -304,8 +304,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
         var observation = _restore.Observe(maximized || fullScreen, frame, _restoreClock.Elapsed);
         if (observation.Apply is { } apply)
         {
-            window.SetDefaultSize(apply.Width, apply.Height);
-            if (apply is { X: { } x, Y: { } y }) Gtk4X11Placement.MoveResize(SurfaceOf(window), x, y, apply.Width, apply.Height);
+            if (apply is not { X: { } x, Y: { } y } || !RequestFrame(window, x, y, apply.Width, apply.Height))
+                window.SetDefaultSize(apply.Width, apply.Height);
             QueueStateUpdate();
         }
         if (observation.Restore is { X: { } restoreX, Y: { } restoreY }) _normalPosition = (restoreX, restoreY);
