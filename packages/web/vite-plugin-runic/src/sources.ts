@@ -10,6 +10,8 @@ import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import launchEditor from "launch-editor";
 import { isLoopbackRequest, mayRead, readLimitedBody, sameOrigin } from "./requests.js";
 import type { AccessList } from "./access.js";
+import { isLoopbackAddress } from "./access.js";
+import type { RunicClientResponse } from "./channel.js";
 import { openPath, sourcesPath } from "./channel.js";
 import { parseMessageReference, type MessageReference } from "./translations-source.js";
 
@@ -303,6 +305,58 @@ export function launchSourceEditor(location: RunicSourceLocation, failed: (messa
   launchEditor(`${location.file}:${location.line}:${location.column}`, (_file, message) => {
     failed(message ?? `No editor could open ${location.file}.`);
   });
+}
+
+/**
+ * Answers a development client's request over Vite's HMR connection (channel.ts, `requestEvent`) as the HTTP endpoints
+ * answer, under the same access rules, judged per request from the connection's `peer` address: `sources`, `handlers`
+ * and `message` for this machine or one the access list admits (`runic({ allow })`, `RUNIC_DEV_ALLOW`), `open` for
+ * this machine only, as `/__runic/open` (403 otherwise):
+ * `sources` with the map (200) or 404; `handlers` with Runic Inspect's handler analysis of a `file` (200), 404 or 400;
+ * `message` with the Translations message API's reply for a `target` `{ catalog, key }` (200), 404 or 400;
+ * `open` with the same decision as `/__runic/open` (`resolveOpenLocation`), 200 after `launch`, else 404 (400 for a
+ * malformed message reference) and nothing launched. A malformed request without an id gets no answer, one with an id
+ * but another kind gets 400.
+ */
+export async function answerClientRequest(message: unknown, context: {
+  readonly read: () => RunicSourceMap | undefined;
+  readonly launch: (location: RunicSourceLocation) => void;
+  readonly resolution?: RunicOpenResolution;
+  readonly analyze?: (file: string) => Promise<unknown>;
+  readonly message?: (message: MessageReference) => Promise<unknown>;
+  /** The HMR connection's client address, and who besides this machine may read (loopback only without it). */
+  readonly peer: string | undefined;
+  readonly access?: AccessList;
+}): Promise<RunicClientResponse | undefined> {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
+  const { id, kind, target, file } = message as Record<string, unknown>;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return undefined;
+  if (kind !== "sources" && kind !== "handlers" && kind !== "message" && kind !== "open") return { id, status: 400 };
+  const admitted = kind === "open" ? isLoopbackAddress(context.peer)
+    : context.access === undefined ? isLoopbackAddress(context.peer) : await context.access.allows(context.peer);
+  if (!admitted) return { id, status: 403 };
+  if (kind === "sources") {
+    const map = context.read();
+    return map === undefined ? { id, status: 404 } : { id, status: 200, body: map };
+  }
+  if (kind === "handlers") {
+    if (context.analyze === undefined) return { id, status: 404 };
+    if (typeof file !== "string" || file.length === 0 || file.length > 4096) return { id, status: 400 };
+    const analysis = await context.analyze(file);
+    return analysis === undefined ? { id, status: 404 } : { id, status: 200, body: analysis };
+  }
+  if (kind === "message") {
+    if (context.message === undefined) return { id, status: 404 };
+    const reference = parseMessageReference(typeof target === "object" && target !== null ? { locale: "", ...target } : target);
+    if (reference === undefined) return { id, status: 400 };
+    const reply = await context.message(reference);
+    return reply === undefined ? { id, status: 404 } : { id, status: 200, body: reply };
+  }
+  const location = await resolveOpenLocation(context.read, target, context.resolution);
+  if (location === "invalid") return { id, status: 400 };
+  if (location === undefined) return { id, status: 404 };
+  context.launch(location);
+  return { id, status: 200 };
 }
 
 /**

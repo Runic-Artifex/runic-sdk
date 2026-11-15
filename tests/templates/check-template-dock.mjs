@@ -1,6 +1,7 @@
-// Checks the Vite DevTools dock of a generated CommunityToolkit.Mvvm project under `dotnet runic dev` (#954): the
-// Counter button's command is a row `command CounterViewModel.increment → Increment() <n> ms` of the Runic dock's
-// Bridge calls, and its button opens the [RelayCommand] method in the editor.
+// Checks the Vite DevTools dock and Runic Inspect of a generated CommunityToolkit.Mvvm project under `dotnet runic dev`:
+// the Counter button's command is a row `command CounterViewModel.increment → Increment() <n> ms` of the Runic dock's
+// Bridge calls, whose button opens the [RelayCommand] method in the editor (#954), and Runic Inspect, on the .NET host's
+// page, shows the button's command with that C# location and its link opens it too (#1012).
 //
 //   bun check-template-dock.mjs --host desktop|cswebui --project <directory> -- <command>...
 //
@@ -90,8 +91,23 @@ async function check(url, project, record) {
     const expected = join(project, "WorkspaceViewModel.cs");
     if (file !== expected || Number(line) !== incrementLine(project))
       throw new Error(`The dock opened ${file}:${line}, not ${expected}:${incrementLine(project)}.`);
+
+    // Runic Inspect on the same page: the button's command with its C# location, which its link opens.
+    const located = await page.evaluate(async () => {
+      const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent.trim() === "Increment");
+      const inspect = globalThis[Symbol.for("runic.vite.inspect")];
+      const description = await inspect.describe(button);
+      await inspect.select(button);
+      return description.commands[0]?.location;
+    });
+    if (located?.file !== expected || located.line !== incrementLine(project))
+      throw new Error(`Runic Inspect located the command at ${JSON.stringify(located)}, not ${expected}:${incrementLine(project)}.`);
+    await page.locator("runic-inspect .card a", { hasText: `WorkspaceViewModel.cs:${located.line}` }).first().dispatchEvent("click");
+    const [inspectFile, inspectLine] = await readRecord(record, timeout);
+    if (inspectFile !== expected || Number(inspectLine) !== incrementLine(project))
+      throw new Error(`Runic Inspect's link opened ${inspectFile}:${inspectLine}, not ${expected}:${incrementLine(project)}.`);
     if (errors.length > 0) throw new Error(`The page threw:\n${errors.join("\n")}`);
-    return `${label} → ${file.split(/[\\/]/).pop()}:${line}`;
+    return `${label} → ${file.split(/[\\/]/).pop()}:${line}|inspect ${inspectFile.split(/[\\/]/).pop()}:${inspectLine}`;
   } finally {
     await browser.close();
   }

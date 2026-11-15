@@ -10,7 +10,8 @@ import { build, createServer } from "vite";
 import { runic } from "../dist/index.js";
 // An editor that records its arguments, as LAUNCH_EDITOR, and the wait for a complete record (#1010).
 import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
-import { findOpenLocation, parseSourceMap } from "../dist/sources.js";
+import { answerClientRequest, findOpenLocation, parseSourceMap } from "../dist/sources.js";
+import { AccessList, parseAllowList } from "../dist/access.js";
 
 const environment = ["RUNIC_APPLICATION_DEV_SOURCE_MAP", "RUNIC_APPLICATION_DEV_PROJECT", "LAUNCH_EDITOR", "RUNIC_TEST_EDITOR_RECORD"];
 
@@ -277,6 +278,66 @@ test("the dock's open action opens only a location in a file the map lists", { s
         } finally { await server.close(); }
       }
     });
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+// Runic Inspect's requests over Vite's HMR connection (#1012), which under dotnet runic dev reach the Vite server from the
+// .NET host's page: the same answers as /__runic/sources, /__runic/handlers, the Translations message API and
+// /__runic/open, the same decision for what opens, and like those endpoints only for a connection from this machine.
+test("requests over Vite's connection answer like the HTTP endpoints and open only what /__runic/open opens", async () => {
+  const fixture = await project();
+  try {
+    const map = parseSourceMap(fixture.map);
+    const location = fixture.map.members[0].location;
+    const page = join(fixture.frontend, "index.html");
+    const launched = [];
+    const ask = (message, { read = () => map, peer = "127.0.0.1", access } = {}) => answerClientRequest(message, {
+      read, peer, ...(access === undefined ? {} : { access }), launch: (target) => launched.push(target),
+      resolution: { frontendFile: (file) => file.startsWith(`${fixture.frontend}/`) },
+      analyze: async (file) => file === "src/App.tsx" ? { format: "runic-handlers/1", bindings: [] } : undefined,
+      message: async (reference) => reference.key === "heading" ? { message: { catalog: reference.catalog, key: reference.key, locales: [] } } : undefined,
+    });
+    assert.deepEqual(await ask({ id: 1, kind: "sources" }), { id: 1, status: 200, body: map });
+    assert.deepEqual(await ask({ id: 2, kind: "sources" }, { read: () => undefined }), { id: 2, status: 404 }, "no map (sourceMap: false)");
+    assert.deepEqual(await ask({ id: 3, kind: "open", target: { id: fixture.map.members[0].id } }), { id: 3, status: 200 });
+    assert.deepEqual(await ask({ id: 4, kind: "open", target: { file: page, line: 2 } }), { id: 4, status: 200 }, "a served frontend file");
+    assert.deepEqual(launched, [location, { file: page, line: 2, column: 1 }]);
+    launched.length = 0;
+    assert.deepEqual(await ask({ id: 7, kind: "handlers", file: "src/App.tsx" }), { id: 7, status: 200, body: { format: "runic-handlers/1", bindings: [] } });
+    assert.deepEqual(await ask({ id: 8, kind: "handlers", file: "src/Missing.tsx" }), { id: 8, status: 404 });
+    assert.deepEqual(await ask({ id: 9, kind: "handlers" }), { id: 9, status: 400 });
+    assert.deepEqual(await ask({ id: 10, kind: "message", target: { catalog: "app", key: "heading" } }),
+      { id: 10, status: 200, body: { message: { catalog: "app", key: "heading", locales: [] } } });
+    assert.deepEqual(await ask({ id: 11, kind: "message", target: { catalog: "app", key: "../heading" } }), { id: 11, status: 400 });
+    assert.deepEqual(await ask({ id: 12, kind: "open", target: { message: "app:heading" } }), { id: 12, status: 400 }, "a malformed message reference");
+    for (const target of [
+      { file: join(fixture.directory, "record-editor.sh"), line: 1 }, { file: "/etc/passwd", line: 1 },
+      { id: "Demo.CounterViewModel/state/count" }, { file: `${fixture.frontend}/src/../index.html`, line: 1 },
+      { file: join(fixture.frontend, "missing.ts"), line: 1 }, { file: location.file, line: 0 }, "index.html", null, undefined,
+      // A message the resolution cannot locate (no Translations dev server here) opens nothing.
+      { message: { catalog: "app", key: "heading", locale: "en" } },
+    ]) {
+      assert.equal((await ask({ id: 5, kind: "open", target }))?.status, 404, JSON.stringify(target));
+    }
+    // Another machine, judged per request by the access list as the HTTP endpoints judge it (#981): without a list or
+    // outside it, nothing; inside it, the reads (sources, handlers, message), never open, which launches the editor here.
+    const request = (kind) => ({ id: 13, kind, file: "src/App.tsx",
+      target: kind === "message" ? { catalog: "app", key: "heading" } : { id: fixture.map.members[0].id } });
+    const allowed = new AccessList(parseAllowList(["192.0.2.0/24"], "allow"));
+    for (const kind of ["sources", "handlers", "message", "open"]) {
+      assert.equal((await ask(request(kind), { peer: "192.0.2.5" }))?.status, 403, `${kind}: another machine without a list`);
+      assert.equal((await ask(request(kind), { peer: "198.51.100.7", access: allowed }))?.status, 403, `${kind}: a machine outside the list`);
+      // null: the helper defaults an undefined peer to loopback.
+      assert.equal((await ask(request(kind), { peer: null, access: allowed }))?.status, 403, `${kind}: a connection without an address`);
+      assert.equal((await ask(request(kind), { peer: "192.0.2.5", access: allowed }))?.status, kind === "open" ? 403 : 200, `${kind}: an allowed machine`);
+      assert.equal((await ask(request(kind), { peer: "::ffff:127.0.0.1", access: allowed }))?.status, 200, `${kind}: loopback`);
+    }
+    launched.length = 0;
+    assert.deepEqual(launched, [], "a refused request launched the editor");
+    assert.deepEqual(await ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
+    for (const malformed of [null, [], "sources", { kind: "sources" }, { id: -1, kind: "sources" }, { id: 1.5, kind: "sources" }, { id: "1", kind: "open" }]) {
+      assert.equal(await ask(malformed), undefined, JSON.stringify(malformed));
+    }
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
