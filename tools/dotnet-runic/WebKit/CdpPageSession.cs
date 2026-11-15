@@ -436,7 +436,7 @@ internal sealed partial class CdpPageSession
             descriptor["enumerable"] ??= false;
             descriptor.Remove("nativeGetter");
             descriptor.Remove("isOwn");
-            properties.Add(descriptor);
+            properties.Add((JsonNode)descriptor);
         }
         var answer = new JsonObject { ["result"] = properties };
         if (!accessorsOnly && result["internalProperties"] is JsonArray internals) answer["internalProperties"] = internals.DeepClone();
@@ -731,7 +731,7 @@ internal sealed partial class CdpPageSession
         foreach (JsonNode? frame in p["callFrames"]?.AsArray() ?? [])
         {
             JsonNode location = frame!["location"] ?? new JsonObject();
-            frames.Add(new JsonObject
+            frames.Add((JsonNode)new JsonObject
             {
                 ["callFrameId"] = frame["callFrameId"]?.DeepClone(),
                 ["functionName"] = frame["functionName"]?.DeepClone() ?? "",
@@ -764,7 +764,7 @@ internal sealed partial class CdpPageSession
             local |= type == "local";
             var converted = new JsonObject { ["type"] = type, ["object"] = scope["object"]?.DeepClone() };
             if (scope["name"] is { } name) converted["name"] = name.DeepClone();
-            scopes.Add(converted);
+            scopes.Add((JsonNode)converted);
         }
         return scopes;
     }
@@ -846,7 +846,7 @@ internal sealed partial class CdpPageSession
         var frames = new JsonArray();
         foreach (JsonNode? frame in wip)
         {
-            frames.Add(new JsonObject
+            frames.Add((JsonNode)new JsonObject
             {
                 ["functionName"] = frame!["functionName"]?.DeepClone() ?? "",
                 ["scriptId"] = frame["scriptId"]?.DeepClone() ?? "",

@@ -185,7 +185,7 @@ internal sealed class CdpServer : IAsyncDisposable
                 var pages = new JsonArray();
                 foreach (InspectorTarget target in await _endpoint.ListPagesAsync(_stop.Token).ConfigureAwait(false))
                 {
-                    pages.Add(new JsonObject
+                    pages.Add((JsonNode)new JsonObject
                     {
                         ["description"] = "",
                         ["id"] = target.PageId,
