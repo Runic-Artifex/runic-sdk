@@ -301,7 +301,7 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   assert.equal(docks[0].type, "json-render");
   assert.equal(docks[0].view, view);
   assert.equal(commands[0].id, "runic:copy-diagnostic-state");
-  // The open buttons' action, which sends its request through /__runic/open.
+  // The open buttons' action (sources.test.mjs checks what it opens).
   assert.deepEqual(actions.map((action) => [action.name, action.type]), [["runic:open-in-editor", "action"]]);
   assert.equal(specs[0].elements.heading.props.text, "Runic");
   assert.equal(specs[0].elements.calls.props.title, "Bridge calls");

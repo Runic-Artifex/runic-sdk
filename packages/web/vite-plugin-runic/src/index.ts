@@ -11,7 +11,8 @@ import { answerClientMessage, answerState, devSessionValue, devSessionVariable, 
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import type { RunicSourceMap } from "./sources.js";
 import {
-  answerOpen, answerSources, createSourceMapReader, editorRequestUrl, listsFile, openPath, openThroughEndpoint, sourcesPath,
+  answerOpen, answerSources, createSourceMapReader, editorRequestUrl, launchSourceEditor, listsFile, openPath,
+  resolveOpenLocation, sourcesPath,
 } from "./sources.js";
 import type { RunicBridgeCall } from "./calls.js";
 import { formatMilliseconds, stackFrames } from "./calls.js";
@@ -336,17 +337,18 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           type: "json-render",
           view: renderer.view,
         });
-        // The dock's open buttons: `{ id }` of a map entry or `{ file, line }` of a stack frame, which go through the
-        // server's own /__runic/open, so the dock opens only what the source map lists.
+        // The dock's open buttons: `{ id }` of a map entry or `{ file, line }` of a stack frame. The same decision as
+        // /__runic/open (resolveOpenLocation): only a location in a file the source map lists, and only while it exists.
+        // Vite DevTools lets only the clients it trusts call an action, so there is no request origin to check here.
         context.rpc.register({
           name: openInEditorAction,
           type: "action",
           setup: () => ({
             handler: async (target: unknown) => {
-              const status = options.sourceMap === false ? 404
-                : await openThroughEndpoint(server?.resolvedUrls?.local[0], target);
-              if (status === 0) throw new Error("The development server has no local URL for /__runic/open.");
-              if (status !== 200) throw new Error(`The source map lists no such location: /__runic/open answered ${status}.`);
+              // With sourceMap: false the reader has no map, so nothing opens.
+              const location = resolveOpenLocation(readSourceMap, target);
+              if (location === undefined) throw new Error("The source map lists no such location.");
+              launchSourceEditor(location, (message) => server?.config.logger.warn(`[runic] ${message}`));
             },
           }),
         });

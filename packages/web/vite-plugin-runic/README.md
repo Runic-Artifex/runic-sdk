@@ -139,7 +139,7 @@ C# 21 ms · revision 4 · EditorViewModel.cs:42 · 2026-11-15T10:12:03.120Z
 - **The C# handler.** The plugin looks the call up in the
   [source map](#source-map-and-open-in-editor): `SaveAsync()` for a command's
   `[RelayCommand]` method, `Title.set` for a setter. The button opens it in the
-  editor through `/__runic/open`. Without a map (no build yet, or
+  editor (see [the dock's open action](#the-docks-open-action)). Without a map (no build yet, or
   `sourceMap: false`) the row has no handler.
 - **The handler's own duration.** When the reply carries .NET's timing of the
   handler (a .NET host in Development that measures it), the second line
@@ -233,9 +233,8 @@ it.
   a .NET stack frame's line), opens that location through
   Vite's own editor launcher ([launch-editor](https://github.com/vitejs/launch-editor):
   `LAUNCH_EDITOR`, else a running editor such as VS Code or a JetBrains IDE like
-  Rider, else `VISUAL`/`EDITOR`) and answers 200. It is meant for the page,
-  other development tools and the dock, whose open buttons send their request
-  through this endpoint:
+  Rider, else `VISUAL`/`EDITOR`) and answers 200. It is meant for the page and
+  other development tools:
 
   ```ts
   await fetch("/__runic/open", {
@@ -257,6 +256,20 @@ it.
 - **Only `vite dev`.** Both endpoints exist only on the development server, not
   in `vite build`, `vite preview` or `runicDevSessionProxy()` (the Angular
   CLI).
+
+### The dock's open action
+
+The dock's open buttons call the `runic:open-in-editor` Vite DevTools action
+with `{ id }` or a stack frame's `{ file, line }`. It decides what may open
+exactly as `/__runic/open` does (`resolveOpenLocation`: a location in a file
+the current map lists, while the file exists) and refuses everything else,
+launching nothing. Then it opens the location with
+[launch-editor](https://github.com/vitejs/launch-editor) 2.14.2 itself, the
+package behind Vite's `/__open-in-editor`, so the editor is chosen the same
+way (`LAUNCH_EDITOR`, a running editor, `VISUAL`/`EDITOR`). The action makes
+no HTTP request: only clients that Vite DevTools trusts (its one-time code)
+can call an action, which takes the place of the endpoint's origin checks.
+With `sourceMap: false` it opens nothing.
 
 ## Component build target
 

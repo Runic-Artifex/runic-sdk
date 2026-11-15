@@ -476,13 +476,13 @@ packages:
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
 
   '@runic-artifex/svelte@0.20.0':
-    resolution: {integrity: sha512-KCrF6OqEcVcoNr33D/uajoXbVZ2NwKo/VAMf6FmIRs+PT8qPlfHLVfkhyT1ZUuos39HvlKfUejYw+zJkwHnyKQ==}
+    resolution: {integrity: sha512-ZpeH2N3VJgEWd0PdZj10E0BtSs0qKWYr8pkBj0vZUSb1pHny2UYktSoalY1dYmZyI/AGdLqMjoRlZeFaCZwUnw==}
     peerDependencies:
       '@runic-artifex/views': 0.20.0
       svelte: '>=5.57.1 <6'
 
   '@runic-artifex/sveltekit@0.20.0':
-    resolution: {integrity: sha512-MfVVtBd1cUkslvrW96WUAv+1NZFDA5LfZbR7XiXVBMcz/zB3yl5NE59jU9nldhH4Ju3XzYt+4bvjWnsgCWf8Pw==}
+    resolution: {integrity: sha512-ZVhKrQCFMGZl51aHKt5I//DXtAZ1Pr3cV9SIxrB08opRpx5EMdY5cPsxBYfeVTHCjoFXyBg+zdKrnIU9f1tT1Q==}
     engines: {node: ^24.18.0 || ^26.0.0}
     peerDependencies:
       '@sveltejs/adapter-static': '>=4 <5'
@@ -495,7 +495,7 @@ packages:
     resolution: {integrity: sha512-ZJ1M4vhwcZht7oWuJDl4nYsfk90M1aSZw17VeffLOekLvmLVKNLrtzfjp8E8383l27edktMvl6iuUBPiKvqw+g==}
 
   '@runic-artifex/vite-plugin-runic@0.20.0':
-    resolution: {integrity: sha512-VAXOIHYKejMqp0JxHUT6ZvS7h0/yyI7S4uzh5KhIwDUtAOD2VbS9ZXYRwAXEJDvqZwFv220epo+jXgKwz+1fQQ==}
+    resolution: {integrity: sha512-TH9vlI4AE9kantdT/C0Gv+SGuWRPGzSitKl7E+wHp8Vx8UEwnjXoxry3mw+OaOrV8476chCSLFWX2Z4JVKBLZA==}
     engines: {node: ^24.18.0 || ^26.0.0}
     peerDependencies:
       '@vitejs/devtools': ^0.7.6
@@ -764,6 +764,9 @@ packages:
   jose@6.2.17:
     resolution: {integrity: sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg==}
 
+  launch-editor@2.14.2:
+    resolution: {integrity: sha512-NHJEb30MGBCkmZXLZwz25t37QR4aY03ZzPYUJXOJaOa92uWwExI9SBQUuIznBYc1xkD7cJNGX7oc3Nl3sq2kQQ==}
+
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
     engines: {node: '>= 12.0.0'}
@@ -936,6 +939,10 @@ packages:
   shebang-regex@3.0.0:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
+
+  shell-quote@1.12.0:
+    resolution: {integrity: sha512-PcByqNyT/38F2kDNi006HAMRJaULuBzq/FOsw3qdZvX/GA9W/jamDaRskgHjubHiftXK5sIFxLNkvrXUwcof6Q==}
+    engines: {node: '>= 0.4'}
 
   sirv@3.0.2:
     resolution: {integrity: sha512-2wcC/oGxHis/BoHkkPwldgiPSYcpZK3JU28WoMVv55yHJgcZ8rlXvuG9iZggz+sU1d4bRgIGASwyWqjxu3FM0g==}
@@ -1351,6 +1358,7 @@ snapshots:
 
   '@runic-artifex/vite-plugin-runic@0.20.0(@vitejs/devtools@0.7.6)(vite@8.3.4)':
     dependencies:
+      launch-editor: 2.14.2
       vite: 8.3.4(@types/node@26.6.6)(@vitejs/devtools@0.7.6)
     optionalDependencies:
       '@vitejs/devtools': 0.7.6(@devframes/json-render@1.3.3(@devframes/hub@1.3.3(@devframes/agentic@1.3.3)(crossws@0.4.17(srvx@1.0.8))(devframe@1.3.3))(devframe@1.3.3))(crossws@0.4.17(srvx@1.0.8))(srvx@1.0.8)(vite@8.3.4)
@@ -1588,6 +1596,11 @@ snapshots:
 
   jose@6.2.17: {}
 
+  launch-editor@2.14.2:
+    dependencies:
+      picocolors: 1.1.1
+      shell-quote: 1.12.0
+
   lightningcss-android-arm64@1.33.0:
     optional: true
 
@@ -1739,6 +1752,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  shell-quote@1.12.0: {}
 
   sirv@3.0.2:
     dependencies:

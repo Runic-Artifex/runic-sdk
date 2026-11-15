@@ -6,6 +6,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import launchEditor from "launch-editor";
 import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
 
 export const sourcesPath = "/__runic/sources";
@@ -249,30 +250,24 @@ export function listsFile(map: RunicSourceMap | undefined, file: string): boolea
 }
 
 /**
- * What the dock's open action sends through `/__runic/open`: the server's own endpoint on its loopback URL, with the
- * server's origin, so that the dock opens exactly what a page of the server may open, through the same checks and
- * Vite's editor launcher. Resolves with the endpoint's status, or 0 when the server has no local URL.
+ * What `/__runic/open` and the dock's open action both open for a request's `{ id }` or `{ file, line, column? }`: a
+ * location of the current map (`findOpenLocation`) whose file exists, else undefined. The one decision of what may be
+ * opened; the endpoint checks the request's origin first, and the dock's RPC is limited to clients Vite DevTools trusts.
  */
-export async function openThroughEndpoint(localUrl: string | undefined, target: unknown): Promise<number> {
-  if (localUrl === undefined) return 0;
-  const url = new URL(openPath.slice(1), localUrl.endsWith("/") ? localUrl : `${localUrl}/`);
-  const body = JSON.stringify(target);
-  const { request } = url.protocol === "https:" ? await import("node:https") : await import("node:http");
-  return new Promise((resolve) => {
-    const sent = request(url, {
-      method: "POST",
-      headers: {
-        Origin: url.origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(body),
-      },
-      // A development server's own certificate: the request goes to this process.
-      rejectUnauthorized: false,
-    }, (response) => {
-      response.resume();
-      resolve(response.statusCode ?? 0);
-    });
-    sent.on("error", () => resolve(0));
-    sent.end(body);
+export function resolveOpenLocation(read: () => RunicSourceMap | undefined, message: unknown): RunicSourceLocation | undefined {
+  const map = read();
+  const location = map === undefined ? undefined : findOpenLocation(map, message);
+  return location !== undefined && isFile(location.file) ? location : undefined;
+}
+
+/**
+ * Opens a location in the editor with launch-editor, the package behind Vite's `/__open-in-editor`, so with the same
+ * editor resolution: `LAUNCH_EDITOR`, else a running editor such as VS Code or a JetBrains IDE, else `VISUAL`/`EDITOR`.
+ * `failed` receives launch-editor's message when no editor could be started.
+ */
+export function launchSourceEditor(location: RunicSourceLocation, failed: (message: string) => void): void {
+  launchEditor(`${location.file}:${location.line}:${location.column}`, (_file, message) => {
+    failed(message ?? `No editor could open ${location.file}.`);
   });
 }
 
@@ -306,9 +301,8 @@ export async function answerOpen(
   let message: unknown;
   try { message = JSON.parse(body); }
   catch { return answer(response, 400); }
-  const map = read();
-  const location = map === undefined ? undefined : findOpenLocation(map, message);
-  if (location === undefined || !isFile(location.file)) return answer(response, 404);
+  const location = resolveOpenLocation(read, message);
+  if (location === undefined) return answer(response, 404);
   launch(location);
 }
 

@@ -2,7 +2,7 @@
 // of `@runic-artifex/views` (route, member, kind, timing, outcome, revision) to the development server, which keeps a
 // bounded history of them next to the timeline. The server names each call's C# handler from the development source
 // map (`sources.json`), such as `command EditorViewModel.save → SaveAsync() 23 ms`, and the dock opens it in the editor
-// through `/__runic/open`. A failed call keeps its .NET exception, whose frames in files of the map open the same way.
+// with the same decision as `/__runic/open` (sources.ts, `resolveOpenLocation`). A failed call keeps its .NET exception, whose frames in files of the map open the same way.
 //
 // What the page sends is sanitized like a timeline entry: closed shapes, short names, finite numbers, and the failure
 // under the failure rules (bounded, credentials redacted). The handler comes from the server's own map; an entry names

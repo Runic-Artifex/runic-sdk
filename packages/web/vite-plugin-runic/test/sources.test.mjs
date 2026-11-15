@@ -233,6 +233,53 @@ test("/__runic/open refuses everything but a location in a listed file from the 
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
+// The dock's open buttons call the runic:open-in-editor DevTools action, which takes the same decision as /__runic/open
+// and launches the editor itself: a location in a file the map lists opens, anything else is refused and launches nothing.
+test("the dock's open action opens only a location in a file the map lists", { skip: process.platform === "win32" }, async () => {
+  const fixture = await project();
+  const { editor, record } = await recordingEditor(fixture.directory);
+  try {
+    await withEnvironment({ LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record }, async () => {
+      for (const sourceMap of [undefined, false]) {
+        const plugin = runic(sourceMap === undefined ? {} : { sourceMap });
+        const actions = new Map();
+        const server = await createServer({ root: fixture.frontend, configFile: false, logLevel: "silent", plugins: [plugin],
+          server: { host: "127.0.0.1", port: 0, strictPort: false } });
+        try {
+          await plugin.devtools.setup({
+            rpc: {
+              sharedState: { get: async (_key, options) => ({ value: () => options.initialValue, mutate: () => undefined }) },
+              register: (definition) => actions.set(definition.name, definition.setup({}).handler),
+            },
+            createJsonRenderer: () => ({ view: {}, updateSpec: () => undefined }),
+            docks: { register: () => undefined },
+            commands: { register: () => undefined },
+          });
+          const open = actions.get("runic:open-in-editor");
+          const location = fixture.map.members[0].location;
+          for (const refused of [
+            { file: join(fixture.directory, "record-editor.sh"), line: 1, column: 1 }, { file: "/etc/passwd", line: 1 },
+            { id: "Demo.CounterViewModel/state/count" }, { id: "Demo.CounterViewModel/command/missing" },
+            { file: location.file, line: 0 }, "Demo.CounterViewModel/command/increment", null,
+            ...(sourceMap === false ? [{ id: fixture.map.members[0].id }, { file: location.file, line: 2 }] : []),
+          ]) {
+            await assert.rejects(open(refused), /lists no such location/u, JSON.stringify(refused));
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          assert.equal(await exists(record), false, "a refused location launched the editor");
+          if (sourceMap === false) continue;
+          await open({ id: fixture.map.members[0].id });
+          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
+          await rm(record);
+          await open({ file: location.file, line: 2 });
+          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, "2", "1"]);
+          await rm(record);
+        } finally { await server.close(); }
+      }
+    });
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
 test("vite build output is byte-identical with and without the source map", async () => {
   const fixture = await project();
   const builds = {};

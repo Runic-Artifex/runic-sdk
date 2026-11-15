@@ -1,6 +1,6 @@
 // The dock's Bridge call timeline in Chromium (#954): under `vite dev` with the Vite DevTools dock, a click's command is
 // a row `command EditorViewModel.save → SaveAsync() <n> ms` of the Runic dock's "Bridge calls" card, whose button opens
-// the `[RelayCommand]` method in the editor through /__runic/open. A failed command shows its .NET frames, and a frame
+// the `[RelayCommand]` method in the editor (only what /__runic/open would open). A failed command shows its .NET frames, and a frame
 // in the ViewModel's file opens at its line. A reply that carries .NET's handler timing shows the handler's duration.
 // The page is the shape `dotnet runic dev` gives a window: a document the .NET host serves from its own origin, which
 // loads Vite's modules from Vite's origin (tools/dotnet-runic/FrontendDevelopmentDocument.cs), so the development
@@ -171,7 +171,7 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
     assert.ok(duration >= 15, `the call took ${duration} ms, less than the reply's delay`);
     await page.getByText(/EditorViewModel\.cs:9/u).first().waitFor({ timeout: scaled(10_000) });
 
-    // Its button opens the [RelayCommand] method through /__runic/open.
+    // Its button opens the [RelayCommand] method.
     await page.getByRole("button", { name: "Open SaveAsync()" }).first().click();
     assert.deepEqual((await waitForFile(record, scaled(10_000))).trim().split("\n"), [file, "9", "5"]);
     await rm(record);
