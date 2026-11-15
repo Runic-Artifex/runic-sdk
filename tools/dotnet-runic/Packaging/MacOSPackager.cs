@@ -95,7 +95,7 @@ internal static class MacOSPackager
         File.CreateSymbolicLink(Path.Combine(staging, "Applications"), "/Applications");
         string dmg = Path.Combine(output, $"{identity.Name}-{identity.Version}.dmg");
         PackageTools.Delete(dmg);
-        await PackageTools.RunAsync(hdiutil, ["create", "-volname", identity.Name, "-srcfolder", staging, "-format", "UDZO", "-ov", dmg],
+        await CreateDiskImageAsync(hdiutil, ["create", "-volname", identity.Name, "-srcfolder", staging, "-format", "UDZO", "-ov", dmg],
             output, cancellationToken).ConfigureAwait(false);
         PackageTools.Delete(staging);
         if (!adhoc)
@@ -140,6 +140,35 @@ internal static class MacOSPackager
     /// (network.server) and WebKit connects to it (network.client). File dialogs grant the selected files
     /// (files.user-selected.read-write), and security-scoped bookmarks keep them (files.bookmarks.app-scope).
     /// </remarks>
+    // hdiutil create attaches the new image to copy the staged bundle onto it, and fails now and then while Disk
+    // Arbitration or Spotlight is still busy with another image: "Resource busy" or "Resource temporarily unavailable"
+    // (EAGAIN), as on the hosted macOS runners (sdk#1018). Those failures are retried 2, 4, 8, 16 and 30 s apart, 60 s in
+    // all; -ov replaces what a failed attempt wrote. Any other failure, and the last one, fails the package.
+    internal static readonly TimeSpan[] DiskImageRetryDelays =
+        [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(16), TimeSpan.FromSeconds(30)];
+
+    internal static bool IsTransientDiskImageFailure(string errors) =>
+        errors.Contains("Resource busy", StringComparison.Ordinal) || errors.Contains("Resource temporarily unavailable", StringComparison.Ordinal);
+
+    private static async Task CreateDiskImageAsync(string hdiutil, IReadOnlyList<string> arguments, string output, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var errors = new StringBuilder();
+            try
+            {
+                await PackageTools.RunAsync(hdiutil, arguments, output, cancellationToken, errors: errors).ConfigureAwait(false);
+                return;
+            }
+            catch (DevDevelopmentException) when (attempt <= DiskImageRetryDelays.Length && IsTransientDiskImageFailure(errors.ToString()))
+            {
+                var delay = DiskImageRetryDelays[attempt - 1];
+                Console.Out.WriteLine($"hdiutil create failed with a transient error (attempt {attempt} of {DiskImageRetryDelays.Length + 1}); retrying in {delay.TotalSeconds} s.");
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
     internal static readonly string[] SandboxEntitlements =
     [
         "com.apple.security.app-sandbox",

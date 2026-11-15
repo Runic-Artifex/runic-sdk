@@ -2261,10 +2261,12 @@ jobs:
           test "$(plutil -extract CFBundleDocumentTypes.0.LSHandlerRank raw "$app/Contents/Info.plist")" = Owner
           test "$(plutil -extract UTExportedTypeDeclarations.0.UTTypeIdentifier raw "$app/Contents/Info.plist")" = org.runic.tests.PackagingProbe.runicprobe
           mount="$RUNNER_TEMP/probe-dmg"
-          eng/ci/hdiutil-attach.sh "artifacts/package/macos/Runic Packaging Probe-1.2.3.dmg" -mountpoint "$mount" -nobrowse -readonly
+          # eng/ci/hdiutil.sh retries hdiutil's transient failures (sdk#1018); a mount left by an earlier run goes first.
+          if mount | grep -Fq " on $mount "; then hdiutil detach -force "$mount"; fi
+          eng/ci/hdiutil.sh attach "artifacts/package/macos/Runic Packaging Probe-1.2.3.dmg" -mountpoint "$mount" -nobrowse -readonly
           test -d "$mount/Runic Packaging Probe.app" && test -L "$mount/Applications"
           codesign --verify --strict "$mount/Runic Packaging Probe.app"
-          hdiutil detach "$mount"
+          eng/ci/hdiutil.sh detach "$mount" || hdiutil detach -force "$mount"
           receipt="$RUNNER_TEMP/packaged.json"
           open -W -n "$app" --args "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
           bun eng/ci/packaging-probe-check.mjs "$receipt" macos
