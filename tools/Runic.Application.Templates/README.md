@@ -24,12 +24,22 @@ dotnet runic dev
 | `--linux-gtk` | `3` (GTK 3 and WebKitGTK 4.1), `4` (GTK 4 and WebKitGTK 6): the GTK version of Runic Desktop on Linux | `3` |
 | `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from | `native` |
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
+| `--editor` | `none`, `vscode`: adds `.vscode/` with tasks for `dotnet runic dev`, debug configurations for the C# extension and the recommended extensions | `none` |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 | `--translations` | Translates the application with [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk) 0.9: one catalog in English and German (`Frontend/translations`) for the page and C#, a language switch, the application's language for every window, `RUNIC_LOCALE` for test runs, and page and .NET tests of the translated text | English text in the code |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
 | `--packaging` | Adds the `packaging/` manifests that `dotnet runic package` fills (MSIX, macOS bundle, desktop entry, AppStream metadata, Flatpak manifest), as editable overrides of the command's defaults | The command's built-in manifests |
 | `--restore` | Restores the created projects' NuGet packages, for an IDE that opens the project next | No restore; `dotnet runic dev` and `dotnet build` restore |
 | `--application-id` | The reverse-DNS application ID, such as `org.example.Notes` | `com.example.` and the project name's ASCII letters and digits |
+
+Every project has `Properties/launchSettings.json`, whose first profile,
+which `dotnet run` uses too, starts the Window with
+`DOTNET_ENVIRONMENT=Development`; with Runic Desktop, a second profile turns on
+WebView2 script debugging on Windows. The generated README's "Debug it in your
+IDE" section shows how Visual Studio, Rider and VS Code debug the Window while
+`dotnet runic dev --no-window` serves the frontend. In Visual Studio's New
+Project dialog the templates have an icon and list the same options, except
+`--restore`: Visual Studio restores the projects it opens.
 
 `--frontend sveltekit` starts a SvelteKit 3 frontend that `runicAdapter()` from
 `@runic-artifex/sveltekit` prerenders into `Frontend/dist`, with

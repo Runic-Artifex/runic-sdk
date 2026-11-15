@@ -1,0 +1,75 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dotnet: tool restore",
+      "detail": "Installs the project's dotnet runic tool",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["tool", "restore"],
+      "problemMatcher": []
+    },
+    {
+      // dotnet runic dev: the development server and the Window, restarted after each C# edit. Its failures (RAPPDEV)
+      // and the build's errors go to the Problems panel; the task is ready at each [dev] Ready.
+      "label": "runic: dev",
+      "detail": "dotnet runic dev",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["runic", "dev"],
+      "dependsOn": ["dotnet: tool restore"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",
+          "endsPattern": "^\\[dev\\] Ready$"
+        }
+      }
+    },
+    {
+      // Only the frontend: the Window runs under the debugger instead (launch.json, "Window").
+      "label": "runic: dev --no-window",
+      "detail": "dotnet runic dev --no-window",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["runic", "dev", "--no-window"],
+      "dependsOn": ["dotnet: tool restore"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[dev\\] Evaluating",
+          "endsPattern": "^\\[dev\\] Ready$"
+        }
+      }
+    },
+    {
+      "label": "build",
+      "detail": "dotnet build",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/RunicWindowApp.csproj", "-p:GenerateFullPaths=true", "-consoleLoggerParameters:NoSummary;ForceNoAlign"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      // The frontend first, then the build, which keeps dev's development page in www/.
+      "label": "runic: window",
+      "dependsOn": ["runic: dev --no-window", "build"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "runic: doctor",
+      "detail": "dotnet runic doctor",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["runic", "doctor"],
+      "dependsOn": ["dotnet: tool restore"],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -8,6 +8,7 @@
     "linuxGtk": { "longName": "linux-gtk", "shortName": "" },
     "desktopServer": { "longName": "desktop-server", "shortName": "" },
     "viewModels": { "longName": "view-models", "shortName": "" },
+    "editor": { "longName": "editor", "shortName": "" },
     "tests": { "longName": "tests", "shortName": "" },
     "translations": { "longName": "translations", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
@@ -26,6 +27,7 @@
     "--application-id org.example.Notes",
     "--host desktop --linux-gtk 4 --packaging",
     "--desktop-server kestrel",
-    "--tests --restore"
+    "--tests --restore",
+    "--editor vscode"
   ]
 }

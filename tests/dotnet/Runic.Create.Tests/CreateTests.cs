@@ -28,10 +28,10 @@ internal sealed class CreateTests
     public void ModelMirrorsTemplate()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
-        Equal("frontend,angular-build,package-manager,host,linux-gtk,desktop-server,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
+        Equal("frontend,angular-build,package-manager,host,linux-gtk,desktop-server,view-models,editor", string.Join(',', model.Options.Select(option => option.LongName)));
         // Runic Desktop and ReactiveUI are the defaults and are listed first (D018.1, D018.9); GTK 3 is the Linux default;
         // the native Desktop server is the default server (D053.24); the Angular CLI builds Angular by default (D066.21).
-        Equal("react,cli,npm,desktop,3,native,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
+        Equal("react,cli,npm,desktop,3,native,reactiveui,none", string.Join(',', model.Options.Select(option => option.Default.Value)));
         Equal("react,vue,svelte,sveltekit,angular", string.Join(',', model.Options[0].Choices.Select(choice => choice.Value)));
         Equal("cli,vite", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
         Equal("npm,pnpm,bun", string.Join(',', model.Options[2].Choices.Select(choice => choice.Value)));
@@ -48,6 +48,9 @@ internal sealed class CreateTests
         Equal("GTK 4", model.Options[4].Find("4")!.DisplayName);
         Equal("Native", model.Options[5].Find("native")!.DisplayName);
         Equal("CommunityToolkit.Mvvm", model.Options[6].Find("toolkit")!.DisplayName);
+        // D066.25 1: .vscode/ behind --editor vscode, off by default.
+        Equal("none,vscode", string.Join(',', model.Options[7].Choices.Select(choice => choice.Value)));
+        Equal("VS Code", model.Options[7].Find("vscode")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
         Equal("tests,translations,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
@@ -184,6 +187,29 @@ internal sealed class CreateTests
         Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    // D066.25 1: --editor vscode adds .vscode/; the default, none, adds nothing, so the commands leave it out.
+    [Test, DisplayName("--editor vscode passes through to dotnet new, and none is left out")]
+    public void EditorPassesThrough()
+    {
+        (int exitCode, string output, string error) = Run("MyApp", "--editor", "vscode", "--tests", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        True(ResultProperty(output, "reproduceCommand").EndsWith("--view-models reactiveui --editor vscode --tests", StringComparison.Ordinal), output);
+        using (JsonDocument document = JsonDocument.Parse(output))
+            Equal("vscode", document.RootElement.GetProperty("payload").GetProperty("options").GetProperty("editor").GetString());
+
+        foreach (string[] arguments in new[] { new[] { "MyApp", "--yes", "--dry-run", "--format", "json" }, ["MyApp", "--editor", "none", "--yes", "--dry-run", "--format", "json"] })
+        {
+            (exitCode, output, error) = Run(arguments);
+            Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+            True(!output.Contains("--editor", StringComparison.Ordinal), output);
+            using JsonDocument document = JsonDocument.Parse(output);
+            Equal("none", document.RootElement.GetProperty("payload").GetProperty("options").GetProperty("editor").GetString());
+        }
+
+        (exitCode, _, _) = Run("MyApp", "--editor", "rider", "--yes", "--dry-run", "--format", "json");
+        Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     [Test, DisplayName("--angular-build is asked for and printed only for Angular")]
     public void AngularBuildPassesThrough()
     {
@@ -244,9 +270,9 @@ internal sealed class CreateTests
         CreatePlan plan = new("MyApp", null, "1.2.3-preview.4",
             model.Options.Select(option => new OptionSelection(option, option.Choices[^1])).ToArray(), null);
         Equal("dotnet new install Runic.Application.Templates@1.2.3-preview.4", plan.InstallCommand);
-        Equal("dotnet new runic-app --name MyApp --frontend angular --angular-build vite --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreateCommand);
-        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --angular-build vite --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreatorCommand);
-        Equal("Angular · Vite · Bun · CS-WebUI · GTK 4 · Kestrel · CommunityToolkit.Mvvm", plan.Summary);
+        Equal("dotnet new runic-app --name MyApp --frontend angular --angular-build vite --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit --editor vscode", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --angular-build vite --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit --editor vscode", plan.CreatorCommand);
+        Equal("Angular · Vite · Bun · CS-WebUI · GTK 4 · Kestrel · CommunityToolkit.Mvvm · VS Code", plan.Summary);
         Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', plan.NextSteps));
     }
 
@@ -365,7 +391,7 @@ internal sealed class CreateTests
         CreateResult result = CreateApplication.ResultOf(model, plan, "/work/apps/MyApp", created: true);
         Equal(
             "{\"name\":\"MyApp\",\"directory\":\"apps/MyApp\",\"fullPath\":\"/work/apps/MyApp\",\"version\":\"1.0.0\"," +
-            "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"linux-gtk\":\"3\",\"desktop-server\":\"native\",\"view-models\":\"reactiveui\"}," +
+            "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"linux-gtk\":\"3\",\"desktop-server\":\"native\",\"view-models\":\"reactiveui\",\"editor\":\"none\"}," +
             "\"toggles\":{\"tests\":true,\"translations\":false,\"nix\":false,\"packaging\":false,\"restore\":false}," +
             "\"textOptions\":{}," +
             "\"commands\":[\"dotnet new install Runic.Application.Templates@1.0.0\"," +
@@ -380,7 +406,7 @@ internal sealed class CreateTests
     [Test, DisplayName("an interactive console asks each question on standard error")]
     public void InteractiveConsoleAsks()
     {
-        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "", "y", "", "", "", ""]) };
+        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "", "", "y", "", "", "", ""]) };
         int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
         True(exitCode == 0, console.Error.ToString());
         True(console.Answers.Count == 0, "Every question was asked.");
