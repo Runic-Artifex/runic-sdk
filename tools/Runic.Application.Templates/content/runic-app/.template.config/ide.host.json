@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/ide.host.json",
+  "icon": "icon.png",
+  "defaultSymbolVisibility": true,
+  "symbolInfo": [
+    { "id": "frontend" },
+    { "id": "angularBuild" },
+    { "id": "packageManager" },
+    { "id": "host" },
+    { "id": "linuxGtk" },
+    { "id": "desktopServer" },
+    { "id": "viewModels" },
+    {
+      "id": "editor",
+      "description": { "text": "Adds .vscode/ for VS Code: tasks for dotnet runic dev, debug configurations for the C# extension and the recommended extensions. Visual Studio and Rider use Properties/launchSettings.json, which every project has." }
+    },
+    { "id": "tests" },
+    { "id": "translations" },
+    { "id": "nix" },
+    { "id": "packaging" },
+    { "id": "restore", "isVisible": false },
+    { "id": "applicationId" }
+  ]
+}

@@ -37,6 +37,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { sep } from "node:path";
 appendFileSync("../commands.log", "build\\n");
 appendFileSync("../host.log", (process.env.RUNIC_APPLICATION_HOST ?? "unset") + "\\n");
+appendFileSync("../node-env.log", (process.env.NODE_ENV || "unset") + "\\n");
 if (existsSync("emits-dist")) {
   // As Vite does: empty dist/, then write the page and an asset named by its content hash.
   const asset = existsSync("asset-name") ? readFileSync("asset-name", "utf8").trim() : "index-1";
@@ -527,6 +528,30 @@ test("RunicApplicationHost and the build environment are part of the build state
   assert.equal(builds(build(app, { properties: host, env: flavor("debug") })), 0);
 });
 
+// #975: Bun's bundler resolves the development build of @runic-artifex/views unless NODE_ENV is production, so an
+// optimized build (Release, dotnet publish) runs the frontend build with NODE_ENV=production; Debug leaves it unset, and
+// a NODE_ENV the environment sets wins.
+test("an optimized build runs the frontend build with NODE_ENV=production unless the environment sets NODE_ENV", () => {
+  const app = fixture("node-env", { name: "app", private: true });
+  const nodeEnv = () => readFileSync(join(app.project, "node-env.log"), "utf8").trim().split("\n").at(-1);
+  const host = "RunicApplicationHost=cswebui";
+  const release = [host, "Configuration=Release", "Optimize=true"];
+  let result = build(app, { properties: [host], env: { NODE_ENV: "" } });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(builds(result), 1);
+  assert.equal(nodeEnv(), "unset", "Debug leaves NODE_ENV unset: the development build");
+  assert.equal(lastHost(app), "cswebui");
+  result = build(app, { properties: release, env: { NODE_ENV: "" } });
+  assert.equal(builds(result), 1, "Release builds again: the frontend build receives another NODE_ENV");
+  assert.equal(nodeEnv(), "production");
+  assert.equal(lastHost(app), "cswebui", "The host is still passed");
+  assert.equal(builds(build(app, { properties: release, env: { NODE_ENV: "" } })), 0);
+  assert.equal(builds(build(app, { properties: [host], env: { NODE_ENV: "" } })), 1, "Debug builds again after Release");
+  assert.equal(nodeEnv(), "unset");
+  assert.equal(builds(build(app, { properties: release, env: { NODE_ENV: "development" } })), 1);
+  assert.equal(nodeEnv(), "development", "A NODE_ENV the environment sets wins");
+});
+
 // #236: www/ kept the assets of earlier builds, so a page built for another host kept being served.
 test("www mirrors dist and keeps the files that the frontend copy did not write", () => {
   const app = fixture("mirror", { name: "app", private: true });
@@ -891,6 +916,46 @@ exit 0
   assert.equal(stubs(), 2, "a missing stub was not written again");
   assert.equal(stubs("App.Other"), 3, "a new composition type did not write the stub again");
   assert.equal(stubs("App.Other"), 3);
+});
+
+// #1003: the bootstrap pass passes its own OutputPath and IntermediateOutputPath to the projects it references. The SDK
+// adds a project's transitive references to ProjectReference during the build, after the targets' evaluation-time
+// update, so each transitive reference was compiled again into the bootstrap's bin/ and obj/, all of them into one
+// IntermediateOutputPath at once, and csc on Windows failed to open the shared AssemblyAttributes.cs (CS1504).
+// App references Model, which references Core: Core is App's transitive reference, as Runic.Assets is a Views
+// application's. The real SDK resolves the references.
+test("the bootstrap pass builds transitive references with their own output paths", () => {
+  const project = join(directory, "bootstrap-transitive");
+  const library = (name, reference = "") => {
+    mkdirSync(join(project, name), { recursive: true });
+    writeFileSync(join(project, name, `${name}.csproj`), `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  ${reference && `<ItemGroup><ProjectReference Include="../${reference}/${reference}.csproj" /></ItemGroup>`}
+  ${name === "App" ? `<Import Project="${targets}" />` : ""}
+</Project>
+`);
+  };
+  library("Core");
+  library("Model", "Core");
+  library("App", "Model");
+  // An empty Directory.Build.props stops the search for one above the temporary directory.
+  writeFileSync(join(project, "Directory.Build.props"), "<Project />\n");
+  const references = (bootstrap) => {
+    const result = spawnSync("dotnet", ["msbuild", join(project, "App/App.csproj"), "-restore", "-t:AssignProjectConfiguration",
+      ...(bootstrap ? ["-p:RunicApplicationFrontendBootstrap=true"] : []), "-getItem:ProjectReference",
+      "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m"], { cwd: project, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return Object.fromEntries(JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))).Items.ProjectReference
+      .map(item => [item.Filename, (item.GlobalPropertiesToRemove ?? "").split(";").filter(Boolean)]));
+  };
+  const removed = ["RunicApplicationFrontendBootstrap", "RunAnalyzers", "RunCodeAnalysis", "CopyLocalLockFileAssemblies", "OutputPath", "IntermediateOutputPath"];
+  const bootstrap = references(true);
+  assert.deepEqual(Object.keys(bootstrap).sort(), ["Core", "Model"], "the SDK added no transitive reference");
+  for (const [name, properties] of Object.entries(bootstrap))
+    assert.deepEqual(properties.filter(property => removed.includes(property)), removed, name);
+  // The real build's references keep their metadata.
+  for (const [name, properties] of Object.entries(references(false)))
+    assert.deepEqual(properties.filter(property => removed.includes(property)), [], name);
 });
 
 // W319-003 msbuild backlog: the targets wrote to obj/ whatever UseArtifactsOutput, BaseIntermediateOutputPath or

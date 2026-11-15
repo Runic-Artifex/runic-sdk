@@ -213,9 +213,9 @@ internal static class InteractionCodeEmitter
             yield return $"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<{plan.Input.RootCSharpType()}>(\"{LowerFirst(plan.Property.Name)}\", \"{plan.ContractId}\", static vm => {GeneratedModel.Access(modelType)}.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {plan.Property.Name}RequestInputCodec.Write(writer, input)))";
     }
 
-    /// <summary>Appends the public TypeScript view request types.</summary>
+    /// <summary>Appends the public TypeScript view request types. <paramref name="mark"/> ends a member's line (#952).</summary>
     internal static void AppendTypeScriptRequestSurface(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans,
-        string shortName)
+        string shortName, Func<string, string>? mark = null)
     {
         var all = plans.ToArray();
         if (all.Length == 0) return;
@@ -225,7 +225,7 @@ internal static class InteractionCodeEmitter
         foreach (var plan in all)
         {
             XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(plan.Property));
-            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{ handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}ViewRequestContext) => void | Promise<void>): () => void }};");
+            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{ handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}ViewRequestContext) => void | Promise<void>): () => void }};{mark?.Invoke(LowerFirst(plan.Property.Name))}");
         }
         source.AppendLine("}");
         source.AppendLine();
@@ -263,9 +263,9 @@ internal static class InteractionCodeEmitter
         }
     }
 
-    /// <summary>Appends the public TypeScript interaction types.</summary>
+    /// <summary>Appends the public TypeScript interaction types. <paramref name="mark"/> ends a member's line (#952).</summary>
     internal static void AppendTypeScriptSurface(StringBuilder source, IEnumerable<GeneratedInteractionPlan> plans,
-        string shortName)
+        string shortName, Func<string, string>? mark = null)
     {
         var all = plans.ToArray();
         if (all.Length == 0) return;
@@ -275,7 +275,7 @@ internal static class InteractionCodeEmitter
         foreach (var plan in all)
         {
             XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(plan.Property));
-            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{");
+            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{{mark?.Invoke(LowerFirst(plan.Property.Name))}");
             source.AppendLine($"    handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}InteractionContext) => {plan.Output.TypeScriptType()} | Promise<{plan.Output.TypeScriptType()}>): () => void;");
             source.AppendLine("  };");
         }

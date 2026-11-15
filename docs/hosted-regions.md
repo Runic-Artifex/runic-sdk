@@ -230,8 +230,11 @@ export default mount;
   page's fonts. The development server serves the page only; build the component with `vite build`.
 - A guest without the build refuses a component attach (`embedding-unsupported`).
 - An Angular guest builds the component with Vite and the Analog Angular plugin (`dotnet new runic-app --frontend
-  angular --angular-build vite` creates such a frontend); the Angular CLI cannot build it. Its components must keep
-  their styles out of the document, for example with `ViewEncapsulation.ShadowDom`.
+  angular --angular-build vite` creates such a frontend); the Angular CLI cannot build it. Its entry's default export is
+  `runicComponentMount(Widget)` from `@runic-artifex/angular/experimental`: an Angular application per element, whose
+  component styles are constructable stylesheets of the shadow root rather than `<style>` elements in `document.head`
+  ([Angular components](../packages/web/angular/README.md#components-experimental)). The hosted components example's
+  widget has an Angular frontend.
 
 ### The host
 

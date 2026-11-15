@@ -1,0 +1,69 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // F5: runs dotnet runic dev --no-window for the frontend, builds, then starts the Window under the debugger.
+      "name": "Window",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "runic: window",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp",
+      "windows": {
+        "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp.exe"
+      },
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "console": "internalConsole"
+    },
+    {
+      // dotnet runic dev starts the Window; pick the process from "[dev] Window started: process <pid>".
+      // The session ends when dotnet watch restarts the Window after a C# edit.
+      "name": "Attach to the Window (dotnet runic dev)",
+      "type": "coreclr",
+      "request": "attach",
+      "preLaunchTask": "runic: dev",
+      "processId": "${command:pickProcess}"
+//#if (desktopHost)
+    },
+    {
+      // Windows: the Window with WebView2's DevTools Protocol on port 9222, for "Window + WebView2 (Windows)". WebView2
+      // ignores the variable in an elevated process, so start VS Code without elevation.
+      "name": "Window with WebView2 debugging (Windows)",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp.exe",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--remote-debugging-port=9222"
+      },
+      "console": "internalConsole"
+    },
+    {
+      // Windows: the page's JavaScript debugger. The port is the one in WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, which
+      // obj/runic/dev-session.json lists under debugEndpoints when dotnet runic dev starts the Window with it (-e).
+      "name": "Attach to WebView2 (Windows)",
+      "type": "msedge",
+      "request": "attach",
+      "port": 9222,
+      "useWebView": true,
+      "timeout": 30000,
+      "webRoot": "${workspaceFolder}/Frontend"
+//#endif
+    }
+//#if (desktopHost)
+  ],
+  "compounds": [
+    {
+      "name": "Window + WebView2 (Windows)",
+      "configurations": ["Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"],
+      "preLaunchTask": "runic: window",
+      "stopAll": true
+    }
+  ]
+//#else
+  ]
+//#endif
+}

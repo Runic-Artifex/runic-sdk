@@ -122,26 +122,29 @@ internal sealed class ProducerPublicationTests
         Require(notifications == seen + 1, "A retained row was not subscribed.");
     }
 
-    // A unit's drain awaits the model context's turn: routes whose context is busy hold no thread-pool thread, so the
-    // pool does not grow for them.
+    // A unit's drain awaits the model context's turn: routes whose context is busy hold no thread while they wait. A
+    // drain that blocked for its turn would keep its thread until the turn ends, so each route would ask for its turn
+    // from a thread of its own; drains that await share the pool's few threads. The routes outnumber the threads the
+    // pool has, and the few it adds on its own while the test runs (back to its minimum, for the turn's blocked thread
+    // and by hill climbing, #998), so only blocking drains ask from as many threads as there are routes.
     [Test]
     public async Task DrainsAwaitTheModelTurnAsync()
     {
-        const int Routes = 64;
+        ThreadPool.GetMinThreads(out var minimumThreads, out _);
+        var routes = Math.Max(64, 4 * Math.Max(minimumThreads, ThreadPool.ThreadCount));
         await using var inner = new RunicModelContext();
         var context = new CountingContext(inner);
         using var page = new RecordingTransport();
         BridgeDispatcher.For(page).MinimumUnitInterval = TimeSpan.Zero;
-        var models = Enumerable.Range(0, Routes).Select(_ => new Model()).ToArray();
+        var models = Enumerable.Range(0, routes).Select(_ => new Model()).ToArray();
         using var ownership = RunicModelContextRegistry.Shared.Bind(context, [.. models]);
         var bridges = models.Select((model, index) => new ModelBridge(page, model, $"route{index.ToString(CultureInfo.InvariantCulture)}")).ToArray();
         using var release = new ManualResetEventSlim();
         try
         {
-            for (var index = 0; index < Routes; index++)
+            for (var index = 0; index < routes; index++)
                 _ = page.Request($$"""{"kind":"snapshot","route":"route{{index.ToString(CultureInfo.InvariantCulture)}}"}""");
             var invoked = context.Invocations;
-            var threads = ThreadPool.ThreadCount;
             // One long turn changes every route and then holds the context while each route's drain asks for a turn.
             var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var turn = Task.Run(() => inner.InvokeAsync(() =>
@@ -150,19 +153,24 @@ internal sealed class ProducerPublicationTests
                 changed.TrySetResult();
                 release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
             }).AsTask());
-            await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+            // Turns run on the thread pool: drains that block for theirs can hold its threads before this one starts.
+            await WaitUntilAsync(() => changed.Task.IsCompleted,
+                "The long turn did not start: drains blocked for their turns on the threads that run model turns.",
+                TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
             try
             {
-                await WaitUntilAsync(() => context.Invocations - invoked >= Routes,
-                    $"Only {context.Invocations - invoked} of {Routes} drains asked for a turn while the context was busy.",
+                await WaitUntilAsync(() => context.Invocations - invoked >= routes,
+                    $"Only {context.Invocations - invoked} of {routes} drains asked for a turn while the context was busy; drains " +
+                    "that block for their turns ask only as fast as the pool adds threads for them.",
                     TimeSpan.FromSeconds(5));
-                // A drain that blocked for its turn held a thread-pool thread, and the pool added threads for them.
-                var added = ThreadPool.ThreadCount - threads;
-                Require(added < 8, $"{Routes} drains waiting for a busy model context added {added} thread-pool threads.");
+                // Every route's drain is waiting now. Blocked drains would each hold the thread they asked from.
+                var threads = context.InvokingThreads(invoked).Distinct().Count();
+                Require(threads < routes,
+                    $"{routes} drains waiting for a busy model context asked from {threads} threads: each held its thread for the turn.");
             }
             finally { release.Set(); }
             await turn.WaitScaledAsync(TimeSpan.FromSeconds(5));
-            await WaitUntilAsync(() => page.Frames.Count(frame => frame.Contains("\"value\":1}", StringComparison.Ordinal)) == Routes,
+            await WaitUntilAsync(() => page.Frames.Count(frame => frame.Contains("\"value\":1}", StringComparison.Ordinal)) == routes,
                 "Not every route published its change.");
         }
         finally
@@ -337,11 +345,23 @@ internal sealed class ProducerPublicationTests
         }
     }
 
-    // A model context that counts the turns asked of it.
+    // A model context that counts the turns asked of it and records the threads that asked.
     private sealed class CountingContext(RunicModelContext inner) : IRunicModelContext
     {
-        private int _invocations;
-        public int Invocations => Volatile.Read(ref _invocations);
+        private readonly List<int> _threads = [];
+        public int Invocations { get { lock (_threads) return _threads.Count; } }
+
+        // The managed thread ids of the invocations from the given count on, in order.
+        public int[] InvokingThreads(int from)
+        {
+            lock (_threads) return [.. _threads.Skip(from)];
+        }
+
+        private void Record()
+        {
+            lock (_threads) _threads.Add(Environment.CurrentManagedThreadId);
+        }
+
         public bool IsExecuting => inner.IsExecuting;
         public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException
         {
@@ -351,12 +371,12 @@ internal sealed class ProducerPublicationTests
         public bool TryPost(Action turn) => inner.TryPost(turn);
         public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
         {
-            Interlocked.Increment(ref _invocations);
+            Record();
             return inner.InvokeAsync(turn, cancellationToken);
         }
         public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
         {
-            Interlocked.Increment(ref _invocations);
+            Record();
             return inner.InvokeAsync(turn, cancellationToken);
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

@@ -25,6 +25,7 @@ internal sealed class WireKeyGoldenTests
         var outputs = Models.SelectMany(entry => new (string Golden, string Actual)[]
         {
             (entry.Module + ".ts", Path.Combine(generated, entry.Module + ".ts")),
+            (entry.Module + ".contract.d.ts", Path.Combine(generated, entry.Module + ".contract.d.ts")),
             (entry.Module + ".mock.ts", Path.Combine(generated, entry.Module + ".mock.ts")),
             (entry.Model.Name + ".Bridge.g.cs", Path.Combine(bridges, entry.Model.FullName + ".Bridge.g.cs")),
         }).ToList();

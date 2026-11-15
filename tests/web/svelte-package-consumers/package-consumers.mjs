@@ -40,10 +40,23 @@ try {
   assert.deepEqual(Object.keys(svelteManifest.exports), [".", "./experimental", "./package.json"]);
   for (const file of ["package/dist/experimental.js", "package/dist/experimental.d.ts", "package/dist/views/RunicHostedRegion.svelte",
     "package/dist/views/RunicHostedRegion.svelte.d.ts"]) assert.ok(viewFiles.includes(file), `${file} is not packed`);
+  // @runic-artifex/views has a development build (the `development` export condition, views README "Development
+  // build"); the bindings have one build.
+  const experimentalConditions = {
+    "@runic-artifex/views": ["types", "development", "import", "default"],
+    "@runic-artifex/react": ["types", "import", "default"],
+    "@runic-artifex/vue": ["types", "import", "default"],
+  };
   for (const archive of archives.slice(3)) {
     const manifest = JSON.parse((await execFile("tar", ["-xOf", archive, "package/package.json"])).stdout);
-    assert.deepEqual(Object.keys(manifest.exports["./experimental"]), ["types", "import", "default"], manifest.name);
+    assert.deepEqual(Object.keys(manifest.exports["./experimental"]), experimentalConditions[manifest.name], manifest.name);
+    if (manifest.name === "@runic-artifex/views") {
+      const files = (await execFile("tar", ["-tf", archive])).stdout.split("\n");
+      for (const file of ["package/dist/experimental.js", "package/dist/experimental.d.ts", "package/dist/development/experimental.js"])
+        assert.ok(files.includes(file), `${file} is not packed`);
+    }
   }
+  assert.deepEqual(archives.slice(3).length, Object.keys(experimentalConditions).length);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module" }), "utf8");
   await execFile("npm", [
     "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--legacy-peer-deps", ...npmReleaseAgeArguments(),

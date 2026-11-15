@@ -72,8 +72,25 @@ internal static partial class TypeScriptModuleBindings
             }
     }
 
+    /// <summary>The own bindings a module text references through <see cref="Ref"/>.</summary>
+    internal static IEnumerable<string> References(string module) => Marked().Matches(module)
+        .Where(match => match.Groups["marker"].Value[0] == ReferenceMarker).Select(match => match.Groups["name"].Value).Distinct(StringComparer.Ordinal);
+
+    /// <summary>The module text without its <c>/** … */</c> and line comments, for <see cref="Mentions"/>.</summary>
+    internal static string WithoutComments(string module) => LineComment().Replace(BlockComment().Replace(module, " "), "");
+
+    /// <summary>True when <paramref name="module"/> (without comments) uses the identifier <paramref name="name"/>.</summary>
+    internal static bool Mentions(string module, string name) =>
+        Regex.IsMatch(module, $@"(?<![\w$]){Regex.Escape(name)}(?![\w$])", RegexOptions.CultureInvariant);
+
     [GeneratedRegex("(?<marker>[\u0003\u0004\u0005])(?<name>[A-Za-z_$][\\w$]*)\\k<marker>")]
     private static partial Regex Marked();
+
+    [GeneratedRegex(@"/\*[\s\S]*?\*/")]
+    private static partial Regex BlockComment();
+
+    [GeneratedRegex(@"^[ \t]*//.*$", RegexOptions.Multiline)]
+    private static partial Regex LineComment();
 
     // Generated modules start every top-level statement in column 0 and indent
     // everything nested.

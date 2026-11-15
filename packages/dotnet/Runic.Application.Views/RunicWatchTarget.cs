@@ -118,7 +118,13 @@ public sealed class RunicWatchTarget
     private WatchProbe ProbeFile()
     {
         var (directory, name) = Split(FullPath);
-        return new(DescribeEntry(FullPath), [new(directory, name, false)], DirectoryOrMissing(directory), null);
+        var signature = DescribeEntry(FullPath);
+        // A file that replaced another, as in a directory deleted or moved away and created again, can have the old
+        // one's size, and a clock tick can give it the old one's write time too (#1008): its identity tells them apart.
+        // The event that would mark it changed belongs to the replaced directory's watch, which can lose it.
+        if (signature.StartsWith("file\n", StringComparison.Ordinal) && DirectoryIdentity.Read(FullPath) is { } identity)
+            signature += "\n" + identity;
+        return new(signature, [new(directory, name, false)], DirectoryOrMissing(directory), null);
     }
 
     private WatchProbe ProbeLink()

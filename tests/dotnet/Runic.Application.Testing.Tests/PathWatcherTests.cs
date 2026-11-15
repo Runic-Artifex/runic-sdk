@@ -264,8 +264,13 @@ internal sealed class PathWatcherTests
         Require((await EventAsync(tester, watcher)).Contains(target), "A write after the directory returned was not reported.");
     }
 
+    // moveAway: as `mv checkout checkout.old && git clone`, which reports no deleted entries in the old directory's
+    // watch; deleting it reports them on Linux, while on Windows they can be lost when a later watcher restarts the
+    // shared watch (#1008). Either way the parent's event and the new file's identity report the replacement.
     [Test]
-    public async Task DirectoryReplacedWithoutAReadIsWatchedAgain()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DirectoryReplacedWithoutAReadIsWatchedAgain(bool moveAway)
     {
         using var root = new TempDirectory();
         var directory = root.Directory("checkout");
@@ -276,13 +281,18 @@ internal sealed class PathWatcherTests
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, _ => { }, tester.Options);
 
         // As `rm -rf checkout && git clone`: the directory is replaced before the watcher reads anything.
-        Directory.Delete(directory, recursive: true);
+        var written = File.GetLastWriteTimeUtc(file);
+        if (moveAway) Directory.Move(directory, directory + ".old");
+        else Directory.Delete(directory, recursive: true);
         Directory.CreateDirectory(directory);
         File.WriteAllText(file, "2");
-        // A watcher started now must not join the watch of the deleted directory.
+        // The new file has the old one's size, and a clock tick can give it the old one's time too (Windows stamps
+        // files at the timer interrupt, #1008): only the replacement tells them apart.
+        File.SetLastWriteTimeUtc(file, written);
+        // A watcher started now must not join the watch of the replaced directory; it restarts the shared watch.
         var other = RunicWatchTarget.File(Path.Combine(directory, "other"));
         using var late = RunicPathWatcher.Start(context, [other], _ => { }, _ => { }, tester.Options);
-        Require((await EventAsync(tester, watcher)).Contains(target), "Replacing the directory was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), $"Replacing the directory was not reported. {watcher.Describe()}");
         await Task.Delay(Settle);
         await tester.DrainAsync();
 
@@ -311,6 +321,35 @@ internal sealed class PathWatcherTests
         var elapsed = tester.Time.GetUtcNow() - start;
         Require(change.Contains(target) && !change.ByEvent && elapsed >= TimeSpan.FromSeconds(30),
             $"Expected the 30-second backstop read to report the write, got it after {elapsed}.");
+    }
+
+    // #1008: a watcher whose shared watch another lease or a joining watcher restarted for a replaced directory still
+    // learns of the replacement once, so it reads its targets again.
+    [Test]
+    public void RevalidateReportsARestartByAnotherLease()
+    {
+        using var root = new TempDirectory();
+        var directory = root.Directory("d");
+        using var first = SharedDirectoryWatches.Acquire(directory, recursive: false, NullSink.Instance);
+        using var second = SharedDirectoryWatches.Acquire(directory, recursive: false, NullSink.Instance);
+        Require(!first.Revalidate() && !second.Revalidate(), "An unchanged directory was reported replaced.");
+
+        Directory.Move(directory, directory + ".old");
+        Directory.CreateDirectory(directory);
+        using var joining = SharedDirectoryWatches.Acquire(directory, recursive: false, NullSink.Instance);
+        Require(first.Revalidate(), "The first lease missed the restart by a joining lease.");
+        Require(!first.Revalidate(), "The first lease reported the same restart twice.");
+        Require(second.Revalidate() && !second.Revalidate(), "The second lease did not report the restart exactly once.");
+        Require(!joining.Revalidate(), "The lease that restarted the watch reported its own restart.");
+    }
+
+    private sealed class NullSink : IDirectoryWatchSink
+    {
+        public static readonly NullSink Instance = new();
+
+        public void OnPath(string fullPath) { }
+
+        public void OnFailure(string key, string directory, Exception exception, bool stopped) { }
     }
 
     [Test]
