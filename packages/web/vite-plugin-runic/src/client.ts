@@ -1,6 +1,6 @@
 // The development client. It forwards the diagnostics and connection state of `@runic-artifex/views` to the
 // development server, which keeps them on its timeline, reports each View's state and superseded command replies to
-// the state inspector, and warns about script that overwrites a focused text field with an older value
+// the state inspector, draws Bridge calls on a "Runic" track of the browser's Performance panel, and warns about script that overwrites a focused text field with an older value
 // (`stale-input`). It has no exports.
 //
 // `runic()` injects it into served pages through `virtual:runic/client`, and loads it through that module for an
@@ -286,6 +286,86 @@ function connectViewsInspector(): void {
   data[pageHideListenerKey] = pageHidden;
 }
 
+// The Bridge-call channel. @runic-artifex/views 0.20 or later reports each generated client call to it once a reader
+// set `requested` and listens (specs/application, "Shared globals"), and then runs each call in a V8 async stack task,
+// so a breakpoint after a reply shows the click that made the call. This client draws each settled call as an entry of
+// the "Bridge calls" track in the "Runic" track group of Chromium's Performance panel (`performance.measure` with
+// `detail.devtools`); other engines keep a plain measure or skip it. The calls are not sent to the server yet.
+const viewsCallsKey = Symbol.for("runic.views.calls");
+const callsListenerKey = "runic:calls-listener";
+const runicTrackGroup = "Runic";
+const bridgeCallsTrack = "Bridge calls";
+// .NET's own handler timing (#958) goes below the calls: an end event with `handler: { name, start, end }` (in
+// `performance.now()` milliseconds) becomes an entry of this track.
+const handlersTrack = "C# handlers";
+
+interface ViewsCallsChannel {
+  readonly listeners: Set<(event: CallEvent) => void>;
+  requested?: boolean;
+  devtools?: boolean;
+}
+
+interface CallEvent {
+  readonly phase: string; readonly id: number; readonly kind: string; readonly request: string; readonly route: string;
+  readonly contract: string; readonly member: string; readonly start: number; readonly end?: number; readonly duration?: number;
+  readonly outcome?: string; readonly revision?: number; readonly reason?: string;
+  readonly handler?: { readonly name: string; readonly start: number; readonly end: number };
+}
+
+type UserTiming = { measure?(name: string, options: object): unknown; clearMeasures?(name?: string): void };
+
+function viewsCalls(): ViewsCallsChannel {
+  const channels = host as Record<symbol, ViewsCallsChannel | undefined>;
+  return channels[viewsCallsKey] ??= { listeners: new Set() };
+}
+
+// A track entry. It is cleared from the page's timeline buffer at once: a recording already has it, and a long
+// development session should not fill the buffer. An engine without User Timing level 3 skips it.
+function measure(name: string, start: number, end: number, devtools: Record<string, unknown>): void {
+  const timing = (globalThis as { performance?: UserTiming }).performance;
+  if (typeof timing?.measure !== "function") return;
+  try {
+    timing.measure(name, { start, end, detail: { devtools } });
+    timing.clearMeasures?.(name);
+  } catch { /* Not supported. */ }
+}
+
+const outcomeColors: Readonly<Record<string, string>> = { ok: "primary", error: "error", cancelled: "tertiary" };
+
+function reportCall(event: CallEvent): void {
+  if (typeof event !== "object" || event === null || event.phase !== "end" || viewsCalls().devtools === false) return;
+  if (typeof event.start !== "number" || typeof event.end !== "number") return;
+  // `Demo.EditorViewModel:3F2A…` names the C# view model `EditorViewModel`.
+  const model = String(event.contract).split(":", 1)[0]!.split(".").pop() || event.route;
+  const label = `${model}.${event.member}`;
+  const outcome = String(event.outcome);
+  const properties: [string, string][] = [
+    ["Kind", String(event.request)], ["Route", String(event.route)], ["Contract", String(event.contract)],
+    ["Request id", String(event.id)], ["Outcome", event.reason === undefined ? outcome : `${outcome} (${event.reason})`],
+  ];
+  if (typeof event.revision === "number") properties.push(["Revision", String(event.revision)]);
+  measure(`${label} #${event.id}`, event.start, event.end, {
+    dataType: "track-entry", track: bridgeCallsTrack, trackGroup: runicTrackGroup, color: outcomeColors[outcome] ?? "warning",
+    properties, tooltipText: `${event.kind} ${label}: ${outcome}, ${(event.end - event.start).toFixed(1)} ms`,
+  });
+  const handler = event.handler;
+  if (typeof handler === "object" && handler !== null && typeof handler.start === "number" && typeof handler.end === "number") {
+    measure(`${handler.name} #${event.id}`, handler.start, handler.end, {
+      dataType: "track-entry", track: handlersTrack, trackGroup: runicTrackGroup, color: "secondary",
+      properties: [["Request id", String(event.id)], ["Route", String(event.route)], ["Member", String(event.member)]],
+    });
+  }
+}
+
+function connectViewsCalls(): void {
+  const calls = viewsCalls();
+  const previous = data[callsListenerKey] as ((event: CallEvent) => void) | undefined;
+  if (previous) calls.listeners.delete(previous);
+  calls.listeners.add(reportCall);
+  data[callsListenerKey] = reportCall;
+  calls.requested = true;
+}
+
 // Removes this copy's listeners once the HTTP channel has no server to report to.
 function close(): void {
   channel = "closed";
@@ -293,6 +373,7 @@ function close(): void {
   viewsDiagnostics().delete(reportViewsDiagnostic);
   viewsConnection().listeners.delete(reportConnection);
   viewsInspector().listeners.delete(reportInspector);
+  viewsCalls().listeners.delete(reportCall);
   host.removeEventListener?.("pagehide", pageHidden);
   if (stateTimer !== undefined) clearTimeout(stateTimer);
   stateTimer = undefined;
@@ -302,6 +383,7 @@ function close(): void {
 connectViewsDiagnostics();
 connectViewsConnection();
 connectViewsInspector();
+connectViewsCalls();
 // Vite's HMR context shows that a development server serves the page: install the warning now. Without it
 // (a production build that kept the client), the HTTP channel installs it once the server answers. Installs once
 // per page; HMR re-evaluation leaves it in place.

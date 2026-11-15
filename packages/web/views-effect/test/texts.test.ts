@@ -1,5 +1,5 @@
 // translation-text/1: texts follows a text reference across language switches.
-import { configureTranslatedText } from "@runic-artifex/views";
+import { configureFieldErrorText, configureTranslatedText } from "@runic-artifex/views";
 import { Effect, Fiber, Stream } from "effect";
 import { describe, expect, test } from "vitest";
 import { textLocales, texts } from "../src/index.js";
@@ -61,6 +61,53 @@ describe("texts", () => {
         expect(seen.length).toBe(2);
         expect(seen[1]).toBe(seen[0] === "en" ? "de" : "Der Titel ist zu lang.");
       } finally { stop(); }
+    }
+  });
+});
+
+// The Runic Translations text-change channel as the Vite plugin's development client creates it (Translations 0.12.0):
+// an in-place update swaps the message's text, increments `revision` and calls every listener.
+const textChannelKey = Symbol.for("runic.translations.text");
+
+describe("textLocales and in-place message updates (translations#176)", () => {
+  // Collects the stream's values while `steps` run, one step after each value.
+  async function collect(steps: (() => void)[]): Promise<unknown[]> {
+    const seen: unknown[] = [];
+    const fiber = Effect.runFork(Stream.runForEach(Stream.take(textLocales(), steps.length + 1), value => Effect.promise(async () => {
+      seen.push(value);
+      steps[seen.length - 1]?.();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    })));
+    const joined = Effect.runPromise(Fiber.join(fiber)).then(() => "done" as const);
+    const timedOut = new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), 300));
+    const outcome = await Promise.race([joined, timedOut]);
+    if (outcome === "timeout") await Effect.runPromise(Fiber.interrupt(fiber));
+    return seen;
+  }
+
+  test("emits the same locale again on each in-place update", async () => {
+    const channel = { version: 1, revision: 0, listeners: new Set<() => void>() };
+    (globalThis as Record<symbol, unknown>)[textChannelKey] = channel;
+    const update = () => { channel.revision++; for (const listener of [...channel.listeners]) listener(); };
+    const stop = configureTranslatedText(fakeTranslations());
+    try {
+      expect(await collect([update, update])).toEqual(["en", "en", "en"]);
+    } finally {
+      stop();
+      delete (globalThis as Record<symbol, unknown>)[textChannelKey];
+    }
+  });
+
+  test("in production, where nothing writes the channel, a text change that keeps the locale emits nothing", async () => {
+    // configureTranslatedText may create the channel in a browser; nothing increments its revision in production.
+    const stop = configureTranslatedText(fakeTranslations());
+    const stops: (() => void)[] = [];
+    try {
+      expect(await collect([() => { stops.push(configureFieldErrorText(() => undefined)); }])).toEqual(["en"]);
+    } finally {
+      for (const step of stops) step();
+      stop();
+      delete (globalThis as Record<symbol, unknown>)[textChannelKey];
     }
   });
 });
