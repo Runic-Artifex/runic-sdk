@@ -1113,7 +1113,9 @@ public sealed partial class DesktopWindow : IAsyncDisposable
 
     private DesktopWindowActivity? _activity;
     private DesktopWindowActivity? _raisedActivity;
-    private int _activitySignaled;
+    // Every report in order: a change the window reverts before the handlers run, such as a hide and a show, still
+    // raises its own event (#1014). Reading only the latest report raised nothing for it.
+    private readonly System.Collections.Concurrent.ConcurrentQueue<DesktopWindowActivity> _activityReports = new();
     private int _activityDispatching;
 
     /// <summary>
@@ -1137,9 +1139,11 @@ public sealed partial class DesktopWindow : IAsyncDisposable
 
     /// <summary>Occurs after the window's <see cref="Activity"/> has changed.</summary>
     /// <remarks>
-    /// Raised on the thread pool, never on the window's native thread and never concurrently. Changes that arrive faster
-    /// than the handlers run are combined, so a handler sees the latest activity. A handler that throws is logged (event
-    /// 3040, <c>WindowActivityHandlerFailed</c>) and does not stop later events. The last event of a window that closes
+    /// Raised on the thread pool, never on the window's native thread and never concurrently. Every change raises one
+    /// event, in the order the window reported them, also when changes arrive faster than the handlers run: the event's
+    /// <see cref="DesktopWindowActivityChangedEventArgs.Activity"/> is that change's activity, while <see cref="Activity"/>
+    /// may already be a later one. A handler that throws is logged (event 3040, <c>WindowActivityHandlerFailed</c>) and
+    /// does not stop later events. The last event of a window that closes
     /// reports it inactive and not visible; no event is raised after that or after the window was replaced.
     /// </remarks>
     public event EventHandler<DesktopWindowActivityChangedEventArgs>? ActivityChanged;
@@ -1154,12 +1158,13 @@ public sealed partial class DesktopWindow : IAsyncDisposable
             return;
         }
         Volatile.Write(ref _activity, activity);
+        _activityReports.Enqueue(activity);
         SignalActivity();
     }
 
     private void SignalActivity()
     {
-        if (Interlocked.Exchange(ref _activitySignaled, 1) == 0 && Interlocked.CompareExchange(ref _activityDispatching, 1, 0) == 0)
+        if (Interlocked.CompareExchange(ref _activityDispatching, 1, 0) == 0)
         {
             ThreadPool.UnsafeQueueUserWorkItem(static window => window.DispatchActivityChanged(), this, preferLocal: false);
         }
@@ -1181,6 +1186,7 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     {
         if (Volatile.Read(ref _activity) is null) return;
         Volatile.Write(ref _activity, ClosedActivity);
+        _activityReports.Enqueue(ClosedActivity);
         SignalActivity();
     }
 
@@ -1188,12 +1194,11 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     {
         while (true)
         {
-            Volatile.Write(ref _activitySignaled, 0);
-            var activity = Volatile.Read(ref _activity);
-            // The closing report is raised after the window is no longer the surface's open window.
-            var closing = ReferenceEquals(activity, ClosedActivity);
-            if (activity is not null && !Equals(activity, _raisedActivity) && (closing || AcceptsState))
+            while (_activityReports.TryDequeue(out var activity))
             {
+                // The closing report is raised after the window is no longer the surface's open window.
+                var closing = ReferenceEquals(activity, ClosedActivity);
+                if (Equals(activity, _raisedActivity) || !(closing || AcceptsState)) continue;
                 _raisedActivity = activity;
                 if (ActivityChanged is { } handlers)
                 {
@@ -1215,7 +1220,8 @@ public sealed partial class DesktopWindow : IAsyncDisposable
                 }
             }
             Volatile.Write(ref _activityDispatching, 0);
-            if (Volatile.Read(ref _activitySignaled) == 0 || Interlocked.CompareExchange(ref _activityDispatching, 1, 0) != 0)
+            // A report queued after the last dequeue and before the flag cleared found the dispatch running.
+            if (_activityReports.IsEmpty || Interlocked.CompareExchange(ref _activityDispatching, 1, 0) != 0)
             {
                 return;
             }
@@ -2136,7 +2142,9 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// <returns>A task that completes when the window has been moved.</returns>
     /// <remarks>
     /// Requires <see cref="DesktopWindowCapabilities.Move"/>. Moving and then resizing shows the window moved but not
-    /// yet resized in between; <see cref="SetBoundsAsync"/> does both in one operation.
+    /// yet resized in between; <see cref="SetBoundsAsync"/> does both in one operation. On macOS a position that would
+    /// put the title bar behind a menu bar, such as <c>y</c> 0, puts it just below the menu bar (the work area's top),
+    /// as <see cref="SetBoundsAsync"/> does.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>

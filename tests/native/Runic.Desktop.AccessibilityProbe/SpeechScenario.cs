@@ -47,8 +47,7 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
             }
             await FocusAsync(fruit, slider, "listbox-focus", Fixture.Fruit, cancellationToken);
             await SettleAsync(fruit, cancellationToken);
-            await ExpectAsync("listbox-selection", Contains("Apple"),
-                () => ActAsync(() => client.SelectWithKeysAsync(fruit, "Apple", cancellationToken)), cancellationToken);
+            await ExpectSelectionAsync("listbox-selection", fruit, "Apple", cancellationToken);
         }
         finally
         {
@@ -81,14 +80,20 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
     private Task PressAsync(Control control, CancellationToken cancellationToken)
         => ActAsync(() => client.PressAsync(control, cancellationToken));
 
-    // Where the accessibility API has the focus, and the control's value, for a failure message: whether the focus or
-    // the key reached the control when the screen reader said nothing about it.
+    // Where the accessibility API has the focus, and the control's value or a list box's selected items, for a failure
+    // message: whether the focus or the key reached the control when the screen reader said nothing about it.
     private async Task<string> StateAsync(Control? control, CancellationToken cancellationToken)
     {
         var state = $"{client.Api} focus: {await client.FocusedAsync(cancellationToken) ?? "not reported"}";
-        if (control is not null) state += $"; '{control.Name}' is {(await client.ReadRangeAsync(control, cancellationToken)).Value?.ToString(CultureInfo.InvariantCulture) ?? "unreadable"}";
+        if (control is { Kind: ControlKind.ListBox }) state += $"; '{control.Name}' has selected: {Items(await client.ReadSelectionAsync(control, cancellationToken))}";
+        else if (control is not null) state += $"; '{control.Name}' is {(await client.ReadRangeAsync(control, cancellationToken)).Value?.ToString(CultureInfo.InvariantCulture) ?? "unreadable"}";
         return state;
     }
+
+    private static string Items(IReadOnlyList<string> items) => items.Count == 0 ? "nothing" : string.Join(", ", items.Select(item => $"'{item}'"));
+
+    // Quiet, and past the screen reader's hint (ScreenReader.HintDelay).
+    private bool Settled() => _timeline.SettledFor(Quiet, reader.HintDelay, reader.IsHint, DateTime.UtcNow);
 
     // Before a check presses keys on the focused control (ActsWithKeys): since focus moved there, the screen reader has
     // named the control after it last named the page (WebView2 can take the screen reader to the document when it
@@ -104,7 +109,7 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
             var until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (DateTime.UtcNow < until)
             {
-                if (_timeline.EndsOn(_focusMark, control.Name, Fixture.Title) && _timeline.QuietFor(Quiet, DateTime.UtcNow)) return;
+                if (_timeline.EndsOn(_focusMark, control.Name, Fixture.Title) && Settled()) return;
                 await Task.Delay(100, cancellationToken);
             }
             Console.WriteLine($"  {reader.Name} did not settle on '{control.Name}' (since the focus moved there it said: {_timeline.Said(_focusMark)}; "
@@ -246,23 +251,79 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
         }
     }
 
-    // Until the screen reader has said nothing and the probe has done nothing for a moment (Quiet), at most 8 s.
+    // A selection made while the screen reader is still between the list box's phrase and its hint goes unsaid:
+    // VoiceOver said an empty phrase and the list item's hint, not 'Apple', for a selection set 30 ms after it named the
+    // list box (sdk#1015). The selection waits until the screen reader is quiet and past its hint. When the screen
+    // reader does not say the item, the accessibility API tells whether the selection changed: a change is undone and
+    // made once more, and a selection that did not reach the list box focuses it again first; the check reports the
+    // second selection. It passes only when the API reports the item selected too.
+    private async Task ExpectSelectionAsync(string check, Control control, string item, CancellationToken cancellationToken)
+    {
+        var expected = Contains(item);
+        var before = await client.ReadSelectionAsync(control, cancellationToken);
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            await QuietAsync(cancellationToken);
+            var mark = Mark();
+            await ActAsync(() => client.SelectWithKeysAsync(control, item, cancellationToken));
+            if (attempt == 1 && await HeardAsync(mark, expected, SpeechTimeout, cancellationToken) is null)
+            {
+                var heard = _timeline.Said(mark);
+                var after = await client.ReadSelectionAsync(control, cancellationToken);
+                var changed = after.Contains(item) && !before.Contains(item);
+                if (changed && before.Count == 1)
+                {
+                    await QuietAsync(cancellationToken);
+                    await ActAsync(() => client.SelectWithKeysAsync(control, before[0], cancellationToken));
+                    after = await client.ReadSelectionAsync(control, cancellationToken);
+                }
+                if (!after.Contains(item))
+                {
+                    Console.WriteLine($"  {reader.Name} did not say '{item}' after the first selection (it said: {heard}; "
+                        + (changed ? $"the selection changed and is back at {Items(after)}" : $"the selection did not reach '{control.Name}', {await StateAsync(control, cancellationToken)}")
+                        + $"); selecting '{item}' again.");
+                    if (!changed)
+                    {
+                        _focusMark = Mark();
+                        await FocusControlAsync(control, cancellationToken);
+                        await SettleAsync(control, cancellationToken);
+                    }
+                    continue;
+                }
+                Console.WriteLine($"  '{control.Name}' has selected {Items(after)} after undoing the first selection, not {Items(before)}; not selecting again.");
+            }
+            await RecordAsync(check, expected, mark, cancellationToken, attempt == 2 ? " on the second selection" : "",
+                () => StateAsync(control, cancellationToken),
+                async () => (await client.ReadSelectionAsync(control, cancellationToken)).Contains(item)
+                    ? null : $"'{control.Name}' has selected {Items(await client.ReadSelectionAsync(control, cancellationToken))}, not '{item}' ({await StateAsync(control, cancellationToken)})");
+            return;
+        }
+    }
+
+    // Until the screen reader has said nothing and the probe has done nothing for a moment (Quiet), and the screen
+    // reader has said its hint or the time for one has passed (Settled), at most 8 s.
     private async Task QuietAsync(CancellationToken cancellationToken)
     {
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
         while (DateTime.UtcNow < until)
         {
-            if (_timeline.QuietFor(Quiet, DateTime.UtcNow)) return;
+            if (Settled()) return;
             await Task.Delay(100, cancellationToken);
         }
     }
 
-    // A failure's message ends with the state the check reads (StateAsync), where focus and the value are.
+    // A failure's message ends with the state the check reads (StateAsync), where focus and the value are. problem, when
+    // the screen reader said the text, tells what the accessibility API reports that the check also needs, or null.
     private async Task RecordAsync(string check, Expected expected, int mark, CancellationToken cancellationToken, string note = "",
-        Func<Task<string>>? state = null)
+        Func<Task<string>>? state = null, Func<Task<string?>>? problem = null)
     {
         var id = Id(check);
         var spoken = await HeardAsync(mark, expected, SpeechTimeout, cancellationToken);
+        if (spoken is not null && problem is not null && await problem() is { } wrong)
+        {
+            report.Fail(id, $"{reader.Name} said '{spoken}'{note}, but {wrong}; it said: {_timeline.Said(mark)}");
+            return;
+        }
         var gap = expectations.Gap(id);
         var heard = _timeline.Said(mark);
         var context = spoken is null && state is not null ? $" ({await state()})" : "";

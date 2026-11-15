@@ -735,8 +735,9 @@ verify_template() {
   fi
   # Every frontend, the Angular CLI's and Vite's (angular-vite) included, bundles the production build of
   # @runic-artifex/views (README, "Development build"): its development tools, the Bridge-call channel with its async
-  # stack tagging and the Translations text channel, are not in the page (#975).
-  if grep -rlE 'runic\.views\.calls|runic\.translations\.text' "$output/Frontend/dist"; then
+  # stack tagging, the development features trace-context/1 and handler-timing/1 (#958), and the Translations text
+  # channel, are not in the page (#975).
+  if grep -rlE 'runic\.views\.calls|runic\.translations\.text|trace-context/1|handler-timing/1' "$output/Frontend/dist"; then
     echo "The built $framework frontend contains development code of @runic-artifex/views." >&2
     exit 1
   fi

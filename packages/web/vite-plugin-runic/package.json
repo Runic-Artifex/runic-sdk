@@ -53,6 +53,7 @@
     "@types/node": "24.19.1",
     "@vitejs/devtools": "0.7.6",
     "@vitejs/devtools-kit": "0.7.6",
+    "@vitejs/plugin-vue": "6.0.9",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "svelte": "5.57.1",

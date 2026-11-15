@@ -2147,12 +2147,15 @@ for the release you use.
 Since 0.20 the package also ships Roslyn analyzers for the errors that the
 source alone shows, such as a command named `NewCommand` or a `ViewRequest<T>`
 with a public setter. Your IDE reports them while you type, with the same ID
-and message, and offers a code fix where it is mechanical. The
-[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-while-you-type)
+and message, and offers a code fix where it is mechanical. The analyzers also
+report the warnings `RUNICBRIDGE013`, `028`, `034` and `039` for your project's
+own code, while you type and in the build, so `#pragma warning disable` and
+`.editorconfig` severities apply to them as to any compiler warning. The
+[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the generator's
-(`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the ones the generator
+reports itself (`020`, `031`, `032` and `053`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -5046,6 +5049,25 @@ Route names are span tags but not metric tags, because content routes identify
 one instance. The duration histograms advise buckets from 0.5 ms to 10 s, and
 the size histogram from 256 B to 4 MiB. The queue depth reports the frames
 waiting for slow hosts across all Bridges when it is observed.
+
+**One trace with the page (0.20).** Under `vite dev` with an OTLP export, the
+page's Vite development client gives each Bridge call a W3C trace context, and
+the call's request carries it (Views protocol feature `trace-context/1`). While
+the `ActivitySource` has a listener, the request's first `runic.bridge.*` span
+takes the page's span as its remote parent and has the kind `Server`; the
+ViewModel's own spans, and the `HttpClient` or database spans they start, follow
+it, because model turns run in the `ExecutionContext` of the request that queued
+them. Without a listener, the member is not read. Export with the application's
+own OpenTelemetry setup; [Tracing Bridge calls](../../../docs/tracing.md) shows
+it with a local viewer.
+
+**Handler timing in Development (0.20).** When `DOTNET_ENVIRONMENT`, or else
+`ASPNETCORE_ENVIRONMENT`, is `Development` (`dotnet runic dev` sets it), the
+producer offers `handler-timing/1`: a request from a page whose development tools
+follow its calls asks for its timing, and the reply names the C# handler and
+its duration (`handler: { name, duration }`, such as `EditorViewModel.Save` and
+milliseconds). The Vite development client shows it on the "C# handlers" track
+of the browser's Performance panel. Outside Development, replies never carry it.
 
 ## Incremental generation
 

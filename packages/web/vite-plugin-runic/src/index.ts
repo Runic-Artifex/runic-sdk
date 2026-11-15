@@ -1,40 +1,48 @@
 /// <reference types="@vitejs/devtools-kit" />
 
+import type { IncomingMessage } from "node:http";
 import type { Plugin, UserConfig, ViteDevServer } from "vite";
 import { isFileLoadingAllowed } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
+import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
 import {
-  callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, requestEvent, responseEvent, viewEvent,
-  type RunicClientOptions,
+  callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, requestEvent, responseEvent,
+  viewEvent, type RunicClientOptions,
 } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import type { RunicSourceLocation, RunicSourceMap } from "./sources.js";
 import {
   answerClientRequest, answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
-  resolveOpenLocation, sourcesPath,
+  resolveOpenLocation, sourcesPath, type RunicOpenResolution,
 } from "./sources.js";
 import type { RunicBridgeCall } from "./calls.js";
 import { formatMilliseconds, stackFrames } from "./calls.js";
+import { findMessageSource, readMessageReply, type MessageReference } from "./translations-source.js";
+import { answerHandlers, createHandlerAnalyzer, handlerFile } from "./handlers.js";
+import { isLoopbackRequest } from "./requests.js";
+import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
   type RunicComponentOptions,
 } from "./component.js";
 
 export type { RunicComponentOptions } from "./component.js";
+export type { RunicOtlpOptions } from "./otlp.js";
 
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
 export type { RunicBridgeCall, RunicBridgeCallHandler, RunicBridgeCallOutcome } from "./calls.js";
+export type { RunicHandlerAnalysis, RunicHandlerBinding, RunicHandlerCall, RunicHandlerPosition } from "./handlers.js";
 export type { RunicInspectApi } from "./inspect.js";
 export type {
   RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
-  RunicInspectLocation, RunicInspectMember, RunicInspectText, RunicInspectViewModel,
+  RunicInspectLocation, RunicInspectMember, RunicInspectMessage, RunicInspectText, RunicInspectViewModel,
 } from "./inspect-data.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
@@ -124,6 +132,15 @@ export interface RunicViteOptions {
    * The build never contains it.
    */
   readonly inspect?: boolean;
+  /**
+   * Exports the page's spans of Bridge calls over OTLP while serving, so they join the .NET host's spans in one trace
+   * (W3C trace context in each call's request, `trace-context/1`). By default it is on when `OTEL_EXPORTER_OTLP_ENDPOINT`
+   * or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set in the development server's environment, and off with
+   * `OTEL_SDK_DISABLED=true` or `OTEL_TRACES_EXPORTER=none`. The development server posts OTLP/HTTP JSON, so the endpoint
+   * is an OTLP/HTTP receiver. `false` turns it off; an object sets the URL, headers or service name. Requires the
+   * development client (`devtools` not `false`).
+   */
+  readonly otlp?: boolean | RunicOtlpOptions;
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
@@ -133,6 +150,9 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   }
   if (options.html !== undefined && typeof options.html !== "boolean") {
     throw new TypeError("html must be true or false.");
+  }
+  if (options.otlp !== undefined && typeof options.otlp !== "boolean" && (typeof options.otlp !== "object" || options.otlp === null)) {
+    throw new TypeError("otlp must be true, false or { url?, headers?, serviceName? }.");
   }
   const html = options.html !== false;
   if (options.inspect !== undefined && typeof options.inspect !== "boolean") {
@@ -144,6 +164,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   }
   const client = options.devtools !== false;
   let server: ViteDevServer | undefined;
+  // The OTLP export of the page's spans, while serving with the development client.
+  let otlp: OtlpForwarder | undefined;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
   let resolvedRoot = process.cwd();
@@ -178,11 +200,22 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   // (sources.ts, launchSourceEditor), so the editor is chosen as Vite chooses it.
   const openLocation = (location: RunicSourceLocation): void =>
     launchSourceEditor(location, (message) => server?.config.logger.warn(`[runic] ${message}`));
+  // What else /__runic/open opens besides the map's locations: frontend files Vite serves, and with Runic Inspect, where
+  // the Translations dev server says a message is.
+  const openResolution = (viteServer: ViteDevServer): RunicOpenResolution => ({
+    frontendFile,
+    ...(options.inspect === false ? {} : {
+      findMessage: (message: MessageReference) => findMessageSource({
+        address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
+      }, message),
+    }),
+  });
   const deliver = (event: string, data: unknown): void => {
     if (event === connectionEvent) timeline.applyConnection(data);
     else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
     else if (event === viewEvent) timeline.applyView(data);
     else if (event === callEvent) timeline.appendCall(data, readSourceMap());
+    else if (event === spanEvent) otlp?.add(data);
   };
   const command = (): string => timeline.state.vite.command;
 
@@ -273,6 +306,13 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         if (injection !== undefined) delete (injection as { transformIndexHtml?: unknown }).transformIndexHtml;
       }
       resolvedRoot = resolved.root;
+      if (resolved.command === "serve" && client) {
+        const exported = resolveOtlp(options.otlp, process.env, resolved.root);
+        if (exported !== undefined) {
+          otlp = createOtlpForwarder(exported, { version: pluginVersion(), warn: (message) => resolved.logger.warn(message) });
+          resolved.logger.info(`[runic] Exporting the page's Bridge call spans to ${exported.url} as ${exported.serviceName} (OTLP/HTTP JSON).`);
+        }
+      }
       const configuredBase = resolved.base || "/";
       base = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
       timeline.configure((state) => ({
@@ -286,11 +326,28 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
       viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
       viteServer.ws.on(callEvent, (payload) => deliver(callEvent, payload));
-      // Runic Inspect's source map and open requests over the HMR connection, which the page has also when it is not
-      // Vite's own, as under dotnet runic dev (channel.ts, requestEvent). The same answers as the HTTP endpoints.
+      viteServer.ws.on(spanEvent, (payload) => deliver(spanEvent, payload));
+      // Runic Inspect's source map, handler analysis and open requests over the HMR connection, which the page has also
+      // when it is not Vite's own, as under dotnet runic dev (channel.ts, requestEvent). The same answers as the HTTP
+      // endpoints, and like them only for this machine: Vite's WebSocket server reports each connection's peer.
+      const localSockets = new WeakSet<object>();
+      viteServer.ws.on("connection", (socket: object, request: IncomingMessage) => {
+        if (isLoopbackRequest(request)) localSockets.add(socket);
+      });
+      const requestResolution = openResolution(viteServer);
+      const requestAnalyzer = client && options.inspect !== false ? createHandlerAnalyzer(() => resolvedRoot) : undefined;
       viteServer.ws.on(requestEvent, (payload, hotClient) => {
-        const answer = answerClientRequest(payload, readSourceMap, frontendFile, openLocation);
-        if (answer !== undefined) hotClient.send(responseEvent, answer);
+        const socket = (hotClient as { socket?: object }).socket;
+        void answerClientRequest(payload, {
+          read: readSourceMap, launch: openLocation, resolution: requestResolution,
+          ...(requestAnalyzer === undefined ? {} : { analyze: (file: string) => requestAnalyzer(handlerFile(file, resolvedRoot)) }),
+          ...(options.inspect === false ? {} : {
+            message: (message: MessageReference) => readMessageReply({
+              address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
+            }, message),
+          }),
+          local: socket !== undefined && localSockets.has(socket),
+        }).then((answer) => { if (answer !== undefined) hotClient.send(responseEvent, answer); });
       });
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
@@ -305,12 +362,27 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           answerSources(request, response, readSourceMap);
         });
       }
-      // With sourceMap: false the reader has no map, so the endpoint opens only frontend files (Runic Inspect's links).
-      viteServer.middlewares.use(openPath, (request, response, next) => {
-        answerOpen(request, response, readSourceMap, frontendFile, openLocation).catch(next);
-      });
+      if (client && options.inspect !== false) {
+        // Runic Inspect asks which of a file's event handlers reach which client calls, before any click.
+        const analyze = createHandlerAnalyzer(() => resolvedRoot);
+        viteServer.middlewares.use(handlersPath, (request, response, next) => {
+          // A mounted handler sees the URL without the mount path.
+          request.url = `${handlersPath}${request.url ?? ""}`;
+          answerHandlers(request, response, analyze, resolvedRoot).catch(next);
+        });
+      }
+      // The open action (sources.ts, resolveOpenLocation; D066.36): the source map's locations, frontend files Vite
+      // serves, and Runic Inspect's Translations messages. With sourceMap: false the reader has no map, so it opens only
+      // what Inspect links to.
+      if (options.sourceMap !== false || options.inspect !== false) {
+        const resolution = openResolution(viteServer);
+        viteServer.middlewares.use(openPath, (request, response, next) => {
+          answerOpen(request, response, readSourceMap, openLocation, resolution).catch(next);
+        });
+      }
       viteServer.httpServer?.once("close", () => {
         server = undefined;
+        void otlp?.close();
       });
     },
     resolveId(id, importer, resolveOptions) {
@@ -334,9 +406,11 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
+        // trace: the client gives each Bridge call a trace context and sends its span, which the server exports.
         const clientOptions: RunicClientOptions = {
           channel: "hot", base, root: resolvedRoot, ...(options.inspect === false ? { inspect: false } : {}),
           ...(dock ? { dock: true } : {}),
+          ...(otlp === undefined ? {} : { trace: true }),
         };
         const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${JSON.stringify(clientOptions)};`];
         if (options.staleInputWarning === false) {
@@ -378,8 +452,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
             handler: async (target: unknown) => {
               // With sourceMap: false the reader has no map, so nothing opens.
               // Map entries and .NET stack frames only: the dock links nothing else.
-              const location = resolveOpenLocation(readSourceMap, target);
-              if (location === undefined) throw new Error("The source map lists no such location.");
+              const location = await resolveOpenLocation(readSourceMap, target);
+              if (location === undefined || location === "invalid") throw new Error("The source map lists no such location.");
               openLocation(location);
             },
           }),
@@ -392,6 +466,15 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       },
     },
   };
+}
+
+function pluginVersion(): string {
+  try {
+    const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version?: unknown };
+    return typeof manifest.version === "string" ? manifest.version : "0";
+  } catch {
+    return "0";
+  }
 }
 
 function resolveDesktopBootstrapUrl(

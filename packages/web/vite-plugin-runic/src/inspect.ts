@@ -4,23 +4,34 @@
 // and the texts its ViewModel sent, each location with an "open in editor" link. While it is on, the page's own
 // handlers see no pointer event: a transparent layer takes them, and the window's capture phase stops them.
 //
-// What an element calls is learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in
-// the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. A button therefore
-// shows its command once it was used. States come from the state inspector channel (`runic.views.inspector`), C#
-// locations from the development source map, and opening through `/__runic/open`'s decision: C# locations by their
-// source map id, frontend files by path (only files Vite serves). Both go over Vite's HMR connection when the client
-// has it, so they reach the Vite server also from the .NET host's page under `dotnet runic dev`, else to
-// `/__runic/sources` and `/__runic/open` relative to the page.
+// What an element calls is found before any click in its component's source (handlers.ts and inspect-handlers.ts),
+// and learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in the caller's stack, so
+// the DOM event being dispatched (`globalThis.event`) names the element. States come from the state inspector channel
+// (`runic.views.inspector`), C# locations from the development source map, and every editor link opens through
+// `/__runic/open`'s decision: a C# location by its source map id, a Translations message by its reference, a frontend
+// file by path (only files Vite serves). The source map, the handler analysis, message sources and opening go over
+// Vite's HMR connection when the client has it, so they reach the Vite server also from the .NET host's page under
+// `dotnet runic dev`; else to `/__runic/sources`, `/__runic/handlers`, `/__runic-translations/message` and
+// `/__runic/open` relative to the page.
+//
+// Text from generated `m.*()` calls carries Runic Translations' invisible message markers while select mode is on: turning
+// it on calls `markers.set(true)` on the Translations text-change channel (`Symbol.for("runic.translations.text")`,
+// vite-plugin-runic-translations 0.12 under `vite dev`), which renders the page again with a marker in front of every
+// message's text; turning it off renders the plain text again. The overview decodes the markers of the selected
+// element's text and attributes, and reads each message's source location from the Translations dev server's message API
+// (`/__runic-translations/message`). Outside select mode the page's text has no markers.
 //
 // `globalThis[Symbol.for("runic.vite.inspect")]` is the API for agents and tests: `describe(element)` returns the
 // overview as JSON-safe data. Everything here is part of the development client, which a build replaces with an empty
 // module; it uses only the DOM, so every engine under `dotnet runic dev` runs it.
 
 import type { RunicSourceMap } from "./sources.js";
-import { openPath, sourcesPath } from "./channel.js";
+import { handlersPath, openPath, sourcesPath } from "./channel.js";
+import type { RunicHandlerAnalysis } from "./handlers.js";
+import { findProbes, matchBindings, probeFiles, type RequestedAnalysis, type SourceBindings } from "./inspect-handlers.js";
 import {
-  assembleDescription, normalizeText, type LearnedBinding, type RunicInspectCall, type RunicInspectDescription,
-  type RunicInspectLocation, type TextReferenceLike,
+  assembleDescription, groupMessages, messageSource, normalizeText, stripMarkers, type LearnedBinding, type RunicInspectCall,
+  type RunicInspectDescription, type RunicInspectLocation, type RunicInspectMessage, type TextReferenceLike,
 } from "./inspect-data.js";
 import { findComponent, findComponentSync, type AngularDebug, type NodeLike } from "./inspect-frameworks.js";
 
@@ -29,7 +40,10 @@ export interface RunicInspectApi {
   readonly version: 1;
   /** Whether select mode is on. */
   readonly active: boolean;
-  /** Turns select mode on or off (the opposite of now without an argument); returns whether it is on. */
+  /**
+   * Turns select mode on or off (the opposite of now without an argument); returns whether it is on. While it is on, the
+   * text of generated `m.*()` calls carries Runic Translations' message markers, so `describe` can name the messages.
+   */
   toggle(on?: boolean): boolean;
   /** The overview of an element, as JSON-safe data. */
   describe(element: Element): Promise<RunicInspectDescription>;
@@ -43,9 +57,12 @@ export interface RunicInspectApi {
  * A request to the development server over Vite's HMR connection (channel.ts, `requestEvent`): the source map, or
  * opening a location. Resolves to the server's status (0 when it did not answer) and, for the map, its body.
  */
-export type InspectRequest = (kind: "sources" | "open", target?: unknown) => Promise<{ readonly status: number; readonly body?: unknown }>;
+export type InspectRequest = (kind: "sources" | "handlers" | "message" | "open", target?: unknown) =>
+  Promise<{ readonly status: number; readonly body?: unknown }>;
 
 export interface InspectOptions {
+  /** The server's base path, below which the Translations message API is (without `request`). */
+  readonly base?: string | undefined;
   readonly root?: string | undefined;
   /**
    * The development client's request over Vite's connection. With it, the source map and opening go to the Vite server
@@ -59,6 +76,10 @@ export const inspectKey = Symbol.for("runic.vite.inspect");
 const callsKey = Symbol.for("runic.views.calls");
 const inspectorKey = Symbol.for("runic.views.inspector");
 const translatedTextKey = Symbol.for("runic.views.translated-text");
+const translationsTextKey = Symbol.for("runic.translations.text");
+const messagePath = "__runic-translations/message";
+/** The attributes whose text the overview reads message markers from, besides the element's text. */
+const messageAttributes = ["title", "aria-label", "aria-description", "aria-placeholder", "placeholder", "alt", "label"] as const;
 const tagName = "runic-inspect";
 const interactiveSelector = "button, a[href], input, select, textarea, summary, [role=button], [role=link], " +
   "[role=checkbox], [role=switch], [role=menuitem], [role=tab], [role=option], [contenteditable=true]";
@@ -82,6 +103,13 @@ interface TranslatedText {
     getLocale?(): string;
     setLocale?: unknown;
   };
+}
+
+/** The `markers` member of the Runic Translations text-change channel (its ESM guide, "Message markers"). */
+interface TranslationMarkers {
+  readonly enabled: boolean;
+  set(on: boolean): number;
+  decode(text: string): readonly unknown[];
 }
 
 type MutableCall = { -readonly [K in keyof RunicInspectCall]: RunicInspectCall[K] };
@@ -128,7 +156,7 @@ function shortFile(file: string, root: string | undefined): string {
 export function installInspect(options: InspectOptions = {}): () => void {
   const host = globalThis as unknown as Record<symbol, unknown> & { event?: Event; ng?: AngularDebug };
   if (typeof document === "undefined" || typeof Element === "undefined") return () => {};
-  const { root, request } = options;
+  const { base = "/", root, request } = options;
 
   const learned = new WeakMap<Element, Map<string, LearnedBinding>>();
   const elementCalls = new WeakMap<Element, MutableCall[]>();
@@ -223,6 +251,36 @@ export function installInspect(options: InspectOptions = {}): () => void {
     }
   }
 
+  async function readAnalysis(file: string): Promise<RequestedAnalysis | undefined> {
+    try {
+      let analysis: RunicHandlerAnalysis | undefined;
+      if (request !== undefined) {
+        const answer = await request("handlers", file);
+        analysis = answer.status === 200 ? answer.body as RunicHandlerAnalysis : undefined;
+      } else {
+        const response = await fetch(`${handlersPath}?file=${encodeURIComponent(file)}`, { credentials: "same-origin", cache: "no-store" });
+        if (!response.ok) return undefined;
+        analysis = await response.json() as RunicHandlerAnalysis;
+      }
+      return analysis?.format === "runic-handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // The element's event bindings in its components' source (`/__runic/handlers`), before any click.
+  async function readSourceBindings(element: Element): Promise<SourceBindings | undefined> {
+    try {
+      const probes = await findProbes(element as unknown as NodeLike, { root, ng: host.ng, fetchText });
+      if (probes.length === 0) return undefined;
+      const analyses = (await Promise.all(probeFiles(probes).slice(0, 6).map(readAnalysis)))
+        .filter((analysis): analysis is RequestedAnalysis => analysis !== undefined);
+      return matchBindings(probes, analyses);
+    } catch {
+      return undefined;
+    }
+  }
+
   function resolveText(reference: TextReferenceLike): { text: string; locale?: string } | undefined {
     const channel = host[translatedTextKey] as TranslatedText | undefined;
     const translations = channel?.translations;
@@ -238,6 +296,51 @@ export function installInspect(options: InspectOptions = {}): () => void {
     }
   }
 
+  function translationMarkers(): TranslationMarkers | undefined {
+    const markers = (host[translationsTextKey] as { markers?: Partial<TranslationMarkers> } | undefined)?.markers;
+    return typeof markers?.set === "function" && typeof markers.decode === "function" ? markers as TranslationMarkers : undefined;
+  }
+
+  // The messages whose markers are in the element's text or its attributes, with their sources.
+  async function readMessages(element: Element): Promise<{
+    messages: RunicInspectMessage[]; status: "on" | "off" | "unsupported" | "none"; sources?: "unavailable";
+  }> {
+    const markers = translationMarkers();
+    if (markers === undefined) return { messages: [], status: host[translationsTextKey] === undefined ? "none" : "unsupported" };
+    const found: { message: unknown; in: string }[] = [];
+    const decode = (text: string | null | undefined, where: string): void => {
+      if (typeof text !== "string" || text.length === 0) return;
+      try {
+        for (const message of markers.decode(text)) found.push({ message, in: where });
+      } catch { /* a foreign channel */ }
+    };
+    decode(element.textContent, "text");
+    for (const name of messageAttributes) decode(element.getAttribute(name), name);
+    if ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && element.type !== "password") decode(element.value, "value");
+    const messages = groupMessages(found);
+    const status = markers.enabled ? "on" : "off";
+    if (messages.length === 0) return { messages, status };
+    let unavailable = false;
+    const replies = new Map<string, Promise<unknown>>();
+    const withSources = await Promise.all(messages.map(async (message) => {
+      const query = `key=${encodeURIComponent(message.key)}&catalog=${encodeURIComponent(message.catalog)}`;
+      let reply = replies.get(query);
+      if (reply === undefined) {
+        reply = request !== undefined
+          ? request("message", { catalog: message.catalog, key: message.key })
+            .then((answer) => answer.status === 200 ? answer.body : undefined).catch(() => undefined)
+          : fetch(`${base.endsWith("/") ? base : `${base}/`}${messagePath}?${query}`, { credentials: "same-origin", cache: "no-store" })
+            .then((response) => response.ok ? response.json() as Promise<unknown> : undefined)
+            .catch(() => undefined);
+        replies.set(query, reply);
+      }
+      const value = await reply;
+      if (value === undefined) unavailable = true;
+      return { ...message, ...messageSource(value, message) };
+    }));
+    return { messages: withSources, status, ...(unavailable ? { sources: "unavailable" as const } : {}) };
+  }
+
   async function describe(element: Element): Promise<RunicInspectDescription> {
     if (!(element instanceof Element)) throw new TypeError("describe needs an element.");
     const targets = new Set<Element>([bindingElement(element)]);
@@ -249,14 +352,17 @@ export function installInspect(options: InspectOptions = {}): () => void {
       elementCallList.push(...(elementCalls.get(target) ?? []).map((call) => ({ ...call })));
     }
     elementCallList.sort((a, b) => b.id - a.id);
-    const ownText = element.children.length === 0 ? element.textContent ?? ""
-      : [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" ");
+    // The text as the page shows it outside select mode: without message markers.
+    const ownText = stripMarkers(element.children.length === 0 ? element.textContent ?? ""
+      : [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" "));
     const control = element as Partial<HTMLInputElement>;
     const hasValue = (element instanceof HTMLInputElement && element.type !== "password" && element.type !== "checkbox" && element.type !== "radio")
       || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement;
-    const [sourceMap, component] = await Promise.all([
+    const [sourceMap, component, source, messages] = await Promise.all([
       readSourceMap(),
       findComponent(element as unknown as NodeLike, { root, ng: host.ng, fetchText }),
+      readSourceBindings(bindingElement(element)),
+      readMessages(element),
     ]);
     const role = element.getAttribute("role");
     return assembleDescription({
@@ -265,9 +371,9 @@ export function installInspect(options: InspectOptions = {}): () => void {
         ...(element.id === "" ? {} : { id: element.id }),
         classes: [...element.classList].slice(0, 8),
         ...(role === null ? {} : { role }),
-        text: normalizeText(element.textContent ?? ""),
+        text: normalizeText(stripMarkers(element.textContent ?? "")),
         ownText,
-        ...(hasValue && typeof control.value === "string" ? { value: control.value } : {}),
+        ...(hasValue && typeof control.value === "string" ? { value: stripMarkers(control.value) } : {}),
         interactive: element.matches(interactiveSelector) || element.closest(interactiveSelector) !== null,
       },
       learned: bindings,
@@ -277,16 +383,21 @@ export function installInspect(options: InspectOptions = {}): () => void {
       sourceMap: sourceMap.map,
       ...(sourceMap.status === undefined ? {} : { sourceMapStatus: sourceMap.status }),
       component,
+      source,
       resolveText,
+      messages: messages.messages,
+      markerStatus: messages.status,
+      messageSourcesStatus: messages.sources,
     });
   }
 
   async function open(location: RunicInspectLocation): Promise<boolean> {
     try {
-      // One open path for every location: the endpoint validates both kinds (sources.ts, resolveOpenLocation).
-      const target = location.editor === "runic" && location.id !== undefined
-        ? { id: location.id }
-        : { file: location.file, line: location.line, column: location.column };
+      // One open path for every location: the endpoint validates each kind (sources.ts, resolveOpenLocation).
+      const target = location.editor === "runic" && location.id !== undefined ? { id: location.id }
+        : location.editor === "translations" && location.message !== undefined
+          ? { message: { catalog: location.message.catalog, key: location.message.key, locale: location.message.locale } }
+          : { file: location.file, line: location.line, column: location.column };
       if (request !== undefined) return (await request("open", target)).status === 200;
       const response = await fetch(openPath, {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
@@ -430,7 +541,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
     section("Commands", description.commands.map((command) => [
       code(`${command.member}()`), " → ", code(command.symbol ?? "?"),
       ...(command.location === undefined ? [] : [" ", link(command.location)]),
-      muted(` · ${command.calls} call${command.calls === 1 ? "" : "s"}`),
+      command.evidence === "source" ? muted(" · from the source, not called yet") : muted(` · ${command.calls} call${command.calls === 1 ? "" : "s"}`),
+      ...(command.frontend === undefined ? [] : [muted(" · called at "), link(command.frontend)]),
       ...(command.canExecute === undefined ? [] : [muted(` · can run: ${text(command.canExecute)}`)]),
     ]));
     section("ViewModel members", description.members.map((member) => [
@@ -449,6 +561,12 @@ export function installInspect(options: InspectOptions = {}): () => void {
       ` ${call.duration === undefined ? "running" : `${call.duration.toFixed(1)} ms`}`,
       ...(call.outcome === undefined ? [] : [` ${call.outcome}${call.reason === undefined ? "" : ` (${call.reason})`}`]),
       ...(call.revision === undefined ? [] : [muted(` · revision ${call.revision}`)]),
+    ]));
+    section("Messages", description.messages.map((message) => [
+      code(`${message.catalog}:${message.key}`), message.locale === "" ? "" : muted(` [${message.locale}]`),
+      ...(message.source === undefined ? [] : [` ${JSON.stringify(message.source.length > 80 ? `${message.source.slice(0, 79)}…` : message.source)}`]),
+      ...(message.in.length === 1 && message.in[0] === "text" ? [] : [muted(` · in ${message.in.join(", ")}`)]),
+      ...(message.location === undefined ? [] : [" ", link(message.location)]),
     ]));
     section("Texts from the ViewModel", description.texts.map((entry) => [
       code(`${entry.catalog}:${entry.key}`), entry.locale === undefined ? "" : muted(` [${entry.locale}]`),
@@ -474,6 +592,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
   function setActive(on: boolean): boolean {
     if (on === active) return active;
     active = on;
+    // Message markers only while selecting: the page renders again with them, and again without them.
+    try { translationMarkers()?.set(on); } catch { /* a foreign channel */ }
     if (on) overlay ??= createOverlay();
     if (overlay !== undefined) {
       overlay.glass.hidden = overlay.bar.hidden = !on;
@@ -546,6 +666,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     for (const type of swallowed) removeEventListener(type, onPointer, { capture: true });
     removeEventListener("keydown", onKey, { capture: true });
     if (frame !== undefined) cancelAnimationFrame(frame);
+    if (active) try { translationMarkers()?.set(false); } catch { /* a foreign channel */ }
     overlay?.host.remove();
     overlay = undefined;
     if (host[inspectKey] === api) delete host[inspectKey];

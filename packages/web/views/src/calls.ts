@@ -1,5 +1,5 @@
 import { BridgeError } from "./errors.js";
-import type { Reply } from "./protocol.js";
+import type { Message, Reply } from "./protocol.js";
 import type { Slots } from "./scope.js";
 
 // The development Bridge-call channel on a registered symbol of an instance's slots, which copies of this package and
@@ -11,6 +11,36 @@ import type { Slots } from "./scope.js";
 // costs one property read and nothing is kept or tagged. Only the development build (the `development` export
 // condition, scripts/build.mjs) reports calls: the production build does not contain this module.
 const callsKey = Symbol.for("runic.views.calls");
+
+/**
+ * trace-context/1: a call's request carries the W3C trace context its reader gave it (`BridgeCallChannel.trace`), so
+ * the .NET span of the call (`runic.bridge.*`) and the ViewModel's own spans join the page's trace.
+ */
+export const traceContextFeature = "trace-context/1";
+/**
+ * handler-timing/1: while a reader listens, a call's request asks for its C# handler's name and duration, which a .NET
+ * host in Development adds to the reply.
+ */
+export const handlerTimingFeature = "handler-timing/1";
+
+/** A call's W3C trace context: the page's span for the call, as `traceparent` and optionally `tracestate`. */
+export interface BridgeCallTrace {
+  readonly traceparent: string;
+  readonly tracestate?: string;
+}
+
+/**
+ * The C# handler of a call, from a .NET host in Development (handler-timing/1): its name, such as
+ * `EditorViewModel.Save`, and its duration in milliseconds as .NET measured it. `start` and `end` place it on the
+ * page's clock (`performance.now()` milliseconds), centred in the time between sending the request and receiving its
+ * reply, which assumes the request and the reply took equally long on the way.
+ */
+export interface BridgeCallHandler {
+  readonly name: string;
+  readonly start: number;
+  readonly end: number;
+  readonly duration: number;
+}
 
 /**
  * What a generated client call does: `command` (also a command with a declared failure), `set` (a property setter),
@@ -43,6 +73,8 @@ export interface BridgeCallIdentity {
   readonly member: string;
   /** When the call started, in `performance.now()` milliseconds. */
   readonly start: number;
+  /** The trace context the reader gave the call (`BridgeCallChannel.trace`), which its request carries. */
+  readonly trace?: BridgeCallTrace;
 }
 
 /**
@@ -68,6 +100,8 @@ export type BridgeCallEvent =
     readonly reason?: string;
     /** The error the call rejected with, for `error` and `cancelled`; listeners must not change it. */
     readonly error?: unknown;
+    /** The C# handler of the call's last reply that named one: only from a .NET host in Development. */
+    readonly handler?: BridgeCallHandler;
   };
 
 /** A reader of the Bridge-call channel. */
@@ -77,13 +111,15 @@ export type BridgeCallListener = (event: BridgeCallEvent) => void;
  * The value at `globalThis[Symbol.for("runic.views.calls")]` (an instance's slots). A reader creates it if absent, adds
  * a listener and sets `requested`. `devtools: false` asks for the calls without developer tools integration: no async
  * stack tasks, and a reader that draws calls does not. `sequence` is the last id handed out, which every copy of the
- * package shares.
+ * package shares. `trace`, set by a reader that exports traces, gives each call its trace context; without it no
+ * trace context is created or sent.
  */
 export interface BridgeCallChannel {
   readonly listeners?: Set<BridgeCallListener>;
   requested?: boolean;
   devtools?: boolean;
   sequence?: number;
+  trace?: () => BridgeCallTrace | undefined;
 }
 
 // V8's async stack tagging (`console.createTask`), absent in WebKit and Gecko.
@@ -97,6 +133,7 @@ export interface BridgeCall {
   revision?: number | undefined;
   outcome?: BridgeCallOutcome | undefined;
   reason?: string | undefined;
+  handler?: BridgeCallHandler | undefined;
 }
 
 function deliver(channel: BridgeCallChannel, event: BridgeCallEvent): boolean {
@@ -116,7 +153,12 @@ export function beginCall(slots: Slots, kind: BridgeCallKind, request: string, r
   const channel = slots[callsKey] as BridgeCallChannel | undefined;
   if (channel?.requested !== true) return undefined;
   const id = (typeof channel.sequence === "number" ? channel.sequence : 0) + 1;
-  const identity: BridgeCallIdentity = { id, kind, request, route, contract, member, start: performance.now() };
+  let trace: BridgeCallTrace | undefined;
+  try { trace = channel.trace?.(); } catch (error) { console.error(error); }
+  const identity: BridgeCallIdentity = {
+    id, kind, request, route, contract, member, start: performance.now(),
+    ...typeof trace?.traceparent === "string" ? { trace } : {},
+  };
   if (!deliver(channel, { ...identity, phase: "start" })) return undefined;
   channel.sequence = id;
   // `Demo.EditorViewModel:3F2A…` names the C# view model `EditorViewModel`.
@@ -127,6 +169,25 @@ export function beginCall(slots: Slots, kind: BridgeCallKind, request: string, r
       : (console as { createTask?: (name: string) => ConsoleTask }).createTask?.(`Runic ${kind} ${model}.${member}`);
   } catch { /* Not V8. */ }
   return { channel, identity, task };
+}
+
+/**
+ * @internal Sends a request of a call: with its trace context when the connection uses trace-context/1, and asking for
+ * its handler's timing when it uses handler-timing/1, which it records from the reply.
+ */
+export async function requestCall(call: BridgeCall, features: ReadonlySet<string> | undefined,
+  send: (message: Message) => Promise<Reply>, message: Message): Promise<Reply> {
+  const trace = features?.has(traceContextFeature) === true ? call.identity.trace : undefined;
+  const timing = features?.has(handlerTimingFeature) === true;
+  const sent = performance.now();
+  const reply = await send(trace || timing ? { ...message, ...trace ? { trace } : {}, ...timing ? { timing: true } : {} } : message);
+  const handler = reply["handler"] as { name?: unknown; duration?: unknown } | undefined;
+  if (typeof handler?.name === "string" && typeof handler.duration === "number" && handler.duration >= 0) {
+    const received = performance.now();
+    const start = sent + Math.max(0, (received - sent - handler.duration) / 2);
+    call.handler = { name: handler.name, start, end: start + handler.duration, duration: handler.duration };
+  }
+  return reply;
 }
 
 /** @internal Records what a reply says about the call: its revision, and an outcome other than `ok` that it resolves with. */
@@ -165,12 +226,13 @@ export function endCall(call: BridgeCall, failed: boolean, failure?: unknown): v
       ? "cancelled" : "error";
     reason = bridge ? failure.reason ?? failure.kind : outcome === "cancelled" ? "aborted" : reason;
   }
-  const { identity, revision } = call;
+  const { identity, revision, handler } = call;
   deliver(call.channel, {
     ...identity, phase: "end", end, duration: end - identity.start, outcome,
     ...revision === undefined ? {} : { revision },
     ...reason === undefined ? {} : { reason },
     ...failed ? { error: failure } : {},
+    ...handler === undefined ? {} : { handler },
   });
 }
 

@@ -1,5 +1,6 @@
 // The development source map (#951): `/__runic/sources` serves the Bridge generator's sources.json in `vite dev`,
-// `/__runic/open` opens only a location the map lists, and `vite build` output does not depend on the map.
+// `/__runic/open` opens only a location the map lists, or the source of a Runic Translations message that the
+// Translations dev server names, and `vite build` output does not depend on the map.
 import assert from "node:assert/strict";
 import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -60,8 +61,8 @@ async function withEnvironment(values, run) {
   }
 }
 
-async function withServer(root, options, run) {
-  const server = await createServer({ root, configFile: false, logLevel: "silent", plugins: [runic({ devtools: false, ...options })],
+async function withServer(root, options, run, plugins = []) {
+  const server = await createServer({ root, configFile: false, logLevel: "silent", plugins: [...plugins, runic({ devtools: false, ...options })],
     server: { host: "127.0.0.1", port: 0, strictPort: false } });
   try {
     await server.listen();
@@ -71,10 +72,11 @@ async function withServer(root, options, run) {
 }
 
 // An editor that records its arguments, as LAUNCH_EDITOR. launch-editor calls an unknown editor with file, line, column.
+// It writes the record beside it and renames it, so that a reader never sees the file before its arguments are in it.
 async function recordingEditor(directory) {
   const editor = join(directory, "record-editor.sh");
   const record = join(directory, "editor-arguments.txt");
-  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD"\n');
+  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD.part" && mv -f "$RUNIC_TEST_EDITOR_RECORD.part" "$RUNIC_TEST_EDITOR_RECORD"\n');
   await chmod(editor, 0o755);
   return { editor, record };
 }
@@ -305,7 +307,8 @@ test("the dock's open action opens only a location in a file the map lists", { s
 });
 
 // Runic Inspect's requests over Vite's HMR connection (#1012), which under dotnet runic dev reach the Vite server from the
-// .NET host's page: the same answers as /__runic/sources and /__runic/open, the same decision for what opens.
+// .NET host's page: the same answers as /__runic/sources, /__runic/handlers, the Translations message API and
+// /__runic/open, the same decision for what opens, and like those endpoints only for a connection from this machine.
 test("requests over Vite's connection answer like the HTTP endpoints and open only what /__runic/open opens", async () => {
   const fixture = await project();
   try {
@@ -313,26 +316,115 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
     const location = fixture.map.members[0].location;
     const page = join(fixture.frontend, "index.html");
     const launched = [];
-    const ask = (message, read = () => map) =>
-      answerClientRequest(message, read, (file) => file.startsWith(`${fixture.frontend}/`), (target) => launched.push(target));
-    assert.deepEqual(ask({ id: 1, kind: "sources" }), { id: 1, status: 200, body: map });
-    assert.deepEqual(ask({ id: 2, kind: "sources" }, () => undefined), { id: 2, status: 404 }, "no map (sourceMap: false)");
-    assert.deepEqual(ask({ id: 3, kind: "open", target: { id: fixture.map.members[0].id } }), { id: 3, status: 200 });
-    assert.deepEqual(ask({ id: 4, kind: "open", target: { file: page, line: 2 } }), { id: 4, status: 200 }, "a served frontend file");
+    const ask = (message, { read = () => map, local = true } = {}) => answerClientRequest(message, {
+      read, local, launch: (target) => launched.push(target),
+      resolution: { frontendFile: (file) => file.startsWith(`${fixture.frontend}/`) },
+      analyze: async (file) => file === "src/App.tsx" ? { format: "runic-handlers/1", bindings: [] } : undefined,
+      message: async (reference) => reference.key === "heading" ? { message: { catalog: reference.catalog, key: reference.key, locales: [] } } : undefined,
+    });
+    assert.deepEqual(await ask({ id: 1, kind: "sources" }), { id: 1, status: 200, body: map });
+    assert.deepEqual(await ask({ id: 2, kind: "sources" }, { read: () => undefined }), { id: 2, status: 404 }, "no map (sourceMap: false)");
+    assert.deepEqual(await ask({ id: 3, kind: "open", target: { id: fixture.map.members[0].id } }), { id: 3, status: 200 });
+    assert.deepEqual(await ask({ id: 4, kind: "open", target: { file: page, line: 2 } }), { id: 4, status: 200 }, "a served frontend file");
     assert.deepEqual(launched, [location, { file: page, line: 2, column: 1 }]);
     launched.length = 0;
+    assert.deepEqual(await ask({ id: 7, kind: "handlers", file: "src/App.tsx" }), { id: 7, status: 200, body: { format: "runic-handlers/1", bindings: [] } });
+    assert.deepEqual(await ask({ id: 8, kind: "handlers", file: "src/Missing.tsx" }), { id: 8, status: 404 });
+    assert.deepEqual(await ask({ id: 9, kind: "handlers" }), { id: 9, status: 400 });
+    assert.deepEqual(await ask({ id: 10, kind: "message", target: { catalog: "app", key: "heading" } }),
+      { id: 10, status: 200, body: { message: { catalog: "app", key: "heading", locales: [] } } });
+    assert.deepEqual(await ask({ id: 11, kind: "message", target: { catalog: "app", key: "../heading" } }), { id: 11, status: 400 });
+    assert.deepEqual(await ask({ id: 12, kind: "open", target: { message: "app:heading" } }), { id: 12, status: 400 }, "a malformed message reference");
     for (const target of [
       { file: join(fixture.directory, "record-editor.sh"), line: 1 }, { file: "/etc/passwd", line: 1 },
       { id: "Demo.CounterViewModel/state/count" }, { file: `${fixture.frontend}/src/../index.html`, line: 1 },
       { file: join(fixture.frontend, "missing.ts"), line: 1 }, { file: location.file, line: 0 }, "index.html", null, undefined,
+      // A message the resolution cannot locate (no Translations dev server here) opens nothing.
+      { message: { catalog: "app", key: "heading", locale: "en" } },
     ]) {
-      assert.equal(ask({ id: 5, kind: "open", target })?.status, 404, JSON.stringify(target));
+      assert.equal((await ask({ id: 5, kind: "open", target }))?.status, 404, JSON.stringify(target));
+    }
+    // A connection from another machine gets nothing, whatever it asks: the endpoints are loopback-only.
+    for (const kind of ["sources", "handlers", "message", "open"]) {
+      assert.deepEqual(await ask({ id: 13, kind, file: "src/App.tsx", target: { id: fixture.map.members[0].id } }, { local: false }), { id: 13, status: 403 }, kind);
     }
     assert.deepEqual(launched, [], "a refused request launched the editor");
-    assert.deepEqual(ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
+    assert.deepEqual(await ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
     for (const malformed of [null, [], "sources", { kind: "sources" }, { id: -1, kind: "sources" }, { id: 1.5, kind: "sources" }, { id: "1", kind: "open" }]) {
-      assert.equal(ask(malformed), undefined, JSON.stringify(malformed));
+      assert.equal(await ask(malformed), undefined, JSON.stringify(malformed));
     }
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+// The Translations dev server's message API as vite-plugin-runic-translations 0.12 answers it (runic-translations-sdk#182),
+// recording each request's client address.
+function translationsApi(sources, requests) {
+  return {
+    name: "translations-message-api",
+    configureServer(server) {
+      server.middlewares.use("/__runic-translations/message", (request, response) => {
+        const url = new URL(request.url, "http://localhost");
+        const key = url.searchParams.get("key"), catalog = url.searchParams.get("catalog");
+        requests.push({ key, catalog, address: request.socket.remoteAddress, method: request.method });
+        const source = sources[`${catalog}:${key}`];
+        response.setHeader("Content-Type", "application/json");
+        if (source === undefined) {
+          response.statusCode = 404;
+          response.end(JSON.stringify({ error: "not-found", detail: "Unknown message." }));
+          return;
+        }
+        response.end(JSON.stringify({ message: { catalog, key, baseLocale: "en", locales: [
+          { locale: "en", origin: "catalog", text: "Counter", source: { path: source, line: 2, column: 1 } },
+          { locale: "de", origin: "missing", text: null, source: null },
+        ] } }));
+      });
+    },
+  };
+}
+
+test("/__runic/open opens a Translations message's source that the Translations dev server names, never a path from the page", async () => {
+  const fixture = await project();
+  const { editor, record } = await recordingEditor(fixture.directory);
+  const rmf2 = join(fixture.frontend, "translations", "en.rmf2");
+  await mkdir(join(rmf2, ".."), { recursive: true });
+  await writeFile(rmf2, "# App\nheading = Counter\n");
+  const requests = [];
+  const api = translationsApi({ "app:heading": rmf2, "app:passwd": "/etc/passwd", "app:gone": join(fixture.frontend, "translations", "fr.rmf2") }, requests);
+  try {
+    for (const options of [{}, { sourceMap: false }]) {
+      await withEnvironment({ LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record }, () => withServer(fixture.frontend, options, async (base) => {
+        const open = body => fetch(`${base}/__runic/open`, {
+          method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify(body),
+        }).then(async (response) => { await response.arrayBuffer(); return response.status; });
+        assert.equal(await open({ message: { catalog: "app", key: "missing", locale: "en" } }), 404, "a message the API does not know");
+        assert.equal(await open({ message: { catalog: "app", key: "heading", locale: "de" } }), 404, "a locale without a source");
+        assert.equal(await open({ message: { catalog: "app", key: "passwd", locale: "en" } }), 404, "not a translation source");
+        assert.equal(await open({ message: { catalog: "app", key: "gone", locale: "en" } }), 404, "a file that does not exist");
+        assert.equal(await open({ message: { catalog: "app", key: "../heading", locale: "en" } }), 400);
+        assert.equal(await open({ message: "app:heading" }), 400);
+        assert.equal(await open({ message: { catalog: "app", key: "missing", locale: "en" }, file: rmf2, line: 2, column: 1 }), 404,
+          "a message request never opens a path it carries");
+        assert.equal(await exists(record), false, "no refused request launched the editor");
+        // The request went to this server from loopback, as the API requires.
+        assert.ok(requests.length > 0 && requests.every(request => request.method === "GET" && /^(?:::ffff:)?127\.0\.0\.1$|^::1$/u.test(request.address)), JSON.stringify(requests));
+        if (process.platform !== "win32") {
+          assert.equal(await open({ message: { catalog: "app", key: "heading", locale: "en" } }), 200);
+          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [rmf2, "2", "1"]);
+          await rm(record);
+        }
+        requests.length = 0;
+      }, [api]));
+    }
+    // Without Runic Inspect and the map there is no open action; without the Translations API a message opens nothing.
+    await withEnvironment({ LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record }, () => withServer(fixture.frontend, {}, async (base) => {
+      const response = await fetch(`${base}/__runic/open`, {
+        method: "POST", headers: { "Content-Type": "application/json", Origin: base },
+        body: JSON.stringify({ message: { catalog: "app", key: "heading", locale: "en" } }),
+      });
+      await response.arrayBuffer();
+      assert.equal(response.status, 404);
+      assert.equal(await exists(record), false);
+    }));
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 

@@ -12,9 +12,15 @@ globalThis.__runicBridge = {
     const message = JSON.parse(text);
     const reply = value => JSON.stringify(value);
     switch (message.kind) {
-      case "hello": return reply({ ok: true, protocol: 4, implementation: { name: "test", version: "0" }, features: [] });
+      // A Development host lists the development tools' features, trace-context/1 and handler-timing/1, named here
+      // without their literal text, which the test looks for in the bundle.
+      case "hello":
+        globalThis.productionTest.hello = message.features;
+        return reply({ ok: true, protocol: 4, implementation: { name: "test", version: "0" },
+          features: ["trace-context", "handler-timing"].map(name => `${name}/1`) });
       case "open": return reply({ ok: true, presentation: "ok", revision, state: state(), fields: { step: { version: 1 } } });
       case "command": {
+        globalThis.productionTest.commands.push(Object.keys(message).sort());
         count++;
         revision++;
         const frame = JSON.stringify({ kind: "frame", route: message.route, baseRevision: revision - 1, revision,

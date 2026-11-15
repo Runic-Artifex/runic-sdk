@@ -15,6 +15,14 @@ internal abstract class ScreenReader
     /// <summary>Whether phrases are sampled (the current phrase) rather than reported as each is spoken.</summary>
     internal virtual bool Sampled => false;
 
+    /// <summary>How long after its last phrase the screen reader can still speak a hint, which drops or replaces what an
+    /// action makes it say (VoiceOver, sdk#1015). The probe waits that long before an action unless the last phrase was
+    /// the hint (<see cref="IsHint"/>). Zero for screen readers whose hints the probe does not wait for.</summary>
+    internal virtual TimeSpan HintDelay => TimeSpan.Zero;
+
+    /// <summary>Whether a phrase is the screen reader's hint, the last thing it says about a control.</summary>
+    internal virtual bool IsHint(string phrase) => false;
+
     internal abstract Task StartAsync(CancellationToken cancellationToken);
 
     /// <summary>Reports each phrase the screen reader speaks until cancelled.</summary>

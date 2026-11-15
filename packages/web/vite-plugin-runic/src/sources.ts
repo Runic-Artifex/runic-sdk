@@ -1,15 +1,17 @@
 // The development source map (#951): the Bridge generator's `sources.json` in the project's `obj`, which maps every
 // Bridge member to its C# symbol and file:line:column. `runic()` serves it at `/__runic/sources` while serving, and
-// opens a location from it, or in a frontend file Vite serves, in the editor at `/__runic/open`. Neither exists in `vite build` or `vite preview`, and
+// opens a location from it, a frontend file Vite serves or a Runic Translations message's source (translations-source.ts)
+// in the editor at `/__runic/open`. Neither exists in `vite build` or `vite preview`, and
 // nothing of the map reaches a bundle.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import launchEditor from "launch-editor";
-import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
+import { isLoopbackRequest, mayReadLocally, readLimitedBody, sameOrigin } from "./requests.js";
 import type { RunicClientResponse } from "./channel.js";
 import { openPath, sourcesPath } from "./channel.js";
+import { parseMessageReference, type MessageReference } from "./translations-source.js";
 
 export { openPath, sourcesPath };
 /** The `sources.json` path that `dotnet runic dev` gives the development server. */
@@ -207,23 +209,11 @@ function answer(response: ServerResponse, status: number, body?: unknown, header
   response.end(JSON.stringify(body));
 }
 
-/**
- * Whether a GET may read the map: a request of this machine, and not a page of another origin. A browser marks a
- * cross-origin fetch with `Sec-Fetch-Site` and `Origin`; neither is required, so that a tool such as `curl` reads it.
- */
-function mayRead(request: IncomingMessage): boolean {
-  const site = request.headers["sec-fetch-site"];
-  if (site !== undefined && site !== "same-origin" && site !== "none") return false;
-  const origin = request.headers.origin;
-  if (origin !== undefined && !sameOrigin(request)) return false;
-  return isLoopbackRequest(request);
-}
-
 /** Answers `GET /__runic/sources` with the map, or 404 without one. */
 export function answerSources(request: IncomingMessage, response: ServerResponse, read: () => RunicSourceMap | undefined): void {
   request.resume();
   if (request.method !== "GET" && request.method !== "HEAD") return answer(response, 405, undefined, { Allow: "GET, HEAD" });
-  if (!mayRead(request)) return answer(response, 403);
+  if (!mayReadLocally(request)) return answer(response, 403);
   const map = read();
   if (map === undefined) return answer(response, 404);
   answer(response, 200, map);
@@ -251,19 +241,40 @@ export function listsFile(map: RunicSourceMap | undefined, file: string): boolea
 }
 
 /**
- * What `/__runic/open` and the dock's open action both open for a request's `{ id }` or `{ file, line, column? }`, else
- * undefined: a location of the current map (`findOpenLocation`), or a location in a frontend file that `frontendFile`
- * accepts (the files Vite itself would serve to the page, which Runic Inspect links to), in both cases only while the
- * file exists. The one decision of what may be opened; the endpoint checks the request's origin first, and the dock's
- * RPC is limited to clients Vite DevTools trusts.
+ * What decides, besides the source map, which locations may be opened (`resolveOpenLocation`).
  */
-export function resolveOpenLocation(
+export interface RunicOpenResolution {
+  /** Whether Vite serves a frontend file to the page (index.ts: `isFileLoadingAllowed`). Without it, no frontend file. */
+  readonly frontendFile?: (file: string) => boolean;
+  /** Where a Runic Translations message is (translations-source.ts). Without it, a message is refused. */
+  readonly findMessage?: (message: MessageReference) => Promise<RunicSourceLocation | undefined>;
+}
+
+/**
+ * What `/__runic/open`, its HMR route and the dock's open action open for a request's `{ id }`, `{ file, line, column? }`
+ * or `{ message: { catalog, key, locale } }`, else undefined (`invalid` for a malformed message reference): a location
+ * of the current map (`findOpenLocation`), a location in a frontend file that `frontendFile` accepts (the files Vite
+ * itself would serve to the page, which Runic Inspect links to), or where `findMessage` finds a Translations message;
+ * in every case only while the file exists (D066.36). The one decision of what may be opened; the endpoint checks the
+ * request's origin first, and the dock's RPC is limited to clients Vite DevTools trusts.
+ */
+export async function resolveOpenLocation(
   read: () => RunicSourceMap | undefined,
   message: unknown,
-  frontendFile: (file: string) => boolean = () => false,
-): RunicSourceLocation | undefined {
-  const map = read();
-  const location = (map === undefined ? undefined : findOpenLocation(map, message)) ?? frontendLocation(message, frontendFile);
+  resolution: RunicOpenResolution = {},
+): Promise<RunicSourceLocation | "invalid" | undefined> {
+  let location: RunicSourceLocation | undefined;
+  const translation = typeof message === "object" && message !== null && "message" in message
+    ? (message as { message: unknown }).message : undefined;
+  if (translation !== undefined) {
+    const reference = parseMessageReference(translation);
+    if (reference === undefined) return "invalid";
+    location = await resolution.findMessage?.(reference);
+  } else {
+    const map = read();
+    location = (map === undefined ? undefined : findOpenLocation(map, message))
+      ?? frontendLocation(message, resolution.frontendFile ?? (() => false));
+  }
   return location !== undefined && isFile(location.file) ? location : undefined;
 }
 
@@ -291,42 +302,62 @@ export function launchSourceEditor(location: RunicSourceLocation, failed: (messa
 
 /**
  * Answers a development client's request over Vite's HMR connection (channel.ts, `requestEvent`) as the HTTP endpoints
- * answer: `sources` with the map (200) or 404; `open` with the same decision as `/__runic/open` (`resolveOpenLocation`),
- * 200 after `launch`, else 404 and nothing launched. A malformed request without an id gets no answer, one with an id
+ * answer, for a connection from this machine only (`local`; 403 otherwise, as the endpoints are loopback-only):
+ * `sources` with the map (200) or 404; `handlers` with Runic Inspect's handler analysis of a `file` (200), 404 or 400;
+ * `message` with the Translations message API's reply for a `target` `{ catalog, key }` (200), 404 or 400;
+ * `open` with the same decision as `/__runic/open` (`resolveOpenLocation`), 200 after `launch`, else 404 (400 for a
+ * malformed message reference) and nothing launched. A malformed request without an id gets no answer, one with an id
  * but another kind gets 400.
  */
-export function answerClientRequest(
-  message: unknown,
-  read: () => RunicSourceMap | undefined,
-  frontendFile: (file: string) => boolean,
-  launch: (location: RunicSourceLocation) => void,
-): RunicClientResponse | undefined {
+export async function answerClientRequest(message: unknown, context: {
+  readonly read: () => RunicSourceMap | undefined;
+  readonly launch: (location: RunicSourceLocation) => void;
+  readonly resolution?: RunicOpenResolution;
+  readonly analyze?: (file: string) => Promise<unknown>;
+  readonly message?: (message: MessageReference) => Promise<unknown>;
+  readonly local: boolean;
+}): Promise<RunicClientResponse | undefined> {
   if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
-  const { id, kind, target } = message as Record<string, unknown>;
+  const { id, kind, target, file } = message as Record<string, unknown>;
   if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return undefined;
+  if (kind !== "sources" && kind !== "handlers" && kind !== "message" && kind !== "open") return { id, status: 400 };
+  if (!context.local) return { id, status: 403 };
   if (kind === "sources") {
-    const map = read();
+    const map = context.read();
     return map === undefined ? { id, status: 404 } : { id, status: 200, body: map };
   }
-  if (kind !== "open") return { id, status: 400 };
-  const location = resolveOpenLocation(read, target, frontendFile);
+  if (kind === "handlers") {
+    if (context.analyze === undefined) return { id, status: 404 };
+    if (typeof file !== "string" || file.length === 0 || file.length > 4096) return { id, status: 400 };
+    const analysis = await context.analyze(file);
+    return analysis === undefined ? { id, status: 404 } : { id, status: 200, body: analysis };
+  }
+  if (kind === "message") {
+    if (context.message === undefined) return { id, status: 404 };
+    const reference = parseMessageReference(typeof target === "object" && target !== null ? { locale: "", ...target } : target);
+    if (reference === undefined) return { id, status: 400 };
+    const reply = await context.message(reference);
+    return reply === undefined ? { id, status: 404 } : { id, status: 200, body: reply };
+  }
+  const location = await resolveOpenLocation(context.read, target, context.resolution);
+  if (location === "invalid") return { id, status: 400 };
   if (location === undefined) return { id, status: 404 };
-  launch(location);
+  context.launch(location);
   return { id, status: 200 };
 }
 
 /**
- * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or `{ "file", "line", "column" }` in a file the map lists or a
- * frontend file `frontendFile` accepts, as JSON from a page of this server on this machine. Anything else is refused
- * and opens nothing. An accepted location goes to `launch` (index.ts: launch-editor, as the dock's open action) and is
- * answered 200.
+ * Answers `POST /__runic/open`: `{ "id" }` of a map entry, `{ "file", "line", "column" }` in a file the map lists or a
+ * frontend file Vite serves, or `{ "message": { catalog, key, locale } }` of a Runic Translations message
+ * (`resolveOpenLocation`), as JSON from a page of this server on this machine. Anything else is refused and opens
+ * nothing. An accepted location goes to `launch` (launch-editor, as the dock's open action) and is answered 200.
  */
 export async function answerOpen(
   request: IncomingMessage,
   response: ServerResponse,
   read: () => RunicSourceMap | undefined,
-  frontendFile: (file: string) => boolean,
   launch: (location: RunicSourceLocation) => void,
+  resolution: RunicOpenResolution = {},
 ): Promise<void> {
   if (request.method !== "POST") {
     request.resume();
@@ -346,7 +377,8 @@ export async function answerOpen(
   let message: unknown;
   try { message = JSON.parse(body); }
   catch { return answer(response, 400); }
-  const location = resolveOpenLocation(read, message, frontendFile);
+  const location = await resolveOpenLocation(read, message, resolution);
+  if (location === "invalid") return answer(response, 400);
   if (location === undefined) return answer(response, 404);
   launch(location);
   answer(response, 200);

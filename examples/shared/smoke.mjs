@@ -16,8 +16,10 @@ export { reportIfSlow, scaled, startWait, timeoutScale };
 export const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 // What only the development build of @runic-artifex/views contains (views README, "Development build", #975): the
-// Bridge-call channel with its async stack tagging and the Runic Translations text channel.
-const viewsDevelopmentMarkers = ["runic.views.calls", "runic.translations.text"];
+// Bridge-call channel with its async stack tagging and the Runic Translations text channel, which are globals on the
+// page, and the development tools' Views protocol features (#958).
+const viewsDevelopmentGlobalKeys = ["runic.views.calls", "runic.translations.text"];
+const viewsDevelopmentMarkers = [...viewsDevelopmentGlobalKeys, "trace-context/1", "handler-timing/1"];
 
 /**
  * Fails unless the scripts of a built page (a Release or published `www/`) carry the production build of
@@ -35,7 +37,7 @@ export async function assertProductionViews(webRoot) {
 }
 
 /** The development globals of @runic-artifex/views on the page: none in a production build. */
-export const viewsDevelopmentGlobals = evaluate => evaluate(`JSON.stringify(${JSON.stringify(viewsDevelopmentMarkers)}
+export const viewsDevelopmentGlobals = evaluate => evaluate(`JSON.stringify(${JSON.stringify(viewsDevelopmentGlobalKeys)}
   .filter(key => Symbol.for(key) in globalThis))`).then(JSON.parse);
 
 /** The last `limit` characters of process output. */
