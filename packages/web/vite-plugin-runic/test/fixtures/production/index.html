@@ -5,13 +5,16 @@
     <title>Production build</title>
     <link rel="icon" href="data:,">
     <script>
-      // Counts async stack tasks, and with ?reader listens on the Bridge-call channel as the Vite development client does.
-      globalThis.productionTest = { tasks: [], calls: [] };
+      // Counts async stack tasks, and with ?reader listens on the Bridge-call channel as the Vite development client does,
+      // giving each call a trace context as its OTLP export does. src/bridge.js records the hello's features and the
+      // members of each command.
+      globalThis.productionTest = { tasks: [], calls: [], hello: undefined, commands: [] };
       const createTask = console.createTask;
       if (typeof createTask === "function")
         console.createTask = name => { productionTest.tasks.push(name); return createTask.call(console, name); };
       if (new URLSearchParams(location.search).has("reader"))
-        globalThis[Symbol.for("runic.views.calls")] = { listeners: new Set([event => productionTest.calls.push(event.phase)]), requested: true };
+        globalThis[Symbol.for("runic.views.calls")] = { listeners: new Set([event => productionTest.calls.push(event.phase)]), requested: true,
+          trace: () => ({ traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" }) };
     </script>
   </head>
   <body>

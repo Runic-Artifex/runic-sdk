@@ -14,6 +14,13 @@ internal sealed class VoiceOver : ScreenReader
 
     internal override bool Sampled => true;
 
+    // VoiceOver speaks a control's hint ("You are currently on a slider. To start interacting …") 1 to 2.5 s after
+    // the control's phrase or a value change (osx-arm64 runs 43693500623: 1.02, 1.7 and 2.45 s). A selection set
+    // before the hint was said as an empty phrase and the hint, without the item (sdk#1015).
+    internal override TimeSpan HintDelay => TimeSpan.FromMilliseconds(3500);
+
+    internal override bool IsHint(string phrase) => phrase.StartsWith("You are currently on", StringComparison.Ordinal);
+
     internal override async Task StartAsync(CancellationToken cancellationToken)
     {
         // VoiceOver, which the starter launches, would inherit redirected output and hold it open.

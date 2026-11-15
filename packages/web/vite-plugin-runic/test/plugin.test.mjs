@@ -49,15 +49,21 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   assert.equal(handlers.has("runic:state"), false, "the page no longer reports a runtime state");
   // The open action launches the editor itself (sources.ts, launchSourceEditor), so it is mounted at its own path.
   assert.deepEqual(middleware.map(([path]) => typeof path === "function" ? path.name : path),
-    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "/__runic/open"]);
-  const withoutSources = [];
-  runic({ sourceMap: false }).configureServer({
-    ws: { on: () => undefined, send: () => undefined },
-    middlewares: { use: (path) => withoutSources.push(path) },
-    httpServer: undefined,
-  });
-  // Without a map /__runic/open still opens frontend files (Runic Inspect's component links); /__runic/sources is gone.
-  assert.deepEqual(withoutSources, ["/__runic/state", "/__runic/diagnostics", "/__runic/open"], "sourceMap: false serves no map");
+    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "/__runic/handlers", "/__runic/open"]);
+  const endpoints = (options) => {
+    const paths = [];
+    runic(options).configureServer({
+      ws: { on: () => undefined, send: () => undefined },
+      middlewares: { use: (path) => paths.push(typeof path === "function" ? path.name : path) },
+      httpServer: undefined,
+    });
+    return paths;
+  };
+  // Without a map /__runic/open still opens what Runic Inspect links to (frontend files, Translations sources).
+  assert.deepEqual(endpoints({ sourceMap: false }), ["/__runic/state", "/__runic/diagnostics", "/__runic/handlers", "/__runic/open"],
+    "sourceMap: false serves no map; Runic Inspect still opens frontend files and Translations sources");
+  assert.deepEqual(endpoints({ sourceMap: false, inspect: false }), ["/__runic/state", "/__runic/diagnostics"],
+    "without the map and Runic Inspect, no endpoint");
 });
 
 test("injects the Desktop bootstrap while leaving Vite and HMR ownership intact", async () => {
@@ -840,6 +846,7 @@ await load("dist/channel.js", "plugin/channel");
 await load("dist/calls.js", "plugin/calls");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect-handlers.js", "plugin/inspect-handlers");
 await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
@@ -924,6 +931,7 @@ await load("dist/channel.js", "plugin/channel");
 await load("dist/calls.js", "plugin/calls");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect-handlers.js", "plugin/inspect-handlers");
 await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };

@@ -13,6 +13,8 @@ export const connectionEvent = "runic:connection";
 export const viewEvent = "runic:view";
 /** A settled Bridge call for the dock's timeline (calls.ts, `RunicBridgeCallReport`). */
 export const callEvent = "runic:call";
+/** One settled Bridge call with a trace context, for the server's OTLP export (otlp.ts). */
+export const spanEvent = "runic:span";
 
 /** The endpoint a client posts `{ "event", "data" }` to, one message per request, answered with 204. */
 export const diagnosticsPath = "/__runic/diagnostics";
@@ -26,6 +28,8 @@ export const maximumClientMessageBytes = 65_536;
 /** The development source map and the Runic open-in-editor action (sources.ts), which Runic Inspect reads and calls. */
 export const sourcesPath = "/__runic/sources";
 export const openPath = "/__runic/open";
+/** Runic Inspect's handler analysis of a frontend file (handlers.ts): which event handlers reach which client calls. */
+export const handlersPath = "/__runic/handlers";
 
 /** `{ channel?: "hot", … }` on `globalThis`, set by `virtual:runic/client` before the client evaluates. */
 export const clientOptionsKey = Symbol.for("runic.vite.client");
@@ -40,4 +44,9 @@ export interface RunicClientOptions {
   readonly base?: string;
   /** The Vite root, which relative component paths (Svelte, Angular) are relative to. */
   readonly root?: string;
+  /**
+   * The development server exports the page's spans of Bridge calls over OTLP: the client gives each call a W3C trace
+   * context (which its request carries to .NET) and sends the call's span as a `runic:span` message.
+   */
+  readonly trace?: boolean;
 }

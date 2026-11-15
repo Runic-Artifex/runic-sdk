@@ -61,6 +61,12 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
     // client-languages/1: the hello lists the page's languages (navigator.languages), at most this many.
     internal const string ClientLanguagesFeature = "client-languages/1";
     internal const int MaximumClientLanguages = 16;
+    // trace-context/1: a request may carry the page's W3C trace context, the parent of its runic.bridge.* span. Read only
+    // while the Views ActivitySource has a listener (BridgeRequestTrace).
+    internal const string TraceContextFeature = "trace-context/1";
+    // handler-timing/1: a request may ask for its C# handler's name and duration in the reply. Offered only in
+    // Development (HandlerTiming).
+    internal const string HandlerTimingFeature = "handler-timing/1";
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -114,6 +120,10 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
     // client-errors/1: the window's limit across its connections, so a page that reconnects keeps its budget.
     private readonly BridgeClientErrors.Limit _clientErrors = new();
     private TimeProvider _timeProvider = TimeProvider.System;
+
+    // Whether the producer offers handler-timing/1: only when the host environment is Development (DOTNET_ENVIRONMENT, or
+    // else ASPNETCORE_ENVIRONMENT, as for failure detail), read when the dispatcher is created. Tests set it.
+    internal bool HandlerTiming { get; set; } = BridgeFailureDetails.DefaultIncluded;
 
     private BridgeDispatcher(IBridgeTransport transport)
     {
@@ -614,12 +624,15 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
                         ? known : BridgeMessages.Released);
                 }
                 ValueTask<ReadOnlyMemory<byte>> routed;
+                // trace-context/1 and handler-timing/1: null unless the request asks for either.
+                var trace = BridgeRequestTrace.Read(connection, envelope.Root);
                 // The setter, command, validation and publication of the request run in the window's culture.
                 using (EnterCulture())
+                using (BridgeRequestTrace.Enter(trace))
                     routed = handler.HandleAsync(new BridgeRouteRequest(envelope, connection, this), cancellationToken);
-                if (routed.IsCompletedSuccessfully) return new(routed.Result);
+                if (routed.IsCompletedSuccessfully) return new(trace is null ? routed.Result : trace.AddHandler(routed.Result));
                 disposeEnvelope = false;
-                return AwaitRoute(routed, envelope);
+                return AwaitRoute(routed, envelope, trace);
             }
             finally
             {
@@ -954,6 +967,9 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         usesNavigationPath &= grantsNavigationPath;
         var usesAppearance = ListsAppearance(root);
         var usesHostedRegions = ListsFeature(root, BridgeHostedRegions.Feature);
+        var usesTraceContext = ListsFeature(root, TraceContextFeature);
+        var handlerTiming = HandlerTiming;
+        var usesHandlerTiming = handlerTiming && ListsFeature(root, HandlerTimingFeature);
         if (!TryReadLanguages(root, usesClientLanguages, out var languages))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's languages are not an array of at most {MaximumClientLanguages} strings.", hello: true);
@@ -984,6 +1000,8 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesNavigationPath = usesNavigationPath;
             connection.UsesAppearance = usesAppearance;
             connection.UsesHostedRegions = usesHostedRegions;
+            connection.UsesTraceContext = usesTraceContext;
+            connection.UsesHandlerTiming = usesHandlerTiming;
             connection.Languages = languages;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
@@ -1004,8 +1022,9 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
         // blobs/1: the connection's upload grant, when the host takes uploads.
         var grant = usesBlobs ? Blobs.Grant(connection.Key) : null;
         // navigation-path/1: the reply tells the page the window's route path, when the window has a path region.
-        return usesNavigationPath && BridgeNavigation.TryGetPath(this, out var path) ? BridgeMessages.Hello(grant, path, navigationPath: true)
-            : BridgeMessages.Hello(grant, grantsNavigationPath: grantsNavigationPath);
+        return usesNavigationPath && BridgeNavigation.TryGetPath(this, out var path)
+            ? BridgeMessages.Hello(grant, path, navigationPath: true, handlerTiming: handlerTiming)
+            : BridgeMessages.Hello(grant, grantsNavigationPath: grantsNavigationPath, handlerTiming: handlerTiming);
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
@@ -1170,9 +1189,13 @@ internal sealed partial class BridgeDispatcher : IBridgeRequestHandler
     }
 
     private async ValueTask<ReadOnlyMemory<byte>> AwaitRoute(ValueTask<ReadOnlyMemory<byte>> routed,
-        BridgeRequestEnvelope envelope)
+        BridgeRequestEnvelope envelope, BridgeRequestTrace? trace = null)
     {
-        try { return await routed.ConfigureAwait(false); }
+        try
+        {
+            var reply = await routed.ConfigureAwait(false);
+            return trace is null ? reply : trace.AddHandler(reply);
+        }
         catch (Exception error)
         {
             ViewsLog.RequestFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
@@ -1238,6 +1261,9 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     internal bool UsesAppearance { get; set; }
     // Whether the connection uses hosted-regions/1.
     internal bool UsesHostedRegions { get; set; }
+    // trace-context/1 and handler-timing/1 (BridgeRequestTrace).
+    internal bool UsesTraceContext { get; set; }
+    internal bool UsesHandlerTiming { get; set; }
     // Whether the connection uses view-requests/1.
     internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.

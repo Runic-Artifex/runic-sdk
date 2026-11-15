@@ -1,7 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
-import { callEvent, connectionEvent, diagnosticEvent, diagnosticsPath, maximumClientMessageBytes, viewEvent } from "./channel.js";
+import { callEvent, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, spanEvent, viewEvent } from "./channel.js";
+import { readLimitedBody, sameOrigin } from "./requests.js";
+import { answerOpen, answerSources, createSourceMapReader, launchSourceEditor } from "./sources.js";
+import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 
 // `dotnet runic dev` gives the development server process a random session value and accepts the server as ready
@@ -10,6 +13,7 @@ import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, with
 export const devSessionVariable = "RUNIC_APPLICATION_DEV_SESSION";
 export const devSessionHeader = "X-Runic-Dev-Session";
 export const statePath = "/__runic/state";
+export { isLoopbackRequest, readLimitedBody, sameOrigin } from "./requests.js";
 
 /** The session value `dotnet runic dev` set, when it has the shape the tool writes: 32 to 128 hex digits. */
 export function devSessionValue(value: string | undefined): string | undefined {
@@ -31,32 +35,6 @@ function answerStatus(response: ServerResponse, status: number, headers: Record<
   response.setHeader("Cache-Control", "no-store");
   for (const [name, value] of Object.entries(headers)) response.setHeader(name, value);
   response.end();
-}
-
-/**
- * Whether a request comes from a page of this server: a browser sends `Origin` with every POST, and a cross-site
- * page that posts JSON needs a CORS preflight, which the endpoint never grants.
- */
-export function sameOrigin(request: IncomingMessage): boolean {
-  const site = request.headers["sec-fetch-site"];
-  if (site !== undefined && site !== "same-origin") return false;
-  const origin = request.headers.origin;
-  const host = request.headers.host;
-  if (typeof origin !== "string" || typeof host !== "string") return false;
-  try {
-    const url = new URL(origin);
-    return (url.protocol === "http:" || url.protocol === "https:") && url.host === host.toLowerCase();
-  } catch {
-    return false;
-  }
-}
-
-/** Whether a request comes from this machine: a loopback peer address. */
-export function isLoopbackRequest(request: IncomingMessage): boolean {
-  const address = request.socket?.remoteAddress;
-  if (typeof address !== "string") return false;
-  const ipv4 = address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
-  return address === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(ipv4);
 }
 
 /**
@@ -93,37 +71,11 @@ export async function answerClientMessage(
   catch { return answerStatus(response, 400); }
   if (typeof message !== "object" || message === null || Array.isArray(message)) return answerStatus(response, 400);
   const { event, data } = message as { event?: unknown; data?: unknown };
-  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent && event !== callEvent) {
+  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent && event !== callEvent && event !== spanEvent) {
     return answerStatus(response, 400);
   }
   deliver(event, data);
   answerStatus(response, 204);
-}
-
-/** The body as UTF-8, or undefined once it exceeds `limit` bytes; the rest is drained so that the answer reaches the client. */
-export function readLimitedBody(request: IncomingMessage, limit: number): Promise<string | undefined> {
-  const declared = Number(request.headers["content-length"]);
-  if (Number.isFinite(declared) && declared > limit) {
-    request.resume();
-    return Promise.resolve(undefined);
-  }
-  return new Promise((resolve) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let exceeded = false;
-    request.on("data", (chunk: Buffer) => {
-      if (exceeded) return;
-      size += chunk.byteLength;
-      if (size > limit) {
-        exceeded = true;
-        chunks.length = 0;
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request.on("end", () => resolve(exceeded ? undefined : Buffer.concat(chunks).toString("utf8")));
-    request.on("error", () => resolve(undefined));
-  });
 }
 
 export interface RunicDevSessionProxyOptions {
@@ -134,6 +86,13 @@ export interface RunicDevSessionProxyOptions {
    * stack) to the development server's terminal. Defaults to `true`.
    */
   readonly printFailures?: boolean;
+  /**
+   * The development source map for Runic Inspect, as `runic({ sourceMap })` takes it: a path relative to the
+   * server's working directory, or `false` to answer neither `/__runic/sources` nor `/__runic/open`.
+   */
+  readonly sourceMap?: string | false;
+  /** `false` turns off `/__runic/handlers`, Runic Inspect's handler analysis. Defaults to `true`. */
+  readonly inspect?: boolean;
 }
 
 /**
@@ -142,14 +101,23 @@ export interface RunicDevSessionProxyOptions {
  *
  * - `/__runic/state` with the path-free development state, and under `dotnet runic dev` with its session;
  * - `/__runic/diagnostics`, which the development client (`@runic-artifex/vite-plugin-runic/client`) posts the
- *   page's Views diagnostics, connection state, View states and Bridge calls to. The timeline is bounded, and failures go to the
- *   terminal.
+ *   page's Views diagnostics, connection state, View states and Bridge calls to. The timeline is bounded, and failures go
+ *   to the terminal;
+ * - for Runic Inspect: `/__runic/sources` (the development source map), `/__runic/open` (opens a location in a file
+ *   the source map lists, with launch-editor as `runic()` does) and `/__runic/handlers` (which event handlers of a
+ *   component reach which commands, from its source and template), each for pages of this machine only.
  */
 export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}): Record<string, ProxyOptions> {
   if (options.printFailures !== undefined && typeof options.printFailures !== "boolean") {
     throw new TypeError("printFailures must be true or false.");
   }
+  if (options.inspect !== undefined && typeof options.inspect !== "boolean") throw new TypeError("inspect must be true or false.");
+  if (options.sourceMap !== undefined && options.sourceMap !== false &&
+      (typeof options.sourceMap !== "string" || options.sourceMap.length === 0)) {
+    throw new TypeError("sourceMap must be a path or false.");
+  }
   const session = devSessionValue(process.env[devSessionVariable]);
+  const root = process.cwd();
   const printFailures = options.printFailures !== false;
   const timeline = createDevelopmentTimeline(
     initialDevelopmentState(undefined, { command: "serve", mode: "development", root: process.cwd() }),
@@ -165,15 +133,50 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
       timeline.applyView(data);
       return;
     }
-    // The Angular CLI's server has no source map reader, so its calls name no handler.
+    // The Angular CLI's server has no source map reader for the calls, so they name no handler.
     if (event === callEvent) {
       timeline.appendCall(data);
       return;
     }
+    // This proxy exports no spans: its client is not configured to send them.
+    if (event === spanEvent) return;
     const entry = timeline.appendDiagnostic(data);
     if (entry?.failure && printFailures) console.warn(formatFailure(entry));
   };
+  const inspect: Record<string, ProxyOptions> = {};
+  if (options.sourceMap !== false) {
+    const readSourceMap = createSourceMapReader(options.sourceMap, () => root);
+    inspect[`^${sourcesPath}(?:[/?#]|$)`] = {
+      bypass(request, response) {
+        if (response === undefined) return false;
+        answerSources(request, response, readSourceMap);
+        return request.url ?? sourcesPath;
+      },
+    };
+    inspect[`^${openPath}(?:[/?#]|$)`] = {
+      // The same decision and launcher as runic()'s /__runic/open (sources.ts), for the source map's files only: the
+      // Angular CLI gives this proxy no Vite configuration to tell which frontend files it serves.
+      async bypass(request, response) {
+        if (response === undefined) return false;
+        await answerOpen(request, response, readSourceMap, (location) => {
+          launchSourceEditor(location, (message) => console.warn(`[runic] ${message}`));
+        });
+        return request.url ?? openPath;
+      },
+    };
+  }
+  if (options.inspect !== false) {
+    const analyze = createHandlerAnalyzer(() => root);
+    inspect[`^${handlersPath}(?:[/?#]|$)`] = {
+      async bypass(request, response) {
+        if (response === undefined) return false;
+        await answerHandlers(request, response, analyze, root);
+        return request.url ?? handlersPath;
+      },
+    };
+  }
   return {
+    ...inspect,
     "^/__runic/state(?:[/?#]|$)": {
       // The entries answer in bypass and return the URL; Vite then sees the ended response and stops.
       bypass(request, response) {

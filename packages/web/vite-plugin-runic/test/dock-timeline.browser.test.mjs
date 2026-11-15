@@ -1,7 +1,8 @@
 // The dock's Bridge call timeline in Chromium (#954): under `vite dev` with the Vite DevTools dock, a click's command is
 // a row `command EditorViewModel.save → SaveAsync() <n> ms` of the Runic dock's "Bridge calls" card, whose button opens
 // the `[RelayCommand]` method in the editor (only what /__runic/open would open). A failed command shows its .NET frames, and a frame
-// in the ViewModel's file opens at its line. A reply that carries .NET's handler timing shows the handler's duration.
+// in the ViewModel's file opens at its line. A reply that carries .NET's handler timing (handler-timing/1) shows the
+// handler's own duration.
 // The page is the shape `dotnet runic dev` gives a window: a document the .NET host serves from its own origin, which
 // loads Vite's modules from Vite's origin (tools/dotnet-runic/FrontendDevelopmentDocument.cs), so the development
 // client loads the dock from Vite. The page's Bridge answers over a MessageChannel, as a host transport does; the
@@ -68,12 +69,14 @@ globalThis.__runicBridge = {
     const message = JSON.parse(text);
     const reply = value => Promise.resolve(JSON.stringify(value));
     switch (message.kind) {
-      case "hello": return reply({ ok: true, protocol: 4, implementation: { name: "test", version: "0" }, features: [] });
+      // A .NET host in Development measures each handler (handler-timing/1, #958).
+      case "hello": return reply({ ok: true, protocol: 4, implementation: { name: "test", version: "0" }, features: ["handler-timing/1"] });
       case "open": return reply({ ok: true, presentation: "ok", revision, state: { title: "" } });
       case "command": {
         saves++;
         // The command changes no state, so the reply keeps the revision.
-        const answer = saves === 1 ? { ok: true, revision } : { ok: false, error: { kind: "failed", message: "Save failed.",
+        globalThis.dockTimingRequested = message.timing === true;
+        const answer = saves === 1 ? { ok: true, revision, ...(message.timing === true ? { handler: { name: "EditorViewModel.SaveAsync", duration: 12 } } : {}) } : { ok: false, error: { kind: "failed", message: "Save failed.",
           detail: { type: "System.InvalidOperationException", message: "Disk full.", stack: ${JSON.stringify(
             `System.InvalidOperationException: Disk full.\n   at Demo.EditorViewModel.SaveAsync() in ${file}:line 12\n` +
             "   at CommunityToolkit.Mvvm.Input.AsyncRelayCommand.AwaitAndThrowIfFailed(Task executionTask)")} } } };
@@ -170,6 +173,10 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
     const duration = Number(/(\d+) ms$/u.exec(await row.textContent())[1]);
     assert.ok(duration >= 15, `the call took ${duration} ms, less than the reply's delay`);
     await page.getByText(/EditorViewModel\.cs:9/u).first().waitFor({ timeout: scaled(10_000) });
+    // The reply carried .NET's handler timing, which @runic-artifex/views puts on the call's end event: the row shows
+    // the handler's own duration.
+    assert.equal(await page.evaluate(() => globalThis.dockTimingRequested), true, "the call asked for its handler's timing");
+    await page.getByText(/^C# 12 ms · revision 1 · EditorViewModel\.cs:9/u).waitFor({ timeout: scaled(10_000) });
 
     // Its button opens the [RelayCommand] method.
     await page.getByRole("button", { name: "Open SaveAsync()" }).first().click();
@@ -186,25 +193,13 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
     // A frame outside the map's files is text only.
     assert.equal(await page.getByRole("button", { name: /AwaitAndThrowIfFailed/u }).count(), 0);
 
-    // A reply with .NET's handler timing: the row shows the handler's own duration.
-    await page.evaluate(() => {
-      const channel = globalThis[Symbol.for("runic.views.calls")];
-      const start = performance.now() - 30;
-      for (const listener of channel.listeners) listener({
-        phase: "end", id: 99, kind: "command", request: "command", route: "editor", contract: "Demo.EditorViewModel:00",
-        member: "save", start, end: start + 30, duration: 30, outcome: "ok", revision: 9,
-        handler: { name: "EditorViewModel.SaveAsync", start: start + 4, end: start + 25, duration: 21 },
-      });
-    });
-    await page.getByText(/^C# 21 ms · revision 9 · EditorViewModel\.cs:9/u).waitFor({ timeout: scaled(10_000) });
-
     // The state endpoint has the calls, without the failure's stack.
     const state = await fetch(`http://127.0.0.1:${server.httpServer.address().port}/__runic/state`).then((response) => response.json());
     assert.deepEqual(state.calls.map((call) => call.label.replace(/\d+ ms/u, "n ms")), [
       "command EditorViewModel.save → SaveAsync() n ms",
       "command EditorViewModel.save → SaveAsync() n ms · error (failed)",
-      "command EditorViewModel.save → SaveAsync() n ms",
     ]);
+    assert.equal(state.calls[0].handlerDuration, 12);
     assert.doesNotMatch(JSON.stringify(state), /Disk full|line 12/u);
     assert.deepEqual(errors, []);
   } finally {

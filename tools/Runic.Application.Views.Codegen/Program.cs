@@ -26,6 +26,7 @@ try
     {
         var aot = false;
         var optional = false;
+        var analyzerWarnings = false;
         string? compositionType = null;
         var pathMap = "";
         var frameworks = new List<string>();
@@ -36,6 +37,9 @@ try
             {
                 case "--aot": aot = true; break;
                 case "--optional": optional = true; break;
+                // The compile that follows runs Runic.Application.Views.Analyzers, which reports the warnings of
+                // BridgeDiagnosticCodes.AnalyzerWarnings for this assembly's own declarations (Diagnostics.Warn).
+                case "--analyzer-warnings": analyzerWarnings = true; break;
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
@@ -61,7 +65,7 @@ try
         if (positional.Length != 4)
             throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
 
-        string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}", $"path-map={pathMap}",
+        string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}", $"path-map={pathMap}", $"analyzer-warnings={analyzerWarnings}",
             $"frameworks={string.Join(";", frameworks.Order(StringComparer.OrdinalIgnoreCase))}",
             .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments)];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
@@ -72,6 +76,7 @@ try
         }
         BridgeLoading.UseSharedFrameworks(frameworks, positional[1]);
         var assembly = Assembly.LoadFrom(Path.GetFullPath(positional[1]));
+        if (analyzerWarnings) Diagnostics.AnalyzerAssembly = assembly;
         var viewTypes = new Dictionary<Type, List<Type>>();
         foreach (var type in BridgeLoading.InspectableTypes(assembly))
         {
@@ -252,6 +257,11 @@ try
 catch (Exception error) when (Diagnostics.IsReportable(error))
 {
     Diagnostics.Report(error);
+}
+finally
+{
+    // An error stops the build before the compiler, so the analyzer will not report the warnings left to it.
+    if (Diagnostics.HasErrors) Diagnostics.WriteAnalyzerWarnings();
 }
 
 // A set… member exists because its C# property has a public setter, which is
@@ -2740,6 +2750,13 @@ static class BridgeDiagnosticCodes
     internal const string RowObjectCopy = "RUNICBRIDGE053";
     /// <summary>A RunicQueryCollection member has an unsupported shape.</summary>
     internal const string QueryCollection = "RUNICBRIDGE060";
+
+    /// <summary>
+    /// The warnings that Runic.Application.Views.Analyzers (BridgeWarningRules) reports for every declaration in the
+    /// project's source that the generator would report, with the same message. With --analyzer-warnings the
+    /// generator leaves them to the analyzer (Diagnostics.AnalyzerAssembly).
+    /// </summary>
+    internal static readonly HashSet<string> AnalyzerWarnings = [MissingView, OperationRetirement, PresentationScoped, OperationClose];
     /// <summary>A RunicBlob is read from the page: a command input, an interaction result or a checked field.</summary>
     internal const string Blob = "RUNICBRIDGE065";
     /// <summary>A [RunicRegionCollection] is not on a get-only NavigationSelection property, or names an unsupported content type.</summary>
@@ -2850,6 +2867,24 @@ static class Diagnostics
     // The cache records them, so a skipped generation repeats them.
     internal static IReadOnlyList<string> Warnings => ReportedWarnings;
 
+    // Warnings left to the analyzer, written only if an error stops the build before the compiler runs it.
+    private static readonly List<string> AnalyzerOwnedWarnings = [];
+
+    /// <summary>
+    /// The model assembly when the compile that follows runs Runic.Application.Views.Analyzers (--analyzer-warnings).
+    /// That analyzer reports the warnings of <see cref="BridgeDiagnosticCodes.AnalyzerWarnings"/> for the declarations
+    /// of this assembly, the project's own source, while you type and in the build, so the generator leaves them to it:
+    /// the compiler then reports each once, and #pragma, .editorconfig severities, NoWarn and TreatWarningsAsErrors
+    /// apply as to any compiler warning. Declarations in other assemblies, which the analyzer cannot see, stay here.
+    /// </summary>
+    internal static Assembly? AnalyzerAssembly { get; set; }
+
+    internal static void WriteAnalyzerWarnings()
+    {
+        foreach (var line in AnalyzerOwnedWarnings) Console.Error.WriteLine(line);
+        AnalyzerOwnedWarnings.Clear();
+    }
+
     // Every exception is reported with a code: a failure that is no diagnostic of
     // its own is RUNICBRIDGE024 rather than an unhandled crash. Only a process that
     // cannot continue is left to the runtime.
@@ -2863,6 +2898,12 @@ static class Diagnostics
         var line = location is { } at
             ? $"{at.Path}({at.Line},{at.Column}): warning {code}: {message}"
             : $"warning {code}: {message}";
+        if (AnalyzerAssembly is not null && member is not null && member.Module.Assembly == AnalyzerAssembly
+            && BridgeDiagnosticCodes.AnalyzerWarnings.Contains(code))
+        {
+            AnalyzerOwnedWarnings.Add(line);
+            return;
+        }
         ReportedWarnings.Add(line);
         Console.Error.WriteLine(line);
     }

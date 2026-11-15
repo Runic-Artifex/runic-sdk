@@ -143,6 +143,44 @@ public sealed class MacOsCoordinatesTests
         Assert.True(MacOsCoordinates.IsBottomLeft(applied.Placement));
     }
 
+    // #1000: AppKit takes a frame behind the menu bar from setFrameOrigin: and moves the window later on its own terms,
+    // so a move puts the title bar below the menu bar itself.
+    [Test]
+    public void MoveBehindTheMenuBarLandsBelowIt()
+    {
+        var primary = (Frame: new MacOsCoordinates.Rect(0, 0, 1440, 900), Visible: new MacOsCoordinates.Rect(0, 70, 1440, 805));
+        List<(MacOsCoordinates.Rect, MacOsCoordinates.Rect)> screens = [primary];
+        double TopAfterMove(int y, double x = 100, IReadOnlyList<(MacOsCoordinates.Rect, MacOsCoordinates.Rect)>? on = null)
+        {
+            var bottom = MacOsCoordinates.FrameBottom(y, FrameHeight, PrimaryHeight, bottomLeft: false);
+            return MacOsCoordinates.FrameTopLeft(x, MacOsCoordinates.BottomBelowMenuBar(x, bottom, 800, FrameHeight, on ?? screens),
+                FrameHeight, PrimaryHeight).Y;
+        }
+
+        // y 0, behind the 25-point menu bar, and y 10, partly behind it, land at the work area's top.
+        Assert.Equal(25, TopAfterMove(0));
+        Assert.Equal(25, TopAfterMove(10));
+        // Above the screen's top, the title bar off the screen, too.
+        Assert.Equal(25, TopAfterMove(-200));
+        // The work area's top and anything below stay, also over the Dock and partly off the screen's bottom.
+        Assert.Equal(25, TopAfterMove(25));
+        Assert.Equal(400, TopAfterMove(400));
+        Assert.Equal(860, TopAfterMove(860));
+        // Left of every screen, no menu bar applies.
+        Assert.Equal(0, TopAfterMove(0, x: -2000));
+
+        // With the menu bar hidden the visible frame reaches the screen's top: y 0 stays.
+        Assert.Equal(0, TopAfterMove(0, on: [(primary.Frame, new MacOsCoordinates.Rect(0, 70, 1440, 830))]));
+
+        // A display above the primary (AppKit 0,900, 2560x1440, its own 25-point menu bar): a window across the boundary
+        // keeps its top on the upper display; one whose top is behind the upper display's menu bar lands below it.
+        List<(MacOsCoordinates.Rect, MacOsCoordinates.Rect)> stacked = [primary, (new(0, 900, 2560, 1440), new(0, 900, 2560, 1415))];
+        Assert.Equal(-100, TopAfterMove(-100, on: stacked));
+        Assert.Equal(-1415, TopAfterMove(-1440, on: stacked));
+        // Exactly at the boundary the title bar is behind the primary's menu bar.
+        Assert.Equal(25, TopAfterMove(0, on: stacked));
+    }
+
     private static DesktopRect ToTopLeft((double X, double Y, double Width, double Height) rect) =>
         MacOsCoordinates.ToTopLeft(rect.X, rect.Y, rect.Width, rect.Height, PrimaryHeight);
 }
