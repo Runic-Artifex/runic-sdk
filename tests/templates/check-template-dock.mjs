@@ -11,11 +11,12 @@
 // host's document, whose modules come from Vite's development server), shows the Counter View, increments it, opens
 // the Runic dock and presses the row's open button.
 import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { scaled } from "../support/timeouts.mjs";
+import { readRecord, recordingEditor } from "../support/recording-editor.mjs";
 
 // dotnet runic dev installs the frontend dependencies and builds before the application reports its URL.
 const startTimeout = scaled(900_000);
@@ -56,14 +57,6 @@ async function stopApplication(application) {
   }
 }
 
-async function waitForFile(path) {
-  for (let waited = 0; waited < timeout; waited += 100) {
-    try { return readFileSync(path, "utf8"); }
-    catch { await new Promise(resolve => setTimeout(resolve, 100)); }
-  }
-  throw new Error("The dock's open button opened no editor.");
-}
-
 // The [RelayCommand] method the row opens: Increment() in WorkspaceViewModel.cs.
 function incrementLine(project) {
   const lines = readFileSync(join(project, "WorkspaceViewModel.cs"), "utf8").split("\n");
@@ -94,11 +87,10 @@ async function check(url, project, record) {
 
     // Its button opens the [RelayCommand] method.
     await page.getByRole("button", { name: "Open Increment()" }).first().dispatchEvent("click");
-    const [file, line] = (await waitForFile(record)).trim().split("\n");
+    const [file, line] = await readRecord(record, timeout);
     const expected = join(project, "WorkspaceViewModel.cs");
     if (file !== expected || Number(line) !== incrementLine(project))
       throw new Error(`The dock opened ${file}:${line}, not ${expected}:${incrementLine(project)}.`);
-    rmSync(record, { force: true });
 
     // Runic Inspect on the same page: the button's command with its C# location, which its link opens.
     const located = await page.evaluate(async () => {
@@ -111,7 +103,7 @@ async function check(url, project, record) {
     if (located?.file !== expected || located.line !== incrementLine(project))
       throw new Error(`Runic Inspect located the command at ${JSON.stringify(located)}, not ${expected}:${incrementLine(project)}.`);
     await page.locator("runic-inspect .card a", { hasText: `WorkspaceViewModel.cs:${located.line}` }).first().dispatchEvent("click");
-    const [inspectFile, inspectLine] = (await waitForFile(record)).trim().split("\n");
+    const [inspectFile, inspectLine] = await readRecord(record, timeout);
     if (inspectFile !== expected || Number(inspectLine) !== incrementLine(project))
       throw new Error(`Runic Inspect's link opened ${inspectFile}:${inspectLine}, not ${expected}:${incrementLine(project)}.`);
     if (errors.length > 0) throw new Error(`The page threw:\n${errors.join("\n")}`);
@@ -128,13 +120,10 @@ async function main(args) {
   if (!["desktop", "cswebui"].includes(host) || !project || separator !== 4 || separator === args.length - 1)
     throw new Error("Usage: check-template-dock.mjs --host desktop|cswebui --project <directory> -- <command>...");
   const directory = mkdtempSync(join(tmpdir(), "runic-template-dock-"));
-  const editor = join(directory, "record-editor.sh");
-  const record = join(directory, "editor-arguments.txt");
-  // launch-editor calls an editor it does not know with the file, line and column.
-  writeFileSync(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD"\n');
-  chmodSync(editor, 0o755);
+  // launch-editor calls an editor it does not know with the file, line and column (tests/support/recording-editor.mjs).
+  const { record, environment } = await recordingEditor(directory);
   const application = startApplication(args.slice(separator + 1), host === "desktop", {
-    LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record, VITE_DEVTOOLS_DISABLE_CLIENT_AUTH: "true",
+    ...environment, VITE_DEVTOOLS_DISABLE_CLIENT_AUTH: "true",
   });
   try {
     await waitForOutput(application, /(Vite development server ready at http:\/\/127\.0\.0\.1:\d+\/)/);

@@ -19,6 +19,7 @@ import { createServer } from "vite";
 import { DevTools } from "@vitejs/devtools";
 import { runic } from "../dist/index.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
+import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
 
 const views = fileURLToPath(new URL("../../views/", import.meta.url));
 
@@ -93,17 +94,6 @@ document.getElementById("save").addEventListener("click", () => { client.command
 globalThis.dockTest = true;
 `;
 
-async function waitForFile(path, timeout) {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    try { return await readFile(path, "utf8"); }
-    catch (error) {
-      if (Date.now() > deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
-}
-
 test("vite dev: a click's command is a dock row with its C# handler, and its button opens the [RelayCommand] method", {
   timeout: scaled(60_000),
   skip: !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.platform === "win32",
@@ -111,9 +101,9 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
   const directory = await mkdtemp(join(tmpdir(), "runic-dock-timeline-"));
   const frontend = join(directory, "Frontend");
   const file = join(directory, "EditorViewModel.cs");
-  const record = join(directory, "editor-arguments.txt");
-  const editor = join(directory, "record-editor.sh");
-  const environment = { LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record, VITE_DEVTOOLS_DISABLE_CLIENT_AUTH: "true" };
+  // An editor that records its arguments: launch-editor calls an unknown editor with file, line, column.
+  const { record, environment: editorEnvironment } = await recordingEditor(directory);
+  const environment = { ...editorEnvironment, VITE_DEVTOOLS_DISABLE_CLIENT_AUTH: "true" };
   const previous = Object.fromEntries(Object.keys(environment).map((name) => [name, process.env[name]]));
   let server, host, browser, context;
   try {
@@ -121,9 +111,6 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
     const mapPath = join(directory, "obj", "Debug", "net10.0", "runic-bridge", "sources.json");
     await mkdir(join(mapPath, ".."), { recursive: true });
     await writeFile(mapPath, JSON.stringify(sourceMap(file)));
-    // An editor that records its arguments: launch-editor calls an unknown editor with file, line, column.
-    await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD"\n');
-    await chmod(editor, 0o755);
     await mkdir(join(frontend, "node_modules", "@runic-artifex"), { recursive: true });
     await writeFile(join(frontend, "index.html"),
       '<!doctype html><html><body><button id="save">Save</button><script type="module" src="/main.js"></script></body></html>');
@@ -180,8 +167,7 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
 
     // Its button opens the [RelayCommand] method.
     await page.getByRole("button", { name: "Open SaveAsync()" }).first().click();
-    assert.deepEqual((await waitForFile(record, scaled(10_000))).trim().split("\n"), [file, "9", "5"]);
-    await rm(record);
+    assert.deepEqual(await readRecord(record), [file, "9", "5"]);
 
     // A failed save shows its .NET frames; the frame in the ViewModel's file opens at its line.
     await page.click("#save");
@@ -189,7 +175,7 @@ test("vite dev: a click's command is a dock row with its C# handler, and its but
     await page.getByText("System.InvalidOperationException: Disk full.", { exact: true }).waitFor({ timeout: scaled(10_000) });
     const frame = page.getByRole("button", { name: "EditorViewModel.SaveAsync() · EditorViewModel.cs:12" }).first();
     await frame.click();
-    assert.deepEqual((await waitForFile(record, scaled(10_000))).trim().split("\n"), [file, "12", "1"]);
+    assert.deepEqual(await readRecord(record), [file, "12", "1"]);
     // A frame outside the map's files is text only.
     assert.equal(await page.getByRole("button", { name: /AwaitAndThrowIfFailed/u }).count(), 0);
 

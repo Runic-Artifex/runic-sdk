@@ -5,7 +5,7 @@
 // script records the file, line and column), a location the source map and Vite do not serve is refused over the same
 // connection and launches nothing, and the host's origin never receives a /__runic request.
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import { chromium } from "playwright-core";
 import { createServer } from "vite";
 import { runic } from "../dist/index.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
+import { readRecord, recordingEditor, wasLaunched } from "../../../../tests/support/recording-editor.mjs";
 
 const views = fileURLToPath(new URL("../../views/", import.meta.url));
 
@@ -72,17 +73,6 @@ document.getElementById("save").addEventListener("click", () => { void client.co
 globalThis.inspectHostTest = true;
 `;
 
-async function waitForFile(path, timeout) {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    try { return await readFile(path, "utf8"); }
-    catch (error) {
-      if (Date.now() > deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
-}
-
 test("dotnet runic dev's page: Runic Inspect gets C# locations and opens them over Vite's connection", {
   timeout: scaled(60_000),
   skip: !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.platform === "win32",
@@ -90,9 +80,8 @@ test("dotnet runic dev's page: Runic Inspect gets C# locations and opens them ov
   const directory = await mkdtemp(join(tmpdir(), "runic-inspect-host-"));
   const frontend = join(directory, "Frontend");
   const file = join(directory, "EditorViewModel.cs");
-  const record = join(directory, "editor-arguments.txt");
-  const editor = join(directory, "record-editor.sh");
-  const environment = { LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record };
+  // An editor that records its arguments, as LAUNCH_EDITOR: launch-editor calls an unknown editor with file, line, column.
+  const { record, environment } = await recordingEditor(directory);
   const previous = Object.fromEntries(Object.keys(environment).map((name) => [name, process.env[name]]));
   let server, host, browser;
   try {
@@ -100,8 +89,6 @@ test("dotnet runic dev's page: Runic Inspect gets C# locations and opens them ov
     const mapPath = join(directory, "obj", "Debug", "net10.0", "runic-bridge", "sources.json");
     await mkdir(join(mapPath, ".."), { recursive: true });
     await writeFile(mapPath, JSON.stringify(sourceMap(file)));
-    await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD"\n');
-    await chmod(editor, 0o755);
     await mkdir(join(frontend, "node_modules", "@runic-artifex"), { recursive: true });
     await writeFile(join(frontend, "index.html"),
       '<!doctype html><html><body><button id="save">Save</button><script type="module" src="/main.js"></script></body></html>');
@@ -145,8 +132,7 @@ test("dotnet runic dev's page: Runic Inspect gets C# locations and opens them ov
     // The overview card's link opens the [RelayCommand] method.
     await page.evaluate(() => globalThis[Symbol.for("runic.vite.inspect")].select(document.querySelector("#save")));
     await page.locator("runic-inspect .card a", { hasText: "EditorViewModel.cs:9" }).click();
-    assert.deepEqual((await waitForFile(record, scaled(10_000))).trim().split("\n"), [file, "9", "5"]);
-    await rm(record);
+    assert.deepEqual(await readRecord(record), [file, "9", "5"]);
 
     // Refused over the same connection: a file neither the source map lists nor Vite serves (Vite's fs.strict is off
     // here, so a file outside the root must not exist), an id the map lacks, a relative path.
@@ -160,7 +146,7 @@ test("dotnet runic dev's page: Runic Inspect gets C# locations and opens them ov
     }, { missing: join(directory, "missing.cs"), cs: file });
     assert.deepEqual(refused, [false, false, false]);
     await new Promise((resolve) => setTimeout(resolve, 200));
-    assert.equal(await stat(record).then(() => true, () => false), false, "a refused location launched the editor");
+    assert.equal(await wasLaunched(record), false, "a refused location launched the editor");
 
     // Nothing went to the host's origin, which neither serves nor forwards /__runic.
     assert.deepEqual(hostRequests.filter((url) => url.startsWith("/__runic")), []);

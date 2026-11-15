@@ -7,7 +7,7 @@
 // message key and source line, and the page's text has no markers outside it.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, writeFile, rm, symlink, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ import { chromium, webkit } from "playwright-core";
 import { createServer } from "vite";
 import { runic } from "../dist/index.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
+import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
 
 const here = fileURLToPath(new URL("..", import.meta.url));
 const packages = fileURLToPath(new URL("../../", import.meta.url));
@@ -185,11 +186,7 @@ async function link(root, name, target) {
 async function withPage(files, plugins, run, engine = engines.chromium) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "runic-inspect-browser-")));
   // An editor that records its arguments, as LAUNCH_EDITOR: launch-editor calls an unknown editor with file, line, column.
-  const record = join(root, "editor-arguments.txt");
-  const editor = join(root, "record-editor.sh");
-  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD"\n');
-  await chmod(editor, 0o755);
-  const environment = { LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record };
+  const { record, environment } = await recordingEditor(root);
   const previous = Object.fromEntries(Object.keys(environment).map((name) => [name, process.env[name]]));
   Object.assign(process.env, environment);
   let server, browser;
@@ -238,17 +235,6 @@ async function withPage(files, plugins, run, engine = engines.chromium) {
     }
     await rm(root, { recursive: true, force: true });
   }
-}
-
-async function editorArguments(record) {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    try {
-      const text = await readFile(record, "utf8");
-      await rm(record);
-      return text.trim().split("\n");
-    } catch { await new Promise((resolve) => setTimeout(resolve, 25)); }
-  }
-  throw new Error("The link opened no editor.");
 }
 
 /** The 1-based line and column of `needle` in `text`. */
@@ -350,10 +336,10 @@ async function exercise({ page, root, csharp, record }, { framework, component, 
   });
   if (process.platform !== "win32") {
     await card.locator("a", { hasText: "CounterViewModel.cs:11" }).click();
-    assert.deepEqual(await editorArguments(record), [csharp, "11", "5"]);
+    assert.deepEqual(await readRecord(record), [csharp, "11", "5"]);
     // The component section comes first; a client call on the same line links the same file and line.
     await card.locator("a", { hasText: `${componentFile.file}:${componentFile.line}` }).first().click();
-    const [file, line, column] = await editorArguments(record);
+    const [file, line, column] = await readRecord(record);
     assert.deepEqual([file, Number(line)], [join(root, componentFile.file), componentFile.line]);
     assert.ok(Number(column) > 0, column);
   }
@@ -410,7 +396,7 @@ async function exerciseMessages({ page, root, record }) {
   await card.getByText("app:heading").waitFor({ timeout: scaled(10_000) });
   assert.match(await card.textContent(), /app:heading \[en\] "Counter"/u);
   await card.locator("a", { hasText: "translations/en.rmf2:2" }).click();
-  if (process.platform !== "win32") assert.deepEqual(await editorArguments(record), [rmf2, "2", "1"]);
+  if (process.platform !== "win32") assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
 
   // Off: the page renders its plain text again.
   await page.keyboard.press("Escape");
