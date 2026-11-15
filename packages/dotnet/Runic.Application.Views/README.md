@@ -5016,7 +5016,10 @@ command, `RunicApplicationHost`, `NODE_ENV` and the environment variables named 
 `RunicApplicationFrontendBuildEnvironment` items; only the hash is written, to
 `runic-bridge-frontend.state` in `BaseIntermediateOutputPath` (`obj/` by default). `dist` serves every configuration and target
 framework, so a build whose state differs from the one that last built `dist`
-builds it again, for example Debug after a Release build with other variables. Generated TypeScript is rewritten only when its
+builds it again, for example Debug after a Release build with other variables. An optimized build (`Optimize=true`:
+Release, `dotnet publish`) runs the frontend build with `NODE_ENV=production` unless the environment sets `NODE_ENV`,
+and the build state uses that value, so a Bun-built frontend (`Bun.build`, `bun build`) bundles the production build of
+`@runic-artifex/views` in Release and the development build in Debug. Generated TypeScript is rewritten only when its
 content changes, so C#-only edits skip the frontend build.
 `RunicApplicationFrontendInput` items are the extension point for inputs outside
 the frontend directory, such as workspace packages, shared components imported

@@ -881,6 +881,11 @@
        are inputs), the generated TypeScript and this project file. The build
        state is a hash of the build command, RunicApplicationHost, NODE_ENV and
        the variables that RunicApplicationFrontendBuildEnvironment items name.
+       An optimized build (Release, dotnet publish) runs the frontend build
+       with NODE_ENV=production unless the environment sets NODE_ENV, so a
+       bundler that follows NODE_ENV, such as Bun's (Bun.build, bun build),
+       bundles the production build of @runic-artifex/views and of React; a
+       Debug build leaves NODE_ENV unset and gets the development build.
        The generator rewrites TypeScript only when its content changes, so a
        C#-only edit does not rebuild the frontend.
 
@@ -915,6 +920,18 @@
       <_RunicBridgeFrontendEnvironmentName Include="NODE_ENV;@(RunicApplicationFrontendBuildEnvironment)" />
       <_RunicBridgeFrontendEnvironment Include="@(_RunicBridgeFrontendEnvironmentName->Distinct())">
         <Value>$([System.Environment]::GetEnvironmentVariable('%(Identity)'))</Value>
+      </_RunicBridgeFrontendEnvironment>
+    </ItemGroup>
+    <!-- NODE_ENV=production for an optimized build without NODE_ENV in the environment (see above); the build state
+         tracks the value the frontend build receives, so switching between Debug and Release rebuilds dist/. -->
+    <PropertyGroup>
+      <_RunicBridgeFrontendNodeEnvironment Condition="'$(Optimize)' == 'true' and '$([System.Environment]::GetEnvironmentVariable(`NODE_ENV`))' == ''">production</_RunicBridgeFrontendNodeEnvironment>
+      <_RunicBridgeFrontendExecEnvironment>RUNIC_APPLICATION_HOST=$(RunicApplicationHost)</_RunicBridgeFrontendExecEnvironment>
+      <_RunicBridgeFrontendExecEnvironment Condition="'$(_RunicBridgeFrontendNodeEnvironment)' != ''">$(_RunicBridgeFrontendExecEnvironment);NODE_ENV=$(_RunicBridgeFrontendNodeEnvironment)</_RunicBridgeFrontendExecEnvironment>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicBridgeFrontendNodeEnvironment)' != ''">
+      <_RunicBridgeFrontendEnvironment Condition="'%(Identity)' == 'NODE_ENV'">
+        <Value>$(_RunicBridgeFrontendNodeEnvironment)</Value>
       </_RunicBridgeFrontendEnvironment>
     </ItemGroup>
     <!-- The build state is hashed in memory; neither the values nor the
@@ -1093,7 +1110,7 @@
              Condition="'$(_RunicBunVersion)' != '' and $([MSBuild]::VersionLessThan('$(_RunicBunVersion)', '$(_RunicMinimumBunVersion)'))"
              Text="Bun $(_RunicBunVersion) is older than $(_RunicMinimumBunVersion), the oldest Bun that this Runic release supports; 'dotnet runic doctor' rejects it. Install Bun $(_RunicMinimumBunVersion) or a newer 1.x release." />
     <Exec Command="$(RunicApplicationFrontendBuildCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
-          EnvironmentVariables="RUNIC_APPLICATION_HOST=$(RunicApplicationHost)"
+          EnvironmentVariables="$(_RunicBridgeFrontendExecEnvironment)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeFrontendBuildExitCode" />
       <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeFrontendBuildOutputLine" />

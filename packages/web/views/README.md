@@ -320,11 +320,23 @@ call-reporting code, tags no call and creates no global for them. Everything
 else, including the development state inspector that Runic Inspect reads, is
 the same in both.
 
+> [!IMPORTANT]
+> **Bun bundles the development build by default.** `bun build` and `Bun.build`
+> resolve the `development` condition unless the build runs with `--production`
+> or `NODE_ENV=production`. Build a release page with `bun build --production`,
+> or with `NODE_ENV=production` for a `Bun.build` script. Otherwise the page
+> ships the development tools (they stay idle without a reader, but cost the
+> bundle size and a property read per call). The Views MSBuild targets run the
+> frontend build of an optimized build (`dotnet build -c Release`,
+> `dotnet publish`) with `NODE_ENV=production` unless the environment sets
+> `NODE_ENV`, so a Bun-built frontend of a Runic application gets the production
+> build there and the development build in Debug.
+
 | Tool | Resolves the development build |
 | --- | --- |
 | Vite | In `vite dev` and Vitest. Vite adds `development` unless `NODE_ENV` is `production`, which `vite build` sets when it is unset: a `vite build` with `NODE_ENV=development` (or `test`) bundles the development build, as it bundles React's. |
 | Angular CLI | In `ng serve` and any build without script optimization (`"optimization": false`); `ng build` with the default production configuration resolves the production build. |
-| Bun | `bun build` and `Bun.build` add `development` unless `--production` or `NODE_ENV=production`. The Bun runtime (`bun run`, `bun test`) does not; opt in with `bun --conditions development …`. |
+| Bun | **`bun build` and `Bun.build`, unless `--production` or `NODE_ENV=production`**: pass `--production` (or set `NODE_ENV=production`) for a release build. The Bun runtime (`bun run`, `bun test`) does not; opt in with `bun --conditions development …`. |
 | Node.js | With `node --conditions=development`. |
 | esbuild | With `--conditions=development` (`conditions: ["development"]`). |
 | Rollup | With `exportConditions: ["development"]` in `@rollup/plugin-node-resolve`. |

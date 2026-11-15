@@ -24,7 +24,7 @@ The host adapters (Desktop, CS-WebUI, WPF) bring these targets in.
 | `RunicApplicationFrontendDirectory` | property | `Frontend` | The frontend's `package.json` directory. |
 | `RunicApplicationFrontendGeneratedDirectory` | property | `<frontend>/src/generated` | Where the generated TypeScript clients go. |
 | `RunicApplicationFrontendPackageManager` | property | from `package.json` or the lock file, else `npm` | `npm`, `pnpm` or `bun`. |
-| `RunicApplicationFrontendBuildCommand` | property | the package manager's `run build` | The production frontend build. |
+| `RunicApplicationFrontendBuildCommand` | property | the package manager's `run build` | The production frontend build. An optimized build (`Optimize=true`: Release, `dotnet publish`) runs it with `NODE_ENV=production` unless the environment sets `NODE_ENV`, so Bun's bundler resolves the production build of `@runic-artifex/views`; a Debug build leaves `NODE_ENV` unset. |
 | `RunicApplicationFrontendInstallCommand` | property | the package manager's locked install | The install before the build. |
 | `RunicApplicationFrontendAllowUnlockedInstall` | property | `false` | Install without a lock file. |
 | `RunicApplicationFrontendInstallEnabled` | property | `true` | `false` when a workspace install owns the packages. |
