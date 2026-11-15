@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ReactiveUI;
@@ -71,10 +72,33 @@ public sealed class ContinuationProbe
         write($"{label}:delay");
         await NestedAsync(label, write);
         write($"{label}:nested");
-        var release = Release;
-        SignalWaiting(label);
-        await release;
+        // Reports the body as waiting only once its continuation waits on the gate (#1024). Reported before, a release
+        // could come first: the body would then run on in its current turn, ahead of a body that already waited.
+        await new Gate(Release, () => SignalWaiting(label));
         write($"{label}:released");
+    }
+
+    // Awaits the release and reports, after registering the continuation, that the body waits.
+    private readonly struct Gate(Task release, Action waiting) : ICriticalNotifyCompletion
+    {
+        public Gate GetAwaiter() => this;
+
+        // Always registers, so the waiting report never depends on whether the release came first.
+        public bool IsCompleted => false;
+
+        public void OnCompleted(Action continuation)
+        {
+            release.GetAwaiter().OnCompleted(continuation);
+            waiting();
+        }
+
+        public void UnsafeOnCompleted(Action continuation)
+        {
+            release.GetAwaiter().UnsafeOnCompleted(continuation);
+            waiting();
+        }
+
+        public void GetResult() => release.GetAwaiter().GetResult();
     }
 
     private static async Task NestedAsync(string label, Action<string> write)

@@ -1684,7 +1684,9 @@ private async Task SaveAsync(CancellationToken token)
   ones included, resumes in a later turn of the same context, as code on a UI
   thread resumes on that thread. Writes after `await` are applied in the order
   in which the continuations become ready, and no other turn runs between two
-  awaits of one body.
+  awaits of one body. An `await` of work that has already completed doesn't
+  wait: the code after it runs on in the current turn, ahead of continuations
+  that are still queued.
 - Code after `ConfigureAwait(false)`, in `Task.Run`, in a timer or in another
   background callback runs outside the context. Do CPU-bound or blocking work
   there, then commit: `await modelContext.InvokeAsync(() => Items = loaded)`.
