@@ -23,6 +23,12 @@ internal sealed record DevOptions(
     /// <summary>False with <c>--no-build</c>: dev runs no .NET restore or build of its own before starting the Window.</summary>
     internal bool Build { get; init; } = true;
 
+    /// <summary>
+    /// False with <c>--no-window</c>: dev runs the frontend only, and an IDE starts the Window under its debugger. The
+    /// IDE's build keeps dev's development pages while the session lasts (<see cref="DevSession"/>).
+    /// </summary>
+    internal bool StartWindow { get; init; } = true;
+
     /// <summary>The <c>-e</c> variables for the Window process, in the order given; a later value of a name wins.</summary>
     internal IReadOnlyList<KeyValuePair<string, string>> Environment { get; init; } = [];
 }
@@ -31,6 +37,30 @@ internal sealed record DevOptions(
 internal static class ToolOptionValues
 {
     internal const string EnvironmentFormatCode = "RAPPDEV1011";
+    internal const string NoWindowConflictCode = "RAPPDEV1014";
+    internal const string NoWindowFrontendCode = "RAPPDEV1015";
+
+    /// <summary>
+    /// <c>--no-window</c> leaves the Window to the IDE, so options that only describe how dev starts it, or that stop the
+    /// frontend from being served, are mistakes rather than something to ignore.
+    /// </summary>
+    internal static void RequireWindowOptions(DevOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.StartWindow) return;
+        var conflicts = new List<string>();
+        if (!options.WatchFrontend) conflicts.Add("--no-frontend-watch");
+        if (!options.WatchHost) conflicts.Add("--no-dotnet-watch");
+        if (options.LaunchProfile is not null) conflicts.Add("--launch-profile");
+        if (options.Environment.Count != 0) conflicts.Add("-e");
+        if (options.ApplicationArguments.Count != 0) conflicts.Add("application arguments after --");
+        if (conflicts.Count != 0)
+        {
+            throw new DevUsageException(NoWindowConflictCode,
+                $"--no-window runs only the frontend, so it cannot be combined with {string.Join(", ", conflicts)}. " +
+                "Set the Window's launch profile, environment and arguments in the IDE.");
+        }
+    }
     internal const string ReservedEnvironmentCode = "RAPPDEV1012";
     internal const string PropertyFormatCode = "RAPPSIZE1005";
     internal const string ReservedPropertyCode = "RAPPSIZE1006";

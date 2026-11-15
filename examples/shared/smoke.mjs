@@ -125,9 +125,16 @@ export function killTree(child) {
 }
 
 /**
- * Starts headless Chromium on `url` and connects to its page over the
- * DevTools protocol. Console messages and uncaught exceptions are retained
- * for `diagnostics()`.
+ * Starts headless Chromium, connects to its page over the DevTools protocol
+ * and opens `url` in it. Console messages and uncaught exceptions are
+ * retained for `diagnostics()`.
+ *
+ * Chromium starts on about:blank, and the smoke opens `url` with
+ * `Page.navigate` once it is connected: a server can redirect the request
+ * (WebUI answers `/` with its start page) without the smoke losing the page,
+ * and the page's first console output is retained. A redirect that drops a
+ * query parameter of `url` fails the launch, since the page would not see the
+ * variant the smoke asked for.
  *
  * A cold Chromium, notably on Windows runners, can keep running without ever
  * answering DevTools. Such a launch is stopped with its process tree and
@@ -138,8 +145,8 @@ export function killTree(child) {
  *
  * With `webSocketEvents`, `diagnostics()` also lists how the page's
  * WebSockets closed or failed (DevTools Network domain), with each event's
- * time since the connection. Chromium then starts on about:blank and opens
- * `url` once the Network domain is enabled, so the first WebSocket is seen.
+ * time since the connection; the Network domain is enabled before `url`
+ * opens, so the first WebSocket is seen.
  */
 export async function launchChromium(url, { profilePrefix = "runic-smoke-", timeout = 12_000, relaunches = 1, webSocketEvents = false } = {}) {
   const failures = [];
@@ -168,11 +175,10 @@ export async function launchChromium(url, { profilePrefix = "runic-smoke-", time
 
 async function startChromium(url, profilePrefix, webSocketEvents) {
   const profile = await mkdtemp(join(tmpdir(), profilePrefix));
-  const first = webSocketEvents ? "about:blank" : url;
   const child = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? "chromium", [
     "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
     "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`, first,
+    `--user-data-dir=${profile}`, "about:blank",
   ], { stdio: "ignore" });
   const consoleLines = [];
   const pending = new Map();
@@ -250,9 +256,9 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal });
       answered = true;
       targets = await response.json();
-      return targets.find(entry => entry.type === "page" && entry.url.startsWith(first));
+      return targets.find(entry => entry.type === "page" && entry.url === "about:blank");
     }, {
-      label: `the Chromium page for ${first}`, timeout, attemptTimeout: 5_000,
+      label: "the Chromium page", timeout, attemptTimeout: 5_000,
       detail: () => `Chromium ${exited(child) ? `exited: ${child.exitCode ?? child.signalCode}` : "is running"}; DevTools port ${port}; ` +
         `last targets: ${targets ? describe(targets.map(entry => ({ type: entry.type, url: entry.url }))) : "(no reply)"}`,
     });
@@ -287,16 +293,32 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
     await browser.command("Runtime.enable");
     await browser.command("Log.enable");
     connected = performance.now();
-    if (webSocketEvents) {
-      await browser.command("Network.enable");
-      await browser.command("Page.navigate", { url });
-    }
+    if (webSocketEvents) await browser.command("Network.enable");
+    // A page Chromium opens at startup has focus and one opened through DevTools does not, so the page is focused
+    // first, as smokes of focus behaviour need.
+    await browser.command("Page.bringToFront");
+    const navigation = await browser.command("Page.navigate", { url }, { timeout });
+    const opened = await waitFor(async () => {
+      const href = await browser.evaluate("location.href", { timeout: 5_000 });
+      return href !== "about:blank" && href;
+    }, { label: `Chromium to open ${url}`, timeout, detail: () => browser.diagnostics() });
+    const dropped = droppedQuery(url, opened);
+    if (dropped.length)
+      throw new Error(`Chromium opened ${opened} for ${url}${navigation.errorText ? ` (${navigation.errorText})` : ""}: ` +
+        `a redirect dropped ${dropped.join(", ")}, so the page would not see them. Request the page the server redirects to.`);
   }
 
   // True while Chromium runs and no DevTools request has been answered: the
   // cold-start stall a fresh launch can clear.
   const silent = () => !exited(child) && !answered;
   return { browser, connect, silent };
+}
+
+/** The query parameters of `requested` that `opened` lacks, as `name=value`. */
+function droppedQuery(requested, opened) {
+  const kept = new URL(opened).searchParams;
+  return [...new URL(requested).searchParams].filter(([name, value]) => !kept.getAll(name).includes(value))
+    .map(([name, value]) => `${name}=${value}`);
 }
 
 /**

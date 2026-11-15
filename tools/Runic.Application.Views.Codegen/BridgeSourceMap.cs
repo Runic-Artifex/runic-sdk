@@ -19,7 +19,9 @@ using System.Text.RegularExpressions;
 /// <para>
 /// Locations come from the model assembly's portable PDB (<see cref="SourceLocator"/>), then from a light scan of the
 /// type's source files for declarations without sequence points (an auto-property, a CommunityToolkit
-/// <c>[ObservableProperty]</c> field). Without a PDB or source files an entry has no location; the map is still written.
+/// <c>[ObservableProperty]</c> field). A method or accessor is located at its declaration above its first sequence point
+/// (<see cref="Declared"/>), so every build configuration writes the same map. Without a PDB or source files an entry
+/// has no location; the map is still written.
 /// </para>
 /// </remarks>
 internal static class BridgeSourceMap
@@ -55,12 +57,12 @@ internal static class BridgeSourceMap
     /// <summary>A state member, read through the property's getter.</summary>
     internal static void RecordState(Type model, string member, PropertyInfo property) =>
         Add(model, State, member, Symbol(property), null,
-            At(SourceLocator.Own(property.GetMethod)) ?? PropertyDeclaration(property) ?? At(SourceLocator.Own(property)));
+            Declared(property.GetMethod) ?? PropertyDeclaration(property) ?? At(SourceLocator.Own(property)));
 
     /// <summary>A state member the page sets (<c>set…</c>/<c>write…</c>), through the property's setter.</summary>
     internal static void RecordSetter(Type model, string member, PropertyInfo property) =>
         Add(model, Setter, member, Symbol(property) + ".set", null,
-            At(SourceLocator.Own(property.SetMethod)) ?? PropertyDeclaration(property) ?? At(SourceLocator.Own(property)));
+            Declared(property.SetMethod) ?? PropertyDeclaration(property) ?? At(SourceLocator.Own(property)));
 
     /// <summary>
     /// A command. Its location is the handler: the method its MVVM library generated the command from (a
@@ -84,7 +86,7 @@ internal static class BridgeSourceMap
 
     internal static void RecordInteraction(Type model, string member, PropertyInfo property, bool request) =>
         Add(model, request ? Request : Interaction, member, Symbol(property), null,
-            At(SourceLocator.Own(property.GetMethod)) ?? PropertyDeclaration(property) ?? At(SourceLocator.Own(property)));
+            Declared(property.GetMethod) ?? PropertyDeclaration(property) ?? At(SourceLocator.Own(property)));
 
     /// <summary>
     /// Writes the map to <paramref name="directory"/>, only when its content changed, so a dev server that watches
@@ -194,6 +196,42 @@ internal static class BridgeSourceMap
         location is { } found && found.Line > 0 && found.Column > 0 && File.Exists(found.Path)
             ? new(Path.GetFullPath(found.Path), found.Line, found.Column) : null;
 
+    /// <summary>
+    /// The declaration of <paramref name="method"/>: its name, or an accessor's <c>get</c>/<c>set</c>/<c>init</c>
+    /// keyword (the property's name for an expression-bodied property). The PDB locates a method at its first
+    /// sequence point, which is the body's <c>{</c> in a Debug build but its first statement in an optimized one, so
+    /// the map would depend on the configuration that built it; the declaration above that point does not.
+    /// </summary>
+    private static Location? Declared(MethodInfo? method)
+    {
+        if (method is null || At(SourceLocator.Own(method)) is not { } point) return null;
+        if (SourceDocumentation.Lines(point.File) is not { } lines || point.Line > lines.Length) return point;
+        var accessor = method.IsSpecialName && (method.Name.StartsWith("get_", StringComparison.Ordinal)
+            || method.Name.StartsWith("set_", StringComparison.Ordinal));
+        var name = new Regex(@"(?<![\w@.])@?(?<name>" + Regex.Escape(accessor ? method.Name[4..] : method.Name)
+            + (accessor ? @")\b" : @")\s*(?:<[^<>()]*>\s*)?\("), RegexOptions.CultureInvariant);
+        // A declaration spans a few lines at most: attributes, parameters, the body's "{".
+        for (var line = point.Line - 1; line >= 0 && line >= point.Line - 1 - DeclarationLines; line--)
+        {
+            // On the point's own line, only text before it: "void Save() => Run();" or "get => _count;".
+            var limit = line == point.Line - 1 ? point.Column - 1 : lines[line].Length;
+            if (accessor && Last(AccessorKeyword.Matches(lines[line]), limit) is { } keyword)
+                return new(point.File, line + 1, keyword.Index + 1);
+            if (Last(name.Matches(lines[line]), limit) is { } declaration)
+                return new(point.File, line + 1, declaration.Index + 1);
+        }
+        return point;
+
+        static Group? Last(MatchCollection matches, int limit) =>
+            matches.Select(match => match.Groups["name"]).LastOrDefault(group => group.Index < limit);
+    }
+
+    private const int DeclarationLines = 30;
+
+    // An accessor: "get;", "get =>", "get {", "private set" or "init" at the end of a line.
+    private static readonly Regex AccessorKeyword = new(@"(?<![\w@.])(?<name>get|set|init)\b(?=\s*(?:=>|\{|;|$))",
+        RegexOptions.CultureInvariant);
+
     private static string LowerFirst(string value) => value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value[1..];
 
     // Ns.Type.Member for a property, Ns.Type.Method(Type, Type) for a method.
@@ -218,16 +256,16 @@ internal static class BridgeSourceMap
 
     private static (MethodInfo? Handler, Location? Location) CommandHandler(PropertyInfo command, MethodInfo? source)
     {
-        if (source is not null && At(SourceLocator.Own(source)) is { } sourceLocation) return (source, sourceLocation);
+        if (source is not null && Declared(source) is { } sourceLocation) return (source, sourceLocation);
         if (Assignment(command) is { } assignment)
         {
             // A method group of the declaring type.
             if (assignment.MethodGroup is { } name && command.DeclaringType is { } owner)
                 foreach (var method in owner.GetMethods(AllDeclared).Where(method => method.Name == name).OrderBy(method => method.MetadataToken))
-                    if (At(SourceLocator.Own(method)) is { } handlerLocation) return (method, handlerLocation);
+                    if (Declared(method) is { } handlerLocation) return (method, handlerLocation);
             return (source, assignment.Location);
         }
-        return (source, At(SourceLocator.Own(command.GetMethod)) ?? PropertyDeclaration(command) ?? At(SourceLocator.Own(command)));
+        return (source, Declared(command.GetMethod) ?? PropertyDeclaration(command) ?? At(SourceLocator.Own(command)));
     }
 
     // Where the command property gets its value on one line: "SaveCommand { get; } = new RelayCommand(Save);" or

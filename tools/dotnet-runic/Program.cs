@@ -87,6 +87,7 @@ internal static partial class Program
         [Option("--no-dotnet-watch", Description = "Run the application once instead of restarting it under dotnet watch after C# edits.")] bool noDotNetWatch,
         [Option("--dry-run", Description = "Print the evaluated project configuration and exit without changing files or starting processes.")] bool dryRun,
         [Option("--no-build", Description = "Skip the .NET restore and build before the Window starts, as dotnet run --no-build does. dotnet watch still builds after C# edits.")] bool noBuild,
+        [Option("--no-window", Description = "Run only the frontend; start the Window from your IDE, under its debugger. The IDE's build keeps dev's development pages while dev runs.")] bool noWindow,
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
@@ -111,6 +112,7 @@ internal static partial class Program
                     Verbosity = string.IsNullOrEmpty(verbosity) ? null : verbosity,
                     LaunchProfile = string.IsNullOrWhiteSpace(launchProfile) ? null : launchProfile,
                     Build = !noBuild,
+                    StartWindow = !noWindow,
                     Environment = ToolOptionValues.ParseEnvironment(environment),
                 };
                 return await DevApplication.RunAsync(context, options, cancellationToken,

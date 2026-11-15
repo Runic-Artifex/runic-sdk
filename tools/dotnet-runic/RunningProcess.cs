@@ -27,6 +27,9 @@ internal sealed class RunningProcess : IAsyncDisposable
 
     internal Task<int> Completion => _completion.Task;
 
+    /// <summary>The process ID, read once it started, so it stays known after the process has exited.</summary>
+    internal int Id { get; private set; }
+
     /// <summary>
     /// Waits, for at most <paramref name="timeout"/>, until the output of an exited process has been delivered. A
     /// descendant that still holds the pipes open must not stall the caller.
@@ -103,6 +106,7 @@ internal sealed class RunningProcess : IAsyncDisposable
                 throw new IOException($"Could not start '{executable}'.");
             }
 
+            running.Id = process.Id;
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             return running;
