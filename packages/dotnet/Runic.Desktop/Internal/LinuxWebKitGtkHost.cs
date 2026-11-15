@@ -2138,6 +2138,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         internal nint WebKitWebViewNew(string? language, string[] spellingDictionaries)
         {
+            // Outside Development no remote inspector, which developer extras do not gate (#1028).
+            WebKitInspectorEnvironment.Apply();
             var context = ((delegate* unmanaged[Cdecl]<nint>)WebKitWebContextNewPointer)();
             if (context == 0)
             {
@@ -2161,6 +2163,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal nint WebKitWebViewNewEphemeral(EphemeralDataStoreCache<nint> contexts, string dataStore, string? language,
             string[] spellingDictionaries)
         {
+            WebKitInspectorEnvironment.Apply();
             if (WebKitWebContextNewEphemeralPointer == 0)
             {
                 throw new DesktopException(DesktopErrorCategory.Unavailable, "hosted-data-store-unavailable",

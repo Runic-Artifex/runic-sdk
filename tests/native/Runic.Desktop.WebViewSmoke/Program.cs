@@ -110,6 +110,11 @@ try
         // sdk#900 W4b. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
         Environment.ExitCode = CloseDrainSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains(InspectorEnvironmentSmoke.Argument, StringComparer.Ordinal))
+    {
+        // #1028: WebKitGTK's remote inspector opens in Development only; see InspectorEnvironmentSmoke.cs.
+        Environment.ExitCode = InspectorEnvironmentSmoke.Run(args, CreateHostOptions());
+    }
     else if (args.Contains("--window-placement", StringComparer.Ordinal))
     {
         // sdk#897 W1a. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.

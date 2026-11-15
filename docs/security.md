@@ -239,16 +239,20 @@ diagnostics that report grants a presentation cannot apply.
   `ASPNETCORE_ENVIRONMENT`) is `Development`
   ([links, new windows, downloads and developer tools](../packages/dotnet/Runic.Desktop/README.md#links-new-windows-downloads-and-developer-tools)).
 - **Engine debugging endpoints** are separate. A variable in the process's
-  environment can open one whatever `DOTNET_ENVIRONMENT` says, Release included:
+  environment can open one whatever the developer tools setting says:
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (`--remote-debugging-port`) for
   WebView2, `WEBKIT_INSPECTOR_SERVER` or `WEBKIT_INSPECTOR_HTTP_SERVER` for
   WebKitGTK. They are the engine's, not Runic's: `DesktopWebContentPolicy.DevTools`
-  does not close WebKitGTK's and is not documented to close WebView2's, and
-  Runic does not clear the variables yet. Whoever controls a
-  release process's environment can open one and script the page and its
-  Bridge; such a person can usually do more than this already (load a library
-  into the process, for example), so Runic does not count it as a separate
-  threat. Do not set these variables for a distributed build. See
+  does not close WebKitGTK's and is not documented to close WebView2's.
+  Outside Development the GTK 3 and GTK 4 hosts remove both WebKit variables
+  from the process's environment before they create their first web view, so a
+  release started with one set opens no inspector port and passes neither
+  variable on to the processes it starts later. WebView2's variable is not
+  cleared: whoever controls a Windows release process's environment can open
+  its endpoint and script the page and its Bridge; such a person can usually do
+  more than this already (load a library into the process, for example), so
+  Runic does not count it as a separate threat. Do not set it for a distributed
+  build. See
   [the browser's developer tools per engine](debugging.md#the-browsers-developer-tools-per-engine).
 - **Failure detail** (exception type, message and stack) reaches the page only in
   Development, or when a window sets `IncludeFailureDetail`. Detail can contain
@@ -616,8 +620,8 @@ Runic protects:
 - the ViewModel from oversized and malformed Bridge input;
 - embedded windows from navigating away from the application, opening new
   WebView windows, downloading and exposing their developer tools in Release
-  (an engine debugging endpoint that the environment opens is not covered; see
-  [release builds](#release-builds));
+  (WebView2's debugging endpoint, which the environment can open, is not
+  covered; see [release builds](#release-builds));
 - platform calls from unsafe arguments: link schemes, `mailto` attachments,
   executable file types (best effort) and undeclared privileged programs.
 

@@ -108,9 +108,11 @@ Inspector) only when `DOTNET_ENVIRONMENT` (or else `ASPNETCORE_ENVIRONMENT`) is 
 That setting covers only the tools in the window. A **remote debugging endpoint** that a variable in the Window
 process's environment asks for is the engine's own: WebView2's `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` and
 WebKitGTK's `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER`. `DevTools = false` does not close
-WebKitGTK's (WebKitGTK 2.54.0, GTK 3 and GTK 4), is not documented to close WebView2's, and Runic does not clear these
-variables yet, in any environment. Whoever sets a release's environment can therefore script its page and Bridge
-through such an endpoint.
+WebKitGTK's (WebKitGTK 2.54.0, GTK 3 and GTK 4) and is not documented to close WebView2's. Outside Development the GTK 3
+and GTK 4 hosts therefore remove both WebKit variables from the process's environment before their first web view, also
+when `DevTools` is `true`, so a release opens no WebKit inspector port. WebView2's variable is not cleared: whoever sets
+a Windows release's environment can script its page and Bridge through that endpoint
+([release builds](security.md#release-builds)).
 
 | Engine | Where | Open | Debugger and automation |
 | --- | --- | --- | --- |
@@ -142,7 +144,9 @@ through such an endpoint.
   epiphany inspector://127.0.0.1:9226
   ```
 
-  Bind it to `127.0.0.1`, never `0.0.0.0`: neither server asks for authentication.
+  Bind it to `127.0.0.1`, never `0.0.0.0`: neither server asks for authentication. This works under `dotnet runic dev`
+  because the Window runs in Development; outside Development Runic clears both variables (above). Set one of the two:
+  with both set, WebKitGTK 2.54 starts only the HTTP inspector.
 - **Do not set `WEBKIT_INSPECTOR_HTTP_SERVER` on WebKitGTK 2.54.0** or another release without the fix for
   [WebKit bug 330602](https://bugs.webkit.org/show_bug.cgi?id=330602) (fixed upstream on 10 November 2026; the first
   release with it is not known yet). Its HTTP inspector accepts connections with any website's `Origin` and `Host`,

@@ -843,6 +843,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             // process cache is released during libc shutdown, after the managed
             // window lifetime has ended. A per-view context is reference-counted by
             // the WebView and is disposed on the GTK dispatcher with that view.
+            // Outside Development no remote inspector, which developer extras do not gate (#1028).
+            WebKitInspectorEnvironment.Apply();
             using var webContext = WebContext.New();
             // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
             if (options.Language is { } language) webContext.SetPreferredLanguages([language]);
