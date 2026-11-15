@@ -71,10 +71,11 @@ async function withServer(root, options, run) {
 }
 
 // An editor that records its arguments, as LAUNCH_EDITOR. launch-editor calls an unknown editor with file, line, column.
+// It writes the record beside it and renames it, so that a reader never sees the file before its arguments are in it.
 async function recordingEditor(directory) {
   const editor = join(directory, "record-editor.sh");
   const record = join(directory, "editor-arguments.txt");
-  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD"\n');
+  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD.part" && mv -f "$RUNIC_TEST_EDITOR_RECORD.part" "$RUNIC_TEST_EDITOR_RECORD"\n');
   await chmod(editor, 0o755);
   return { editor, record };
 }
