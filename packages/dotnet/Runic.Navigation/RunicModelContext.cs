@@ -59,9 +59,10 @@ public interface IRunicModelContext : IAsyncDisposable
 /// <c>await</c> in asynchronous code started in a turn, such as the body of an async command that the bridge
 /// invokes, therefore resumes in a later turn of this context, as code started on a UI thread resumes on that
 /// thread. State written after the <c>await</c> is applied in a turn, in the order in which the continuations
-/// became ready, and no other turn runs between two awaits of the same body. Code after
-/// <c>ConfigureAwait(false)</c>, or in work started with <c>Task.Run</c>, leaves the context; commit its result
-/// with <see cref="InvokeAsync(Action, CancellationToken)"/>.
+/// became ready, and no other turn runs between two awaits of the same body. An <c>await</c> of work that has
+/// already completed does not wait: the code after it runs on in the current turn, ahead of continuations still
+/// queued. Code after <c>ConfigureAwait(false)</c>, or in work started with <c>Task.Run</c>, leaves the context;
+/// commit its result with <see cref="InvokeAsync(Action, CancellationToken)"/>.
 /// </para>
 /// <para>
 /// A continuation posted after the context stopped accepting work, or still queued when it closed, runs on the
