@@ -93,6 +93,26 @@ internal static class SourceLocator
     }
 
     /// <summary>
+    /// The location of <paramref name="member"/> itself, from its own sequence points (a property's earliest
+    /// accessor, a method's first line) or, for a type, its declaration. Unlike <see cref="Find"/> it does not fall
+    /// back to the declaring type, so the development source map can try a better source first. Null without a
+    /// readable PDB or source file.
+    /// </summary>
+    internal static Location? Own(MemberInfo? member)
+    {
+        if (member is null) return null;
+        try
+        {
+            return FindDeclared(member);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or BadImageFormatException or InvalidOperationException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The existing source files that declare members of <paramref name="type"/>,
     /// from its methods' sequence points and, for a type without method bodies,
     /// the compiler's type-definition documents.

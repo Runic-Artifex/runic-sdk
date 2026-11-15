@@ -10,6 +10,7 @@ import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
 import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
+import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
@@ -22,6 +23,9 @@ export type { RunicOtlpOptions } from "./otlp.js";
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
+export type {
+  RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
+} from "./sources.js";
 
 export type {
   RunicDiagnosticDetail,
@@ -93,6 +97,14 @@ export interface RunicViteOptions {
    */
   readonly component?: RunicComponentOptions;
   /**
+   * The development source map that the Bridge generator writes to `obj` (`runic-bridge/sources.json`), which
+   * `vite dev` serves at `/__runic/sources` and opens in the editor through `/__runic/open`. A path names the file or
+   * a directory to search, relative to the Vite root. By default the plugin takes the path `dotnet runic dev` passes,
+   * else searches `obj` of the project, the Vite root and its parent. `false` turns both endpoints off. The build
+   * never reads it.
+   */
+  readonly sourceMap?: string | false;
+  /**
    * Exports the page's spans of Bridge calls over OTLP while serving, so they join the .NET host's spans in one trace
    * (W3C trace context in each call's request, `trace-context/1`). By default it is on when `OTEL_EXPORTER_OTLP_ENDPOINT`
    * or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set in the development server's environment, and off with
@@ -115,6 +127,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     throw new TypeError("otlp must be true, false or { url?, headers?, serviceName? }.");
   }
   const html = options.html !== false;
+  if (options.sourceMap !== undefined && options.sourceMap !== false &&
+      (typeof options.sourceMap !== "string" || options.sourceMap.length === 0)) {
+    throw new TypeError("sourceMap must be a path or false.");
+  }
   const client = options.devtools !== false;
   let server: ViteDevServer | undefined;
   // The OTLP export of the page's spans, while serving with the development client.
@@ -255,6 +271,21 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
         answerClientMessage(request, response, deliver).catch(next);
       });
+      if (options.sourceMap !== false) {
+        const readSourceMap = createSourceMapReader(options.sourceMap, () => resolvedRoot);
+        viteServer.middlewares.use(sourcesPath, (request, response) => {
+          answerSources(request, response, readSourceMap);
+        });
+        // Mounted at the root, not at openPath: an accepted request continues to Vite's /__open-in-editor with its
+        // URL rewritten, which a mounted handler's next() would prefix with the mount path again.
+        viteServer.middlewares.use(function runicOpenInEditor(request, response, next) {
+          if (request.url?.split("?", 1)[0] !== openPath) return next();
+          answerOpen(request, response, readSourceMap, (location) => {
+            request.url = editorRequestUrl(base, location);
+            next();
+          }).catch(next);
+        });
+      }
       viteServer.httpServer?.once("close", () => {
         server = undefined;
         void otlp?.close();

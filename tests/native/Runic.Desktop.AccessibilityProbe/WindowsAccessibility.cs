@@ -277,6 +277,16 @@ internal sealed partial class WindowsAccessibility : AccessibilityClient
         return Task.CompletedTask;
     }
 
+    internal override Task<string?> FocusedAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var focused = AutomationElement.FocusedElement;
+            return Task.FromResult<string?>(focused is null ? null : $"{focused.Current.ControlType.ProgrammaticName} '{focused.Current.Name}'");
+        }
+        catch (ElementNotAvailableException) { return Task.FromResult<string?>(null); }
+    }
+
     private static List<string> Selection(AutomationElement list)
     {
         if (list.TryGetCurrentPattern(SelectionPattern.Pattern, out var pattern))

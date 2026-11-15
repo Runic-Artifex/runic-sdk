@@ -1111,6 +1111,27 @@ for Runic Desktop on Kestrel) or your package manager, or install .NET SDK
 10.0.403 or later 10.0, which includes it. `dotnet runic doctor` reports the
 same problem in its `dotnet-runtime` check.
 
+### RAPPDEV1014
+
+`dev --no-window` was combined with an option that only describes how `dev`
+starts the Window or that stops the frontend from being served:
+`--no-frontend-watch`, `--no-dotnet-watch`, `--launch-profile`, `-e` or
+application arguments after `--`. With `--no-window` the IDE starts the Window.
+Exit code 2. Since 0.20.
+
+**Fix:** drop the option and set the Window's launch profile, environment and
+arguments in the IDE's launch configuration. See
+[Debug the Window in your IDE](../tools/dotnet-runic/README.md#debug-the-window-in-your-ide).
+
+### RAPPDEV1015
+
+`dev --no-window` found no frontend to run: the project has neither a Vite or
+Angular development server nor a frontend watcher (the frontend's `dev` script
+or `RunicApplicationFrontendDevWatchTarget`). Exit code 1. Since 0.20.
+
+**Fix:** run `dotnet runic dev` without `--no-window`, or give the frontend a
+development server or a `dev` script.
+
 ### RAPPPKG1001
 
 `package` found an invalid application identity: `ApplicationId` is not a
@@ -2004,7 +2025,10 @@ globalization on for helpers.
 ## Runic.Platform analyzers
 
 The `Runic.Platform` package carries Roslyn analyzers for its API, with code
-fixes in the IDE (since 0.14).
+fixes in the IDE (since 0.14). They run in every project that uses
+`Runic.Platform`, also one that gets it only through another package, such as
+`Runic.Desktop` or a Views host adapter. They report while you type and in a
+build.
 
 ### RUNICPLAT001
 

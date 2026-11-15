@@ -479,6 +479,12 @@ internal sealed partial class ToolTests
 
         string session = ViteDevelopmentServer.CreateSession();
         Equal(session, ViteDevelopmentServer.CreateEnvironment(configuration, session)[ViteDevelopmentServer.SessionEnvironmentVariable]);
+        // #951: Vite learns where the Bridge generator writes the development source map.
+        string sourceMap = Path.Combine(workspace.Root, "obj", "Debug", "net10.0", "runic-bridge", "sources.json");
+        Equal(sourceMap, ViteDevelopmentServer.CreateEnvironment(configuration with { BridgeSourceMapPath = sourceMap })
+            [ViteDevelopmentServer.SourceMapEnvironmentVariable]);
+        True(ViteDevelopmentServer.CreateEnvironment(configuration)[ViteDevelopmentServer.SourceMapEnvironmentVariable] is null,
+            "Without an evaluated intermediate directory dev passes no source map.");
         // The Window never gets the value.
         Equal(false, HostProcessController.CreateDevelopmentEnvironment(configuration, new Dictionary<string, string?>())
             .ContainsKey(ViteDevelopmentServer.SessionEnvironmentVariable));

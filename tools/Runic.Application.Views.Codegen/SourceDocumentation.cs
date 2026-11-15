@@ -43,14 +43,14 @@ internal static partial class SourceDocumentation
     }
 
     // The name in the nearest type declaration above the line.
-    private static string? EnclosingTypeName(string[] lines, int line)
+    internal static string? EnclosingTypeName(string[] lines, int line)
     {
         for (var index = line; index >= 0; index--)
             if (TypeDeclaration().Match(lines[index]) is { Success: true } match) return match.Groups["name"].Value;
         return null;
     }
 
-    private static string SimpleName(Type type)
+    internal static string SimpleName(Type type)
     {
         var tick = type.Name.IndexOf('`', StringComparison.Ordinal);
         return tick >= 0 ? type.Name[..tick] : type.Name;
@@ -79,7 +79,7 @@ internal static partial class SourceDocumentation
         }
     }
 
-    private static string[]? Lines(string path)
+    internal static string[]? Lines(string path)
     {
         if (Files.TryGetValue(path, out var lines)) return lines;
         try
