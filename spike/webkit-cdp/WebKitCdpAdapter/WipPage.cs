@@ -372,6 +372,20 @@ internal sealed class WipPage
         }
     }
 
+    // The sources an inline (data: URL) source map lists, as one key; null for other scripts.
+    private static string? SourcesKey(JsonObject script)
+    {
+        if (script["sourceMapURL"]?.GetValue<string>() is not { } map || !map.StartsWith("data:", StringComparison.Ordinal)) return null;
+        var comma = map.IndexOf(',');
+        if (comma < 0 || !map[..comma].EndsWith(";base64", StringComparison.Ordinal)) return null;
+        try
+        {
+            var json = JsonNode.Parse(Convert.FromBase64String(map[(comma + 1)..]));
+            return json?["sources"] is JsonArray sources ? string.Join("\n", sources.Select(static x => x?.GetValue<string>())) : null;
+        }
+        catch (Exception) { return null; }
+    }
+
     private async Task EnableAsync(string method)
     {
         try { await WipAsync(method); }
@@ -416,8 +430,22 @@ internal sealed class WipPage
             case "adapter.replayEnd":
                 var replay = _replay ?? [];
                 _replay = null;
-                foreach (var script in replay.OrderBy(static e => long.TryParse(e["scriptId"]!.GetValue<string>(), out var n) ? n : long.MaxValue))
+                // The replay also lists scripts of earlier page loads that JavaScriptCore has not collected yet. A URL
+                // seen twice keeps only its newest script, or js-debug would take the newer one for the older.
+                static long Id(JsonObject e) => long.TryParse(e["scriptId"]!.GetValue<string>(), out var n) ? n : long.MaxValue;
+                // Likewise an inline source map seen twice (an HMR edit that was reverted: same code, another ?t= URL).
+                var newest = replay.Where(static e => e["url"]!.GetValue<string>().Length > 0)
+                    .GroupBy(static e => e["url"]!.GetValue<string>()).ToDictionary(static g => g.Key, static g => g.Max(Id));
+                // Older HMR versions of a module (same sources in their inline map) are superseded: keep the newest.
+                var newestMap = replay.Select(static e => (e, key: SourcesKey(e))).Where(static x => x.key is not null)
+                    .GroupBy(static x => x.key!).ToDictionary(static g => g.Key, static g => g.Max(x => Id(x.e)));
+                foreach (var script in replay.OrderBy(Id))
+                {
+                    var url = script["url"]!.GetValue<string>();
+                    if (url.Length > 0 && newest[url] != Id(script)) continue;
+                    if (SourcesKey(script) is { } key && newestMap.TryGetValue(key, out var keep) && keep != Id(script)) continue;
                     await _cdp.EmitAsync(_sessionId, "Debugger.scriptParsed", script);
+                }
                 return;
             case "Runtime.executionContextCreated":
             {
