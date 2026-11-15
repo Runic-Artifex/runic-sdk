@@ -2147,12 +2147,15 @@ for the release you use.
 Since 0.20 the package also ships Roslyn analyzers for the errors that the
 source alone shows, such as a command named `NewCommand` or a `ViewRequest<T>`
 with a public setter. Your IDE reports them while you type, with the same ID
-and message, and offers a code fix where it is mechanical. The
-[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-while-you-type)
+and message, and offers a code fix where it is mechanical. The analyzers also
+report the warnings `RUNICBRIDGE013`, `028`, `034` and `039` for your project's
+own code, while you type and in the build, so `#pragma warning disable` and
+`.editorconfig` severities apply to them as to any compiler warning. The
+[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-and-warnings-while-you-type)
 lists them.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the generator's
-(`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the ones the generator
+reports itself (`020`, `031`, `032` and `053`, and the analyzer's when analyzers are off) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.

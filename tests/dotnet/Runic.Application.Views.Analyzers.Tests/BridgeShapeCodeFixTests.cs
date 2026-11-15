@@ -53,7 +53,9 @@ public sealed class BridgeShapeCodeFixTests
     }
 
     [Test]
-    [Arguments("internal sealed partial class SideView : RunicView<PageViewModel>;", "public sealed partial class SideView : RunicView<PageViewModel>;")]
+    // With a contract of its own: a second default View of PageViewModel is RUNICBRIDGE006 once public.
+    [Arguments("[RunicViewContract(\"Compact\")] internal sealed partial class SideView : RunicView<PageViewModel>;",
+        "[RunicViewContract(\"Compact\")] public sealed partial class SideView : RunicView<PageViewModel>;")]
     [Arguments("[RunicViewContract(\"Side\")]\nsealed partial class SideView : RunicView<PageViewModel>;",
         "[RunicViewContract(\"Side\")]\npublic sealed partial class SideView : RunicView<PageViewModel>;")]
     public async Task MakesTheViewPublic(string view, string expected)

@@ -52,6 +52,7 @@ internal static class AnalyzerHarness
             [System.AttributeUsage(System.AttributeTargets.Method)]
             public sealed class RelayCommandAttribute : System.Attribute;
             public interface IRelayCommand : System.Windows.Input.ICommand;
+            public interface IAsyncRelayCommand : IRelayCommand;
         }
         namespace ReactiveUI
         {
@@ -68,17 +69,31 @@ internal static class AnalyzerHarness
             public interface IInteraction<TInput, TOutput>;
             public sealed class Interaction<TInput, TOutput> : IInteraction<TInput, TOutput>;
         }
+        namespace ReactiveUI.Binding.Reactive
+        {
+            public interface IInteraction<TInput, TOutput>;
+            public sealed class Interaction<TInput, TOutput> : IInteraction<TInput, TOutput>;
+        }
         """;
 
-    internal static Document Document(string source, string? generated = null)
+    // The Runic ReactiveUI adapter the application references (RUNICBRIDGE025): an empty assembly of that name.
+    internal const string PrimitivesAdapter = "Runic.Application.Views.ReactiveUI";
+    internal const string ReactiveAdapter = "Runic.Application.Views.ReactiveUI.Reactive";
+
+    internal static Document Document(string source, string? generated = null, string? adapter = PrimitivesAdapter)
     {
-        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+        IEnumerable<MetadataReference> references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Select(path => MetadataReference.CreateFromFile(path))
             .Append(MetadataReference.CreateFromFile(typeof(RunicView<>).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(Runic.Navigation.NavigationSelection).Assembly.Location));
+        if (adapter is not null)
+            references = references.Append(CSharpCompilation.Create(adapter, options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary))
+                .ToMetadataReference());
         var workspace = new AdhocWorkspace();
         var project = workspace.AddProject(ProjectInfo.Create(ProjectId.CreateNewId(), VersionStamp.Default, "App", "App",
-            LanguageNames.CSharp, compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
+            LanguageNames.CSharp, compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+                // RunicOperationClose is experimental.
+                .WithSpecificDiagnosticOptions([new("RUNICDESK105", ReportDiagnostic.Suppress)]),
             parseOptions: new CSharpParseOptions(LanguageVersion.Preview),
             metadataReferences: references.DistinctBy(reference => reference.Display)));
         project = workspace.AddDocument(project.Id, "Libraries.cs", SourceText.From(Libraries)).Project;
@@ -91,7 +106,8 @@ internal static class AnalyzerHarness
     }
 
     internal static Task<ImmutableArray<Diagnostic>> AnalyzeAsync(string source, string? generated = null,
-        IReadOnlyDictionary<string, string>? properties = null) => AnalyzeAsync(Document(source, generated), properties);
+        IReadOnlyDictionary<string, string>? properties = null, string? adapter = PrimitivesAdapter) =>
+        AnalyzeAsync(Document(source, generated, adapter), properties);
 
     internal static async Task<ImmutableArray<Diagnostic>> AnalyzeAsync(Document document, IReadOnlyDictionary<string, string>? properties = null)
     {
