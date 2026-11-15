@@ -208,3 +208,65 @@ process.stdout.write(JSON.stringify({ requested, beforeInterval, listeners: insp
     detail: { code: "superseded", route: "wizard", member: "next", epoch: 1, revision: 2 },
   }]);
 });
+
+test("the client draws each settled Bridge call on the Runic Performance track, and a handler span below it", async () => {
+  const harness = String.raw`
+import { readFile } from "node:fs/promises";
+import { createContext, SourceTextModule } from "node:vm";
+
+const measures = [];
+const cleared = [];
+const performance = {
+  measure(name, options) { measures.push({ name, options: JSON.parse(JSON.stringify(options)) }); },
+  clearMeasures(name) { cleared.push(name); },
+};
+const hot = { data: {}, send() {}, on() {}, prune() {} };
+const context = createContext({ setTimeout, clearTimeout, Promise, performance, addEventListener() {}, removeEventListener() {} });
+context[Symbol.for("runic.vite.client")] = { channel: "hot" };
+const modules = new Map();
+const load = async (path, identifier, meta) => {
+  const module = new SourceTextModule(await readFile(path, "utf8"), { context, identifier, ...(meta ? { initializeImportMeta: meta } : {}) });
+  modules.set(identifier, module);
+  return module;
+};
+await load("dist/diagnostics.js", "diagnostics");
+await load("dist/stale-input.js", "stale-input");
+await load("dist/channel.js", "channel");
+const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
+await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
+await client.evaluate();
+const calls = context[Symbol.for("runic.views.calls")];
+const emit = (event) => { for (const listener of [...calls.listeners]) listener(event); };
+const identity = { id: 7, kind: "command", request: "command", route: "editor", contract: "Demo.EditorViewModel:ABC", member: "save", start: 10 };
+emit({ ...identity, phase: "start" });
+emit({ ...identity, phase: "end", end: 22.5, duration: 12.5, outcome: "ok", revision: 4,
+  handler: { name: "Demo.EditorViewModel.SaveAsync()", start: 12, end: 20 } });
+emit({ ...identity, id: 8, phase: "end", end: 30, duration: 20, outcome: "error", reason: "domain-failed" });
+calls.devtools = false;
+emit({ ...identity, id: 9, phase: "end", end: 30, duration: 20, outcome: "ok" });
+process.stdout.write(JSON.stringify({ requested: calls.requested, listeners: calls.listeners.size, measures, cleared }));
+`;
+  const { stdout } = await execFile(process.execPath, ["--experimental-vm-modules", "--input-type=module", "--eval", harness],
+    { cwd: process.cwd() });
+  const result = JSON.parse(stdout);
+  assert.equal(result.requested, true);
+  assert.equal(result.listeners, 1);
+  assert.deepEqual(result.measures, [
+    { name: "EditorViewModel.save #7", options: { start: 10, end: 22.5, detail: { devtools: {
+      dataType: "track-entry", track: "Bridge calls", trackGroup: "Runic", color: "primary",
+      properties: [["Kind", "command"], ["Route", "editor"], ["Contract", "Demo.EditorViewModel:ABC"], ["Request id", "7"], ["Outcome", "ok"], ["Revision", "4"]],
+      tooltipText: "command EditorViewModel.save: ok, 12.5 ms",
+    } } } },
+    { name: "Demo.EditorViewModel.SaveAsync() #7", options: { start: 12, end: 20, detail: { devtools: {
+      dataType: "track-entry", track: "C# handlers", trackGroup: "Runic", color: "secondary",
+      properties: [["Request id", "7"], ["Route", "editor"], ["Member", "save"]],
+    } } } },
+    { name: "EditorViewModel.save #8", options: { start: 10, end: 30, detail: { devtools: {
+      dataType: "track-entry", track: "Bridge calls", trackGroup: "Runic", color: "error",
+      properties: [["Kind", "command"], ["Route", "editor"], ["Contract", "Demo.EditorViewModel:ABC"], ["Request id", "8"], ["Outcome", "error (domain-failed)"]],
+      tooltipText: "command EditorViewModel.save: error, 20.0 ms",
+    } } } },
+  ]);
+  // Each entry leaves the page's timeline buffer at once.
+  assert.deepEqual(result.cleared, result.measures.map((entry) => entry.name));
+});

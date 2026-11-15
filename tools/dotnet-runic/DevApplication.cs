@@ -12,6 +12,25 @@ namespace Runic.Application.Tool;
 
 internal static class DevApplication
 {
+    /// <summary>The line dev prints for each Window process that starts: <c>[dev] Window started: process &lt;pid&gt;</c>.</summary>
+    internal static string WindowStartedLine(int processId) =>
+        $"[dev] Window started: process {processId.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>The line dev prints when that Window process exits: <c>[dev] Window exited: process &lt;pid&gt;</c>.</summary>
+    internal static string WindowExitedLine(int processId) =>
+        $"[dev] Window exited: process {processId.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>The line dev prints once the frontend and a Window process can be used.</summary>
+    internal const string ReadyLine = "[dev] Ready";
+
+    /// <summary>
+    /// A failure as one line in MSBuild's canonical form, <c>&lt;project&gt; : error RAPPDEV1007: &lt;message&gt;</c>, which VS Code's
+    /// <c>$msCompile</c> problem matcher and the regex in the README match like the build's own errors. The origin is
+    /// the project file, or <c>dotnet-runic</c> before dev found one.
+    /// </summary>
+    internal static string DiagnosticLine(string? project, string code, string message) =>
+        $"{(string.IsNullOrEmpty(project) ? "dotnet-runic" : project)} : error {code}: {message.ReplaceLineEndings(" ")}";
+
     internal static async Task<int> RunAsync(
         CommandExecutionContext context,
         DevOptions options,
@@ -20,7 +39,31 @@ internal static class DevApplication
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(options);
-        string project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
+        string? project = null;
+        try
+        {
+            project = ProjectDiscovery.Find(Environment.CurrentDirectory, options.Project);
+            return await RunProjectAsync(context, options, project, evaluated, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DevDevelopmentException error)
+        {
+            Console.Error.WriteLine(DiagnosticLine(project, error.Code, error.Message));
+            throw;
+        }
+        catch (DevUsageException error)
+        {
+            Console.Error.WriteLine(DiagnosticLine(project, error.Code, error.Message));
+            throw;
+        }
+    }
+
+    private static async Task<int> RunProjectAsync(
+        CommandExecutionContext context,
+        DevOptions options,
+        string project,
+        Action<DevProjectConfiguration>? evaluated,
+        CancellationToken cancellationToken)
+    {
         string dotnetHost = ResolveDotNetHost();
         using PhaseTimer evaluation = PhaseTimer.Start("Evaluating Views Window project");
         DevProjectConfiguration configuration = await DevProjectConfiguration
@@ -33,6 +76,9 @@ internal static class DevApplication
         {
             return Program.Success;
         }
+        // The session file says where the running session is, for IDEs; it is marked stopped when dev ends.
+        var session = DevSession.Create(configuration, options);
+        WriteSession(session.Start);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
         // an IDE or terminal ends only this process. A repeated signal must not
@@ -79,6 +125,8 @@ internal static class DevApplication
             {
                 configuration = await ViteBuildInputs.ApplyAsync(configuration, stop.Token)
                     .ConfigureAwait(false);
+                DevProjectConfiguration withPages = configuration;
+                WriteSession(() => session.Update(withPages));
             }
             if (options.Build)
             {
@@ -90,6 +138,7 @@ internal static class DevApplication
                 dotnetHost,
                 configuration,
                 options,
+                session,
                 stop.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -103,6 +152,7 @@ internal static class DevApplication
             stop.Cancel();
             // The watch ends on the cancellation, so stop is not used after it is disposed.
             await launcher.ConfigureAwait(false);
+            session.Stop();
         }
     }
 
@@ -110,6 +160,7 @@ internal static class DevApplication
         string dotnetHost,
         DevProjectConfiguration configuration,
         DevOptions options,
+        DevSession session,
         CancellationToken cancellationToken)
     {
         bool useDevelopmentServer =
@@ -120,6 +171,9 @@ internal static class DevApplication
                     configuration,
                     cancellationToken).ConfigureAwait(false)
                 : null;
+        WriteSession(() => session.FrontendReady(
+            developmentServer?.Origin,
+            developmentServer is not null && ViteDevelopmentServer.ConfirmsSession(configuration)));
         await using var host = new HostProcessController(
             dotnetHost,
             configuration,
@@ -146,6 +200,21 @@ internal static class DevApplication
 
         using var monitorStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken monitorToken = monitorStop.Token;
+        // The IDE contract: a line for each Window process, then Ready once the frontend and the Window can be used.
+        Task windowMonitor = host.MonitorWindowAsync(
+            started: processId =>
+            {
+                Console.WriteLine(WindowStartedLine(processId));
+                WriteSession(() => session.WindowStarted(processId));
+                Console.WriteLine(ReadyLine);
+                WriteSession(session.Ready);
+            },
+            exited: processId =>
+            {
+                Console.WriteLine(WindowExitedLine(processId));
+                WriteSession(() => session.WindowExited(processId));
+            },
+            monitorToken);
         // Runic Views owns source contract generation; the CLI coordinates the frontend and native Window process
         // only. Without a development server, the Runic Desktop host serves the frontend output directory live.
         var compilerReloadMonitors = new List<Task>();
@@ -240,6 +309,7 @@ internal static class DevApplication
             {
                 frontendCompilerMonitor,
                 cancellation,
+                windowMonitor,
             };
             monitors.AddRange(compilerReloadMonitors);
             try
@@ -251,6 +321,19 @@ internal static class DevApplication
                 // The selected completion already controls the result. Drain
                 // every other callback before disposing the child processes.
             }
+        }
+    }
+
+    /// <summary>Writes the session file; a failure is reported once per write but does not stop dev.</summary>
+    private static void WriteSession(Action write)
+    {
+        try
+        {
+            write();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"[dev] Could not write the dev session file: {error.Message}");
         }
     }
 

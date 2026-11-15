@@ -28,7 +28,11 @@ internal sealed class HostProcessController : IAsyncDisposable
     internal const string WatchCleanupTimeoutVariable = "DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS";
 
     private RunningProcess? _host;
+    private int _hostProcessId;
     private int _hotReloadGeneration;
+
+    /// <summary>How often <see cref="MonitorWindowAsync"/> looks for the Window process; <c>ps</c> on macOS less often.</summary>
+    internal static TimeSpan WindowPollInterval => OperatingSystem.IsMacOS() ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(250);
 
     internal HostProcessController(
         string dotnetHost,
@@ -73,11 +77,68 @@ internal sealed class HostProcessController : IAsyncDisposable
         try
         {
             _host = Start();
+            Volatile.Write(ref _hostProcessId, _host.Id);
             ObserveExit(_host);
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reports each Window process that starts below the current <c>dotnet watch</c> or <c>dotnet run</c> process, and
+    /// each one that exits, until <paramref name="cancellationToken"/> is cancelled. <c>dotnet watch</c> restarts the
+    /// Window after C# edits without dev knowing, so the process tree is looked at every <see cref="WindowPollInterval"/>.
+    /// </summary>
+    internal Task MonitorWindowAsync(
+        Action<int> started,
+        Action<int> exited,
+        CancellationToken cancellationToken) =>
+        MonitorWindowAsync(
+            () => Volatile.Read(ref _hostProcessId),
+            root => WindowProcessLocator.FindAsync(root, _configuration.WindowProgram, cancellationToken),
+            ProcessTreeSignal.HasExited,
+            started,
+            exited,
+            WindowPollInterval,
+            TimeProvider.System,
+            cancellationToken);
+
+    /// <summary>The monitor loop, with the process tree, exit test and clock that tests replace.</summary>
+    internal static async Task MonitorWindowAsync(
+        Func<int> root,
+        Func<int, Task<int?>> find,
+        Func<int, bool> hasExited,
+        Action<int> started,
+        Action<int> exited,
+        TimeSpan interval,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        int? current = null;
+        try
+        {
+            while (true)
+            {
+                int host = root();
+                int? found = host == 0 ? null : await find(host).ConfigureAwait(false);
+                // A list that missed a running Window is not an exit; a different process or an exited one is.
+                if (current is { } previous && (found is { } other && other != previous || hasExited(previous)))
+                {
+                    current = null;
+                    exited(previous);
+                }
+                if (found is { } window && window != current && !hasExited(window))
+                {
+                    current = window;
+                    started(window);
+                }
+                await Task.Delay(interval, timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
     }
 
@@ -109,6 +170,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             Console.WriteLine("[dev] Reloading the Runic Views Window application.");
             _host = Start();
+            Volatile.Write(ref _hostProcessId, _host.Id);
             ObserveExit(_host);
         }
         finally
