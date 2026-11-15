@@ -247,7 +247,7 @@ internal sealed partial class VolumeTests
 
             // HFS+ on a partitioned image: unmount, a busy unmount, mount and eject.
             string hfs = unique + "H";
-            Run("hdiutil", "create", "-size", "32m", "-fs", "HFS+", "-volname", hfs, Path.Combine(root, "hfs.dmg"));
+            CreateImage("-size", "32m", "-fs", "HFS+", "-volname", hfs, Path.Combine(root, "hfs.dmg"));
             attached.Add(Attach(Path.Combine(root, "hfs.dmg")));
             var volumeHfs = await WaitForAsync(changes.Reader, v => v.DisplayName == hfs && !v.MountPaths.IsEmpty, timeout.Token);
             Console.WriteLine($"Attached: {Describe(volumeHfs)}");
@@ -290,7 +290,7 @@ internal sealed partial class VolumeTests
 
             // APFS: the volume is on a synthesized container; it belongs to the image's own whole disk.
             string apfs = unique + "A";
-            Run("hdiutil", "create", "-size", "64m", "-fs", "APFS", "-volname", apfs, Path.Combine(root, "apfs.dmg"));
+            CreateImage("-size", "64m", "-fs", "APFS", "-volname", apfs, Path.Combine(root, "apfs.dmg"));
             attached.Add(Attach(Path.Combine(root, "apfs.dmg")));
             var volumeApfs = await WaitForAsync(changes.Reader, v => v.DisplayName == apfs && !v.MountPaths.IsEmpty, timeout.Token);
             Console.WriteLine($"Attached: {Describe(volumeApfs)}");
@@ -303,13 +303,13 @@ internal sealed partial class VolumeTests
             attached.RemoveAt(attached.Count - 1);
 
             // An encrypted volume needs a container with room for a second volume: APFS allows one per 512 MiB.
-            Run("hdiutil", "create", "-size", "1100m", "-type", "SPARSE", "-fs", "APFS", "-volname", unique + "V", Path.Combine(root, "vault"));
-            string vaultOutput = HdiutilAttach(Path.Combine(root, "vault.sparseimage"));
+            CreateImage("-size", "1100m", "-type", "SPARSE", "-fs", "APFS", "-volname", unique + "V", Path.Combine(root, "vault"));
+            string vaultOutput = Hdiutil(check: true, "attach", Path.Combine(root, "vault.sparseimage"));
             attached.Add(WholeDisk().Match(vaultOutput).Groups[1].Value);
             string container = ApfsContainer().Match(vaultOutput) is { Success: true } found ? found.Groups[1].Value
                 : throw new InvalidOperationException($"hdiutil printed no APFS container: {vaultOutput}");
             await EncryptedVolumeAsync(volumes, changes.Reader, container, unique + "L", timeout.Token);
-            Run("hdiutil", check: false, "detach", "-force", "/dev/" + attached[^1]);
+            Hdiutil(check: false, "detach", "-force", "/dev/" + attached[^1]);
             attached.RemoveAt(attached.Count - 1);
 
             // Attached read-only, the volume is read-only.
@@ -324,7 +324,7 @@ internal sealed partial class VolumeTests
         }
         finally
         {
-            foreach (string device in attached) Run("hdiutil", check: false, "detach", "-force", "/dev/" + device);
+            foreach (string device in attached) Hdiutil(check: false, "detach", "-force", "/dev/" + device);
             await timeout.CancelAsync();
             await watching;
             await volumes.DisposeAsync();
@@ -397,22 +397,63 @@ internal sealed partial class VolumeTests
     // Attaches an image and returns its whole disk's BSD name, the first /dev/diskN that hdiutil prints.
     private static string Attach(string image, params string[] options)
     {
-        string output = HdiutilAttach([.. options, image]);
+        string output = Hdiutil(check: true, "attach", [.. options, image]);
         return WholeDisk().Match(output) is { Success: true } match ? match.Groups[1].Value : throw new InvalidOperationException($"hdiutil printed no disk: {output}");
     }
 
-    // hdiutil attach, retried while it reports EAGAIN ("Resource temporarily unavailable"), which the hosted runners
-    // return now and then while Disk Arbitration is busy with another image (I-210): five attempts, 2 to 16 s apart.
-    private static string HdiutilAttach(params string[] arguments)
+    // hdiutil create for the case's images: -ov, so that a retried create replaces what a failed attempt left, and
+    // -nospotlight where this hdiutil has it, so that Spotlight does not index (and hold) the image's volume.
+    private static void CreateImage(params string[] arguments) =>
+        Hdiutil(check: true, "create", [.. SpotlightOff.Value, "-ov", .. arguments]);
+
+    private static readonly Lazy<string[]> SpotlightOff = new(static () =>
+        RunProcess("hdiutil", ["create", "-help"]).Output.Contains("spotlight", StringComparison.Ordinal) ? ["-nospotlight"] : []);
+
+    // hdiutil on the hosted runners fails now and then while Disk Arbitration or Spotlight is still busy with another
+    // image: attach with EAGAIN ("Resource temporarily unavailable", I-210), and create, which attaches the new image to
+    // make its file system, with "Resource busy" a second after the previous image was ejected (sdk#1018). Those
+    // failures are retried, 2, 4, 8, 16 and 30 s apart (60 s in all); before an attach is retried, an image that the
+    // failed attempt left attached is detached. After the last failure the error and `hdiutil info` are printed, and
+    // with check it is thrown. Returns hdiutil's output.
+    private static readonly int[] HdiutilDelays = [2, 4, 8, 16, 30];
+
+    private static string Hdiutil(bool check, string verb, params string[] arguments)
     {
-        for (int attempt = 1, delay = 2; ; attempt++, delay *= 2)
+        string? image = verb == "attach" ? arguments.FirstOrDefault(File.Exists) is { } path ? Path.GetFullPath(path) : null : null;
+        for (int attempt = 1; ; attempt++)
         {
-            (int exitCode, string output) = RunProcess("hdiutil", ["attach", .. arguments]);
+            (int exitCode, string output) = RunProcess("hdiutil", [verb, .. arguments]);
             if (exitCode == 0) return output;
-            if (attempt == 5 || !output.Contains("Resource temporarily unavailable", StringComparison.Ordinal))
-                throw new InvalidOperationException($"hdiutil exited with {exitCode}");
-            Console.WriteLine($"hdiutil attach attempt {attempt}: Resource temporarily unavailable; retrying in {delay} s.");
+            bool transient = output.Contains("Resource temporarily unavailable", StringComparison.Ordinal)
+                || output.Contains("Resource busy", StringComparison.Ordinal);
+            if (attempt > HdiutilDelays.Length || !transient)
+            {
+                string failure = $"hdiutil {verb} exited with {exitCode} on attempt {attempt}: {output.Trim()}";
+                Console.WriteLine(failure);
+                RunProcess("hdiutil", ["info"]);
+                return check ? throw new InvalidOperationException(failure) : output;
+            }
+            int delay = HdiutilDelays[attempt - 1];
+            string reason = output.Contains("Resource busy", StringComparison.Ordinal) ? "Resource busy" : "Resource temporarily unavailable";
+            Console.WriteLine($"hdiutil {verb} attempt {attempt} of {HdiutilDelays.Length + 1}: {reason}; retrying in {delay} s.");
             Thread.Sleep(TimeSpan.FromSeconds(delay));
+            if (image is not null) DetachLeftovers(image);
+        }
+    }
+
+    // The disks that `hdiutil info` lists for the image, which it names by its resolved path (/private/var/...).
+    private static void DetachLeftovers(string image)
+    {
+        string? current = null;
+        foreach (string line in RunProcess("hdiutil", ["info"]).Output.Split('\n'))
+        {
+            if (line.StartsWith("image-path", StringComparison.Ordinal)) current = line[(line.IndexOf(':') + 1)..].Trim();
+            else if (current is not null && (current == image || current == "/private" + image) && WholeDisk().Match(line) is { Success: true, Index: 0 } disk)
+            {
+                Console.WriteLine($"Detaching {disk.Groups[1].Value}, which an earlier attempt left attached.");
+                RunProcess("hdiutil", ["detach", "-force", "/dev/" + disk.Groups[1].Value]);
+                current = null;
+            }
         }
     }
 

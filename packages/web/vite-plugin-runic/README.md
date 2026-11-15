@@ -286,7 +286,10 @@ it.
   preflight, which it never grants) and from this machine (a loopback client
   address), else 403; an id or file the map does not list, an entry
   without a location, and a file that no longer exists answer 404. The map
-  itself answers only same-origin requests from this machine too.
+  itself answers only same-origin requests from this machine too, unless
+  other machines are allowed ([Runic Inspect from another machine](#runic-inspect-from-another-machine));
+  the open action stays loopback-only, as it launches the editor on this
+  machine.
 - **Only development servers.** Both endpoints exist only on the development
   server (`vite dev`, and `ng serve` through `runicDevSessionProxy()`), not in
   `vite build` or `vite preview`.
@@ -341,8 +344,10 @@ them. **Esc** or Alt+Shift+X turns it off. The overview shows:
 - **Messages**: the messages of generated `m.*()` calls the element shows, in
   its text or in an attribute (`title`, `aria-label`, `placeholder`, `alt`, an
   input's value), each with its catalog, key, locale, its text as authored and
-  the `.rmf2`/`.mf2` file:line that defines it. See
-  [Messages of `m.*()` calls](#messages-of-m-calls).
+  the `.rmf2`/`.mf2` file:line that defines it, and **Edit**, which edits its
+  text in every locale in place. See
+  [Messages of `m.*()` calls](#messages-of-m-calls) and
+  [Edit a translation on the page](#edit-a-translation-on-the-page).
 
 C# locations and frontend files open in your editor through
 [`/__runic/open`](#source-map-and-open-in-editor): a C# location by its source
@@ -423,8 +428,8 @@ Runic Inspect is plain DOM in a shadow root, so it works in every engine
 `dotnet runic dev` runs: an installed browser, WebView2, WKWebView and
 WebKitGTK. It is part of the development client, which a build replaces with
 an empty module: `vite build` output is byte-identical with and without it.
-`runic({ inspect: false })` leaves it out of the client and turns off
-`/__runic/handlers`. Under the Angular CLI, `runicDevSessionProxy()` answers
+`runic({ inspect: false })` leaves it out of the client (with the translation
+editor) and turns off `/__runic/handlers`. Under the Angular CLI, `runicDevSessionProxy()` answers
 `/__runic/sources`, `/__runic/open` and `/__runic/handlers` too
 ([SvelteKit and Angular](#sveltekit-and-angular)), so the overview has the C#
 handlers and the commands before the first click there as well.
@@ -461,6 +466,111 @@ component that does not render again, or a value computed once (such as
 `document.title`), keeps its text unmarked. Text formatted from a ViewModel's
 text reference is listed under **Texts from the ViewModel** instead. With an
 earlier plugin, the overview has no messages and its notes say why.
+
+### Edit a translation on the page
+
+Select a text in Runic Inspect and press **Edit** next to its message. The
+panel below the overview reads the message from Runic Translations' in-page
+editing API (`GET /__runic-translations/message`) and shows:
+
+- a **locale** list, base locale first, starting with the locale the page
+  shows; a locale without text of its own is marked `(missing)`, and saving it
+  adds the message beside the base locale's;
+- where the locale's text is defined (`translations/de.rmf2:4`), and for a
+  library's text, the application override a save writes instead;
+- its **structure**: the inputs (`$count :integer`), what it selects on
+  (`$count (plural): one · *`), the locale's plural categories, with the ones
+  that have no variant, and the markup it uses (`{#strong}`);
+- the **MF2 source** of that locale, exactly as authored: declarations,
+  `.match` and its variants, placeholders and markup. Plural, selector, markup
+  and document messages are edited as their whole source.
+
+**Save** (or Ctrl+Enter, ⌘+Enter) posts the text with the hash of the file it
+was read from. Runic Translations compiles it with the rest of the catalog and
+writes it with the Translations Editor's source-preserving writer: only that
+entry changes, and the file keeps its comments, formatting and order. The dev
+server then updates the page **in place**, as for a save in an editor: no
+reload, the page keeps its state, and the card keeps its selection and
+describes the element again with the new text. Each locale keeps its own
+unsaved text while you switch between them. There is no separate preview: the
+page itself shows the saved text.
+
+- **The text does not compile** (422): the panel lists the RTR diagnostics
+  with their lines, keeps your text, and nothing is written.
+- **The file changed since it was read** (409), for example saved in an
+  editor: the panel shows the text in the file now. **Reapply my text** keeps
+  your text and saves it over the current file; **Use the file's text** drops
+  your edit. When the page's text changes and you have not edited the locale,
+  the panel reads the message again on its own.
+- **Not allowed** (403): the panel says how to allow this machine (below).
+
+The panel is plain DOM in the overlay's shadow root, so it works in every
+engine `dotnet runic dev` runs. Tab moves through the locale list, the text,
+Save and Revert; **Esc** in the panel closes it and returns to its Edit button.
+Typing in it does not reach the page's own key handlers. Selecting another
+element closes the panel unless it has unsaved text.
+
+It needs `@runic-artifex/vite-plugin-runic-translations` 0.12 or later in
+project mode (the `project` option), with `inPageEditing` on, which is the
+default under `vite dev`. Without it, the overview lists messages without
+**Edit**.
+
+### Runic Inspect from another machine
+
+The development server can serve a page to another machine: a laptop on the
+same [Tailscale](https://tailscale.com/kb/1015/100.x-addresses) network, or
+the browser of a laptop that shows a page of a dev server an agent runs on a
+local server. Start Vite on a reachable address (`server.host`, `vite --host`)
+and name the machines that may use Runic Inspect's data there:
+
+```sh
+RUNIC_DEV_ALLOW="100.64.0.0/10, fd7a:115c:a1e0::/48" vite dev --host
+```
+
+```ts
+runic({ allow: ["100.64.0.0/10", "192.168.1.20", "laptop.tailnet.ts.net"] })
+```
+
+Entries are IPv4 or IPv6 addresses, CIDR networks, or host names (resolved
+when a request arrives, and cached for 30 seconds); the environment variable
+takes the same entries separated by commas or spaces and adds to the option.
+An invalid entry stops the dev server with its name, and a non-empty list is
+logged at start. `RUNIC_DEV_ALLOW` is one setting for both plugins: Runic
+Translations' in-page editing API reads it too (its older
+`RUNIC_TRANSLATIONS_EDIT_ALLOW` and `inPageEditing: { allow }` still work), so
+the same variable lets that machine read the source map and handler analysis
+and edit translations.
+
+| Endpoint | Loopback | An allowed machine | Any other machine |
+| --- | --- | --- | --- |
+| `/__runic/sources`, `/__runic/handlers` | yes | yes | 403 |
+| `/__runic-translations/message` (Runic Translations) | yes | yes | 403 |
+| `/__runic/open` | yes | 403 | 403 |
+
+`/__runic/open` launches an editor **on the development machine**, so it stays
+loopback-only. A page opened from another machine (its address is not
+`localhost`) shows file:line locations without links, and its notes say why.
+When a machine is refused, the overview's notes name what was refused and the
+setting that allows it.
+
+**Security.**
+
+- **Loopback by default.** Without a list, every endpoint answers only the
+  machine the dev server runs on (`127.0.0.0/8`, `::1`), judged by the TCP
+  connection's address; `X-Forwarded-For` and similar headers are ignored. A
+  reverse proxy on the same machine makes every client look like loopback.
+- **Same origin.** A request must come from a page of the dev server itself
+  (`Sec-Fetch-Site`, `Origin`), so another site, or another dev server on a
+  different port, cannot read the data or write a translation. Vite's host check
+  (`server.allowedHosts`) runs first and refuses DNS-rebinding hosts; allow the
+  host names your other machines use there (IP addresses are allowed by
+  default).
+- **Allow only machines you trust with your sources.** An allowed machine can
+  read the source map and the analysis of frontend files, and change the
+  catalog's translation sources.
+- **Development only.** Nothing of it is in `vite build` or `vite preview`
+  output: the build is byte-identical with and without Runic Inspect, the
+  editor and the allow list.
 
 ## Component build target
 
@@ -601,13 +711,15 @@ For [Runic Inspect](#runic-inspect), the entries also answer
 relative to the `ng serve` working directory), `/__runic/open` (a C# location,
 opened through the Angular development server's `/__open-in-editor`) and
 `/__runic/handlers` (the handler analysis of a component and its
-`templateUrl`), each for pages of this machine only.
+`templateUrl`), each for pages of this machine only, unless `allow` or
+`RUNIC_DEV_ALLOW` admits other machines to `/__runic/sources` and
+`/__runic/handlers` ([Runic Inspect from another machine](#runic-inspect-from-another-machine)).
 
-`runicDevSessionProxy({ maxTimelineEntries, printFailures, sourceMap, inspect })`
+`runicDevSessionProxy({ maxTimelineEntries, printFailures, sourceMap, inspect, allow })`
 takes the same timeline limit as `runic()`, `printFailures: false` to keep the
 terminal quiet, `sourceMap` as `runic({ sourceMap })` takes it (`false` turns
-off `/__runic/sources` and `/__runic/open`), and `inspect: false` to turn off
-`/__runic/handlers`. The `stale-input` warning works the same as with `runic()`; turn it off
+off `/__runic/sources` and `/__runic/open`), `inspect: false` to turn off
+`/__runic/handlers`, and `allow` as `runic({ allow })` takes it. The `stale-input` warning works the same as with `runic()`; turn it off
 from the page with the registered symbol above.
 
 ### The client's channel

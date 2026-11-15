@@ -19,6 +19,7 @@ import {
 import type { RunicBridgeCall } from "./calls.js";
 import { formatMilliseconds, stackFrames } from "./calls.js";
 import { findMessageSource, type MessageReference } from "./translations-source.js";
+import { allowVariable, parseAllowList, resolveAccessList } from "./access.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
@@ -128,6 +129,14 @@ export interface RunicViteOptions {
    */
   readonly inspect?: boolean;
   /**
+   * Hosts and networks besides this machine whose pages may read Runic Inspect's data (`/__runic/sources`,
+   * `/__runic/handlers`) when the development server is reachable from them (`server.host`): IPv4 or IPv6 addresses,
+   * CIDR networks (a Tailscale network: `100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and host names, resolved when a request
+   * arrives. The `RUNIC_DEV_ALLOW` environment variable adds to them; Runic Translations' in-page editing API reads the
+   * same variable. Loopback only by default. `/__runic/open` stays loopback-only: it launches the editor on this machine.
+   */
+  readonly allow?: readonly string[];
+  /**
    * Exports the page's spans of Bridge calls over OTLP while serving, so they join the .NET host's spans in one trace
    * (W3C trace context in each call's request, `trace-context/1`). By default it is on when `OTEL_EXPORTER_OTLP_ENDPOINT`
    * or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set in the development server's environment, and off with
@@ -158,6 +167,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     throw new TypeError("sourceMap must be a path or false.");
   }
   const client = options.devtools !== false;
+  const allowRules = options.allow === undefined ? [] : parseAllowList(options.allow, "allow");
   let server: ViteDevServer | undefined;
   // The OTLP export of the page's spans, while serving with the development client.
   let otlp: OtlpForwarder | undefined;
@@ -330,9 +340,15 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
         answerClientMessage(request, response, deliver).catch(next);
       });
+      // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
+      const access = resolveAccessList(allowRules);
+      if (access.remote && (options.sourceMap !== false || (client && options.inspect !== false))) {
+        viteServer.config?.logger?.info(`[runic] Runic Inspect's data (/__runic/sources, /__runic/handlers) accepts requests from loopback and ${
+          access.rules.map((rule) => rule.text).join(", ")} (runic({ allow }), ${allowVariable}); /__runic/open stays loopback-only`, { timestamp: true });
+      }
       if (options.sourceMap !== false) {
-        viteServer.middlewares.use(sourcesPath, (request, response) => {
-          answerSources(request, response, readSourceMap);
+        viteServer.middlewares.use(sourcesPath, (request, response, next) => {
+          answerSources(request, response, readSourceMap, access).catch(next);
         });
       }
       if (client && options.inspect !== false) {
@@ -341,7 +357,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         viteServer.middlewares.use(handlersPath, (request, response, next) => {
           // A mounted handler sees the URL without the mount path.
           request.url = `${handlersPath}${request.url ?? ""}`;
-          answerHandlers(request, response, analyze, resolvedRoot).catch(next);
+          answerHandlers(request, response, analyze, resolvedRoot, access).catch(next);
         });
       }
       // The open action (sources.ts, resolveOpenLocation; D066.36): the source map's locations, frontend files Vite
