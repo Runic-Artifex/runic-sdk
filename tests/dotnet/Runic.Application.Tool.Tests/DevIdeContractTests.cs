@@ -230,11 +230,14 @@ internal sealed partial class ToolTests
         {
             DevelopmentServerDocument = "index.html;pages/settings.html",
             FrontendGeneratedDirectory = Path.Combine(workspace.Root, "Frontend", "src", "generated"),
+            BridgeSourceMapPath = Path.Combine(workspace.Root, "obj", "Debug", "net10.0", "runic-bridge", "sources.json"),
         };
         var options = new DevOptions(null, "Debug", true, true, true, false, []);
         var session = new DevSession(configuration, options,
             [new DevSession.DebugEndpoint("webview2", "cdp", "http://127.0.0.1:9222/")],
-            new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
+            new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero),
+            // A local start time is written in UTC.
+            new DateTimeOffset(2026, 11, 14, 13, 59, 58, 500, TimeSpan.FromHours(2)));
         Equal(Path.Combine(workspace.Root, "obj", "runic", "dev-session.json"), session.Path);
 
         session.Start();
@@ -245,6 +248,10 @@ internal sealed partial class ToolTests
             Equal("starting", root.GetProperty("state").GetString());
             Equal(Environment.ProcessId, root.GetProperty("processId").GetInt32());
             Equal("2026-11-14T12:00:00.0000000+00:00", root.GetProperty("startedAt").GetString());
+            Equal("2026-11-14T11:59:58.5000000+00:00", root.GetProperty("processStartedAt").GetString());
+            // The path dev passes to the Vite development server (RUNIC_APPLICATION_DEV_SOURCE_MAP).
+            Equal(configuration.BridgeSourceMapPath, root.GetProperty("sourceMap").GetString());
+            Equal(0, root.GetProperty("unavailableDebugEndpoints").GetArrayLength());
             Equal(configuration.ProjectPath, root.GetProperty("project").GetString());
             Equal("vite", root.GetProperty("frontend").GetProperty("developmentServer").GetString());
             Equal(JsonValueKind.Null, root.GetProperty("frontend").GetProperty("url").ValueKind);
@@ -296,8 +303,11 @@ internal sealed partial class ToolTests
 
         // Without a development server there is no URL; the page is the built index.html.
         DevProjectConfiguration built = CreateConfiguration(workspace, string.Empty);
-        var builtSession = new DevSession(built, options, [], DateTimeOffset.UnixEpoch);
+        var builtSession = new DevSession(built with { BridgeSourceMapPath = configuration.BridgeSourceMapPath }, options, [],
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
         using JsonDocument document = JsonDocument.Parse(builtSession.Render());
+        // No development server, so dev passes the source map to nothing.
+        Equal(JsonValueKind.Null, document.RootElement.GetProperty("sourceMap").ValueKind);
         Equal(JsonValueKind.Null, document.RootElement.GetProperty("frontend").GetProperty("developmentServer").ValueKind);
         Equal(JsonValueKind.Null, document.RootElement.GetProperty("pages")[0].GetProperty("url").ValueKind);
         Equal(0, document.RootElement.GetProperty("debugEndpoints").GetArrayLength());
@@ -310,14 +320,64 @@ internal sealed partial class ToolTests
         DevProjectConfiguration desktop = CreateConfiguration(workspace, "vite") with { ApplicationHosts = ["desktop"] };
         const string variable = DevSession.WebView2ArgumentsVariable;
         KeyValuePair<string, string>[] port9222 = [new(variable, "--remote-debugging-port=9222 --enable-features=X")];
-        Equal("http://127.0.0.1:9222/", DevSession.FindDebugEndpoints(desktop, port9222, _ => null, windows: true).Single().Url);
+        Equal("http://127.0.0.1:9222/", DevSession.FindDebugEndpoints(desktop, port9222, _ => null, windows: true, elevated: false).Single().Url);
         // dev's own environment, when -e does not set it; -e wins.
-        Equal("http://127.0.0.1:9333/", DevSession.FindDebugEndpoints(desktop, [], name => name == variable ? "--remote-debugging-port=9333" : null, windows: true).Single().Url);
-        Equal("http://127.0.0.1:9222/", DevSession.FindDebugEndpoints(desktop, port9222, _ => "--remote-debugging-port=9333", windows: true).Single().Url);
+        Equal("http://127.0.0.1:9333/", DevSession.FindDebugEndpoints(desktop, [], name => name == variable ? "--remote-debugging-port=9333" : null, windows: true, elevated: false).Single().Url);
+        Equal("http://127.0.0.1:9222/", DevSession.FindDebugEndpoints(desktop, port9222, _ => "--remote-debugging-port=9333", windows: true, elevated: false).Single().Url);
         // Only WebView2 reads the variable: not on Linux or macOS, and not for a CS-WebUI-only application.
-        Equal(0, DevSession.FindDebugEndpoints(desktop, port9222, _ => null, windows: false).Count);
-        Equal(0, DevSession.FindDebugEndpoints(desktop with { ApplicationHosts = ["cswebui"] }, port9222, _ => null, windows: true).Count);
-        Equal(0, DevSession.FindDebugEndpoints(desktop, [new(variable, "--remote-debugging-port=0")], _ => null, windows: true).Count);
-        Equal(0, DevSession.FindDebugEndpoints(desktop, [new(variable, "--remote-debugging-pipe")], _ => null, windows: true).Count);
+        Equal(0, DevSession.FindDebugEndpoints(desktop, port9222, _ => null, windows: false, elevated: false).Count);
+        Equal(0, DevSession.FindDebugEndpoints(desktop with { ApplicationHosts = ["cswebui"] }, port9222, _ => null, windows: true, elevated: false).Count);
+        Equal(0, DevSession.FindDebugEndpoints(desktop, [new(variable, "--remote-debugging-port=0")], _ => null, windows: true, elevated: false).Count);
+        Equal(0, DevSession.FindDebugEndpoints(desktop, [new(variable, "--remote-debugging-pipe")], _ => null, windows: true, elevated: false).Count);
+    }
+
+    // #996: WebView2 (Runtime 150 and later) ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated process; #993
+    // measured it on a GitHub Windows runner, whose steps run elevated.
+    [Test, DisplayName("an elevated Window's WebView2 endpoint is unavailable, with a hint, not in debugEndpoints")]
+    public void DevSessionLeavesOutTheElevatedWindowsEndpoint()
+    {
+        using var workspace = new TestWorkspace();
+        DevProjectConfiguration desktop = CreateConfiguration(workspace, "vite") with { ApplicationHosts = ["desktop"] };
+        KeyValuePair<string, string>[] port9222 = [new(DevSession.WebView2ArgumentsVariable, "--remote-debugging-port=9222")];
+        DevSession.DebugEndpoint endpoint = DevSession.FindDebugEndpoints(desktop, port9222, _ => null, windows: true, elevated: true).Single();
+        Equal(new DevSession.DebugEndpoint("webview2", "cdp", "http://127.0.0.1:9222/", "elevated"), endpoint);
+        // Not on Linux or macOS, where no endpoint is listed in the first place.
+        Equal(0, DevSession.FindDebugEndpoints(desktop, port9222, _ => null, windows: false, elevated: true).Count);
+
+        var session = new DevSession(desktop, new DevOptions(null, "Debug", true, true, true, false, []), [endpoint],
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        using (JsonDocument document = JsonDocument.Parse(session.Render()))
+        {
+            Equal(0, document.RootElement.GetProperty("debugEndpoints").GetArrayLength());
+            JsonElement unavailable = document.RootElement.GetProperty("unavailableDebugEndpoints").EnumerateArray().Single();
+            SequenceEqual(["engine", "protocol", "url", "reason"], unavailable.EnumerateObject().Select(property => property.Name).ToArray());
+            Equal("http://127.0.0.1:9222/", unavailable.GetProperty("url").GetString());
+            Equal("elevated", unavailable.GetProperty("reason").GetString());
+        }
+        SequenceEqual([endpoint], session.UnavailableDebugEndpoints.ToArray());
+
+        string hint = DevApplication.UnavailableEndpointHint(endpoint);
+        True(hint.StartsWith("[dev] Debugging: WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated process", StringComparison.Ordinal), hint);
+        True(hint.Contains("http://127.0.0.1:9222/", StringComparison.Ordinal), hint);
+        True(hint.EndsWith("tools/dotnet-runic/README.md#session-file", StringComparison.Ordinal), hint);
+        True(DevApplication.SessionFileHelpUri.StartsWith(RunicReleaseLinks.SourceUrl, StringComparison.Ordinal), DevApplication.SessionFileHelpUri);
+        // The hint's anchor is the README's section.
+        True(File.ReadAllText(Path.Combine(RepositoryRoot(), "tools", "dotnet-runic", "README.md")).Contains("\n### Session file\n", StringComparison.Ordinal),
+            "the README has the Session file heading");
+    }
+
+    // #1001: readers match processId with the dev process's start time, so a reused process ID does not read as running.
+    [Test, DisplayName("a created session records dev's own process start time")]
+    public void DevSessionRecordsTheProcessStartTime()
+    {
+        using var workspace = new TestWorkspace();
+        DevSession session = DevSession.Create(CreateConfiguration(workspace, "vite"), new DevOptions(null, "Debug", true, true, true, false, []));
+        using JsonDocument document = JsonDocument.Parse(session.Render());
+        DateTimeOffset written = DateTimeOffset.Parse(document.RootElement.GetProperty("processStartedAt").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        Equal(TimeSpan.Zero, written.Offset);
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        True((written - new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero)).Duration() < TimeSpan.FromSeconds(1),
+            $"processStartedAt {written:O} is the process start time {process.StartTime.ToUniversalTime():O}");
+        True(written <= DateTimeOffset.UtcNow, "the process started before the session");
     }
 }

@@ -323,12 +323,13 @@ The payload type is `runic.application.tool.doctor/1`:
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "status", "message", "remediation"],
+        "required": ["id", "status", "message", "remediation", "helpUri"],
         "properties": {
           "id": { "type": "string", "description": "Stable check identifier, for example dotnet-sdk, lock-file or browser." },
           "status": { "enum": ["pass", "warn", "fail"] },
           "message": { "type": "string" },
-          "remediation": { "type": ["string", "null"], "description": "How to fix a warn or fail check; null when nothing is needed." }
+          "remediation": { "type": ["string", "null"], "description": "How to fix a warn or fail check; null when nothing is needed." },
+          "helpUri": { "type": "string", "format": "uri", "description": "The check's section of this README at the release, under Doctor checks; its anchor is the check identifier. Added in 0.20." }
         }
       }
     },
@@ -353,6 +354,129 @@ Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `views-window`, `javascrip
 in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
+
+### Doctor checks
+
+Each check has a section here; `helpUri` in the JSON payload links it at the
+release, with the check identifier as the anchor.
+
+#### `views-window`
+
+Fails unless the project sets `RunicApplicationFrontendWindowProject=true`, the
+Views Window opt-in that `dev` needs too.
+
+#### `dotnet-sdk`
+
+The .NET SDK that builds the project: passes at a certified version, warns for
+another one from 10.0.403 on, and fails for an older SDK or one that cannot
+build the project's target framework. See the paragraph on the .NET SDK above.
+
+#### `dotnet-runtime`
+
+Fails when `dotnet --list-runtimes` lacks the .NET runtime the application runs
+on (and the ASP.NET Core runtime for Runic Desktop on Kestrel), unless the
+project is self-contained or rolls forward to a newer major version. Added in
+0.18.
+
+#### `javascript-runtime`
+
+Node.js, or Bun for a Bun frontend: fails when it is missing or older than the
+certified version, and warns for a newer release, Node 26 included.
+
+#### `package-manager`
+
+The package manager that the frontend's `packageManager` field or lock file
+selects (npm, pnpm or Bun): fails when it is unavailable or outside the
+supported range, and warns for another supported version.
+
+#### `lock-file`
+
+Fails when the frontend has no lock file of its package manager, which
+reproducible installs need.
+
+#### `compatibility-set`
+
+Once the project is restored, fails unless every Runic package belongs to one
+release train (the compatibility set). Warns before the first restore.
+
+#### `views-package-versions`
+
+Warns when the installed `@runic-artifex/views` and the restored
+`Runic.Application.Views` come from different releases. Added in 0.11; omitted
+until both are installed.
+
+#### `application-id`
+
+Warns for an `ApplicationId` that is not a reverse-DNS name of ASCII letters and
+digits. Added in 0.11.
+
+#### `frontend-dev-server`
+
+Without a Vite development server, passes for the frontend's configured `dev`
+script or watcher.
+
+#### `vite-config`
+
+With a Vite development server, fails when the configured Vite configuration
+file is missing.
+
+#### `vite-entry`
+
+With a Vite development server, fails when the configured entry module is
+missing or not a root-relative path.
+
+#### `browser`
+
+For a CS-WebUI project, warns when no supported browser is installed (CS-WebUI
+then falls back to the platform WebView). A Runic Desktop project needs none.
+
+#### `views-hosts`
+
+Names each Views host adapter the project references and the checks that cover
+it. Warns when there is none, or when a host's runtime cannot be checked from
+this machine.
+
+#### `desktop-runtime`
+
+Runic Desktop: warns when this machine cannot open its embedded window (GTK 3
+and WebKitGTK 4.1 on Linux, the WebView2 Runtime on Windows), because the
+application then falls back to an installed browser.
+
+#### `wpf-runtime`
+
+`Runic.Application.Views.Wpf`: warns on a machine other than Windows or without
+the WebView2 Runtime.
+
+#### `gtk4-profile`
+
+A project on `Runic.Desktop.Gtk4`: warns once with every missing piece, the
+Views Desktop adapter and, on Linux, GTK 4.12 or newer and WebKitGTK 6.0, with
+the distribution's package names.
+
+#### `platform-services`
+
+Names the platform services provider that `AddRunicPlatformServices()` selects
+here, and on Linux warns without a D-Bus session bus or `xdg-desktop-portal`.
+
+#### `target-rid`
+
+With `--runtime`: whether the project's host supports the runtime identifier,
+from the support matrix. See [Deployment checks for a target](#deployment-checks-for-a-target).
+
+#### `target-runtime-identifiers`
+
+With `--runtime`: warns when the project's `RuntimeIdentifiers` leave out the
+target.
+
+#### `target-publish`
+
+With `--runtime`: what target machines need without Native AOT, and the native
+toolchain that a Native AOT publish needs.
+
+#### `target-presentation`
+
+With `--runtime`: the native runtime that target machines need for the host's
+window.
 
 ## Debug the Window in your IDE
 
@@ -536,14 +660,25 @@ tools:
 ^\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
 ```
 
-**Session file.** `dev` writes `obj/runic/dev-session.json` (below the
-project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
+### Session file
+
+`dev` writes `dev-session.json` in the `runic` folder of the project's
+`BaseIntermediateOutputPath`: `obj/runic/dev-session.json` next to the project
+file by default. A project that sets `BaseIntermediateOutputPath` (for example in
+`Directory.Build.props`) has it at `<BaseIntermediateOutputPath>/runic/dev-session.json`;
+`dotnet msbuild <project> -getProperty:BaseIntermediateOutputPath` prints that
+folder. `dev` writes the file when it starts, and rewrites it when the
 development server is ready and each time the Window process starts or exits.
 When `dev` ends, the file stays with `"state": "stopped"`. A `dev` that is
 killed (an IDE that quits while its task runs, `kill -9`, a closed terminal)
-can't write that, so the file keeps its last state: before trusting `"starting"`
-or `"ready"`, a reader checks that the top-level `processId` is a running
-`dotnet runic dev`, and treats a dead one as stopped. Beside it, `dev` keeps
+can't write that, so the file keeps its last state. Before trusting `"starting"`
+or `"ready"`, a reader checks that `dev` still runs. A process with the
+top-level `processId` must run, and its start time must match
+`processStartedAt`. Different APIs report a process's start time with different
+precision, so compare to within a second. A dead `processId`, or one that a
+later process reuses, means the session stopped. Since 0.20; earlier files have
+no `processStartedAt`, and a reader then checks the process's command line or
+image name. Beside it, `dev` keeps
 `dev-frontend` and `dev-pages/` while it serves the frontend, for the build
 ([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write
 replaces the whole file, so a reader never sees half of one. Two `dev` sessions of the
@@ -555,6 +690,7 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   "state": "ready",                 // "starting", "ready" (after [dev] Ready) or "stopped"
   "processId": 41250,               // dotnet runic dev itself
   "startedAt": "2026-11-14T18:53:16.2642872+00:00",
+  "processStartedAt": "2026-11-14T18:53:15.9010000+00:00", // dev's process start time (UTC), for the liveness check; since 0.20
   "project": "/path/to/App/App.csproj",
   "configuration": "Debug",
   "frontend": {
@@ -567,6 +703,10 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     "generatedDirectory": "/path/to/App/Frontend/src/generated" // the generated TypeScript clients, or null
   },
   "webRoot": "/path/to/App/bin/Debug/net10.0/www",
+  // The Bridge generator's development source map that dev passes to the development server for vite-plugin-runic
+  // (/__runic/sources), so IDE tools read the file the page uses; null when dev passes none (no development server).
+  // The build writes it, so it may not exist before the first build. Since 0.20.
+  "sourceMap": "/path/to/App/obj/Debug/net10.0/runic-bridge/sources.json",
   "pages": [
     // Each page the Window can load: its file in the web root and, with a development server, its URL there,
     // which a browser or a JavaScript debugger can open.
@@ -585,15 +725,28 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   "debugEndpoints": [
     // Debugging endpoints of the page's engine that the Window's environment enables. dev enables none itself; on
     // Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222 (or the variable in dev's own
-    // environment) lists WebView2's Chrome DevTools Protocol endpoint. WebView2 ignores the variable, and opens no
-    // endpoint, while the Window runs elevated.
+    // environment) lists WebView2's Chrome DevTools Protocol endpoint.
     { "engine": "webview2", "protocol": "cdp", "url": "http://127.0.0.1:9222/" }
+  ],
+  "unavailableDebugEndpoints": [
+    // Endpoints the environment asks for but the engine does not open, with the reason. Since 0.20, an elevated dev
+    // (run as administrator, so its Window runs elevated too) lists WebView2's here with "reason": "elevated" instead of
+    // in debugEndpoints, and prints a [dev] Debugging: hint.
   ]
 }
 ```
 
-Paths are absolute. Later versions of the schema only add properties; a change
-that removes or changes one gets a new schema name.
+Paths are absolute. Later versions of the schema only add properties, so a
+reader ignores properties it doesn't know; a change that removes or changes one
+gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
+`unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`.
+
+WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
+(and its other `WEBVIEW2_*` variables and current-user policy overrides) in an
+elevated process ([Develop secure WebView2 apps](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security)).
+`dev` decides from its own token: a Window it starts inherits it, and with
+`--no-window` the IDE that runs the `dev` task starts the Window with the same
+token. Run `dev` and the IDE without elevation to debug the page's scripts.
 
 ## Output and exit codes
 

@@ -31,6 +31,18 @@ internal static class DevApplication
     internal static string DiagnosticLine(string? project, string code, string message) =>
         $"{(string.IsNullOrEmpty(project) ? "dotnet-runic" : project)} : error {code}: {message.ReplaceLineEndings(" ")}";
 
+    /// <summary>
+    /// The hint for a debugging endpoint the Window cannot open. WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+    /// in an elevated process (Runtime 150 and later), so the session file leaves the endpoint out of debugEndpoints.
+    /// </summary>
+    internal static string UnavailableEndpointHint(DevSession.DebugEndpoint endpoint) =>
+        $"[dev] Debugging: WebView2 ignores {DevSession.WebView2ArgumentsVariable} in an elevated process, so the Window " +
+        $"opens no DevTools Protocol endpoint at {endpoint.Url}. Run dotnet runic dev (and your IDE) without elevation; see " +
+        $"{SessionFileHelpUri}";
+
+    /// <summary>The session file's section of the dotnet-runic README at this release.</summary>
+    internal static string SessionFileHelpUri => RunicReleaseLinks.SourceUrl + "tools/dotnet-runic/README.md#session-file";
+
     internal static async Task<int> RunAsync(
         CommandExecutionContext context,
         DevOptions options,
@@ -80,6 +92,7 @@ internal static class DevApplication
         }
         // The session file says where the running session is, for IDEs; it is marked stopped when dev ends.
         var session = DevSession.Create(configuration, options);
+        foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints) Console.WriteLine(UnavailableEndpointHint(endpoint));
         WriteSession(session.Start);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when

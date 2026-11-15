@@ -32,6 +32,9 @@ internal static class RunicReleaseLinks
     /// &lt;summary&gt;The release tag.&lt;/summary&gt;
     internal const string Tag = "$(RunicReleaseTag)"%3B
 
+    /// &lt;summary&gt;The repository's files at the release tag, ending in a slash.&lt;/summary&gt;
+    internal const string SourceUrl = "$(RunicReleaseSourceUrl)"%3B
+
     /// &lt;summary&gt;An ExperimentalAttribute.UrlFormat for docs/experimental.md at the release tag: {0} is the ID, which has an anchor of the same case.&lt;/summary&gt;
     internal const string ExperimentalUrlFormat = "$(RunicExperimentalHelpLinkBase){0}"%3B
 
