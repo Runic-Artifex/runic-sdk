@@ -24,7 +24,9 @@ import { pause, tail, waitFor } from "../../../examples/shared/smoke.mjs";
 const configuration = process.env.CONFIGURATION ?? "Release";
 const dll = process.env.RUNIC_VIEWS_DESKTOP_TESTS_DLL
   ?? fileURLToPath(new URL(`./bin/${configuration}/net10.0/Runic.Application.Views.Desktop.Tests.dll`, import.meta.url));
-const experimental = fileURLToPath(new URL("../../../packages/web/views/src/experimental.ts", import.meta.url));
+// The production build of @runic-artifex/views, as an application's bundle has it. Not src/: the source references
+// __RUNIC_DEVELOPMENT__, which only the package's build (scripts/build.mjs) defines.
+const experimental = fileURLToPath(new URL("../../../packages/web/views/dist/experimental.js", import.meta.url));
 // The Views host script, which an application's build copies next to its page.
 const desktopViews = fileURLToPath(new URL("../../../packages/dotnet/Runic.Application.Views.Desktop/www/runic-desktop-views.js", import.meta.url));
 

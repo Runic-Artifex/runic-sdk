@@ -5,6 +5,7 @@ import { abortable, throwIfAborted } from "./lifetime.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { replyError, type Reply } from "./protocol.js";
 import { reportBridgeError } from "./transport.js";
+import { requestCall } from "./calls.js";
 import type { RouteOperationScope } from "./connection.js";
 import { runtimeSlots } from "./runtime.js";
 import type { Slots } from "./scope.js";
@@ -542,9 +543,12 @@ export const bridgeOperations: BridgeOperations = {
     await channel.scope.ready();
     let reply: Reply;
     try {
-      reply = await channel.scope.runtime.request({
+      const { runtime, call } = channel.scope;
+      const message = {
         kind: "start", route: channel.route, member, operation, contract: channel.contract, ...(input === undefined ? {} : { input }),
-      }, channel.route);
+      };
+      reply = await (!__RUNIC_DEVELOPMENT__ || call === undefined ? runtime.request(message, channel.route)
+        : requestCall(call, runtime.features, sent => runtime.request(sent, channel.route), message));
     } catch (cause) {
       // The start may have been admitted: its status tells.
       if (cause instanceof BridgeError && cause.kind !== "failed" && cause.kind !== "disconnected") throw cause;

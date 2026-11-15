@@ -39,6 +39,39 @@ internal sealed class AccessibilityProbeSpeechTests
         Check(timeline.QuietFor(Quiet, At(1500)), "Quiet once the window has passed since the start.");
     }
 
+    [Test, DisplayName("SPEECH: VoiceOver is settled once it said its hint or the hint delay has passed")]
+    public void SettledPastTheHint()
+    {
+        // osx-arm64 run 43693500623 (sdk#1015): VoiceOver named the list box, the selection went out 30 ms later, and
+        // VoiceOver said an empty phrase and the list item's hint 2.45 s after that, not 'Apple'.
+        var hintDelay = TimeSpan.FromMilliseconds(3500);
+        static bool IsHint(string phrase) => phrase.StartsWith("You are currently on", StringComparison.Ordinal);
+        var timeline = new SpeechTimeline(Start);
+        timeline.Acted(At(0));
+        timeline.Heard("Fruit list box 1 item selected. Plum selected (3 of 3)", At(1950));
+        Check(!timeline.SettledFor(Quiet, hintDelay, IsHint, At(1980)), "Not settled 30 ms after the phrase.");
+        Check(timeline.QuietFor(Quiet, At(1950 + 1500)), "Quiet 1.5 s after the phrase,");
+        Check(!timeline.SettledFor(Quiet, hintDelay, IsHint, At(1950 + 1500)), "but the hint can still come.");
+        timeline.Heard("You are currently on a list box. To begin interacting with the items in this list, press Control-Option-Shift-Down Arrow.", At(1950 + 1700));
+        Check(!timeline.SettledFor(Quiet, hintDelay, IsHint, At(1950 + 1700 + 1499)), "Not quiet yet after the hint.");
+        Check(timeline.SettledFor(Quiet, hintDelay, IsHint, At(1950 + 1700 + 1500)), "Settled once quiet after the hint.");
+
+        // Without a hint, settled once the hint delay has passed since the last phrase.
+        timeline.Heard("6", At(10_000));
+        Check(!timeline.SettledFor(Quiet, hintDelay, IsHint, At(10_000 + 3499)), "Not settled before the hint delay.");
+        Check(timeline.SettledFor(Quiet, hintDelay, IsHint, At(10_000 + 3500)), "Settled after the hint delay.");
+
+        // A hint said before the probe's last action does not count: the action can bring another.
+        timeline.Heard("You are currently on a slider. To start interacting with the slider, press Control-Option-Shift-Down Arrow.", At(20_000));
+        timeline.Acted(At(20_100));
+        Check(!timeline.SettledFor(Quiet, hintDelay, IsHint, At(20_100 + 1500)), "The hint came before the action.");
+        Check(timeline.SettledFor(Quiet, hintDelay, IsHint, At(20_100 + 3500)), "Settled after the hint delay since the action.");
+
+        // NVDA and Orca wait for no hint: SettledFor is QuietFor.
+        Check(timeline.SettledFor(Quiet, TimeSpan.Zero, IsHint, At(20_100 + 1500)) == timeline.QuietFor(Quiet, At(20_100 + 1500)), "No hint delay.");
+        Check(!timeline.SettledFor(Quiet, TimeSpan.Zero, IsHint, At(20_100 + 1499)), "No hint delay, not quiet yet.");
+    }
+
     [Test, DisplayName("SPEECH: the screen reader ends on the control only when it named the control after the page")]
     public void EndsOnTheControl()
     {

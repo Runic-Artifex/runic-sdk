@@ -1,7 +1,8 @@
 // The development client. It forwards the diagnostics and connection state of `@runic-artifex/views` to the
 // development server, which keeps them on its timeline, reports each View's state and superseded command replies to
-// the state inspector, draws Bridge calls on a "Runic" track of the browser's Performance panel, warns about script that overwrites a focused text field with an older value
-// (`stale-input`), and adds Runic Inspect (Alt+Shift+X, inspect.ts). It has no exports.
+// the state inspector, draws Bridge calls on a "Runic" track of the browser's Performance panel, sends the spans of
+// Bridge calls for the server's OTLP export when it has one, warns about script that overwrites a focused text field
+// with an older value (`stale-input`), and adds Runic Inspect (Alt+Shift+X, inspect.ts). It has no exports.
 //
 // `runic()` injects it into served pages through `virtual:runic/client`, and loads it through that module for an
 // application import of `@runic-artifex/vite-plugin-runic/client`; the build replaces it with an empty module. A
@@ -14,6 +15,7 @@ import {
   diagnosticEvent,
   diagnosticsPath,
   maximumClientMessageBytes,
+  spanEvent,
   viewEvent,
 } from "./channel.js";
 import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
@@ -291,26 +293,43 @@ function connectViewsInspector(): void {
 // set `requested` and listens (specs/application, "Shared globals"), and then runs each call in a V8 async stack task,
 // so a breakpoint after a reply shows the click that made the call. This client draws each settled call as an entry of
 // the "Bridge calls" track in the "Runic" track group of Chromium's Performance panel (`performance.measure` with
-// `detail.devtools`); other engines keep a plain measure or skip it. The calls are not sent to the server yet.
+// `detail.devtools`); other engines keep a plain measure or skip it. A .NET host in Development names each call's C#
+// handler and its duration (handler-timing/1), which goes on the "C# handlers" track. When the server exports traces
+// (`trace` in the client options), the client also gives each call a W3C trace context, which its request carries to
+// .NET (trace-context/1), and sends each settled call's span to the server.
 const viewsCallsKey = Symbol.for("runic.views.calls");
 const callsListenerKey = "runic:calls-listener";
+const callsTraceKey = "runic:calls-trace";
 const runicTrackGroup = "Runic";
 const bridgeCallsTrack = "Bridge calls";
-// .NET's own handler timing (#958) goes below the calls: an end event with `handler: { name, start, end }` (in
+// .NET's own handler timing goes below the calls: an end event with `handler: { name, start, end }` (in
 // `performance.now()` milliseconds) becomes an entry of this track.
 const handlersTrack = "C# handlers";
+
+interface CallTrace { readonly traceparent: string; readonly tracestate?: string }
 
 interface ViewsCallsChannel {
   readonly listeners: Set<(event: CallEvent) => void>;
   requested?: boolean;
   devtools?: boolean;
+  trace?: () => CallTrace | undefined;
 }
 
 interface CallEvent {
   readonly phase: string; readonly id: number; readonly kind: string; readonly request: string; readonly route: string;
   readonly contract: string; readonly member: string; readonly start: number; readonly end?: number; readonly duration?: number;
-  readonly outcome?: string; readonly revision?: number; readonly reason?: string;
-  readonly handler?: { readonly name: string; readonly start: number; readonly end: number };
+  readonly outcome?: string; readonly revision?: number; readonly reason?: string; readonly trace?: CallTrace;
+  readonly handler?: { readonly name: string; readonly start: number; readonly end: number; readonly duration?: number };
+}
+
+type Crypto = { getRandomValues(array: Uint8Array): Uint8Array };
+
+// A new root span for a call: a random trace id and span id, sampled, as W3C traceparent version 00.
+function newTrace(): CallTrace | undefined {
+  const crypto = (globalThis as { crypto?: Crypto }).crypto;
+  if (typeof crypto?.getRandomValues !== "function") return undefined;
+  const hex = (length: number) => Array.from(crypto.getRandomValues(new Uint8Array(length)), byte => byte.toString(16).padStart(2, "0")).join("");
+  return { traceparent: `00-${hex(16)}-${hex(8)}-01` };
 }
 
 type UserTiming = { measure?(name: string, options: object): unknown; clearMeasures?(name?: string): void };
@@ -333,24 +352,45 @@ function measure(name: string, start: number, end: number, devtools: Record<stri
 
 const outcomeColors: Readonly<Record<string, string>> = { ok: "primary", error: "error", cancelled: "tertiary" };
 
+// The span of a settled call with a trace context, for the server's OTLP export: epoch milliseconds, so the server
+// needs no page clock.
+function sendSpan(event: CallEvent, label: string): void {
+  const trace = event.trace;
+  if (options?.trace !== true || typeof trace?.traceparent !== "string" || typeof event.end !== "number") return;
+  const origin = (globalThis as { performance?: { timeOrigin?: number } }).performance?.timeOrigin;
+  if (typeof origin !== "number") return;
+  const handler = event.handler;
+  send(spanEvent, {
+    traceparent: trace.traceparent, name: `${event.kind} ${label}`, start: origin + event.start, end: origin + event.end,
+    kind: event.kind, request: event.request, route: event.route, contract: event.contract, member: event.member,
+    outcome: event.outcome, reason: event.reason, revision: event.revision,
+    ...typeof handler?.name === "string" && typeof handler.duration === "number" ? { handler: { name: handler.name, duration: handler.duration } } : {},
+  });
+}
+
 function reportCall(event: CallEvent): void {
-  if (typeof event !== "object" || event === null || event.phase !== "end" || viewsCalls().devtools === false) return;
+  if (typeof event !== "object" || event === null || event.phase !== "end") return;
   if (typeof event.start !== "number" || typeof event.end !== "number") return;
   // `Demo.EditorViewModel:3F2A…` names the C# view model `EditorViewModel`.
   const model = String(event.contract).split(":", 1)[0]!.split(".").pop() || event.route;
   const label = `${model}.${event.member}`;
+  sendSpan(event, label);
+  if (viewsCalls().devtools === false) return;
   const outcome = String(event.outcome);
+  const handler = event.handler;
+  const timed = typeof handler === "object" && handler !== null && typeof handler.start === "number" && typeof handler.end === "number";
   const properties: [string, string][] = [
     ["Kind", String(event.request)], ["Route", String(event.route)], ["Contract", String(event.contract)],
     ["Request id", String(event.id)], ["Outcome", event.reason === undefined ? outcome : `${outcome} (${event.reason})`],
   ];
   if (typeof event.revision === "number") properties.push(["Revision", String(event.revision)]);
+  if (timed) properties.push(["C# handler", `${String(handler.name)} (${(handler.end - handler.start).toFixed(2)} ms)`]);
+  if (typeof event.trace?.traceparent === "string") properties.push(["traceparent", event.trace.traceparent]);
   measure(`${label} #${event.id}`, event.start, event.end, {
     dataType: "track-entry", track: bridgeCallsTrack, trackGroup: runicTrackGroup, color: outcomeColors[outcome] ?? "warning",
     properties, tooltipText: `${event.kind} ${label}: ${outcome}, ${(event.end - event.start).toFixed(1)} ms`,
   });
-  const handler = event.handler;
-  if (typeof handler === "object" && handler !== null && typeof handler.start === "number" && typeof handler.end === "number") {
+  if (timed) {
     measure(`${handler.name} #${event.id}`, handler.start, handler.end, {
       dataType: "track-entry", track: handlersTrack, trackGroup: runicTrackGroup, color: "secondary",
       properties: [["Request id", String(event.id)], ["Route", String(event.route)], ["Member", String(event.member)]],
@@ -364,6 +404,10 @@ function connectViewsCalls(): void {
   if (previous) calls.listeners.delete(previous);
   calls.listeners.add(reportCall);
   data[callsListenerKey] = reportCall;
+  // Only while the server exports traces; otherwise no call gets a trace context.
+  if (options?.trace === true) calls.trace = newTrace;
+  else if (calls.trace === newTrace || data[callsTraceKey] === calls.trace) delete calls.trace;
+  data[callsTraceKey] = calls.trace;
   calls.requested = true;
 }
 
@@ -374,7 +418,9 @@ function close(): void {
   viewsDiagnostics().delete(reportViewsDiagnostic);
   viewsConnection().listeners.delete(reportConnection);
   viewsInspector().listeners.delete(reportInspector);
-  viewsCalls().listeners.delete(reportCall);
+  const calls = viewsCalls();
+  calls.listeners.delete(reportCall);
+  if (calls.trace === newTrace) delete calls.trace;
   disposeInspect();
   host.removeEventListener?.("pagehide", pageHidden);
   if (stateTimer !== undefined) clearTimeout(stateTimer);

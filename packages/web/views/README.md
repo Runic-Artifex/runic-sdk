@@ -312,11 +312,14 @@ minified and gzip size of the checked-in example clients.
 The package has two builds of every entry, with one set of type declarations
 (since 0.20). The **development build** (`dist/development/`, the `development`
 export condition) has the development tools that would otherwise run on every
-page: [Bridge-call reports and async stack tagging](#bridge-calls-in-the-browsers-developer-tools)
+page: [Bridge-call reports and async stack tagging](#bridge-calls-in-the-browsers-developer-tools),
+with the C# handler timing and trace context that a followed call asks for and
+carries (the Views protocol features `handler-timing/1` and `trace-context/1`),
 and the Runic Translations [text channel](#translated-text) that updates an
 edited message in place. The **production build** (`dist/`, the `import` and
 `default` conditions) leaves them out: a production bundle contains no
-call-reporting code, tags no call and creates no global for them. Everything
+call-reporting code, tags no call, creates no global for them, and its `hello`
+lists neither feature, so no request carries their members. Everything
 else, including the development state inspector that Runic Inspect reads, is
 the same in both.
 
@@ -1647,12 +1650,23 @@ reader of the development **Bridge-call channel**; the development client of
   until the client's state includes its effects, has the panel's `primary` colour when it succeeded, `error` when it
   failed and `tertiary` when nothing ran for it (`cancelled`), and lists the request kind, route, View contract, id,
   outcome and the reply's revision. WebKit and Gecko have no custom tracks; they keep at most a plain measure.
+- **C# handler timing** (every engine, drawn in Chromium; [development build](#development-build) only): a .NET host
+  in Development (`dotnet runic dev`) names the C# handler of each call and how long it ran (Views protocol feature
+  `handler-timing/1`). The Vite client adds it to the call's entry and draws it on a **C# handlers** track below the
+  calls.
+- **One trace with .NET** (every engine; [development build](#development-build) only): when the Vite development
+  server exports traces over OTLP, the Vite client gives each call a W3C trace context, which the call's requests carry to .NET (`trace-context/1`). The .NET
+  `runic.bridge.*` span and the ViewModel's own spans then belong to the page's span for the call, which the
+  development server exports. [Tracing Bridge calls](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/tracing.md)
+  sets it up with a local viewer.
 
 The channel is `globalThis[Symbol.for("runic.views.calls")]` (one per [Runic instance](#runic-instances), in its
 slots; see the [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)):
-`{ listeners, requested, devtools?, sequence? }`. A reader creates it if absent, adds a function to the `listeners`
-`Set` and sets `requested: true`. `devtools: false` keeps the reports without developer tools integration: no async
-stack tasks, and the Vite client draws no track. Each call is reported twice, as a `BridgeCallEvent` (exported as a
+`{ listeners, requested, devtools?, sequence?, trace? }`. A reader creates it if absent, adds a function to the
+`listeners` `Set` and sets `requested: true`. `devtools: false` keeps the reports without developer tools integration:
+no async stack tasks, and the Vite client draws no track. `trace`, a function that returns a `BridgeCallTrace`
+(`{ traceparent, tracestate? }`), is set by a reader that exports traces: each call takes its trace context from it, and
+without it no trace context is created or sent. Each call is reported twice, as a `BridgeCallEvent` (exported as a
 type):
 
 | Field | Meaning |
@@ -1667,9 +1681,12 @@ type):
 | `reason` | Refines the outcome: `released` for `ok` (the call ran, and .NET released its View, as in a navigation); `superseded` (nothing ran), `released` (the View was released before the call) or `aborted` for `cancelled`; the reply's reason or the `BridgeError` kind, such as `domain-failed` or `failed`, for `error`. |
 | `revision` | The reply's revision: the frames with it carry the call's effects. |
 | `error` | The error the call rejected with. |
+| `trace` | The call's `BridgeCallTrace`, on both events, when the reader's `trace` gave one. |
+| `handler` | On `end`, a `BridgeCallHandler` when a .NET host in Development named the call's handler: `name` (such as `EditorViewModel.Save`), `duration` (milliseconds, measured in .NET), and `start` and `end` on the page's clock, centred between sending the request and receiving its reply. |
 
-A listener ignores phases and fields it does not know; a later release may add fields, such as the .NET handler and
-its timing, which the Vite client then draws on a **C# handlers** track. A listener that throws is reported with
+While a reader listens, the call's requests ask for the handler's timing and carry its trace context, but only on a
+connection whose .NET host implements the features (a 0.19 host gets the requests it always got), and only a host in
+Development answers with the timing. A listener ignores phases and fields it does not know. A listener that throws is reported with
 `console.error` and does not affect the call. Without a reader, a call costs one property read: no event, timestamp
 or task is created. Only the [development build](#development-build) of this package reports calls, which `vite dev`
 resolves: a production bundle contains no call-reporting code and does not read the channel, even when a reader set
