@@ -1717,8 +1717,12 @@ turn on **Runic Inspect**, the select mode of the
 development client, and click an element: an overview shows its framework
 component, the ViewModel members it binds with their current values and C#
 members, the commands it calls with their C# handlers, its recent Bridge
-calls with their timing, and the texts its ViewModel sent as text references,
-each with an "open in editor" link. The selecting click does not reach the
+calls with their timing, the texts its ViewModel sent as text references, and
+the messages of generated `m.*()` calls it shows with their `.rmf2` lines, each
+with an "open in editor" link. Message keys need Runic Translations' Vite plugin
+0.12, which marks message text only while select mode is on; `configureTranslatedText`
+follows its text-change channel, so the page renders again with and without the
+markers. The selecting click does not reach the
 page's handlers. `globalThis[Symbol.for("runic.vite.inspect")].describe(element)`
 returns the same overview as data, for agents and tests.
 

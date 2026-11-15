@@ -11,6 +11,7 @@ import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, vi
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
+import { findMessageSource, type MessageReference } from "./translations-source.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
@@ -26,7 +27,7 @@ export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
 export type { RunicInspectApi } from "./inspect.js";
 export type {
   RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
-  RunicInspectLocation, RunicInspectMember, RunicInspectText, RunicInspectViewModel,
+  RunicInspectLocation, RunicInspectMember, RunicInspectMessage, RunicInspectText, RunicInspectViewModel,
 } from "./inspect-data.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
@@ -285,19 +286,25 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
         answerClientMessage(request, response, deliver).catch(next);
       });
+      const readSourceMap = options.sourceMap === false ? () => undefined : createSourceMapReader(options.sourceMap, () => resolvedRoot);
       if (options.sourceMap !== false) {
-        const readSourceMap = createSourceMapReader(options.sourceMap, () => resolvedRoot);
         viteServer.middlewares.use(sourcesPath, (request, response) => {
           answerSources(request, response, readSourceMap);
         });
-        // Mounted at the root, not at openPath: an accepted request continues to Vite's /__open-in-editor with its
-        // URL rewritten, which a mounted handler's next() would prefix with the mount path again.
+      }
+      // The open action, for the source map's C# locations and Runic Inspect's Translations messages. Mounted at the
+      // root, not at openPath: an accepted request continues to Vite's /__open-in-editor with its URL rewritten, which
+      // a mounted handler's next() would prefix with the mount path again.
+      if (options.sourceMap !== false || options.inspect !== false) {
+        const findMessage = (message: MessageReference) => findMessageSource({
+          address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
+        }, message);
         viteServer.middlewares.use(function runicOpenInEditor(request, response, next) {
           if (request.url?.split("?", 1)[0] !== openPath) return next();
           answerOpen(request, response, readSourceMap, (location) => {
             request.url = editorRequestUrl(base, location);
             next();
-          }).catch(next);
+          }, options.inspect === false ? undefined : findMessage).catch(next);
         });
       }
       viteServer.httpServer?.once("close", () => {

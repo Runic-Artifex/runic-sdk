@@ -1,6 +1,7 @@
 // The development source map (#951): the Bridge generator's `sources.json` in the project's `obj`, which maps every
 // Bridge member to its C# symbol and file:line:column. `runic()` serves it at `/__runic/sources` while serving, and
-// opens a location from it in the editor at `/__runic/open`. Neither exists in `vite build` or `vite preview`, and
+// opens a location from it, or a Runic Translations message's source (translations-source.ts), in the editor at
+// `/__runic/open`. Neither exists in `vite build` or `vite preview`, and
 // nothing of the map reaches a bundle.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -8,6 +9,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
 import { openPath, sourcesPath } from "./channel.js";
+import { parseMessageReference, type MessageReference } from "./translations-source.js";
 
 export { openPath, sourcesPath };
 /** The `sources.json` path that `dotnet runic dev` gives the development server. */
@@ -242,16 +244,18 @@ export function findOpenLocation(map: RunicSourceMap, message: unknown): RunicSo
 }
 
 /**
- * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or a `{ "file", "line", "column" }` the map lists, as
- * JSON from a page of this server on this machine. Anything else is refused and opens nothing. An accepted location
- * goes to Vite's own editor launcher (launch-editor: `LAUNCH_EDITOR`, then the running or configured editor, such as
- * VS Code or Rider) through `/__open-in-editor`, which answers 200.
+ * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or a `{ "file", "line", "column" }` the map lists, or
+ * `{ "message": { catalog, key, locale } }` of a Runic Translations message, which `findMessage` resolves through the
+ * Translations dev server (translations-source.ts), as JSON from a page of this server on this machine. Anything else
+ * is refused and opens nothing. An accepted location goes to Vite's own editor launcher (launch-editor: `LAUNCH_EDITOR`,
+ * then the running or configured editor, such as VS Code or Rider) through `/__open-in-editor`, which answers 200.
  */
 export async function answerOpen(
   request: IncomingMessage,
   response: ServerResponse,
   read: () => RunicSourceMap | undefined,
   launch: (location: RunicSourceLocation) => void,
+  findMessage?: (message: MessageReference) => Promise<RunicSourceLocation | undefined>,
 ): Promise<void> {
   if (request.method !== "POST") {
     request.resume();
@@ -271,8 +275,17 @@ export async function answerOpen(
   let message: unknown;
   try { message = JSON.parse(body); }
   catch { return answer(response, 400); }
-  const map = read();
-  const location = map === undefined ? undefined : findOpenLocation(map, message);
+  let location: RunicSourceLocation | undefined;
+  const translation = typeof message === "object" && message !== null && "message" in message
+    ? (message as { message: unknown }).message : undefined;
+  if (translation !== undefined) {
+    const reference = parseMessageReference(translation);
+    if (reference === undefined) return answer(response, 400);
+    location = await findMessage?.(reference);
+  } else {
+    const map = read();
+    location = map === undefined ? undefined : findOpenLocation(map, message);
+  }
   if (location === undefined || !isFile(location.file)) return answer(response, 404);
   launch(location);
 }
