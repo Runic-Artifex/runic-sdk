@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using Runic.Desktop;
 
@@ -131,9 +130,10 @@ internal static partial class InspectorEnvironmentSmoke
     {
         var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("The smoke has no process path.");
         var start = new ProcessStartInfo(processPath) { UseShellExecute = false };
-        // Under `dotnet <dll>` the host needs the entry assembly; an apphost is the program itself.
-        if (string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.Ordinal))
-            start.ArgumentList.Add(Assembly.GetEntryAssembly()!.Location);
+        // As CloseDrainSmoke: under `dotnet <dll>` the child needs the smoke's assembly; an apphost, single-file or native
+        // AOT smoke is its own process path (Assembly.Location is empty in a single-file app).
+        if (Path.GetFileNameWithoutExtension(processPath) is "dotnet")
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, typeof(InspectorEnvironmentSmoke).Assembly.GetName().Name + ".dll"));
         foreach (var argument in args) start.ArgumentList.Add(argument);
         start.ArgumentList.Add(ChildArgument);
         return start;
