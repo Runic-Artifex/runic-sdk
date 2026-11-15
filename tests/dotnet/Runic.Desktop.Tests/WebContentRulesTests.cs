@@ -110,4 +110,28 @@ public sealed class WebContentRulesTests
         Assert.True(new WebContentRules(policy with { DevTools = true }, Surface, []).DevToolsEnabled);
         Assert.False(new WebContentRules(policy, Surface, []).DevToolsEnabled);
     }
+
+    // #1028: the GTK hosts clear WebKit's remote inspector variables by the same environment test, outside Development
+    // also when the application turned DevTools on; the inspector smoke checks the port and the native environment.
+    [Test]
+    public void WebKitInspectorVariablesAreClearedOutsideDevelopment()
+    {
+        static Func<string, string?> Environment(string? dotnet, string? aspnet) => name => name switch
+        {
+            "DOTNET_ENVIRONMENT" => dotnet,
+            "ASPNETCORE_ENVIRONMENT" => aspnet,
+            _ => "127.0.0.1:9333",
+        };
+        static string[] Cleared(Func<string, string?> read)
+        {
+            var cleared = new List<string>();
+            WebKitInspectorEnvironment.Apply(read, cleared.Add);
+            return [.. cleared];
+        }
+        string[] both = ["WEBKIT_INSPECTOR_SERVER", "WEBKIT_INSPECTOR_HTTP_SERVER"];
+        Assert.True(Cleared(Environment(null, null)).SequenceEqual(both));
+        Assert.True(Cleared(Environment("Production", "Development")).SequenceEqual(both));
+        Assert.Empty(Cleared(Environment("Development", null)));
+        Assert.Empty(Cleared(Environment(null, "development")));
+    }
 }

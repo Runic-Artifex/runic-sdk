@@ -1038,6 +1038,14 @@ jobs:
         run: |
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-placement --window-manager'
+      # #1028: WebKitGTK's remote inspector (WEBKIT_INSPECTOR_SERVER, WEBKIT_INSPECTOR_HTTP_SERVER), which developer extras
+      # do not gate, opens in Development only: a Production window opens no port and its process has neither variable.
+      - name: Open WebKit's remote inspector in Development only in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: >-
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session --
+          dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --inspector-environment
       # #864 P4: the WebKitGTK side panel in GTK 3 under Openbox: both edges with the exact bounds back on close, the page
       # never resized, Tab and Shift+Tab between the views (XTEST), ATK's order of the views, window.close() in the
       # panel, a maximized window keeping the panel, the refusals, the minimum width and WindowClosed.
@@ -1173,6 +1181,8 @@ jobs:
           # sdk#897 W1a: maximize, restore and placements of the open GTK 4 window, as for GTK 3.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --window-placement --window-manager'
+          # #1028: WebKitGTK's remote inspector opens in Development only, as for GTK 3.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --inspector-environment
           # #864 P4: the side panel in GTK 4, as in GTK 3 (GtkAccessible's order of the views).
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
             'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --side-panel'

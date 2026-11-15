@@ -850,7 +850,11 @@ defaults are:
   later) are available only when `DOTNET_ENVIRONMENT`, or else
   `ASPNETCORE_ENVIRONMENT`, is `Development`, as under `dotnet runic dev`. Before
   0.10.0 WebView2 always had them, including in Release builds, which let anyone
-  at the keyboard script the page and its Bridge.
+  at the keyboard script the page and its Bridge. WebKit's remote inspector does
+  not follow the WebKitGTK setting, so outside Development the GTK 3 and GTK 4
+  hosts also remove `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER`
+  from the process's environment before their first web view, also when
+  `DevTools` is `true`.
 
 ```csharp
 await surface.OpenWindowAsync(new DesktopWindowOptions

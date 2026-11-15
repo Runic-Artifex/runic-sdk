@@ -237,6 +237,14 @@ diagnostics that report grants a presentation cannot apply.
 - **Developer tools** are available in embedded windows only when
   `DOTNET_ENVIRONMENT` (or else `ASPNETCORE_ENVIRONMENT`) is `Development`
   ([links, new windows, downloads and developer tools](../packages/dotnet/Runic.Desktop/README.md#links-new-windows-downloads-and-developer-tools)).
+- **WebKit's remote inspector** (`WEBKIT_INSPECTOR_SERVER`,
+  `WEBKIT_INSPECTOR_HTTP_SERVER`) opens a debugging endpoint whatever the
+  developer tools setting says. Outside Development the GTK 3 and GTK 4 hosts
+  remove both variables from the process's environment before they create their
+  first web view, so a release started with one set opens no inspector port and
+  passes neither variable on to the processes it starts. WebView2's
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` is not cleared: do not set it for a
+  distributed build.
 - **Failure detail** (exception type, message and stack) reaches the page only in
   Development, or when a window sets `IncludeFailureDetail`. Detail can contain
   paths and application data; do not enable it for a distributed build
