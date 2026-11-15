@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
 
@@ -18,6 +20,18 @@ internal sealed partial class DevSession
 {
     internal const string Schema = "runic.application.tool.dev-session/1";
     internal const string FileName = "dev-session.json";
+
+    /// <summary>
+    /// The frontend marker that the Views build targets read (<c>RunicViewsDetectDevSession</c>): one line, the runtime web
+    /// root this session serves. While its write time is less than <see cref="FrontendMarkerLifetime"/> old, a build of
+    /// that output skips the production frontend build, and with <see cref="PagesDirectoryName"/> keeps the development
+    /// pages in the web root. dev renews it every <see cref="FrontendHeartbeat"/> and deletes it when it ends, so a dev
+    /// that was killed stops affecting builds within the lifetime.
+    /// </summary>
+    internal const string FrontendMarkerName = "dev-frontend";
+    internal const string PagesDirectoryName = "dev-pages";
+    internal static readonly TimeSpan FrontendHeartbeat = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan FrontendMarkerLifetime = TimeSpan.FromSeconds(30);
 
     /// <summary>The state values: <c>starting</c> until the frontend and Window are usable, then <c>ready</c>, and <c>stopped</c>.</summary>
     internal const string Starting = "starting";
@@ -34,6 +48,7 @@ internal sealed partial class DevSession
     private bool _confirmsSession;
     private int? _windowProcessId;
     private int _windowStarts;
+    private bool _frontendPublished;
 
     internal DevSession(
         DevProjectConfiguration configuration,
@@ -50,6 +65,60 @@ internal sealed partial class DevSession
 
     /// <summary>The absolute path of the session file.</summary>
     internal string Path { get; }
+
+    internal string FrontendMarkerPath => System.IO.Path.Combine(_configuration.SessionDirectory, FrontendMarkerName);
+
+    internal string PagesDirectory => System.IO.Path.Combine(_configuration.SessionDirectory, PagesDirectoryName);
+
+    /// <summary>
+    /// Marks the frontend as served by this session for the build targets. With <paramref name="pages"/>, the
+    /// development pages that dev wrote into the web root are copied beside the marker, so a build that replaces or
+    /// cleans the web root puts them back.
+    /// </summary>
+    internal void PublishFrontend(IReadOnlyList<string> pages)
+    {
+        ArgumentNullException.ThrowIfNull(pages);
+        string webRoot;
+        lock (_gate) webRoot = _configuration.RuntimeWebRoot;
+        if (Directory.Exists(PagesDirectory)) Directory.Delete(PagesDirectory, recursive: true);
+        foreach (string page in pages)
+        {
+            string relative = page.Replace('\\', '/').TrimStart('/');
+            string source = System.IO.Path.GetFullPath(relative, webRoot);
+            if (!File.Exists(source)) continue;
+            string destination = System.IO.Path.GetFullPath(relative, PagesDirectory);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination, overwrite: true);
+        }
+        Directory.CreateDirectory(_configuration.SessionDirectory);
+        string temporary = FrontendMarkerPath + "." + Environment.ProcessId.ToString(CultureInfo.InvariantCulture) + ".tmp";
+        File.WriteAllText(temporary, webRoot + "\n");
+        File.Move(temporary, FrontendMarkerPath, overwrite: true);
+        lock (_gate) _frontendPublished = true;
+    }
+
+    /// <summary>Renews the frontend marker until <paramref name="cancellationToken"/> is cancelled.</summary>
+    internal async Task RenewFrontendAsync(TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(FrontendHeartbeat, timeProvider, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (File.Exists(FrontendMarkerPath)) File.SetLastWriteTimeUtc(FrontendMarkerPath, timeProvider.GetUtcNow().UtcDateTime);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    // The next renewal tries again; a marker that ages out only makes builds run the frontend build.
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
 
     /// <summary>The session of a configuration, with the debugging endpoints the Window's environment enables.</summary>
     internal static DevSession Create(DevProjectConfiguration configuration, DevOptions options) =>
@@ -110,6 +179,18 @@ internal sealed partial class DevSession
         {
             _state = Stopped;
             _windowProcessId = null;
+        }
+        try
+        {
+            if (_frontendPublished)
+            {
+                // The marker first: a build that starts now runs the frontend build and copy again.
+                File.Delete(FrontendMarkerPath);
+                if (Directory.Exists(PagesDirectory)) Directory.Delete(PagesDirectory, recursive: true);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
         }
         try
         {
@@ -180,10 +261,18 @@ internal sealed partial class DevSession
             json.WriteEndArray();
 
             json.WriteStartObject("window");
+            // "dev" starts the Window; "ide" (--no-window) leaves it to the IDE, which starts it with "environment".
+            json.WriteString("owner", _options.StartWindow ? "dev" : "ide");
             json.WriteString("program", _configuration.WindowProgram.Executable);
             if (_windowProcessId is { } pid) json.WriteNumber("processId", pid);
             else json.WriteNull("processId");
             json.WriteNumber("starts", _windowStarts);
+            json.WriteStartObject("environment");
+            foreach ((string name, string value) in WindowEnvironment(_configuration, _options))
+            {
+                json.WriteString(name, value);
+            }
+            json.WriteEndObject();
             json.WriteEndObject();
 
             json.WriteStartArray("debugEndpoints");
@@ -199,6 +288,20 @@ internal sealed partial class DevSession
             json.WriteEndObject();
         }
         return stream.ToArray();
+    }
+
+    /// <summary>
+    /// The variables a Window that the IDE starts needs for this session, as dev would set them: a Development
+    /// environment, and without a development server the frontend output directory that Runic Desktop serves live.
+    /// </summary>
+    internal static IReadOnlyList<KeyValuePair<string, string>> WindowEnvironment(DevProjectConfiguration configuration, DevOptions options)
+    {
+        var variables = new List<KeyValuePair<string, string>> { new("DOTNET_ENVIRONMENT", "Development") };
+        if (!(options.WatchFrontend && configuration.HasDevelopmentServer) && !configuration.RunsOnCsWebUiOnly)
+        {
+            variables.Add(new(HostProcessController.DevelopmentAssetsVariable, System.IO.Path.GetFullPath(configuration.FrontendOutputDirectory)));
+        }
+        return variables;
     }
 
     private static void WriteStringOrNull(Utf8JsonWriter json, string name, string? value)

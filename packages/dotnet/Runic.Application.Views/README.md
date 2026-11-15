@@ -2278,7 +2278,11 @@ from the bundle's `Contents/Resources/www`, where Apple expects resources
 (`RunicWindowOptions.ContentRoot` overrides both). `dotnet runic dev` sets
 `RunicApplicationFrontendBuildEnabled=false` and
 `RunicApplicationFrontendCopyEnabled=false` while its development server serves
-the frontend. The
+the frontend. Since 0.20, any build of the output that `dev` serves does the same
+while `dev` runs, such as an IDE's build before it starts the Window under its
+debugger (`dotnet runic dev --no-window`), and puts dev's development pages back
+into `www/` after a clean; `RunicApplicationFrontendDevSessionEnabled=false`
+turns that off, and publish is never affected. The
 [`dotnet runic` README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)
 lists the development-server properties it reads.
 
