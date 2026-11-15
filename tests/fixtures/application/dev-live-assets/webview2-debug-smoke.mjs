@@ -120,8 +120,9 @@ if (elevated) {
       `Remove-Item -LiteralPath '${join(fixture, "Frontend/standard-user-probe")}'`]],
   ]) {
     const result = spawnSync("dotnet", [unelevated, "--run-unelevated", ...command], { cwd: root, env: environment, encoding: "utf8", timeout: 120_000 });
-    console.log(`WEBVIEW2_DEBUG_STEP|standard user ${standardUser}: ${label}: exit ${result.status}|${(result.stdout + result.stderr).trim().replaceAll(/\s+/g, " ").slice(0, 400)}`);
-    if (result.status !== 0) throw new Error(`The standard user ${standardUser} cannot run ${label}; dotnet runic dev needs it.`);
+    if (result.status !== 0)
+      throw new Error(`The standard user ${standardUser} cannot run ${label}, which dotnet runic dev needs (exit ${result.status}):\n` +
+        tail(`${result.stdout ?? ""}${result.stderr ?? ""}`, 2000));
   }
 }
 // Stops what a run started, including the standard user's processes, which do not run below this one: the process trees
@@ -139,7 +140,7 @@ function stopFixtureProcesses() {
     "foreach ($attempt in 1..20) { if (-not (& $mine)) { break }; Start-Sleep -Milliseconds 250 }; " +
     "(& $mine | ForEach-Object { \"$($_.Id) $($_.ProcessName)\" }) -join ', '"], { encoding: "utf8", timeout: 60_000 });
   const survivors = (result.stdout ?? "").trim();
-  if (survivors) console.log(`WEBVIEW2_DEBUG_STEP|still running as ${standardUser}: ${survivors}`);
+  if (survivors) console.log(`Still running as ${standardUser} after the teardown: ${survivors}`);
   return survivors;
 }
 
@@ -160,13 +161,8 @@ function start(label, args) {
   const command = elevated ? [unelevated, "--run-unelevated", "dotnet", ...args] : args;
   const child = spawn("dotnet", command, { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
   const started = { label, child, output: "" };
-  // Diagnosis: the output also streams to the log, so even a step timeout shows how far a run got.
-  const echo = chunk => {
-    started.output += chunk;
-    for (const line of String(chunk).split(/\r?\n/)) if (line.trim()) console.log(`  [${label}] ${line}`);
-  };
-  child.stdout.on("data", echo);
-  child.stderr.on("data", echo);
+  child.stdout.on("data", chunk => { started.output += chunk; });
+  child.stderr.on("data", chunk => { started.output += chunk; });
   return started;
 }
 const detailOf = started => () => `${started.label} ${started.child.exitCode === null ? "is running" : `exited ${started.child.exitCode}`}:\n` +
@@ -303,12 +299,10 @@ try {
   await waitFor(async () => !await answers(endpoint), {
     label: `${endpoint} to close after the Window stopped`, timeout: 30_000, detail: () => describeTree("DevLiveAssets.exe"),
   });
-  console.log(`WEBVIEW2_DEBUG_STEP|run 1 stopped; ${endpoint} closed`);
 
   // 2. dotnet runic dev with the profile's variable: the session file names the endpoint.
   dev = start("dotnet runic dev", [tool, "dev", "--project", project, "-c", "Release", "--no-build", "--no-restore", "--no-dotnet-watch",
     "-e", `${variable}=${debugging.environment[variable]}`]);
-  console.log("WEBVIEW2_DEBUG_STEP|run 2: dotnet runic dev started");
   const sessionFile = join(fixture, "obj/runic/dev-session.json");
   const devDetail = async () => `${await detailOf(dev)()}\n${await describeTree("DevLiveAssets.exe")}\n` +
     `dev-session.json: ${await readFile(sessionFile, "utf8").catch(error => `(unreadable: ${error.code})`)}`;

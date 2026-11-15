@@ -1416,7 +1416,7 @@ jobs:
       - name: Check the template's WebView2 script-debugging profile
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
-        timeout-minutes: 25
+        timeout-minutes: 20
         env:
           RUNIC_TEST_UNELEVATED_USER: ${{ steps.hosted-user.outputs.user }}
           RUNIC_TEST_UNELEVATED_PASSWORD: ${{ steps.hosted-user.outputs.password }}
