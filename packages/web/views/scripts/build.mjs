@@ -25,10 +25,11 @@ const flag = "__RUNIC_DEVELOPMENT__";
 // channel (translated-text.ts).
 const developmentMarkers = [flag, "runic.views.calls", "createTask", "runic.translations.text", "trace-context/1", "handler-timing/1", "traceparent"];
 
-function files(directory) {
+// The .js files below a directory; dist/development only when asked for.
+function files(directory, inDevelopment = false) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) return path === development ? [] : files(path);
+    if (entry.isDirectory()) return path === development && !inDevelopment ? [] : files(path, inDevelopment);
     return entry.name.endsWith(".js") ? [path] : [];
   });
 }
@@ -90,6 +91,11 @@ for (const [name, code] of production) {
   for (const marker of developmentMarkers)
     if (code.includes(marker)) throw new Error(`The production build dist/${name} contains ${marker}.`);
   writeFileSync(join(dist, name), code);
+}
+// No shipped file of either build may name the flag: a bundler of an application does not define it, so a module that
+// still references it throws a ReferenceError when it runs (#958).
+for (const path of [...files(dist), ...files(development, true)]) {
+  if (readFileSync(path, "utf8").includes(flag)) throw new Error(`${relative(root, path)} still references ${flag}.`);
 }
 const left = modules.filter(({ name }) => !reached.has(name)).map(({ name }) => name);
 console.log(`Built dist/development (${modules.length} modules) and dist (${reached.size}; development only: ${left.join(", ") || "none"}).`);
