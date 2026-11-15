@@ -349,6 +349,17 @@ internal sealed partial class ToolTests
         session.Complete();
         await events;
         Equal("Runtime.executionContextsCleared", webKit.Emitted.Select(static emitted => emitted.Method).First(static method => method.StartsWith("Runtime.", StringComparison.Ordinal)));
+
+        // The new process numbers its scripts from 1 again: the debugger sees them prefixed, WebKit gets them back plain,
+        // and a script of the ended process is refused.
+        await session.TranslateEventAsync("Debugger.scriptParsed", Json("""{"scriptId":"40","url":"http://h/src/App.tsx?t=2","sourceMapURL":"data:x"}"""));
+        Equal("r1.40", webKit.Emitted[^1].Parameters["scriptId"]!.GetValue<string>());
+        await session.TranslateEventAsync("Debugger.paused", Json("""{"reason":"Breakpoint","callFrames":[{"callFrameId":"c","location":{"scriptId":"40","lineNumber":3}}]}"""));
+        Equal("r1.40", webKit.Emitted[^1].Parameters["callFrames"]![0]!["location"]!["scriptId"]!.GetValue<string>());
+        restarted.Answer = static (_, _) => Json("""{"scriptSource":"code"}""");
+        await session.HandleAsync("Debugger.getScriptSource", Json("""{"scriptId":"r1.40"}"""));
+        Equal("40", restarted.Sent[^1].Parameters["scriptId"]!.GetValue<string>());
+        Equal(CdpException.InvalidParams, (await ThrowsAsync<CdpException>(() => session.HandleAsync("Debugger.getScriptSource", Json("""{"scriptId":"40"}""")))).Code);
     }
 
     [Test, DisplayName("dev opens WebKit's inspector server and the CDP adapter on Linux, and honours the developer's choice")]

@@ -48,6 +48,11 @@ internal sealed partial class CdpPageSession
     private string? _pauseOnExceptions;
     private int? _asyncDepth;
     private volatile bool _suspended;
+    // The CDP script IDs of a page that continues after a Window restart. JavaScriptCore numbers a new process's scripts
+    // from 1 again, and js-debug takes a script ID it knows for the same script, so after each restart the IDs the
+    // debugger sees carry a prefix ("r1.40"); WebKit gets them back without it.
+    private string _scriptPrefix = "";
+    private int _restarts;
     private readonly Channel<(string Method, JsonObject Parameters)> _events =
         Channel.CreateUnbounded<(string, JsonObject)>(new UnboundedChannelOptions { SingleReader = true });
     private readonly ConcurrentDictionary<string, string> _scriptUrls = new(StringComparer.Ordinal);
@@ -121,6 +126,7 @@ internal sealed partial class CdpPageSession
     {
         _wip = wip;
         _protocol = protocol;
+        _scriptPrefix = $"r{++_restarts}.";
         _suspended = false;
         Post(Cleared, []);
         bool page, runtime, debugger;
@@ -154,6 +160,37 @@ internal sealed partial class CdpPageSession
         if (exceptions is not null) await HandleAsync("Debugger.setPauseOnExceptions", new() { ["state"] = exceptions }).ConfigureAwait(false);
         if (depth is not null) await HandleAsync("Debugger.setAsyncCallStackDepth", new() { ["maxDepth"] = depth }).ConfigureAwait(false);
         if (blackbox.Count > 0) await HandleAsync("Debugger.setBlackboxPatterns", new() { ["patterns"] = new JsonArray([.. blackbox.Select(static pattern => (JsonNode)pattern)]) }).ConfigureAwait(false);
+    }
+
+    /// <summary>A WebKit script ID as the debugger sees it.</summary>
+    internal string ToCdpScriptId(string wipScriptId) => wipScriptId.Length == 0 ? "" : _scriptPrefix + wipScriptId;
+
+    /// <summary>A script ID from the debugger as WebKit knows it; a script of an earlier Window process is gone.</summary>
+    internal string ToWipScriptId(string cdpScriptId)
+    {
+        if (_scriptPrefix.Length == 0) return cdpScriptId.Contains('.', StringComparison.Ordinal) ? Gone() : cdpScriptId;
+        return cdpScriptId.StartsWith(_scriptPrefix, StringComparison.Ordinal) ? cdpScriptId[_scriptPrefix.Length..] : Gone();
+        static string Gone() => throw new CdpException(CdpException.InvalidParams, "The script belongs to a Window process that has ended.");
+    }
+
+    // A location (or a list of them) from WebKit with the debugger's script IDs.
+    private JsonNode? CdpLocations(JsonNode? locations)
+    {
+        if (locations is null) return null;
+        JsonNode copy = locations.DeepClone();
+        foreach (JsonObject location in copy is JsonArray array ? array.OfType<JsonObject>() : copy is JsonObject single ? [single] : [])
+        {
+            if (location["scriptId"]?.GetValue<string>() is { } id) location["scriptId"] = ToCdpScriptId(id);
+        }
+        return copy;
+    }
+
+    // A location from the debugger with WebKit's script ID.
+    private JsonObject WipLocation(JsonNode location)
+    {
+        var copy = (JsonObject)location.DeepClone();
+        if (copy["scriptId"]?.GetValue<string>() is { } id) copy["scriptId"] = ToWipScriptId(id);
+        return copy;
     }
 
     // WebKit names a URL breakpoint after its URL (or /regex/), line and column, so the ID a suspended session gives out is
@@ -255,14 +292,14 @@ internal sealed partial class CdpPageSession
                 }
                 JsonObject result = await Wip("Debugger.setBreakpointByUrl", parameters, cancellationToken).ConfigureAwait(false);
                 if (result["breakpointId"]?.GetValue<string>() is { } set) lock (_stateGate) _urlBreakpoints[set] = (JsonObject)parameters.DeepClone();
-                return new() { ["breakpointId"] = result["breakpointId"]?.DeepClone(), ["locations"] = result["locations"]?.DeepClone() ?? new JsonArray() };
+                return new() { ["breakpointId"] = result["breakpointId"]?.DeepClone(), ["locations"] = CdpLocations(result["locations"]) ?? new JsonArray() };
             }
             case "Debugger.setBreakpoint":
             {
-                var parameters = new JsonObject { ["location"] = Required<JsonNode>(p, "location").DeepClone() };
+                var parameters = new JsonObject { ["location"] = WipLocation(Required<JsonNode>(p, "location")) };
                 if (p["condition"]?.GetValue<string>() is { Length: > 0 } condition) parameters["options"] = new JsonObject { ["condition"] = condition };
                 JsonObject result = await Wip("Debugger.setBreakpoint", parameters, cancellationToken).ConfigureAwait(false);
-                return new() { ["breakpointId"] = result["breakpointId"]?.DeepClone(), ["actualLocation"] = result["actualLocation"]?.DeepClone() };
+                return new() { ["breakpointId"] = result["breakpointId"]?.DeepClone(), ["actualLocation"] = CdpLocations(result["actualLocation"]) };
             }
             case "Debugger.removeBreakpoint":
             {
@@ -290,12 +327,12 @@ internal sealed partial class CdpPageSession
                 JsonNode start = Required<JsonNode>(p, "start");
                 JsonNode end = p["end"]?.DeepClone() ?? new JsonObject
                 {
-                    ["scriptId"] = start["scriptId"]?.GetValue<string>(),
+                    ["scriptId"] = ToWipScriptId(start["scriptId"]?.GetValue<string>() ?? ""),
                     ["lineNumber"] = (start["lineNumber"]?.GetValue<int>() ?? 0) + 1,
                     ["columnNumber"] = 0,
                 };
-                JsonObject result = await Wip("Debugger.getBreakpointLocations", new() { ["start"] = start.DeepClone(), ["end"] = end }, cancellationToken).ConfigureAwait(false);
-                return new() { ["locations"] = result["locations"]?.DeepClone() ?? new JsonArray() };
+                JsonObject result = await Wip("Debugger.getBreakpointLocations", new() { ["start"] = WipLocation(start), ["end"] = p["end"] is null ? end : WipLocation(end) }, cancellationToken).ConfigureAwait(false);
+                return new() { ["locations"] = CdpLocations(result["locations"]) ?? new JsonArray() };
             }
             case "Debugger.stepOver" or "Debugger.stepInto" or "Debugger.stepOut" or "Debugger.resume" or "Debugger.pause":
                 // stepInto's breakOnAsyncCall has no WebKit counterpart.
@@ -303,7 +340,7 @@ internal sealed partial class CdpPageSession
                 return [];
             case "Debugger.getScriptSource":
             {
-                JsonObject result = await Wip("Debugger.getScriptSource", new() { ["scriptId"] = Required<string>(p, "scriptId") }, cancellationToken).ConfigureAwait(false);
+                JsonObject result = await Wip("Debugger.getScriptSource", new() { ["scriptId"] = ToWipScriptId(Required<string>(p, "scriptId")) }, cancellationToken).ConfigureAwait(false);
                 return new() { ["scriptSource"] = result["scriptSource"]?.DeepClone() ?? "" };
             }
             case "Debugger.setPauseOnExceptions":
@@ -602,7 +639,7 @@ internal sealed partial class CdpPageSession
         _scriptUrls[scriptId] = url;
         var script = new JsonObject
         {
-            ["scriptId"] = scriptId,
+            ["scriptId"] = ToCdpScriptId(scriptId),
             ["url"] = url,
             ["startLine"] = p["startLine"]?.DeepClone() ?? 0,
             ["startColumn"] = p["startColumn"]?.DeepClone() ?? 0,
@@ -643,7 +680,8 @@ internal sealed partial class CdpPageSession
     /// </summary>
     internal static IReadOnlyList<JsonObject> CurrentScripts(IReadOnlyList<JsonObject> replay)
     {
-        static long Id(JsonObject script) => long.TryParse(script["scriptId"]?.GetValue<string>(), out long id) ? id : long.MaxValue;
+        static long Id(JsonObject script) =>
+            long.TryParse(script["scriptId"]?.GetValue<string>()?.Split('.')[^1], out long id) ? id : long.MaxValue;
         Dictionary<string, long> newestByUrl = replay
             .Where(static script => script["url"]?.GetValue<string>() is { Length: > 0 })
             .GroupBy(static script => script["url"]!.GetValue<string>(), StringComparer.Ordinal)
@@ -735,7 +773,7 @@ internal sealed partial class CdpPageSession
             {
                 ["callFrameId"] = frame["callFrameId"]?.DeepClone(),
                 ["functionName"] = frame["functionName"]?.DeepClone() ?? "",
-                ["location"] = location.DeepClone(),
+                ["location"] = CdpLocations(location),
                 ["url"] = _scriptUrls.GetValueOrDefault(location["scriptId"]?.GetValue<string>() ?? "", ""),
                 ["scopeChain"] = ScopeChain(frame["scopeChain"]?.AsArray() ?? []),
                 ["this"] = frame["this"]?.DeepClone() ?? new JsonObject { ["type"] = "undefined" },
@@ -841,7 +879,7 @@ internal sealed partial class CdpPageSession
     }
 
     // WIP's console and async stack frames are 1-based; CDP's are 0-based.
-    private static JsonArray ConsoleFrames(JsonArray wip)
+    private JsonArray ConsoleFrames(JsonArray wip)
     {
         var frames = new JsonArray();
         foreach (JsonNode? frame in wip)
@@ -849,7 +887,7 @@ internal sealed partial class CdpPageSession
             frames.Add((JsonNode)new JsonObject
             {
                 ["functionName"] = frame!["functionName"]?.DeepClone() ?? "",
-                ["scriptId"] = frame["scriptId"]?.DeepClone() ?? "",
+                ["scriptId"] = ToCdpScriptId(frame["scriptId"]?.GetValue<string>() ?? ""),
                 ["url"] = frame["url"]?.GetValue<string>() is { } url && url != "undefined" ? url : "",
                 ["lineNumber"] = ZeroBased(frame["lineNumber"]),
                 ["columnNumber"] = ZeroBased(frame["columnNumber"]),
@@ -858,7 +896,7 @@ internal sealed partial class CdpPageSession
         return frames;
     }
 
-    private static JsonObject AsyncStackTrace(JsonObject wip)
+    private JsonObject AsyncStackTrace(JsonObject wip)
     {
         var trace = new JsonObject { ["callFrames"] = ConsoleFrames(wip["callFrames"]?.AsArray() ?? []) };
         if (wip["parentStackTrace"] is JsonObject parent) trace["parent"] = AsyncStackTrace(parent);

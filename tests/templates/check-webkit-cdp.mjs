@@ -9,7 +9,8 @@
 // The project's dotnet-runic must be restored. Needs Xvfb, dbus-run-session and the WebKitGTK of the project's GTK.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +43,20 @@ async function jsDebug() {
   const tar = spawnSync("tar", ["-xzf", "js-debug.tar.gz"], { cwd: directory, encoding: "utf8" });
   if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr}`);
   return join(directory, "js-debug");
+}
+
+// The trace lines (HH:mm:ss.fff …) from `from` to `to`, at most 800, each cut at 400 characters.
+async function printTrace(name, from, to) {
+  if (!existsSync(trace)) return;
+  console.log(`--- adapter trace while "${name}" ran (${from} to ${to}) ---`);
+  let printed = 0;
+  for await (const line of createInterface({ input: createReadStream(trace) })) {
+    const time = line.slice(0, 12);
+    if (time < from || time > to || /Console\.messageAdded|Runtime\.consoleAPICalled/.test(line)) continue;
+    if (++printed > 800) { console.log("… (more in the trace artifact)"); break; }
+    console.log(line.length > 400 ? `${line.slice(0, 400)}…` : line);
+  }
+  console.log("--- end of trace ---");
 }
 
 // The window-restart scenario appends a comment to it: dotnet watch then restarts the Window.
@@ -99,14 +114,20 @@ try {
   console.log("WEBKIT_CDP_SECURITY_OK|loopback without Origin 200|foreign Origin 403|foreign Host 403");
 
   const run = spawnSync(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--port", port,
-    "--frontend", join(project, "Frontend"), "--restart-file", csharp], { encoding: "utf8", timeout: scaled(600_000) });
+    "--frontend", join(project, "Frontend"), "--restart-file", csharp], { encoding: "utf8", timeout: scaled(900_000) });
   process.stdout.write(run.stdout);
   process.stderr.write(run.stderr);
-  if (run.status !== 0) throw new Error(`js-debug scenarios failed (exit ${run.status ?? run.signal})`);
+  if (run.status !== 0) {
+    // The adapter's traffic while each failed scenario ran, without the page's console noise.
+    for (const [, name, from, to] of run.stdout.matchAll(/^SCENARIO_WINDOW\|([^|]+)\|([\d:.]+)\|([\d:.]+)$/gm)) {
+      await printTrace(name, from, to);
+    }
+    throw new Error(`js-debug scenarios failed (exit ${run.status ?? run.signal})`);
+  }
   console.log(`WEBKIT_CDP_OK|${/^\[[\d.]+s\] (\d+\/\d+) passed$/m.exec(run.stdout)?.[1] ?? "?"}`);
 } catch (error) {
   console.error(tail(output));
-  if (existsSync(trace)) console.error(`The adapter's traffic: ${trace}`);
+  console.error(`The adapter's traffic: ${trace}`);
   throw error;
 } finally {
   stop();

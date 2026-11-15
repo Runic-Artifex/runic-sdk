@@ -37,11 +37,20 @@ const dapPort = 42000 + Math.floor(Math.random() * 1000);
 const server = spawn(process.execPath, [`${a.jsdebug}/src/dapDebugServer.js`, String(dapPort), "127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
 server.stderr.on("data", d => process.stderr.write(`[js-debug] ${d}`));
 const done = code => { try { server.kill(); } catch {} setTimeout(() => process.exit(code), 200); };
-setTimeout(() => { log("overall timeout"); done(1); }, 240000);
+setTimeout(() => { log("overall timeout"); done(1); }, 900000);
+// A failure before or between the scenarios (attach, page readiness) is a FAIL line too, not a bare exit code.
+process.on("unhandledRejection", error => { log(`FAIL setup: ${error?.stack ?? error}`); done(1); });
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 class Dap {
-  constructor(name) { this.name = name; this.seq = 1; this.pending = new Map(); this.waiters = []; this.buf = Buffer.alloc(0); this.handlers = {}; this.outputs = []; }
-  connect() { return new Promise((res, rej) => { this.sock = net.connect(dapPort, "127.0.0.1", res); this.sock.on("error", rej); this.sock.on("data", d => { this.buf = Buffer.concat([this.buf, d]); this.drain(); }); }); }
+  constructor(name) { this.name = name; this.seq = 1; this.pending = new Map(); this.waiters = []; this.buf = Buffer.alloc(0); this.handlers = {}; this.outputs = []; this.breakpointEvents = []; }
+  connectOnce() { return new Promise((res, rej) => { this.sock = net.connect(dapPort, "127.0.0.1", res); this.sock.once("error", rej); this.sock.on("data", d => { this.buf = Buffer.concat([this.buf, d]); this.drain(); }); }); }
+  // js-debug's server takes a moment to listen, longer on a loaded machine: connect once it does.
+  async connect() {
+    for (const deadline = Date.now() + 60000; ;) {
+      try { await this.connectOnce(); return; } catch (error) { if (Date.now() > deadline) throw error; await sleep(200); }
+    }
+  }
   drain() {
     for (;;) {
       const h = this.buf.indexOf("\r\n\r\n"); if (h < 0) return;
@@ -51,6 +60,7 @@ class Dap {
       if (m.type === "response") { const p = this.pending.get(m.request_seq); this.pending.delete(m.request_seq); p?.(m); }
       else if (m.type === "event") {
         if (m.event === "output") this.outputs.push(m.body);
+        if (m.event === "breakpoint") this.breakpointEvents.push(m.body.breakpoint);
         for (const w of [...this.waiters]) if (w.event === m.event && w.pred(m.body)) { this.waiters.splice(this.waiters.indexOf(w), 1); w.res(m.body); }
       } else if (m.type === "request") this.handlers[m.command]?.(m);
     }
@@ -65,7 +75,6 @@ class Dap {
 }
 const init = { clientID: "runic-webkit-cdp", adapterID: a.type, linesStartAt1: true, columnsStartAt1: true, pathFormat: "path", supportsVariableType: true, supportsStartDebuggingRequest: true };
 
-await new Promise(r => setTimeout(r, 700));
 const parent = new Dap("parent"); await parent.connect();
 // Every page js-debug attaches to is a child session (startDebugging), as in VS Code. The first is the scenarios'
 // session; a later one (another Window) gets the breakpoints VS Code would send it. A Window restart keeps the session.
@@ -73,17 +82,21 @@ const breakpoints = new Map();
 let current = null;
 let children = 0;
 const childP = new Promise(res => { parent.handlers.startDebugging = async req => {
-  parent.reply(req); const child = new Dap(`child${++children}`); await child.connect(); await child.send("initialize", init);
-  const attached = child.send("attach", req.arguments.configuration); await child.wait("initialized");
+  parent.reply(req); const child = new Dap(`child${++children}`); await child.connect();
+  // js-debug can send "initialized" in the same read as the initialize response: wait for it before sending.
+  const initialized = child.wait("initialized", () => true, 120000);
+  await child.send("initialize", init);
+  const attached = child.send("attach", req.arguments.configuration); await initialized;
   if (children === 1) { res({ c: child, attached }); return; }
   for (const [path, bps] of breakpoints) await child.send("setBreakpoints", { source: { path }, breakpoints: bps });
   await child.send("configurationDone"); await attached;
   log(`child session ${children} attached (another page)`);
 }; });
+const parentInitialized = parent.wait("initialized", () => true, 120000);
 await parent.send("initialize", init);
 const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
   ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
-await parent.wait("initialized").catch(() => {}); await parent.send("configurationDone"); await pa;
+await parentInitialized; await parent.send("configurationDone"); await pa;
 const first = await childP;
 current = first.c;
 await current.send("configurationDone"); await first.attached;
@@ -95,8 +108,45 @@ const counter = 'nav button:nth-of-type(2)';
 const click = sel => c.send("evaluate", { expression: `setTimeout(() => document.querySelector(${JSON.stringify(sel)}).click(), 50), "ok"`, context: "repl" });
 const top = async threadId => (await c.send("stackTrace", { threadId, levels: 1 })).body.stackFrames[0];
 const where = f => `${f.name} ${(f.source?.path ?? f.source?.name ?? "?").replace(a.frontend + "/", "")}:${f.line}:${f.column}`;
-const setBps = (bps, path = app) => { breakpoints.set(path, bps); return c.send("setBreakpoints", { source: { path }, breakpoints: bps }); };
+// Sets a file's breakpoints, as VS Code does, and returns once js-debug reports each of them verified: bound to the
+// page's script through its source map. A debugger user sees that before clicking; a slow machine takes longer.
+async function setBps(bps, path = app) {
+  breakpoints.set(path, bps);
+  const seen = current.breakpointEvents.length;
+  const response = await c.send("setBreakpoints", { source: { path }, breakpoints: bps });
+  const ids = (response.body?.breakpoints ?? []).filter(bp => !bp.verified).map(bp => bp.id);
+  for (const deadline = Date.now() + 30000; ids.length > 0;) {
+    for (const event of current.breakpointEvents.slice(seen)) if (event.verified && ids.includes(event.id)) ids.splice(ids.indexOf(event.id), 1);
+    if (ids.length === 0) break;
+    if (Date.now() > deadline) throw new Error(`breakpoints ${ids.join(", ")} in ${path} were not verified within 30 s`);
+    await sleep(100);
+  }
+  return response;
+}
+// Waits until an expression is true in the page, such as the template's Counter button being rendered and enabled.
+async function until(expression, what, ms = 120000) {
+  for (const deadline = Date.now() + ms; ;) {
+    const result = await c.send("evaluate", { expression: `Boolean(${expression})`, context: "repl" });
+    if (result.success && result.body.result === "true") return;
+    if (Date.now() > deadline) throw new Error(`${what}: not within ${ms / 1000} s`);
+    await sleep(250);
+  }
+}
+// Saves a file as editors do, by renaming a complete copy over it: a development server that reads the file while a
+// plain write has truncated it gets an empty module (Vite: "Could not Fast Refresh (export removed)").
+function saveAtomically(path, text) {
+  const temporary = `${path}.webkit-cdp-${process.pid}.tmp`;
+  fs.writeFileSync(temporary, text);
+  fs.renameSync(temporary, path);
+}
+const counterReady = `document.querySelector(${JSON.stringify(counter)})?.disabled === false`;
 const results = [];
+// Each scenario's wall-clock window in the adapter trace's format (HH:mm:ss.fff, local time), for its failures.
+const clock = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
+// The page loads on, and the Window's Bridge connects, after dev's [dev] Ready: start once the Counter button works.
+const setupFailed = error => { log(`FAIL setup: ${error?.message ?? error}`); done(1); return new Promise(() => {}); };
+await until(counterReady, "the page's Counter button").catch(setupFailed);
+log("page ready");
 
 const scenarios = {
   async "step-in-out"() {
@@ -148,9 +198,12 @@ const scenarios = {
     return [r.every(x => !x.endsWith("MISSING")), r.join(", ")];
   },
   async "set-variable"() {
+    // The Welcome View first, so a click on Counter renders CounterPage, where the breakpoint is.
+    await click('nav button:nth-of-type(1)'); await until(`!document.querySelector(".count")`, "the Welcome View");
     await setBps([{ line: counterLine }], counterPage);
-    const s = c.wait("stopped", () => true, 6000);
-    await click('nav button:nth-of-type(1)'); await new Promise(r => setTimeout(r, 300)); await click(counter);
+    await until(counterReady, "the Counter button");
+    const s = c.wait("stopped", () => true, 15000);
+    await click(counter);
     const st = await s.catch(() => null);
     if (!st) { await setBps([], counterPage); return [false, "no stop in CounterPage"]; }
     const f = await top(st.threadId);
@@ -173,7 +226,7 @@ const scenarios = {
     const st = await s.catch(() => null);
     const f = st ? await top(st.threadId) : null;
     await setBps([]); if (st) await c.send("continue", { threadId: st.threadId });
-    await new Promise(r => setTimeout(r, 2500));
+    await until(counterReady, "the reloaded page's Counter button");
     // After the reload, a click breakpoint must still work.
     await setBps([{ line: clickLine }]);
     const s2 = c.wait("stopped", () => true, 6000); await click(counter); const st2 = await s2.catch(() => null);
@@ -184,41 +237,53 @@ const scenarios = {
   async "window-restart"() {
     if (!a["restart-file"]) return [true, "skipped (no --restart-file)"];
     await setBps([{ line: clickLine }]);
+    // A mark in this Window's page: the restarted Window's page does not have it.
+    await c.send("evaluate", { expression: "globalThis.__webkitCdpBeforeRestart = true", context: "repl" });
     fs.appendFileSync(a["restart-file"], `\n// webkit-cdp scenario: restart ${Date.now()}\n`);
-    // The same js-debug session, without a new attach: the adapter announces the new Window's page and js-debug attaches.
-    const deadline = Date.now() + 120000;
-    let st = null;
-    await new Promise(r => setTimeout(r, 5000));
-    while (!st && Date.now() < deadline) {
-      const s = c.wait("stopped", () => true, 3000);
-      await click(counter).catch(() => null);
-      st = await s.catch(() => null);
-    }
+    // The same js-debug session, without a new attach: the adapter continues it on the new Window's page.
+    await until(`!globalThis.__webkitCdpBeforeRestart && ${counterReady}`, "the restarted Window's page", 300000);
+    const s = c.wait("stopped", () => true, 15000);
+    await click(counter);
+    const st = await s.catch(() => null);
     const f = st ? await top(st.threadId) : null;
     await setBps([]); if (st) await c.send("continue", { threadId: st.threadId });
-    return [!!st, `after the Window restarted: ${f ? "stopped at " + where(f) : "NOT stopped within 120 s"}`];
+    return [!!st, `after the Window restarted: ${f ? "stopped at " + where(f) : "NOT stopped"}`];
   },
   async hmr() {
     const original = fs.readFileSync(app, "utf8");
     if (!original.includes("<h1>Runic Views</h1>")) throw new Error("App.tsx has no <h1>Runic Views</h1> to edit");
-    fs.writeFileSync(app, original.replace("<h1>Runic Views</h1>", "<h1>Runic Views (edited)</h1>"));
-    await new Promise(r => setTimeout(r, 2500));
     try {
+      saveAtomically(app, original.replace("<h1>Runic Views</h1>", "<h1>Runic Views (edited)</h1>"));
+      // Vite's HMR update has reached the page: React rendered the edited module.
+      await until(`document.querySelector("header h1")?.textContent.includes("(edited)")`, "the HMR update");
       await setBps([{ line: clickLine }]);
-      const s = c.wait("stopped", () => true, 6000); await click(counter); const st = await s.catch(() => null);
+      const s = c.wait("stopped", () => true, 15000); await click(counter); const st = await s.catch(() => null);
       const f = st ? await top(st.threadId) : null;
       let text = null;
       if (st) { text = await c.send("evaluate", { expression: `document.querySelector("header h1").textContent`, frameId: f.id, context: "repl" }); }
       await setBps([]); if (st) await c.send("continue", { threadId: st.threadId });
       return [!!st && text?.body?.result?.includes("edited"), `after HMR edit: ${f ? "stopped at " + where(f) : "NOT stopped"}; header ${text?.body?.result}`];
-    } finally { fs.writeFileSync(app, original); await new Promise(r => setTimeout(r, 1500)); }
+    } finally {
+      saveAtomically(app, original);
+      await until(`!document.querySelector("header h1")?.textContent.includes("(edited)")`, "the HMR update back").catch(() => null);
+    }
   },
 };
 
 for (const [name, run] of Object.entries(scenarios)) {
   if (a.only && !a.only.split(",").includes(name)) continue;
-  try { const [ok, detail] = await run(); results.push(ok); log(`${ok ? "PASS" : "FAIL"} ${name}: ${detail}`); }
-  catch (e) { results.push(false); log(`FAIL ${name}: ${e.message}`); }
+  const start = clock();
+  let ok = false;
+  try { const [passed, detail] = await run(); ok = passed; log(`${ok ? "PASS" : "FAIL"} ${name}: ${detail}`); }
+  catch (e) { log(`FAIL ${name}: ${e.message}`); }
+  results.push(ok);
+  if (!ok) {
+    console.log(`SCENARIO_WINDOW|${name}|${start}|${clock()}`);
+    // A failed scenario must not leave the page paused or with its breakpoints for the next one.
+    for (const path of [...breakpoints.keys()]) await setBps([], path).catch(() => null);
+    await c.send("setExceptionBreakpoints", { filters: [] }).catch(() => null);
+    await c.send("continue", { threadId: 0 }).catch(() => null);
+  }
   await new Promise(r => setTimeout(r, 500));
 }
 await Promise.race([c.send("disconnect", {}), new Promise(r => setTimeout(r, 3000))]).catch(() => {});
