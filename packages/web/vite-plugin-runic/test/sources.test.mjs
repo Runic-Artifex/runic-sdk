@@ -2,12 +2,14 @@
 // `/__runic/open` opens only a location the map lists, or the source of a Runic Translations message that the
 // Translations dev server names, and `vite build` output does not depend on the map.
 import assert from "node:assert/strict";
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import test from "node:test";
 import { build, createServer } from "vite";
 import { runic } from "../dist/index.js";
+// An editor that records its arguments, as LAUNCH_EDITOR, and the wait for a complete record (#1010).
+import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
 import { findOpenLocation, parseSourceMap } from "../dist/sources.js";
 
 const environment = ["RUNIC_APPLICATION_DEV_SOURCE_MAP", "RUNIC_APPLICATION_DEV_PROJECT", "LAUNCH_EDITOR", "RUNIC_TEST_EDITOR_RECORD"];
@@ -69,27 +71,6 @@ async function withServer(root, options, run, plugins = []) {
     const address = server.httpServer.address();
     await run(`http://127.0.0.1:${address.port}`);
   } finally { await server.close(); }
-}
-
-// An editor that records its arguments, as LAUNCH_EDITOR. launch-editor calls an unknown editor with file, line, column.
-// It writes the record beside it and renames it, so that a reader never sees the file before its arguments are in it.
-async function recordingEditor(directory) {
-  const editor = join(directory, "record-editor.sh");
-  const record = join(directory, "editor-arguments.txt");
-  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD.part" && mv -f "$RUNIC_TEST_EDITOR_RECORD.part" "$RUNIC_TEST_EDITOR_RECORD"\n');
-  await chmod(editor, 0o755);
-  return { editor, record };
-}
-
-async function waitForFile(path, timeout = 5000) {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    try { return await readFile(path, "utf8"); }
-    catch (error) {
-      if (Date.now() > deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
 }
 
 const exists = (path) => stat(path).then(() => true, () => false);
@@ -217,18 +198,14 @@ test("/__runic/open refuses everything but a location in a listed file or a serv
 
       if (process.platform !== "win32") {
         assert.equal(await open({ id: fixture.map.members[0].id }), 200);
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [location.file, String(location.line), String(location.column)]);
         assert.equal(await open(location), 200, "the same location by file, line and column");
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [location.file, String(location.line), String(location.column)]);
         assert.equal(await open({ file: location.file, line: 2 }), 200, "another line of a listed file, as a stack frame names it");
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, "2", "1"]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [location.file, "2", "1"]);
         const page = join(fixture.frontend, "index.html");
         assert.equal(await open({ file: page, line: 3, column: 2 }), 200, "a frontend file Vite serves");
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [page, "3", "2"]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [page, "3", "2"]);
       }
       // A listed file that a later edit removed opens nothing.
       await rm(fixture.source);
@@ -250,8 +227,7 @@ test("/__runic/open refuses everything but a location in a listed file or a serv
         });
         await frontend.arrayBuffer();
         assert.equal(frontend.status, 200);
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [page, "1", "1"]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [page, "1", "1"]);
       }
     }));
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
@@ -295,11 +271,9 @@ test("the dock's open action opens only a location in a file the map lists", { s
           assert.equal(await exists(record), false, "a refused location launched the editor");
           if (sourceMap === false) continue;
           await open({ id: fixture.map.members[0].id });
-          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
-          await rm(record);
+          assert.deepEqual(await readRecord(record), [location.file, String(location.line), String(location.column)]);
           await open({ file: location.file, line: 2 });
-          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, "2", "1"]);
-          await rm(record);
+          assert.deepEqual(await readRecord(record), [location.file, "2", "1"]);
         } finally { await server.close(); }
       }
     });
@@ -359,8 +333,7 @@ test("/__runic/open opens a Translations message's source that the Translations 
         assert.ok(requests.length > 0 && requests.every(request => request.method === "GET" && /^(?:::ffff:)?127\.0\.0\.1$|^::1$/u.test(request.address)), JSON.stringify(requests));
         if (process.platform !== "win32") {
           assert.equal(await open({ message: { catalog: "app", key: "heading", locale: "en" } }), 200);
-          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [rmf2, "2", "1"]);
-          await rm(record);
+          assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
         }
         requests.length = 0;
       }, [api]));
