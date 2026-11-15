@@ -113,14 +113,17 @@ public sealed partial class BridgeShapeAnalyzer
         }
 
         // InteractionCodeEmitter.ValidatePublicSurface and the reserved validation member (RUNICBRIDGE004): the
-        // generated state, client, interaction and request members are unique. The validation state also follows from
-        // the DTOs of the value properties, which the generator sees; here only from the ViewModel itself.
+        // generated state, client, interaction and request members are unique. The validation state follows from the
+        // ViewModel and from the types of its values (GenerateOne's hasValidation).
         private void CheckClientSurface(IPropertySymbol[] state, List<IPropertySymbol> commands, Dictionary<IPropertySymbol, IMethodSymbol?> sources,
-            IPropertySymbol[] declared)
+            IPropertySymbol[] declared, Dictionary<IPropertySymbol, BridgeValueGraph> values)
         {
-            var hasErrors = BridgeSymbols.SelfBasesAndInterfaces(model).Any(type => BridgeSymbols.MetadataName(type) is NotifyDataErrorInfo);
-            var hasValidation = hasErrors || BridgeSymbols.SelfBasesAndInterfaces(model).Any(type => BridgeSymbols.MetadataName(type)
-                is PendingValidation or "ReactiveUI.Validation.Abstractions.IValidatableViewModel" or "ReactiveUI.Validation.Reactive.Abstractions.IValidatableViewModel");
+            static bool Is(ITypeSymbol type, params string[] names) => BridgeSymbols.SelfBasesAndInterfaces(type).Any(candidate => names.Contains(BridgeSymbols.MetadataName(candidate)));
+            var hasErrors = Is(model, NotifyDataErrorInfo);
+            var valueTypes = values.Values.SelectMany(graph => graph.Nodes).Select(node => node.Type).ToArray();
+            var hasValidation = hasErrors
+                || valueTypes.Prepend(model).Any(type => Is(type, PendingValidation, "ReactiveUI.Validation.Abstractions.IValidatableViewModel", "ReactiveUI.Validation.Reactive.Abstractions.IValidatableViewModel"))
+                || valueTypes.Any(type => Is(type, NotifyDataErrorInfo));
             if (hasValidation && state.FirstOrDefault(property => WireName(property) == "validation") is { } validation)
             {
                 Report(context, BridgeRules.NameCollision, validation,
@@ -132,6 +135,9 @@ public sealed partial class BridgeShapeAnalyzer
             foreach (var group in interactions.GroupBy(property => LowerFirst(property.Name), StringComparer.Ordinal).Where(group => group.Count() > 1))
                 foreach (var duplicate in group.Skip(1))
                     Report(context, BridgeRules.NameCollision, duplicate, $"{Name}.{duplicate.Name}: duplicate generated interaction name '{group.Key}'.");
+            foreach (var group in requests.GroupBy(property => LowerFirst(property.Name), StringComparer.Ordinal).Where(group => group.Count() > 1))
+                foreach (var duplicate in group.Skip(1))
+                    Report(context, BridgeRules.NameCollision, duplicate, $"{Name}.{duplicate.Name}: duplicate generated view request name '{group.Key}'.");
             var named = commands.Where(command => command.Name.EndsWith("Command", StringComparison.Ordinal)).ToArray();
             void Collision(string message) => Report(context, BridgeRules.NameCollision, model, message);
             var surface = new MemberNames(Name, "state", Collision);
@@ -173,7 +179,8 @@ public sealed partial class BridgeShapeAnalyzer
             // A second interaction of a name is reported above, where the generator stops.
             foreach (var interaction in interactions.GroupBy(property => LowerFirst(property.Name), StringComparer.Ordinal).Select(group => group.First()))
                 view.Add(LowerFirst(interaction.Name), interaction.Name + " interaction");
-            foreach (var request in requests) view.Add(LowerFirst(request.Name), request.Name + " view request");
+            foreach (var request in requests.GroupBy(property => LowerFirst(property.Name), StringComparer.Ordinal).Select(group => group.First()))
+                view.Add(LowerFirst(request.Name), request.Name + " view request");
             // GenerateOne's client members of the region collections (RUNICBRIDGE071).
             var members = new HashSet<string>(["snapshot", "subscribe", "dispose", "interactions", "fieldBaseline"], StringComparer.Ordinal);
             foreach (var property in state.Where(property => IsPublic(property.SetMethod))) members.Add("set" + property.Name);
