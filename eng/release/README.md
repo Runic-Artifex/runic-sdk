@@ -488,7 +488,7 @@ whose release guides add only their own rules. The
 same policy.
 
 Applications on 0.9 follow the [migration guide to 1.0](../../docs/migration-1.0.md),
-which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0 and 0.19.0.
+which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0, 0.19.0 and 0.20.0.
 
 ### Version numbers
 
@@ -539,7 +539,7 @@ of the same major without changes by its author. That includes:
 
   | Prefix | Reported by |
   | --- | --- |
-  | `RUNICBRIDGE` | The Runic.Application.Views generator and build targets; its runtime reports `RUNICBRIDGE038` (since 0.19) |
+  | `RUNICBRIDGE` | The Runic.Application.Views generator, its analyzers (since 0.20) and build targets; its runtime reports `RUNICBRIDGE038` (since 0.19) |
   | `RUNICPA` | Privileged actions: the build targets of Runic.Platform and its platform packages |
   | `RUNICEL` | The Runic.Platform.Windows.Elevation build targets |
   | `RUNICDBUS` | The Runic.Platform.Linux.DBus source generator; experimental D-Bus APIs |
@@ -755,7 +755,7 @@ requirement, not a consumer one.
   where the prefix already names diagnostics, such as `RUNICDBUS100`).
   Experimental now: `RUNICDESK103` (hosted application windows and the Runic
   host protocol, through 1.0), and from 0.19 `RUNICDESK104` (the side panel)
-  and `RUNICDESK105` (the close drain), each for one minor.
+  and `RUNICDESK105` (the close drain), still experimental in 0.20.
   Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
   `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
   `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0),
@@ -764,8 +764,9 @@ requirement, not a consumer one.
   source, graduated in 0.10.0). An npm package exports its
   experimental APIs only from its `./experimental` subpath, which may change in
   a minor release; graduation moves an export to the root entry. 0.10.0 removed
-  every `./experimental` entry; 0.18 added new ones for hosted regions, and 0.19
-  `onBridgeDraining` for the close drain.
+  every `./experimental` entry; 0.18 added new ones for hosted regions, 0.19
+  `onBridgeDraining` for the close drain, and 0.20 `runicComponentMount` in
+  `@runic-artifex/angular` for Angular guests in trusted component mode.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each release on a
   prerelease version, `<release major.minor.patch>-preview.N` with a counter of its

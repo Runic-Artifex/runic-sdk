@@ -81,6 +81,17 @@ the release notes, which give the full detail and the pull requests:
   [Close drain](../eng/release/notes/0.19.0.md#close-drain-900-experimental),
   [Fixes](../eng/release/notes/0.19.0.md#fixes),
   [Known issues](../eng/release/notes/0.19.0.md#known-issues)
+- 0.20.0: [Upgrading from 0.19](../eng/release/notes/0.20.0.md#upgrading-from-019),
+  [Bridge analyzers](../eng/release/notes/0.20.0.md#bridge-errors-and-warnings-while-you-type-with-code-fixes-962),
+  [Development source map](../eng/release/notes/0.20.0.md#development-source-map-and-open-in-editor-951),
+  [Generated clients](../eng/release/notes/0.20.0.md#generated-clients-link-to-their-c-sources-952),
+  [Runic Inspect](../eng/release/notes/0.20.0.md#runic-inspect-select-an-element-and-see-how-it-is-connected-955),
+  [Development build of the Views package](../eng/release/notes/0.20.0.md#development-tools-cost-nothing-in-production-975),
+  [IDE contract](../eng/release/notes/0.20.0.md#dotnet-runic-dev-an-ide-contract-959),
+  [Template](../eng/release/notes/0.20.0.md#the-templates-vite-pages-compile-their-catalog-with-the-translations-vite-plugin-944),
+  [Trusted component mode for Angular guests](../eng/release/notes/0.20.0.md#trusted-component-mode-for-angular-guests-947-experimental),
+  [Fixes](../eng/release/notes/0.20.0.md#fixes),
+  [Known issues](../eng/release/notes/0.20.0.md#known-issues)
 
 ## Before you start
 
@@ -93,11 +104,14 @@ the release notes, which give the full detail and the pull requests:
    and every `./experimental` import of 0.9 (see [npm packages](#npm-packages)).
    What is experimental now, hosted applications (`RUNICDESK103`), from 0.18
    the npm packages' new `./experimental` entries for hosted regions, and from
-   0.19 the side panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`), is
+   0.19 the side panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`), and
+   from 0.20 `runicComponentMount` in `@runic-artifex/angular/experimental`, is
    listed in [experimental APIs](experimental.md).
 3. Commit your frontend's lock file (see [MSBuild](#msbuild)).
 4. Builds with `TreatWarningsAsErrors` meet the new warnings `RUNICNAV002`,
-   `RUNICBRIDGE029` and `RUNICDBUS013`; see the [diagnostics catalog](diagnostics.md).
+   `RUNICBRIDGE029` and `RUNICDBUS013`, and from 0.20 every `RUNICBRIDGE` warning
+   fails them ([From 0.19 to 0.20](#from-019-to-020)); see the
+   [diagnostics catalog](diagnostics.md).
 
 Compatible versions: CsWebUi 2.5.0-beta.4.8 or later, Vite `>=8.3.3 <9`,
 TypeScript 5.2 or later, Node `^24.18.0 || ^26.0.0` (Node 24 is the certified
@@ -1437,3 +1451,52 @@ Nothing changes for a host that does not opt in. The API stays experimental
 | A test compared a host's or a guest's `hello` exactly | Runic's hosts and guests also list `region-appearance/1` |
 
 Details: 0.19.0 [An appearance override per hosted region](../eng/release/notes/0.19.0.md#an-appearance-override-per-hosted-region-917-experimental).
+
+## From 0.19 to 0.20
+
+0.20.0 adds development tools and removes no application API. Two changes can fail a build or change a release: every
+`RUNICBRIDGE` warning now fails a build with `TreatWarningsAsErrors`, and on Linux a release no longer opens WebKit's
+remote inspector. Update every Runic NuGet and npm package to 0.20.0 together and rebuild, so that the generated
+clients are regenerated. An application that uses Runic Translations moves every Translations package, NuGet and npm,
+to 0.12.0; Runic Command Line stays at 0.13.0. The new Views protocol features `trace-context/1` and
+`handler-timing/1` are negotiated in `hello` and used only in development, so a 0.19 page and a 0.20 host connect.
+
+### Behaviour
+
+| 0.19 | 0.20 |
+| --- | --- |
+| `Runic.Application.Views.Translations` required Runic Translations `[0.11.0, 0.12.0)` | It requires `[0.12.0, 0.13.0)`: move every Translations package, NuGet and npm, to 0.12.0 ([Translations 0.12.0 notes](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/eng/release/notes/0.12.0.md#upgrading-from-011)). The tools still bundle Command Line 0.13.0 |
+| A `RUNICBRIDGE` warning never failed a build with `TreatWarningsAsErrors`: the generator's and the Views targets' warnings are MSBuild warnings | Every `RUNICBRIDGE` warning fails it. `013`, `028`, `031`, `032`, `034`, `039` and `053` now come from the analyzer as compiler warnings, which also follow `.editorconfig` and `#pragma warning disable`; the others become errors through `MSBuildWarningsAsErrors`. Fix the declaration, or name the ID in `WarningsNotAsErrors` (or `NoWarn`) |
+| On Linux, `WEBKIT_INSPECTOR_SERVER` or `WEBKIT_INSPECTOR_HTTP_SERVER` opened WebKit's remote inspector in any build, also with `DevTools` off | Unless `DOTNET_ENVIRONMENT` (or else `ASPNETCORE_ENVIRONMENT`) is `Development`, the GTK 3 and GTK 4 hosts remove both variables before their first web view, and processes the application starts no longer inherit them. Run with `DOTNET_ENVIRONMENT=Development` to inspect remotely ([debugging](debugging.md#the-browsers-developer-tools-per-engine)) |
+| A generated client was one file, `<view>.ts` | `<view>.ts` and `<view>.contract.d.ts` with `<view>.contract.d.ts.map`. Imports are unchanged; commit the new files, and a library that emits declarations with `tsc` copies the `.contract.d.ts` files beside them |
+| `@runic-artifex/views` had one build | A development build (export condition `development`) and a production build. Bun's bundler takes the development build unless `--production` or `NODE_ENV=production`; the Views targets build the frontend of an optimized .NET build with `NODE_ENV=production` unless the environment sets it. For Node.js, esbuild and Rollup, add the `development` condition to get the development tools |
+| `dotnet runic doctor --format json` checks had no `helpUri` | Each check has one. A validator that holds the 0.19 copy of the `runic.application.tool.doctor/1` schema, which allows no other properties, rejects it: update the copy |
+| `dev-session.json` listed WebView2's endpoint under `debugEndpoints` also when `dev` ran elevated, where it never opens | It lists it under `unavailableDebugEndpoints` with `"reason": "elevated"`. The file also gains `processStartedAt` and `sourceMap`; check `processId` with `processStartedAt` before treating a session as running |
+| `DesktopWindow.ActivityChanged` coalesced changes, so a change undone before the handlers ran (hide and show) raised nothing | One event per change of `Activity`, in order, with that change's activity |
+| `DesktopWindow.OwnedWindows` could list an owned window that had closed but whose `Closed` event had not run | It lists open windows only |
+
+Details: 0.20.0 [Upgrading from 0.19](../eng/release/notes/0.20.0.md#upgrading-from-019).
+
+### Templates
+
+Nothing has to change: applications created from the 0.19 template keep working. These rows bring one up to the 0.20
+template:
+
+| 0.19 | 0.20 |
+| --- | --- |
+| A Vite page with `--translations` imported `../.runic/translations/messages.js`, `runtime.js` and `transport.js` that the .NET build wrote (`RunicTranslationsEmitEsm`, `RunicApplicationFrontendTranslations`) | `runicTranslations()` from `@runic-artifex/vite-plugin-runic-translations` 0.12.0 in `vite.config.ts`, imports of `virtual:runic-translations/app`, `/runtime` and `/transport`, and `/// <reference path="../.runic/translations/virtual.d.ts" />` in `src/translations.ts`; remove the two properties. An edited message then updates in place ([details](../eng/release/notes/0.20.0.md#the-templates-vite-pages-compile-their-catalog-with-the-translations-vite-plugin-944)) |
+| No Vite DevTools dock | `"@vitejs/devtools": "0.7.6"` in `devDependencies` and `DevTools()` from `@vitejs/devtools` in the Vite plugins ([details](../eng/release/notes/0.20.0.md#the-docks-bridge-call-timeline-and-the-dock-on-by-default-in-the-template-954)) |
+| No launch profiles; `dotnet run` ran outside Development | `Properties/launchSettings.json` with a Development profile first, and on Windows a WebView2 script-debugging profile ([details](../eng/release/notes/0.20.0.md#an-ide-ready-runic-app-template-961)) |
+| An Angular frontend built with the Angular CLI only | `--angular-build vite` builds it with Vite and the Analog plugin, with the dock, in-place message updates and component mode ([details](../eng/release/notes/0.20.0.md#the-angular-template-can-build-with-vite-946)) |
+
+### Hosted applications
+
+Nothing changes for a host that does not opt in. The API stays experimental
+([`RUNICDESK103`](experimental.md#RUNICDESK103)), and the side panel ([`RUNICDESK104`](experimental.md#RUNICDESK104))
+and the close drain ([`RUNICDESK105`](experimental.md#RUNICDESK105)) stay experimental unchanged.
+
+| 0.19 | 0.20 |
+| --- | --- |
+| An Angular guest could not be shown in trusted component mode | Build it with Vite and the Analog plugin and export `runicComponentMount(Component)` from `@runic-artifex/angular/experimental` as the component build's entry; `@angular/platform-browser` is a new optional peer of `@runic-artifex/angular` ([details](../eng/release/notes/0.20.0.md#trusted-component-mode-for-angular-guests-947-experimental)) |
+
+Details: 0.20.0 [Trusted component mode for Angular guests](../eng/release/notes/0.20.0.md#trusted-component-mode-for-angular-guests-947-experimental).
