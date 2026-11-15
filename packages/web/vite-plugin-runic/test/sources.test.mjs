@@ -182,9 +182,11 @@ test("vite dev takes the map dotnet runic dev or the sourceMap option names, and
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
-test("/__runic/open refuses everything but a location in a listed file from the server's own origin", async () => {
+test("/__runic/open refuses everything but a location in a listed file or a served frontend file from the server's own origin", async () => {
   const fixture = await project();
   const { editor, record } = await recordingEditor(fixture.directory);
+  // A file of the Vite root that Vite's server.fs.deny keeps from the page.
+  await writeFile(join(fixture.frontend, ".env"), "SECRET=1\n");
   try {
     await withEnvironment({ LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record }, () => withServer(fixture.frontend, {}, async (base) => {
       const open = (body, headers = {}, method = "POST") => fetch(`${base}/__runic/open`, {
@@ -204,6 +206,11 @@ test("/__runic/open refuses everything but a location in a listed file from the 
       assert.equal(await open({ file: join(fixture.directory, "record-editor.sh"), line: 1, column: 1 }), 404, "a file the map does not list");
       assert.equal(await open({ file: "/etc/passwd", line: 1, column: 1 }), 404);
       assert.equal(await open({ file: `${location.file}:${location.line}:${location.column}` }), 404);
+      // Frontend files (Runic Inspect's component links): only what Vite serves, by a normalized absolute path.
+      assert.equal(await open({ file: join(fixture.frontend, ".env"), line: 1 }), 404, "a file server.fs.deny keeps from the page");
+      assert.equal(await open({ file: `${fixture.frontend}/src/../index.html`, line: 1 }), 404, "a path that is not normalized");
+      assert.equal(await open({ file: "index.html", line: 1 }), 404, "a relative path");
+      assert.equal(await open({ file: join(fixture.frontend, "missing.ts"), line: 1 }), 404, "a file that does not exist");
       assert.equal(await exists(record), false, "no refused request launched the editor");
 
       if (process.platform !== "win32") {
@@ -216,6 +223,10 @@ test("/__runic/open refuses everything but a location in a listed file from the 
         assert.equal(await open({ file: location.file, line: 2 }), 200, "another line of a listed file, as a stack frame names it");
         assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, "2", "1"]);
         await rm(record);
+        const page = join(fixture.frontend, "index.html");
+        assert.equal(await open({ file: page, line: 3, column: 2 }), 200, "a frontend file Vite serves");
+        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [page, "3", "2"]);
+        await rm(record);
       }
       // A listed file that a later edit removed opens nothing.
       await rm(fixture.source);
@@ -227,8 +238,19 @@ test("/__runic/open refuses everything but a location in a listed file from the 
         method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ id: fixture.map.members[0].id }),
       });
       await response.arrayBuffer();
-      assert.notEqual(response.status, 200);
-      assert.equal(await exists(record), false, "sourceMap: false opens nothing");
+      assert.equal(response.status, 404);
+      assert.equal(await exists(record), false, "sourceMap: false opens no map entry");
+      if (process.platform !== "win32") {
+        // It still opens a frontend file Vite serves, such as Runic Inspect's component links.
+        const page = join(fixture.frontend, "index.html");
+        const frontend = await fetch(`${base}/__runic/open`, {
+          method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ file: page, line: 1 }),
+        });
+        await frontend.arrayBuffer();
+        assert.equal(frontend.status, 200);
+        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [page, "1", "1"]);
+        await rm(record);
+      }
     }));
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
@@ -261,6 +283,8 @@ test("the dock's open action opens only a location in a file the map lists", { s
             { file: join(fixture.directory, "record-editor.sh"), line: 1, column: 1 }, { file: "/etc/passwd", line: 1 },
             { id: "Demo.CounterViewModel/state/count" }, { id: "Demo.CounterViewModel/command/missing" },
             { file: location.file, line: 0 }, "Demo.CounterViewModel/command/increment", null,
+            // A frontend file: /__runic/open opens it for Runic Inspect, the dock links only the map's files.
+            { file: join(fixture.frontend, "index.html"), line: 1 },
             ...(sourceMap === false ? [{ id: fixture.map.members[0].id }, { file: location.file, line: 2 }] : []),
           ]) {
             await assert.rejects(open(refused), /lists no such location/u, JSON.stringify(refused));

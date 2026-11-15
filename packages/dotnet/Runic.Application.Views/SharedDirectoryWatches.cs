@@ -15,8 +15,9 @@ internal interface IDirectoryWatchLease : IDisposable
 
     string Directory { get; }
 
-    // Restarts the shared watch when its directory was replaced since the watch started, and returns whether it did.
-    // Throws like Acquire when the new watch cannot start.
+    // Restarts the shared watch when its directory was replaced since the watch started, and returns whether it did or
+    // whether another lease or Acquire restarted it since this lease last looked: either way this lease's sink missed
+    // the replacement's events (#1008). Throws like Acquire when the new watch cannot start.
     bool Revalidate();
 }
 
@@ -58,6 +59,8 @@ internal static class SharedDirectoryWatches
     private sealed class Lease(Entry entry, IDirectoryWatchSink sink) : IDirectoryWatchLease
     {
         private int _disposed;
+        // Under Gate: the entry's generation this lease last saw, created under Gate after any restart.
+        private int _generation = entry.Generation;
 
         public string Key => entry.Key;
 
@@ -69,8 +72,11 @@ internal static class SharedDirectoryWatches
             FileSystemWatcher? replaced;
             lock (Gate)
             {
-                if (Volatile.Read(ref _disposed) != 0 || !entry.IsCurrent || !entry.IsReplacedBy(identity)) return false;
-                replaced = entry.Restart(identity);
+                if (Volatile.Read(ref _disposed) != 0 || !entry.IsCurrent) return false;
+                if (entry.IsReplacedBy(identity)) replaced = entry.Restart(identity);
+                else if (entry.Generation == _generation) return false;
+                else replaced = null;
+                _generation = entry.Generation;
             }
             replaced?.Dispose();
             return true;
@@ -101,6 +107,9 @@ internal static class SharedDirectoryWatches
         public string Directory { get; } = directory;
 
         public IDirectoryWatchSink[] Sinks { get; set; } = [];
+
+        // Called under Gate: how often the watch was restarted for a replaced directory.
+        public int Generation { get; private set; }
 
         // Called under Gate.
         public bool IsCurrent => Entries.TryGetValue(Key, out var current) && ReferenceEquals(current, this);
@@ -134,6 +143,7 @@ internal static class SharedDirectoryWatches
             var old = _watcher;
             _watcher = created;
             _identity = identity;
+            Generation++;
             return old;
         }
 

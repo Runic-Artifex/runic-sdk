@@ -397,6 +397,23 @@ const sample = path => {
 };
 const legsFor = (list, planned) => list.filter(leg => !leg.platform || planned.includes(leg.platform));
 
+// D066.25 3: the native job's Windows x64 leg checks the template's WebView2 script-debugging files against WebView2
+// (tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs), so they plan that job and leg.
+test('the template WebView2 debugging files plan the native Windows x64 leg', () => {
+  for (const file of [
+    'tools/Runic.Application.Templates/content/runic-app/Properties/launchSettings.json',
+    'tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json',
+    'tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs',
+    'tools/dotnet-runic/DevSession.cs',
+  ]) {
+    const result = plan([file]);
+    assert.deepEqual(result.native.include, legsFor(nativeLegs, ['win-x64']), file);
+    assert.ok(runs(result, 'templates'), file);
+  }
+  // The template's other files still need no Windows or macOS leg.
+  assert.deepEqual(plan(['tools/Runic.Application.Templates/content/runic-app/.vscode/tasks.json']).platforms, []);
+});
+
 test('each platform rule plans its Windows and macOS legs, first match wins', () => {
   for (const rule of platformRules)
     for (const path of rule.paths) {

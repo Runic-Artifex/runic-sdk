@@ -1,16 +1,16 @@
 // The development source map (#951): the Bridge generator's `sources.json` in the project's `obj`, which maps every
 // Bridge member to its C# symbol and file:line:column. `runic()` serves it at `/__runic/sources` while serving, and
-// opens a location from it in the editor at `/__runic/open`. Neither exists in `vite build` or `vite preview`, and
+// opens a location from it, or in a frontend file Vite serves, in the editor at `/__runic/open`. Neither exists in `vite build` or `vite preview`, and
 // nothing of the map reaches a bundle.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import launchEditor from "launch-editor";
 import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
+import { openPath, sourcesPath } from "./channel.js";
 
-export const sourcesPath = "/__runic/sources";
-export const openPath = "/__runic/open";
+export { openPath, sourcesPath };
 /** The `sources.json` path that `dotnet runic dev` gives the development server. */
 export const sourceMapVariable = "RUNIC_APPLICATION_DEV_SOURCE_MAP";
 const projectVariable = "RUNIC_APPLICATION_DEV_PROJECT";
@@ -250,14 +250,31 @@ export function listsFile(map: RunicSourceMap | undefined, file: string): boolea
 }
 
 /**
- * What `/__runic/open` and the dock's open action both open for a request's `{ id }` or `{ file, line, column? }`: a
- * location of the current map (`findOpenLocation`) whose file exists, else undefined. The one decision of what may be
- * opened; the endpoint checks the request's origin first, and the dock's RPC is limited to clients Vite DevTools trusts.
+ * What `/__runic/open` and the dock's open action both open for a request's `{ id }` or `{ file, line, column? }`, else
+ * undefined: a location of the current map (`findOpenLocation`), or a location in a frontend file that `frontendFile`
+ * accepts (the files Vite itself would serve to the page, which Runic Inspect links to), in both cases only while the
+ * file exists. The one decision of what may be opened; the endpoint checks the request's origin first, and the dock's
+ * RPC is limited to clients Vite DevTools trusts.
  */
-export function resolveOpenLocation(read: () => RunicSourceMap | undefined, message: unknown): RunicSourceLocation | undefined {
+export function resolveOpenLocation(
+  read: () => RunicSourceMap | undefined,
+  message: unknown,
+  frontendFile: (file: string) => boolean = () => false,
+): RunicSourceLocation | undefined {
   const map = read();
-  const location = map === undefined ? undefined : findOpenLocation(map, message);
+  const location = (map === undefined ? undefined : findOpenLocation(map, message)) ?? frontendLocation(message, frontendFile);
   return location !== undefined && isFile(location.file) ? location : undefined;
+}
+
+// `{ file, line, column? }` of a frontend file: an absolute, normalized path that `accepts` admits.
+function frontendLocation(message: unknown, accepts: (file: string) => boolean): RunicSourceLocation | undefined {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
+  const { id, file, line, column = 1 } = message as Record<string, unknown>;
+  if (id !== undefined || typeof file !== "string" || !isAbsolute(file) || normalize(file) !== file || file.includes("\0")
+      || !Number.isSafeInteger(line) || (line as number) < 1 || !Number.isSafeInteger(column) || (column as number) < 1) {
+    return undefined;
+  }
+  return accepts(file) ? { file, line: line as number, column: column as number } : undefined;
 }
 
 /**
@@ -272,15 +289,16 @@ export function launchSourceEditor(location: RunicSourceLocation, failed: (messa
 }
 
 /**
- * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or `{ "file", "line", "column" }` in a file the map lists, as
- * JSON from a page of this server on this machine. Anything else is refused and opens nothing. An accepted location
- * goes to Vite's own editor launcher (launch-editor: `LAUNCH_EDITOR`, then the running or configured editor, such as
- * VS Code or Rider) through `/__open-in-editor`, which answers 200.
+ * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or `{ "file", "line", "column" }` in a file the map lists or a
+ * frontend file `frontendFile` accepts, as JSON from a page of this server on this machine. Anything else is refused
+ * and opens nothing. An accepted location goes to `launch` (index.ts: launch-editor, as the dock's open action) and is
+ * answered 200.
  */
 export async function answerOpen(
   request: IncomingMessage,
   response: ServerResponse,
   read: () => RunicSourceMap | undefined,
+  frontendFile: (file: string) => boolean,
   launch: (location: RunicSourceLocation) => void,
 ): Promise<void> {
   if (request.method !== "POST") {
@@ -301,14 +319,8 @@ export async function answerOpen(
   let message: unknown;
   try { message = JSON.parse(body); }
   catch { return answer(response, 400); }
-  const location = resolveOpenLocation(read, message);
+  const location = resolveOpenLocation(read, message, frontendFile);
   if (location === undefined) return answer(response, 404);
   launch(location);
-}
-
-/** The `/__open-in-editor` request of Vite's editor launcher for a location, below the server's base. */
-export function editorRequestUrl(base: string, location: RunicSourceLocation): string {
-  let path = /^https?:/iu.test(base) ? new URL(base).pathname : base;
-  if (!path.endsWith("/")) path += "/";
-  return `${path}__open-in-editor?file=${encodeURIComponent(`${location.file}:${location.line}:${location.column}`)}`;
+  answer(response, 200);
 }

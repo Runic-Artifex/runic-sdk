@@ -680,7 +680,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             var window = GetWindow();
             if (window.IsMaximized())
             {
-                window.Unmaximize();
+                RequestUnmaximize(window);
             }
             else
             {
@@ -689,7 +689,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 // maximized position meanwhile, which then becomes its frame (#926): the window is given them again.
                 EndFrameTargetEarly(window);
                 if (!window.IsFullscreen()) _restore.Set(CurrentRestore(window), _restoreClock.Elapsed);
-                window.Maximize();
+                RequestMaximize(window);
             }
         }, cancellationToken));
 
@@ -1827,6 +1827,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
         var maximized = window.IsMaximized();
         var fullScreen = window.IsFullscreen();
+        ObserveMaximized(maximized);
         var width = window.GetWidth();
         var height = window.GetHeight();
         var restoredWidth = Math.Max(1, defaultWidth > 0 ? defaultWidth : width);

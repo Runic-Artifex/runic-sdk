@@ -1,17 +1,18 @@
 /// <reference types="@vitejs/devtools-kit" />
 
 import type { Plugin, UserConfig, ViteDevServer } from "vite";
+import { isFileLoadingAllowed } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
+import { callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent, type RunicClientOptions } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
-import type { RunicSourceMap } from "./sources.js";
+import type { RunicSourceLocation, RunicSourceMap } from "./sources.js";
 import {
-  answerOpen, answerSources, createSourceMapReader, editorRequestUrl, launchSourceEditor, listsFile, openPath,
+  answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
   resolveOpenLocation, sourcesPath,
 } from "./sources.js";
 import type { RunicBridgeCall } from "./calls.js";
@@ -27,6 +28,11 @@ export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
 export type { RunicBridgeCall, RunicBridgeCallHandler, RunicBridgeCallOutcome } from "./calls.js";
+export type { RunicInspectApi } from "./inspect.js";
+export type {
+  RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
+  RunicInspectLocation, RunicInspectMember, RunicInspectText, RunicInspectViewModel,
+} from "./inspect-data.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
 } from "./sources.js";
@@ -104,10 +110,17 @@ export interface RunicViteOptions {
    * The development source map that the Bridge generator writes to `obj` (`runic-bridge/sources.json`), which
    * `vite dev` serves at `/__runic/sources` and opens in the editor through `/__runic/open`. A path names the file or
    * a directory to search, relative to the Vite root. By default the plugin takes the path `dotnet runic dev` passes,
-   * else searches `obj` of the project, the Vite root and its parent. `false` turns both endpoints off. The build
+   * else searches `obj` of the project, the Vite root and its parent. `false` reads no map: no `/__runic/sources`, and
+   * `/__runic/open` opens only frontend files that Vite serves. The build
    * never reads it.
    */
   readonly sourceMap?: string | false;
+  /**
+   * `false` leaves Runic Inspect out of the development client: the select mode (Alt+Shift+X) that shows how an
+   * element is connected to its ViewModels, and `globalThis[Symbol.for("runic.vite.inspect")]`. Defaults to `true`.
+   * The build never contains it.
+   */
+  readonly inspect?: boolean;
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
@@ -119,6 +132,9 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     throw new TypeError("html must be true or false.");
   }
   const html = options.html !== false;
+  if (options.inspect !== undefined && typeof options.inspect !== "boolean") {
+    throw new TypeError("inspect must be true or false.");
+  }
   if (options.sourceMap !== undefined && options.sourceMap !== false &&
       (typeof options.sourceMap !== "string" || options.sourceMap.length === 0)) {
     throw new TypeError("sourceMap must be a path or false.");
@@ -151,6 +167,14 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     void jsonRenderer?.updateSpec(createDevtoolsSpec(state, readSourceMap()));
     server?.ws.send({ type: "custom", event: stateEvent, data: state });
   });
+  // What /__runic/open opens besides the map's files: a frontend file Vite itself would serve to the page
+  // (server.fs.allow and deny; with fs.strict: false, any file, as Vite then serves any), such as a component Runic
+  // Inspect links to. Nothing before Vite serves. The dock's open action opens the map's files only.
+  const frontendFile = (file: string): boolean => server !== undefined && isFileLoadingAllowed(server.config, file);
+  // /__runic/open and the dock's action open with launch-editor, the package behind Vite's /__open-in-editor
+  // (sources.ts, launchSourceEditor), so the editor is chosen as Vite chooses it.
+  const openLocation = (location: RunicSourceLocation): void =>
+    launchSourceEditor(location, (message) => server?.config.logger.warn(`[runic] ${message}`));
   const deliver = (event: string, data: unknown): void => {
     if (event === connectionEvent) timeline.applyConnection(data);
     else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
@@ -271,16 +295,11 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         viteServer.middlewares.use(sourcesPath, (request, response) => {
           answerSources(request, response, readSourceMap);
         });
-        // Mounted at the root, not at openPath: an accepted request continues to Vite's /__open-in-editor with its
-        // URL rewritten, which a mounted handler's next() would prefix with the mount path again.
-        viteServer.middlewares.use(function runicOpenInEditor(request, response, next) {
-          if (request.url?.split("?", 1)[0] !== openPath) return next();
-          answerOpen(request, response, readSourceMap, (location) => {
-            request.url = editorRequestUrl(base, location);
-            next();
-          }).catch(next);
-        });
       }
+      // With sourceMap: false the reader has no map, so the endpoint opens only frontend files (Runic Inspect's links).
+      viteServer.middlewares.use(openPath, (request, response, next) => {
+        answerOpen(request, response, readSourceMap, frontendFile, openLocation).catch(next);
+      });
       viteServer.httpServer?.once("close", () => {
         server = undefined;
       });
@@ -306,8 +325,11 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
-        const clientOptions = dock ? `{ channel: "hot", dock: true }` : `{ channel: "hot" }`;
-        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${clientOptions};`];
+        const clientOptions: RunicClientOptions = {
+          channel: "hot", base, root: resolvedRoot, ...(options.inspect === false ? { inspect: false } : {}),
+          ...(dock ? { dock: true } : {}),
+        };
+        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${JSON.stringify(clientOptions)};`];
         if (options.staleInputWarning === false) {
           statements.push(`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`);
         }
@@ -338,7 +360,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           view: renderer.view,
         });
         // The dock's open buttons: `{ id }` of a map entry or `{ file, line }` of a stack frame. The same decision as
-        // /__runic/open (resolveOpenLocation): only a location in a file the source map lists, and only while it exists.
+        // /__runic/open (resolveOpenLocation), limited to the source map: a location in a file it lists, while it exists.
         // Vite DevTools lets only the clients it trusts call an action, so there is no request origin to check here.
         context.rpc.register({
           name: openInEditorAction,
@@ -346,9 +368,10 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           setup: () => ({
             handler: async (target: unknown) => {
               // With sourceMap: false the reader has no map, so nothing opens.
+              // Map entries and .NET stack frames only: the dock links nothing else.
               const location = resolveOpenLocation(readSourceMap, target);
               if (location === undefined) throw new Error("The source map lists no such location.");
-              launchSourceEditor(location, (message) => server?.config.logger.warn(`[runic] ${message}`));
+              openLocation(location);
             },
           }),
         });

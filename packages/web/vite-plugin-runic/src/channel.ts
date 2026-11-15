@@ -23,11 +23,21 @@ export const diagnosticsPath = "/__runic/diagnostics";
  */
 export const maximumClientMessageBytes = 65_536;
 
-/** `{ channel?: "hot" }` on `globalThis`, set by `virtual:runic/client` before the client evaluates. */
+/** The development source map and the Runic open-in-editor action (sources.ts), which Runic Inspect reads and calls. */
+export const sourcesPath = "/__runic/sources";
+export const openPath = "/__runic/open";
+
+/** `{ channel?: "hot", … }` on `globalThis`, set by `virtual:runic/client` before the client evaluates. */
 export const clientOptionsKey = Symbol.for("runic.vite.client");
 
 export interface RunicClientOptions {
   readonly channel?: "hot";
   /** The Vite DevTools dock is registered: the client loads it when the document does not (client.ts, `loadDock`). */
   readonly dock?: boolean;
+  /** `false` leaves Runic Inspect out (`runic({ inspect: false })`). */
+  readonly inspect?: boolean;
+  /** The server's base path. */
+  readonly base?: string;
+  /** The Vite root, which relative component paths (Svelte, Angular) are relative to. */
+  readonly root?: string;
 }

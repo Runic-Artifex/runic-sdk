@@ -211,7 +211,7 @@ test("is turned off by the registered symbol and by the plugin option", () => {
   const flag = {};
   new Function("globalThis", plugin.load("\0virtual:runic/client-options"))(flag);
   assert.equal(flag[warningKey], false);
-  assert.deepEqual(flag[Symbol.for("runic.vite.client")], { channel: "hot" });
+  assert.deepEqual(flag[Symbol.for("runic.vite.client")], { channel: "hot", base: "/", root: process.cwd() });
   const defaults = {};
   new Function("globalThis", runic().load("\0virtual:runic/client-options"))(defaults);
   assert.equal(warningKey in defaults, false, "the warning stays on by default");
@@ -248,6 +248,9 @@ async function evaluateClient(generation) {
   await load("dist/stale-input.js", "stale-input");
   await load("dist/channel.js", "channel");
   await load("dist/calls.js", "calls");
+  await load("dist/inspect-data.js", "inspect-data");
+  await load("dist/inspect-frameworks.js", "inspect-frameworks");
+  await load("dist/inspect.js", "inspect");
   const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
   await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
   await client.evaluate();
@@ -315,6 +318,9 @@ await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
 await load("dist/calls.js", "calls");
+await load("dist/inspect-data.js", "inspect-data");
+await load("dist/inspect-frameworks.js", "inspect-frameworks");
+await load("dist/inspect.js", "inspect");
 const client = await load("dist/client.js", "client", (meta) => { if (${withHot}) meta.hot = hot; });
 await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
 await client.evaluate();
