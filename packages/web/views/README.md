@@ -1577,6 +1577,68 @@ View is expected around every navigation, so its `released` rejection reaches
 the caller but is not reported as a diagnostic; `onBridgeConnection` reports a
 lost host.
 
+### Bridge calls in the browser's developer tools
+
+During development (since 0.20), each call a generated client makes can be followed in the browser. It needs a
+reader of the development **Bridge-call channel**; the development client of
+[`@runic-artifex/vite-plugin-runic`](../vite-plugin-runic/README.md) is one, so under `vite dev` and
+`dotnet runic dev` it is on without code in the application. While a reader listens:
+
+- **Every engine** (WebView2, WKWebView, WebKitGTK, installed browsers): this package reports each call to the reader,
+  which the development tools build on.
+- **Async stacks** (V8: Chrome, Edge, WebView2): each call runs in a `console.createTask` task, so a breakpoint in what
+  runs after the reply, such as a state subscriber or the code after `await editor.save()`, shows a
+  `Runic command EditorViewModel.save` segment in the call stack that leads to the click handler that made the call,
+  even though the reply arrived on a transport callback.
+- **Performance panel** (Chromium engines): the Vite development client draws each settled call on a **Bridge calls**
+  track in a **Runic** track group of a Performance recording (turn on "Show custom tracks" in the recording
+  settings). An entry is named `<C# view model>.<member> #<id>`, such as `EditorViewModel.save #3`, spans the call
+  until the client's state includes its effects, has the panel's `primary` colour when it succeeded, `error` when it
+  failed and `tertiary` when nothing ran for it (`cancelled`), and lists the request kind, route, View contract, id,
+  outcome and the reply's revision. WebKit and Gecko have no custom tracks; they keep at most a plain measure.
+
+The channel is `globalThis[Symbol.for("runic.views.calls")]` (one per [Runic instance](#runic-instances), in its
+slots; see the [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)):
+`{ listeners, requested, devtools?, sequence? }`. A reader creates it if absent, adds a function to the `listeners`
+`Set` and sets `requested: true`. `devtools: false` keeps the reports without developer tools integration: no async
+stack tasks, and the Vite client draws no track. Each call is reported twice, as a `BridgeCallEvent` (exported as a
+type):
+
+| Field | Meaning |
+| --- | --- |
+| `phase` | `start`, delivered synchronously in the caller's stack (a listener can read the DOM event that caused it); `end`, once the call settled. |
+| `id` | A client-local number, increasing per channel. It is not sent to .NET: correlate with .NET through `revision`. |
+| `kind` | `command` (also with a declared failure), `set`, `write` (checked field), `can`, `region`, `operation` (start or recovery of a long-running command, not its later status), `query` (a query collection's `query-set`, `query-rows` or `query-index`). |
+| `request` | The wire request kind, such as `command`, `set`, `start`, `query-rows`. |
+| `route`, `contract`, `member` | The View route, its contract (`{C# view model}:{fingerprint}`) and the member's wire name. |
+| `start`, `end`, `duration` | `performance.now()` milliseconds; `end` and `duration` on `end` only. |
+| `outcome` | `ok`, `error` (rejected, or a command answered with its declared failure) or `cancelled` (nothing ran for it, or its answer no longer applies). |
+| `reason` | Refines the outcome: `released` for `ok` (the call ran, and .NET released its View, as in a navigation); `superseded` (nothing ran), `released` (the View was released before the call) or `aborted` for `cancelled`; the reply's reason or the `BridgeError` kind, such as `domain-failed` or `failed`, for `error`. |
+| `revision` | The reply's revision: the frames with it carry the call's effects. |
+| `error` | The error the call rejected with. |
+
+A listener ignores phases and fields it does not know; a later release may add fields, such as the .NET handler and
+its timing, which the Vite client then draws on a **C# handlers** track. A listener that throws is reported with
+`console.error` and does not affect the call. Without a reader, a call costs one property read: no event, timestamp
+or task is created. Production builds don't include the Vite development client, so they have no reader.
+
+Without the Vite plugin, for example in a page served by `dotnet run`, a reader attached before the first call can
+draw the track itself:
+
+```ts
+import type { BridgeCallEvent } from "@runic-artifex/views";
+
+const channel = ((globalThis as any)[Symbol.for("runic.views.calls")] ??= { listeners: new Set() });
+channel.listeners.add((event: BridgeCallEvent) => {
+  if (event.phase !== "end") return;
+  performance.measure(`${event.member} #${event.id}`, {
+    start: event.start, end: event.end,
+    detail: { devtools: { dataType: "track-entry", track: "Bridge calls", trackGroup: "Runic" } },
+  });
+});
+channel.requested = true;
+```
+
 ## Translated text
 
 Text that a ViewModel produces as a Runic Translations text reference, such as a
@@ -1631,7 +1693,14 @@ packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
 `runicText` pipe (Angular) and `texts` (Effect). A template that calls the
 page's own `m.*()` renders again on a switch when the locale resolver reads
 the framework's text locale: `useTextLocale` (React, Vue, Svelte),
-`textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). The mock bridge's
+`textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). In `vite dev`
+with the Translations Vite plugin 0.12.0 or later, an edited message updates in
+place: `configureTranslatedText` follows the plugin's text-change channel
+(`Symbol.for("runic.translations.text")`, which nothing writes in production) and renders the text
+again as a switch does, with the page's state kept; an added, removed or renamed
+message, changed inputs or markup still reload the page
+([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+The mock bridge's
 `setWindowLocale(locale)` pushes a locale in page tests. Every `hello` also
 reports the browser's `navigator.languages` (`client-languages/1`, a .NET host
 of 0.17 or later), so the application can choose the window's language from

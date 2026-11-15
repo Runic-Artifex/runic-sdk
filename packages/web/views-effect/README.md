@@ -196,7 +196,9 @@ failures of that re-read are reported through `onBridgeDiagnostic` from
 language: the text now, then the text after each language switch.
 `textChanges()` emits on each switch, and `textLocales()` is the locale that
 text is shown in, now and after each switch, for rendering the page's own
-`m.*()` messages again. Connect the page's Translations runtime
+`m.*()` messages again. In `vite dev` with the Translations Vite plugin 0.12.0
+or later, `textLocales()` emits the same locale again when an edited message
+updates in place ([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)). Connect the page's Translations runtime
 once with `configureTranslatedText` from `@runic-artifex/views`
 ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
 

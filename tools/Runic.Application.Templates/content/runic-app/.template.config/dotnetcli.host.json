@@ -2,6 +2,7 @@
   "$schema": "http://json.schemastore.org/dotnetcli.host",
   "symbolInfo": {
     "frontend": { "longName": "frontend", "shortName": "" },
+    "angularBuild": { "longName": "angular-build", "shortName": "" },
     "packageManager": { "longName": "package-manager", "shortName": "" },
     "host": { "longName": "host", "shortName": "" },
     "linuxGtk": { "longName": "linux-gtk", "shortName": "" },
@@ -17,6 +18,7 @@
   "usageExamples": [
     "--frontend svelte --package-manager bun",
     "--frontend vue --host cswebui --view-models toolkit",
+    "--frontend angular --angular-build vite",
     "--frontend sveltekit --view-models toolkit",
     "--tests",
     "--translations --tests",

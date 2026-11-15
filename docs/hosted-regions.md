@@ -229,6 +229,9 @@ export default mount;
   stylesheet. Its CSS becomes constructable stylesheets in its shadow root: use `:host` rather than `:root`, and the
   page's fonts. The development server serves the page only; build the component with `vite build`.
 - A guest without the build refuses a component attach (`embedding-unsupported`).
+- An Angular guest builds the component with Vite and the Analog Angular plugin (`dotnet new runic-app --frontend
+  angular --angular-build vite` creates such a frontend); the Angular CLI cannot build it. Its components must keep
+  their styles out of the document, for example with `ViewEncapsulation.ShadowDom`.
 
 ### The host
 
