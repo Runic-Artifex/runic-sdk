@@ -63,11 +63,13 @@
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/svelte/*" Pack="true" PackagePath="content/content/runic-app/frontends/svelte/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/sveltekit/*" Pack="true" PackagePath="content/content/runic-app/frontends/sveltekit/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/frontends/angular/*" Pack="true" PackagePath="content/content/runic-app/frontends/angular/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/frontends/angular-vite/*" Pack="true" PackagePath="content/content/runic-app/frontends/angular-vite/" />
       <!-- The translated Vite frontends' locks (eng/release/template-locks.mjs templateLockDirectories). -->
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/react/*" Pack="true" PackagePath="content/content/runic-app/translations/react/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/vue/*" Pack="true" PackagePath="content/content/runic-app/translations/vue/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/svelte/*" Pack="true" PackagePath="content/content/runic-app/translations/svelte/" />
       <Content Include="$(TemplatePackContentRoot)runic-app/translations/sveltekit/*" Pack="true" PackagePath="content/content/runic-app/translations/sveltekit/" />
+      <Content Include="$(TemplatePackContentRoot)runic-app/translations/angular-vite/*" Pack="true" PackagePath="content/content/runic-app/translations/angular-vite/" />
     </ItemGroup>
   </Target>
   <Import Project="../../eng/build/application.targets" />
