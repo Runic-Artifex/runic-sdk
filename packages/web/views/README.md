@@ -1692,6 +1692,26 @@ channel.listeners.add((event: BridgeCallEvent) => {
 channel.requested = true;
 ```
 
+### Runic Inspect
+
+Under `vite dev` and `dotnet runic dev`, press **Alt+Shift+X** in the page to
+turn on **Runic Inspect**, the select mode of the
+[`@runic-artifex/vite-plugin-runic`](../vite-plugin-runic/README.md#runic-inspect)
+development client, and click an element: an overview shows its framework
+component, the ViewModel members it binds with their current values and C#
+members, the commands it calls with their C# handlers, its recent Bridge
+calls with their timing, and the texts its ViewModel sent as text references,
+each with an "open in editor" link. The selecting click does not reach the
+page's handlers. `globalThis[Symbol.for("runic.vite.inspect")].describe(element)`
+returns the same overview as data, for agents and tests.
+
+It is built on this package's development channels and needs no code in the
+application: the Bridge-call channel above (an element's commands and setters
+are learned from the calls it makes, so a button shows its command after its
+first use), the state inspector (`runic.views.inspector`) for the values and
+text references, and the development source map for the C# locations. It
+works in every engine, and production builds contain none of it.
+
 ## Translated text
 
 Text that a ViewModel produces as a Runic Translations text reference, such as a

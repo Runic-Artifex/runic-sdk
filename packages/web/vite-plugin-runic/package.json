@@ -46,11 +46,13 @@
     "@runic-artifex/react": "workspace:*",
     "@runic-artifex/views": "workspace:*",
     "@runic-artifex/vue": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "24.19.1",
     "@vitejs/devtools": "0.7.6",
     "@vitejs/devtools-kit": "0.7.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "svelte": "5.57.1",
     "typescript": "6.0.3",
     "vite": "8.3.4",
     "vue": "3.5.43"
