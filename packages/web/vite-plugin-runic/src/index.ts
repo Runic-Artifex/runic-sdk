@@ -7,11 +7,12 @@ import type { RunicDevelopmentState } from "./timeline.js";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent, type RunicClientOptions } from "./channel.js";
+import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, viewEvent, type RunicClientOptions } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
 import { findMessageSource, type MessageReference } from "./translations-source.js";
+import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
@@ -24,6 +25,7 @@ export type { RunicOtlpOptions } from "./otlp.js";
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
+export type { RunicHandlerAnalysis, RunicHandlerBinding, RunicHandlerCall, RunicHandlerPosition } from "./handlers.js";
 export type { RunicInspectApi } from "./inspect.js";
 export type {
   RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
@@ -305,6 +307,15 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
             request.url = editorRequestUrl(base, location);
             next();
           }, options.inspect === false ? undefined : findMessage).catch(next);
+        });
+      }
+      if (client && options.inspect !== false) {
+        // Runic Inspect asks which of a file's event handlers reach which client calls, before any click.
+        const analyze = createHandlerAnalyzer(() => resolvedRoot);
+        viteServer.middlewares.use(handlersPath, (request, response, next) => {
+          // A mounted handler sees the URL without the mount path.
+          request.url = `${handlersPath}${request.url ?? ""}`;
+          answerHandlers(request, response, analyze, resolvedRoot).catch(next);
         });
       }
       viteServer.httpServer?.once("close", () => {

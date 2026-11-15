@@ -26,6 +26,8 @@ export const maximumClientMessageBytes = 65_536;
 /** The development source map and the Runic open-in-editor action (sources.ts), which Runic Inspect reads and calls. */
 export const sourcesPath = "/__runic/sources";
 export const openPath = "/__runic/open";
+/** Runic Inspect's handler analysis of a frontend file (handlers.ts): which event handlers reach which client calls. */
+export const handlersPath = "/__runic/handlers";
 
 /** `{ channel?: "hot", … }` on `globalThis`, set by `virtual:runic/client` before the client evaluates. */
 export const clientOptionsKey = Symbol.for("runic.vite.client");

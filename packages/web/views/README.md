@@ -1728,9 +1728,10 @@ returns the same overview as data, for agents and tests.
 
 It is built on this package's development channels and needs no code in the
 application: the Bridge-call channel above (an element's commands and setters
-are learned from the calls it makes, so a button shows its command after its
-first use), the state inspector (`runic.views.inspector`) for the values and
-text references, and the development source map for the C# locations. It
+are learned from the calls it makes; a button's command is also found in its
+component's source before its first use), the state inspector
+(`runic.views.inspector`) for the values and text references, and the
+development source map for the C# locations. It
 works in every engine, and production builds contain none of it.
 
 ## Translated text
