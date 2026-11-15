@@ -97,7 +97,7 @@ and severities are open.
 | [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator; the analyzer while you type | A `RunicQueryCollection` member has an unsupported shape |
 | [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator; the analyzer while you type | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
-| [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
+| [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator; the analyzer while you type | A region collection's select or close client method collides with another client member |
 
 ### Errors and warnings while you type
 
@@ -117,18 +117,21 @@ in a project whose build generates its own Bridges
 
 | ID | Reported while you type | Code fix |
 | --- | --- | --- |
-| `RUNICBRIDGE004` | A command whose client member is reserved in TypeScript, such as `NewCommand` or `ThenCommand`; two ViewModels with the same Bridge name; two Views with the same presentation kind | Rename the command, or its CommunityToolkit `[RelayCommand]` method, to the suggested name |
+| `RUNICBRIDGE004` | A command whose client member is reserved in TypeScript, such as `NewCommand` or `ThenCommand`; two ViewModels with the same Bridge name; two Views with the same presentation kind; two generated files whose names differ only in case, or a ViewModel named `TypesViewModel`; two state properties with one wire name (`[RunicAlias]`, `[JsonPropertyName]`); two generated client members of one name, such as `setCount` of a settable `Count` and a `SetCountCommand`, or `canReset` of a `CanReset` property and a `ResetCommand`; a state property named `validation` beside generated validation; two interactions of one name | Rename the command, or its CommunityToolkit `[RelayCommand]` method, to the suggested name |
 | `RUNICBRIDGE006` | A Window or View that is not public and top-level; a `[RunicViewContract]` name that is not letters and digits; a second View of a ViewModel with the same contract; a content slot with a contract that a ViewModel it admits has no View for | Make the class public |
 | `RUNICBRIDGE007` | A ViewModel that does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction | Make the class public |
-| `RUNICBRIDGE008` | A public setter on a `NavigationRegion<T>`, `NavigationSelection`, ViewModel content or ViewModel collection; a `NavigationRegion<object>`; a region whose content no ViewModel with a View has; a list of ViewModels that no View presents; a `[RunicAppendOnlyText]` member that is not a read-only `string` | Make the setter private |
+| `RUNICBRIDGE008` | A public setter on a `NavigationRegion<T>`, `NavigationSelection`, ViewModel content or ViewModel collection; a `NavigationRegion<object>`; a region whose content no ViewModel with a View has; a list of ViewModels that no View presents; a `[RunicAppendOnlyText]` member that is not a read-only `string`; a blank `[JsonPropertyName]` | Make the setter private |
 | `RUNICBRIDGE009` | A command whose name does not end with `Command`; a plain `ICommand` without `[RunicCommandInput]` or `[RunicCommandKey]`; `[RunicCommandResult]` on a command that is not a ReactiveUI command | Add the `Command` suffix |
 | `RUNICBRIDGE010` | A `[RunicCollection]` with a public setter | Make the setter private |
 | `RUNICBRIDGE011` | A ReactiveUI interaction with a public setter | Make the setter private |
-| `RUNICBRIDGE012`, `RUNICBRIDGE027` | `[RunicFailure]` or `[RunicCommandKey]` on a ViewModel member that is not a Bridge command or its `[RelayCommand]` method | None |
+| `RUNICBRIDGE012`, `RUNICBRIDGE027` | `[RunicFailure]` or `[RunicCommandKey]` on a ViewModel member that is not a Bridge command or its `[RelayCommand]` method, or on both the command property and its method | None |
+| `RUNICBRIDGE012` | A failure type that is `object`, an exception or `Nullable<T>` | None |
+| `RUNICBRIDGE027` | `[RunicCommandKey]` beside `[RunicCommandInput]` or on a command without a parameter; a resolver that is missing, overloaded, private or protected, takes other parameters than the key (and a `CancellationToken` when asynchronous), or does not return the command's parameter | None |
 | `RUNICBRIDGE025` | A ReactiveUI command or interaction without a Runic ReactiveUI adapter, or an interaction of the other flavor than the adapter's | None |
 | `RUNICBRIDGE035` | A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` that is not get-only | Make the setter private |
 | `RUNICBRIDGE060` | A `RunicQueryCollection<TRow, TKey>` with a public setter, with `[RunicCollection]` or `[RunicAppendOnlyText]`, or with a key that is not a `string`, `Guid` or `Int32` | Make the setter private |
 | `RUNICBRIDGE070` | `[RunicRegionCollection]` on a property that is not a `NavigationSelection`, on one with a public setter, with the content type `object`, or with content that no ViewModel with a View has | Make the setter private |
+| `RUNICBRIDGE071` | A region collection's `select{Name}` or `close{Name}` client method that another client member already uses | None |
 | `RUNICBRIDGE013` (warning) | A ViewModel without a View that a content slot or navigation region admits, at that ViewModel | None |
 | `RUNICBRIDGE028`, `RUNICBRIDGE039` (warnings) | `[RunicOperationRetirement]` or `[RunicOperationClose]` that reaches no operation, or whose value is not one of the enum's | None |
 | `RUNICBRIDGE034` (warning) | `[RunicPresentationScoped]` on a member that is not a Bridge command or its `[RelayCommand]` method, also in a base class | None |
@@ -139,8 +142,10 @@ generated command property changes its name too.
 
 The generator stays the authority. It checks everything else after a build,
 such as value types (`RUNICBRIDGE003`), DTO rows and keys, row editors, shared
-clients and the ViewModels of another assembly, and it reports these errors as
-before. A build reports each error once: the generator runs before the compiler
+clients (`RUNICBRIDGE036`, also their module names) and the ViewModels of
+another assembly, and it reports these errors as before. Client member names
+that depend on value types, such as `validation` for validated DTOs, are also
+the generator's. A build reports each error once: the generator runs before the compiler
 and stops the build at its first error for each ViewModel, so the compiler,
 which runs the analyzer, never reaches them. The analyzer reports every problem
 it finds at once, where the generator reports a ViewModel's first.
@@ -160,7 +165,11 @@ before the compiler. Before 0.20 the generator reported them in every build,
 and `TreatWarningsAsErrors`, `.editorconfig` and `#pragma` did not apply to
 them. The generator's other warnings (`RUNICBRIDGE020`, `RUNICBRIDGE031`,
 `RUNICBRIDGE032` and `RUNICBRIDGE053`) need the compiled assembly or its value
-types, appear only after a build, and still ignore `TreatWarningsAsErrors`.
+types and appear only after a build. They, and the build targets' warnings, are
+MSBuild warnings: since 0.20 a project with `TreatWarningsAsErrors` makes them
+errors too, unless `WarningsNotAsErrors` or `NoWarn` names them, and
+`WarningsAsErrors` makes a named one an error as before. `.editorconfig` and
+`#pragma` do not reach them.
 
 ### RUNICBRIDGE001
 

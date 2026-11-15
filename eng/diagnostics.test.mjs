@@ -162,3 +162,13 @@ test('the RUNICBRIDGE list matches the catalog and BridgeDiagnosticCodes', () =>
   const declared = [...generator.matchAll(/internal const string \w+ = "(RUNICBRIDGE\d+)"/g)].map(match => match[1]).sort();
   expect(list.diagnostics.map(entry => entry.id)).toEqual(declared);
 });
+
+// D066.35: with TreatWarningsAsErrors, the Views targets make every RUNICBRIDGE warning that MSBuild logs an error.
+test('the TreatWarningsAsErrors list of the Views targets names every RUNICBRIDGE warning', () => {
+  const list = JSON.parse(readFileSync(join(root, 'docs/runicbridge-diagnostics.json'), 'utf8'));
+  const warnings = list.diagnostics.filter(entry => entry.severity === 'warning').map(entry => entry.id).sort();
+  const targets = readFileSync(join(root, 'packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets'), 'utf8');
+  const named = [...targets.matchAll(/<_RunicBridgeWarningsAsErrors Condition="[^"]*">\$\(_RunicBridgeWarningsAsErrors\);(RUNICBRIDGE\d+)</g)]
+    .map(match => match[1]).sort();
+  expect(named).toEqual(warnings);
+});

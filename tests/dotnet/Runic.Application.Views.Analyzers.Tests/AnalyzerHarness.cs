@@ -50,9 +50,11 @@ internal static class AnalyzerHarness
         namespace CommunityToolkit.Mvvm.Input
         {
             [System.AttributeUsage(System.AttributeTargets.Method)]
-            public sealed class RelayCommandAttribute : System.Attribute;
+            public sealed class RelayCommandAttribute : System.Attribute { public string? CanExecute { get; set; } }
             public interface IRelayCommand : System.Windows.Input.ICommand;
             public interface IAsyncRelayCommand : IRelayCommand;
+            public interface IRelayCommand<in T> : IRelayCommand;
+            public interface IAsyncRelayCommand<in T> : IAsyncRelayCommand, IRelayCommand<T>;
         }
         namespace ReactiveUI
         {

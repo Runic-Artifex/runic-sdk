@@ -624,6 +624,44 @@ test("a RunicApplicationFrontendPackageManager other than npm, pnpm or bun warns
     ["RunicApplicationFrontendPackageManager=yarn", "RunicApplicationFrontendInstallCommand=yarn install"]).length, 1);
 });
 
+// D066.35: a RUNICBRIDGE warning of these targets or the generator fails a build that treats warnings as errors, unless
+// WarningsNotAsErrors or NoWarn names it; WarningsAsErrors keeps working beside it.
+test("TreatWarningsAsErrors turns the targets' RUNICBRIDGE warnings into errors, except those it may not", () => {
+  const run = (name, properties) => {
+    const project = join(directory, `twae-${name}`);
+    mkdirSync(join(project, "frontend"), { recursive: true });
+    writeFileSync(join(project, "frontend/package.json"), JSON.stringify({ name: "app", private: true }));
+    writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/frontend</RunicApplicationFrontendDirectory>
+    <Configuration>Debug</Configuration>
+    <TargetFramework>net10.0</TargetFramework>
+    <RunicApplicationFrontendPackageManager>yarn</RunicApplicationFrontendPackageManager>
+    ${properties}
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+    const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsCheckFrontendPackageManager",
+      "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+    const output = `${result.stdout}${result.stderr}`;
+    return { status: result.status, output, error: / error RUNICBRIDGE029:/.test(output), warning: / warning RUNICBRIDGE029:/.test(output) };
+  };
+  const failed = run("on", "<TreatWarningsAsErrors>true</TreatWarningsAsErrors>");
+  assert.ok(failed.status !== 0 && failed.error && !failed.warning, failed.output);
+  const kept = run("not-as-errors", "<TreatWarningsAsErrors>true</TreatWarningsAsErrors><WarningsNotAsErrors>CS0618, RUNICBRIDGE029</WarningsNotAsErrors>");
+  assert.ok(kept.status === 0 && kept.warning && !kept.error, kept.output);
+  // The SDK's targets make a NoWarn code a message; this project without them only shows that it is no error.
+  const hidden = run("no-warn", "<TreatWarningsAsErrors>true</TreatWarningsAsErrors><NoWarn>$(NoWarn);RUNICBRIDGE029</NoWarn>");
+  assert.ok(hidden.status === 0 && !hidden.error, hidden.output);
+  // WarningsAsErrors is kept beside TreatWarningsAsErrors, also for a code the Bridge list leaves out. (Alone, the SDK's
+  // targets map it.)
+  const named = run("warnings-as-errors", "<TreatWarningsAsErrors>true</TreatWarningsAsErrors><WarningsAsErrors>RUNICBRIDGE029</WarningsAsErrors><NoWarn>RUNICBRIDGE029</NoWarn>");
+  assert.ok(named.status !== 0 && named.error, named.output);
+  const off = run("off", "");
+  assert.ok(off.status === 0 && off.warning && !off.error, off.output);
+});
+
 test("supported, differently cased or empty package managers, and unused values, do not warn", () => {
   for (const value of ["", "npm", "pnpm", "bun", "NPM", "Pnpm", "BUN"])
     assert.deepEqual(packageManagerWarnings(`valid-${value || "empty"}`, [`RunicApplicationFrontendPackageManager=${value}`]), [], value);

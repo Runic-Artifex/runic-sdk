@@ -124,6 +124,13 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
             var sources = new Dictionary<IPropertySymbol, IMethodSymbol?>(SymbolEqualityComparer.Default);
             foreach (var command in commands)
                 CheckCommand(command, sources[command] = SourceMethod(command));
+            foreach (var command in commands)
+            {
+                CheckFailure(command, sources[command]);
+                CheckCommandKey(command, sources[command]);
+            }
+            var state = StateProperties(declared, commands, sources);
+            if (CheckWireNames(state)) CheckClientSurface(state, commands, sources, declared);
             CheckCommandAttributes(commands, sources, BridgeSymbols.RunicFailure, BridgeRules.Failure, "RunicFailure");
             CheckCommandAttributes(commands, sources, BridgeSymbols.RunicCommandKey, BridgeRules.CommandKey, "RunicCommandKey");
             CheckReactiveAdapter(commands, declared);

@@ -210,6 +210,28 @@ public sealed class BridgeApplicationAnalyzerTests
             Describe(diagnostics));
     }
 
+    // The generated files are unique ignoring case: a ViewModel's types.ts is the named types' module, and two Views
+    // whose full names differ only in case write the same View partial.
+    [Test]
+    public async Task ReportsGeneratedFilesThatCollide()
+    {
+        var types = await AnalyzeAsync(AppSource("", """
+            public sealed class TypesViewModel : INotifyPropertyChanged
+            {
+                public event PropertyChangedEventHandler? PropertyChanged;
+                public int Value { get; }
+            }
+            public sealed partial class TypesView : RunicView<TypesViewModel>;
+            """));
+        Require(types.Length == 1 && types[0].Id == "RUNICBRIDGE004"
+            && Message(types[0]) == "generated file 'types.ts' would be written by App.TypesViewModel and the generated named types. Rename one type.",
+            Describe(types));
+        var views = await AnalyzeAsync(AppSource("", "[RunicViewContract(\"Compact\")] public sealed partial class pageView : RunicView<PageViewModel>;"));
+        Require(views.Length == 1 && views[0].Id == "RUNICBRIDGE004"
+            && Message(views[0]) == "generated file 'App.PageView.View.g.cs' would be written by App.PageView and App.pageView. Rename one type.",
+            Describe(views));
+    }
+
     [Test]
     public async Task ReportsPresentationKindsThatCollide()
     {
