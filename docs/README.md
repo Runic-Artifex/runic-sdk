@@ -24,6 +24,10 @@ The [hosted regions guide](hosted-regions.md) shows a guest application's Window
 in a region of a host page, in a frame or as a component, with the security
 notes and troubleshooting for both.
 
+The [debugging guide](debugging.md) debugs an application end to end under
+`dotnet runic dev`: the IDE's .NET debugger, the browser's developer tools of
+each engine, the Runic dock, Runic Inspect, traces and the Bridge analyzers.
+
 The [tracing guide](tracing.md) shows the C# handler timing in the browser's
 Performance panel under `dotnet runic dev`, and one trace from a click in the
 page to the C# it runs in a local viewer such as the Aspire dashboard.
