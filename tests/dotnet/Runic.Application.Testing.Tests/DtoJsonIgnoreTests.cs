@@ -197,7 +197,7 @@ internal sealed partial class CodegenDiagnosticsTests
         })
         {
             var model = assembly.GetType(typeName) ?? Assembly.LoadFrom(modelPath).GetType(typeName)!;
-            var client = File.ReadAllText(Path.Combine(directory, "ts", module + ".ts"));
+            var client = GeneratedClientSource.Read(Path.Combine(directory, "ts"), module);
             Require(client.Contains(BridgeContractShape.Compute(model), StringComparison.Ordinal), "A mixed-policy fingerprint disagrees with runtime reflection.");
             var dtoName = System.Text.RegularExpressions.Regex.Match(client, @"readonly value: ([A-Za-z0-9_]+);").Groups[1].Value;
             Require(dtoName.Length > 0, "The mixed-policy client omitted its named DTO.");

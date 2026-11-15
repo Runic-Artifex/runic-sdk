@@ -11,6 +11,13 @@
     <!-- Hosted mode and components are experimental (docs/experimental.md). -->
     <NoWarn>$(NoWarn);RUNICDESK103</NoWarn>
   </PropertyGroup>
+  <!-- -p:WidgetFrontend=Angular: the same widget with its Angular frontend, built by Vite with the Analog plugin and the
+       component target (Angular/vite.config.ts). It shares the default frontend's generated client. -->
+  <PropertyGroup Condition="'$(WidgetFrontend)' == 'Angular'">
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/Angular</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(MSBuildProjectDirectory)/Frontend/src/generated</RunicApplicationFrontendGeneratedDirectory>
+    <RunicApplicationFrontendBuildCommand>bun run build</RunicApplicationFrontendBuildCommand>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <OutputType>Library</OutputType>
   </PropertyGroup>

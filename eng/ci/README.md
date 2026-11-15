@@ -232,6 +232,7 @@ rule applies to each file:
 | `Runic.Desktop`, its tests and fixtures, `Runic.Platform`, `Runic.Platform.Runtime` and its tests, the WebView smoke, the accessibility probe, `eng/build/desktop.props`, `eng/branding/desktop`, the template's packaging manifests, `ApplicationIdentity.cs` and icons, `dotnet runic package` (`tools/dotnet-runic/Packaging`), the packaging probe | all three |
 | `Runic.Application.Views`, `.Desktop` and `.CsWebUi`, `examples/first-window`, the CS-WebUI window probes, `Runic.Application.Testing` and its tests | win-x64, osx-arm64 |
 | `Runic.Platform.Windows*` and their tests, the elevation smoke, `windows-notifications` | win-x64, win-arm64 |
+| The template's WebView2 script-debugging launch profile (`Properties/launchSettings.json`) and VS Code `launch.json`, the `dev-live-assets` fixture that checks them against WebView2, `dotnet runic dev`'s session file (`DevSession.cs`) | win-x64 |
 | WPF hosts and their tests, `Runic.Navigation` and its WPF consumer, the Views ReactiveUI adapters (`Runic.Application.Views.ReactiveUI*`, whose failure bookkeeping the WPF suite checks under WPF's dispatcher), `examples/wpf-*`, the WPF Bridge consumer, `Runic.Application.Views.Codegen*`, `Runic.Application.Views.Dev`, `examples/notes-reactive-views`, Windows administration | win-x64 |
 | `Runic.Platform.MacOS*` and their tests, `platform-sandbox`, the sandbox probe | osx-arm64 |
 | Nix, `flake.*`, `eng/release`, `eng/verify-packages.mjs`, the solutions, the shipping-project generator (unowned, neutral) | Linux only |

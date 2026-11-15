@@ -9,6 +9,9 @@
 *.tsx text eol=lf
 *.js text eol=lf
 *.mjs text eol=lf
+# Generated clients' declaration maps (#952) are committed beside their .d.ts; a CRLF checkout would differ from the
+# generator's output.
+*.map text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 # Unified diffs preserve upstream whitespace, including context prefixes.

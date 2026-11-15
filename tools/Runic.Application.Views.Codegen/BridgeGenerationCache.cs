@@ -18,8 +18,8 @@ internal static class BridgeGenerationCache
     // Version 3: generated TypeScript gained named types and XML documentation,
     // so outputs recorded by earlier generators must regenerate. Version 4:
     // generated content failures name their type, and warnings are recorded. Version 5: the development source map
-    // (sources.json) is an output.
-    private const int SchemaVersion = 5;
+    // (sources.json) is an output. Version 6: each client has a contract .d.ts and its declaration map (#952).
+    private const int SchemaVersion = 6;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -187,7 +187,7 @@ internal static class BridgeGenerationCache
     // The TypeScript directory can be application source. Hand-written modules
     // beside generated ones must neither invalidate nor be recorded by the cache.
     private static bool IsTypeScriptGeneratedFile(string path) =>
-        path.EndsWith(".ts", StringComparison.Ordinal) && GeneratedOutput.IsGenerated(path);
+        (path.EndsWith(".ts", StringComparison.Ordinal) && GeneratedOutput.IsGenerated(path)) || ClientDeclarationMap.IsGeneratedMap(path);
 
     private static string HashFile(string path)
     {

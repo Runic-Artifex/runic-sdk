@@ -1,13 +1,20 @@
-// The development Bridge-call channel (`runic.views.calls`, specs/application/README.md, "Shared globals"): one start and
+// The development Bridge-call channel (`runic.views.calls`, specs/application/README.md, "Shared globals"), of the
+// development build: one start and
 // one end event per generated client call while a reader listens, with timing, outcome and the reply's revision, each
 // call run in an async stack task; and nothing at all, including no task, without one. Drawing the calls (the
 // Performance track) is the reader's: views itself makes no Performance entries.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeError, type BridgeCallEvent, type BridgeCallListener, type QueryCollectionState, type RunicBridgeClient } from "../dist/index.js";
-import { bridgeOperations, connectView, decodeQueryCollectionState, defineQueryCollection } from "../dist/generated.js";
-import * as bridgeWire from "../dist/wire.js";
-import { createMockBridge, installMockBridge, mockFailure, type MockBridge } from "../dist/mock.js";
+import type { BridgeCallEvent, BridgeCallListener, QueryCollectionState, RunicBridgeClient } from "../dist/index.js";
+import type { MockBridge } from "../dist/mock.js";
+import * as production from "../dist/generated.js";
+import { development, developmentGenerated, developmentMock, developmentWire as bridgeWire } from "./support/development.js";
+
+// Only the development build (README, "Development build") reports calls; the last tests check that the production
+// build does not, also with both builds in one page.
+const { BridgeError } = development;
+const { bridgeOperations, connectView, decodeQueryCollectionState, defineQueryCollection } = developmentGenerated;
+const { createMockBridge, installMockBridge, mockFailure } = developmentMock;
 
 const callsKey = Symbol.for("runic.views.calls");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
@@ -240,6 +247,40 @@ test("a command with a declared failure ends error with domain-failed; a throwin
     client.dispose();
   } finally {
     console.error = consoleError;
+    delete host[callsKey];
+  }
+});
+
+test("the production build reports nothing and tags nothing, also while a reader listens", async () => {
+  const { events } = listen();
+  const spy = spyDevtools();
+  try {
+    const bridge = createMockBridge();
+    installMockBridge(bridge);
+    bridge.view("notes", { state: { title: "a", count: 0 }, contract, commands: { save: state => ({ count: (state["count"] as number) + 1 }) } });
+    // A production client and a development client of one route on one page share its state (scope.ts slots).
+    const plain = await production.connectView<Omit<State, "rows">>({ contract, route: "notes", members: { title: members.title, count: members.count } });
+    const traced = await connectView<Omit<State, "rows">>({ contract, route: "notes", members: { title: members.title, count: members.count } });
+    await plain.command("save");
+    await plain.set("title", "b");
+    assert.equal(await plain.can("save"), true);
+    assert.equal(events.length, 0, "the production build reports no call");
+    assert.deepEqual(spy.tasks, [], "nor tags one");
+    assert.deepEqual(traced.snapshot, { title: "b", count: 1 }, "the development client sees the production client's calls");
+    await traced.command("save");
+    assert.deepEqual(events.map(event => [event.phase, event.member]), [["start", "save"], ["end", "save"]]);
+    assert.equal(plain.snapshot.count, 2, "and the production client the development client's");
+    // A keep-alive pool of one build refreshes a client of the other (connection.ts, refreshPresentation).
+    const refresh = (traced.dispose as unknown as Record<symbol, unknown>)[Symbol.for("runic.views.presentation-refresh")];
+    assert.equal(typeof refresh, "function");
+    const { refreshPresentation } = await import("../dist/connection.js");
+    refreshPresentation(traced);
+    await bridge.flush();
+    assert.deepEqual(traced.snapshot, { title: "b", count: 2 });
+    plain.dispose();
+    traced.dispose();
+  } finally {
+    spy.restore();
     delete host[callsKey];
   }
 });

@@ -59,10 +59,14 @@ internal sealed record CreatePlan(
         .. NoInstall ? ["--no-install"] : Array.Empty<string>(),
     ]);
 
+    // A choice whose default is "none", such as --editor, adds nothing then, so the commands leave it out.
+    private IEnumerable<OptionSelection> PrintedSelections =>
+        Selections.Where(selection => !(selection.Option.DefaultValue == "none" && selection.Choice.Value == "none"));
+
     // The template's options, which the creator and dotnet new spell the same way.
     private IEnumerable<string> TemplateArguments =>
     [
-        .. Selections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
+        .. PrintedSelections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
         .. Toggles.Select(toggle => toggle.Flag),
         .. Texts.SelectMany(text => new[] { text.Text.Flag, text.Value }),
     ];
@@ -75,7 +79,7 @@ internal sealed record CreatePlan(
     public string CreateCommand => Format(["dotnet", .. CreateArguments]);
 
     public string Summary => string.Join(" · ",
-        Selections.Select(selection => selection.Choice.DisplayName)
+        PrintedSelections.Select(selection => selection.Choice.DisplayName)
             .Concat(Toggles.Select(toggle => toggle.DisplayName))
             .Concat(Texts.Select(text => $"{text.Text.DisplayName} {text.Value}")));
 

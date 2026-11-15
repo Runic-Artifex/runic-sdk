@@ -23,9 +23,9 @@ inside its markup, in any locale. An added, removed or renamed message, changed
 inputs or markup, a new locale and a `runic.json` change still reload the page,
 and so does a page that does not call `configureTranslatedText`. The Angular CLI's
 dev server runs no Vite plugins and keeps reloading; in-place updates in Angular
-need Angular built with Vite. In production nothing writes the channel: the
-listener `configureTranslatedText` adds in the browser never runs, and the
-helpers behave as before. With an earlier plugin, or with these helpers from
+need Angular built with Vite. Only the development build of
+`@runic-artifex/views` follows the channel: a production bundle neither creates
+nor reads it, and the helpers behave as before (#975). With an earlier plugin, or with these helpers from
 0.19 or earlier, the page reloads as before; only `@runic-artifex/views` 0.20
 with the React or Angular helpers of 0.19 updates the catalog without rendering
 again, so install matching versions.

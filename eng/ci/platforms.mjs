@@ -89,8 +89,17 @@ export const platformRules = [
     "packages/dotnet/Runic.Assets", "packages/dotnet/Runic.Assets.Desktop", "tests/dotnet/Runic.Assets.Tests",
     // The CS-WebUI blob endpoint's checks, which the native job's Windows and macOS steps run.
     "tests/dotnet/Runic.Application.Views.Desktop.Tests/CsWebUiBlobEndpointChecks*", "eng/ci/windows-httpsys-*"] },
+  // The hosted components widget's Angular frontend and its browser smoke run in the views job on Linux only; the
+  // Windows probe builds the default frontend.
+  { platforms: [], paths: ["examples/hosted-components/Widget/Angular", "examples/hosted-components/angular-component-smoke.mjs"] },
   // The region mode examples, whose probes run in the native job's Windows x64 leg as the elevated pair (#865, #866).
   { platforms: ["win-x64"], paths: ["examples/hosted-region", "examples/hosted-components"] },
+  // The template's WebView2 script-debugging launch profile and VS Code launch configurations (D066.25 3), which the native
+  // job's Windows x64 leg checks against WebView2 with the dev-live-assets fixture (webview2-debug-smoke.mjs), and the
+  // session file whose debugEndpoints that check reads.
+  { platforms: ["win-x64"], paths: ["tools/Runic.Application.Templates/content/runic-app/Properties/launchSettings.json",
+    "tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json", "tests/fixtures/application/dev-live-assets",
+    "tools/dotnet-runic/DevSession.cs"] },
   // The Windows providers and elevation, on both Windows architectures.
   { platforms: ["win-x64", "win-arm64"], paths: ["packages/dotnet/Runic.Platform.Windows*", "tests/dotnet/Runic.Platform.Windows*",
     "tests/native/Runic.Elevation.Smoke", "tests/native/windows-notifications"] },

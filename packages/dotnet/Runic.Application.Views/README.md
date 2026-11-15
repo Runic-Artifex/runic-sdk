@@ -1822,8 +1822,9 @@ The `dotnet new runic-app` template's Counter page has one of each.
 ## Generated TypeScript
 
 Each ViewModel gets a module named after it (`EditorViewModel` becomes
-`editor.ts`) with its state interface, client interface and `connect`
-function. Every enum, DTO and union in the contract becomes one exported type
+`editor.ts`) with its `connect` function, and the client's types (its state,
+client and page reference interfaces) in `editor.contract.d.ts` beside it,
+which `editor.ts` re-exports; see [Editor navigation](#editor-navigation). Every enum, DTO and union in the contract becomes one exported type
 named after its C# type, declared once in `types.ts` beside the modules. Next
 to each client, `editor.mock.ts` exports a typed test double, `mockEditor`; see
 [Testing](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
@@ -2186,8 +2187,40 @@ cache regenerates it with the other outputs. Under `vite dev`,
 `@runic-artifex/vite-plugin-runic` serves it and opens a listed location in your
 editor (VS Code, Rider, or `LAUNCH_EDITOR`); see its
 [README](../../web/vite-plugin-runic/README.md#source-map-and-open-in-editor) for
-the format and the endpoints. Generated clients' declaration maps will use the
-same locations.
+the format and the endpoints. Generated clients' declaration maps use the same
+locations ([Editor navigation](#editor-navigation)).
+
+### Editor navigation
+
+The generated client's types are declared in `<view>.contract.d.ts`, with a
+declaration map, `<view>.contract.d.ts.map`, into the ViewModel's C# sources.
+So in any TypeScript-aware editor (tsserver-based: VS Code, Visual Studio, and
+others) Go to Definition or Peek on a client member opens the C# it stands for,
+with no extension:
+
+| In the page | Opens |
+| --- | --- |
+| `client.save()`, `startSave`, `recoverSave`, `canSave(...)` | The command's handler, such as its `[RelayCommand]` method |
+| `state.title` (and `titleErrors`) | The property's getter, or its `[ObservableProperty]` field |
+| `client.setTitle(...)`, `writeTitle(...)` | The property's setter |
+| `state.canSave`, `isSaveExecuting` | The command's handler |
+| `client.interactions.confirm`, `client.requests.focus` | The interaction or View request property |
+| `EditorClient`, `EditorState` (Go to Type Definition) | The ViewModel class |
+
+The map's locations are those of the [development source map](#development-source-map);
+its `sources` are relative to the map, so a client committed to source control
+is the same on every machine. A member without a location (no PDB, or a source
+on another drive than the generated directory) stays in the `.d.ts`, and a
+client without any gets no map. Everything else, such as `connectEditor` or the
+page reference's `connect`, stays in the generated TypeScript.
+
+Imports don't change: `import { connectEditor, type EditorState } from "./generated/editor.js"`
+works as before, because `editor.ts` re-exports every type of the contract with
+`export type`. `.contract.d.ts` holds only types, so bundlers never load it and
+the built JavaScript is unchanged. Commit the `.contract.d.ts` and its map with
+the client. A library that compiles the generated directory with `tsc
+--declaration` into another directory copies the `.contract.d.ts` files there
+too, since `tsc` does not copy `.d.ts` inputs.
 
 ## Ship the frontend inside the executable
 
@@ -3878,8 +3911,9 @@ one that calls it shows the new text wherever it renders again on a language
 switch.
 Text computed once, such as a `const` in a script, a SvelteKit `load` result or
 a `document.title` set in code, keeps its old text until it is computed again,
-as after a language switch. In production nothing writes the channel: the
-listener `configureTranslatedText` adds never runs, and the helpers behave as
+as after a language switch. Only the development build of
+`@runic-artifex/views`, which `vite dev` resolves, follows the channel: a
+production bundle neither creates nor reads it, and the helpers behave as
 before. The Angular CLI's dev server (`ng serve`) runs no Vite
 plugins: a page built with it imports the ESM of the .NET build and reloads
 after `dotnet build`. In-place updates in Angular need Angular built with Vite
@@ -5041,7 +5075,10 @@ command, `RunicApplicationHost`, `NODE_ENV` and the environment variables named 
 `RunicApplicationFrontendBuildEnvironment` items; only the hash is written, to
 `runic-bridge-frontend.state` in `BaseIntermediateOutputPath` (`obj/` by default). `dist` serves every configuration and target
 framework, so a build whose state differs from the one that last built `dist`
-builds it again, for example Debug after a Release build with other variables. Generated TypeScript is rewritten only when its
+builds it again, for example Debug after a Release build with other variables. An optimized build (`Optimize=true`:
+Release, `dotnet publish`) runs the frontend build with `NODE_ENV=production` unless the environment sets `NODE_ENV`,
+and the build state uses that value, so a Bun-built frontend (`Bun.build`, `bun build`) bundles the production build of
+`@runic-artifex/views` in Release and the development build in Debug. Generated TypeScript is rewritten only when its
 content changes, so C#-only edits skip the frontend build.
 `RunicApplicationFrontendInput` items are the extension point for inputs outside
 the frontend directory, such as workspace packages, shared components imported

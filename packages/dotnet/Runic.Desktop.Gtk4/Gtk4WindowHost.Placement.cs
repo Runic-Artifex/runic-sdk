@@ -11,6 +11,12 @@ namespace Runic.Desktop.Gtk4;
 // goes at once, so issued together they reach the window manager in an order that depends on timing, and the window
 // manager keeps whatever frame the window had when it maximized as the bounds it restores to. The window unmaximizes,
 // takes the frame once it reports that it is unmaximized, and maximizes once it reports the frame (UpdateState).
+//
+// GTK reports a maximize or unmaximize only once the window manager has made it (#1004): a request that comes meanwhile
+// sees the old state. RestoreAsync therefore also gives the restore bounds to a window that a maximize was asked of and
+// GTK does not report maximized yet (MaximizePending), and to one whose frame target it ended before the target was
+// done, as when a placement while maximized had just unmaximized the window; otherwise that window stays at the frame
+// the window manager restored, or maximizes after the restore.
 internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
 {
     // GTK thread only: the frame target the window is waiting for, and one a hidden window starts when it is shown.
@@ -22,6 +28,33 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
     // window again when it comes back from maximized elsewhere.
     private readonly WindowRestoreBounds _restore = new();
     private readonly System.Diagnostics.Stopwatch _restoreClock = System.Diagnostics.Stopwatch.StartNew();
+    // GTK thread only: when Runic last asked GTK to maximize the shown window (Environment.TickCount64), until GTK reports
+    // it maximized or Runic unmaximizes it (MaximizePending).
+    private long? _maximizeRequestedAt;
+    // How long a maximize GTK does not report counts as pending: a window manager may refuse it.
+    private const long MaximizeRequestWait = 3000;
+
+    // GTK thread only: Runic asked for a maximize that GTK does not report yet.
+    private bool MaximizePending => _maximizeRequestedAt is { } at && Environment.TickCount64 - at < MaximizeRequestWait;
+
+    // GTK thread only: GTK's maximize and unmaximize, with the request recorded for MaximizePending.
+    private void RequestMaximize(Gtk.Window window)
+    {
+        _maximizeRequestedAt = window.IsVisible() ? Environment.TickCount64 : null;
+        window.Maximize();
+    }
+
+    private void RequestUnmaximize(Gtk.Window window)
+    {
+        _maximizeRequestedAt = null;
+        window.Unmaximize();
+    }
+
+    // GTK thread only, from UpdateState: a window GTK reports maximized has no maximize pending.
+    private void ObserveMaximized(bool maximized)
+    {
+        if (maximized) _maximizeRequestedAt = null;
+    }
 
     // GTK thread only: the restore bounds now, from the tracker or else from the default size and the last position.
     private RestoreFrame CurrentRestore(Gtk.Window window)
@@ -72,7 +105,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
             {
                 (_pendingPosition, _pendingPositionIsRestoredBounds) = (position, true);
             }
-            window.Maximize();
+            RequestMaximize(window);
             QueueStateUpdate();
         }, cancellationToken));
 
@@ -82,22 +115,25 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
         {
             var window = GetWindow();
             if (_options?.Kiosk == true) return;
-            EndFrameTargetEarly(window);
+            // A frame target ended before it was done leaves the window between its steps (#1004).
+            var interrupted = EndFrameTargetEarly(window);
             if (window.IsFullscreen()) window.Unfullscreen();
             var bounds = CurrentRestore(window);
-            _restore.Set(bounds, _restoreClock.Elapsed, window.IsMaximized() || IsMinimized(window));
+            var maximized = window.IsMaximized() || MaximizePending;
+            _restore.Set(bounds, _restoreClock.Elapsed, maximized || interrupted || IsMinimized(window));
             var restored = new FrameTarget(bounds.X is { } x && bounds.Y is { } y && Gtk4X11Placement.IsActive ? (x, y) : null,
                 bounds.Width, bounds.Height, maximize: false);
             if (!window.IsVisible())
             {
                 // GTK maps a window that was mapped before at its last size: the restored frame applies once it is shown.
                 _frameTargetWhenShown = restored;
-                window.Unmaximize();
+                RequestUnmaximize(window);
             }
-            else if (window.IsMaximized())
+            else if (maximized || interrupted)
             {
                 // The window manager restores the frame it saved when the window maximized, which may not be the bounds a
-                // placement or the open gave it: the window takes them once it is unmaximized.
+                // placement or the open gave it: the window takes them once it is unmaximized. GTK may already report the
+                // window unmaximized, or not yet maximized: the unmaximize then changes nothing or comes after the maximize.
                 BeginFrameTarget(window, restored, unmaximize: true);
             }
             if (IsMinimized(window) && window.IsVisible()) Present(window);
@@ -140,7 +176,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
             // The placement's bounds replace any earlier restore bounds (WindowRestoreBounds).
             _restore.Set(new RestoreFrame(position?.X, position?.Y, width, height), _restoreClock.Elapsed);
             var fullScreen = window.IsFullscreen();
-            var maximized = window.IsMaximized();
+            var maximized = window.IsMaximized() || MaximizePending;
             if (fullScreen && !placement.FullScreen) window.Unfullscreen();
             window.SetDefaultSize(width, height);
             if (!window.IsVisible())
@@ -152,10 +188,10 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
                     _pendingPositionIsRestoredBounds = placement.Maximized || placement.FullScreen;
                     _normalPosition = pending;
                 }
-                if (placement.Maximized) window.Maximize();
+                if (placement.Maximized) RequestMaximize(window);
                 else
                 {
-                    window.Unmaximize();
+                    RequestUnmaximize(window);
                     _frameTargetWhenShown = new FrameTarget(position, width, height, maximize: false);
                 }
             }
@@ -190,7 +226,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
         _frameTarget = target;
         // The target's bounds are the restore bounds from now on, also when a later request ends the wait early.
         if (target.Position is { } position) _normalPosition = position;
-        if (unmaximize) window.Unmaximize();
+        if (unmaximize) RequestUnmaximize(window);
         else ApplyFrame(window, target);
         CheckFrameTargetLater(target, checks: 6);
         QueueStateUpdate();
@@ -208,7 +244,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
                     FinishFrameTarget(window, target);
                     return;
                 }
-                if (window.IsMaximized()) window.Unmaximize();
+                if (window.IsMaximized()) RequestUnmaximize(window);
                 else ApplyFrame(window, target);
                 CheckFrameTargetLater(target, checks - 1);
             }
@@ -219,15 +255,17 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
         }), TaskScheduler.Default);
 
     // GTK thread only: a later request ends a pending frame target. Its bounds stay the restore bounds: GTK may have
-    // taken the window manager's interim frame as the default size meanwhile.
-    private void EndFrameTargetEarly(Gtk.Window window)
+    // taken the window manager's interim frame as the default size meanwhile. True when a target was pending.
+    private bool EndFrameTargetEarly(Gtk.Window window)
     {
+        var pending = _frameTarget is not null;
         if (_frameTarget is { } target)
         {
             window.SetDefaultSize(target.Width, target.Height);
             if (target.Position is { } position) _normalPosition = position;
         }
         (_frameTarget, _frameTargetWhenShown, _settlingFrame, _frameRequest) = (null, null, null, null);
+        return pending;
     }
 
     // GTK thread only, from UpdateState: the next step once the window reports the last one.
@@ -262,7 +300,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
     {
         _frameTarget = null;
         if (target.Position is { } position) _normalPosition = position;
-        if (target.Maximize) window.Maximize();
+        if (target.Maximize) RequestMaximize(window);
         else
         {
             _settlingFrame = target;
@@ -297,7 +335,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
     private RestoreFrame? ObserveRestoreBounds(Gtk.Window window, bool maximized, bool fullScreen, (int X, int Y)? position, int width, int height)
     {
         var shown = window.IsVisible() && !IsMinimized(window);
-        RestoreFrame? frame = !shown || maximized || fullScreen || _frameTarget is not null || width <= 0 || height <= 0
+        // On its way to maximized, Openbox reports the window normal at another frame (#1004): not the restore bounds.
+        RestoreFrame? frame = !shown || maximized || fullScreen || _frameTarget is not null || MaximizePending || width <= 0 || height <= 0
             ? null
             : position is { } at ? new RestoreFrame(at.X, at.Y, width, height)
             : Gtk4X11Placement.IsActive ? null : new RestoreFrame(null, null, width, height);

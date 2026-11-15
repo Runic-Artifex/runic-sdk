@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { root } from "../../eng/run.mjs";
+import { attachSelects, cdpEndpoint, webView2Debugging } from "../fixtures/application/dev-live-assets/webview2-debugging.mjs";
 
 // The runic-app template's packaging inputs. dotnet runic package (tools/dotnet-runic/Packaging) embeds the template's
 // packaging/ manifests and fills them; Runic.Application.Tool.Tests (PackageTests.cs) checks the identity rules and the
@@ -120,7 +121,7 @@ test("the shipped template has no hidden or version parameters, and the pack sta
     const symbols = JSON.parse(shipped).symbols;
     const parameters = Object.entries(symbols).filter(([, symbol]) => symbol.type === "parameter").map(([name]) => name);
     assert.deepEqual(parameters,
-      ["frontend", "angularBuild", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "tests", "translations", "nix", "packaging", "restore", "applicationId"]);
+      ["frontend", "angularBuild", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "editor", "tests", "translations", "nix", "packaging", "restore", "applicationId"]);
     for (const name of parameters) {
       assert.doesNotMatch(`${name} ${symbols[name].replaces ?? ""}`, /version/i, `${name} sets a version`);
       assert.ok(host.symbolInfo[name], `${name} has no dotnetcli.host.json entry`);
@@ -414,4 +415,178 @@ test("the translated Vite frontends' package.json and locks are the frontend's o
       }
     }
   }
+});
+
+// tasks.json and launch.json are JSONC; the template's own comments are whole lines.
+const parseJsonc = text => JSON.parse(text.split("\n").filter(line => !/^\s*\/\//.test(line)).join("\n"));
+// VS Code's built-in $msCompile pattern (tests/dotnet/Runic.Application.Tool.Tests/DevIdeContractTests.cs).
+const msCompile = /^\s*(?:\s*\d+>)?(\S.*?)(?:\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\))?\s*:\s+(?:(\S+)\s+)?((?:fatal +)?error|warning|info)\s+(\w+\d+)?\s*:\s*(.*)$/;
+
+// #961 (D066.25): every project has launch profiles for Visual Studio, Rider and dotnet run; --editor vscode adds
+// .vscode/ for the dotnet runic dev IDE contract (#959) and the IDE-run Window (#960); ide.host.json and an icon for
+// Visual Studio's New Project and Add New Item dialogs.
+test("--editor vscode adds VS Code tasks and launch configurations; every project has launch profiles", () => {
+  const directory = mkdtempSync(join(tmpdir(), "runic-template-ide-"));
+  try {
+    const content = join(directory, "content");
+    cpSync(templateContent, content, { recursive: true });
+    writeFileSync(join(content, ".template.config/template.json"), stampTemplateJson(join(directory, "stamp")));
+    const dotnet = (...args) => {
+      const result = spawnSync("dotnet", [...args, "--debug:custom-hive", join(directory, "hive")],
+        { cwd: directory, encoding: "utf8", env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: "1", DOTNET_NOLOGO: "1" } });
+      assert.equal(result.status, 0, `dotnet ${args.join(" ")}\n${result.stdout}${result.stderr}`);
+    };
+    dotnet("new", "install", content);
+    const create = (output, ...options) => {
+      dotnet("new", "runic-app", "--name", "Ide.App", "--output", output, ...options);
+      return Object.fromEntries(readdirSync(join(directory, output), { recursive: true, withFileTypes: true })
+        .filter(entry => entry.isFile())
+        .map(entry => join(entry.parentPath, entry.name))
+        .map(path => [path.slice(join(directory, output).length + 1).replaceAll("\\", "/"), readFileSync(path, "utf8")]));
+    };
+    const framework = /<TargetFramework>([^<]+)<\/TargetFramework>/.exec(readFileSync(resolve(templateContent, "RunicWindowApp.csproj"), "utf8"))[1];
+    // The port pattern dotnet runic dev reads for the session file's debugEndpoints (tools/dotnet-runic/DevSession.cs).
+    const sessionPort = new RegExp(/GeneratedRegex\(@"(.+)"\)\]\s*\n\s*private static partial Regex RemoteDebuggingPort/
+      .exec(readFileSync(resolve(root, "tools/dotnet-runic/DevSession.cs"), "utf8"))?.[1].replace("(?<port>", "(") ?? "^$");
+    const environment = { DOTNET_ENVIRONMENT: "Development" };
+
+    const plain = create("plain");
+    assert.ok(!Object.keys(plain).some(path => path.startsWith(".vscode/")), "a project without --editor has .vscode/");
+    assert.deepEqual(create("none", "--editor", "none"), plain);
+    for (const [path, text] of Object.entries(plain)) assert.doesNotMatch(text, /\/\/#(if|else|endif)/, path);
+
+    // The first profile is the one dotnet run uses (D066.25 2). Windows: WebView2's DevTools Protocol for script
+    // debugging (D066.25 3); WebView2 appends the variable to Runic's own AdditionalBrowserArguments.
+    const profiles = JSON.parse(plain["Properties/launchSettings.json"]).profiles;
+    assert.deepEqual(Object.keys(profiles), ["Ide.App", "Ide.App (WebView2 script debugging)"]);
+    assert.deepEqual(profiles["Ide.App"], { commandName: "Project", environmentVariables: environment });
+    const webView2Profile = profiles["Ide.App (WebView2 script debugging)"];
+    assert.equal(webView2Profile.commandName, "Project");
+    assert.equal(webView2Profile.jsWebView2Debugging, true);
+    const webView2Arguments = webView2Profile.environmentVariables.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS;
+    assert.deepEqual(webView2Profile.environmentVariables, { ...environment, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: webView2Arguments });
+    const port = Number(/--remote-debugging-port=(\d+)/.exec(webView2Arguments)?.[1]);
+    assert.ok(port > 0, webView2Arguments);
+    assert.match(webView2Arguments, sessionPort, "dotnet runic dev would not list the port in debugEndpoints");
+
+    const vscode = create("vscode", "--editor", "vscode");
+    assert.deepEqual(Object.keys(vscode).filter(path => path.startsWith(".vscode/")).sort(),
+      [".vscode/extensions.json", ".vscode/launch.json", ".vscode/tasks.json"]);
+    for (const [path, text] of Object.entries(vscode)) assert.doesNotMatch(text, /\/\/#(if|else|endif)/, path);
+    assert.equal(vscode["Properties/launchSettings.json"], plain["Properties/launchSettings.json"]);
+
+    // The C# extension's debugger; C# Dev Kit is optional, so no "dotnet" configurations.
+    const extensions = parseJsonc(vscode[".vscode/extensions.json"]);
+    assert.deepEqual(extensions.recommendations, ["ms-dotnettools.csharp"]);
+
+    const tasks = parseJsonc(vscode[".vscode/tasks.json"]);
+    assert.equal(tasks.version, "2.0.0");
+    const task = Object.fromEntries(tasks.tasks.map(entry => [entry.label, entry]));
+    assert.deepEqual(Object.keys(task), ["dotnet: tool restore", "runic: dev", "runic: dev --no-window", "build", "runic: window", "runic: doctor"]);
+    for (const entry of tasks.tasks) {
+      for (const dependency of [entry.dependsOn ?? []].flat()) assert.ok(task[dependency], `${entry.label} depends on ${dependency}`);
+      if (entry.command) assert.deepEqual([entry.type, entry.command], ["process", "dotnet"], entry.label);
+    }
+    assert.deepEqual(task["runic: dev"].args, ["runic", "dev"]);
+    assert.deepEqual(task["runic: dev --no-window"].args, ["runic", "dev", "--no-window"]);
+    assert.deepEqual(task["build"].args.slice(0, 2), ["build", "${workspaceFolder}/Ide.App.csproj"]);
+    assert.equal(task["build"].problemMatcher, "$msCompile");
+    assert.deepEqual(task["runic: window"].dependsOn, ["runic: dev --no-window", "build"]);
+    assert.equal(task["runic: window"].dependsOrder, "sequence");
+
+    // The background tasks: $msCompile for dev's RAPPDEV lines and the build's, ready at each [dev] Ready (#959).
+    const diagnostics = [
+      ["/src/Ide.App/Ide.App.csproj : error RAPPDEV1007: The vite development server exited unexpectedly with code 1.", "RAPPDEV1007"],
+      ["dotnet-runic : error RAPPDEV1014: --no-window cannot be combined with --no-dotnet-watch.", "RAPPDEV1014"],
+      ["/src/Ide.App/WorkspaceViewModel.cs(18,5): error CS1002: ; expected [/src/Ide.App/Ide.App.csproj]", "CS1002"],
+    ];
+    for (const label of ["runic: dev", "runic: dev --no-window"]) {
+      const { isBackground, problemMatcher: { base, background } } = task[label];
+      assert.equal(isBackground, true, label);
+      assert.equal(base, "$msCompile", label);
+      assert.equal(background.activeOnStart, true, label);
+      for (const [line, code] of diagnostics) assert.equal(msCompile.exec(line)?.[5], code, line);
+      const begins = new RegExp(background.beginsPattern), ends = new RegExp(background.endsPattern);
+      assert.match("[dev] Evaluating Views Window project...", begins, label);
+      assert.match("[dev] Ready", ends, label);
+      for (const line of ["[dev] Ready to build", "[dev] Window started: process 4242", "[dev] Frontend: vite"])
+        assert.doesNotMatch(line, ends, `${label}: ${line}`);
+    }
+    assert.match("[dev] Window exited: process 4242", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
+    assert.match("[dev] Reloading the Runic Views Window application.", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
+
+    const launch = parseJsonc(vscode[".vscode/launch.json"]);
+    assert.equal(launch.version, "0.2.0");
+    const configuration = Object.fromEntries(launch.configurations.map(entry => [entry.name, entry]));
+    assert.deepEqual(Object.keys(configuration), ["Window", "Attach to the Window (dotnet runic dev)",
+      "Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"]);
+    for (const entry of [...launch.configurations, ...launch.compounds])
+      if (entry.preLaunchTask) assert.ok(task[entry.preLaunchTask], `${entry.name}: ${entry.preLaunchTask}`);
+    assert.ok(launch.configurations.every(entry => entry.type === "coreclr" || entry.type === "msedge"));
+    const program = `\${workspaceFolder}/bin/Debug/${framework}/Ide.App`;
+    assert.deepEqual(configuration["Window"], {
+      name: "Window", type: "coreclr", request: "launch", preLaunchTask: "runic: window", program,
+      windows: { program: `${program}.exe` }, cwd: "${workspaceFolder}", env: environment, console: "internalConsole",
+    });
+    assert.equal(configuration["Attach to the Window (dotnet runic dev)"].request, "attach");
+    assert.equal(configuration["Attach to the Window (dotnet runic dev)"].preLaunchTask, "runic: dev");
+    // Windows: the Window with the same variable as the launch profile, and js-debug on the same port.
+    const webView2Window = configuration["Window with WebView2 debugging (Windows)"];
+    assert.equal(webView2Window.program, `${program}.exe`);
+    assert.deepEqual(webView2Window.env, webView2Profile.environmentVariables);
+    const webView2 = configuration["Attach to WebView2 (Windows)"];
+    assert.deepEqual([webView2.type, webView2.request, webView2.port, webView2.useWebView], ["msedge", "attach", port, true]);
+    assert.deepEqual(launch.compounds, [{
+      name: "Window + WebView2 (Windows)", configurations: ["Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"],
+      preLaunchTask: "runic: window", stopAll: true,
+    }]);
+    // The endpoint that tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs proves against WebView2 on
+    // Windows with the same rules, and that dev's session file lists: js-debug's attach reaches it and selects the page.
+    const debugging = webView2Debugging(JSON.parse(plain["Properties/launchSettings.json"]), launch);
+    assert.deepEqual([debugging.profileName, debugging.port, debugging.endpoint, debugging.windowConfiguration, debugging.attach.name],
+      ["Ide.App (WebView2 script debugging)", port, cdpEndpoint(port), "Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"]);
+    assert.equal(cdpEndpoint(port), `http://127.0.0.1:${port}/`);
+    assert.ok(attachSelects(webView2, { type: "page", url: "http://127.0.0.1:49152/index.html" }));
+    assert.ok(!attachSelects(webView2, { type: "service_worker", url: "http://127.0.0.1:49152/sw.js" }));
+
+    // CS-WebUI has no WebView2 of its own: no script-debugging profile or configurations.
+    const cswebui = create("cswebui", "--editor", "vscode", "--host", "cswebui");
+    assert.deepEqual(Object.keys(JSON.parse(cswebui["Properties/launchSettings.json"]).profiles), ["Ide.App"]);
+    const cswebuiLaunch = parseJsonc(cswebui[".vscode/launch.json"]);
+    assert.deepEqual(cswebuiLaunch.configurations.map(entry => entry.name), ["Window", "Attach to the Window (dotnet runic dev)"]);
+    assert.ok(!("compounds" in cswebuiLaunch));
+    assert.equal(cswebui[".vscode/tasks.json"], vscode[".vscode/tasks.json"]);
+    for (const [path, text] of Object.entries(cswebui)) assert.doesNotMatch(text, /\/\/#(if|else|endif)/, path);
+
+    // The Angular frontend built with Vite (--angular-build vite, D066.21) gets the same .vscode/ and launch profiles:
+    // the tasks run dotnet runic dev, which starts the Vite development server, and js-debug's webRoot is Frontend.
+    const angularVite = create("angular-vite", "--editor", "vscode", "--frontend", "angular", "--angular-build", "vite");
+    for (const [path, text] of Object.entries(angularVite)) assert.doesNotMatch(text, /\/\/#(if|else|endif)/, path);
+    assert.ok(angularVite["Frontend/vite.config.ts"], "the Angular frontend builds with Vite");
+    assert.ok(!angularVite["Frontend/angular.json"], "no Angular CLI workspace with --angular-build vite");
+    for (const path of [".vscode/tasks.json", ".vscode/launch.json", ".vscode/extensions.json", "Properties/launchSettings.json"])
+      assert.equal(angularVite[path], vscode[path], path);
+    assert.match(angularVite["README.md"], /live from the\s+Vite\s+development server/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Visual Studio's host file shows the templates' parameters with an icon", () => {
+  for (const name of ["runic-app", "runic-view"]) {
+    const config = resolve(root, "tools/Runic.Application.Templates/content", name, ".template.config");
+    const host = JSON.parse(readFileSync(resolve(config, "ide.host.json"), "utf8"));
+    const symbols = JSON.parse(readFileSync(resolve(config, "template.json"), "utf8")).symbols;
+    const parameters = Object.keys(symbols).filter(key => symbols[key].type === "parameter");
+    assert.equal(host.$schema, "https://json.schemastore.org/ide.host.json", name);
+    assert.equal(host.defaultSymbolVisibility, true, name);
+    // Every parameter once, in the order dotnet new lists them.
+    assert.deepEqual(host.symbolInfo.map(info => info.id), parameters, name);
+    const icon = readFileSync(resolve(config, host.icon));
+    assert.equal(icon.subarray(1, 4).toString(), "PNG", name);
+    assert.deepEqual([icon.readUInt32BE(16), icon.readUInt32BE(20)], [64, 64], name);
+  }
+  const app = JSON.parse(readFileSync(resolve(templateContent, ".template.config/ide.host.json"), "utf8"));
+  // Visual Studio restores the projects it opens.
+  assert.deepEqual(app.symbolInfo.filter(info => info.isVisible === false).map(info => info.id), ["restore"]);
 });

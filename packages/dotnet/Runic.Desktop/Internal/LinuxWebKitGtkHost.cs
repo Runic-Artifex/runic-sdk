@@ -242,11 +242,11 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             if (Api.GtkWindowIsMaximized(_window))
             {
-                Api.GtkWindowUnmaximize(_window);
+                RequestUnmaximize();
             }
             else
             {
-                Api.GtkWindowMaximize(_window);
+                RequestMaximize();
             }
         }, cancellationToken);
 
@@ -597,7 +597,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         if (!maximized) MaximizeAtSize(force: false, current.Width, current.Height);
         // The restore bounds (WindowRestoreBounds): a hidden window keeps the placement it shows at, and frames the window
         // passes through on its way to or from maximized do not replace the bounds a placement or a maximize stated.
-        var shownNormal = !maximized && !fullScreen && !tiled && _geometryWhenShown is null && Api.GtkWidgetGetVisible(_window);
+        if (maximized) _maximizeRequestedAt = null;
+        var shownNormal = !maximized && !fullScreen && !tiled && _geometryWhenShown is null && !MaximizePending && Api.GtkWidgetGetVisible(_window);
         if (ObserveRestoreBounds(maximized || fullScreen, shownNormal ? new RestoreFrame(x, y, current.Width, current.Height) : null) is { } restore)
         {
             // An open side panel is not part of the placement that applications save (side-panel/DESIGN.md §3.1).
