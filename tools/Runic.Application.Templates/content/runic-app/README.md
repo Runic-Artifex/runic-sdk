@@ -129,6 +129,8 @@ Kit is not needed. Choose a configuration in Run and Debug:
 | `Attach to the Window (dotnet runic dev)` | Runs the `runic: dev` task and attaches to the Window process you pick, the one `[dev] Window started: process <pid>` names. |
 <!--#if (desktopHost) -->
 | `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Elevated Windows get no port, as for the launch profile. |
+| `Window + WebKitGTK (Linux)` | Linux (preview): the same with WebKitGTK. The Window starts with WebKit's inspector on port 9223, and `dotnet runic dev --no-window` serves it to the JavaScript debugger on port 9222. |
+| `Attach to the page (JavaScript)` | Attaches VS Code's JavaScript debugger to port 9222 alone: on Linux to the Window that `dotnet runic dev` started (the `runic: dev` task), on Windows to a WebView2 Window started with the port. Breakpoints in `Frontend/src`, stepping, the console and the page's variables work; on Linux the debugger stays attached when `dotnet watch` restarts the Window. |
 <!--#endif -->
 
 The tasks (Terminal > Run Task) are `runic: dev`, `runic: dev --no-window`,
@@ -149,9 +151,14 @@ The [IDE contract](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGE
 describes the lines and the `obj/runic/dev-session.json` file that tasks and
 extensions read.
 <!--#if (desktopHost) -->
-On Linux and macOS the page's engine has its own inspector in Development
-(WebKit's on Linux, Safari's Web Inspector on macOS) but no DevTools Protocol
-endpoint, so IDE JavaScript debuggers attach only on Windows.
+On Linux, `dotnet runic dev` serves the Window's WebKitGTK page to JavaScript
+debuggers on port 9222, as WebView2 does on Windows (preview): VS Code's
+`Attach to the page (JavaScript)` works on both, and `[dev] Debugging:` and the
+session file's `debugEndpoints` name the port. Turn it off with
+`dotnet runic dev --no-debug-endpoint`. Rider's JavaScript debugger attaches to
+such a port too, but that is not verified yet; Visual Studio debugs the page on
+Windows only. On macOS the page has Safari's Web Inspector (Safari ▸ Develop)
+and no endpoint for IDE debuggers.
 <!--#endif -->
 
 ## What opens

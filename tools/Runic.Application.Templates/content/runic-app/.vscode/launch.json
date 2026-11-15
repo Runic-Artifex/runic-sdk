@@ -42,9 +42,24 @@
       "console": "internalConsole"
     },
     {
-      // Windows: the page's JavaScript debugger. The port is the one in WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS, which
-      // obj/runic/dev-session.json lists under debugEndpoints when dotnet runic dev starts the Window with it (-e).
-      "name": "Attach to WebView2 (Windows)",
+      // Linux (preview): the Window with WebKit's inspector on the port that dotnet runic dev --no-window's CDP adapter
+      // attaches to, for "Window + WebKitGTK (Linux)".
+      "name": "Window with JavaScript debugging (Linux)",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/RunicWindowApp",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "WEBKIT_INSPECTOR_SERVER": "127.0.0.1:9223"
+      },
+      "console": "internalConsole"
+    },
+    {
+      // The page's JavaScript debugger on port 9222, which obj/runic/dev-session.json lists under debugEndpoints.
+      // Windows: WebView2's DevTools Protocol endpoint (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS). Linux (preview): dotnet
+      // runic dev's CDP adapter for WebKitGTK, for a Window that dev starts, or "Window with JavaScript debugging (Linux)".
+      "name": "Attach to the page (JavaScript)",
       "type": "msedge",
       "request": "attach",
       "port": 9222,
@@ -58,7 +73,13 @@
   "compounds": [
     {
       "name": "Window + WebView2 (Windows)",
-      "configurations": ["Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"],
+      "configurations": ["Window with WebView2 debugging (Windows)", "Attach to the page (JavaScript)"],
+      "preLaunchTask": "runic: window",
+      "stopAll": true
+    },
+    {
+      "name": "Window + WebKitGTK (Linux)",
+      "configurations": ["Window with JavaScript debugging (Linux)", "Attach to the page (JavaScript)"],
       "preLaunchTask": "runic: window",
       "stopAll": true
     }

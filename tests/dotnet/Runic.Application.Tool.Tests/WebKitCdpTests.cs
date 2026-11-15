@@ -367,6 +367,9 @@ internal sealed partial class ToolTests
         Equal(("127.0.0.1", 40000), (defaults.InspectorHost, defaults.InspectorPort));
         SequenceEqual([new KeyValuePair<string, string>("WEBKIT_INSPECTOR_SERVER", "127.0.0.1:40000")], defaults.WindowEnvironment);
         Equal(new DevSession.DebugEndpoint("webkitgtk", "webkit-remote-inspector", "inspector://127.0.0.1:40000"), defaults.Endpoints.Single());
+        // --no-window: the IDE starts the Window with the template's fixed address.
+        WebKitDebugging.Plan noWindow = Decide(options with { StartWindow = false });
+        Equal(("127.0.0.1", 9223, "127.0.0.1:9223"), (noWindow.InspectorHost, noWindow.InspectorPort, noWindow.WindowEnvironment.Single().Value));
 
         // Nothing off Linux, for CS-WebUI, or with --no-debug-endpoint.
         Equal(WebKitDebugging.Plan.None, Decide(options, linux: false));

@@ -16,6 +16,8 @@ const { values: a } = parseArgs({ options: {
   jsdebug: { type: "string" }, port: { type: "string" }, frontend: { type: "string" }, only: { type: "string" }, trace: { type: "string" },
   // A C# file of the application: appending a comment makes dotnet watch (no hot reload under dev) restart the Window.
   "restart-file": { type: "string" },
+  // The attach configuration's type: pwa-chrome ("chrome" in launch.json) or pwa-msedge with useWebView, the template's.
+  type: { type: "string", default: "pwa-chrome" },
 } });
 const app = `${a.frontend}/src/App.tsx`;
 const counterPage = `${a.frontend}/src/pages/CounterPage.tsx`;
@@ -61,12 +63,12 @@ class Dap {
   }
   noEvent(event, ms) { return this.wait(event, () => true, ms).then(() => false, () => true); }
 }
-const init = { clientID: "runic-webkit-cdp", adapterID: "pwa-chrome", linesStartAt1: true, columnsStartAt1: true, pathFormat: "path", supportsVariableType: true, supportsStartDebuggingRequest: true };
+const init = { clientID: "runic-webkit-cdp", adapterID: a.type, linesStartAt1: true, columnsStartAt1: true, pathFormat: "path", supportsVariableType: true, supportsStartDebuggingRequest: true };
 
 await new Promise(r => setTimeout(r, 700));
 const parent = new Dap("parent"); await parent.connect();
 // Every page js-debug attaches to is a child session (startDebugging), as in VS Code. The first is the scenarios'
-// session; a later one (the Window restarted) gets the breakpoints VS Code would send it and becomes the current one.
+// session; a later one (another Window) gets the breakpoints VS Code would send it. A Window restart keeps the session.
 const breakpoints = new Map();
 let current = null;
 let children = 0;
@@ -76,16 +78,16 @@ const childP = new Promise(res => { parent.handlers.startDebugging = async req =
   if (children === 1) { res({ c: child, attached }); return; }
   for (const [path, bps] of breakpoints) await child.send("setBreakpoints", { source: { path }, breakpoints: bps });
   await child.send("configurationDone"); await attached;
-  log(`child session ${children} attached (a new page)`);
-  current = child;
+  log(`child session ${children} attached (another page)`);
 }; });
 await parent.send("initialize", init);
-const pa = parent.send("attach", { type: "pwa-chrome", request: "attach", name: "webkit-cdp", port: Number(a.port), address: "127.0.0.1", webRoot: a.frontend, timeout: 15000, ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
+const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
+  ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
 await parent.wait("initialized").catch(() => {}); await parent.send("configurationDone"); await pa;
 const first = await childP;
 current = first.c;
 await current.send("configurationDone"); await first.attached;
-// The current child session: scenarios use `c`, which follows a new page after a Window restart.
+// The scenarios' child session.
 const c = new Proxy({}, { get: (_, name) => { const v = current[name]; return typeof v === "function" ? v.bind(current) : v; } });
 log("attached");
 

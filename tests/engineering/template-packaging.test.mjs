@@ -549,7 +549,7 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     assert.equal(launch.version, "0.2.0");
     const configuration = Object.fromEntries(launch.configurations.map(entry => [entry.name, entry]));
     assert.deepEqual(Object.keys(configuration), ["Window", "Attach to the Window (dotnet runic dev)",
-      "Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"]);
+      "Window with WebView2 debugging (Windows)", "Window with JavaScript debugging (Linux)", "Attach to the page (JavaScript)"]);
     for (const entry of [...launch.configurations, ...launch.compounds])
       if (entry.preLaunchTask) assert.ok(task[entry.preLaunchTask], `${entry.name}: ${entry.preLaunchTask}`);
     assert.ok(launch.configurations.every(entry => entry.type === "coreclr" || entry.type === "msedge"));
@@ -564,17 +564,25 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     const webView2Window = configuration["Window with WebView2 debugging (Windows)"];
     assert.equal(webView2Window.program, `${program}.exe`);
     assert.deepEqual(webView2Window.env, webView2Profile.environmentVariables);
-    const webView2 = configuration["Attach to WebView2 (Windows)"];
+    // One attach configuration on WebView2's port for both: on Linux dotnet runic dev's CDP adapter serves 9222 (#1029).
+    const webView2 = configuration["Attach to the page (JavaScript)"];
     assert.deepEqual([webView2.type, webView2.request, webView2.port, webView2.useWebView], ["msedge", "attach", port, true]);
+    // Linux: the Window with WebKit's inspector on the port dotnet runic dev --no-window's adapter attaches to.
+    const webKitWindow = configuration["Window with JavaScript debugging (Linux)"];
+    assert.equal(webKitWindow.program, program);
+    assert.deepEqual(webKitWindow.env, { ...environment, WEBKIT_INSPECTOR_SERVER: "127.0.0.1:9223" });
     assert.deepEqual(launch.compounds, [{
-      name: "Window + WebView2 (Windows)", configurations: ["Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"],
+      name: "Window + WebView2 (Windows)", configurations: ["Window with WebView2 debugging (Windows)", "Attach to the page (JavaScript)"],
+      preLaunchTask: "runic: window", stopAll: true,
+    }, {
+      name: "Window + WebKitGTK (Linux)", configurations: ["Window with JavaScript debugging (Linux)", "Attach to the page (JavaScript)"],
       preLaunchTask: "runic: window", stopAll: true,
     }]);
     // The endpoint that tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs proves against WebView2 on
     // Windows with the same rules, and that dev's session file lists: js-debug's attach reaches it and selects the page.
     const debugging = webView2Debugging(JSON.parse(plain["Properties/launchSettings.json"]), launch);
     assert.deepEqual([debugging.profileName, debugging.port, debugging.endpoint, debugging.windowConfiguration, debugging.attach.name],
-      ["Ide.App (WebView2 script debugging)", port, cdpEndpoint(port), "Window with WebView2 debugging (Windows)", "Attach to WebView2 (Windows)"]);
+      ["Ide.App (WebView2 script debugging)", port, cdpEndpoint(port), "Window with WebView2 debugging (Windows)", "Attach to the page (JavaScript)"]);
     assert.equal(cdpEndpoint(port), `http://127.0.0.1:${port}/`);
     assert.ok(attachSelects(webView2, { type: "page", url: "http://127.0.0.1:49152/index.html" }));
     assert.ok(!attachSelects(webView2, { type: "service_worker", url: "http://127.0.0.1:49152/sw.js" }));

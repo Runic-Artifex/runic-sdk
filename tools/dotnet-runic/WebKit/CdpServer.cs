@@ -156,6 +156,7 @@ internal sealed class CdpServer : IAsyncDisposable
 
     private async Task RouteAsync(HttpRequestHead request, NetworkStream stream)
     {
+        CdpTrace.Write("http>", $"{request.Method} {request.Path} Host={request.Header("Host")} Origin={request.Header("Origin")}");
         if (!CdpRequestPolicy.Allows(request.Header("Host"), request.Header("Origin"), _allowedOrigins))
         {
             await WriteAsync(stream, 403, "text/plain", "Forbidden: the Runic CDP adapter accepts loopback requests without an Origin.").ConfigureAwait(false);

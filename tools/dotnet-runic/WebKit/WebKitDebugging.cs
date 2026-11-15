@@ -23,6 +23,13 @@ internal static class WebKitDebugging
     /// <summary>The CDP port, WebView2's in the template, so one attach configuration serves Windows and Linux (D066.39).</summary>
     internal const int DefaultCdpPort = 9222;
 
+    /// <summary>
+    /// WebKit's inspector port under <c>--no-window</c>: the IDE starts the Window, and its launch configuration can only
+    /// name a fixed address (the template's "Window with JavaScript debugging (Linux)"). A Window that dev starts gets a
+    /// free port instead, so several applications under dev do not collide.
+    /// </summary>
+    internal const int NoWindowInspectorPort = 9223;
+
     internal const string Engine = "webkitgtk";
     internal const string CdpProtocol = "cdp";
     internal const string RemoteInspectorProtocol = "webkit-remote-inspector";
@@ -103,7 +110,7 @@ internal static class WebKitDebugging
                  $"inspector://{fallbackAddress} instead: open it in GNOME Web while no debugger is attached."]);
         }
 
-        int inspectorPort = reservePort();
+        int inspectorPort = options.StartWindow ? reservePort() : NoWindowInspectorPort;
         string inspectorAddress = $"127.0.0.1:{inspectorPort.ToString(CultureInfo.InvariantCulture)}";
         return new Plan(true, "127.0.0.1", inspectorPort, [new(InspectorServerVariable, inspectorAddress)],
             [new(Engine, RemoteInspectorProtocol, $"inspector://{inspectorAddress}")], []);
@@ -122,7 +129,7 @@ internal static class WebKitDebugging
             ? ""
             : $" Port {DefaultCdpPort.ToString(CultureInfo.InvariantCulture)} was taken: set \"port\": {port.ToString(CultureInfo.InvariantCulture)} in your attach configuration.";
         return $"[dev] Debugging: JavaScript debuggers attach to the Window at http://127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)}/ " +
-            $"(preview: WebKitGTK through Runic's CDP adapter; VS Code \"type\": \"chrome\", \"request\": \"attach\").{moved}{inspector}";
+            $"(preview: WebKitGTK through Runic's CDP adapter; in VS Code an attach configuration with \"port\": {port.ToString(CultureInfo.InvariantCulture)}).{moved}{inspector}";
     }
 
     internal const string CdpUnavailableHint =
