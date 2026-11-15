@@ -105,6 +105,8 @@ export const platformRules = [
     "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests", "tests/fixtures/application/wpf-bridge-consumer", "examples/wpf-*",
     "tests/native/wpf-ui-automation",
     "tools/Runic.Application.Views.Codegen*", "tools/Runic.Application.Views.Dev", "examples/notes-reactive-views",
+    // The Bridge shape analyzers run in the compile of every Views project, the WPF ones included.
+    "packages/dotnet/Runic.Application.Views.Analyzers*",
     "packages/dotnet/Runic.Platform.Administration.Windows", "tests/dotnet/Runic.Platform.Administration.Windows.Tests",
     "examples/dotnet/Runic.Administration.Console", "tools/Runic.Administration.Verify"] },
   // The macOS providers and the App Sandbox fixtures (the sandboxed Runic Desktop app runs in the macOS packaging leg).

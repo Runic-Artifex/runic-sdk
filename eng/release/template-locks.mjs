@@ -3,8 +3,9 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 
-// Every template frontend installs the shared Views runtime and its framework binding.
-// The Vite frontends also install the Runic Vite plugin; Angular builds with the Angular CLI.
+// Every template frontend installs the shared Views runtime and its framework binding, and the Runic Vite plugin.
+// The keys are the frontends' builds: angular builds with the Angular CLI, angular-vite (--angular-build vite) with
+// Vite and the Analog Angular plugin.
 export const templateRunicPackages = Object.freeze({
   react: ['@runic-artifex/react', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   vue: ['@runic-artifex/vue', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
@@ -13,9 +14,11 @@ export const templateRunicPackages = Object.freeze({
   // development client there (runic({ html: false })), as it does for Angular (runicDevSessionProxy()).
   sveltekit: ['@runic-artifex/svelte', '@runic-artifex/sveltekit', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   angular: ['@runic-artifex/angular', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
+  'angular-vite': ['@runic-artifex/angular', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
 });
 
-// The runic-app template keeps one frontend directory per --frontend choice.
+// The runic-app template keeps one frontend directory per frontend build. angular-vite adds its package.json, lock
+// files and Vite files to the Angular frontend's sources.
 export const templateFrontends = Object.freeze(Object.keys(templateRunicPackages));
 export const templateFrontendDirectory = framework => `runic-app/frontends/${framework}`;
 
@@ -25,8 +28,8 @@ export const isIndependentRunicPackage = name =>
   name === '@runic-artifex/vite-plugin-runic-translations' || name.startsWith('@runic-artifex/translations');
 
 // --translations replaces the package.json and lock files of the Vite frontends (runic-app/translations/<framework>):
-// their page compiles the catalog with the Translations Vite plugin. Angular imports the ESM the .NET build writes and
-// keeps its frontend's files.
+// their page compiles the catalog with the Translations Vite plugin. The Angular CLI imports the ESM the .NET build
+// writes and keeps its frontend's files.
 export const templateTranslationsVitePlugin = '@runic-artifex/vite-plugin-runic-translations';
 export const templateTranslationsFrontends = Object.freeze(templateFrontends.filter(framework => framework !== 'angular'));
 
@@ -41,7 +44,13 @@ export const templateLockDirectories = Object.freeze([
     framework, translations: true, directory: `runic-app/translations/${framework}`,
     runicPackages: templateRunicPackages[framework], independentPackages: [templateTranslationsVitePlugin],
   })),
-].map(entry => Object.freeze(entry)));
+].map(entry => Object.freeze({ ...entry, pnpmWorkspace: templatePnpmWorkspace(entry) })));
+
+// The pnpm-workspace.yaml whose overrides a pnpm lock resolves with, if it exists: pnpm reads none from package.json.
+// Both Angular builds install @angular/build, so they share the Angular frontend's.
+function templatePnpmWorkspace({ framework, directory }) {
+  return framework.startsWith('angular') ? 'runic-app/frontends/angular/pnpm-workspace.yaml' : `${directory}/pnpm-workspace.yaml`;
+}
 
 export function readNpmCandidates(archives) {
   return new Map(archives.map(archive => {

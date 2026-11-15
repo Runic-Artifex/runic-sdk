@@ -94,6 +94,8 @@ hash, and the browser enforces both policies. The policy in `Program.cs` also
 allows the style attribute of SvelteKit's route announcer by its hash
 (`style-src-attr`); update that hash when an update of `@sveltejs/kit` changes
 the announcer.
+<!--#elif (angularVite) -->
+The policy allows inline styles, which Angular adds for component styles.
 <!--#elif (frontend == "angular") -->
 The policy allows inline styles, which Angular adds for component styles, and
 `angular.json` turns off critical-CSS inlining, which would need an inline
@@ -115,7 +117,7 @@ the template's default Runic Desktop host (create the project without
 The page names no host: `Frontend/src/app.html`, SvelteKit's page template,
 loads `webui.js` and `runic-views.js`, which the host package copies into
 `www/` from its own Views client.
-<!--#elif (frontend == "angular") -->
+<!--#elif (angularCli) -->
 The page names no host: `Frontend/src/index.html` loads `webui.js` and
 `runic-views.js`, which the host package copies into `www/` from its own
 Views client.
@@ -155,6 +157,56 @@ clipboard on the default Runic Desktop host (create the project without
 [Runic.Application.Views.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views.Desktop/README.md).
 <!--#endif -->
 
+<!--#if (angularVite) -->
+## The Angular build
+
+Vite builds, serves and tests this Angular frontend, through the Analog
+Angular plugin (`@analogjs/vite-plugin-angular`), with the Runic Vite plugin
+the other frontends use. The project was created with `--angular-build vite`;
+the template's default is the Angular CLI. What Vite adds:
+
+<!--#if (translations) -->
+- **The Translations development loop**: `runicTranslations()` compiles the
+  catalog, and a message you edit, add or remove under `dotnet runic dev`
+  reaches the page without a build. See [Translate it](#translate-it).
+<!--#else -->
+- **The Translations development loop**: with the
+  [Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk/tree/v0.11.0/packages/web/vite-plugin-runic-translations)
+  (`dotnet new runic-app --frontend angular --angular-build vite --translations`
+  sets it up), a message you edit under `dotnet runic dev` reaches the page
+  without a build.
+<!--#endif -->
+- **The Runic DevTools dock**: `runic()` adds the Runic development client to
+  the page while Vite serves it. Install `@vitejs/devtools` and register
+  `DevTools()` in `vite.config.ts` for the dock's Connection, Views and Last
+  failure cards.
+- **The component build target**: `runic({ component: { entry: "src/component.ts" } })`
+  also builds the page as a component for trusted component mode
+  ([Component build target](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/web/vite-plugin-runic/README.md#component-build-target)).
+  The Angular CLI cannot build one. A component touches no document
+  stylesheet, so its Angular components must keep their styles out of the
+  document's head, for example with `ViewEncapsulation.ShadowDom`.
+
+`angular({ liveReload: true })` updates an edited component template in place;
+other edits reload the page, which shows the state of the .NET Window again.
+`vite build` compiles the components ahead of time but checks no types, so the
+`build` and `typecheck` scripts run `ngc --noEmit` with `tsconfig.app.json`,
+templates included (`strictTemplates`). The frontend test runs on Vitest with
+the same plugin instead of `ng test`. The Analog plugin is a third-party
+package that uses the Angular compiler's internal API: update Angular and
+`@analogjs/vite-plugin-angular` together, to versions that support each other.
+
+<!--#elif (angularCli) -->
+## The Angular build
+
+The Angular CLI builds, serves and tests this Angular frontend (`ng build`,
+`ng serve`, `ng test`). It runs no Vite plugins, so `proxy.conf.mjs` and
+`src/main.ts` connect the Runic development tools instead. A project created
+with `--angular-build vite` builds with Vite and the Analog Angular plugin
+instead, and adds the Translations development loop, the Runic DevTools dock
+and the component build target.
+
+<!--#endif -->
 ## Project layout
 
 | Path | Purpose |
@@ -198,13 +250,17 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#endif -->
 <!--#if (frontend == "sveltekit") -->
 | `Frontend/vite.config.ts` | Configures SvelteKit with `runicAdapter()` from `@runic-artifex/sveltekit`, which prerenders the page into `Frontend/dist`, the folder the build copies to `www/`. SvelteKit writes relative URLs, so the page runs below any path. `runic({ html: false })` from `@runic-artifex/vite-plugin-runic` serves the Runic development client that `src/hooks.client.ts` loads, and lets `dotnet runic dev` confirm that the development server on its port is the one it started. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
+<!--#elif (angularVite) -->
+| `Frontend/vite.config.ts` | Builds and serves the page with Vite: `angular()` from `@analogjs/vite-plugin-angular` compiles the components ahead of time, and `runic()` from `@runic-artifex/vite-plugin-runic` adds the Runic development client and lets `dotnet runic dev` confirm that the development server on its port is the one it started. See [The Angular build](#the-angular-build). |
 <!--#elif (frontend == "angular") -->
 | `Frontend/proxy.conf.mjs` | The development server's proxy configuration (`proxyConfig` in `angular.json`). `runicDevSessionProxy()` from `@runic-artifex/vite-plugin-runic` lets `dotnet runic dev` confirm that the development server on its port is the one it started, and receives the reports of the Runic development client, which `src/main.ts` loads under `ng serve` only: Views failures, with their exception type, message and stack, appear in the `ng serve` terminal. Add your own proxy entries next to it. |
 <!--#else -->
 | `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics, and so that `dotnet runic dev` can confirm that the development server on its port is the one it started. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
 <!--#endif -->
 | `Frontend/src/generated` | Typed clients generated from the ViewModels, and a typed mock for each (`*.mock.ts`). They import the shared `@runic-artifex/views` runtime. |
-<!--#if (frontend == "angular") -->
+<!--#if (angularVite) -->
+| `Frontend/src/app/app.spec.ts`, `Frontend/vitest.config.ts` | A frontend test: Vitest runs the page against the generated mocks, with the Vite configuration; `src/test-setup.ts` starts Angular's test environment. See [Test it](#test-it). |
+<!--#elif (frontend == "angular") -->
 | `Frontend/src/app/app.spec.ts` | A frontend test: `ng test` runs the page with Vitest against the generated mocks. See [Test it](#test-it). |
 <!--#elif (frontend == "sveltekit") -->
 | `Frontend/src/routes/page.test.ts`, `Frontend/vitest.config.ts` | A frontend test: Vitest runs the page against the generated mocks, with the Vite configuration and Svelte's browser build. See [Test it](#test-it). |
@@ -235,7 +291,7 @@ clean checkout.
 The page's Runic Translations modules are not committed either: `.gitignore`
 excludes `Frontend/.runic`, and `dotnet build` writes them from the catalog, so
 build once before the type check or the frontend test.
-<!--#elif (frontend != "angular") -->
+<!--#elif (!angularCli) -->
 The frontend's `build` script runs `vite build` before the type check, so
 modules that a Vite plugin generates exist when the check runs on a clean
 checkout.

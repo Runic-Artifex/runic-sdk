@@ -99,6 +99,17 @@ The inspector runs only where the development client does: never in a build.
 (`runic.views.inspector` in the
 [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)).
 
+### Bridge calls in the Performance panel
+
+With `@runic-artifex/views` 0.20 or later the development client also listens
+to the Bridge-call channel (`runic.views.calls`). It draws each settled call
+on a **Bridge calls** track in a **Runic** track group of a Chromium engine's
+Performance recording (turn on "Show custom tracks"), and its listening turns
+on the async stack segments that lead from a reply back to the click that made
+the call. See
+[Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
+The dock does not show these calls yet.
+
 ## Source map and open in editor
 
 The Bridge generator writes a development source map beside its generated C#
@@ -244,6 +255,12 @@ page, where they run in the page instance, and build the component with
 a component's.
 
 ## SvelteKit and Angular
+
+Angular built with Vite, through the Analog Angular plugin
+(`plugins: [angular({ liveReload: true }), runic()]`), uses `runic()` as the other
+frameworks do (`dotnet new runic-app --frontend angular --angular-build vite`);
+see the [Angular package](../angular/README.md#building-with-the-angular-cli-or-vite).
+What follows covers SvelteKit and the Angular CLI.
 
 SvelteKit renders its pages itself and warns about every plugin with a
 `transformIndexHtml` hook. Use `runic({ html: false })`: the plugin then has no
