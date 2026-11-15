@@ -139,6 +139,13 @@ Since 0.11, `dev` takes these options of `dotnet run` and `dotnet build`:
 | `-e`, `--environment NAME=VALUE` | Sets an environment variable for the Window process, as `dotnet run -e` does; repeat it for several. It wins over the defaults in the table below, so `-e DOTNET_ENVIRONMENT=Staging` runs the Window in `Staging`. The variables `dev` uses to describe the development server (`RUNIC_APPLICATION_*` below) are refused with `RAPPDEV1012`, and a value without `=` with `RAPPDEV1011`. `--dry-run` prints the names, never the values. |
 | `-v`, `--verbosity <level>` | Passes the MSBuild verbosity (`q[uiet]`, `m[inimal]`, `n[ormal]`, `d[etailed]` or `diag[nostic]`) to the restore, the build and `dotnet watch`. |
 
+Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-pages-javascript-on-linux-preview)):
+
+| Option | Effect |
+| --- | --- |
+| `--no-debug-endpoint` | Opens neither WebKit's remote inspector for the Window nor Runic's CDP adapter on port 9222. |
+| `--webkit-inspector` | Opens WebKit's own Web Inspector over HTTP for a browser instead of the CDP adapter, on WebKitGTK 2.54.3 or later; on an older WebKitGTK, `dev` opens the `inspector://` server and the adapter as usual and says why. |
+
 `dev` passes these variables to the Window process:
 
 | Variable | Value |
@@ -596,6 +603,49 @@ the Window showed the page from the Vite server and a frontend edit live.
 The C# Dev Kit `dotnet` configuration, Rider, Visual Studio and Windows
 (WebView2) are not yet verified by hand.
 
+## Debug the page's JavaScript on Linux (preview)
+
+Since 0.21, `dotnet runic dev` on Linux serves the Window's WebKitGTK pages to
+JavaScript debuggers on port 9222, as WebView2 does on Windows (D066.39). VS
+Code's JavaScript debugger attaches with an attach configuration on that port,
+such as the template's `Attach to the page (JavaScript)` (`"type": "msedge"` with
+`"useWebView": true`, or `"type": "chrome"`), and `webRoot` set to the frontend
+directory: breakpoints in the frontend's sources through the development
+server's source maps, stepping, conditions, logpoints, exceptions, the console,
+the page's variables and hover all work, also after a reload or an HMR update.
+When `dotnet watch` restarts the Window after a C# edit, the debugger stays
+attached and continues on the new Window's page with its breakpoints.
+
+How it works: `dev` starts the Window with `WEBKIT_INSPECTOR_SERVER` on a free
+loopback port (9223 with `--no-window`, which the template's
+`Window with JavaScript debugging (Linux)` configuration sets), the server
+WebKitGTK's own remote inspector clients use. Runic's CDP adapter in `dev`
+translates between the Chrome DevTools Protocol and the WebKit Inspector
+Protocol, and connects to WebKit only while a debugger is attached; in between,
+GNOME Web can open the `inspector://` address that the `[dev] Debugging:` line
+names. The session file lists both under `debugEndpoints`.
+
+- **Security.** The endpoint listens on 127.0.0.1 only and refuses (403) a
+  request whose `Host` is not an IP address or `localhost` and any request with
+  an `Origin`, so a web page in a browser cannot reach it; its WebSocket paths
+  carry a random secret that only `/json/version` and `/json/list` reveal. It runs
+  only under `dotnet runic dev` and adds nothing to the application.
+- **Not supported.** Setting a variable to an object or a `const` (WebKit has no
+  `setVariableValue`; a primitive is assigned in the frame), restarting a frame,
+  and the Elements, Network and other panels of a Chrome DevTools window on this
+  endpoint. Rider's JavaScript debugger attaches to such ports too; it is not
+  verified yet. On macOS, WKWebView offers Safari's Web Inspector only.
+- **WebKit's own inspector.** WebKit serves either its socket for the adapter or
+  its Web Inspector over HTTP (`WEBKIT_INSPECTOR_HTTP_SERVER`), never both.
+  `--webkit-inspector` opens the HTTP one instead of the adapter, for any browser,
+  on WebKitGTK 2.54.3 or later; older WebKitGTK lets any web page reach it
+  (WebKit bug 330602). A `WEBKIT_INSPECTOR_SERVER` or `WEBKIT_INSPECTOR_HTTP_SERVER`
+  that you set with `-e` or in `dev`'s environment is used as it is.
+- **Port 9222 taken.** `dev` uses another free port and says which; change the
+  attach configuration's `port`. `--no-debug-endpoint` opens nothing.
+- **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
+  traffic, which contains the page's data, to that file.
+
 ## IDE contract
 
 Since 0.20, `dev` gives IDEs, tasks and extensions stable lines to wait on and a
@@ -729,10 +779,13 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     }
   },
   "debugEndpoints": [
-    // Debugging endpoints of the page's engine that the Window's environment enables. dev enables none itself; on
-    // Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222 (or the variable in dev's own
-    // environment) lists WebView2's Chrome DevTools Protocol endpoint.
+    // Debugging endpoints of the page's engine. On Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222
+    // (or the variable in dev's own environment) lists WebView2's Chrome DevTools Protocol endpoint:
     { "engine": "webview2", "protocol": "cdp", "url": "http://127.0.0.1:9222/" }
+    // On Linux since 0.21, dev's CDP adapter for the WebKitGTK Window and WebKit's inspector:// server
+    // ("protocol": "webkit-inspector" for WebKit's HTTP inspector with --webkit-inspector):
+    // { "engine": "webkitgtk", "protocol": "cdp", "url": "http://127.0.0.1:9222/" },
+    // { "engine": "webkitgtk", "protocol": "webkit-remote-inspector", "url": "inspector://127.0.0.1:41653" }
   ],
   "unavailableDebugEndpoints": [
     // Endpoints the environment asks for but the engine does not open, with the reason. Since 0.20, an elevated dev
@@ -745,7 +798,9 @@ same project write the same file; the later one wins. `--dry-run` writes none.
 Paths are absolute. Later versions of the schema only add properties, so a
 reader ignores properties it doesn't know; a change that removes or changes one
 gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
-`unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`.
+`unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
+added the `webkitgtk` endpoints and, with `--no-window` on Linux,
+`WEBKIT_INSPECTOR_SERVER` in `window.environment`.
 
 WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
 (and its other `WEBVIEW2_*` variables and current-user policy overrides) in an
