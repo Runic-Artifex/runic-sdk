@@ -8,13 +8,16 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
   exports: Record<string, string | Record<string, string>>;
 };
 
-test("every entry resolves for import, require-style default and types", () => {
+test("every entry resolves for types, the development build, import and require-style default", () => {
   for (const [entry, target] of Object.entries(manifest.exports)) {
     if (entry === "./package.json") continue;
     assert.equal(typeof target, "object", entry);
     const conditions = target as Record<string, string>;
-    assert.deepEqual(Object.keys(conditions), ["types", "import", "default"], `${entry} conditions`);
+    // `development` before `import` and `default`, which resolve the production build; one set of declarations.
+    assert.deepEqual(Object.keys(conditions), ["types", "development", "import", "default"], `${entry} conditions`);
     assert.equal(conditions["default"], conditions["import"], `${entry}: default is the ESM file`);
+    assert.equal(conditions["development"], conditions["default"]!.replace("./dist/", "./dist/development/"), `${entry}: development build`);
+    assert.equal(conditions["types"], conditions["default"]!.replace(/\.js$/, ".d.ts"), `${entry}: types`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
     [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./component", "./mock", "./experimental", "./package.json"]);
@@ -33,7 +36,8 @@ test("binding and generator APIs are not in the application entries; graduated A
   for (const name of Object.keys(experimental)) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   const bindings = await import("@runic-artifex/views/bindings");
   assert.deepEqual(Object.keys(bindings).sort(), [
-    "checkKeepAlive", "defaultKeepAlive", "isViewClient", "missingViewMessage", "reportMissingView", "viewSourceIdentity", "viewSourcePreview",
+    "checkKeepAlive", "defaultKeepAlive", "isViewClient", "missingViewMessage", "reportMissingView", "translationsTextRevision", "viewSourceIdentity",
+    "viewSourcePreview",
   ]);
 
   const mock = await import("@runic-artifex/views/mock");

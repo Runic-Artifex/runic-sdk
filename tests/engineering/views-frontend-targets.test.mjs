@@ -37,6 +37,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { sep } from "node:path";
 appendFileSync("../commands.log", "build\\n");
 appendFileSync("../host.log", (process.env.RUNIC_APPLICATION_HOST ?? "unset") + "\\n");
+appendFileSync("../node-env.log", (process.env.NODE_ENV || "unset") + "\\n");
 if (existsSync("emits-dist")) {
   // As Vite does: empty dist/, then write the page and an asset named by its content hash.
   const asset = existsSync("asset-name") ? readFileSync("asset-name", "utf8").trim() : "index-1";
@@ -525,6 +526,30 @@ test("RunicApplicationHost and the build environment are part of the build state
   assert.equal(builds(build(app, { properties: host, env: flavor("debug") })), 1,
     "Debug builds again after Release replaced dist/ with another build state.");
   assert.equal(builds(build(app, { properties: host, env: flavor("debug") })), 0);
+});
+
+// #975: Bun's bundler resolves the development build of @runic-artifex/views unless NODE_ENV is production, so an
+// optimized build (Release, dotnet publish) runs the frontend build with NODE_ENV=production; Debug leaves it unset, and
+// a NODE_ENV the environment sets wins.
+test("an optimized build runs the frontend build with NODE_ENV=production unless the environment sets NODE_ENV", () => {
+  const app = fixture("node-env", { name: "app", private: true });
+  const nodeEnv = () => readFileSync(join(app.project, "node-env.log"), "utf8").trim().split("\n").at(-1);
+  const host = "RunicApplicationHost=cswebui";
+  const release = [host, "Configuration=Release", "Optimize=true"];
+  let result = build(app, { properties: [host], env: { NODE_ENV: "" } });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(builds(result), 1);
+  assert.equal(nodeEnv(), "unset", "Debug leaves NODE_ENV unset: the development build");
+  assert.equal(lastHost(app), "cswebui");
+  result = build(app, { properties: release, env: { NODE_ENV: "" } });
+  assert.equal(builds(result), 1, "Release builds again: the frontend build receives another NODE_ENV");
+  assert.equal(nodeEnv(), "production");
+  assert.equal(lastHost(app), "cswebui", "The host is still passed");
+  assert.equal(builds(build(app, { properties: release, env: { NODE_ENV: "" } })), 0);
+  assert.equal(builds(build(app, { properties: [host], env: { NODE_ENV: "" } })), 1, "Debug builds again after Release");
+  assert.equal(nodeEnv(), "unset");
+  assert.equal(builds(build(app, { properties: release, env: { NODE_ENV: "development" } })), 1);
+  assert.equal(nodeEnv(), "development", "A NODE_ENV the environment sets wins");
 });
 
 // #236: www/ kept the assets of earlier builds, so a page built for another host kept being served.

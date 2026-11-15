@@ -6,6 +6,10 @@ import {
   onWindowLocale, resolveText, subscribeText, textLocale, textVersion, windowLocale, type FieldError, type RunicInstance,
   type TextReference,
 } from "@runic-artifex/views";
+// `translationsTextRevision`: the revision of the Runic Translations text-change channel, which the Translations Vite
+// plugin increments during development when it updates an edited message in place; always 0 in the production build of
+// views, which has no channel.
+import { translationsTextRevision } from "@runic-artifex/views/bindings";
 import { contextInstance, instanceOf } from "./instance.js";
 
 export interface InjectTextOptions {
@@ -64,15 +68,6 @@ export function injectWindowLocale({ injector: provided }: InjectTextOptions = {
 }
 
 const textLocales = new WeakMap<RunicInstance, Signal<string | undefined>>();
-
-// The revision of the Runic Translations text-change channel, which the Translations Vite plugin increments during
-// development when it updates an edited message in place (`configureTranslatedText` then notifies text subscribers).
-// 0 without the channel, as in production.
-const translationsTextKey = Symbol.for("runic.translations.text");
-function translationsTextRevision(): number {
-  const revision = ((globalThis as Record<symbol, unknown>)[translationsTextKey] as { revision?: unknown } | undefined)?.revision;
-  return typeof revision === "number" ? revision : 0;
-}
 
 /**
  * The locale that text is shown in (`textLocale`: the instance's Translations locale, which follows the window's

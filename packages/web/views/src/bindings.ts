@@ -4,3 +4,4 @@
 export { isViewClient, viewSourceIdentity, viewSourcePreview } from "./controller.js";
 export { checkKeepAlive, defaultKeepAlive } from "./keep-alive.js";
 export { missingViewMessage, reportMissingView } from "./missing-view.js";
+export { translationsTextRevision } from "./translated-text.js";
