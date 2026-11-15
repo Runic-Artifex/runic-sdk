@@ -762,9 +762,11 @@ class RouteEntry {
   }
 }
 
-// Each connected presentation by its `dispose` function, which a generated client exposes unchanged, so the keep-alive
-// pool can refresh a client it hands over without an API on the client.
-const presentationRefreshes = new WeakMap<object, () => void>();
+// Each connected presentation's refresh, on its `dispose` function, which a generated client exposes unchanged, so the
+// keep-alive pool can refresh a client it hands over without an API on the client. A registered symbol, so a pool of
+// another copy of this package finds it: the development and the production build (README, "Development build") or a
+// framework binding that resolved another copy than the generated client.
+const refreshKey = Symbol.for("runic.views.presentation-refresh");
 
 /**
  * Reads the state of a kept client's route again before a binding takes it over (README, "Client lifetime"). .NET
@@ -774,7 +776,8 @@ const presentationRefreshes = new WeakMap<object, () => void>();
  * A client that is not a connected presentation of this package, such as a test double, is left alone.
  */
 export function refreshPresentation(client: ViewClient): void {
-  presentationRefreshes.get(client.dispose)?.();
+  const refresh = (client.dispose as unknown as Record<symbol, unknown> | undefined)?.[refreshKey];
+  if (typeof refresh === "function") (refresh as () => void)();
 }
 
 /**
@@ -793,17 +796,17 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
   }
 }
 
-// Reports a failure that leaves a client method once, with its route, then rethrows it; and ends the call on the
-// development Bridge-call channel when a reader listens (calls.ts).
+// Reports a failure that leaves a client method once, with its route, then rethrows it; and, in the development build,
+// ends the call on the development Bridge-call channel when a reader listens (calls.ts).
 async function observed<T>(slots: Slots, route: string, run: () => Promise<T>, call?: BridgeCall): Promise<T> {
   let result: T;
-  try { result = await withinCall(call, run); }
+  try { result = await (__RUNIC_DEVELOPMENT__ ? withinCall(call, run) : run()); }
   catch (error) {
-    if (call !== undefined) endCall(call, true, error);
+    if (__RUNIC_DEVELOPMENT__ && call !== undefined) endCall(call, true, error);
     emitErrorDiagnostic(slots, error, route);
     throw error;
   }
-  if (call !== undefined) endCall(call, false);
+  if (__RUNIC_DEVELOPMENT__ && call !== undefined) endCall(call, false);
   return result;
 }
 
@@ -838,8 +841,9 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     return runtime.request(message, route);
   };
   const { contract } = options;
-  // Starts a call on the development Bridge-call channel; `undefined` without a reader.
-  const begin = (kind: Parameters<typeof beginCall>[1], wire: string, member: string) => beginCall(slots, kind, wire, route, contract, member);
+  // Starts a call on the development Bridge-call channel; `undefined` without a reader, and always in the production build.
+  const begin = (kind: Parameters<typeof beginCall>[1], wire: string, member: string) =>
+    __RUNIC_DEVELOPMENT__ ? beginCall(slots, kind, wire, route, contract, member) : undefined;
   // The interaction handlers are created before `open`, so a reconnect can send them with it.
   if (options.interactions) lease.interactions = options.interactions({
     route, slots, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
@@ -890,14 +894,14 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
   flushNotifications();
   lease.current = entry.exposed;
   lease.epoch = entry.exposedEpoch;
-  presentationRefreshes.set(dispose, () => { if (live() && runtime.connected) void entry.recover(); });
+  Object.defineProperty(dispose, refreshKey, { value: () => { if (live() && runtime.connected) void entry.recover(); } });
 
   // A command waits for the handlers registered before it, so a request it raises can reach them.
   const ready = async () => { await lease.interactions?.ready(); await lease.requests?.ready(); };
   const current = () => lease.current as TState;
   // A call that ran resolves once the route reached its revision; a failed one rejects after that.
   const settled = async (reply: Reply, call?: BridgeCall): Promise<void> => {
-    noteReply(call, reply);
+    if (__RUNIC_DEVELOPMENT__) noteReply(call, reply);
     if (reply.revision !== undefined) await entry.waitForRevision(reply.revision);
     // The caller reads the state of every frame that arrived before the reply.
     flushNotifications();
@@ -956,7 +960,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         if (!reply.ok && reply.error?.reason === "splice-base") {
           // The producer no longer has the splice's base, and admitted nothing. A later edit carries a newer value;
           // otherwise this value is sent in full as a new edit.
-          if (entry.latestEdit(member) !== edit) { noteCancelled(call, "superseded"); flushNotifications(); return current(); }
+          if (entry.latestEdit(member) !== edit) { if (__RUNIC_DEVELOPMENT__) noteCancelled(call, "superseded"); flushNotifications(); return current(); }
           edit = entry.beginEdit(member, value);
           reply = await request({ kind: "set", route, member, value, edit });
         }
@@ -966,7 +970,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         entry.endEdit(member, edit, undefined);
         return failure(reply, "The value could not be set.", call);
       }
-      if (reply.released === true) { entry.endEdit(member, edit, undefined); noteReply(call, reply); return current(); }
+      if (reply.released === true) { entry.endEdit(member, edit, undefined); if (__RUNIC_DEVELOPMENT__) noteReply(call, reply); return current(); }
       // A superseded edit leaves the overlay to the newer edit, which is still on its way.
       if (reply["superseded"] !== true) entry.endEdit(member, edit, reply.revision);
       await settled(reply, call);
@@ -1018,7 +1022,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     }, call); },
     can: (member, input) => { const call = begin("can", "can", member); return observed(slots, route, async () => {
       const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) });
-      noteReply(call, reply);
+      if (__RUNIC_DEVELOPMENT__) noteReply(call, reply);
       if (!reply.ok) throw replyError(reply.error, route, "The command availability could not be read.");
       return reply["value"] as boolean;
     }, call); },
@@ -1095,7 +1099,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         request: async message => {
           supported();
           const call = begin("query", message["kind"] as string, member);
-          if (call === undefined) return request(message);
+          if (!__RUNIC_DEVELOPMENT__ || call === undefined) return request(message);
           return traced(call, async () => { const reply = await request(message); noteReply(call, reply); return reply; });
         },
         setQuery: query => { const call = begin("query", "query-set", member); return observed(slots, route, async () => {

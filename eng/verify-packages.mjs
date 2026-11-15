@@ -582,6 +582,25 @@ console.log('Packed npm consumers passed.');
 `,
   );
   run("node", ["consumer.mjs"], frontend);
+  // The development build of @runic-artifex/views (the `development` export condition, views README "Development
+  // build") runs the same consumer, and the production build contains none of its development tools.
+  run("node", ["--conditions=development", "consumer.mjs"], frontend);
+  writeFileSync(join(frontend, "views-builds.mjs"), `
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+const development = process.execArgv.includes('--conditions=development');
+const manifest = JSON.parse(readFileSync(new URL(import.meta.resolve('@runic-artifex/views/package.json')), 'utf8'));
+for (const entry of Object.keys(manifest.exports).filter(entry => entry !== './package.json')) {
+  const url = import.meta.resolve('@runic-artifex/views' + entry.slice(1));
+  assert.equal(url.includes('/dist/development/'), development, url);
+  assert.ok(existsSync(new URL(url.replace('/dist/development/', '/dist/').replace(/\\.js$/, '.d.ts'))), url + ' has no declarations');
+  if (!development) for (const marker of ['runic.views.calls', 'createTask', 'runic.translations.text'])
+    assert.ok(!readFileSync(new URL(url), 'utf8').includes(marker), url + ' contains ' + marker);
+}
+console.log('The ' + (development ? 'development' : 'production') + ' build of @runic-artifex/views resolves.');
+`);
+  run("node", ["views-builds.mjs"], frontend);
+  run("node", ["--conditions=development", "views-builds.mjs"], frontend);
   verifyViewsTranslationsVite(frontend, env);
   writeFileSync(
     join(frontend, "consumer.ts"),

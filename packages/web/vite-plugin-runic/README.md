@@ -108,7 +108,10 @@ Performance recording (turn on "Show custom tracks"), and its listening turns
 on the async stack segments that lead from a reply back to the click that made
 the call. See
 [Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
-The dock does not show these calls yet.
+The dock does not show these calls yet. Only the
+[development build](../views/README.md#development-build) of
+`@runic-artifex/views` reports calls, which `vite dev` resolves; `vite build`
+bundles the production build, which has no reporting code.
 
 ## Component build target
 

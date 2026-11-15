@@ -3852,8 +3852,9 @@ one that calls it shows the new text wherever it renders again on a language
 switch.
 Text computed once, such as a `const` in a script, a SvelteKit `load` result or
 a `document.title` set in code, keeps its old text until it is computed again,
-as after a language switch. In production nothing writes the channel: the
-listener `configureTranslatedText` adds never runs, and the helpers behave as
+as after a language switch. Only the development build of
+`@runic-artifex/views`, which `vite dev` resolves, follows the channel: a
+production bundle neither creates nor reads it, and the helpers behave as
 before. The Angular CLI's dev server (`ng serve`) runs no Vite
 plugins: a page built with it imports the ESM of the .NET build and reloads
 after `dotnet build`. In-place updates in Angular need Angular built with Vite
