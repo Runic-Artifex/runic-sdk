@@ -1258,6 +1258,27 @@ internal sealed partial class ToolTests
         True(catalog.Commands.Single(command => command.Name == "support").Help.Hidden, "support is a hidden alias.");
     }
 
+    // #1001: helpUri anchors are the check identifiers; every documented check has its heading under "Doctor checks".
+    [Test, DisplayName("every doctor check has a section in the dotnet-runic README")]
+    public void DoctorChecksHaveReadmeSections()
+    {
+        string root = RepositoryRoot();
+        string readme = File.ReadAllText(Path.Combine(root, "tools", "dotnet-runic", "README.md")).ReplaceLineEndings("\n");
+        string reference = readme[readme.IndexOf("\n### Doctor checks\n", StringComparison.Ordinal)..readme.IndexOf("\n## Debug the Window in your IDE\n", StringComparison.Ordinal)];
+        string[] headings = [.. System.Text.RegularExpressions.Regex.Matches(reference, @"^#### `([a-z0-9-]+)`$", System.Text.RegularExpressions.RegexOptions.Multiline)
+            .Select(match => match.Groups[1].Value)];
+        // The identifiers the "Doctor JSON output" section lists, and every literal check name in doctor's sources.
+        string[] documented = [.. System.Text.RegularExpressions.Regex.Matches(
+            readme[readme.IndexOf("Check identifiers are", StringComparison.Ordinal)..readme.IndexOf("\n### Doctor checks\n", StringComparison.Ordinal)],
+            "`([a-z0-9]+(?:-[a-z0-9]+)*)`").Select(match => match.Groups[1].Value).Distinct()];
+        string sources = string.Concat(Directory.GetFiles(Path.Combine(root, "tools", "dotnet-runic"), "Doctor*.cs").Select(File.ReadAllText));
+        string[] named = [.. System.Text.RegularExpressions.Regex.Matches(sources, @"\b(?:Pass|Warn|Fail)\(\s*""([a-z0-9-]+)""")
+            .Select(match => match.Groups[1].Value).Distinct()];
+        foreach (string id in documented.Concat(named).Distinct())
+            True(headings.Contains(id, StringComparer.Ordinal), $"tools/dotnet-runic/README.md has no '#### `{id}`' heading under Doctor checks.");
+        Equal(headings.Length, headings.Distinct().Count());
+    }
+
     [Test, DisplayName("doctor JSON payload lists every check")]
     public void DoctorJsonListsChecks()
     {
@@ -1289,9 +1310,15 @@ internal sealed partial class ToolTests
         Equal(1, root.GetProperty("summary").GetProperty("failed").GetInt32());
         JsonElement[] checks = [.. root.GetProperty("checks").EnumerateArray()];
         Equal(3, checks.Length);
-        SequenceEqual(["id", "status", "message", "remediation"],
+        // helpUri was added in 0.20, after the original properties.
+        SequenceEqual(["id", "status", "message", "remediation", "helpUri"],
             checks[0].EnumerateObject().Select(property => property.Name).ToArray());
         Equal(JsonValueKind.Null, checks[0].GetProperty("remediation").ValueKind);
+        // #1001: each check links its section of the dotnet-runic README at this release.
+        string[] ids = ["views-window", "compatibility-set", "lock-file"];
+        SequenceEqual(
+            ids.Select(id => RunicReleaseLinks.SourceUrl + "tools/dotnet-runic/README.md#" + id).ToArray(),
+            checks.Select(check => check.GetProperty("helpUri").GetString()!).ToArray());
         SequenceEqual(["pass", "warn", "fail"], checks.Select(check => check.GetProperty("status").GetString()!).ToArray());
         Equal("lock-file", checks[2].GetProperty("id").GetString());
 
