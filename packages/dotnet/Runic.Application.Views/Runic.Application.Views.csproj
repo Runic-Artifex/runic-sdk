@@ -48,6 +48,14 @@
     <!-- DesktopActivationContext of IRunicWindowHost.OpenWindowAsync: a contracts-only package that every host adapter
          references already. -->
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- The RUNICBRIDGE shape analyzers and their code fixes ship in this package's analyzers/ folder, and its
+         buildTransitive targets add them to projects that reference it through a host adapter (docs/diagnostics.md). -->
+    <ProjectReference Include="../Runic.Application.Views.Analyzers/Runic.Application.Views.Analyzers.csproj" ReferenceOutputAssembly="false" PrivateAssets="all"
+        UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
+    <ProjectReference Include="../Runic.Application.Views.Analyzers.CodeFixes/Runic.Application.Views.Analyzers.CodeFixes.csproj" ReferenceOutputAssembly="false" PrivateAssets="all"
+        UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
+    <None Include="../Runic.Application.Views.Analyzers/bin/$(Configuration)/netstandard2.0/Runic.Application.Views.Analyzers.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+    <None Include="../Runic.Application.Views.Analyzers.CodeFixes/bin/$(Configuration)/netstandard2.0/Runic.Application.Views.Analyzers.CodeFixes.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.targets" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/*.dll"

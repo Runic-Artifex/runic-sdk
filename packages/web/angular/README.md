@@ -695,7 +695,8 @@ follow a language switch. Connect the page's Translations runtime once with
 `injectWindowLocale()` reads the window's locale. `textLocaleSignal()` is the
 locale that text is shown in, as one signal for the page that needs no injection
 context; when the locale resolver reads it, templates that call `m.*()`, also
-`OnPush` ones, render again on a language switch:
+`OnPush` ones, render again on a language switch, and during development also
+when an edited message updates in place (it then notifies with the same locale):
 
 ```ts
 // main.ts
@@ -704,6 +705,14 @@ configureLocaleResolver(() => textLocale() ?? locale.getLocale());
 configureTranslatedText({ ...locale, resolve, direction: localeDirection });
 syncDocumentLocale();   // <html lang dir>
 ```
+
+**Edited messages during development.** The Angular CLI's dev server
+(`ng serve`) runs no Vite plugins, so a page served by it imports the ESM of the
+.NET build and reloads after `dotnet build`. To see an edited message update in
+place, with the page's state kept, build Angular with Vite
+(`@analogjs/vite-plugin-angular`) and the Translations Vite plugin 0.12.0 or
+later. An added, removed or renamed message, or changed inputs or markup, still
+reload the page ([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
 
 The pipe formats again only
 when its value, fallback or the language changed. Under server rendering, call
