@@ -2756,7 +2756,8 @@ static class BridgeDiagnosticCodes
     /// project's source that the generator would report, with the same message. With --analyzer-warnings the
     /// generator leaves them to the analyzer (Diagnostics.AnalyzerAssembly).
     /// </summary>
-    internal static readonly HashSet<string> AnalyzerWarnings = [MissingView, OperationRetirement, PresentationScoped, OperationClose];
+    internal static readonly HashSet<string> AnalyzerWarnings = [MissingView, OperationRetirement, PresentationScoped, OperationClose,
+        UnrecognizedValidation, CollectionWithoutKey, RowObjectCopy];
     /// <summary>A RunicBlob is read from the page: a command input, an interaction result or a checked field.</summary>
     internal const string Blob = "RUNICBRIDGE065";
     /// <summary>A [RunicRegionCollection] is not on a get-only NavigationSelection property, or names an unsupported content type.</summary>

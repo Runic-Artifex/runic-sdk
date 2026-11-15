@@ -116,6 +116,35 @@ public sealed class BridgeSurfaceAnalyzerTests
             Describe(diagnostics));
     }
 
+    // A value whose DTO reports errors gives the client its validation state too.
+    [Test]
+    public async Task ReportsTheValidationMemberOfAValidatedValue()
+    {
+        var diagnostics = await AnalyzeAsync(AppSource("public Form Draft { get; } = new(); public string Validation { get; } = \"\";", """
+            public sealed class Form : INotifyDataErrorInfo
+            {
+                public event System.EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+                public bool HasErrors => false;
+                public System.Collections.IEnumerable GetErrors(string? propertyName) => System.Array.Empty<object>();
+                public string Name { get; } = "";
+            }
+            """));
+        Require(diagnostics.Length == 1 && diagnostics[0].Id == "RUNICBRIDGE004"
+            && Message(diagnostics[0]) == "MainViewModel.Validation: validation is reserved for generated validation state. Alias the model property.",
+            Describe(diagnostics));
+    }
+
+    [Test]
+    public async Task ReportsViewRequestsWithTheSameName()
+    {
+        var diagnostics = await AnalyzeAsync(AppSource("""
+                public ViewRequest<string> Focus { get; } = null!;
+                public ViewRequest<string> focus { get; } = null!;
+            """));
+        Require(diagnostics.Length == 1 && diagnostics[0].Id == "RUNICBRIDGE004"
+            && Message(diagnostics[0]) == "MainViewModel.focus: duplicate generated view request name 'focus'.", Describe(diagnostics));
+    }
+
     [Test]
     public async Task ReportsInteractionsWithTheSameName()
     {

@@ -130,7 +130,8 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 CheckCommandKey(command, sources[command]);
             }
             var state = StateProperties(declared, commands, sources);
-            if (CheckWireNames(state)) CheckClientSurface(state, commands, sources, declared);
+            var values = CheckValues(commands, sources, declared, state);
+            if (CheckWireNames(state)) CheckClientSurface(state, commands, sources, declared, values);
             CheckCommandAttributes(commands, sources, BridgeSymbols.RunicFailure, BridgeRules.Failure, "RunicFailure");
             CheckCommandAttributes(commands, sources, BridgeSymbols.RunicCommandKey, BridgeRules.CommandKey, "RunicCommandKey");
             CheckReactiveAdapter(commands, declared);
@@ -304,11 +305,7 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
                     return;
                 }
             }
-            // A value property. Only the setter is certain from the source: whether the rows are DTOs is the generator's.
-            if (publicSetter && BridgeSymbols.InheritedAttribute(property, BridgeSymbols.RunicCollection) is not null && HasDataRows(type))
-                Report(context, BridgeRules.Collection, property,
-                    $"{Name}.{property.Name}: RunicCollection requires a nonnullable, read-only collection of nonnullable DTO rows.",
-                    BridgeRules.FixPrivateSetter);
+            // A value property: its value graph and a [RunicCollection]'s rows and key are checked in CheckValues.
             // A bool may be a command's availability, which is not a state property.
             if (type.SpecialType != SpecialType.System_Boolean
                 && BridgeSymbols.InheritedAttribute(property, BridgeSymbols.RunicAppendOnlyText) is not null
@@ -316,16 +313,6 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
                 Report(context, BridgeRules.State, property,
                     $"{Name}.{property.Name}: RunicAppendOnlyText requires a read-only string state property.",
                     type.SpecialType == SpecialType.System_String ? BridgeRules.FixPrivateSetter : null);
-        }
-
-        // A collection whose rows are not ViewModels: the generator would report ViewModel rows with another message.
-        private bool HasDataRows(ITypeSymbol type)
-        {
-            var item = type is IArrayTypeSymbol array ? array.ElementType
-                : BridgeSymbols.SelfBasesAndInterfaces(type).OfType<INamedTypeSymbol>()
-                    .FirstOrDefault(candidate => BridgeSymbols.Is(candidate, symbols.Enumerable))?.TypeArguments[0];
-            return item is not null && item.SpecialType != SpecialType.System_Object && item.TypeKind != TypeKind.TypeParameter
-                && !BridgeSymbols.Implements(item, symbols.NotifyPropertyChanged);
         }
 
         // Program.cs, the RunicFailure and RunicCommandKey loops, for the ViewModel's own members: either belongs to a
@@ -395,11 +382,14 @@ public sealed partial class BridgeShapeAnalyzer : DiagnosticAnalyzer
             && !IsRunicIgnored(property))
         .ToArray();
 
+    // BridgeDtoContract.IsRunicIgnored: [RunicIgnore] on the property or one it overrides, and the ValidationContext of a
+    // ReactiveUI.Validation IValidatableViewModel, which the validation projection represents.
     private static bool IsRunicIgnored(IPropertySymbol property)
     {
         for (IPropertySymbol? current = property; current is not null; current = current.OverriddenProperty)
             if (BridgeSymbols.Attribute(current, BridgeSymbols.RunicIgnore) is not null) return true;
-        return false;
+        return property.Name == "ValidationContext" && property.ContainingType.AllInterfaces.Any(candidate => BridgeSymbols.MetadataName(candidate)
+            is "ReactiveUI.Validation.Abstractions.IValidatableViewModel" or "ReactiveUI.Validation.Reactive.Abstractions.IValidatableViewModel");
     }
 
     // CommunityToolkitConventions.CommandName: [RelayCommand] turns Save, SaveAsync or OnSave into SaveCommand.
