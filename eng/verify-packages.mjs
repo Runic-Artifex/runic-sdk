@@ -452,6 +452,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
   }
   if (!packageName || packageName === viewsTranslations) verifyViewsTranslationsConsumer(directory, env);
   if (!packageName || packageName === "Runic.Application.Views") verifyViewsAnalyzerConsumers(directory, env);
+  if (!packageName || packageName === "Runic.Platform") verifyPlatformAnalyzerConsumers(directory, env);
   if (packageName) {
     console.log(`Packed ${packageName} consumer passed.`);
     return;
@@ -692,6 +693,45 @@ public sealed class MainViewModel : INotifyPropertyChanged
       // The generator's report ends with "See <link>"; the compiler's, the analyzer's, with "(<link>)".
       assert.ok(designTime ? !reports[0].includes(" See https://") : reports[0].includes(" See https://"),
         `The ${label} reported RUNICBRIDGE009 from the ${designTime ? "generator" : "analyzer"}: ${reports[0]}`);
+    }
+  }
+}
+
+// The RUNICPLAT analyzers of the packed Runic.Platform (#972), in a project that gets it only through Runic.Desktop and
+// in one that also references it directly: each loads them once and reports RUNICPLAT001 once, in a build and in a
+// design-time build like the IDE's. Runic.Desktop's dependency excludes analyzers, but project.assets.json does not
+// record that for a transitive package, and the SDK adds the analyzers of every package in it.
+function verifyPlatformAnalyzerConsumers(directory, env) {
+  const expected = "warning RUNICPLAT001: The DesktopMenuItem title 'file.new' looks like a command id";
+  for (const direct of [false, true]) {
+    const label = direct ? "direct" : "transitive";
+    const consumer = join(directory, `platform-analyzers-${label}`);
+    mkdirSync(consumer);
+    const references = ["Runic.Desktop", ...(direct ? ["Runic.Platform"] : [])]
+      .map(name => `<PackageReference Include="${name}" Version="${packageVersion(workspace, name)}"/>`).join("");
+    writeFileSync(join(consumer, "Consumer.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Library</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup><ItemGroup>${references}</ItemGroup></Project>`);
+    writeFileSync(join(consumer, "Menu.cs"), `using Runic.Platform;
+namespace AnalyzerConsumer;
+public static class Menu
+{
+    public static DesktopMenuItem NewWindow() => new("file.new", "New Window");
+}
+`);
+    run("dotnet", ["restore", "Consumer.csproj"], consumer, env);
+    const items = JSON.parse(execFileSync("dotnet", ["msbuild", "Consumer.csproj", "-t:ResolveLockFileAnalyzers", "-getItem:Analyzer"],
+      { cwd: consumer, encoding: "utf8", env: { ...process.env, ...env } })).Items.Analyzer.map(item => item.Filename);
+    for (const name of ["Runic.Platform.Analyzers", "Runic.Platform.Analyzers.CodeFixes"])
+      assert.equal(items.filter(item => item === name).length, 1, `The ${label} consumer loads ${name} ${items.filter(item => item === name).length} times: ${items.join(", ")}`);
+    for (const designTime of [true, false]) {
+      const build = `${label} ${designTime ? "design-time build" : "build"}`;
+      // --no-incremental: the warning does not stop the build, so a second build would skip the compiler.
+      const result = spawnSync("dotnet", ["build", "Consumer.csproj", "--no-restore", "--no-incremental", "--configuration", configuration,
+        ...(designTime ? ["-p:DesignTimeBuild=true"] : [])], { cwd: consumer, encoding: "utf8", env: { ...process.env, ...env } });
+      assert.equal(result.status, 0, `The ${build} of the Platform analyzer consumer failed:\n${result.stdout}`);
+      // The warnings as the build logs them, before the summary that repeats them.
+      const reports = `${result.stdout}${result.stderr}`.split(/\r?\nBuild (?:FAILED|succeeded)\./)[0].split(/\r?\n/)
+        .filter(line => line.includes(expected));
+      assert.equal(reports.length, 1, `The ${build} reported RUNICPLAT001 ${reports.length} times:\n${result.stdout}`);
     }
   }
 }

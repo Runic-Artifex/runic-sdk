@@ -19,8 +19,9 @@ try {
     return url;
   });
   // RUNIC_SMOKE_MODE selects a page variant, such as the Angular frontend's `baseline` and `dispatch-probe` modes.
+  // WebUI answers `/` with a redirect to the start page that drops the query, so the variant names the page.
   if (process.env.RUNIC_SMOKE_MODE) {
-    const variant = new URL(url);
+    const variant = new URL("index.html", url);
     variant.searchParams.set("mode", process.env.RUNIC_SMOKE_MODE);
     url = variant.href;
   }
