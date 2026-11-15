@@ -8,7 +8,11 @@
 //      Target.attachToTarget session as js-debug's are, and the application's own argument is still in effect.
 //   2. `dotnet runic dev -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=…`: the session file lists the endpoint under
 //      debugEndpoints (#959), and the endpoint is the Window's page.
-// Run from the SDK root after a Release build of tools/dotnet-runic:
+// WebView2 ignores its WEBVIEW2_* variables and HKCU overrides in an elevated process (Runtime 150 and later; "Develop
+// secure WebView2 apps"), and GitHub's Windows runners run every step elevated. An elevated script therefore starts both
+// runs as the standard user RUNIC_TEST_UNELEVATED_USER (HostedWindows.Smoke --run-unelevated), as a developer's IDE
+// starts them.
+// Run from the SDK root after Release builds of tools/dotnet-runic and, when elevated, HostedWindows.Smoke:
 //   node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -44,7 +48,6 @@ const environment = { ...process.env, DEV_LIVE_ASSETS_BROWSER_ARGUMENTS: ownArgu
 for (const name of Object.keys(environment)) if (name.toUpperCase() === variable) delete environment[name];
 // The fixture writes what it received and its Desktop diagnostics to standard error (Program.cs).
 environment.DEV_LIVE_ASSETS_TRACE = "1";
-const executable = join(fixture, "bin/Release/net10.0/DevLiveAssets.exe");
 
 // Failure detail: the processes below `root` (a process ID, or every process of that file name with what runs below
 // it) with their command lines, the ports they listen on, each WebView2 browser process's user data folder and
@@ -84,49 +87,26 @@ async function describeTree(root) {
   }
 }
 
-// Diagnosis after a failed endpoint check, with DevLiveAssets.exe started directly (no dotnet run) and without the
-// application's own arguments: E1 the variable alone; E4 the same as the CI step's standard user, unelevated
-// (HostedWindows.Smoke --run-unelevated; the runner's steps run elevated); E5 the variable with
-// WEBVIEW2_USER_DATA_FOLDER, whether the loader applies any variable here; E6 no variable but the loader's documented
-// registry override, HKCU\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments for DevLiveAssets.exe.
-async function experiments() {
-  const base = { ...environment };
-  delete base.DEV_LIVE_ASSETS_BROWSER_ARGUMENTS;
-  const value = debugging.environment[variable];
-  const unelevated = join(root, "tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll");
-  const policy = "HKCU\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments";
-  const folder = join(process.env.RUNNER_TEMP ?? fixture, "wv2-diagnosis-user-data");
-  for (const [label, extra, probe, unelevatedRun, registry] of [
-    ["E1 variable only (elevated)", { [variable]: value }, port, false, false],
-    ["E4 variable only (unelevated)", { [variable]: value }, port, true, false],
-    ["E5 variable + WEBVIEW2_USER_DATA_FOLDER (elevated)", { [variable]: value, WEBVIEW2_USER_DATA_FOLDER: folder }, port, false, false],
-    ["E6 registry AdditionalBrowserArguments only (elevated)", {}, port + 2, false, true],
-  ]) {
-    if (unelevatedRun && (!process.env.RUNIC_TEST_UNELEVATED_USER || !existsSync(unelevated))) {
-      console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|${label}|skipped: no standard user or HostedWindows.Smoke build`);
-      continue;
-    }
-    if (registry) spawnSync("reg.exe", ["add", policy, "/v", "DevLiveAssets.exe", "/t", "REG_SZ", "/d", `--remote-debugging-port=${probe}`, "/f"], { stdio: "inherit" });
-    const [command, args] = unelevatedRun ? ["dotnet", [unelevated, "--run-unelevated", executable]] : [executable, []];
-    const child = spawn(command, args, { cwd: fixture, env: { ...base, ...extra }, stdio: ["ignore", "pipe", "pipe"] });
-    const started = { label, child, output: "" };
-    child.stdout.on("data", chunk => { started.output += chunk; });
-    child.stderr.on("data", chunk => { started.output += chunk; });
-    let open = false;
-    const deadline = Date.now() + scaled(12_000);
-    while (!open && Date.now() < deadline && child.exitCode === null) {
-      open = await answers(cdpEndpoint(probe));
-      if (!open) await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|${label}|${cdpEndpoint(probe)} ${open ? "answers" : "does not answer"}|` +
-      `${child.exitCode === null ? "running" : `exited ${child.exitCode}`}`);
-    console.log(`${await describeTree("DevLiveAssets.exe")}\noutput:\n${tail(started.output, 3000)}`);
-    await stop(started);
-    // The unelevated application is not below `child` (CreateProcessWithLogonW); only this script's fixture runs as DevLiveAssets.exe.
-    spawnSync("taskkill.exe", ["/IM", "DevLiveAssets.exe", "/T", "/F"], { stdio: "ignore", timeout: 10_000 });
-    if (registry) spawnSync("reg.exe", ["delete", policy, "/v", "DevLiveAssets.exe", "/f"], { stdio: "inherit" });
-    await waitFor(async () => !await answers(cdpEndpoint(probe)), { label: `${probe} to close`, timeout: 30_000 }).catch(() => {});
-  }
+// Elevated (net session succeeds only then): WebView2 would ignore the profile's variable, so the Window runs as the
+// standard user that the CI step creates, which may write the fixture's obj/ and Frontend/dist (dev --no-build builds
+// nothing). Its processes do not run below this one (CreateProcessWithLogonW).
+const elevated = spawnSync("net.exe", ["session"], { stdio: "ignore" }).status === 0;
+const standardUser = process.env.RUNIC_TEST_UNELEVATED_USER;
+const unelevated = join(root, "tests/native/Runic.Application.HostedWindows.Smoke/bin/Release/net10.0/Runic.Application.HostedWindows.Smoke.dll");
+if (elevated) {
+  if (!standardUser || !process.env.RUNIC_TEST_UNELEVATED_PASSWORD || !existsSync(unelevated))
+    throw new Error("This process is elevated, and WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated Window. " +
+      "Run the check unelevated, or set RUNIC_TEST_UNELEVATED_USER and RUNIC_TEST_UNELEVATED_PASSWORD to a standard user and " +
+      "build tests/native/Runic.Application.HostedWindows.Smoke in Release.");
+  const granted = spawnSync("icacls.exe", [fixture, "/grant", `${standardUser}:(OI)(CI)M`, "/T", "/C", "/Q"], { encoding: "utf8" });
+  if (granted.status !== 0) throw new Error(`icacls ${fixture} failed: ${granted.stdout}${granted.stderr}`);
+}
+// Stops what a run started, including the standard user's processes: the fixture's Window and every process whose
+// command line names the fixture's project (dotnet run, dotnet runic dev and the launcher).
+function stopFixtureProcesses() {
+  spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'DevLiveAssets.exe' -or $_.CommandLine -like '*DevLiveAssets.csproj*' } | " +
+    "ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F | Out-Null }"], { stdio: "ignore", timeout: 60_000 });
 }
 
 function run(command, args) {
@@ -143,7 +123,8 @@ function run(command, args) {
 
 // A started process with its output retained for failure detail.
 function start(label, args) {
-  const child = spawn("dotnet", args, { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
+  const command = elevated ? [unelevated, "--run-unelevated", "dotnet", ...args] : args;
+  const child = spawn("dotnet", command, { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
   const started = { label, child, output: "" };
   child.stdout.on("data", chunk => { started.output += chunk; });
   child.stderr.on("data", chunk => { started.output += chunk; });
@@ -153,6 +134,7 @@ const detailOf = started => () => `${started.label} ${started.child.exitCode ===
   tail(started.output);
 async function stop(started) {
   if (!started) return;
+  if (elevated) stopFixtureProcesses();
   killTree(started.child);
   await waitForExit(started.child, scaled(10_000));
 }
@@ -274,10 +256,7 @@ try {
     JSON.stringify(parseTemplateJson(launchSettings.replaceAll("RunicWindowApp", "DevLiveAssets")), null, 2));
   launched = start("dotnet run --launch-profile", ["run", "--project", project, "-c", "Release", "--no-build", "--launch-profile", profileName]);
   const page = await proveEndpoint(endpoint, launched).catch(async error => {
-    console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|launch profile failed: ${error.message.split("\n")[0]}`);
-    console.log(`${await describeTree(launched.child.pid)}\ndotnet run output:\n${tail(launched.output, 4000)}`);
-    await stop(launched);
-    await experiments();
+    console.log(`${await describeTree("DevLiveAssets.exe")}\ndotnet run output:\n${tail(launched.output, 4000)}`);
     throw error;
   });
   console.log(`WEBVIEW2_DEBUG_PROFILE_OK|${profileName}|${page.url}`);
@@ -285,7 +264,7 @@ try {
   await waitFor(async () => !await answers(endpoint), { label: `${endpoint} to close after the Window stopped`, timeout: 30_000 });
 
   // 2. dotnet runic dev with the profile's variable: the session file names the endpoint.
-  dev = start("dotnet runic dev", [tool, "dev", "--project", project, "-c", "Release", "--no-restore", "--no-dotnet-watch",
+  dev = start("dotnet runic dev", [tool, "dev", "--project", project, "-c", "Release", "--no-build", "--no-dotnet-watch",
     "-e", `${variable}=${debugging.environment[variable]}`]);
   await waitFor(() => {
     if (dev.child.exitCode !== null) throw new Error(`dotnet runic dev exited ${dev.child.exitCode}`);
@@ -296,8 +275,7 @@ try {
   if (session.state !== "ready" || JSON.stringify(session.debugEndpoints) !== JSON.stringify(expected))
     throw new Error(`dev-session.json: state ${session.state}, debugEndpoints ${JSON.stringify(session.debugEndpoints)}; expected ${JSON.stringify(expected)}`);
   const devPage = await proveEndpoint(session.debugEndpoints[0].url, dev).catch(async error => {
-    console.log(`WEBVIEW2_DEBUG_DIAGNOSIS|dotnet runic dev failed: ${error.message.split("\n")[0]}`);
-    console.log(`${await describeTree(dev.child.pid)}\ndev output:\n${tail(dev.output, 4000)}`);
+    console.log(`${await describeTree("DevLiveAssets.exe")}\ndev output:\n${tail(dev.output, 4000)}`);
     throw error;
   });
   console.log(`WEBVIEW2_DEBUG_DEV_SESSION_OK|${session.debugEndpoints[0].url}|${devPage.url}`);

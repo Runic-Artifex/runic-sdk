@@ -1407,11 +1407,12 @@ jobs:
           New-Item -ItemType Directory -Force tests/dotnet/Runic.Application.Views.Desktop.Tests/bin | Out-Null
           icacls tests/dotnet/Runic.Application.Views.Desktop.Tests/bin /grant 'runic-hosted:(OI)(CI)M' /C /Q | Out-Null
           icacls $env:GITHUB_WORKSPACE
-      # TEMPORARY (diagnosis): after the standard user exists, for the unelevated experiment; moves back below the IDE check.
       # D066.25 3: the template's WebView2 script-debugging launch profile in a real Runic Desktop Window, through dotnet run
       # --launch-profile and dotnet runic dev -e: the DevTools Protocol endpoint and page target that VS Code's js-debug
       # attaches to, Runtime.evaluate and Debugger.enable in the Window's page, the application's own browser arguments
       # next to the profile's, and the session file's debugEndpoints (tests/fixtures/application/dev-live-assets).
+      # WebView2 ignores WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in an elevated process, so the Window runs as the standard
+      # user above, as a developer's IDE starts it.
       - name: Check the template's WebView2 script-debugging profile
         if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash

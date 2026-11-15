@@ -573,7 +573,8 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   "debugEndpoints": [
     // Debugging endpoints of the page's engine that the Window's environment enables. dev enables none itself; on
     // Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222 (or the variable in dev's own
-    // environment) lists WebView2's Chrome DevTools Protocol endpoint.
+    // environment) lists WebView2's Chrome DevTools Protocol endpoint. WebView2 ignores the variable, and opens no
+    // endpoint, while the Window runs elevated.
     { "engine": "webview2", "protocol": "cdp", "url": "http://127.0.0.1:9222/" }
   ]
 }

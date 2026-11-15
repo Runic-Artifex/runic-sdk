@@ -50,7 +50,7 @@ the first one:
 | --- | --- |
 | `RunicWindowApp` | The Window with `DOTNET_ENVIRONMENT=Development`: the page's DevTools and detailed Bridge errors. |
 <!--#if (desktopHost) -->
-| `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). Not yet checked by hand on Windows. |
+| `RunicWindowApp (WebView2 script debugging)` | Windows: the same, with WebView2's DevTools Protocol on port 9222 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`, which WebView2 adds to Runic Desktop's own browser arguments), and in Visual Studio its JavaScript debugger on the page together with the .NET debugger (`jsWebView2Debugging`). WebView2 ignores the variable while the Window runs elevated (Runtime 150 and later), for example under an IDE started as administrator; start the IDE without elevation. |
 <!--#endif -->
 
 To debug the C# code while the page comes live from the
@@ -84,7 +84,7 @@ Kit is not needed. Choose a configuration in Run and Debug:
 | `Window` | Runs the `runic: dev --no-window` task until `[dev] Ready`, builds, and starts the Window under the debugger: the steps above. |
 | `Attach to the Window (dotnet runic dev)` | Runs the `runic: dev` task and attaches to the Window process you pick, the one `[dev] Window started: process <pid>` names. |
 <!--#if (desktopHost) -->
-| `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Not yet checked by hand on Windows. |
+| `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Elevated Windows get no port, as for the launch profile. |
 <!--#endif -->
 
 The tasks (Terminal > Run Task) are `runic: dev`, `runic: dev --no-window`,
