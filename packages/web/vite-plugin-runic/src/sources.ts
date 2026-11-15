@@ -7,7 +7,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { isLoopbackRequest, mayReadLocally, readLimitedBody, sameOrigin } from "./requests.js";
+import { isLoopbackRequest, mayRead, readLimitedBody, sameOrigin } from "./requests.js";
+import type { AccessList } from "./access.js";
 import { openPath, sourcesPath } from "./channel.js";
 import { parseMessageReference, type MessageReference } from "./translations-source.js";
 
@@ -20,6 +21,9 @@ const sourceMapFileName = "sources.json";
 // A larger file is not a map the generator wrote.
 const maximumMapBytes = 16 * 1024 * 1024;
 const maximumOpenRequestBytes = 4096;
+/** Why `/__runic/open` refuses a client of another machine. */
+export const openLoopbackOnly = "Opening in the editor works only from a page on the development machine (localhost): " +
+  "/__runic/open launches the editor there. runic({ allow }) and RUNIC_DEV_ALLOW admit other machines to Runic Inspect's data, not to this action.";
 
 /**
  * A source location: the absolute path of a local file and a 1-based line and column, as in a compiler diagnostic.
@@ -208,10 +212,12 @@ function answer(response: ServerResponse, status: number, body?: unknown, header
 }
 
 /** Answers `GET /__runic/sources` with the map, or 404 without one. */
-export function answerSources(request: IncomingMessage, response: ServerResponse, read: () => RunicSourceMap | undefined): void {
+export async function answerSources(
+  request: IncomingMessage, response: ServerResponse, read: () => RunicSourceMap | undefined, access?: AccessList,
+): Promise<void> {
   request.resume();
   if (request.method !== "GET" && request.method !== "HEAD") return answer(response, 405, undefined, { Allow: "GET, HEAD" });
-  if (!mayReadLocally(request)) return answer(response, 403);
+  if (!(await mayRead(request, access))) return answer(response, 403);
   const map = read();
   if (map === undefined) return answer(response, 404);
   answer(response, 200, map);
@@ -249,9 +255,14 @@ export async function answerOpen(
     request.resume();
     return answer(response, 405, undefined, { Allow: "POST" });
   }
-  if (!sameOrigin(request) || !isLoopbackRequest(request)) {
+  if (!sameOrigin(request)) {
     request.resume();
     return answer(response, 403);
+  }
+  // Loopback only, whatever the allow list says: the editor opens on this machine, not on the client's.
+  if (!isLoopbackRequest(request)) {
+    request.resume();
+    return answer(response, 403, { error: "loopback-only", detail: openLoopbackOnly });
   }
   const type = request.headers["content-type"];
   if (typeof type !== "string" || !/^application\/json\s*(?:;|$)/iu.test(type)) {

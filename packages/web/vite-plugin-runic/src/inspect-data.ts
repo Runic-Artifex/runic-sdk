@@ -133,6 +133,11 @@ export interface RunicInspectMessage {
   readonly source?: string;
   /** Where that text is defined, in its `.rmf2`/`.mf2` source. */
   readonly location?: RunicInspectLocation;
+  /**
+   * Whether the Translations dev server's in-page editing API can write the message in some locale, so the overview
+   * offers "Edit" (the API's `locales[].editable`). Absent when the API did not answer.
+   */
+  readonly editable?: boolean;
 }
 
 /** What Runic Inspect and `describe(element)` report for an element. */
@@ -183,8 +188,15 @@ export interface InspectInput {
   /** Each route's contract, from the Bridge calls seen. */
   readonly contracts: ReadonlyMap<string, string>;
   readonly sourceMap?: RunicSourceMap | undefined;
-  /** Why there is no source map, for the notes. */
-  readonly sourceMapStatus?: "missing" | "unavailable";
+  /** Why there is no source map, for the notes: `forbidden` when the server refused this client (another machine). */
+  readonly sourceMapStatus?: "missing" | "unavailable" | "forbidden";
+  /** `forbidden` when the server refused this client the handler analysis (`/__runic/handlers`). */
+  readonly handlersStatus?: "forbidden" | undefined;
+  /**
+   * Whether the page is opened from another machine than the development server's (its address is not localhost), so
+   * `/__runic/open`, which launches the editor on the development machine, refuses it.
+   */
+  readonly remote?: boolean | undefined;
   readonly component?: RunicInspectComponent | undefined;
   /** The element's event bindings in its components' source and the client calls they reach (handlers.ts). */
   readonly source?: SourceBindings | undefined;
@@ -195,8 +207,11 @@ export interface InspectInput {
    * `unsupported` (the page's Runic Translations has no markers), `none` (no Runic Translations text on the page).
    */
   readonly markerStatus?: "on" | "off" | "unsupported" | "none" | undefined;
-  /** Why the messages have no source locations: the Translations dev server's message API did not answer. */
-  readonly messageSourcesStatus?: "unavailable" | undefined;
+  /**
+   * Why the messages have no source locations: the Translations dev server's message API did not answer, or refused
+   * this client (`forbidden`).
+   */
+  readonly messageSourcesStatus?: "unavailable" | "forbidden" | undefined;
   /** Formats a text reference as the page shows it, with the locale it used. */
   readonly resolveText?: ((reference: TextReferenceLike) => { readonly text: string; readonly locale?: string } | undefined) | undefined;
 }
@@ -265,12 +280,13 @@ export function groupMessages(found: readonly { readonly message: unknown; reado
  * `GET /__runic-translations/message` reply (`{ message: { locales: [{ locale, text, source: { path, line, column } }] } }`).
  * A message without a locale (a runtime that does not tell it) takes the base locale, which the reply lists first.
  */
-export function messageSource(reply: unknown, message: MarkedMessage): Pick<RunicInspectMessage, "source" | "location"> {
+export function messageSource(reply: unknown, message: MarkedMessage): Pick<RunicInspectMessage, "source" | "location" | "editable"> {
   const locales = (reply as { message?: { locales?: unknown } } | null)?.message?.locales;
   if (!Array.isArray(locales)) return {};
+  const editable = { editable: locales.some((item) => (item as { editable?: unknown } | null)?.editable === true) };
   const entry = (locales.find((item) => (item as { locale?: unknown } | null)?.locale === message.locale)
     ?? (message.locale === "" ? locales[0] : undefined)) as { text?: unknown; source?: unknown } | undefined;
-  if (entry === undefined || entry === null) return {};
+  if (entry === undefined || entry === null) return editable;
   const source = entry.source as { path?: unknown; line?: unknown; column?: unknown } | null | undefined;
   const valid = typeof source?.path === "string" && source.path.length > 0
     && Number.isSafeInteger(source.line) && (source.line as number) > 0;
@@ -284,6 +300,7 @@ export function messageSource(reply: unknown, message: MarkedMessage): Pick<Runi
         message: { catalog: message.catalog, key: message.key, locale: (entry as { locale?: string }).locale ?? message.locale },
       },
     } : {}),
+    ...editable,
   };
 }
 
@@ -578,10 +595,20 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
   }
 
   const notes: string[] = [];
+  const allowHint = "to use Runic Inspect from another machine, list it or its network in runic({ allow }) or RUNIC_DEV_ALLOW on the development server.";
   if (input.sourceMapStatus === "missing") {
     notes.push("No Bridge source map, so no C# locations: build the .NET project (`dotnet runic dev` passes the map to Vite), or check runic({ sourceMap }).");
   } else if (input.sourceMapStatus === "unavailable") {
     notes.push("This development server does not serve the Bridge source map (/__runic/sources), so no C# locations.");
+  } else if (input.sourceMapStatus === "forbidden") {
+    notes.push(`The development server refused this machine the Bridge source map (403), so no C# locations: ${allowHint}`);
+  }
+  if (input.handlersStatus === "forbidden") {
+    notes.push(`The development server refused this machine the handler analysis (/__runic/handlers, 403): ${allowHint}`);
+  }
+  if (input.remote === true) {
+    notes.push("This page is opened from another machine: editor links show where things are, but do not open them. " +
+      "/__runic/open launches the editor on the development machine and answers its own pages (localhost) only.");
   }
   const external = input.source?.external ?? [];
   if (input.element.interactive && input.learned.length === 0 && sourceCommands.length === 0) {
@@ -605,7 +632,10 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
       notes.push("No message keys for m.*() calls: they need @runic-artifex/vite-plugin-runic-translations 0.12 or later under vite dev.");
     }
   }
-  if (input.messageSourcesStatus === "unavailable" && messages.some((message) => message.location === undefined)) {
+  if (input.messageSourcesStatus === "forbidden") {
+    notes.push("The Translations dev server refused this machine its message API (403), so no .rmf2 locations and no editing: " +
+      "start the dev server with RUNIC_DEV_ALLOW listing this machine or its network (or runicTranslations({ inPageEditing: { allow } })).");
+  } else if (input.messageSourcesStatus === "unavailable" && messages.some((message) => message.location === undefined)) {
     notes.push("No .rmf2 locations: the Translations dev server's message API (/__runic-translations/message, plugin 0.12 or later in project mode with inPageEditing) did not answer.");
   }
 

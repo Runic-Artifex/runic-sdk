@@ -1,6 +1,8 @@
-// Guards of the development server's endpoints: same-origin pages of this machine.
+// Guards of the development server's endpoints: same-origin pages of this machine, and for the data Runic Inspect reads,
+// of the hosts and networks the allow list admits (access.ts).
 
 import type { IncomingMessage } from "node:http";
+import { isLoopbackAddress, loopbackOnly, type AccessList } from "./access.js";
 
 /**
  * Whether a request comes from a page of this server: a browser sends `Origin` with every POST, and a cross-site
@@ -22,10 +24,7 @@ export function sameOrigin(request: IncomingMessage): boolean {
 
 /** Whether a request comes from this machine: a loopback peer address. */
 export function isLoopbackRequest(request: IncomingMessage): boolean {
-  const address = request.socket?.remoteAddress;
-  if (typeof address !== "string") return false;
-  const ipv4 = address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
-  return address === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(ipv4);
+  return isLoopbackAddress(request.socket?.remoteAddress);
 }
 
 /** The body as UTF-8, or undefined once it exceeds `limit` bytes; the rest is drained so that the answer reaches the client. */
@@ -55,13 +54,14 @@ export function readLimitedBody(request: IncomingMessage, limit: number): Promis
 }
 
 /**
- * Whether a GET may read development data (the source map, the handler analysis): a request of this machine, and not a page of another origin. A browser marks a
+ * Whether a GET may read development data (the source map, the handler analysis): not a page of another origin, and
+ * a client of this machine or one the allow list admits (`runic({ allow })`, `RUNIC_DEV_ALLOW`). A browser marks a
  * cross-origin fetch with `Sec-Fetch-Site` and `Origin`; neither is required, so that a tool such as `curl` reads it.
  */
-export function mayReadLocally(request: IncomingMessage): boolean {
+export async function mayRead(request: IncomingMessage, access: AccessList = loopbackOnly): Promise<boolean> {
   const site = request.headers["sec-fetch-site"];
   if (site !== undefined && site !== "same-origin" && site !== "none") return false;
   const origin = request.headers.origin;
   if (origin !== undefined && !sameOrigin(request)) return false;
-  return isLoopbackRequest(request);
+  return access.allowsRequest(request);
 }

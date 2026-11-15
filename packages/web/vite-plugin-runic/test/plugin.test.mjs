@@ -838,6 +838,8 @@ await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect-edit.js", "plugin/inspect-edit");
+await load("dist/inspect-editor.js", "plugin/inspect-editor");
 await load("dist/inspect-handlers.js", "plugin/inspect-handlers");
 await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
@@ -922,6 +924,8 @@ await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
+await load("dist/inspect-edit.js", "plugin/inspect-edit");
+await load("dist/inspect-editor.js", "plugin/inspect-editor");
 await load("dist/inspect-handlers.js", "plugin/inspect-handlers");
 await load("dist/inspect.js", "plugin/inspect");
 // virtual:runic/client selects the HMR channel before the client evaluates.
