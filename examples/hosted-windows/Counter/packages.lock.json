@@ -30,13 +30,13 @@
         "type": "Direct",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "zMQ+45Q2w5g5mpbxEIbeX0METhXASVDGvLBtuuji4J46S7Z47dqxunVX9ahrqIGLomlpRWiHbIeZtybVMIl/6g=="
+        "contentHash": "wZg7TuzBgc3qNoPjcB4TzmX5VEkOBjvKQAXRbRYTb8hwQXAhwnjB4DOSHH2g/q6BnggXxjTlLxUCEJqhl32nPw=="
       },
       "Runic.Translations.Build": {
         "type": "Direct",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "cgD8Aytk+7wuoRvjEkzMQqAMKP9I7kIZ414ceEMm/Ew5aTKlnzE8A8he+TCWGjztNHZPGa95mbjYL6LsoKvMPQ=="
+        "contentHash": "UjkBRfHCQ8egmX34BYDS+izbrruP7LEskg5upHENg+zUwSJugBYDs93zvZKtDrrvoEDvSbFOw8tfbmWPhvfZpw=="
       },
       "ReactiveUI.Primitives.Core": {
         "type": "Transitive",

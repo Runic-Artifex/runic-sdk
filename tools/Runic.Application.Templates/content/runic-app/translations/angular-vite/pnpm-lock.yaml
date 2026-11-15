@@ -1519,7 +1519,7 @@ packages:
     resolution: {integrity: sha512-ZJ1M4vhwcZht7oWuJDl4nYsfk90M1aSZw17VeffLOekLvmLVKNLrtzfjp8E8383l27edktMvl6iuUBPiKvqw+g==}
 
   '@runic-artifex/vite-plugin-runic-translations@0.12.0':
-    resolution: {integrity: sha512-S/roRvGtZ4403rB62vXr1ffr9e34C3opfXuGN1xj90hpjrLuHM66HHUW8xUnMLtvwl4C2vYtiuskTMmVMhMx8g==}
+    resolution: {integrity: sha512-bW6SbCrKKhlldfXuqkwr4KBWL+bQLMDkeJqRPTtdoaWBicysHrjhhaDU2TbxSE+yWw7CpZ1QylSdmVa8PW0nmg==}
     engines: {node: ^24.18.0 || ^26.0.0}
     peerDependencies:
       vite: 8.3.4
