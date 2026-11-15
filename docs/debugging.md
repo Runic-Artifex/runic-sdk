@@ -65,6 +65,8 @@ tool. Without `dev`, F5 builds the production frontend and the Window shows that
 | `Window` | Runs the `runic: dev --no-window` task until `[dev] Ready`, builds, and starts the Window under the debugger. |
 | `Attach to the Window (dotnet runic dev)` | Runs the `runic: dev` task and attaches to the Window process. |
 | `Window + WebView2 (Windows)` | Runic Desktop on Windows: the Window with WebView2's endpoint on port 9222, and VS Code's JavaScript debugger attached to the page, so breakpoints in `Frontend/src` stop too. |
+| `Window + WebKitGTK (Linux)` | Runic Desktop on Linux (preview): the same with WebKitGTK, through `dotnet runic dev`'s CDP adapter on port 9222. |
+| `Attach to the page (JavaScript)` | VS Code's JavaScript debugger on port 9222 alone: the Window that `dotnet runic dev` started on Linux, or a WebView2 Window started with the port on Windows. |
 
 The tasks put `dev`'s failures (`RAPPDEV` codes) and build errors in the Problems panel. VS Code builds from other
 vendors, such as VSCodium, cannot run Microsoft's .NET debugger; use netcoredbg there.
@@ -118,7 +120,7 @@ a Windows release's environment can script its page and Bridge through that endp
 | --- | --- | --- | --- |
 | WebView2 | Windows | F12, or Inspect from the page's context menu | A DevTools Protocol endpoint on request (below) |
 | WKWebView | macOS 13.3 and later | Safari ▸ Develop ▸ your Mac ▸ the window's page (turn on "Show features for web developers" in Safari's Advanced settings) | Safari's Web Inspector only; no DevTools Protocol endpoint |
-| WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached) | WebKit's remote inspector on request (below); its own protocol, not the DevTools Protocol |
+| WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached) | A DevTools Protocol endpoint for JavaScript debuggers under `dotnet runic dev` (preview, below), and WebKit's remote inspector |
 | Installed browser | CS-WebUI's default, and Runic Desktop's fallback without a WebView | The browser's own F12 | The browser's own rules: Runic's policy does not apply to it |
 
 - **WebView2 endpoint.** WebView2 opens a Chrome DevTools Protocol endpoint when the Window starts with
@@ -132,32 +134,39 @@ a Windows release's environment can script its page and Bridge through that endp
   IDE without elevation.
 - **WKWebView** makes the page inspectable (`isInspectable`) in Development; macOS before 13.3 decides that itself.
 - **WebKitGTK.** `DevTools` controls WebKit's developer extras on both GTK hosts (and their side panels), so Inspect
-  Element and the Web Inspector work in the window under `dotnet runic dev`. WebKit's **remote** inspector is separate:
-  `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER` turn it on even with developer extras off, and
-  `dotnet runic dev` sets neither. It speaks the WebKit Inspector Protocol, not the DevTools Protocol, so VS Code,
-  Rider, Visual Studio and `chrome-devtools-mcp` cannot attach to it: IDE JavaScript debuggers attach only on Windows.
-  To inspect the page from outside the window, start the Window with WebKit's socket server and open it in GNOME Web
-  (Epiphany), a WebKitGTK browser:
+  Element and the Web Inspector work in the window under `dotnet runic dev`. Since 0.21, `dotnet runic dev` also opens
+  the page to JavaScript debuggers on port 9222, as WebView2 does on Windows (preview): it starts the Window with
+  WebKit's remote inspector server (`WEBKIT_INSPECTOR_SERVER`) on a loopback port and translates between the Chrome
+  DevTools Protocol and the WebKit Inspector Protocol. VS Code's JavaScript debugger attaches with the template's
+  `Attach to the page (JavaScript)`: breakpoints in `Frontend/src` through the development server's source maps,
+  stepping, conditions, logpoints, exceptions, the console, the page's variables and hover, also after a reload, an
+  HMR update or a Window restart under `dotnet watch`, on GTK 3 and GTK 4, X11 and Wayland. `[dev] Debugging:` and
+  the session file's `debugEndpoints` (`"engine": "webkitgtk", "protocol": "cdp"`) name the port. Rider's
+  JavaScript debugger attaches to such ports too, but that is not verified yet. Setting a variable to an object or a
+  `const`, restarting a frame, and the Elements and Network panels of a Chrome DevTools window are not supported. See
+  the dotnet-runic README's
+  [Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview).
 
-  ```sh
-  dotnet runic dev -e WEBKIT_INSPECTOR_SERVER=127.0.0.1:9226
-  epiphany inspector://127.0.0.1:9226
-  ```
-
-  Bind it to `127.0.0.1`, never `0.0.0.0`: neither server asks for authentication. This works under `dotnet runic dev`
-  because the Window runs in Development; outside Development Runic clears both variables (above). Set one of the two:
-  with both set, WebKitGTK 2.54 starts only the HTTP inspector.
-- **Do not set `WEBKIT_INSPECTOR_HTTP_SERVER` on WebKitGTK 2.54.0** or another release without the fix for
-  [WebKit bug 330602](https://bugs.webkit.org/show_bug.cgi?id=330602) (fixed upstream on 10 November 2026; the first
-  release with it is not known yet). Its HTTP inspector accepts connections with any website's `Origin` and `Host`,
-  so while the port is open, any web page you visit can drive the Window's page and, through it, the Bridge.
-  `WEBKIT_INSPECTOR_SERVER` above speaks a protocol that no browser page can, so it is not affected.
+  The endpoint listens on 127.0.0.1 only and refuses requests that carry an `Origin` or a `Host` other than an IP
+  address or `localhost`, so a web page cannot reach it. WebKit's own server admits one client: while no debugger is
+  attached, GNOME Web (Epiphany), a WebKitGTK browser, opens the `inspector://` address that `[dev] Debugging:` names.
+  `--no-debug-endpoint` opens neither. WebKit serves either that socket or its Web Inspector over HTTP
+  (`WEBKIT_INSPECTOR_HTTP_SERVER`) for any browser, never both; `dotnet runic dev --webkit-inspector` opens the HTTP
+  one instead of the debuggers' endpoint, on WebKitGTK 2.54.3 or later. A `WEBKIT_INSPECTOR_SERVER` or
+  `WEBKIT_INSPECTOR_HTTP_SERVER` you set yourself, with `-e` or in `dev`'s environment, is used as it is. Outside
+  Development Runic clears both variables (above).
+- **Do not set `WEBKIT_INSPECTOR_HTTP_SERVER` on WebKitGTK 2.54.2 or earlier**, releases without the fix for
+  [WebKit bug 330602](https://bugs.webkit.org/show_bug.cgi?id=330602) (fixed on the 2.54 branch on 10 November 2026,
+  after 2.54.2). Their HTTP inspector accepts connections with any website's `Origin` and `Host`, so while the port is
+  open, any web page you visit can drive the Window's page and, through it, the Bridge. `--webkit-inspector` refuses
+  them and opens the `inspector://` server instead, which speaks a protocol that no browser page can.
 
 **For agents.** Where a DevTools Protocol endpoint is open (WebView2 above, or a Chromium browser started with
 remote debugging), `chrome-devtools-mcp --browser-url=http://127.0.0.1:9222` or Playwright's `connectOverCDP`
 attaches to the Window's page. In the page, `globalThis[Symbol.for("runic.vite.inspect")].describe(element)` returns
-Runic Inspect's overview as data (see [Runic Inspect](#runic-inspect)). On macOS and Linux there is no DevTools
-Protocol endpoint for these tools to attach to.
+Runic Inspect's overview as data (see [Runic Inspect](#runic-inspect)). On Linux, `dotnet runic dev`'s endpoint
+translates what JavaScript debuggers use, not the page automation these tools drive, so they are not supported there;
+on macOS there is no endpoint.
 
 ## The Runic dock
 
@@ -279,7 +288,11 @@ None of this ships:
   that sets `DOTNET_ENVIRONMENT=Development`. On macOS, use Safari's Develop menu instead, and on Linux Inspect
   Element from the page's context menu.
 - **The breakpoint never binds, or the debugger detaches.** `dotnet watch` restarted the Window after a C# edit. Use
-  `dotnet runic dev --no-window` and F5.
+  `dotnet runic dev --no-window` and F5. On Linux, VS Code's JavaScript debugger stays attached across the restart.
+- **No JavaScript debugger endpoint on Linux.** `dev` printed no `[dev] Debugging: JavaScript debuggers attach …`
+  line: it ran with `--no-debug-endpoint` or `--webkit-inspector`, `WEBKIT_INSPECTOR_HTTP_SERVER` is set, or the
+  application runs on CS-WebUI only. When the attach fails although the line is there, close GNOME Web's inspector
+  (WebKit admits one client), and check the line's port: another program had 9222, and `dev` took another.
 - **F5 shows the production page.** `dotnet runic dev --no-window` was not running when the IDE built. Start it
   first and wait for `[dev] Ready`.
 - **The dock asks for a code.** Enter the one-time code that Vite DevTools printed in the `dotnet runic dev` output.
