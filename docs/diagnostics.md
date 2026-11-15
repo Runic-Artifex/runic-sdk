@@ -937,7 +937,11 @@ method can collide.
 `dotnet runic` reports these codes as the fault of a failed command, except
 `RCLI8101` and `RCLI8102`, which mark individual doctor checks. Human
 output prints the link to the entry after the fault line; JSON output carries
-the code in `fault.code` and, since 0.11, the link in `fault.helpUri`. Input
+the code in `fault.code` and, since 0.11, the link in `fault.helpUri`. Since
+0.20, `dev` also prints its fault as one line in MSBuild's canonical form,
+`<project> : error RAPPDEV1007: <message>`, which IDE problem matchers such as
+VS Code's `$msCompile` read like a build error (see
+[IDE contract](../tools/dotnet-runic/README.md#ide-contract)). Input
 of the wrong shape (a usage or validation error, the same whatever the project)
 exits with code 2; a failure on what the command found, such as a missing
 project, an invalid project setting or a failed step, exits with code 1. A

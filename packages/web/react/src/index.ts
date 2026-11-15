@@ -770,12 +770,23 @@ interface InstanceText {
   readonly subscribe: (onChange: () => void) => () => void;
   readonly version: () => number;
   readonly locale: () => string | undefined;
+  // The locale and the Translations text revision: changes on a language switch and on an in-place message update.
+  readonly localeSnapshot: () => string;
   readonly subscribeWindowLocale: (onChange: () => void) => () => void;
   readonly windowLocale: () => string | null;
   readonly subscribeAppearance: (onChange: () => void) => () => void;
   readonly appearance: () => Appearance;
 }
 const instanceTexts = new WeakMap<RunicInstance, InstanceText>();
+
+// The revision of the Runic Translations text-change channel, which the Translations Vite plugin increments during
+// development when it updates an edited message in place (`configureTranslatedText` then notifies text subscribers).
+// 0 without the channel, as in production.
+const translationsTextKey = Symbol.for("runic.translations.text");
+function translationsTextRevision(): number {
+  const revision = ((globalThis as Record<symbol, unknown>)[translationsTextKey] as { revision?: unknown } | undefined)?.revision;
+  return typeof revision === "number" ? revision : 0;
+}
 
 function instanceText(instance: RunicInstance): InstanceText {
   let text = instanceTexts.get(instance);
@@ -785,6 +796,7 @@ function instanceText(instance: RunicInstance): InstanceText {
       subscribe: onChange => run(() => subscribeText(onChange)),
       version: () => run(textVersion),
       locale: () => run(textLocale),
+      localeSnapshot: () => `${translationsTextRevision()}\u0000${run(textLocale) ?? "\u0001"}`,
       subscribeWindowLocale: onChange => run(() => onWindowLocale(() => onChange())),
       windowLocale: () => run(windowLocale),
       subscribeAppearance: onChange => run(() => onAppearance(() => onChange())),
@@ -825,7 +837,9 @@ const serverAppearance = (): Appearance => unknownAppearance;
 /**
  * Renders the locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's
  * locale), and renders again when it changes. Call it in a component that renders the page's own messages, so that
- * `m.*()` runs again after a language switch; the component's children render with it, except memoized ones.
+ * `m.*()` runs again after a language switch; the component's children render with it, except memoized ones. During
+ * development it also renders again when the Runic Translations Vite plugin (0.12.0 or later) updates an edited
+ * message in place, with the component's state kept.
  * `undefined` while the page has no Translations runtime and the application sets no window locale.
  *
  * ```tsx
@@ -837,7 +851,8 @@ const serverAppearance = (): Appearance => unknownAppearance;
  */
 export function useTextLocale(): string | undefined {
   const text = instanceText(useRunicInstance());
-  return useSyncExternalStore(text.subscribe, text.locale, text.locale);
+  useSyncExternalStore(text.subscribe, text.localeSnapshot, text.localeSnapshot);
+  return text.locale();
 }
 
 export { RunicInstanceProvider, useRunicInstance, type RunicInstanceProviderProps } from "./instance.js";
