@@ -113,7 +113,7 @@ test('the packaging job runs for the packaging recipes, their probe and the plat
   }
   // dotnet runic package builds every package on its own OS; the tool's other commands need no Windows or macOS leg.
   assert.deepEqual(plan(['tools/dotnet-runic/Packaging/MacOSPackager.cs']).packaging.include.map(leg => leg.target), packagingLegs.map(leg => leg.target));
-  assert.deepEqual(plan(['tools/dotnet-runic/DevApplication.cs']).platforms, []);
+  assert.deepEqual(plan(['tools/dotnet-runic/DoctorChecks.cs']).platforms, []);
   const packagingOnly = plan(['tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml']);
   assert.ok(runs(packagingOnly, 'templates'), 'the recipes ship in the template package');
   for (const file of ['tests/templates/Test-Templates.sh', 'tools/Runic.Application.Templates/content/runic-app/Program.cs',
@@ -405,6 +405,7 @@ test('the template WebView2 debugging files plan the native Windows x64 leg', ()
     'tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json',
     'tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs',
     'tools/dotnet-runic/DevSession.cs',
+    'tools/dotnet-runic/DevApplication.cs',
   ]) {
     const result = plan([file]);
     assert.deepEqual(result.native.include, legsFor(nativeLegs, ['win-x64']), file);
