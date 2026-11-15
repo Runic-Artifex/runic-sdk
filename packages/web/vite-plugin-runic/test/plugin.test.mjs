@@ -47,7 +47,16 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   assert.equal(handlers.has("runic:connection"), true);
   assert.equal(handlers.has("runic:diagnostic"), true);
   assert.equal(handlers.has("runic:state"), false, "the page no longer reports a runtime state");
-  assert.deepEqual(middleware.map(([path]) => path), ["/__runic/state", "/__runic/diagnostics"]);
+  // The open action is mounted at the root (sources.ts), so that an accepted request continues to /__open-in-editor.
+  assert.deepEqual(middleware.map(([path]) => typeof path === "function" ? path.name : path),
+    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "runicOpenInEditor"]);
+  const withoutSources = [];
+  runic({ sourceMap: false }).configureServer({
+    ws: { on: () => undefined, send: () => undefined },
+    middlewares: { use: (path) => withoutSources.push(path) },
+    httpServer: undefined,
+  });
+  assert.deepEqual(withoutSources, ["/__runic/state", "/__runic/diagnostics"], "sourceMap: false adds no endpoint");
 });
 
 test("injects the Desktop bootstrap while leaving Vite and HMR ownership intact", async () => {

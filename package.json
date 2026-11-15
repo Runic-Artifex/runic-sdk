@@ -46,6 +46,7 @@
     "esbuild": "0.28.2",
     "playwright-core": "1.63.0",
     "@runic-artifex/vite-plugin-runic": "workspace:*",
-    "vite": "8.3.4"
+    "vite": "8.3.4",
+    "@runic-artifex/angular": "workspace:*"
   }
 }

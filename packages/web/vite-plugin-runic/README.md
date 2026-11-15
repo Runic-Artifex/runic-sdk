@@ -110,6 +110,93 @@ the call. See
 [Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
 The dock does not show these calls yet.
 
+## Source map and open in editor
+
+The Bridge generator writes a development source map beside its generated C#
+in `obj` (`obj/<Configuration>/<TargetFramework>/runic-bridge/sources.json`).
+It lists every ViewModel with a generated Bridge and every member its client
+and the Bridge frames name, with the C# that runs for it and where it is.
+`vite dev` serves it at `/__runic/sources`, and `/__runic/open` opens one of
+its locations in your editor. The map never enters the generated TypeScript,
+a `vite build` or a package: production output is the same with and without
+it.
+
+```jsonc
+// GET /__runic/sources
+{
+  "format": "runic-bridge-sources/1",
+  "viewModels": [{
+    "id": "Demo.CounterViewModel", "name": "Counter", "route": "counter",
+    "contract": "Demo.CounterViewModel:EE06…", "pageKinds": ["counter"],
+    "symbol": "Demo.CounterViewModel",
+    "location": { "file": "/src/Demo/CounterViewModel.cs", "line": 6, "column": 29 }
+  }],
+  "members": [{
+    "id": "Demo.CounterViewModel/command/increment", "viewModel": "Demo.CounterViewModel",
+    "member": "increment", "kind": "command",
+    "symbol": "Demo.CounterViewModel.Increment()", "property": "Demo.CounterViewModel.IncrementCommand",
+    "location": { "file": "/src/Demo/CounterViewModel.cs", "line": 18, "column": 18 }
+  }]
+}
+```
+
+- **Lookup.** A ViewModel's `id` is the part of a generated client's contract
+  before the colon, and `route` is the route `connect<Name>()` connects. A
+  member's `id` is `{viewModel}/{kind}/{member}`, where `member` is the name the
+  client and the Bridge frames use (`count`, `increment`), and `kind` is one of
+  `state` (read through the getter), `setter` (`set…` and `write…`, through the
+  setter), `command` (located at its handler: the `[RelayCommand]` method, a
+  method group the command is created from, such as
+  `ReactiveCommand.CreateFromTask(SaveAsync)`, or else the line that creates
+  it), `commandState` (`canSave` and other state a command adds), `interaction`
+  and `request`. The TypeScript types are exported as `RunicSourceMap`,
+  `RunicSourceMember` and `RunicSourceLocation`.
+- **Locations.** A location is `{ file, line, column }`: the absolute path of a
+  local source file and a 1-based line and column, as in a compiler
+  diagnostic. They come from the application assembly's portable PDB (the
+  default), then from the source of members a source generator writes, such as
+  a CommunityToolkit `[ObservableProperty]`. A method is located at its name and
+  an accessor at its `get` or `set`, not at the first statement the PDB
+  records, so a Debug and a Release build give the same map. Without a PDB or source file an
+  entry has no `location`; the build does not fail. A map is as current as the
+  last build: `dotnet watch`, and so `dotnet runic dev`, rebuilds it after a C#
+  edit, and the plugin reads it again when the file changes.
+- **Where the plugin finds it.** `dotnet runic dev` passes the map's path in
+  `RUNIC_APPLICATION_DEV_SOURCE_MAP`. Otherwise, or when that file does not
+  exist, the plugin takes the newest `runic-bridge/sources.json` under `obj` of
+  the project `dotnet runic dev` runs, else of the Vite root or its parent (the
+  project of a `Frontend/` directory). `runic({ sourceMap:
+  "../obj/Debug/net10.0/runic-bridge/sources.json" })` names the file, or a
+  directory to search, relative to the Vite root, and `sourceMap: false` turns
+  both endpoints off. Without a map `/__runic/sources` answers 404.
+- **Opening.** `POST /__runic/open` with `{ "id": "<entry id>" }`, or with the
+  exact `{ "file", "line", "column" }` of an entry, opens that location through
+  Vite's own editor launcher ([launch-editor](https://github.com/vitejs/launch-editor):
+  `LAUNCH_EDITOR`, else a running editor such as VS Code or a JetBrains IDE like
+  Rider, else `VISUAL`/`EDITOR`) and answers 200. It is meant for the page,
+  DevTools panels and the Runic dock:
+
+  ```ts
+  await fetch("/__runic/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: "Demo.CounterViewModel/command/increment" }),
+  });
+  ```
+
+- **What it refuses.** Vite's `/__open-in-editor` opens any path; the Runic
+  action opens only a location the map lists, of a file that exists, so a
+  page cannot open anything else. It answers a POST of JSON (415 otherwise)
+  from a page of the development server's own origin (`Origin` and
+  `Sec-Fetch-Site`; a cross-origin page cannot send JSON without a CORS
+  preflight, which it never grants) and from this machine (a loopback client
+  address), else 403; an id or location the map does not list, an entry
+  without a location, and a file that no longer exists answer 404. The map
+  itself answers only same-origin requests from this machine too.
+- **Only `vite dev`.** Both endpoints exist only on the development server, not
+  in `vite build`, `vite preview` or `runicDevSessionProxy()` (the Angular
+  CLI).
+
 ## Component build target
 
 Trusted component mode embeds a guest's Views as a custom element in a host
@@ -125,7 +212,12 @@ export default defineConfig({
 ```
 
 The entry's default export is the mount function of
-[`@runic-artifex/views/component`](../views/README.md#components). `vite build`
+[`@runic-artifex/views/component`](../views/README.md#components). With Angular,
+the Analog plugin (`angular()`) compiles the component's code ahead of time as
+it does the page's, and `runicComponentMount` of `@runic-artifex/angular/experimental`
+is the mount function; it keeps Angular's component styles, which Angular adds
+to the document at run time rather than to the build's CSS, in the shadow root
+([Angular components](../angular/README.md#components-experimental)). `vite build`
 then builds every environment, as `vite build --app` does, and after them the
 `runic_component` environment into `_runic_component/` of the build output:
 

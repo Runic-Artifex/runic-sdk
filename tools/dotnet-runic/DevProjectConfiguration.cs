@@ -47,6 +47,8 @@ internal sealed record DevProjectConfiguration(
         "_RunicApplicationFrontendCompilerHotReloadTarget",
         "ProjectAssetsFile",
         "TargetDir",
+        // Where the Bridge generator writes the development source map (runic-bridge/sources.json), for Vite.
+        "IntermediateOutputPath",
         // The runtimeconfig.json of the build, whose frameworks dev checks before it starts the application.
         "ProjectRuntimeConfigFilePath",
         // The hosts whose build files the project imports, such as "desktop;cswebui", and the one it chose.
@@ -69,6 +71,12 @@ internal sealed record DevProjectConfiguration(
     /// <summary>The program the Window process runs, which dev finds below <c>dotnet watch</c> or <c>dotnet run</c>.</summary>
     internal WindowProcessLocator.WindowProgram WindowProgram { get; init; } =
         WindowProcessLocator.CreateProgram(string.Empty, Path.GetFileNameWithoutExtension(ProjectPath));
+
+    /// <summary>
+    /// The development source map the Bridge generator writes for this build, which vite-plugin-runic serves in
+    /// <c>vite dev</c>; empty when MSBuild evaluated no intermediate directory. The file need not exist yet.
+    /// </summary>
+    internal string BridgeSourceMapPath { get; init; } = string.Empty;
 
     /// <summary>
     /// Whether the resolved Vite configuration has <c>runic()</c> from <c>@runic-artifex/vite-plugin-runic</c>, as
@@ -230,6 +238,9 @@ internal sealed record DevProjectConfiguration(
                 string.IsNullOrWhiteSpace(Value("AssemblyName")) ? Path.GetFileNameWithoutExtension(evaluatedProject) : Value("AssemblyName")),
             ProjectAssetsFile = NormalizeOptional(Value("ProjectAssetsFile"), evaluatedDirectory),
             RuntimeConfigPath = NormalizeOptional(Value("ProjectRuntimeConfigFilePath"), evaluatedDirectory),
+            BridgeSourceMapPath = NormalizeOptional(Value("IntermediateOutputPath"), evaluatedDirectory) is { Length: > 0 } intermediate
+                ? Path.Combine(intermediate, "runic-bridge", "sources.json")
+                : string.Empty,
             FrontendCompilerWatchPattern = Value("_RunicApplicationFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("_RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,

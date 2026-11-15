@@ -93,6 +93,13 @@ its own server process is still running. The plugin and the tool must come from
 the same release; an older plugin does not answer, and readiness times out with
 `RAPPDEV1007`.
 
+A Vite development server also gets `RUNIC_APPLICATION_DEV_SOURCE_MAP` (0.20):
+the path of the development source map that the Bridge generator writes to the
+project's intermediate directory (`obj/<Configuration>/<TargetFramework>/runic-bridge/sources.json`),
+which `runic()` serves at `/__runic/sources` and opens in the editor through
+`/__runic/open` (see "Source map and open in editor" in the
+`@runic-artifex/vite-plugin-runic` README).
+
 Without a Vite or Angular development server, `dev` runs the frontend watcher
 instead: the `RunicApplicationFrontendDevWatchTarget` MSBuild target, or the
 frontend's `dev` script (for example `vite build --watch`), which writes the
@@ -532,10 +539,14 @@ tools:
 **Session file.** `dev` writes `obj/runic/dev-session.json` (below the
 project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
 development server is ready and each time the Window process starts or exits.
-When `dev` ends, the file stays with `"state": "stopped"`. Beside it, `dev`
-keeps `dev-frontend` and `dev-pages/` while it serves the frontend, for the
-build ([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write replaces
-the whole file, so a reader never sees half of one. Two `dev` sessions of the
+When `dev` ends, the file stays with `"state": "stopped"`. A `dev` that is
+killed (an IDE that quits while its task runs, `kill -9`, a closed terminal)
+can't write that, so the file keeps its last state: before trusting `"starting"`
+or `"ready"`, a reader checks that the top-level `processId` is a running
+`dotnet runic dev`, and treats a dead one as stopped. Beside it, `dev` keeps
+`dev-frontend` and `dev-pages/` while it serves the frontend, for the build
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write
+replaces the whole file, so a reader never sees half of one. Two `dev` sessions of the
 same project write the same file; the later one wins. `--dry-run` writes none.
 
 ```jsonc
