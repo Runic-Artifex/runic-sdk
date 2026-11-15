@@ -1,3 +1,4 @@
+using System.Buffers;
 using Runic.Application.Testing;
 using Runic.Application.Testing.Tests;
 using Runic.Application.Views;
@@ -244,7 +245,14 @@ internal sealed class BridgeScalingTests
         });
 
     // Bytes allocated on the test thread by a burst of named notifications (O(1) in the members) and by its unit
-    // (O(members): B6). Allocations vary a little between runs, so these budgets have a 25 % margin.
+    // (O(members): B6). The measurement is of the steady state, so it repeats exactly (#987):
+    // - It runs on the thread of the warm-up, without an await between them: the Bridge caches its writers per thread.
+    // - The warm-up's drain has stopped, so the measured unit starts a drain, as a unit after a pause does. Otherwise
+    //   it found the drain still running some of the time, which costs one Task.Run (288 bytes) less.
+    // - The pool holds 4 KiB arrays for the measuring thread. The unit's frame keeps its pooled segment until the drain
+    //   delivered it on a thread-pool thread, and returns it to that thread's slot of ArrayPool<byte>.Shared, so
+    //   whether the next rent on the test thread found an array varied with the threads the drains ran on (4120 bytes).
+    // Different .NET builds can still differ a little, so these budgets have a 25 % margin.
     [Test]
     [Arguments(false)]
     [Arguments(true)]
@@ -259,8 +267,11 @@ internal sealed class BridgeScalingTests
             // A warm-up burst, so that first-call costs are not measured.
             Burst(model, 2_000);
             Drain(transport);
+            WaitForDrains(transport);
             GC.Collect();
             GC.WaitForPendingFinalizers();
+            // After the collection, which may trim the pool.
+            PrimeSegments();
             long burst, unit;
             var start = GC.GetAllocatedBytesForCurrentThread();
             var scope = BridgeSnapshotBatch.Begin(model);
@@ -278,6 +289,24 @@ internal sealed class BridgeScalingTests
             Drain(transport);
             return [burst, unit];
         });
+
+    // Blocks until no delivery of the transport drains: the pushes were handed over and their pooled memory returned.
+    private static void WaitForDrains(InMemoryBridgeTransport transport)
+    {
+        var order = BridgeReplyOrder.For(transport);
+        if (!SpinWait.SpinUntil(() => !order.Draining, TimeSpan.FromSeconds(10 * TestTimeouts.Factor)))
+            throw new TimeoutException("The deliveries of the transport did not stop draining.");
+    }
+
+    // Returns 4 KiB arrays (BridgePooledWriter's first segment) to the pool from the measuring thread: one to its
+    // thread-local slot, the others to its processor's partition, which every thread's rents search.
+    private static void PrimeSegments()
+    {
+        const int Segments = 4;
+        var arrays = new byte[Segments][];
+        for (var index = 0; index < Segments; index++) arrays[index] = ArrayPool<byte>.Shared.Rent(4 * 1024);
+        foreach (var array in arrays) ArrayPool<byte>.Shared.Return(array);
+    }
 
     private static void Burst(IWideViewModel model, int start)
     {

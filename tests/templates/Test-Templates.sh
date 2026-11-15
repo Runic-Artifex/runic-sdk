@@ -186,8 +186,14 @@ npm_archive_version() {
 # Runic npm packages share one release-train version.
 views_npm_version="$(npm_archive_version "${npm_archives[0]}")"
 registry_ready="$template_tmp/template-npm-registry.url"
+# During a train, the registry also serves the train feed's npm candidates of the independently released Runic packages
+# (the Translations Vite plugin of --translations); npm serves the published ones.
+mapfile -t train_npm_archives < <(cd "$repository_root" && bun -e '
+  import { trainFeedNpm } from "./eng/ci/train-feed.mjs";
+  for (const item of Object.values(trainFeedNpm())) console.log(item.file);
+')
 bun "$script_directory/template-npm-registry.mjs" \
-  "$registry_ready" "${npm_archives[@]}" &
+  "$registry_ready" "${npm_archives[@]}" "${train_npm_archives[@]}" &
 registry_pid=$!
 for _ in $(seq 1 100); do
   [[ -s "$registry_ready" ]] && break
@@ -339,13 +345,17 @@ verify_template() {
   [[ "$tests" == tests ]] && tests_options=(--tests)
   [[ "$restore" == restore ]] && tests_options+=(--restore)
   [[ "$translations" == translations ]] && tests_options+=(--translations)
-  # SvelteKit renders its page from src/app.html and its routes; the other Vite frontends build HTML inputs.
+  # angular-vite is the Angular frontend built with Vite and the Analog plugin (--angular-build vite).
+  local frontend_options=(--frontend "$framework") framework_name="${framework^}"
+  if [[ "$framework" == angular-vite ]]; then frontend_options=(--frontend angular --angular-build vite); framework_name=AngularVite; fi
+  # SvelteKit renders its page from src/app.html and its routes, and the Angular CLI from src/index.html; the other
+  # Vite frontends, Angular with Vite too, build HTML inputs.
   local html_inputs=true
   [[ "$framework" == angular || "$framework" == sveltekit ]] && html_inputs=false
   # --host desktop --linux-gtk 4 names the project ...DesktopGtk4... and its directory ...-desktop-gtk4-....
   local host_label="$host" host_name="${host^}"
   if [[ "$linux_gtk" == 4 ]]; then host_label+=-gtk4; host_name+=Gtk4; fi
-  local project_name="Acceptance${framework^}${manager^}${host_name}${view_models^}"
+  local project_name="Acceptance${framework_name}${manager^}${host_name}${view_models^}"
   local output="$template_tmp/$framework-$manager-$host_label-$view_models"
   if [[ "$translations" == translations ]]; then project_name+=Translations; output+=-translations; fi
   local expected_manager_version
@@ -359,7 +369,7 @@ verify_template() {
   dotnet new runic-app \
     --name "$project_name" \
     --output "$output" \
-    --frontend "$framework" \
+    "${frontend_options[@]}" \
     --package-manager "$manager" \
     "${selection[@]}" \
     "${tests_options[@]}"
@@ -432,6 +442,23 @@ verify_template() {
       grep -Fq '...runicDevSessionProxy(),' "$output/Frontend/proxy.conf.mjs"
       grep -Fq 'if (typeof ngDevMode === "undefined" || ngDevMode) await import("@runic-artifex/vite-plugin-runic/client");' \
         "$output/Frontend/src/main.ts"
+      grep -Fq '"build": "ng build frontend"' "$output/Frontend/package.json"
+      if [[ -e "$output/Frontend/vite.config.ts" ]] || grep -Fq '@analogjs/' "$output/Frontend/package.json"; then
+        echo "The Angular CLI project has the Vite build's files." >&2
+        exit 1
+      fi
+      ;;
+    angular-vite)
+      # Vite builds the page with the Analog plugin and runic(), which injects the development client; no Angular CLI
+      # files remain, so dotnet runic dev serves it with Vite.
+      grep -Fq 'angular({ liveReload: true }),' "$output/Frontend/vite.config.ts"
+      grep -Fq '"build": "vite build && ngc --project tsconfig.app.json --noEmit"' "$output/Frontend/package.json"
+      grep -Fq '"@analogjs/vite-plugin-angular": "2.9.7"' "$output/Frontend/package.json"
+      if [[ -e "$output/Frontend/angular.json" || -e "$output/Frontend/proxy.conf.mjs" || -e "$output/Frontend/src/index.html" ]] \
+        || grep -Fq 'vite-plugin-runic/client' "$output/Frontend/src/main.ts" || grep -Fq '@angular/cli' "$output/Frontend/package.json"; then
+        echo "The Angular project built with Vite has the Angular CLI's files." >&2
+        exit 1
+      fi
       ;;
   esac
   if [[ "$framework" != angular ]]; then
@@ -562,6 +589,12 @@ verify_template() {
       tail -n 80 "$output/dotnet-runic-dev.log" >&2
       exit 1
     fi
+    # Without angular.json, dotnet runic dev serves an Angular page with Vite (RunicApplicationFrontendDevServerKind).
+    if [[ "$framework" == angular-vite ]] && ! grep -Fq 'Vite development server ready at' "$output/dotnet-runic-dev.log"; then
+      echo "dotnet runic dev did not serve the Angular page with Vite." >&2
+      tail -n 80 "$output/dotnet-runic-dev.log" >&2
+      exit 1
+    fi
   fi
   if [[ "$manager" == npm && "$host" == cswebui && "$html_inputs" == true ]]; then
     # A window entry that is a build input but has no file fails before the
@@ -633,11 +666,36 @@ verify_template() {
     exit 1
   fi
   grep -Fq '"Identity": "Frontend/package.json"' "$output/items.json" || grep -Fq '"Identity": "Frontend\\package.json"' "$output/items.json"
+  # #945: the production bundle links every Angular library; a partial declaration left in it fails in the browser with
+  # "JIT compiler unavailable".
+  if [[ "$framework" == angular* ]] && grep -rlF 'ngDeclare' "$output/Frontend/dist"; then
+    echo "The $framework production bundle keeps unlinked Angular partial declarations." >&2
+    exit 1
+  fi
   if [[ "$html_inputs" == true ]]; then
     test -f "$output/bin/Release/net10.0/www/settings.html"
   fi
   # The referenced host's client is the page's runic-views.js.
   cmp "$output/bin/Release/net10.0/www/$host_client" "$output/bin/Release/net10.0/www/runic-views.js"
+  # #944: a translated Vite frontend compiles its catalog with the Translations Vite plugin, so the .NET build writes
+  # no page ESM of its own, and an edited message rebuilds the page. The rebuild below runs with the restored catalog.
+  if [[ "$translations" == translations && "$framework" != angular ]]; then
+    if find "$output/obj" -name 'web-module-manifest-v*.json' | grep -q .; then
+      echo "The $framework build wrote the page's Runic Translations ESM, which the Vite plugin owns." >&2
+      exit 1
+    fi
+    grep -Fq 'runicTranslations()' "$output/Frontend/vite.config.ts"
+    test -f "$output/Frontend/.runic/translations/virtual.d.ts"
+    local catalog="$output/Frontend/translations/en.rmf2"
+    cp "$catalog" "$output/en.rmf2.kept"
+    sed -i 's/^  title = Runic Views$/  title = Runic Views, rebuilt/' "$catalog"
+    dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild-translations.log"
+    if ! grep -rFq 'Runic Views, rebuilt' "$output/bin/Release/net10.0/www"; then
+      echo "An edited message did not rebuild the $framework page." >&2
+      exit 1
+    fi
+    mv "$output/en.rmf2.kept" "$catalog"
+  fi
   # A changed frontend rebuilds, and www/ mirrors the new dist/: the assets of
   # the earlier build are gone, and the host scripts stay (#236).
   local entry
@@ -702,6 +760,10 @@ verify_template() {
   if [[ "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
+  fi
+  # #944: under dotnet runic dev an edited, added or removed message reaches the page without a build.
+  if [[ "$browser_check" == 1 && "$translations" == translations && "$framework" != angular ]]; then
+    run_translations_dev_check "$output" "$framework" "$host"
   fi
   # Each frontend's page runs in Chromium under its policy on both hosts: the default Runic Desktop project and the
   # CS-WebUI variant, both with npm. The policy depends on the frontend alone, so the GTK 4 variant adds nothing.
@@ -771,6 +833,23 @@ run_browser_check() {
   if ! bun "$script_directory/check-template-page.mjs" "${options[@]}" -- \
     env -C "$output" dotnet "$output/bin/Release/net10.0/$project_name.dll" > "$log" 2>&1; then
     echo "The $framework $host page failed the browser check." >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
+}
+
+# Opens the page of a translated Vite frontend under dotnet runic dev in Chromium, edits a message of its catalog and
+# waits for the page to show it, then adds and removes a message (check-template-translations-dev.mjs). The catalog's
+# files are restored afterwards.
+run_translations_dev_check() {
+  local output="$1"
+  local framework="$2"
+  local host="$3"
+  local log="$output/translations-dev-check.log"
+  if ! bun "$script_directory/check-template-translations-dev.mjs" --host "$host" --project "$output" -- \
+    env -C "$output" dotnet runic dev > "$log" 2>&1; then
+    echo "The $framework $host page did not follow its catalog under dotnet runic dev." >&2
     cat "$log" >&2
     exit 1
   fi
@@ -960,7 +1039,8 @@ check_application_id() {
   done
 }
 
-frameworks=(react vue svelte sveltekit angular)
+# angular-vite is --frontend angular --angular-build vite.
+frameworks=(react vue svelte sveltekit angular angular-vite)
 managers=(npm pnpm bun)
 # Every frontend and package manager uses the default host and ViewModels,
 # Runic Desktop and ReactiveUI, created without --host and --view-models.
@@ -979,13 +1059,17 @@ variants=(
   "vue npm desktop toolkit tests gtk4"
   "sveltekit npm cswebui toolkit tests restore"
   "sveltekit bun desktop toolkit tests"
-  # --translations: the catalog's C# API and page ESM from one runic.json, each frontend's language switch and its
-  # translated-text tests, .NET and page.
+  # --translations: the catalog's C# API and page modules from one runic.json (the Translations Vite plugin for the
+  # Vite frontends, the .NET build's ESM for Angular), each frontend's language switch and its translated-text tests,
+  # .NET and page, and the Vite frontends' development loop.
   "react pnpm desktop toolkit tests translations"
   "vue bun cswebui reactiveui tests translations"
   "svelte npm desktop reactiveui tests translations"
   "sveltekit npm desktop reactiveui tests translations"
   "angular npm desktop reactiveui tests translations"
+  # --angular-build vite: the Vite build's development server on CS-WebUI, and its Translations development loop.
+  "angular-vite npm cswebui toolkit tests"
+  "angular-vite npm desktop reactiveui tests translations"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
@@ -1008,7 +1092,7 @@ else
 fi
 for framework in "${frameworks[@]}"; do
   case "$framework" in
-    react|vue|svelte|sveltekit|angular) ;;
+    react|vue|svelte|sveltekit|angular|angular-vite) ;;
     *) echo "Unknown template framework: $framework" >&2; exit 2 ;;
   esac
 done

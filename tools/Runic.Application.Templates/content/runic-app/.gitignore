@@ -7,7 +7,7 @@ Frontend/.angular/
 Frontend/.svelte-kit/
 # Typed View clients; dotnet build and dotnet runic dev regenerate them.
 Frontend/src/generated/
-# The translation catalog's ESM for the page; dotnet build regenerates it.
+# The translation catalog's ESM and types for the page; the build and the development server regenerate them.
 Frontend/.runic/
 # dotnet runic package output
 /artifacts/
