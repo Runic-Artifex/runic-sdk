@@ -575,8 +575,11 @@ language changes. A string shows as it is; `null` and `undefined` show
 
 `useTextLocale()` is the locale that text is shown in, as a ref. It is one ref
 for the page and needs no effect scope, so the locale resolver can read it;
-templates that call `m.*()` then render again on a language switch.
-`syncDocumentLocale()` keeps `<html lang dir>` on that locale:
+templates that call `m.*()` then render again on a language switch, and in
+`vite dev` with the Translations Vite plugin 0.12.0 or later also when you save
+an edited message: the new text shows in place and components keep their state.
+An added, removed or renamed message, or changed inputs or markup, still reload
+the page ([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)). `syncDocumentLocale()` keeps `<html lang dir>` on that locale:
 
 ```ts
 // main.ts

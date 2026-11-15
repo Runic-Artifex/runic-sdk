@@ -135,7 +135,7 @@ it.
     "id": "Demo.CounterViewModel/command/increment", "viewModel": "Demo.CounterViewModel",
     "member": "increment", "kind": "command",
     "symbol": "Demo.CounterViewModel.Increment()", "property": "Demo.CounterViewModel.IncrementCommand",
-    "location": { "file": "/src/Demo/CounterViewModel.cs", "line": 18, "column": 33 }
+    "location": { "file": "/src/Demo/CounterViewModel.cs", "line": 18, "column": 18 }
   }]
 }
 ```
@@ -155,7 +155,9 @@ it.
   local source file and a 1-based line and column, as in a compiler
   diagnostic. They come from the application assembly's portable PDB (the
   default), then from the source of members a source generator writes, such as
-  a CommunityToolkit `[ObservableProperty]`. Without a PDB or source file an
+  a CommunityToolkit `[ObservableProperty]`. A method is located at its name and
+  an accessor at its `get` or `set`, not at the first statement the PDB
+  records, so a Debug and a Release build give the same map. Without a PDB or source file an
   entry has no `location`; the build does not fail. A map is as current as the
   last build: `dotnet watch`, and so `dotnet runic dev`, rebuilds it after a C#
   edit, and the plugin reads it again when the file changes.
@@ -366,6 +368,12 @@ page, where they run in the page instance, and build the component with
 a component's.
 
 ## SvelteKit and Angular
+
+Angular built with Vite, through the Analog Angular plugin
+(`plugins: [angular({ liveReload: true }), runic()]`), uses `runic()` as the other
+frameworks do (`dotnet new runic-app --frontend angular --angular-build vite`);
+see the [Angular package](../angular/README.md#building-with-the-angular-cli-or-vite).
+What follows covers SvelteKit and the Angular CLI.
 
 SvelteKit renders its pages itself and warns about every plugin with a
 `transformIndexHtml` hook. Use `runic({ html: false })`: the plugin then has no

@@ -31,5 +31,10 @@
     <!-- The menu entry rules the Runic Desktop menu bar checks too (Runic.Desktop.Tests). -->
     <None Include="../../../specs/desktop/fixtures/menu-entries.json" Link="fixtures/menu-entries.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The accessibility probe's speech timeline (the same component), whose waits AccessibilityProbeSpeechTests checks
+         without a screen reader. -->
+    <Compile Include="../../native/Runic.Desktop.AccessibilityProbe/SpeechTimeline.cs" Link="AccessibilityProbe/SpeechTimeline.cs" />
+  </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

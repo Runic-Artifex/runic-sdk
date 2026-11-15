@@ -4,7 +4,7 @@
 import { createApp, type App as VueApp } from "vue";
 import { afterEach, expect, test, vi } from "vitest";
 import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
-import { createTextReference } from "../.runic/translations/transport.js";
+import { createTextReference } from "virtual:runic-translations/app/transport";
 import { startTranslations } from "./translations";
 import { mockCounter } from "./generated/counter.mock.js";
 import { mockWelcome } from "./generated/welcome.mock.js";

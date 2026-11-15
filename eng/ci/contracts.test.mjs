@@ -323,10 +323,11 @@ test('template lanes cover every framework once and run the creator check in one
     { first: 'react', second: 'svelte', creator: '1' },
     { first: 'vue', second: 'angular', 'desktop-smoke': '1' },
     { first: 'sveltekit', node: '26.12.1' },
+    { first: 'angular-vite' },
     { first: 'react', 'additional-dotnet': 'true' },
   ]);
   assert.deepEqual(strategy.matrix.include.filter(lane => !lane['additional-dotnet'])
-    .flatMap(lane => [lane.first, lane.second]).filter(Boolean).sort(), ['angular', 'react', 'svelte', 'sveltekit', 'vue']);
+    .flatMap(lane => [lane.first, lane.second]).filter(Boolean).sort(), ['angular', 'angular-vite', 'react', 'svelte', 'sveltekit', 'vue']);
   // D059.17: one lane builds the generated projects with the certified .NET 11 SDK, without a global.json.
   const setup = steps.find(item => item.uses === './.github/actions/setup-sdk');
   assert.equal(setup.with['additional-dotnet'], "${{ matrix.additional-dotnet || 'false' }}");

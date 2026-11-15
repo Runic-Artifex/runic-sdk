@@ -13,6 +13,42 @@ bun add @runic-artifex/angular@preview @runic-artifex/views@preview
 Previews are published under the `preview` dist-tag. Install the versions that
 match your Runic SDK packages. Angular 22 is supported.
 
+## Building with the Angular CLI or Vite
+
+The package is in the Angular Package Format, so every Angular-aware build links
+it: the Angular CLI (`@angular/build`), and Vite through the Analog Angular
+plugin (`@analogjs/vite-plugin-angular`). `dotnet new runic-app --frontend
+angular` starts with the Angular CLI, and `--angular-build vite` with Vite.
+
+The Angular CLI runs no Vite plugins, so the Runic development tools come in
+through `runicDevSessionProxy()` in the dev server's `proxyConfig` and an
+import in `main.ts`
+([`@runic-artifex/vite-plugin-runic`, "SvelteKit and Angular"](../vite-plugin-runic/README.md#sveltekit-and-angular)).
+With Vite, the page uses the Vite plugins the other frameworks use:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import angular from "@analogjs/vite-plugin-angular";
+import { runic } from "@runic-artifex/vite-plugin-runic";
+import { runicTranslations } from "@runic-artifex/vite-plugin-runic-translations";
+
+export default defineConfig({
+  base: "./",
+  plugins: [angular({ liveReload: true }), runic(), runicTranslations()],
+});
+```
+
+That adds the Translations development loop (an edited message reaches the
+page without a build), the Runic DevTools dock and the
+[component build target](../vite-plugin-runic/README.md#component-build-target),
+which the Angular CLI cannot build. `vite build` checks no types: run
+`ngc -p tsconfig.app.json --noEmit` for that, as the template's `build` and
+`typecheck` scripts do. Without `angular.json`, `dotnet runic dev` serves the
+page with Vite. Tests run on Vitest with the same plugin, after
+`getTestBed().initTestEnvironment(BrowserTestingModule, platformBrowserTesting())`
+in a setup file that imports `@angular/compiler` first.
+
 ## Connecting a View
 
 `injectView(source)` connects a generated page reference, or
@@ -659,7 +695,8 @@ follow a language switch. Connect the page's Translations runtime once with
 `injectWindowLocale()` reads the window's locale. `textLocaleSignal()` is the
 locale that text is shown in, as one signal for the page that needs no injection
 context; when the locale resolver reads it, templates that call `m.*()`, also
-`OnPush` ones, render again on a language switch:
+`OnPush` ones, render again on a language switch, and during development also
+when an edited message updates in place (it then notifies with the same locale):
 
 ```ts
 // main.ts
@@ -668,6 +705,14 @@ configureLocaleResolver(() => textLocale() ?? locale.getLocale());
 configureTranslatedText({ ...locale, resolve, direction: localeDirection });
 syncDocumentLocale();   // <html lang dir>
 ```
+
+**Edited messages during development.** The Angular CLI's dev server
+(`ng serve`) runs no Vite plugins, so a page served by it imports the ESM of the
+.NET build and reloads after `dotnet build`. To see an edited message update in
+place, with the page's state kept, build Angular with Vite
+(`@analogjs/vite-plugin-angular`) and the Translations Vite plugin 0.12.0 or
+later. An added, removed or renamed message, or changed inputs or markup, still
+reload the page ([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
 
 The pipe formats again only
 when its value, fallback or the language changed. Under server rendering, call

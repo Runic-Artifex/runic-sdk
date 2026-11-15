@@ -22,7 +22,9 @@ frontend build and leaves the development document in `www/`
 (`RunicApplicationFrontendBuildEnabled=false`, `RunicApplicationFrontendCopyEnabled=false`); the Views
 MSBuild targets still generate the typed TypeScript clients. `dotnet watch`
 restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
-`--no-dotnet-watch`, and `--dry-run` select parts of that loop. `dev` installs
+`--no-dotnet-watch`, and `--dry-run` select parts of that loop; `--no-window`
+runs only the frontend, for a Window that your IDE starts under its debugger
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). `dev` installs
 the frontend packages itself and passes
 `RunicApplicationFrontendInstallEnabled=false`, so the build does not install
 them a second time (and `RunicApplicationFrontendDelivery=Files`, so a project
@@ -77,6 +79,7 @@ server as ready only when its `/__runic/state` answers with that value, so
 | React, Vue, Svelte | `runic()` in `vite.config.ts` | The resolved Vite configuration has `runic()` |
 | SvelteKit | `runic({ html: false })` in `vite.config.ts`, next to `sveltekit()` (without `html: false`, SvelteKit warns about `runic()`'s `transformIndexHtml` hook) | The same |
 | Angular | `runicDevSessionProxy()` in `proxy.conf.mjs`, the serve target's `proxyConfig` in `angular.json` (the Angular CLI loads no Vite plugins) | `package.json` declares `@runic-artifex/vite-plugin-runic` |
+| Angular with Vite (`--angular-build vite`) | `runic()` in `vite.config.ts`, next to `angular()` from `@analogjs/vite-plugin-angular`; the project has no `angular.json`, so `dev` starts Vite | The resolved Vite configuration has `runic()` |
 
 A Vite project with the external frontend compiler, where `dev` does not
 resolve the Vite configuration, is also checked when `package.json` declares
@@ -350,6 +353,236 @@ Check identifiers are `dotnet-sdk`, `dotnet-runtime`, `views-window`, `javascrip
 in 0.11, and `dotnet-runtime` in 0.18. New identifiers may appear in later releases. With `--runtime`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
+
+## Debug the Window in your IDE
+
+Since 0.20, `dotnet runic dev --no-window` runs only the frontend (its Vite or
+Angular development server, or its watcher) and leaves the Window to your IDE:
+F5 builds and starts the Window under the IDE's .NET debugger, with breakpoints
+from the first line, and frontend edits still reach the page live. `dev` does
+not restart the Window after C# edits, so the debugger is never dropped; use
+the IDE's Hot Reload, and restart the Window yourself after a change that
+Hot Reload cannot apply, such as a new or renamed ViewModel member (the build
+then writes the matching TypeScript client, which the development server
+picks up).
+
+While `dev` runs, it marks the frontend in `obj/runic/` (renewed every 5
+seconds) and the session file says `"window": { "owner": "ide", "environment": … }`.
+A build of the same output, such as the IDE's, then skips the production
+frontend build and does not copy `dist/` over the development pages in `www/`;
+it also puts those pages back after a clean or Rebuild. The build prints
+`<Project>: dotnet runic dev serves the frontend; the build keeps its development pages …`.
+Without `dev`, or 30 seconds after a `dev` that was killed, builds are
+unchanged; publish never changes, and
+`RunicApplicationFrontendDevSessionEnabled=false` turns it off. The Window
+needs only `DOTNET_ENVIRONMENT=Development` (DevTools and detailed Bridge
+errors). For a frontend without a development server, set
+`RUNIC_APPLICATION_DEVELOPMENT_ASSETS` to the absolute path of the frontend's
+output directory as well, so a Runic Desktop window serves it live; the session
+file's `window.environment` lists both. `--no-window` cannot be combined with
+the options that describe how `dev` starts the Window (`RAPPDEV1014`).
+
+1. Start the frontend: `dotnet runic dev --no-window`, in a terminal or as an
+   IDE task. It prints `[dev] Ready` when the frontend is served.
+2. Start the Window with the IDE's debugger (F5) from a launch profile with
+   `DOTNET_ENVIRONMENT=Development`.
+
+A launch profile for Visual Studio and Rider (and `dotnet run`), in
+`Properties/launchSettings.json`:
+
+```json
+{
+  "profiles": {
+    "Window (dotnet runic dev --no-window)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+```
+
+**VS Code** (C# extension): a background task that waits for `Ready`, then a
+build, as the debug configuration's `preLaunchTask`:
+
+```jsonc
+// .vscode/tasks.json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "runic: dev --no-window",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["runic", "dev", "--no-window"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": { "activeOnStart": true, "beginsPattern": "^\\[dev\\] Evaluating", "endsPattern": "^\\[dev\\] Ready$" }
+      }
+    },
+    { "label": "build", "type": "shell", "command": "dotnet", "args": ["build"], "problemMatcher": "$msCompile" },
+    { "label": "runic: window", "dependsOn": ["runic: dev --no-window", "build"], "dependsOrder": "sequence" }
+  ]
+}
+// .vscode/launch.json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Window",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "runic: window",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/App", // App.exe on Windows
+      "cwd": "${workspaceFolder}",
+      "env": { "DOTNET_ENVIRONMENT": "Development" }
+    }
+  ]
+}
+```
+
+With C# Dev Kit, a `"type": "dotnet"` configuration can start the launch
+profile above instead.
+
+**Rider**: start `dotnet runic dev --no-window` in Rider's terminal (or add it
+to the run configuration's "Before launch" list as an external tool), then
+debug the "Window (dotnet runic dev --no-window)" launch profile.
+
+**Visual Studio**: start `dotnet runic dev --no-window` in the Developer
+PowerShell or a terminal, choose the "Window (dotnet runic dev --no-window)"
+profile next to the Start button, and press F5.
+
+To keep `dev` starting the Window and attach instead, use the
+[IDE contract](#ide-contract): `[dev] Window started: process <pid>` names the
+process to attach to; an attached debugger ends when `dotnet watch` restarts the
+Window (`--no-dotnet-watch` avoids that).
+
+Verified by hand in 0.20 on Linux with VS Code 1.144 and the C# extension
+(2.160, `coreclr`): F5 ran the task, waited for `Ready`, built without
+replacing the development page, stopped on a breakpoint in `Program.cs`, and
+the Window showed the page from the Vite server and a frontend edit live.
+The C# Dev Kit `dotnet` configuration, Rider, Visual Studio and Windows
+(WebView2) are not yet verified by hand.
+
+## IDE contract
+
+Since 0.20, `dev` gives IDEs, tasks and extensions stable lines to wait on and a
+session file to read. Unlike the rest of `dev`'s human text, these are a
+contract: they keep their form within `runic.application.tool.dev-session/1`.
+
+| Line (standard output) | When |
+| --- | --- |
+| `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
+| `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
+| `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
+
+`dev` finds the Window process below the `dotnet watch` or `dotnet run`
+process it started: the shallowest process that runs the project's program
+(MSBuild's `RunCommand`, so on macOS the development bundle's executable, or
+`dotnet <AssemblyName>.dll` without an application host). It looks every
+250 ms (every second on macOS, which runs `ps`), so the line follows the start
+by up to that long.
+
+A VS Code background task can wait for `Ready`, and the same task gets `dev`'s
+failures and the build's errors in the Problems panel:
+
+```jsonc
+// .vscode/tasks.json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "runic: dev",
+      "type": "shell",
+      "command": "dotnet",
+      "args": ["runic", "dev"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",
+          "endsPattern": "^\\[dev\\] Ready$"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Diagnostics.** When `dev` fails, it prints the fault as one line in MSBuild's
+canonical form before the usual fault text, on standard error:
+
+```text
+/path/to/App/App.csproj : error RAPPDEV1007: The vite development server exited unexpectedly with code 1.
+```
+
+The origin is the project file, or `dotnet-runic` when `dev` failed before it
+found one (`RAPPDEV1002`). The build output that `dev` passes through has the
+same form with a line and column (`CounterViewModel.cs(18,5): error CS1002: …`,
+`RUNICBRIDGE` codes from the Bridge generator), so one regex matches both. VS
+Code's built-in `$msCompile` matches them, and so does this pattern, for other
+tools:
+
+```text
+^\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$
+```
+
+**Session file.** `dev` writes `obj/runic/dev-session.json` (below the
+project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
+development server is ready and each time the Window process starts or exits.
+When `dev` ends, the file stays with `"state": "stopped"`. Beside it, `dev`
+keeps `dev-frontend` and `dev-pages/` while it serves the frontend, for the
+build ([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write replaces
+the whole file, so a reader never sees half of one. Two `dev` sessions of the
+same project write the same file; the later one wins. `--dry-run` writes none.
+
+```jsonc
+{
+  "schema": "runic.application.tool.dev-session/1",
+  "state": "ready",                 // "starting", "ready" (after [dev] Ready) or "stopped"
+  "processId": 41250,               // dotnet runic dev itself
+  "startedAt": "2026-11-14T18:53:16.2642872+00:00",
+  "project": "/path/to/App/App.csproj",
+  "configuration": "Debug",
+  "frontend": {
+    "developmentServer": "vite",    // "vite", "angular", or null when a watcher or the build writes the output
+    "url": "http://127.0.0.1:5173/",// the development server's origin, null without one
+    "port": 5173,
+    "stateUrl": "http://127.0.0.1:5173/__runic/state", // when vite-plugin-runic confirms the session, else null
+    "directory": "/path/to/App/Frontend",
+    "outputDirectory": "/path/to/App/Frontend/dist",
+    "generatedDirectory": "/path/to/App/Frontend/src/generated" // the generated TypeScript clients, or null
+  },
+  "webRoot": "/path/to/App/bin/Debug/net10.0/www",
+  "pages": [
+    // Each page the Window can load: its file in the web root and, with a development server, its URL there,
+    // which a browser or a JavaScript debugger can open.
+    { "document": "index.html", "file": "/path/to/App/bin/Debug/net10.0/www/index.html", "url": "http://127.0.0.1:5173/index.html" }
+  ],
+  "window": {
+    "owner": "dev",                 // "dev", or "ide" with --no-window: the IDE starts the Window
+    "program": "App",               // the program dev looks for
+    "processId": 41377,             // the running Window process, or null
+    "starts": 1,                    // how many Window processes have started in this session
+    "environment": {                // what a Window that the IDE starts needs, as dev would set it
+      "DOTNET_ENVIRONMENT": "Development"
+      // and RUNIC_APPLICATION_DEVELOPMENT_ASSETS without a development server, for Runic Desktop
+    }
+  },
+  "debugEndpoints": [
+    // Debugging endpoints of the page's engine that the Window's environment enables. dev enables none itself; on
+    // Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222 (or the variable in dev's own
+    // environment) lists WebView2's Chrome DevTools Protocol endpoint.
+    { "engine": "webview2", "protocol": "cdp", "url": "http://127.0.0.1:9222/" }
+  ]
+}
+```
+
+Paths are absolute. Later versions of the schema only add properties; a change
+that removes or changes one gets a new schema name.
 
 ## Output and exit codes
 

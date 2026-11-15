@@ -50,6 +50,13 @@ internal sealed class BridgeReplyOrder
         lock (_deliveries) _deliveries.Remove(delivery);
     }
 
+    // Whether a delivery of the transport still drains. A drain stops after it settled its work, so this can stay true
+    // briefly after WhenPublished completed; the scaling suite waits for it to measure a unit that starts its drain.
+    internal bool Draining
+    {
+        get { lock (_deliveries) return _deliveries.Count > 0; }
+    }
+
     // Completes when every delivery of the transport has settled the work it
     // had now. Null when none has outstanding work.
     internal Task? WhenPublished()

@@ -156,7 +156,9 @@ export function appearances(): Stream.Stream<Appearance> {
 /**
  * The locale that text is shown in (`textLocale` from `@runic-artifex/views`: the page's Translations locale, which
  * follows the window's locale): the locale now, then each new one. `undefined` while the page has no Translations
- * runtime and the application sets no window locale. Render the page's own messages (`m.*()`) again on each.
+ * runtime and the application sets no window locale. Render the page's own messages (`m.*()`) again on each. During
+ * development it emits the same locale again when the Runic Translations Vite plugin (0.12.0 or later) updates an
+ * edited message in place.
  *
  * ```ts
  * yield* Effect.forkScoped(Stream.runForEach(textLocales(), () => Effect.sync(() => { title.textContent = m.title(); })));
@@ -164,7 +166,20 @@ export function appearances(): Stream.Stream<Appearance> {
  */
 export function textLocales(): Stream.Stream<string | undefined> {
   return Stream.unwrap(Effect.map(CurrentRunicInstance, instance =>
-    textNowAndChanges(instance).pipe(Stream.map(() => instance.run(textLocale)), Stream.changes)));
+    textNowAndChanges(instance).pipe(
+      Stream.map(() => ({ locale: instance.run(textLocale), revision: translationsTextRevision() })),
+      Stream.changesWith((left, right) => left.locale === right.locale && left.revision === right.revision),
+      Stream.map(({ locale }) => locale),
+    )));
+}
+
+// The revision of the Runic Translations text-change channel, which the Translations Vite plugin increments during
+// development when it updates an edited message in place (`configureTranslatedText` then notifies text subscribers).
+// 0 without the channel, as in production.
+const translationsTextKey = Symbol.for("runic.translations.text");
+function translationsTextRevision(): number {
+  const revision = ((globalThis as Record<symbol, unknown>)[translationsTextKey] as { revision?: unknown } | undefined)?.revision;
+  return typeof revision === "number" ? revision : 0;
 }
 
 // One signal now, then one for each change. It subscribes before the first signal, so a switch while the consumer

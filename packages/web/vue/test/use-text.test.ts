@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // translation-text/1: useText follows a language switch as a computed ref.
-import { createApp, defineComponent, effectScope, h, nextTick, shallowRef } from "vue";
+import { createApp, defineComponent, effectScope, h, nextTick, ref, shallowRef } from "vue";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { ComputedRef } from "vue";
 import { connectView } from "@runic-artifex/views/generated";
@@ -79,6 +79,45 @@ describe("useTextLocale", () => {
     app.unmount();
     stop();
     stopResolver();
+  });
+});
+
+// The Runic Translations text-change channel as the Vite plugin's development client creates it (Translations 0.12.0):
+// an in-place update swaps the message's text, increments `revision` and calls every listener.
+const textChannelKey = Symbol.for("runic.translations.text");
+
+describe("useTextLocale and in-place message updates (translations#176)", () => {
+  test("a template that reads the text locale renders the edited text again and keeps its state, with no change to Vue's helper", async () => {
+    const channel = { version: 1, revision: 0, listeners: new Set<() => void>() };
+    (globalThis as Record<symbol, unknown>)[textChannelKey] = channel;
+    const update = () => { channel.revision++; for (const listener of [...channel.listeners]) listener(); };
+    // An edited message, as the swapped table of a generated message module formats it: it reads the text locale
+    // through the page's locale resolver, as `m.*()` does.
+    const edited = { text: "Notes" };
+    const textLocale = useTextLocale();
+    const title = () => { void textLocale.value; return edited.text; };
+    const stop = configureTranslatedText(fakeTranslations());
+    const count = ref(0);
+    const container = document.body.appendChild(document.createElement("div"));
+    const app = createApp(defineComponent(() => () => h("h1", `${title()} ${count.value}`)));
+    app.mount(container);
+    try {
+      count.value = 3;
+      await nextTick();
+      expect(container.textContent).toBe("Notes 3");
+      edited.text = "My notes";
+      update();
+      await nextTick();
+      expect(container.textContent).toBe("My notes 3");
+      edited.text = "Our notes";
+      update();
+      await nextTick();
+      expect(container.textContent, "every update, not only the first").toBe("Our notes 3");
+    } finally {
+      app.unmount();
+      stop();
+      delete (globalThis as Record<symbol, unknown>)[textChannelKey];
+    }
   });
 });
 
