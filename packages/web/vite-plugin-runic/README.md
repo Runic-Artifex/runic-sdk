@@ -172,6 +172,12 @@ a component's.
 
 ## SvelteKit and Angular
 
+Angular built with Vite, through the Analog Angular plugin
+(`plugins: [angular({ liveReload: true }), runic()]`), uses `runic()` as the other
+frameworks do (`dotnet new runic-app --frontend angular --angular-build vite`);
+see the [Angular package](../angular/README.md#building-with-the-angular-cli-or-vite).
+What follows covers SvelteKit and the Angular CLI.
+
 SvelteKit renders its pages itself and warns about every plugin with a
 `transformIndexHtml` hook. Use `runic({ html: false })`: the plugin then has no
 such hook, injects nothing into HTML and leaves host scripts alone, and keeps

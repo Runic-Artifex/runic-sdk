@@ -88,8 +88,20 @@
       "condition": "(frontend == 'angular')",
       "modifiers": [
         { "condition": "(translations)", "exclude": [ "src/main.ts", "src/app/app.ts", "src/app/app.html", "src/app/welcome.ts", "src/app/welcome.html", "src/app/counter.ts", "src/app/counter.html", "src/app/app.spec.ts" ] },
+        { "condition": "(angularVite)", "exclude": [ "angular.json", "proxy.conf.mjs", "src/index.html", "src/main.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
         { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
         { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml", "pnpm-workspace.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
+    },
+    {
+      "source": "./frontends/angular-vite/",
+      "target": "./Frontend/",
+      "condition": "(angularVite)",
+      "modifiers": [
+        { "condition": "(translations)", "exclude": [ "src/main.ts", "vite.config.ts", "package.json", "package-lock.json", "pnpm-lock.yaml", "bun.lock" ] },
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
         { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
       ]
     },
@@ -141,7 +153,20 @@
     {
       "source": "./translations/angular/",
       "target": "./Frontend/",
-      "condition": "(translations && frontend == 'angular')"
+      "condition": "(translations && frontend == 'angular')",
+      "modifiers": [
+        { "condition": "(angularVite)", "exclude": [ "src/main.ts", "src/translations.ts", "src/app/app.spec.ts" ] }
+      ]
+    },
+    {
+      "source": "./translations/angular-vite/",
+      "target": "./Frontend/",
+      "condition": "(translations && angularVite)",
+      "modifiers": [
+        { "condition": "(packageManager != 'npm')", "exclude": [ "package-lock.json" ] },
+        { "condition": "(packageManager != 'pnpm')", "exclude": [ "pnpm-lock.yaml" ] },
+        { "condition": "(packageManager != 'bun')", "exclude": [ "bun.lock" ] }
+      ]
     }
   ],
   "symbols": {
@@ -156,8 +181,27 @@
         { "choice": "vue", "displayName": "Vue", "description": "Vue 3 with Vite" },
         { "choice": "svelte", "displayName": "Svelte", "description": "Svelte 5 with Vite" },
         { "choice": "sveltekit", "displayName": "SvelteKit", "description": "SvelteKit 3 with Vite, prerendered by the Runic SvelteKit adapter" },
-        { "choice": "angular", "displayName": "Angular", "description": "Angular with the Angular CLI" }
+        { "choice": "angular", "displayName": "Angular", "description": "Angular 22, built with the Angular CLI or with Vite (--angular-build)" }
       ]
+    },
+    "angularBuild": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "cli",
+      "displayName": "Angular build",
+      "description": "What builds, serves and tests an Angular frontend. The other frontends build with Vite.",
+      "choices": [
+        { "choice": "cli", "displayName": "Angular CLI", "description": "The Angular CLI: ng build, ng serve and ng test" },
+        { "choice": "vite", "displayName": "Vite", "description": "Vite with the Analog Angular plugin and the Runic Vite plugins: the Translations development loop, the Vite DevTools dock and the component build target" }
+      ]
+    },
+    "angularVite": {
+      "type": "computed",
+      "value": "(frontend == 'angular' && angularBuild == 'vite')"
+    },
+    "angularCli": {
+      "type": "computed",
+      "value": "(frontend == 'angular' && angularBuild != 'vite')"
     },
     "packageManager": {
       "type": "parameter",
@@ -259,8 +303,8 @@
     },
     "translationsVitePlugin": {
       "type": "computed",
-      "value": "(translations && frontend != 'angular')",
-      "description": "The page compiles the catalog with the Translations Vite plugin (the Vite frontends); the Angular CLI imports the ESM that the .NET build generates."
+      "value": "(translations && (frontend != 'angular' || angularBuild == 'vite'))",
+      "description": "The page compiles the catalog with the Translations Vite plugin (every frontend Vite builds); the Angular CLI imports the ESM that the .NET build generates."
     },
     "nix": {
       "type": "parameter",
@@ -396,7 +440,7 @@
         "evaluator": "C++",
         "datatype": "string",
         "cases": [
-          { "condition": "(frontend == 'angular')", "value": "Angular CLI" },
+          { "condition": "(frontend == 'angular' && angularBuild != 'vite')", "value": "Angular CLI" },
           { "value": "Vite" }
         ]
       }
