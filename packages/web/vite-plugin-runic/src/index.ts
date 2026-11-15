@@ -1,16 +1,23 @@
 /// <reference types="@vitejs/devtools-kit" />
 
 import type { Plugin, UserConfig, ViteDevServer } from "vite";
+import { isFileLoadingAllowed } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, viewEvent, type RunicClientOptions } from "./channel.js";
+import { callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, viewEvent, type RunicClientOptions } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
-import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
+import type { RunicSourceLocation, RunicSourceMap } from "./sources.js";
+import {
+  answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
+  resolveOpenLocation, sourcesPath, type RunicOpenResolution,
+} from "./sources.js";
+import type { RunicBridgeCall } from "./calls.js";
+import { formatMilliseconds, stackFrames } from "./calls.js";
 import { findMessageSource, type MessageReference } from "./translations-source.js";
 import { allowVariable, parseAllowList, resolveAccessList } from "./access.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
@@ -26,6 +33,7 @@ export type { RunicOtlpOptions } from "./otlp.js";
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
+export type { RunicBridgeCall, RunicBridgeCallHandler, RunicBridgeCallOutcome } from "./calls.js";
 export type { RunicHandlerAnalysis, RunicHandlerBinding, RunicHandlerCall, RunicHandlerPosition } from "./handlers.js";
 export type { RunicInspectApi } from "./inspect.js";
 export type {
@@ -109,7 +117,8 @@ export interface RunicViteOptions {
    * The development source map that the Bridge generator writes to `obj` (`runic-bridge/sources.json`), which
    * `vite dev` serves at `/__runic/sources` and opens in the editor through `/__runic/open`. A path names the file or
    * a directory to search, relative to the Vite root. By default the plugin takes the path `dotnet runic dev` passes,
-   * else searches `obj` of the project, the Vite root and its parent. `false` turns both endpoints off. The build
+   * else searches `obj` of the project, the Vite root and its parent. `false` reads no map: no `/__runic/sources`, and
+   * `/__runic/open` opens only frontend files that Vite serves. The build
    * never reads it.
    */
   readonly sourceMap?: string | false;
@@ -166,6 +175,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   let jsonRenderer: JsonRenderer | undefined;
   let resolvedRoot = process.cwd();
   let base = "/";
+  // Whether the Vite DevTools dock is registered (DevTools() from @vitejs/devtools), which the client then loads.
+  let dock = false;
   const desktopBootstrapUrl = resolveDesktopBootstrapUrl(options.desktop);
   if (!html && desktopBootstrapUrl !== undefined) {
     throw new TypeError("desktop requires html: true: the Desktop bootstrap is a script tag the plugin adds to the HTML.");
@@ -177,15 +188,38 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const inComponent = (environment: { name: string } | undefined): boolean =>
     components !== undefined && environment?.name === componentEnvironment;
 
+  // The development source map, read while serving only (sources.ts).
+  const readSourceMap = options.sourceMap === false
+    ? () => undefined
+    : createSourceMapReader(options.sourceMap, () => resolvedRoot);
   const timeline = createDevelopmentTimeline(initialDevelopmentState(options.contract), maxTimelineEntries, (state) => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
-    void jsonRenderer?.updateSpec(createDevtoolsSpec(state));
+    void jsonRenderer?.updateSpec(createDevtoolsSpec(state, readSourceMap()));
     server?.ws.send({ type: "custom", event: stateEvent, data: state });
+  });
+  // What /__runic/open opens besides the map's files: a frontend file Vite itself would serve to the page
+  // (server.fs.allow and deny; with fs.strict: false, any file, as Vite then serves any), such as a component Runic
+  // Inspect links to. Nothing before Vite serves. The dock's open action opens the map's files only.
+  const frontendFile = (file: string): boolean => server !== undefined && isFileLoadingAllowed(server.config, file);
+  // /__runic/open and the dock's action open with launch-editor, the package behind Vite's /__open-in-editor
+  // (sources.ts, launchSourceEditor), so the editor is chosen as Vite chooses it.
+  const openLocation = (location: RunicSourceLocation): void =>
+    launchSourceEditor(location, (message) => server?.config.logger.warn(`[runic] ${message}`));
+  // What else /__runic/open opens besides the map's locations: frontend files Vite serves, and with Runic Inspect, where
+  // the Translations dev server says a message is.
+  const openResolution = (viteServer: ViteDevServer): RunicOpenResolution => ({
+    frontendFile,
+    ...(options.inspect === false ? {} : {
+      findMessage: (message: MessageReference) => findMessageSource({
+        address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
+      }, message),
+    }),
   });
   const deliver = (event: string, data: unknown): void => {
     if (event === connectionEvent) timeline.applyConnection(data);
     else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
     else if (event === viewEvent) timeline.applyView(data);
+    else if (event === callEvent) timeline.appendCall(data, readSourceMap());
     else if (event === spanEvent) otlp?.add(data);
   };
   const command = (): string => timeline.state.vite.command;
@@ -269,6 +303,13 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           !resolved.plugins.some((plugin) => plugin.name === "vite:devtools:server")) {
         throw new Error('RUNICP007: devtools: true requires DevTools() from @vitejs/devtools in the Vite plugins array.');
       }
+      dock = resolved.command === "serve" && resolved.plugins.some((plugin) => plugin.name === "vite:devtools:server");
+      if (dock && !html) {
+        // With html: false the page owns its HTML (SvelteKit renders it and runs no transformIndexHtml, and warns about
+        // a plugin that has one), so the dock's HTML loader never runs: the client loads the dock instead.
+        const injection = resolved.plugins.find((plugin) => plugin.name === "vite:devtools:injection");
+        if (injection !== undefined) delete (injection as { transformIndexHtml?: unknown }).transformIndexHtml;
+      }
       resolvedRoot = resolved.root;
       if (resolved.command === "serve" && client) {
         const exported = resolveOtlp(options.otlp, process.env, resolved.root);
@@ -289,6 +330,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.ws.on(connectionEvent, (payload) => deliver(connectionEvent, payload));
       viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
       viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
+      viteServer.ws.on(callEvent, (payload) => deliver(callEvent, payload));
       viteServer.ws.on(spanEvent, (payload) => deliver(spanEvent, payload));
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
@@ -298,7 +340,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
         answerClientMessage(request, response, deliver).catch(next);
       });
-      const readSourceMap = options.sourceMap === false ? () => undefined : createSourceMapReader(options.sourceMap, () => resolvedRoot);
       // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
       const access = resolveAccessList(allowRules);
       if (access.remote && (options.sourceMap !== false || (client && options.inspect !== false))) {
@@ -310,21 +351,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           answerSources(request, response, readSourceMap, access).catch(next);
         });
       }
-      // The open action, for the source map's C# locations and Runic Inspect's Translations messages. Mounted at the
-      // root, not at openPath: an accepted request continues to Vite's /__open-in-editor with its URL rewritten, which
-      // a mounted handler's next() would prefix with the mount path again.
-      if (options.sourceMap !== false || options.inspect !== false) {
-        const findMessage = (message: MessageReference) => findMessageSource({
-          address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
-        }, message);
-        viteServer.middlewares.use(function runicOpenInEditor(request, response, next) {
-          if (request.url?.split("?", 1)[0] !== openPath) return next();
-          answerOpen(request, response, readSourceMap, (location) => {
-            request.url = editorRequestUrl(base, location);
-            next();
-          }, options.inspect === false ? undefined : findMessage).catch(next);
-        });
-      }
       if (client && options.inspect !== false) {
         // Runic Inspect asks which of a file's event handlers reach which client calls, before any click.
         const analyze = createHandlerAnalyzer(() => resolvedRoot);
@@ -332,6 +358,15 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           // A mounted handler sees the URL without the mount path.
           request.url = `${handlersPath}${request.url ?? ""}`;
           answerHandlers(request, response, analyze, resolvedRoot, access).catch(next);
+        });
+      }
+      // The open action (sources.ts, resolveOpenLocation; D066.36): the source map's locations, frontend files Vite
+      // serves, and Runic Inspect's Translations messages. With sourceMap: false the reader has no map, so it opens only
+      // what Inspect links to.
+      if (options.sourceMap !== false || options.inspect !== false) {
+        const resolution = openResolution(viteServer);
+        viteServer.middlewares.use(openPath, (request, response, next) => {
+          answerOpen(request, response, readSourceMap, openLocation, resolution).catch(next);
         });
       }
       viteServer.httpServer?.once("close", () => {
@@ -363,6 +398,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         // trace: the client gives each Bridge call a trace context and sends its span, which the server exports.
         const clientOptions: RunicClientOptions = {
           channel: "hot", base, root: resolvedRoot, ...(options.inspect === false ? { inspect: false } : {}),
+          ...(dock ? { dock: true } : {}),
           ...(otlp === undefined ? {} : { trace: true }),
         };
         const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${JSON.stringify(clientOptions)};`];
@@ -386,7 +422,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       async setup(context) {
         if (!client) return;
         sharedState = await context.rpc.sharedState.get(stateKey, { initialValue: timeline.state });
-        const renderer = context.createJsonRenderer(createDevtoolsSpec(timeline.state));
+        const renderer = context.createJsonRenderer(createDevtoolsSpec(timeline.state, readSourceMap()));
         jsonRenderer = renderer;
         context.docks.register({
           id: "runic:overview",
@@ -394,6 +430,22 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           icon: "ph:diamond-duotone",
           type: "json-render",
           view: renderer.view,
+        });
+        // The dock's open buttons: `{ id }` of a map entry or `{ file, line }` of a stack frame. The same decision as
+        // /__runic/open (resolveOpenLocation), limited to the source map: a location in a file it lists, while it exists.
+        // Vite DevTools lets only the clients it trusts call an action, so there is no request origin to check here.
+        context.rpc.register({
+          name: openInEditorAction,
+          type: "action",
+          setup: () => ({
+            handler: async (target: unknown) => {
+              // With sourceMap: false the reader has no map, so nothing opens.
+              // Map entries and .NET stack frames only: the dock links nothing else.
+              const location = await resolveOpenLocation(readSourceMap, target);
+              if (location === undefined || location === "invalid") throw new Error("The source map lists no such location.");
+              openLocation(location);
+            },
+          }),
         });
         context.commands.register({
           id: "runic:copy-diagnostic-state",
@@ -431,7 +483,72 @@ function resolveDesktopBootstrapUrl(
   return url.href;
 }
 
-function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
+const openInEditorAction = "runic:open-in-editor";
+// The dock shows the most recent calls; the state keeps as many as the timeline.
+const dockCalls = 20;
+const dockFrames = 8;
+
+type Elements = JsonRenderSpec["elements"];
+
+function openButton(label: string, target: Record<string, string | number>): Elements[string] {
+  return {
+    type: "Button",
+    props: { label, icon: "ph:arrow-square-out", variant: "ghost" },
+    on: { press: { action: openInEditorAction, params: target } },
+  } as Elements[string];
+}
+
+// A .NET stack as text, with a button for each frame in a file of the source map.
+function stackElements(id: string, stack: string | undefined, map: RunicSourceMap | undefined): [string[], Elements] {
+  const elements: Elements = {};
+  const frames = stackFrames(stack, dockFrames).filter((frame) => listsFile(map, frame.file));
+  const children = frames.map((frame, index) => {
+    const name = `${id}-frame-${index}`;
+    const fileName = frame.file.split(/[\\/]/u).pop();
+    elements[name] = openButton(`${frame.method.replace(/^.*\.(?=[^.]+\.[^.]+$)/u, "")} · ${fileName}:${frame.line}`,
+      { file: frame.file, line: frame.line });
+    return name;
+  });
+  return [children, elements];
+}
+
+// The call timeline: the newest call first, each with its handler's open button and a failed call's frames.
+function callsSection(current: RunicDevelopmentState, map: RunicSourceMap | undefined): Elements {
+  const calls = current.calls.slice(-dockCalls).reverse();
+  const elements: Elements = {};
+  const rows = calls.map((call: RunicBridgeCall) => {
+    const id = `calls-${call.id}`;
+    const children = [`${id}-label`];
+    elements[`${id}-label`] = { type: "Text", props: { text: call.label, variant: call.outcome === "error" ? "body" : "code" } };
+    const details = [
+      ...(call.handlerDuration === undefined ? [] : [`C# ${formatMilliseconds(call.handlerDuration)}`]),
+      ...(call.revision === undefined ? [] : [`revision ${call.revision}`]),
+      ...(call.handler?.fileName === undefined ? [] : [`${call.handler.fileName}${call.handler.line === undefined ? "" : `:${call.handler.line}`}`]),
+      call.timestamp,
+    ];
+    elements[`${id}-detail`] = { type: "Text", props: { text: details.join(" · "), variant: "caption" } };
+    children.push(`${id}-detail`);
+    if (call.handler?.line !== undefined) {
+      elements[`${id}-open`] = openButton(`Open ${call.handler.method}`, { id: call.handler.source });
+      children.push(`${id}-open`);
+    }
+    if (call.failure) {
+      elements[`${id}-failure`] = { type: "Text", props: { text: `${call.failure.type}: ${call.failure.message}`, variant: "caption" } };
+      const [frames, frameElements] = stackElements(id, call.failure.stack, map);
+      Object.assign(elements, frameElements);
+      children.push(`${id}-failure`, ...frames);
+    }
+    elements[id] = { type: "Stack", props: { direction: "column", gap: 2 }, children };
+    return id;
+  });
+  if (rows.length === 0) elements["calls-none"] = { type: "Text", props: { text: "No Bridge call yet" } };
+  return {
+    calls: { type: "Card", props: { title: "Bridge calls" }, children: rows.length === 0 ? ["calls-none"] : rows },
+    ...elements,
+  };
+}
+
+function createDevtoolsSpec(current: RunicDevelopmentState, map?: RunicSourceMap): JsonRenderSpec {
   const section = (id: string, title: string, data: Record<string, string>): JsonRenderSpec["elements"] => ({
     [id]: { type: "Card", props: { title }, children: [`${id}-data`] },
     [`${id}-data`]: { type: "KeyValueTable", props: { data } },
@@ -442,7 +559,7 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
       root: {
         type: "Stack",
         props: { direction: "column", gap: 12 },
-        children: ["heading", "connection", "contract", "views", "superseded", "failure", "timeline"],
+        children: ["heading", "connection", "contract", "calls", "views", "superseded", "failure", "timeline"],
       },
       heading: { type: "Text", props: { text: "Runic", variant: "heading" } },
       ...section("connection", "Connection", {
@@ -453,9 +570,10 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
         Version: current.contract.version || "not reported",
         Fingerprint: current.contract.fingerprint || "not reported",
       }),
+      ...callsSection(current, map),
       ...viewsSection(current),
       ...section("superseded", "Superseded commands", supersededCommands(current)),
-      ...section("failure", "Last failure", lastFailure(current)),
+      ...failureSection(current, map),
       ...section("timeline", "Recent timeline", current.timeline.length === 0
         ? { Events: "none" }
         : Object.fromEntries(current.timeline.slice(-12).reverse().map((entry) => [
@@ -499,14 +617,20 @@ function supersededCommands(current: RunicDevelopmentState): Record<string, stri
   ]));
 }
 
-function lastFailure(current: RunicDevelopmentState): Record<string, string> {
+// The last failure, with an open button for each of its frames in a file of the source map.
+function failureSection(current: RunicDevelopmentState, map: RunicSourceMap | undefined): Elements {
   const entry = [...current.timeline].reverse().find((candidate) => candidate.failure !== undefined);
-  if (!entry?.failure) return { Failure: "none" };
-  return {
+  const data: Record<string, string> = !entry?.failure ? { Failure: "none" } : {
     Event: `${entry.id} · ${entry.source} · ${entry.timestamp}`,
     Label: entry.label,
     Type: entry.failure.type,
     Message: entry.failure.message,
     ...(entry.failure.stack ? { Stack: entry.failure.stack } : {}),
+  };
+  const [frames, elements] = stackElements("failure", entry?.failure?.stack, map);
+  return {
+    failure: { type: "Card", props: { title: "Last failure" }, children: ["failure-data", ...frames] },
+    "failure-data": { type: "KeyValueTable", props: { data } },
+    ...elements,
   };
 }

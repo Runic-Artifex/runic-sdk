@@ -2074,9 +2074,12 @@ configuration. Numbers below `007` are not assigned. See the
 
 ### RUNICP007
 
-`runic({ devtools: true })` is served without the Vite DevTools plugin: the
-plugins array has no `DevTools()` from `@vitejs/devtools`.
+`runic({ devtools: true })` is served without the Vite DevTools dock: the
+plugins array has no `DevTools()` from `@vitejs/devtools`. (The Vite DevTools
+dock is the bar that Vite adds to the page while it serves it, with a Runic
+panel; it is not the browser's developer tools, which F12 or Inspect opens.)
 
-**Fix:** install `@vitejs/devtools` and add `DevTools()` to the plugins, or
-leave `devtools` at its default, `"auto"`, which shows the Runic dock only when
-DevTools is registered.
+**Fix:** install `@vitejs/devtools` and add `DevTools()` to the plugins, as the
+`runic-app` template's Vite starters do, or leave `devtools` at its default,
+`"auto"`, which shows the dock's Runic panel only when `DevTools()` is
+registered.

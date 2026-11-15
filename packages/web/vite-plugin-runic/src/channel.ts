@@ -11,6 +11,8 @@ export const diagnosticEvent = "runic:diagnostic";
 export const connectionEvent = "runic:connection";
 /** The state inspector: a View's state, a closed View, or a page that went away (`DevelopmentTimeline.applyView`). */
 export const viewEvent = "runic:view";
+/** A settled Bridge call for the dock's timeline (calls.ts, `RunicBridgeCallReport`). */
+export const callEvent = "runic:call";
 /** One settled Bridge call with a trace context, for the server's OTLP export (otlp.ts). */
 export const spanEvent = "runic:span";
 
@@ -34,9 +36,11 @@ export const clientOptionsKey = Symbol.for("runic.vite.client");
 
 export interface RunicClientOptions {
   readonly channel?: "hot";
+  /** The Vite DevTools dock is registered: the client loads it when the document does not (client.ts, `loadDock`). */
+  readonly dock?: boolean;
   /** `false` leaves Runic Inspect out (`runic({ inspect: false })`). */
   readonly inspect?: boolean;
-  /** The server's base path, for Vite's `/__open-in-editor`. */
+  /** The server's base path. */
   readonly base?: string;
   /** The Vite root, which relative component paths (Svelte, Angular) are relative to. */
   readonly root?: string;

@@ -28,6 +28,7 @@
     "@angular/compiler-cli": "22.2.3",
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
     "@runic-artifex/vite-plugin-runic-translations": "0.11.0",
+    "@vitejs/devtools": "0.7.6",
     "happy-dom": "21.0.4",
     "typescript": "6.0.3",
     "vite": "8.3.4",

@@ -672,6 +672,19 @@ verify_template() {
     echo "The $framework production bundle keeps unlinked Angular partial declarations." >&2
     exit 1
   fi
+  # #954: every Vite starter registers the Vite DevTools dock (DevTools() in vite.config.ts), which only vite dev
+  # serves: the production build has neither the dock, its loader nor the Runic development client.
+  if [[ "$framework" != angular ]]; then
+    if ! grep -Fxq '    DevTools(),' "$output/Frontend/vite.config.ts"; then
+      echo "The $framework starter does not register the Vite DevTools dock." >&2
+      exit 1
+    fi
+    if grep -rlE '__devtools|@vitejs/devtools|devframe|runic:open-in-editor|virtual:runic/client' \
+      "$output/Frontend/dist" "$output/bin/Release/net10.0/www"; then
+      echo "The $framework production build contains the Vite DevTools dock or the Runic development client." >&2
+      exit 1
+    fi
+  fi
   if [[ "$html_inputs" == true ]]; then
     test -f "$output/bin/Release/net10.0/www/settings.html"
   fi
@@ -769,6 +782,11 @@ verify_template() {
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   fi
+  # #954: under dotnet runic dev the Counter button's command is a row of the Runic dock with its [RelayCommand]
+  # method, which the row opens in the editor. Once per Vite frontend: its CS-WebUI CommunityToolkit.Mvvm variant.
+  if [[ "$browser_check" == 1 && "$framework" != angular && "$manager" == npm && "$host" == cswebui && "$view_models" == toolkit ]]; then
+    run_dock_dev_check "$output" "$framework" "$host"
+  fi
   # #944: under dotnet runic dev an edited, added or removed message reaches the page without a build.
   if [[ "$browser_check" == 1 && "$translations" == translations && "$framework" != angular ]]; then
     run_translations_dev_check "$output" "$framework" "$host"
@@ -858,6 +876,22 @@ run_translations_dev_check() {
   if ! bun "$script_directory/check-template-translations-dev.mjs" --host "$host" --project "$output" -- \
     env -C "$output" dotnet runic dev > "$log" 2>&1; then
     echo "The $framework $host page did not follow its catalog under dotnet runic dev." >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  printf '%s|%s|%s\n' "$(tail -n 1 "$log")" "$framework" "$host"
+}
+
+# Opens the page of a CommunityToolkit.Mvvm Vite frontend under dotnet runic dev in Chromium, increments the Counter
+# and checks the Runic dock's row for the command and its open button (check-template-dock.mjs).
+run_dock_dev_check() {
+  local output="$1"
+  local framework="$2"
+  local host="$3"
+  local log="$output/dock-dev-check.log"
+  if ! bun "$script_directory/check-template-dock.mjs" --host "$host" --project "$output" -- \
+    env -C "$output" dotnet runic dev > "$log" 2>&1; then
+    echo "The $framework $host page did not show its command in the Runic dock under dotnet runic dev." >&2
     cat "$log" >&2
     exit 1
   fi

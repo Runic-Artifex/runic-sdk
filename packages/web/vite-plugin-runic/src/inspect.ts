@@ -6,9 +6,10 @@
 //
 // What an element calls is found before any click in its component's source (`/__runic/handlers`, handlers.ts and
 // inspect-handlers.ts), and learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in
-// the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. States come from the state inspector channel (`runic.views.inspector`), C#
-// locations from the development source map (`/__runic/sources`), opening from `/__runic/open` (C#) and Vite's
-// `/__open-in-editor` (frontend files).
+// the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. States come from the
+// state inspector channel (`runic.views.inspector`), C# locations from the development source map
+// (`/__runic/sources`), and every editor link opens through `/__runic/open`: a C# location by its source map id, a
+// Translations message by its reference, a frontend file by path (the endpoint opens only files Vite serves).
 //
 // Text from generated `m.*()` calls carries Runic Translations' invisible message markers while select mode is on: turning
 // it on calls `markers.set(true)` on the Translations text-change channel (`Symbol.for("runic.translations.text")`,
@@ -384,17 +385,15 @@ export function installInspect(options: InspectOptions = {}): () => void {
 
   async function open(location: RunicInspectLocation): Promise<boolean> {
     try {
-      const body = location.editor === "runic" && location.id !== undefined ? { id: location.id }
+      // One open path for every location: the endpoint validates each kind (sources.ts, resolveOpenLocation).
+      const target = location.editor === "runic" && location.id !== undefined ? { id: location.id }
         : location.editor === "translations" && location.message !== undefined
           ? { message: { catalog: location.message.catalog, key: location.message.key, locale: location.message.locale } }
-          : undefined;
-      const response = body !== undefined
-        ? await fetch(openPath, {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-        : await fetch(`${base.endsWith("/") ? base : `${base}/`}__open-in-editor?file=${
-          encodeURIComponent(`${location.file}:${location.line}:${location.column}`)}`, { credentials: "same-origin" });
+          : { file: location.file, line: location.line, column: location.column };
+      const response = await fetch(openPath, {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(target),
+      });
       return response.ok;
     } catch {
       return false;

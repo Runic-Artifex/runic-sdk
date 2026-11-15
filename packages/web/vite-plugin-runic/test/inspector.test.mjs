@@ -121,7 +121,10 @@ test("the dock shows each View's state and the superseded commands", async () =>
   const plugin = runic();
   const specs = [];
   await plugin.devtools.setup({
-    rpc: { sharedState: { get: async (_key, options) => ({ value: () => options.initialValue, mutate: () => undefined }) } },
+    rpc: {
+      sharedState: { get: async (_key, options) => ({ value: () => options.initialValue, mutate: () => undefined }) },
+      register: () => undefined,
+    },
     createJsonRenderer: (spec) => { specs.push(spec); return { view: {}, updateSpec: (next) => specs.push(next) }; },
     docks: { register: () => undefined },
     commands: { register: () => undefined },
@@ -169,6 +172,7 @@ const load = async (path, identifier, meta) => {
 await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
+await load("dist/calls.js", "calls");
 await load("dist/inspect-data.js", "inspect-data");
 await load("dist/inspect-frameworks.js", "inspect-frameworks");
 await load("dist/inspect-edit.js", "inspect-edit");
@@ -238,6 +242,7 @@ const load = async (path, identifier, meta) => {
 await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
+await load("dist/calls.js", "calls");
 await load("dist/inspect-data.js", "inspect-data");
 await load("dist/inspect-frameworks.js", "inspect-frameworks");
 await load("dist/inspect-edit.js", "inspect-edit");
@@ -307,6 +312,7 @@ const load = async (path, identifier, meta) => {
 await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
+await load("dist/calls.js", "calls");
 await load("dist/inspect-data.js", "inspect-data");
 await load("dist/inspect-frameworks.js", "inspect-frameworks");
 await load("dist/inspect-handlers.js", "inspect-handlers");

@@ -1,6 +1,6 @@
 // Runic Inspect under `vite dev` in Chromium: the injected development client learns which ViewModel members an
 // element calls, Alt+Shift+X turns select mode on, a selecting click shows the overview without running the page's
-// handler, its links open C# locations through /__runic/open, and `describe(element)` returns the same data. A React
+// handler, its links open C# locations and frontend files through /__runic/open, and `describe(element)` returns the same data. A React
 // page and a Svelte page, each with a mock Bridge that answers over a MessageChannel, as a host transport does.
 // On the React and Vue pages, a stand-in Runic Translations catalog marks its messages while select mode is on (the
 // text-change channel's `markers`), and a stand-in message API names their .rmf2 lines: select mode shows a text's
@@ -319,6 +319,11 @@ async function exercise({ page, root, csharp }, { framework, component, componen
 
   // The handler's link opens the C# location through /__runic/open with the source map entry's id.
   let opened;
+  const viteEditorRequests = [];
+  await page.route("**/__open-in-editor*", async route => {
+    viteEditorRequests.push(route.request().url());
+    await route.fulfill({ status: 404, body: "" });
+  });
   await page.route("**/__runic/open", async route => {
     opened = { method: route.request().method(), type: route.request().headers()["content-type"], body: route.request().postDataJSON() };
     await route.fulfill({ status: 200, body: "" });
@@ -326,16 +331,18 @@ async function exercise({ page, root, csharp }, { framework, component, componen
   await card.locator("a", { hasText: "CounterViewModel.cs:11" }).click();
   for (let attempt = 0; opened === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.deepEqual(opened, { method: "POST", type: "application/json", body: { id: "Demo.CounterViewModel/command/increment" } });
-  // A link to the component opens through Vite's /__open-in-editor.
-  let editorRequest;
-  await page.route("**/__open-in-editor*", async route => {
-    editorRequest = new URL(route.request().url()).searchParams.get("file");
-    await route.fulfill({ status: 200, body: "" });
-  });
-  // The component section comes first; a client call on the same line links the same file and line.
+  // A link to the component posts the frontend file's path to the same endpoint, which opens only a file Vite serves
+  // (sources.test.mjs); Vite's own /__open-in-editor is not used. The component section comes first; a client call on
+  // the same line links the same file and line.
+  opened = undefined;
   await card.locator("a", { hasText: `${componentFile.file}:${componentFile.line}` }).first().click();
-  for (let attempt = 0; editorRequest === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.match(editorRequest, new RegExp(`${componentFile.file.replace(".", "\\.")}:${componentFile.line}:\\d+$`));
+  for (let attempt = 0; opened === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(opened?.method, "POST");
+  assert.equal(opened.type, "application/json");
+  assert.equal(opened.body.file, join(root, componentFile.file));
+  assert.equal(opened.body.line, componentFile.line);
+  assert.ok(Number.isSafeInteger(opened.body.column) && opened.body.column > 0, JSON.stringify(opened.body));
+  assert.deepEqual(viteEditorRequests, []);
 
   // Escape leaves select mode, and clicks reach the app again, also with an overview that select() shows.
   await page.keyboard.press("Escape");

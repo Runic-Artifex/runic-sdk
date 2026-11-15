@@ -9,7 +9,7 @@ import type { SourceBindings } from "./inspect-handlers.js";
 /**
  * A source location of the overview, with how "open in editor" opens it: `runic` posts the source map entry's `id` to
  * `/__runic/open`; `translations` posts the `message` to `/__runic/open`, which asks the Translations dev server where
- * it is; `vite` opens a frontend file through Vite's `/__open-in-editor`.
+ * it is; `vite` posts the frontend file's path to it, which opens only a file Vite serves.
  */
 export interface RunicInspectLocation {
   readonly file: string;

@@ -40,6 +40,8 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
     page.on("pageerror", error => errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
     await page.locator('button[aria-label="Runic"]').waitFor({ state: "attached", timeout: scaled(10_000) });
+    // The dock's own loader loaded it; the development client, which loads it for a document of another origin, did not.
+    assert.equal(await page.locator('script[src$="/__devtools/embedded.js"]').count(), 1);
     context.docks.activate("runic:overview");
     await page.getByText("bun-browser-canary", { exact: true }).waitFor({ timeout: scaled(10_000) });
     plugin.api.reportDiagnostic({ source: "assets", kind: "event", label: "Live Bun diagnostic" });
@@ -65,6 +67,47 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
       for (const listener of channel.listeners) listener("reconnecting");
     });
     await page.getByText("reconnecting", { exact: true }).waitFor({ timeout: scaled(10_000) });
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await server?.close();
+    if (previousAuth === undefined) delete process.env.VITE_DEVTOOLS_DISABLE_CLIENT_AUTH;
+    else process.env.VITE_DEVTOOLS_DISABLE_CLIENT_AUTH = previousAuth;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// SvelteKit renders its pages and runs no transformIndexHtml, so with html: false the client loads the dock, and runic()
+// removes the dock's HTML loader, which SvelteKit would warn about.
+test("with html: false the development client loads the dock", {
+  timeout: scaled(30_000),
+  skip: !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "runic-dock-html-false-"));
+  const previousAuth = process.env.VITE_DEVTOOLS_DISABLE_CLIENT_AUTH;
+  process.env.VITE_DEVTOOLS_DISABLE_CLIENT_AUTH = "true";
+  let server, browser;
+  try {
+    await writeFile(join(root, "index.html"),
+      '<!doctype html><html><body><script type="module" src="/main.js"></script></body></html>');
+    await writeFile(join(root, "main.js"), 'import "@runic-artifex/vite-plugin-runic/client";\n');
+    await mkdir(join(root, "node_modules", "@runic-artifex"), { recursive: true });
+    await symlink(process.cwd(), join(root, "node_modules", "@runic-artifex", "vite-plugin-runic"), "dir");
+    server = await createServer({ root, configFile: false, logLevel: "silent",
+      plugins: [DevTools({ embeddedVisibility: "normal" }), runic({ html: false })],
+      optimizeDeps: { include: ["@runic-artifex/vite-plugin-runic/client"] },
+      server: { host: "127.0.0.1", port: 0 } });
+    await server.listen();
+    const injection = server.config.plugins.find((plugin) => plugin.name === "vite:devtools:injection");
+    assert.ok(injection, "DevTools() has no HTML loader plugin to check");
+    assert.equal("transformIndexHtml" in injection, false);
+    browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH, headless: true });
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", error => errors.push(String(error)));
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
+    await page.locator('button[aria-label="Runic"]').waitFor({ state: "attached", timeout: scaled(10_000) });
+    assert.equal(await page.locator('script[src$="/__devtools/embedded.js"]').count(), 1);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
