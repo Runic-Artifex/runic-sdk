@@ -322,6 +322,17 @@ for (const [name, engine] of Object.entries(engines)) test(`edit a translation o
     await editor.locator("textarea").press("Escape");
     assert.equal(await editor.isVisible(), false);
     assert.deepEqual(await focused(page), { tag: "button", id: "", message: "app:heading" });
+    // The page's text changes again while the focus is there (here: a text-change notification, as after a save or an
+    // edit elsewhere). The overview renders its controls anew, and the focus moves to the new Edit button.
+    await page.evaluate(() => {
+      document.querySelector("runic-inspect").shadowRoot.activeElement.dataset.before = "";
+      for (const listener of [...globalThis[Symbol.for("runic.translations.text")].listeners]) listener();
+    });
+    await page.waitForFunction(() => {
+      const button = document.querySelector("runic-inspect").shadowRoot.querySelector('button.edit[data-message="app:heading"]');
+      return button !== null && !("before" in button.dataset);
+    }, null, { timeout: scaled(10_000) });
+    assert.deepEqual(await focused(page), { tag: "button", id: "", message: "app:heading" }, "the focus follows the overview's refresh");
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => document.querySelector("#heading").textContent === "Mine", null, { timeout: scaled(10_000) });
     assert.equal(await page.evaluate(() => globalThis.sameDocument), true);

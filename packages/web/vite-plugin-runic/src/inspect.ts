@@ -554,8 +554,20 @@ export function installInspect(options: InspectOptions = {}): () => void {
     return anchor;
   }
 
+  // An overview control as it is rendered again: the same kind, message and text find its counterpart.
+  function controlKey(element: Element): string {
+    const control = element as HTMLElement;
+    return [control.tagName, control.className, control.dataset["message"] ?? "", control.dataset["open"] ?? "",
+      control.getAttribute("title") ?? "", control.textContent ?? ""].join("\u0000");
+  }
+
   function render(description: RunicInspectDescription): void {
-    const { card, overview, editor } = overlay!;
+    const { host: overlayHost, card, overview, editor } = overlay!;
+    // Rendering again replaces the overview's controls. A refresh (after a save, an edit elsewhere, a language switch)
+    // can arrive while the keyboard focus is on one of them, such as the Edit button Esc returned to: the focus moves
+    // to its counterpart instead of falling to the document.
+    const focused = overlayHost.shadowRoot?.activeElement;
+    const refocus = focused instanceof Element && overview.contains(focused) ? controlKey(focused) : undefined;
     overview.replaceChildren();
     const header = document.createElement("header");
     const title = document.createElement("h2");
@@ -645,6 +657,11 @@ export function installInspect(options: InspectOptions = {}): () => void {
       overview.append(paragraph);
     }
     card.hidden = false;
+    if (refocus !== undefined) {
+      const counterpart = [...overview.querySelectorAll<HTMLElement>("button, a")].find((control) => controlKey(control) === refocus)
+        ?? overview.querySelector<HTMLElement>("button.close");
+      counterpart?.focus({ preventScroll: true });
+    }
   }
 
   function editButton(message: RunicInspectMessage): HTMLElement {
