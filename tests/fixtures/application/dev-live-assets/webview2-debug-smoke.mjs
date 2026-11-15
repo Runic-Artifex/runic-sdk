@@ -16,7 +16,7 @@
 //   node tests/fixtures/application/dev-live-assets/webview2-debug-smoke.mjs
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { killTree, scaled, tail, waitFor, waitForExit, within } from "../../../../examples/shared/smoke.mjs";
@@ -100,13 +100,47 @@ if (elevated) {
       "build tests/native/Runic.Application.HostedWindows.Smoke in Release.");
   const granted = spawnSync("icacls.exe", [fixture, "/grant", `${standardUser}:(OI)(CI)M`, "/T", "/C", "/Q"], { encoding: "utf8" });
   if (granted.status !== 0) throw new Error(`icacls ${fixture} failed: ${granted.stdout}${granted.stderr}`);
+  // dev's frontend watcher runs Bun, which setup-bun installs in the runner user's profile, where the standard user may
+  // not read: a copy in the fixture, first on the standard user's PATH.
+  const bun = spawnSync("where.exe", ["bun"], { encoding: "utf8" }).stdout?.split(/\r?\n/).find(line => line.trim());
+  if (!bun) throw new Error("bun is not on PATH; dotnet runic dev's frontend watcher needs it.");
+  const tools = join(fixture, "obj", "standard-user-tools");
+  await mkdir(tools, { recursive: true });
+  await copyFile(bun.trim(), join(tools, "bun.exe"));
+  const pathKey = Object.keys(environment).find(name => name.toUpperCase() === "PATH") ?? "PATH";
+  environment[pathKey] = `${tools};${environment[pathKey] ?? ""}`;
+  // What run 2 needs as the standard user: Bun, and writing obj/runic (dev's session file and pages) and Frontend/dist.
+  await mkdir(join(fixture, "obj/runic"), { recursive: true });
+  for (const [label, command] of [
+    ["bun --version", ["bun", "--version"]],
+    ["writing obj/runic and Frontend", ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+      `Set-Content -LiteralPath '${join(fixture, "obj/runic/standard-user-probe")}' -Value ok; ` +
+      `Remove-Item -LiteralPath '${join(fixture, "obj/runic/standard-user-probe")}'; ` +
+      `Set-Content -LiteralPath '${join(fixture, "Frontend/standard-user-probe")}' -Value ok; ` +
+      `Remove-Item -LiteralPath '${join(fixture, "Frontend/standard-user-probe")}'`]],
+  ]) {
+    const result = spawnSync("dotnet", [unelevated, "--run-unelevated", ...command], { cwd: root, env: environment, encoding: "utf8", timeout: 120_000 });
+    console.log(`WEBVIEW2_DEBUG_STEP|standard user ${standardUser}: ${label}: exit ${result.status}|${(result.stdout + result.stderr).trim().replaceAll(/\s+/g, " ").slice(0, 400)}`);
+    if (result.status !== 0) throw new Error(`The standard user ${standardUser} cannot run ${label}; dotnet runic dev needs it.`);
+  }
 }
-// Stops what a run started, including the standard user's processes: the fixture's Window and every process whose
-// command line names the fixture's project (dotnet run, dotnet runic dev and the launcher).
+// Stops what a run started, including the standard user's processes, which do not run below this one: the process trees
+// of the fixture's Window and of every process whose command line names the fixture's project (dotnet run, dotnet runic
+// dev and the launcher), then whatever else still runs as the standard user (only this step runs as that user). Returns
+// what survived.
 function stopFixtureProcesses() {
-  spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+  const user = standardUser.replaceAll("'", "''");
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    "$ErrorActionPreference = 'SilentlyContinue'; " +
     "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'DevLiveAssets.exe' -or $_.CommandLine -like '*DevLiveAssets.csproj*' } | " +
-    "ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F | Out-Null }"], { stdio: "ignore", timeout: 60_000 });
+    "ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F | Out-Null }; " +
+    `$mine = { Get-Process -IncludeUserName | Where-Object { $_.UserName -like '*\\${user}' } }; ` +
+    "& $mine | Stop-Process -Force; " +
+    "foreach ($attempt in 1..20) { if (-not (& $mine)) { break }; Start-Sleep -Milliseconds 250 }; " +
+    "(& $mine | ForEach-Object { \"$($_.Id) $($_.ProcessName)\" }) -join ', '"], { encoding: "utf8", timeout: 60_000 });
+  const survivors = (result.stdout ?? "").trim();
+  if (survivors) console.log(`WEBVIEW2_DEBUG_STEP|still running as ${standardUser}: ${survivors}`);
+  return survivors;
 }
 
 function run(command, args) {
@@ -126,8 +160,13 @@ function start(label, args) {
   const command = elevated ? [unelevated, "--run-unelevated", "dotnet", ...args] : args;
   const child = spawn("dotnet", command, { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
   const started = { label, child, output: "" };
-  child.stdout.on("data", chunk => { started.output += chunk; });
-  child.stderr.on("data", chunk => { started.output += chunk; });
+  // Diagnosis: the output also streams to the log, so even a step timeout shows how far a run got.
+  const echo = chunk => {
+    started.output += chunk;
+    for (const line of String(chunk).split(/\r?\n/)) if (line.trim()) console.log(`  [${label}] ${line}`);
+  };
+  child.stdout.on("data", echo);
+  child.stderr.on("data", echo);
   return started;
 }
 const detailOf = started => () => `${started.label} ${started.child.exitCode === null ? "is running" : `exited ${started.child.exitCode}`}:\n` +
@@ -215,7 +254,7 @@ async function proveEndpoint(base, started) {
       return state.marker === "one" && state.href === selected[0].url ? { ...selected[0], state } : undefined;
     } finally { page.close(); }
   }, {
-    label: `the Window's page in ${base}json/list`, timeout: 60_000, attemptTimeout: 15_000,
+    label: `the Window's page in ${base}json/list`, timeout: 30_000, attemptTimeout: 15_000,
     detail: async () => `targets: ${JSON.stringify(targets?.map(({ type, url }) => ({ type, url })))}\n${await detail()}`,
   });
   const { state } = target;
@@ -261,21 +300,28 @@ try {
   });
   console.log(`WEBVIEW2_DEBUG_PROFILE_OK|${profileName}|${page.url}`);
   await stop(launched);
-  await waitFor(async () => !await answers(endpoint), { label: `${endpoint} to close after the Window stopped`, timeout: 30_000 });
+  await waitFor(async () => !await answers(endpoint), {
+    label: `${endpoint} to close after the Window stopped`, timeout: 30_000, detail: () => describeTree("DevLiveAssets.exe"),
+  });
+  console.log(`WEBVIEW2_DEBUG_STEP|run 1 stopped; ${endpoint} closed`);
 
   // 2. dotnet runic dev with the profile's variable: the session file names the endpoint.
-  dev = start("dotnet runic dev", [tool, "dev", "--project", project, "-c", "Release", "--no-build", "--no-dotnet-watch",
+  dev = start("dotnet runic dev", [tool, "dev", "--project", project, "-c", "Release", "--no-build", "--no-restore", "--no-dotnet-watch",
     "-e", `${variable}=${debugging.environment[variable]}`]);
+  console.log("WEBVIEW2_DEBUG_STEP|run 2: dotnet runic dev started");
+  const sessionFile = join(fixture, "obj/runic/dev-session.json");
+  const devDetail = async () => `${await detailOf(dev)()}\n${await describeTree("DevLiveAssets.exe")}\n` +
+    `dev-session.json: ${await readFile(sessionFile, "utf8").catch(error => `(unreadable: ${error.code})`)}`;
   await waitFor(() => {
     if (dev.child.exitCode !== null) throw new Error(`dotnet runic dev exited ${dev.child.exitCode}`);
     return /^\[dev\] Ready\r?$/m.test(dev.output);
-  }, { label: "[dev] Ready", timeout: 180_000, detail: detailOf(dev) });
-  const session = JSON.parse(await readFile(join(fixture, "obj/runic/dev-session.json"), "utf8"));
+  }, { label: "[dev] Ready from dotnet runic dev as the standard user", timeout: 60_000, detail: devDetail });
+  const session = JSON.parse(await readFile(sessionFile, "utf8"));
   const expected = [{ engine: "webview2", protocol: "cdp", url: endpoint }];
   if (session.state !== "ready" || JSON.stringify(session.debugEndpoints) !== JSON.stringify(expected))
     throw new Error(`dev-session.json: state ${session.state}, debugEndpoints ${JSON.stringify(session.debugEndpoints)}; expected ${JSON.stringify(expected)}`);
   const devPage = await proveEndpoint(session.debugEndpoints[0].url, dev).catch(async error => {
-    console.log(`${await describeTree("DevLiveAssets.exe")}\ndev output:\n${tail(dev.output, 4000)}`);
+    console.log(await devDetail());
     throw error;
   });
   console.log(`WEBVIEW2_DEBUG_DEV_SESSION_OK|${session.debugEndpoints[0].url}|${devPage.url}`);
