@@ -22,6 +22,16 @@ internal sealed class WipPage
     private int _defaultContextId;
     private string? _mainFrameId;
     private bool _closed;
+    // Events are translated one at a time, in WebKit's order.
+    private readonly System.Threading.Channels.Channel<(string Method, JsonObject Params)> _events =
+        System.Threading.Channels.Channel.CreateUnbounded<(string, JsonObject)>(new() { SingleReader = true });
+    // Debugger.enable replays scriptParsed for existing scripts in hash order; js-debug binds a source to the script
+    // parsed last (HMR), so the replay is buffered and emitted in creation (script ID) order.
+    private List<JsonObject>? _replay;
+    // Emulation of CDP's "beforeScriptWithSourceMapExecution" instrumentation breakpoint (see HandleAsync).
+    private bool _instrumentation;
+    private readonly Queue<JsonObject> _instrumentationScripts = new();
+    private JsonObject? _instrumentationPaused;
 
     internal WipPage(InspectorSocket socket, InspectorTarget target, CdpConnection cdp, string sessionId)
     {
@@ -33,6 +43,14 @@ internal sealed class WipPage
 
     internal async Task SetupAsync()
     {
+        _ = Task.Run(async () =>
+        {
+            await foreach (var (method, p) in _events.Reader.ReadAllAsync())
+            {
+                try { await TranslateEventAsync(method, p); }
+                catch (Exception error) { Log.Write("adapter", $"event {method} failed: {error.Message}"); }
+            }
+        });
         _socket.MessageToFrontend += OnMessage;
         await _socket.SetupAsync(_target.ConnectionId, _target.TargetId);
         await _innerTarget.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -99,7 +117,7 @@ internal sealed class WipPage
                 Log.Write("wip<", innerText);
                 var inner = JsonNode.Parse(innerText)!.AsObject();
                 if (inner["id"] is { } idNode && _pending.TryRemove(idNode.GetValue<long>(), out var tcs)) tcs.TrySetResult(inner);
-                else if (inner["method"]?.GetValue<string>() is { } ev) _ = TranslateEventAsync(ev, inner["params"] as JsonObject ?? new JsonObject());
+                else if (inner["method"]?.GetValue<string>() is { } ev) _events.Writer.TryWrite((ev, inner["params"] as JsonObject ?? new JsonObject()));
                 return;
             default:
                 if (m["id"] is null) Log.Write("wip<", "outer " + text);
@@ -127,7 +145,7 @@ internal sealed class WipPage
             case "Browser.getVersion":
                 return new() { ["protocolVersion"] = "1.3", ["product"] = "WebKitGTK", ["revision"] = "", ["userAgent"] = "WebKitGTK", ["jsVersion"] = "" };
             case "Page.enable":
-                await WipAsync("Page.enable");
+                await EnableAsync("Page.enable");
                 return new();
             case "Page.getResourceTree":
             {
@@ -148,11 +166,15 @@ internal sealed class WipPage
                 await WipAsync("Page.navigate", new() { ["url"] = p["url"]!.GetValue<string>() });
                 return new() { ["frameId"] = _mainFrameId ?? "" };
             case "Runtime.enable":
-                await WipAsync("Runtime.enable");
-                await WipAsync("Console.enable");
+                await EnableAsync("Runtime.enable");
+                await EnableAsync("Console.enable");
                 return new();
             case "Debugger.enable":
-                await WipAsync("Debugger.enable");
+                // js-debug enables the Debugger again after each navigation; WebKit then answers "already enabled" and
+                // replays nothing.
+                _events.Writer.TryWrite(("adapter.replayStart", new JsonObject()));
+                try { await EnableAsync("Debugger.enable"); }
+                finally { _events.Writer.TryWrite(("adapter.replayEnd", new JsonObject())); }
                 await WipAsync("Debugger.setBreakpointsActive", new() { ["active"] = true });
                 await WipAsync("Debugger.setPauseOnDebuggerStatements", new() { ["enabled"] = true });
                 return new() { ["debuggerId"] = $"wk-{_target.TargetId}" };
@@ -160,8 +182,10 @@ internal sealed class WipPage
                 await WipAsync("Debugger.setAsyncStackTraceDepth", new() { ["depth"] = p["maxDepth"]?.GetValue<int>() ?? 0 });
                 return new();
             case "Debugger.setInstrumentationBreakpoint":
-                // GAP: WebKit has no "pause before a script with a source map runs". Breakpoints still bind through
-                // the regex breakpoints js-debug sets first; code that runs during the first load may run before them.
+                // GAP in WIP: no "pause before a script with a source map runs". Emulated: after such a script is
+                // parsed, Debugger.pause stops at the next statement, reported as an instrumentation pause for that
+                // script, so js-debug sets its breakpoints before the page's code runs on.
+                _instrumentation = p["instrumentation"]?.GetValue<string>() == "beforeScriptWithSourceMapExecution";
                 return new() { ["breakpointId"] = "instrumentation:" + p["instrumentation"] };
             case "Debugger.setBreakpointByUrl":
             {
@@ -181,7 +205,7 @@ internal sealed class WipPage
                 return new() { ["breakpointId"] = r["breakpointId"]!.DeepClone(), ["actualLocation"] = r["actualLocation"]!.DeepClone() };
             }
             case "Debugger.removeBreakpoint":
-                if (p["breakpointId"]!.GetValue<string>().StartsWith("instrumentation:", StringComparison.Ordinal)) return new();
+                if (p["breakpointId"]!.GetValue<string>().StartsWith("instrumentation:", StringComparison.Ordinal)) { _instrumentation = false; return new(); }
                 try { await WipAsync("Debugger.removeBreakpoint", new() { ["breakpointId"] = p["breakpointId"]!.GetValue<string>() }); }
                 catch (CdpError) { }
                 return new();
@@ -303,6 +327,26 @@ internal sealed class WipPage
             case "Runtime.releaseObjectGroup":
                 await WipAsync("Runtime.releaseObjectGroup", new() { ["objectGroup"] = p["objectGroup"]!.GetValue<string>() });
                 return new();
+            case "Debugger.setVariableValue":
+            {
+                // Emulated: WIP has no setVariableValue. An assignment evaluated in the frame sets the nearest binding of
+                // that name, which is the scope's variable unless an inner scope shadows it.
+                var name = p["variableName"]!.GetValue<string>();
+                if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[A-Za-z_$][A-Za-z0-9_$]*$")) throw new CdpError(-32000, "Unsupported variable name");
+                var value = p["newValue"] as JsonObject ?? new JsonObject();
+                string literal = value["unserializableValue"]?.GetValue<string>() is { } raw ? raw
+                    : value.ContainsKey("value") ? (value["value"]?.ToJsonString() ?? "null")
+                    : value.ContainsKey("objectId") ? throw new CdpError(-32000, "Setting a variable to an object is not supported on WebKit")
+                    : "undefined";
+                var r = await WipAsync("Debugger.evaluateOnCallFrame", new()
+                {
+                    ["callFrameId"] = p["callFrameId"]!.GetValue<string>(),
+                    ["expression"] = $"{name} = {literal}",
+                    ["doNotPauseOnExceptionsAndMuteConsole"] = true,
+                });
+                if (r["wasThrown"]?.GetValue<bool>() ?? false) throw new CdpError(-32000, r["result"]?["description"]?.GetValue<string>() ?? "Assignment failed");
+                return new();
+            }
             case "Runtime.compileScript":
                 return new();
             case "Runtime.globalLexicalScopeNames":
@@ -326,6 +370,12 @@ internal sealed class WipPage
                 Log.Write("adapter", $"GAP: unsupported CDP method {method}");
                 throw new CdpError(-32601, $"'{method}' wasn't found");
         }
+    }
+
+    private async Task EnableAsync(string method)
+    {
+        try { await WipAsync(method); }
+        catch (CdpError error) when (error.Message.Contains("already enabled", StringComparison.Ordinal)) { }
     }
 
     private static JsonObject StripResources(JsonObject tree)
@@ -360,6 +410,15 @@ internal sealed class WipPage
     {
         switch (method)
         {
+            case "adapter.replayStart":
+                _replay = [];
+                return;
+            case "adapter.replayEnd":
+                var replay = _replay ?? [];
+                _replay = null;
+                foreach (var script in replay.OrderBy(static e => long.TryParse(e["scriptId"]!.GetValue<string>(), out var n) ? n : long.MaxValue))
+                    await _cdp.EmitAsync(_sessionId, "Debugger.scriptParsed", script);
+                return;
             case "Runtime.executionContextCreated":
             {
                 var c = p["context"]!;
@@ -398,44 +457,32 @@ internal sealed class WipPage
                     ["scriptLanguage"] = "JavaScript",
                 };
                 if (p["sourceMapURL"]?.GetValue<string>() is { Length: > 0 } map) e["sourceMapURL"] = map;
+                if (_replay is not null) { _replay.Add(e); return; }
                 await _cdp.EmitAsync(_sessionId, "Debugger.scriptParsed", e);
+                if (_instrumentation && e["sourceMapURL"] is not null)
+                {
+                    _instrumentationScripts.Enqueue(e);
+                    if (_instrumentationScripts.Count == 1 && _instrumentationPaused is null) _ = WipAsync("Debugger.pause").ContinueWith(static _ => { });
+                }
+                return;
+            }
+            case "Debugger.paused" when p["reason"]?.GetValue<string>() is "PauseOnNextStatement" or "other" && _instrumentationScripts.Count > 0:
+            {
+                // The emulated instrumentation pause (see Debugger.setInstrumentationBreakpoint).
+                var script = _instrumentationScripts.Dequeue();
+                _instrumentationPaused = script;
+                await _cdp.EmitAsync(_sessionId, "Debugger.paused", new()
+                {
+                    ["callFrames"] = CallFrames(p),
+                    ["reason"] = "instrumentation",
+                    ["data"] = new JsonObject { ["scriptId"] = script["scriptId"]!.DeepClone(), ["url"] = script["url"]!.DeepClone(), ["sourceMapURL"] = script["sourceMapURL"]!.DeepClone() },
+                    ["hitBreakpoints"] = new JsonArray(),
+                });
                 return;
             }
             case "Debugger.paused":
             {
-                var frames = new JsonArray();
-                foreach (var f in p["callFrames"]!.AsArray())
-                {
-                    var location = f!["location"]!;
-                    var scopes = new JsonArray();
-                    var sawLocal = false;
-                    foreach (var s in f["scopeChain"]?.AsArray() ?? [])
-                    {
-                        var wipType = s!["type"]!.GetValue<string>();
-                        var type = wipType switch
-                        {
-                            "closure" when !sawLocal => "local",
-                            "closure" or "functionName" => "closure",
-                            "nestedLexical" => "block",
-                            "globalLexicalEnvironment" => "script",
-                            var other => other,
-                        };
-                        if (type == "local") sawLocal = true;
-                        var scope = new JsonObject { ["type"] = type, ["object"] = s["object"]!.DeepClone() };
-                        if (s["name"] is { } name) scope["name"] = name.DeepClone();
-                        scopes.Add(scope);
-                    }
-                    frames.Add(new JsonObject
-                    {
-                        ["callFrameId"] = f["callFrameId"]!.DeepClone(),
-                        ["functionName"] = f["functionName"]?.DeepClone() ?? "",
-                        ["location"] = location.DeepClone(),
-                        ["url"] = _scriptUrls.GetValueOrDefault(location["scriptId"]!.GetValue<string>(), ""),
-                        ["scopeChain"] = scopes,
-                        ["this"] = f["this"]!.DeepClone(),
-                        ["canBeRestarted"] = false,
-                    });
-                }
+                var frames = CallFrames(p);
                 var reason = p["reason"]!.GetValue<string>();
                 var e = new JsonObject
                 {
@@ -451,10 +498,17 @@ internal sealed class WipPage
             }
             case "Debugger.resumed":
                 await _cdp.EmitAsync(_sessionId, "Debugger.resumed", new());
+                if (_instrumentationPaused is not null)
+                {
+                    _instrumentationPaused = null;
+                    if (_instrumentationScripts.Count > 0) _ = WipAsync("Debugger.pause").ContinueWith(static _ => { });
+                }
                 return;
             case "Console.messageAdded":
             {
-                var msg = p["message"]!;
+                var msg = (JsonObject)p["message"]!;
+                // WebKit reports eval'd code's URL as the string "undefined".
+                if (msg["url"]?.GetValue<string>() == "undefined") msg.Remove("url");
                 var source = msg["source"]?.GetValue<string>();
                 var level = msg["level"]?.GetValue<string>() ?? "log";
                 var stack = msg["stackTrace"]?["callFrames"] is JsonArray callFrames
@@ -483,6 +537,13 @@ internal sealed class WipPage
                         ["exceptionId"] = 1, ["text"] = msg["text"]!.DeepClone(),
                         ["lineNumber"] = Math.Max(0, (msg["line"]?.GetValue<int>() ?? 1) - 1), ["columnNumber"] = Math.Max(0, (msg["column"]?.GetValue<int>() ?? 1) - 1),
                         ["url"] = msg["url"]?.DeepClone(), ["executionContextId"] = _defaultContextId,
+                        // WebKit's console message has no exception object; js-debug titles the output from one.
+                        ["exception"] = new JsonObject
+                        {
+                            ["type"] = "object", ["subtype"] = "error",
+                            ["className"] = msg["text"]!.GetValue<string>().Split(':')[0] is var c && c.Length is > 0 and < 40 && !c.Contains(' ') ? c : "Error",
+                            ["description"] = msg["text"]!.DeepClone(),
+                        },
                     };
                     if (stack is not null) details["stackTrace"] = stack;
                     await _cdp.EmitAsync(_sessionId, "Runtime.exceptionThrown", new() { ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ["exceptionDetails"] = details });
@@ -515,6 +576,44 @@ internal sealed class WipPage
         }
     }
 
+    private JsonArray CallFrames(JsonObject p)
+    {
+        var frames = new JsonArray();
+        foreach (var f in p["callFrames"]!.AsArray())
+                {
+            var location = f!["location"]!;
+            var scopes = new JsonArray();
+            var sawLocal = false;
+            foreach (var s in f["scopeChain"]?.AsArray() ?? [])
+            {
+                var wipType = s!["type"]!.GetValue<string>();
+                var type = wipType switch
+                {
+                    "closure" when !sawLocal => "local",
+                    "closure" or "functionName" => "closure",
+                    "nestedLexical" => "block",
+                    "globalLexicalEnvironment" => "script",
+                    var other => other,
+                };
+                if (type == "local") sawLocal = true;
+                var scope = new JsonObject { ["type"] = type, ["object"] = s["object"]!.DeepClone() };
+                if (s["name"] is { } name) scope["name"] = name.DeepClone();
+                scopes.Add(scope);
+            }
+            frames.Add(new JsonObject
+            {
+                ["callFrameId"] = f["callFrameId"]!.DeepClone(),
+                ["functionName"] = f["functionName"]?.DeepClone() ?? "",
+                ["location"] = location.DeepClone(),
+                ["url"] = _scriptUrls.GetValueOrDefault(location["scriptId"]!.GetValue<string>(), ""),
+                ["scopeChain"] = scopes,
+                ["this"] = f["this"]!.DeepClone(),
+                ["canBeRestarted"] = false,
+            });
+        }
+        return frames;
+    }
+
     private JsonArray Frames(JsonArray wipFrames)
     {
         var frames = new JsonArray();
@@ -524,7 +623,7 @@ internal sealed class WipPage
             {
                 ["functionName"] = f!["functionName"]?.DeepClone() ?? "",
                 ["scriptId"] = f["scriptId"]?.DeepClone() ?? "",
-                ["url"] = f["url"]?.DeepClone() ?? "",
+                ["url"] = f["url"]?.GetValue<string>() is { } u && u != "undefined" ? u : "",
                 // WIP stack trace positions are 1-based; CDP's are 0-based.
                 ["lineNumber"] = Math.Max(0, (f["lineNumber"]?.GetValue<int>() ?? 1) - 1),
                 ["columnNumber"] = Math.Max(0, (f["columnNumber"]?.GetValue<int>() ?? 1) - 1),
