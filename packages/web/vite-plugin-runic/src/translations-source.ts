@@ -79,6 +79,16 @@ export async function findMessageSource(server: TranslationsServer, message: Mes
   return messageLocation(await getJson(url), message);
 }
 
+/**
+ * This development server's Translations message API reply for a message (`message.locales[]`), for Runic Inspect's
+ * requests over Vite's HMR connection (sources.ts, `answerClientRequest`). Undefined when the API is not there or
+ * refuses.
+ */
+export async function readMessageReply(server: TranslationsServer, message: MessageReference): Promise<unknown> {
+  const url = messageUrl(server, message);
+  return url === undefined ? undefined : getJson(url);
+}
+
 // The request goes to this process's own listening socket. With HTTPS that is the dev server's own certificate, often
 // self-signed, so it is not verified; the connection never leaves the machine.
 function getJson(url: URL): Promise<unknown> {

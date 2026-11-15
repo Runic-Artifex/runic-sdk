@@ -147,3 +147,66 @@ test("from another machine: the data endpoints answer only when allowed, /__runi
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// Runic Inspect's requests over Vite's HMR connection (#1013), which reach the dev server from the .NET host's page under
+// dotnet runic dev, follow the same rules, judged per request from the connection's address: reads (sources, handlers,
+// message) for loopback and allowed machines, open for loopback only. The connection is Vite's own, with its token.
+async function hmrRequests(host, port, token, requests) {
+  const socket = new WebSocket(`ws://${host}:${port}/?token=${encodeURIComponent(token)}`, "vite-hmr");
+  const answers = new Map();
+  const done = new Promise((resolve, reject) => {
+    socket.addEventListener("message", (event) => {
+      const payload = JSON.parse(String(event.data));
+      if (payload.type === "custom" && payload.event === "runic:response") answers.set(payload.data.id, payload.data.status);
+      if (answers.size === requests.length) resolve();
+    });
+    socket.addEventListener("error", () => reject(new Error(`The HMR connection to ${host} failed.`)));
+  });
+  await new Promise((resolve, reject) => {
+    socket.addEventListener("open", resolve, { once: true });
+    socket.addEventListener("error", reject, { once: true });
+  });
+  for (const request of requests) socket.send(JSON.stringify({ type: "custom", event: "runic:request", data: request }));
+  await Promise.race([done, new Promise((_, reject) => setTimeout(() => reject(new Error("No answer over the HMR connection.")), 10_000))]);
+  socket.close();
+  return Object.fromEntries(requests.map((request) => [request.kind, answers.get(request.id)]));
+}
+
+test("over Vite's HMR connection: reads answer only when allowed, open never from another machine", { skip: lan === undefined && "no non-loopback IPv4 address" }, async () => {
+  const root = await project();
+  try {
+    const serve = async (options) => {
+      const server = await createServer({
+        root, configFile: false, logLevel: "silent", plugins: [runic({ sourceMap: "sources.json", ...options })],
+        server: { host: "0.0.0.0", port: 0 },
+      });
+      await server.listen();
+      return server;
+    };
+    // An unknown id: an admitted open answers 404 and launches nothing; a refused one answers 403.
+    const requests = [
+      { id: 1, kind: "sources" },
+      { id: 2, kind: "handlers", file: join(root, "src", "Page.jsx") },
+      { id: 3, kind: "open", target: { id: "Demo.Counter/command/missing" } },
+    ];
+    const ask = (server, host) => hmrRequests(host, server.httpServer.address().port, server.config.webSocketToken, requests);
+    let server = await withEnvironment(undefined, () => serve({}));
+    try {
+      assert.deepEqual(await ask(server, "127.0.0.1"), { sources: 200, handlers: 200, open: 404 }, "loopback");
+      assert.deepEqual(await ask(server, lan), { sources: 403, handlers: 403, open: 403 }, `${lan} without a list`);
+    } finally { await server.close(); }
+    for (const [environment, options] of [[lan, {}], [undefined, { allow: [`${lan}/32`] }]]) {
+      server = await withEnvironment(environment, () => serve(options));
+      try {
+        assert.deepEqual(await ask(server, lan), { sources: 200, handlers: 200, open: 403 },
+          `${lan} with ${environment ? "RUNIC_DEV_ALLOW" : "allow"}: reads, but open is loopback-only`);
+        assert.deepEqual(await ask(server, "127.0.0.1"), { sources: 200, handlers: 200, open: 404 }, "loopback");
+      } finally { await server.close(); }
+    }
+    // A list that names another network admits nothing more.
+    server = await withEnvironment(undefined, () => serve({ allow: ["198.51.100.0/24"] }));
+    try {
+      assert.deepEqual(await ask(server, lan), { sources: 403, handlers: 403, open: 403 }, `${lan} outside the list`);
+    } finally { await server.close(); }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

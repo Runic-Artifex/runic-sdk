@@ -22,3 +22,4 @@ RUNICBRIDGE035 | Runic.Application.Views | Error | BridgeShapeAnalyzer, the Brid
 RUNICBRIDGE039 | Runic.Application.Views | Warning | BridgeShapeAnalyzer, the Bridge generator's code
 RUNICBRIDGE060 | Runic.Application.Views | Error | BridgeShapeAnalyzer, the Bridge generator's code
 RUNICBRIDGE070 | Runic.Application.Views | Error | BridgeShapeAnalyzer, the Bridge generator's code
+RUNICBRIDGE071 | Runic.Application.Views | Error | BridgeShapeAnalyzer, the Bridge generator's code

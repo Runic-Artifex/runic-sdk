@@ -883,7 +883,8 @@ run_translations_dev_check() {
 }
 
 # Opens the page of a CommunityToolkit.Mvvm Vite frontend under dotnet runic dev in Chromium, increments the Counter
-# and checks the Runic dock's row for the command and its open button (check-template-dock.mjs).
+# and checks the Runic dock's row for the command and its open button, and Runic Inspect's C# location for it and
+# its link (check-template-dock.mjs).
 run_dock_dev_check() {
   local output="$1"
   local framework="$2"
@@ -891,7 +892,7 @@ run_dock_dev_check() {
   local log="$output/dock-dev-check.log"
   if ! bun "$script_directory/check-template-dock.mjs" --host "$host" --project "$output" -- \
     env -C "$output" dotnet runic dev > "$log" 2>&1; then
-    echo "The $framework $host page did not show its command in the Runic dock under dotnet runic dev." >&2
+    echo "The $framework $host page did not show its command in the Runic dock or Runic Inspect under dotnet runic dev." >&2
     cat "$log" >&2
     exit 1
   fi

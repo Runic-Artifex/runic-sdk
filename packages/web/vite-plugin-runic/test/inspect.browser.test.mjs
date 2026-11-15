@@ -16,6 +16,7 @@ import { chromium, webkit } from "playwright-core";
 import { createServer } from "vite";
 import { runic } from "../dist/index.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
+import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
 
 const here = fileURLToPath(new URL("..", import.meta.url));
 const packages = fileURLToPath(new URL("../../", import.meta.url));
@@ -184,6 +185,10 @@ async function link(root, name, target) {
 
 async function withPage(files, plugins, run, engine = engines.chromium) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "runic-inspect-browser-")));
+  // An editor that records its arguments, as LAUNCH_EDITOR: launch-editor calls an unknown editor with file, line, column.
+  const { record, environment } = await recordingEditor(root);
+  const previous = Object.fromEntries(Object.keys(environment).map((name) => [name, process.env[name]]));
+  Object.assign(process.env, environment);
   let server, browser;
   try {
     const { file, map } = sourceMap(root);
@@ -219,11 +224,15 @@ async function withPage(files, plugins, run, engine = engines.chromium) {
     page.on("pageerror", error => errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
     await page.waitForFunction(() => globalThis.inspectTest?.ready === true, null, { timeout: scaled(30_000) });
-    await run({ page, root, csharp: file });
+    await run({ page, root, csharp: file, record });
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
     await server?.close();
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     await rm(root, { recursive: true, force: true });
   }
 }
@@ -255,7 +264,7 @@ const handler = csharp => ({
 // The shared steps: the command before any click (from the source, #976) or learned by use, select mode, the
 // overview card, open in editor. `source` is where the page's handler reaches the client call, when the analysis
 // can see it; without it, the command is learned on first click.
-async function exercise({ page, root, csharp }, { framework, component, componentFile, source }) {
+async function exercise({ page, root, csharp, record }, { framework, component, componentFile, source }) {
   let description = await describe(page, "#increment");
   assert.equal(description.component?.framework, framework);
   assert.equal(description.component?.name, component);
@@ -317,32 +326,24 @@ async function exercise({ page, root, csharp }, { framework, component, componen
   assert.equal(await page.locator(".count").textContent(), "11");
   assert.match(await card.textContent(), new RegExp(`${component}.*${framework}`));
 
-  // The handler's link opens the C# location through /__runic/open with the source map entry's id.
-  let opened;
-  const viteEditorRequests = [];
-  await page.route("**/__open-in-editor*", async route => {
-    viteEditorRequests.push(route.request().url());
+  // The handler's link opens the C# location, and the component's link the frontend file, both with /__runic/open's
+  // decision over Vite's HMR connection (sources.test.mjs); neither /__runic/open over HTTP nor Vite's /__open-in-editor
+  // is requested.
+  const httpOpens = [];
+  await page.route(/\/__runic\/open|\/__open-in-editor/u, async route => {
+    httpOpens.push(route.request().url());
     await route.fulfill({ status: 404, body: "" });
   });
-  await page.route("**/__runic/open", async route => {
-    opened = { method: route.request().method(), type: route.request().headers()["content-type"], body: route.request().postDataJSON() };
-    await route.fulfill({ status: 200, body: "" });
-  });
-  await card.locator("a", { hasText: "CounterViewModel.cs:11" }).click();
-  for (let attempt = 0; opened === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.deepEqual(opened, { method: "POST", type: "application/json", body: { id: "Demo.CounterViewModel/command/increment" } });
-  // A link to the component posts the frontend file's path to the same endpoint, which opens only a file Vite serves
-  // (sources.test.mjs); Vite's own /__open-in-editor is not used. The component section comes first; a client call on
-  // the same line links the same file and line.
-  opened = undefined;
-  await card.locator("a", { hasText: `${componentFile.file}:${componentFile.line}` }).first().click();
-  for (let attempt = 0; opened === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(opened?.method, "POST");
-  assert.equal(opened.type, "application/json");
-  assert.equal(opened.body.file, join(root, componentFile.file));
-  assert.equal(opened.body.line, componentFile.line);
-  assert.ok(Number.isSafeInteger(opened.body.column) && opened.body.column > 0, JSON.stringify(opened.body));
-  assert.deepEqual(viteEditorRequests, []);
+  if (process.platform !== "win32") {
+    await card.locator("a", { hasText: "CounterViewModel.cs:11" }).click();
+    assert.deepEqual(await readRecord(record), [csharp, "11", "5"]);
+    // The component section comes first; a client call on the same line links the same file and line.
+    await card.locator("a", { hasText: `${componentFile.file}:${componentFile.line}` }).first().click();
+    const [file, line, column] = await readRecord(record);
+    assert.deepEqual([file, Number(line)], [join(root, componentFile.file), componentFile.line]);
+    assert.ok(Number(column) > 0, column);
+  }
+  assert.deepEqual(httpOpens, []);
 
   // Escape leaves select mode, and clicks reach the app again, also with an overview that select() shows.
   await page.keyboard.press("Escape");
@@ -356,7 +357,7 @@ async function exercise({ page, root, csharp }, { framework, component, componen
 
 // Messages of generated m.*() calls: markers only in select mode, the message key and .rmf2 line in the overview, and
 // open in editor through /__runic/open with the message, never a path.
-async function exerciseMessages({ page, root }) {
+async function exerciseMessages({ page, root, record }) {
   const rmf2 = join(root, "translations", "en.rmf2");
   const markerCharacters = /[\u2061-\u2064]/u;
   const markup = () => page.evaluate(() => document.getElementById("root").innerHTML);
@@ -387,21 +388,15 @@ async function exerciseMessages({ page, root }) {
     [{ catalog: "app", key: "increment_tip", locale: "en", in: ["title"], source: "Adds the step", location: location("increment_tip", 3), editable: true }]);
   assert.equal(description.element.text, "Increment");
 
-  // Selecting the heading shows its message; its link opens through /__runic/open with the message.
-  await page.unroute("**/__runic/open");
-  let opened;
-  await page.route("**/__runic/open", async route => {
-    opened = route.request().postDataJSON();
-    await route.fulfill({ status: 200, body: "" });
-  });
+  // Selecting the heading shows its message; its link opens with the message (over Vite's connection, sources.ts), and
+  // the server asks the Translations dev server where it is: the .rmf2 line opens.
   const { x, y } = await center(page, "#heading");
   await page.mouse.click(x, y);
   const card = page.locator("runic-inspect .card");
   await card.getByText("app:heading").waitFor({ timeout: scaled(10_000) });
   assert.match(await card.textContent(), /app:heading \[en\] "Counter"/u);
   await card.locator("a", { hasText: "translations/en.rmf2:2" }).click();
-  for (let attempt = 0; opened === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.deepEqual(opened, { message: { catalog: "app", key: "heading", locale: "en" } });
+  if (process.platform !== "win32") assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
 
   // Off: the page renders its plain text again.
   await page.keyboard.press("Escape");
@@ -519,6 +514,8 @@ globalThis.inspectTest = { received, ready: true };
   await withPage({
     "index.html": '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>',
     "main.js": main,
+    // The file `__file` names: the editor link opens only a file that exists.
+    "CounterPage.vue": "<template><section /></template>\n",
     "translations.js": translations,
     "translations/en.rmf2": translationSource,
   }, [translationsApi()], async page => {

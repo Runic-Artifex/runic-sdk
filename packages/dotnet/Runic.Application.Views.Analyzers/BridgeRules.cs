@@ -44,6 +44,8 @@ internal static class BridgeRules
         "A ViewRequest or ViewQuestion member is not a get-only property");
     internal static readonly DiagnosticDescriptor QueryCollection = Rule("RUNICBRIDGE060",
         "A RunicQueryCollection member has an unsupported shape");
+    internal static readonly DiagnosticDescriptor RegionCollectionName = Rule("RUNICBRIDGE071",
+        "A region collection's select or close client method collides with another client member");
     internal static readonly DiagnosticDescriptor RegionCollection = Rule("RUNICBRIDGE070",
         "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported");
 
@@ -61,7 +63,7 @@ internal static class BridgeRules
     internal static readonly ImmutableArray<DiagnosticDescriptor> All =
     [
         NameCollision, View, ViewModel, State, Command, Collection, Interaction, Failure, ReactiveUiAdapter, CommandKey, ViewMember,
-        QueryCollection, RegionCollection, MissingView, OperationRetirement, PresentationScoped, OperationClose,
+        QueryCollection, RegionCollection, RegionCollectionName, MissingView, OperationRetirement, PresentationScoped, OperationClose,
     ];
 
     // Generated client members that are valid C# names but break the client object type or object literal, with the

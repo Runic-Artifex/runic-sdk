@@ -18,17 +18,21 @@ import {
   diagnosticEvent,
   diagnosticsPath,
   maximumClientMessageBytes,
+  requestEvent,
+  responseEvent,
   spanEvent,
   viewEvent,
+  type RunicClientResponse,
 } from "./channel.js";
 import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
 import { sanitizeCallReport } from "./calls.js";
 import { installStaleInputWarning } from "./stale-input.js";
-import { installInspect } from "./inspect.js";
+import { installInspect, type InspectRequest } from "./inspect.js";
 
 interface ViteHotContextLike {
   readonly data: Record<string, unknown>;
   send(event: string, data?: unknown): void;
+  on?(event: string, listener: (data: unknown) => void): void;
 }
 
 interface ImportMetaWithHot extends ImportMeta {
@@ -490,11 +494,40 @@ connectViewsDiagnostics();
 connectViewsConnection();
 connectViewsInspector();
 connectViewsCalls();
+// Requests to the development server over Vite's HMR connection (channel.ts, requestEvent). Under `dotnet runic dev` the
+// page is the .NET host's, so a relative URL such as /__runic/open names the host; the HMR connection is Vite's own, and
+// Vite admits it only with the token of its client module. Without that connection (the Angular CLI, or a page that
+// loaded the client without Vite's HMR) there is no request, and Runic Inspect uses the HTTP endpoints.
+const requestTimeout = 10_000;
+const pendingRequests = new Map<number, (response: RunicClientResponse) => void>();
+let nextRequest = 1;
+const hotRequest: InspectRequest | undefined = hot && options?.channel === "hot" && typeof hot.on === "function"
+  ? (kind, target) => new Promise((resolve) => {
+    const id = nextRequest++;
+    const timer = setTimeout(() => {
+      pendingRequests.delete(id);
+      resolve({ status: 0 });
+    }, requestTimeout);
+    pendingRequests.set(id, (response) => {
+      clearTimeout(timer);
+      resolve(response);
+    });
+    hot.send(requestEvent, kind === "sources" ? { id, kind } : kind === "handlers" ? { id, kind, file: target } : { id, kind, target });
+  })
+  : undefined;
+hot?.on?.(responseEvent, (data) => {
+  const response = data as RunicClientResponse | undefined;
+  if (typeof response?.id !== "number") return;
+  const settle = pendingRequests.get(response.id);
+  pendingRequests.delete(response.id);
+  settle?.(response);
+});
+
 const inspectListenerKey = "runic:inspect";
 let disposeInspect: () => void = () => {};
 function connectInspect(): void {
   (data[inspectListenerKey] as (() => void) | undefined)?.();
-  disposeInspect = options?.inspect === false ? () => {} : installInspect({ base: options?.base, root: options?.root });
+  disposeInspect = options?.inspect === false ? () => {} : installInspect({ base: options?.base, root: options?.root, request: hotRequest });
   data[inspectListenerKey] = disposeInspect;
 }
 connectInspect();

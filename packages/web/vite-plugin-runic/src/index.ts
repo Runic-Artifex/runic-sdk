@@ -1,5 +1,6 @@
 /// <reference types="@vitejs/devtools-kit" />
 
+import type { IncomingMessage } from "node:http";
 import type { Plugin, UserConfig, ViteDevServer } from "vite";
 import { isFileLoadingAllowed } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
@@ -8,19 +9,22 @@ import type { RunicDevelopmentState } from "./timeline.js";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, viewEvent, type RunicClientOptions } from "./channel.js";
+import {
+  callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, requestEvent, responseEvent,
+  viewEvent, type RunicClientOptions,
+} from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import type { RunicSourceLocation, RunicSourceMap } from "./sources.js";
 import {
-  answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
+  answerClientRequest, answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
   resolveOpenLocation, sourcesPath, type RunicOpenResolution,
 } from "./sources.js";
 import type { RunicBridgeCall } from "./calls.js";
 import { formatMilliseconds, stackFrames } from "./calls.js";
-import { findMessageSource, type MessageReference } from "./translations-source.js";
+import { findMessageSource, readMessageReply, type MessageReference } from "./translations-source.js";
 import { allowVariable, parseAllowList, resolveAccessList } from "./access.js";
-import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
+import { answerHandlers, createHandlerAnalyzer, handlerFile } from "./handlers.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
@@ -332,6 +336,31 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
       viteServer.ws.on(callEvent, (payload) => deliver(callEvent, payload));
       viteServer.ws.on(spanEvent, (payload) => deliver(spanEvent, payload));
+      // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
+      const access = resolveAccessList(allowRules);
+      // Runic Inspect's source map, handler analysis, message and open requests over the HMR connection, which the page
+      // has also when it is not Vite's own, as under dotnet runic dev (channel.ts, requestEvent). The same answers and the
+      // same access rules as the HTTP endpoints: Vite's WebSocket server reports each connection's peer address, which
+      // the access list judges per request (reads: loopback or allowed; open: loopback only).
+      const peers = new WeakMap<object, string | undefined>();
+      viteServer.ws.on("connection", (socket: object, request: IncomingMessage) => {
+        peers.set(socket, request.socket?.remoteAddress);
+      });
+      const requestResolution = openResolution(viteServer);
+      const requestAnalyzer = client && options.inspect !== false ? createHandlerAnalyzer(() => resolvedRoot) : undefined;
+      viteServer.ws.on(requestEvent, (payload, hotClient) => {
+        const socket = (hotClient as { socket?: object }).socket;
+        void answerClientRequest(payload, {
+          read: readSourceMap, launch: openLocation, resolution: requestResolution,
+          ...(requestAnalyzer === undefined ? {} : { analyze: (file: string) => requestAnalyzer(handlerFile(file, resolvedRoot)) }),
+          ...(options.inspect === false ? {} : {
+            message: (message: MessageReference) => readMessageReply({
+              address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
+            }, message),
+          }),
+          peer: socket === undefined ? undefined : peers.get(socket), access,
+        }).then((answer) => { if (answer !== undefined) hotClient.send(responseEvent, answer); });
+      });
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
         answerState(response, timeline.state, devSession);
@@ -340,8 +369,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
         answerClientMessage(request, response, deliver).catch(next);
       });
-      // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
-      const access = resolveAccessList(allowRules);
       if (access.remote && (options.sourceMap !== false || (client && options.inspect !== false))) {
         viteServer.config?.logger?.info(`[runic] Runic Inspect's data (/__runic/sources, /__runic/handlers) accepts requests from loopback and ${
           access.rules.map((rule) => rule.text).join(", ")} (runic({ allow }), ${allowVariable}); /__runic/open stays loopback-only`, { timestamp: true });

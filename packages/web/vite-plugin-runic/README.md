@@ -355,6 +355,25 @@ map id, a frontend file by its path, which the endpoint opens only when Vite
 serves that file to the page. Runic Inspect does not use Vite's
 `/__open-in-editor`, which opens any path for any page.
 
+**Under `dotnet runic dev`** the window's document is the .NET host's page,
+which loads Vite's modules from Vite's origin, so a relative URL such as
+`/__runic/sources` names the host. Runic Inspect therefore asks the Vite server
+over the development client's HMR connection instead of HTTP: a
+`runic:request` event (`{ id, kind }` with `kind` `sources`, `handlers` with a
+`file`, `message` with a `target` `{ catalog, key }`, or `open` with a
+`target`), answered by `runic:response` with the same id. The server answers
+as `/__runic/sources`, `/__runic/handlers`, the Translations message API and
+`/__runic/open` do, with the same decision of what opens and the same access
+rules, judged per request from the connection's address (Vite reports it):
+`sources`, `handlers` and `message` for this machine and the hosts and
+networks `allow` and `RUNIC_DEV_ALLOW` admit, `open` for this machine only
+(403 otherwise). Vite admits that connection only with the token in its own client
+module, which only the page's origins Vite's CORS allows can read (by default
+`localhost`, `127.0.0.1` and `[::1]`, the .NET host's page among them), so it
+needs no CORS rule of its own. Without an HMR connection (the Angular CLI, or
+a page that loads the client without Vite's HMR) Inspect uses the HTTP
+endpoints, which also serve tools such as `curl`.
+
 **Before the first click.** The development server reads the element's
 component file and finds which of its event handlers reach which client call:
 directly (`client.save()`, `client.command("save")`), through Runic's helpers
@@ -452,7 +471,8 @@ mark it, **only while select mode is on**:
   values and anything else the text went into; the overview strips them from
   the element's text.
 - For each message it finds, the overview asks the Translations dev server
-  for its source (`GET /__runic-translations/message`), and its link opens it
+  for its source (`GET /__runic-translations/message`, or over Vite's
+  connection as above, where the server asks it), and its link opens it
   through `/__runic/open` with `{ "message": { catalog, key, locale } }`. The
   open action never takes a path for a message: it asks the same API and
   opens only the `.rmf2`/`.mf2` source it names.
