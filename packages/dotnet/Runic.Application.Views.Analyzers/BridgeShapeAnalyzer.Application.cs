@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using Microsoft.CodeAnalysis;
@@ -263,7 +264,8 @@ public sealed partial class BridgeShapeAnalyzer
     /// the CommunityToolkit member a generated property comes from, else at the containing type, else in generated code.
     /// A declaration of another assembly is the generator's.
     /// </summary>
-    private static void OwnedWarning(SymbolAnalysisContext context, DiagnosticDescriptor rule, ISymbol symbol, string message)
+    private static void OwnedWarning(SymbolAnalysisContext context, DiagnosticDescriptor rule, ISymbol symbol, string message,
+        ImmutableDictionary<string, string?>? properties = null)
     {
         if (!SymbolEqualityComparer.Default.Equals(symbol.ContainingAssembly, context.Compilation.Assembly)) return;
         var cancellation = context.CancellationToken;
@@ -271,7 +273,7 @@ public sealed partial class BridgeShapeAnalyzer
             ?? (ToolkitSource(symbol) is { } source ? SourceLocation(source, cancellation) : null)
             ?? (symbol.ContainingType is { } owner ? SourceLocation(owner, cancellation) : null)
             ?? symbol.Locations.FirstOrDefault(candidate => candidate.IsInSource);
-        if (location is not null) context.ReportDiagnostic(Diagnostic.Create(rule, location, message));
+        if (location is not null) context.ReportDiagnostic(Diagnostic.Create(rule, location, properties, message));
     }
 
     // The [RelayCommand] method of a generated command property, or the [ObservableProperty] field of a generated property.

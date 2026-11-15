@@ -56,6 +56,9 @@ public sealed class BridgeShapeAnalyzerTests
         "RUNICBRIDGE060", "MainViewModel.Rows: a RunicQueryCollection has its own keys; remove [RunicCollection] or [RunicAppendOnlyText].")]
     [Arguments("public RunicQueryCollection<Row, long> Rows { get; } = null!;",
         "RUNICBRIDGE060", "MainViewModel.Rows: a RunicQueryCollection key is a string, Guid or Int32, not Int64.")]
+    // object is no Bridge value (#962 part 4: the value graph).
+    [Arguments("public object? Anything { get; set; }",
+        "RUNICBRIDGE003", "MainViewModel.Anything: System.Object is not an explicitly supported bridge value. Use a supported scalar, collection, public DTO, RunicUnion, or RunicCodec.")]
     [Arguments("[RunicFailure(typeof(string))] public int Total { get; }",
         "RUNICBRIDGE012", "MainViewModel.Total: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method.")]
     [Arguments("[RunicCommandKey(nameof(Find))] public static Row? Find(string id) => null;",
@@ -85,7 +88,6 @@ public sealed class BridgeShapeAnalyzerTests
     [Arguments("public NavigationRegion<IPage> Content { get; } = null!;")]
     [Arguments("public NavigationSelection Tabs { get; } = null!;")]
     [Arguments("public IPage? Page { get; private set; }")]
-    [Arguments("public object? Anything { get; set; }")]
     [Arguments("public IReadOnlyList<IPage> Pages { get; private set; } = [];")]
     [Arguments("public IReadOnlyList<Row> Rows { get; set; } = [];")]
     [Arguments("[RunicAppendOnlyText] public string Log { get; private set; } = \"\";")]

@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Rename;
+using Microsoft.CodeAnalysis.Simplification;
 
 namespace Runic.Application.Views.Analyzers;
 
@@ -24,7 +25,7 @@ public sealed class BridgeShapeCodeFix : CodeFixProvider
     public override ImmutableArray<string> FixableDiagnosticIds { get; } =
         [.. new[] { BridgeRules.NameCollision, BridgeRules.View, BridgeRules.ViewModel, BridgeRules.State, BridgeRules.Command,
             BridgeRules.Collection, BridgeRules.Interaction, BridgeRules.ViewMember, BridgeRules.QueryCollection,
-            BridgeRules.RegionCollection }.Select(rule => rule.Id)];
+            BridgeRules.RegionCollection, BridgeRules.CollectionWithoutKey }.Select(rule => rule.Id)];
 
     /// <inheritdoc />
     public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
@@ -50,12 +51,31 @@ public sealed class BridgeShapeCodeFix : CodeFixProvider
                     context.RegisterCodeFix(CodeAction.Create($"Rename to {newName}",
                         token => RenameAsync(context.Document, node, newName, token), BridgeRules.FixRename + newName), diagnostic);
                     break;
+                case BridgeRules.FixKeyed when diagnostic.Properties.TryGetValue(BridgeRules.NewNameKey, out var key) && key is not null
+                    && node.FirstAncestorOrSelf<PropertyDeclarationSyntax>() is { } keyedProperty:
+                    context.RegisterCodeFix(CodeAction.Create($"Declare [RunicCollection(nameof({key}))]",
+                        token => KeyAsync(context.Document, root, keyedProperty, key), BridgeRules.FixKeyed), diagnostic);
+                    break;
                 case BridgeRules.FixPublic when node.FirstAncestorOrSelf<TypeDeclarationSyntax>() is { } declaration:
                     context.RegisterCodeFix(CodeAction.Create($"Make {declaration.Identifier.ValueText} public",
                         token => MakePublicAsync(context.Document, declaration, token), BridgeRules.FixPublic), diagnostic);
                     break;
             }
         }
+    }
+
+    // [RunicCollection(nameof(Row.Id))] before the property's other attributes, on the property's line.
+    private static Task<Document> KeyAsync(Document document, SyntaxNode root, PropertyDeclarationSyntax property, string key)
+    {
+        var attribute = SyntaxFactory.AttributeList(SyntaxFactory.SingletonSeparatedList(
+            SyntaxFactory.Attribute(SyntaxFactory.ParseName("global::Runic.Application.Views.RunicCollection")
+                    .WithAdditionalAnnotations(Simplifier.Annotation),
+                SyntaxFactory.ParseAttributeArgumentList($"(nameof({key}))"))));
+        var leading = property.GetLeadingTrivia();
+        var fixedProperty = property.WithoutLeadingTrivia()
+            .WithAttributeLists(property.AttributeLists.Insert(0, attribute.WithTrailingTrivia(SyntaxFactory.Space)))
+            .WithLeadingTrivia(leading);
+        return Task.FromResult(document.WithSyntaxRoot(root.ReplaceNode(property, fixedProperty)));
     }
 
     // private set or private init: the class still assigns it, the page no longer can.
