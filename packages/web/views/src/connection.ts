@@ -10,6 +10,7 @@ import { reportBridgeError, waitForBridgeIn } from "./transport.js";
 import { currentSlots, type Slots } from "./scope.js";
 import { publishConnectionState } from "./connection-state.js";
 import { reportToInspector } from "./inspector.js";
+import { beginCall, endCall, noteCancelled, noteReply, traced, withinCall, type BridgeCall } from "./calls.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
 import { deferNotification, flushNotifications, nextFrame } from "./notifications.js";
@@ -792,10 +793,18 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
   }
 }
 
-// Reports a failure that leaves a client method once, with its route, then rethrows it.
-async function observed<T>(slots: Slots, route: string, run: () => Promise<T>): Promise<T> {
-  try { return await run(); }
-  catch (error) { emitErrorDiagnostic(slots, error, route); throw error; }
+// Reports a failure that leaves a client method once, with its route, then rethrows it; and ends the call on the
+// development Bridge-call channel when a reader listens (calls.ts).
+async function observed<T>(slots: Slots, route: string, run: () => Promise<T>, call?: BridgeCall): Promise<T> {
+  let result: T;
+  try { result = await withinCall(call, run); }
+  catch (error) {
+    if (call !== undefined) endCall(call, true, error);
+    emitErrorDiagnostic(slots, error, route);
+    throw error;
+  }
+  if (call !== undefined) endCall(call, false);
+  return result;
 }
 
 const receiptKinds = new Set(["applied", "committed-with-error", "conflict", "rejected"]);
@@ -828,6 +837,9 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     assertConnected();
     return runtime.request(message, route);
   };
+  const { contract } = options;
+  // Starts a call on the development Bridge-call channel; `undefined` without a reader.
+  const begin = (kind: Parameters<typeof beginCall>[1], wire: string, member: string) => beginCall(slots, kind, wire, route, contract, member);
   // The interaction handlers are created before `open`, so a reconnect can send them with it.
   if (options.interactions) lease.interactions = options.interactions({
     route, slots, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
@@ -884,13 +896,14 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
   const ready = async () => { await lease.interactions?.ready(); await lease.requests?.ready(); };
   const current = () => lease.current as TState;
   // A call that ran resolves once the route reached its revision; a failed one rejects after that.
-  const settled = async (reply: Reply): Promise<void> => {
+  const settled = async (reply: Reply, call?: BridgeCall): Promise<void> => {
+    noteReply(call, reply);
     if (reply.revision !== undefined) await entry.waitForRevision(reply.revision);
     // The caller reads the state of every frame that arrived before the reply.
     flushNotifications();
   };
-  const failure = async (reply: Reply, fallback: string): Promise<never> => {
-    await settled(reply);
+  const failure = async (reply: Reply, fallback: string, call?: BridgeCall): Promise<never> => {
+    await settled(reply, call);
     throw replyError(reply.error, route, fallback);
   };
   const operationScope: RouteOperationScope = {
@@ -932,7 +945,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     dispose,
     interactions: lease.interactions?.surface ?? {},
     requests: lease.requests?.surface ?? {},
-    set: (member, value) => observed(slots, route, async () => {
+    set: (member, value) => { const call = begin("set", "set", member); return observed(slots, route, async () => {
       assertConnected();
       // The splice is computed against what the page shows before this edit.
       const splice = entry.spliceFor(member, value);
@@ -943,7 +956,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         if (!reply.ok && reply.error?.reason === "splice-base") {
           // The producer no longer has the splice's base, and admitted nothing. A later edit carries a newer value;
           // otherwise this value is sent in full as a new edit.
-          if (entry.latestEdit(member) !== edit) { flushNotifications(); return current(); }
+          if (entry.latestEdit(member) !== edit) { noteCancelled(call, "superseded"); flushNotifications(); return current(); }
           edit = entry.beginEdit(member, value);
           reply = await request({ kind: "set", route, member, value, edit });
         }
@@ -951,25 +964,26 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       catch (error) { entry.endEdit(member, edit, undefined); throw error; }
       if (!reply.ok) {
         entry.endEdit(member, edit, undefined);
-        return failure(reply, "The value could not be set.");
+        return failure(reply, "The value could not be set.", call);
       }
-      if (reply.released === true) { entry.endEdit(member, edit, undefined); return current(); }
+      if (reply.released === true) { entry.endEdit(member, edit, undefined); noteReply(call, reply); return current(); }
       // A superseded edit leaves the overlay to the newer edit, which is still on its way.
       if (reply["superseded"] !== true) entry.endEdit(member, edit, reply.revision);
-      await settled(reply);
+      await settled(reply, call);
       return current();
-    }),
-    command: (member, input) => observed(slots, route, async () => {
+    }, call); },
+    command: (member, input) => { const call = begin("command", "command", member); return observed(slots, route, async () => {
       const reply = await command(member, input);
-      if (!reply.ok) return failure(reply, "The command failed.");
-      await settled(reply);
+      if (!reply.ok) return failure(reply, "The command failed.", call);
+      await settled(reply, call);
       return current();
-    }),
+    }, call); },
     commandOutcome<TFailure>(member: string, decodeFailure: (value: unknown) => TFailure, input?: unknown) {
+      const call = begin("command", "command", member);
       return observed(slots, route, async (): Promise<BridgeOutcome<TState, TFailure>> => {
         const reply = await command(member, input);
         if (!reply.ok && reply.error?.kind === "domain-failed") {
-          await settled(reply);
+          await settled(reply, call);
           let declared: TFailure;
           try { declared = decodeFailure(reply.error.failure); }
           catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid failure: ${errorMessage(cause)}`, { cause, route }); }
@@ -978,12 +992,12 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
           if (reply.error.reason === "state-withheld") reportBridgeError(slots, replyError(reply.error, route), route);
           return bridgeFailure(declared);
         }
-        if (!reply.ok) return failure(reply, "The command failed.");
-        await settled(reply);
+        if (!reply.ok) return failure(reply, "The command failed.", call);
+        await settled(reply, call);
         return bridgeSuccess(current());
-      });
+      }, call);
     },
-    region: (member, action, key) => observed(slots, route, async () => {
+    region: (member, action, key) => { const call = begin("region", "region", member); return observed(slots, route, async () => {
       assertConnected();
       // The features describe the current connection only once its hello succeeded: a call right after a reconnect
       // waits for the new hello instead of reading the empty set of a connection that is still greeting.
@@ -992,8 +1006,8 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         throw new BridgeError("failed", "The .NET host does not implement region-collections/1. Use the Runic packages of one release.", { route });
       await ready();
       const reply = await request({ kind: "region", route, member, action, key });
-      if (!reply.ok) return failure(reply, action === "select" ? "The region could not be selected." : "The region could not be closed.");
-      await settled(reply);
+      if (!reply.ok) return failure(reply, action === "select" ? "The region could not be selected." : "The region could not be closed.", call);
+      await settled(reply, call);
       if (reply["outcome"] === undefined) {
         // A close can release the route that asked for it; such a reply without an outcome reports the release.
         if (reply.released === true) throw new BridgeError("released", "This View was released.", { route });
@@ -1001,13 +1015,15 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       }
       try { return regionOutcome(reply["outcome"]); }
       catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid region outcome: ${errorMessage(cause)}`, { cause, route }); }
-    }),
-    can: (member, input) => observed(slots, route, async () => {
+    }, call); },
+    can: (member, input) => { const call = begin("can", "can", member); return observed(slots, route, async () => {
       const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) });
+      noteReply(call, reply);
       if (!reply.ok) throw replyError(reply.error, route, "The command availability could not be read.");
       return reply["value"] as boolean;
-    }),
-    write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(slots, route, async (): Promise<FieldWriteReceipt<T>> => {
+    }, call); },
+    write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => { const call = begin("write", "write", member);
+      return observed(slots, route, async (): Promise<FieldWriteReceipt<T>> => {
       if (write.path !== undefined && runtime.features?.has(fieldPathsFeature) !== true)
         throw new BridgeError("failed", `The .NET host does not accept writes below ${member} (field-paths/1); use the Runic packages of one release.`, { route });
       const identity = { kind: "write", route, member, ...write.path === undefined ? {} : { path: write.path },
@@ -1025,8 +1041,8 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
       let reply = await request(splice === undefined ? full : { ...identity, splice });
       // The producer's value at expectedVersion is not the splice's base, and it retained nothing: send the write in full.
       if (splice !== undefined && !reply.ok && reply.error?.reason === "splice-base") reply = await request(full);
-      if (!reply.ok) return failure(reply, "The checked write failed.");
-      await settled(reply);
+      if (!reply.ok) return failure(reply, "The checked write failed.", call);
+      await settled(reply, call);
       try {
         const receipt = reply["receipt"] as Message;
         const kind = receipt["kind"];
@@ -1045,7 +1061,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
           default: return { kind: "rejected", message: text(receipt["message"]) };
         }
       } catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid checked write receipt: ${errorMessage(cause)}`, { cause, route }); }
-    }),
+    }, call); },
     fieldBaseline(field) {
       if (!live() || entry.state === undefined)
         throw runtime.connected ? new BridgeError("released", "This View was released.", { route }) : new BridgeError("disconnected", "The Bridge is disconnected.", { route });
@@ -1062,8 +1078,9 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
     start: (member, operation, input, codec) => observed(slots, route, () => {
       if (operation.length === 0) throw new RangeError("An operation id is required.");
       return operations().start(operationScope, member, operation, input, codec);
-    }),
-    recover: (member, operation, codec) => observed(slots, route, () => operations().recover(operationScope, member, operation, codec)),
+    }, begin("operation", "start", member)),
+    recover: (member, operation, codec) =>
+      observed(slots, route, () => operations().recover(operationScope, member, operation, codec), begin("operation", "status", member)),
     queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow> {
       // query-collections/1: a producer that completed its hello without the feature does not know the request kinds.
       const supported = () => {
@@ -1075,13 +1092,18 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
         route, member,
         state: () => (isObject(lease.current) ? lease.current[member] : undefined) as QueryCollectionState | undefined,
         onState: observer => { lease.observers.add(observer); return () => { lease.observers.delete(observer); }; },
-        request: async message => { supported(); return request(message); },
-        setQuery: query => observed(slots, route, async () => {
+        request: async message => {
+          supported();
+          const call = begin("query", message["kind"] as string, member);
+          if (call === undefined) return request(message);
+          return traced(call, async () => { const reply = await request(message); noteReply(call, reply); return reply; });
+        },
+        setQuery: query => { const call = begin("query", "query-set", member); return observed(slots, route, async () => {
           supported();
           const reply = await request({ kind: "query-set", route, member, query });
-          if (!reply.ok) return failure(reply, "The query could not be set.");
-          await settled(reply);
-        }),
+          if (!reply.ok) return failure(reply, "The query could not be set.", call);
+          await settled(reply, call);
+        }, call); },
       }, definition);
       if (lease.disposed) collection[Symbol.dispose]();
       else lease.queries.add(collection);
