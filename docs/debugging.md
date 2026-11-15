@@ -100,17 +100,23 @@ IDE tasks and extensions read `dotnet runic dev` through stable lines and a sess
 
 ## The browser's developer tools per engine
 
-A Runic Desktop window has the browser's developer tools only when `DOTNET_ENVIRONMENT` (or else
-`ASPNETCORE_ENVIRONMENT`) is `Development`, which `dotnet runic dev` and the template's launch profiles set. In other
-environments they are off, so a user of a release cannot script the page and its Bridge.
-`DesktopWebContentPolicy.DevTools` overrides it per window
+A Runic Desktop window has the browser's developer tools in the window (F12, Inspect Element, Safari's Web
+Inspector) only when `DOTNET_ENVIRONMENT` (or else `ASPNETCORE_ENVIRONMENT`) is `Development`, which
+`dotnet runic dev` and the template's launch profiles set. `DesktopWebContentPolicy.DevTools` overrides it per window
 ([links, new windows, downloads and developer tools](../packages/dotnet/Runic.Desktop/README.md#links-new-windows-downloads-and-developer-tools)).
+
+That setting covers only the tools in the window. A **remote debugging endpoint** that a variable in the Window
+process's environment asks for is the engine's own: WebView2's `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` and
+WebKitGTK's `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER`. `DevTools = false` does not close
+WebKitGTK's (WebKitGTK 2.54.0, GTK 3 and GTK 4), is not documented to close WebView2's, and Runic does not clear these
+variables yet, in any environment. Whoever sets a release's environment can therefore script its page and Bridge
+through such an endpoint.
 
 | Engine | Where | Open | Debugger and automation |
 | --- | --- | --- | --- |
 | WebView2 | Windows | F12, or Inspect from the page's context menu | A DevTools Protocol endpoint on request (below) |
 | WKWebView | macOS 13.3 and later | Safari ▸ Develop ▸ your Mac ▸ the window's page (turn on "Show features for web developers" in Safari's Advanced settings) | Safari's Web Inspector only; no DevTools Protocol endpoint |
-| WebKitGTK | Linux | Inspect Element from the page's context menu (WebKit's inspector) | No DevTools Protocol endpoint |
+| WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached) | WebKit's remote inspector on request (below); its own protocol, not the DevTools Protocol |
 | Installed browser | CS-WebUI's default, and Runic Desktop's fallback without a WebView | The browser's own F12 | The browser's own rules: Runic's policy does not apply to it |
 
 - **WebView2 endpoint.** WebView2 opens a Chrome DevTools Protocol endpoint when the Window starts with
@@ -123,14 +129,31 @@ environments they are off, so a user of a release cannot script the page and its
   `"reason": "elevated"` and prints a `[dev] Debugging:` hint. F12 still works; for the endpoint, run `dev` and your
   IDE without elevation.
 - **WKWebView** makes the page inspectable (`isInspectable`) in Development; macOS before 13.3 decides that itself.
-- **WebKitGTK** turns on WebKit's developer extras in Development. Runic does not set WebKit's remote inspector
-  variables, so IDE JavaScript debuggers attach only on Windows.
+- **WebKitGTK.** `DevTools` controls WebKit's developer extras on both GTK hosts (and their side panels), so Inspect
+  Element and the Web Inspector work in the window under `dotnet runic dev`. WebKit's **remote** inspector is separate:
+  `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER` turn it on even with developer extras off, and
+  `dotnet runic dev` sets neither. It speaks the WebKit Inspector Protocol, not the DevTools Protocol, so VS Code,
+  Rider, Visual Studio and `chrome-devtools-mcp` cannot attach to it: IDE JavaScript debuggers attach only on Windows.
+  To inspect the page from outside the window, start the Window with WebKit's socket server and open it in GNOME Web
+  (Epiphany), a WebKitGTK browser:
+
+  ```sh
+  dotnet runic dev -e WEBKIT_INSPECTOR_SERVER=127.0.0.1:9226
+  epiphany inspector://127.0.0.1:9226
+  ```
+
+  Bind it to `127.0.0.1`, never `0.0.0.0`: neither server asks for authentication.
+- **Do not set `WEBKIT_INSPECTOR_HTTP_SERVER` on WebKitGTK 2.54.0** or another release without the fix for
+  [WebKit bug 330602](https://bugs.webkit.org/show_bug.cgi?id=330602) (fixed upstream on 10 November 2026; the first
+  release with it is not known yet). Its HTTP inspector accepts connections with any website's `Origin` and `Host`,
+  so while the port is open, any web page you visit can drive the Window's page and, through it, the Bridge.
+  `WEBKIT_INSPECTOR_SERVER` above speaks a protocol that no browser page can, so it is not affected.
 
 **For agents.** Where a DevTools Protocol endpoint is open (WebView2 above, or a Chromium browser started with
 remote debugging), `chrome-devtools-mcp --browser-url=http://127.0.0.1:9222` or Playwright's `connectOverCDP`
 attaches to the Window's page. In the page, `globalThis[Symbol.for("runic.vite.inspect")].describe(element)` returns
-Runic Inspect's overview as data (see [Runic Inspect](#runic-inspect)). On macOS and Linux an agent has no endpoint
-to attach to.
+Runic Inspect's overview as data (see [Runic Inspect](#runic-inspect)). On macOS and Linux there is no DevTools
+Protocol endpoint for these tools to attach to.
 
 ## The Runic dock
 
@@ -236,8 +259,10 @@ None of this ships:
   unless you pass `--production` or set `NODE_ENV=production`; the Views MSBuild targets set `NODE_ENV=production` for
   a Release build and `dotnet publish`. See [Development build](../packages/web/views/README.md#development-build).
 - The source map stays in `obj`: it is not in generated TypeScript, build or publish output, or a package.
-- Outside Development, a Runic Desktop window has no browser developer tools, replies carry no handler timing, and
-  failures carry no exception detail. Do not ship with `DOTNET_ENVIRONMENT=Development`; see the
+- Outside Development, a Runic Desktop window has no developer tools in the window, replies carry no handler timing,
+  and failures carry no exception detail. A remote debugging endpoint that the process's environment asks for is the
+  exception: see [the browser's developer tools per engine](#the-browsers-developer-tools-per-engine). Do not ship
+  with `DOTNET_ENVIRONMENT=Development`; see the
   [security guide](security.md#release-builds).
 
 ## Troubleshooting
@@ -247,7 +272,8 @@ None of this ships:
   elevation. Without that hint, check that `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` reaches the Window: set it in the
   launch profile, with `dotnet runic dev -e`, or in the environment `dev` runs in.
 - **F12 does nothing.** The Window does not run in Development: start it with `dotnet runic dev` or a launch profile
-  that sets `DOTNET_ENVIRONMENT=Development`. On macOS, use Safari's Develop menu instead.
+  that sets `DOTNET_ENVIRONMENT=Development`. On macOS, use Safari's Develop menu instead, and on Linux Inspect
+  Element from the page's context menu.
 - **The breakpoint never binds, or the debugger detaches.** `dotnet watch` restarted the Window after a C# edit. Use
   `dotnet runic dev --no-window` and F5.
 - **F5 shows the production page.** `dotnet runic dev --no-window` was not running when the IDE built. Start it
