@@ -7,12 +7,15 @@ import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent, type RunicClientOptions } from "./channel.js";
+import {
+  callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, requestEvent, responseEvent, viewEvent,
+  type RunicClientOptions,
+} from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import type { RunicSourceLocation, RunicSourceMap } from "./sources.js";
 import {
-  answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
+  answerClientRequest, answerOpen, answerSources, createSourceMapReader, launchSourceEditor, listsFile, openPath,
   resolveOpenLocation, sourcesPath,
 } from "./sources.js";
 import type { RunicBridgeCall } from "./calls.js";
@@ -283,6 +286,12 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
       viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
       viteServer.ws.on(callEvent, (payload) => deliver(callEvent, payload));
+      // Runic Inspect's source map and open requests over the HMR connection, which the page has also when it is not
+      // Vite's own, as under dotnet runic dev (channel.ts, requestEvent). The same answers as the HTTP endpoints.
+      viteServer.ws.on(requestEvent, (payload, hotClient) => {
+        const answer = answerClientRequest(payload, readSourceMap, frontendFile, openLocation);
+        if (answer !== undefined) hotClient.send(responseEvent, answer);
+      });
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
         answerState(response, timeline.state, devSession);

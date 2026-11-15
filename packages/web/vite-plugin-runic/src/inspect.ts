@@ -7,8 +7,10 @@
 // What an element calls is learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in
 // the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. A button therefore
 // shows its command once it was used. States come from the state inspector channel (`runic.views.inspector`), C#
-// locations from the development source map (`/__runic/sources`), opening from `/__runic/open`: C# locations by their
-// source map id, frontend files by path (the endpoint opens only files Vite serves).
+// locations from the development source map, and opening through `/__runic/open`'s decision: C# locations by their
+// source map id, frontend files by path (only files Vite serves). Both go over Vite's HMR connection when the client
+// has it, so they reach the Vite server also from the .NET host's page under `dotnet runic dev`, else to
+// `/__runic/sources` and `/__runic/open` relative to the page.
 //
 // `globalThis[Symbol.for("runic.vite.inspect")]` is the API for agents and tests: `describe(element)` returns the
 // overview as JSON-safe data. Everything here is part of the development client, which a build replaces with an empty
@@ -37,9 +39,20 @@ export interface RunicInspectApi {
   open(location: RunicInspectLocation): Promise<boolean>;
 }
 
+/**
+ * A request to the development server over Vite's HMR connection (channel.ts, `requestEvent`): the source map, or
+ * opening a location. Resolves to the server's status (0 when it did not answer) and, for the map, its body.
+ */
+export type InspectRequest = (kind: "sources" | "open", target?: unknown) => Promise<{ readonly status: number; readonly body?: unknown }>;
+
 export interface InspectOptions {
-  readonly base?: string | undefined;
   readonly root?: string | undefined;
+  /**
+   * The development client's request over Vite's connection. With it, the source map and opening go to the Vite server
+   * whichever origin the page has (under `dotnet runic dev` the .NET host's); without it, to `/__runic/sources` and
+   * `/__runic/open` relative to the page.
+   */
+  readonly request?: InspectRequest | undefined;
 }
 
 export const inspectKey = Symbol.for("runic.vite.inspect");
@@ -115,7 +128,7 @@ function shortFile(file: string, root: string | undefined): string {
 export function installInspect(options: InspectOptions = {}): () => void {
   const host = globalThis as unknown as Record<symbol, unknown> & { event?: Event; ng?: AngularDebug };
   if (typeof document === "undefined" || typeof Element === "undefined") return () => {};
-  const { root } = options;
+  const { root, request } = options;
 
   const learned = new WeakMap<Element, Map<string, LearnedBinding>>();
   const elementCalls = new WeakMap<Element, MutableCall[]>();
@@ -191,10 +204,19 @@ export function installInspect(options: InspectOptions = {}): () => void {
 
   async function readSourceMap(): Promise<{ map?: RunicSourceMap; status?: "missing" | "unavailable" }> {
     try {
-      const response = await fetch(sourcesPath, { credentials: "same-origin", cache: "no-store" });
-      if (response.status === 404) return { status: "missing" };
-      if (!response.ok) return { status: "unavailable" };
-      const map = await response.json() as RunicSourceMap;
+      let status: number;
+      let map: RunicSourceMap | undefined;
+      if (request !== undefined) {
+        const answer = await request("sources");
+        status = answer.status;
+        map = answer.body as RunicSourceMap | undefined;
+      } else {
+        const response = await fetch(sourcesPath, { credentials: "same-origin", cache: "no-store" });
+        status = response.status;
+        map = response.ok ? await response.json() as RunicSourceMap : undefined;
+      }
+      if (status === 404) return { status: "missing" };
+      if (status !== 200) return { status: "unavailable" };
       return Array.isArray(map?.viewModels) && Array.isArray(map.members) ? { map } : { status: "unavailable" };
     } catch {
       return { status: "unavailable" };
@@ -265,6 +287,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
       const target = location.editor === "runic" && location.id !== undefined
         ? { id: location.id }
         : { file: location.file, line: location.line, column: location.column };
+      if (request !== undefined) return (await request("open", target)).status === 200;
       const response = await fetch(openPath, {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(target),

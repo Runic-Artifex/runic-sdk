@@ -321,6 +321,20 @@ map id, a frontend file by its path, which the endpoint opens only when Vite
 serves that file to the page. Runic Inspect does not use Vite's
 `/__open-in-editor`, which opens any path for any page.
 
+**Under `dotnet runic dev`** the window's document is the .NET host's page,
+which loads Vite's modules from Vite's origin, so a relative URL such as
+`/__runic/sources` names the host. Runic Inspect therefore asks the Vite server
+over the development client's HMR connection instead of HTTP: a
+`runic:request` event (`{ id, kind: "sources" }` or `{ id, kind: "open",
+target }`), answered by `runic:response` with the same id. The server answers
+as `/__runic/sources` and `/__runic/open` do, with the same decision of what
+opens. Vite admits that connection only with the token in its own client
+module, which only the page's origins Vite's CORS allows can read (by default
+`localhost`, `127.0.0.1` and `[::1]`, the .NET host's page among them), so it
+needs no CORS rule of its own. Without an HMR connection (the Angular CLI, or
+a page that loads the client without Vite's HMR) Inspect uses the HTTP
+endpoints, which also serve tools such as `curl`.
+
 **How an element's commands are known.** The development client listens to
 the Bridge-call channel (`runic.views.calls`), whose `start` report arrives in
 the stack of the code that made the call. The DOM event being dispatched names
@@ -353,8 +367,8 @@ Runic Inspect is plain DOM in a shadow root, so it works in every engine
 WebKitGTK. It is part of the development client, which a build replaces with
 an empty module: `vite build` output is byte-identical with and without it.
 `runic({ inspect: false })` leaves it out of the client. Under the Angular CLI
-(`runicDevSessionProxy()`) it works without C# locations, which need
-`/__runic/sources` of `vite dev`.
+(`runicDevSessionProxy()`) it works without C# locations, which need the source
+map that `runic()` reads under `vite dev`.
 
 ## Component build target
 

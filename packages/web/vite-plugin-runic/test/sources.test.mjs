@@ -7,7 +7,7 @@ import { join, relative } from "node:path";
 import test from "node:test";
 import { build, createServer } from "vite";
 import { runic } from "../dist/index.js";
-import { findOpenLocation, parseSourceMap } from "../dist/sources.js";
+import { answerClientRequest, findOpenLocation, parseSourceMap } from "../dist/sources.js";
 
 const environment = ["RUNIC_APPLICATION_DEV_SOURCE_MAP", "RUNIC_APPLICATION_DEV_PROJECT", "LAUNCH_EDITOR", "RUNIC_TEST_EDITOR_RECORD"];
 
@@ -301,6 +301,38 @@ test("the dock's open action opens only a location in a file the map lists", { s
         } finally { await server.close(); }
       }
     });
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+// Runic Inspect's requests over Vite's HMR connection (#1012), which under dotnet runic dev reach the Vite server from the
+// .NET host's page: the same answers as /__runic/sources and /__runic/open, the same decision for what opens.
+test("requests over Vite's connection answer like the HTTP endpoints and open only what /__runic/open opens", async () => {
+  const fixture = await project();
+  try {
+    const map = parseSourceMap(fixture.map);
+    const location = fixture.map.members[0].location;
+    const page = join(fixture.frontend, "index.html");
+    const launched = [];
+    const ask = (message, read = () => map) =>
+      answerClientRequest(message, read, (file) => file.startsWith(`${fixture.frontend}/`), (target) => launched.push(target));
+    assert.deepEqual(ask({ id: 1, kind: "sources" }), { id: 1, status: 200, body: map });
+    assert.deepEqual(ask({ id: 2, kind: "sources" }, () => undefined), { id: 2, status: 404 }, "no map (sourceMap: false)");
+    assert.deepEqual(ask({ id: 3, kind: "open", target: { id: fixture.map.members[0].id } }), { id: 3, status: 200 });
+    assert.deepEqual(ask({ id: 4, kind: "open", target: { file: page, line: 2 } }), { id: 4, status: 200 }, "a served frontend file");
+    assert.deepEqual(launched, [location, { file: page, line: 2, column: 1 }]);
+    launched.length = 0;
+    for (const target of [
+      { file: join(fixture.directory, "record-editor.sh"), line: 1 }, { file: "/etc/passwd", line: 1 },
+      { id: "Demo.CounterViewModel/state/count" }, { file: `${fixture.frontend}/src/../index.html`, line: 1 },
+      { file: join(fixture.frontend, "missing.ts"), line: 1 }, { file: location.file, line: 0 }, "index.html", null, undefined,
+    ]) {
+      assert.equal(ask({ id: 5, kind: "open", target })?.status, 404, JSON.stringify(target));
+    }
+    assert.deepEqual(launched, [], "a refused request launched the editor");
+    assert.deepEqual(ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
+    for (const malformed of [null, [], "sources", { kind: "sources" }, { id: -1, kind: "sources" }, { id: 1.5, kind: "sources" }, { id: "1", kind: "open" }]) {
+      assert.equal(ask(malformed), undefined, JSON.stringify(malformed));
+    }
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 

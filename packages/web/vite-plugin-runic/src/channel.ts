@@ -14,6 +14,27 @@ export const viewEvent = "runic:view";
 /** A settled Bridge call for the dock's timeline (calls.ts, `RunicBridgeCallReport`). */
 export const callEvent = "runic:call";
 
+/**
+ * A request of the development client over Vite's HMR connection, which reaches the development server from any page
+ * that loaded Vite's modules, also the .NET host's page under `dotnet runic dev`, whose relative URLs name the host:
+ * `{ id, kind: "sources" }` for the source map, `{ id, kind: "open", target }` for `/__runic/open`'s `{ id }` or
+ * `{ file, line, column }`. The server answers each on `responseEvent` with the same `id` (sources.ts,
+ * `answerClientRequest`).
+ */
+export const requestEvent = "runic:request";
+export const responseEvent = "runic:response";
+
+export type RunicClientRequest =
+  | { readonly id: number; readonly kind: "sources" }
+  | { readonly id: number; readonly kind: "open"; readonly target: unknown };
+
+/** The answer to a `RunicClientRequest`: an HTTP-like status, and for `sources` with 200 the map. */
+export interface RunicClientResponse {
+  readonly id: number;
+  readonly status: number;
+  readonly body?: unknown;
+}
+
 /** The endpoint a client posts `{ "event", "data" }` to, one message per request, answered with 204. */
 export const diagnosticsPath = "/__runic/diagnostics";
 

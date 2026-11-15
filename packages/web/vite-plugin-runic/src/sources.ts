@@ -8,6 +8,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import launchEditor from "launch-editor";
 import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
+import type { RunicClientResponse } from "./channel.js";
 import { openPath, sourcesPath } from "./channel.js";
 
 export { openPath, sourcesPath };
@@ -286,6 +287,32 @@ export function launchSourceEditor(location: RunicSourceLocation, failed: (messa
   launchEditor(`${location.file}:${location.line}:${location.column}`, (_file, message) => {
     failed(message ?? `No editor could open ${location.file}.`);
   });
+}
+
+/**
+ * Answers a development client's request over Vite's HMR connection (channel.ts, `requestEvent`) as the HTTP endpoints
+ * answer: `sources` with the map (200) or 404; `open` with the same decision as `/__runic/open` (`resolveOpenLocation`),
+ * 200 after `launch`, else 404 and nothing launched. A malformed request without an id gets no answer, one with an id
+ * but another kind gets 400.
+ */
+export function answerClientRequest(
+  message: unknown,
+  read: () => RunicSourceMap | undefined,
+  frontendFile: (file: string) => boolean,
+  launch: (location: RunicSourceLocation) => void,
+): RunicClientResponse | undefined {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
+  const { id, kind, target } = message as Record<string, unknown>;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return undefined;
+  if (kind === "sources") {
+    const map = read();
+    return map === undefined ? { id, status: 404 } : { id, status: 200, body: map };
+  }
+  if (kind !== "open") return { id, status: 400 };
+  const location = resolveOpenLocation(read, target, frontendFile);
+  if (location === undefined) return { id, status: 404 };
+  launch(location);
+  return { id, status: 200 };
 }
 
 /**
