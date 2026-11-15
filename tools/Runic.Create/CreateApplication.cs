@@ -64,6 +64,12 @@ internal static partial class CreateApplication
             {
                 continue;
             }
+            // --angular-build selects what builds an Angular frontend; the other frontends build with Vite.
+            if (option.LongName == "angular-build" && !explicitChoices.ContainsKey(option.LongName) &&
+                selections.Find(selection => selection.Option.LongName == "frontend")?.Choice.Value is not "angular")
+            {
+                continue;
+            }
             TemplateChoice choice = explicitChoices.TryGetValue(option.LongName, out TemplateChoice? given)
                 ? given
                 : interactive ? await AskAsync(prompts, option, cancellationToken).ConfigureAwait(false) : option.Default;

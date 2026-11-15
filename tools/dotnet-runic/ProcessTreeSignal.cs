@@ -152,9 +152,9 @@ internal static partial class ProcessTreeSignal
                     continue;
                 }
                 // Arguments are separated by NUL; a zombie or kernel thread has none.
-                string commandLine = string.Join(' ', File.ReadAllText(Path.Combine(directory, "cmdline"))
-                    .Split('\0', StringSplitOptions.RemoveEmptyEntries));
-                processes.Add(new(pid, parent, commandLine));
+                string[] arguments = File.ReadAllText(Path.Combine(directory, "cmdline"))
+                    .Split('\0', StringSplitOptions.RemoveEmptyEntries);
+                processes.Add(new(pid, parent, string.Join(' ', arguments), arguments));
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
@@ -240,7 +240,8 @@ internal static partial class ProcessTreeSignal
             : Program.DevelopmentFailure;
     }
 
-    internal sealed record ProcessEntry(int Id, int ParentId, string CommandLine);
+    /// <summary>A listed process. <paramref name="Arguments"/> are exact when the listing keeps them apart (Linux).</summary>
+    internal sealed record ProcessEntry(int Id, int ParentId, string CommandLine, IReadOnlyList<string>? Arguments = null);
 
     [LibraryImport("libc", EntryPoint = "kill", SetLastError = true)]
     private static partial int Kill(int pid, int signal);

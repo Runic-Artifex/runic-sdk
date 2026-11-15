@@ -65,12 +65,23 @@ export function injectWindowLocale({ injector: provided }: InjectTextOptions = {
 
 const textLocales = new WeakMap<RunicInstance, Signal<string | undefined>>();
 
+// The revision of the Runic Translations text-change channel, which the Translations Vite plugin increments during
+// development when it updates an edited message in place (`configureTranslatedText` then notifies text subscribers).
+// 0 without the channel, as in production.
+const translationsTextKey = Symbol.for("runic.translations.text");
+function translationsTextRevision(): number {
+  const revision = ((globalThis as Record<symbol, unknown>)[translationsTextKey] as { revision?: unknown } | undefined)?.revision;
+  return typeof revision === "number" ? revision : 0;
+}
+
 /**
  * The locale that text is shown in (`textLocale`: the instance's Translations locale, which follows the window's
  * locale), as a signal. It is one signal per Runic instance and needs no injection context, so the page's locale
  * resolver can read it: a template that calls `m.*()` reads the signal through the resolver and renders again on a
- * language switch. `undefined` while the instance has no Translations runtime and the application sets no window
- * locale. The instance is `instance`, else that of the injection context, else the page instance.
+ * language switch. During development it also notifies, with the same locale, when the Runic Translations Vite plugin
+ * (0.12.0 or later) updates an edited message in place, so OnPush templates show the new text. `undefined` while the
+ * instance has no Translations runtime and the application sets no window locale. The instance is `instance`, else
+ * that of the injection context, else the page instance.
  *
  * ```ts
  * const textLocale = textLocaleSignal();
@@ -80,8 +91,16 @@ const textLocales = new WeakMap<RunicInstance, Signal<string | undefined>>();
 export function textLocaleSignal(instance: RunicInstance = contextInstance()): Signal<string | undefined> {
   const existing = textLocales.get(instance);
   if (existing) return existing;
-  const current = signal<string | undefined>(instance.run(textLocale));
-  instance.run(() => subscribeText(() => current.set(instance.run(textLocale))));
+  let shown = instance.run(textLocale), revision = translationsTextRevision();
+  // It notifies on equal values too: an in-place message update keeps the locale.
+  const current = signal<string | undefined>(shown, { equal: () => false });
+  instance.run(() => subscribeText(() => {
+    const next = instance.run(textLocale), nextRevision = translationsTextRevision();
+    if (next === shown && nextRevision === revision) return;
+    shown = next;
+    revision = nextRevision;
+    current.set(next);
+  }));
   const locale = current.asReadonly();
   textLocales.set(instance, locale);
   return locale;

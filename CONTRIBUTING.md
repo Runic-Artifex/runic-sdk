@@ -81,6 +81,17 @@ ready**; its `verify` check runs again on the queued commit
 such as the DynamicData consumer, are not required checks because a skipped
 workflow never reports.
 
+### Release notes
+
+A pull request with a user-facing change adds its release notes as fragments under
+`eng/release/notes/<version>/`, `<version>` being the candidate on `main`: one file
+per entry, in the directory of its section, named by the issue or pull request, for
+example `features/951.md` (a `## Title (#951)` section), `breaking/951.md` and
+`fixes/965.md` (list items). Never edit `eng/release/notes/<version>.md`: the release
+pull request assembles it from the fragments. `bun eng/release/notes.mjs check`
+validates them; [the release guide](eng/release/README.md#release-notes) lists the
+sections, names and order.
+
 ## Verify a change
 
 Run the relevant tests and build/type checks for your change. The focused runner

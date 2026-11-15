@@ -25,5 +25,11 @@ receipts and organization-wide launch documents do not add SDK release gates.
 Keep GitHub releases focused on changes, installation, migration and known issues;
 retain diagnostic output in Actions artifacts.
 
+Write a change's release notes as fragments, one file per entry under
+`eng/release/notes/<version>/<section>/` (for example `features/951.md`,
+`fixes/965.md`), never into `eng/release/notes/<version>.md`; only the release pull
+request assembles that file. Run `bun eng/release/notes.mjs check`. The sections,
+names and commands are in eng/release/README.md, "Release notes".
+
 Prefer improving an application that uses Runic over adding speculative SDK
 abstractions. Record concrete consumer friction and fix it with a focused change.

@@ -2143,6 +2143,13 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
+Since 0.20 the package also ships Roslyn analyzers for the errors that the
+source alone shows, such as a command named `NewCommand` or a `ViewRequest<T>`
+with a public setter. Your IDE reports them while you type, with the same ID
+and message, and offers a code fix where it is mechanical. The
+[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-while-you-type)
+lists them.
+
 `RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
@@ -2253,7 +2260,7 @@ an extension point.
 | `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors the frontend's output directory to the web root in the build output: a file that an earlier copy wrote and the output directory no longer has is deleted. Publish always mirrors it. |
 | `RunicApplicationFrontendOutputDirectory` | `dist` | The frontend build's output directory, relative to the frontend directory, which build and publish copy and `dotnet runic dev` serves from. |
-| `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as the `runic-app` template's `--translations` option and a Bun or Angular page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
+| `RunicApplicationFrontendTranslations` | `false` | `true` keeps `RunicApplicationFrontendTranslationsDirectory` equal to the ESM that `Runic.Translations.Build` writes for the project's catalog (`RunicTranslationsEmitEsm=true`), before the frontend builds: changed files are copied, and the files of removed or renamed messages are deleted. For a page that imports the generated files itself instead of through the Translations Vite plugin, such as an Angular CLI page (the `runic-app` template's `--frontend angular --translations`) or a Bun page. No ESM, or a directory that holds other files, is [`RUNICBRIDGE037`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge037). See [Translated text](#translated-text). |
 | `RunicApplicationFrontendTranslationsDirectory` | `<frontend>/.runic/translations` | Where `RunicApplicationFrontendTranslations` mirrors the ESM; the page imports `messages.js`, `runtime.js` and `transport.js` from it. Keep it out of version control. |
 | `RunicApplicationFrontendWebRoot` | `www` | The directory below the build and publish output that receives the frontend and the hosts serve. Another name reaches the hosts as the `Runic.Application.FrontendWebRoot` runtime option; `RunicWindowOptions.ContentRoot` and WPF's `RunicViewHost.ContentRoot` still win. |
 | `RunicApplicationFrontendDelivery` | `Files` | `Files` copies the frontend to the web root. `Embedded` packs the same tree (referenced projects' frontends, this project's output and the host's `runic-views.js`) into the assembly with Runic.Assets, and the Runic Desktop, WPF and CS-WebUI hosts serve it; see [Ship the frontend inside the executable](#ship-the-frontend-inside-the-executable). Closed: another value, no single Desktop or CS-WebUI host, or a project that sets `RunicAssetsDist` itself warns with [`RUNICBRIDGE030`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge030) and builds as `Files`. |
@@ -2293,7 +2300,11 @@ from the bundle's `Contents/Resources/www`, where Apple expects resources
 (`RunicWindowOptions.ContentRoot` overrides both). `dotnet runic dev` sets
 `RunicApplicationFrontendBuildEnabled=false` and
 `RunicApplicationFrontendCopyEnabled=false` while its development server serves
-the frontend. The
+the frontend. Since 0.20, any build of the output that `dev` serves does the same
+while `dev` runs, such as an IDE's build before it starts the Window under its
+debugger (`dotnet runic dev --no-window`), and puts dev's development pages back
+into `www/` after a clean; `RunicApplicationFrontendDevSessionEnabled=false`
+turns that off, and publish is never affected. The
 [`dotnet runic` README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)
 lists the development-server properties it reads.
 
@@ -3479,24 +3490,38 @@ in the .NET project, which then gets the generated C# API for every message
 
 The page gets the same catalog's ESM one of two ways:
 
-- **From the .NET build**, as `dotnet new runic-app --translations` and the
-  multi-window example do. The build writes the ESM with the
-  `dotnet-runic-translations` tool of `.config/dotnet-tools.json`, and
-  `RunicApplicationFrontendTranslations` copies it to
-  `Frontend/.runic/translations` (gitignored) before the frontend builds; the
-  page imports `../.runic/translations/messages.js`, `runtime.js` and
-  `transport.js`. It works with every bundler, Angular's included, and needs no
-  npm package, but `vite dev` does not reload an edited message: build again.
+- **From the Translations Vite plugin**, for a Vite page, as
+  `dotnet new runic-app --translations` does with React, Vue, Svelte and
+  SvelteKit. `runicTranslations()` from
+  `@runic-artifex/vite-plugin-runic-translations` compiles the catalog with the
+  `dotnet-runic-translations` tool of `.config/dotnet-tools.json` (keep the tool,
+  the plugin and `Runic.Translations.Build` on one release) into
+  `Frontend/.runic/translations` (gitignored), serves it as
+  `virtual:runic-translations/<catalog>`, and writes the modules' types to
+  `.runic/translations/virtual.d.ts`, which a type check references. Under
+  `dotnet runic dev` (or `vite dev`) it compiles an edited, added or removed
+  message again and the page shows it without a build, in place where the page
+  allows it (**Edited messages in `vite dev`** below). The .NET project then
+  sets neither property below, so its build does not run the tool.
+
+  ```ts
+  // vite.config.ts
+  plugins: [react(), runic(), runicTranslations()],
+  ```
+
+- **From the .NET build**, for a page that cannot run Vite plugins, such as an
+  Angular CLI page (as `dotnet new runic-app --frontend angular --translations`
+  creates) or a Bun-bundled one, as the multi-window example does. The build
+  writes the ESM with the same tool, and `RunicApplicationFrontendTranslations`
+  copies it to `Frontend/.runic/translations` (gitignored) before the frontend
+  builds; the page imports `../.runic/translations/messages.js`, `runtime.js`
+  and `transport.js`. It works with every bundler and needs no npm package, but
+  the development server does not reload an edited message: build again.
 
   ```xml
   <RunicTranslationsEmitEsm>true</RunicTranslationsEmitEsm>
   <RunicApplicationFrontendTranslations>true</RunicApplicationFrontendTranslations>
   ```
-
-- **From the Translations Vite plugin**, which compiles the catalog for a Vite
-  page, reloads messages in `vite dev`, and serves the modules as
-  `virtual:runic-translations/<catalog>`, as in the examples below. Leave
-  `RunicApplicationFrontendTranslations` off then.
 
 **Values.** A member, DTO member, command input or result of type
 `Runic.Translations.TranslationReference` crosses the Bridge as the reference's
@@ -3834,6 +3859,31 @@ again on a switch only when it reads a reactive text locale:
 | Angular | `configureSharedLocaleResolver(() => textLocaleSignal()() ?? locale.getRequestedLocale())`: one signal for the page, also for `OnPush` templates |
 | React | `configureSharedLocaleResolver(locale.getRequestedLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
 | Effect | `textLocales()`, a stream of the locale; render the messages again on each |
+
+**Edited messages in `vite dev`.** With the Translations Vite plugin 0.12.0 or
+later, saving an edited message updates the page in place: the page keeps its
+component state, its language and its connection. The plugin swaps the new text
+into the loaded catalog and signals it on the global text-change channel
+`Symbol.for("runic.translations.text")`; `configureTranslatedText` follows that
+channel in the browser, also when it runs before the catalog loads, and renders
+the text again as a language switch does, through the same reactive text locale as the table above (in React, a
+component that calls `useTextLocale()` and its children, except memoized ones).
+Text references (`useText`, `injectText`, the `runicText` pipe, `texts`) format
+again too. In place means a message's text, its plural and selector variants
+and the text inside its markup, in any locale. These still reload the page,
+with the reason in the Vite log: an added, removed or renamed message, changed
+inputs or markup, a new locale, and a `runic.json` change. A page that does not
+call `configureTranslatedText` reloads as well, so it never shows stale text;
+one that calls it shows the new text wherever it renders again on a language
+switch.
+Text computed once, such as a `const` in a script, a SvelteKit `load` result or
+a `document.title` set in code, keeps its old text until it is computed again,
+as after a language switch. In production nothing writes the channel: the
+listener `configureTranslatedText` adds never runs, and the helpers behave as
+before. The Angular CLI's dev server (`ng serve`) runs no Vite
+plugins: a page built with it imports the ESM of the .NET build and reloads
+after `dotnet build`. In-place updates in Angular need Angular built with Vite
+(`@analogjs/vite-plugin-angular`) and the Translations Vite plugin.
 
 **References of several catalogs.** `configureTranslatedText` takes one
 `resolve`, and a later call replaces an earlier one. When ViewModels send
