@@ -1822,8 +1822,9 @@ The `dotnet new runic-app` template's Counter page has one of each.
 ## Generated TypeScript
 
 Each ViewModel gets a module named after it (`EditorViewModel` becomes
-`editor.ts`) with its state interface, client interface and `connect`
-function. Every enum, DTO and union in the contract becomes one exported type
+`editor.ts`) with its `connect` function, and the client's types (its state,
+client and page reference interfaces) in `editor.contract.d.ts` beside it,
+which `editor.ts` re-exports; see [Editor navigation](#editor-navigation). Every enum, DTO and union in the contract becomes one exported type
 named after its C# type, declared once in `types.ts` beside the modules. Next
 to each client, `editor.mock.ts` exports a typed test double, `mockEditor`; see
 [Testing](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
@@ -2186,8 +2187,40 @@ cache regenerates it with the other outputs. Under `vite dev`,
 `@runic-artifex/vite-plugin-runic` serves it and opens a listed location in your
 editor (VS Code, Rider, or `LAUNCH_EDITOR`); see its
 [README](../../web/vite-plugin-runic/README.md#source-map-and-open-in-editor) for
-the format and the endpoints. Generated clients' declaration maps will use the
-same locations.
+the format and the endpoints. Generated clients' declaration maps use the same
+locations ([Editor navigation](#editor-navigation)).
+
+### Editor navigation
+
+The generated client's types are declared in `<view>.contract.d.ts`, with a
+declaration map, `<view>.contract.d.ts.map`, into the ViewModel's C# sources.
+So in any TypeScript-aware editor (tsserver-based: VS Code, Visual Studio, and
+others) Go to Definition or Peek on a client member opens the C# it stands for,
+with no extension:
+
+| In the page | Opens |
+| --- | --- |
+| `client.save()`, `startSave`, `recoverSave`, `canSave(...)` | The command's handler, such as its `[RelayCommand]` method |
+| `state.title` (and `titleErrors`) | The property's getter, or its `[ObservableProperty]` field |
+| `client.setTitle(...)`, `writeTitle(...)` | The property's setter |
+| `state.canSave`, `isSaveExecuting` | The command's handler |
+| `client.interactions.confirm`, `client.requests.focus` | The interaction or View request property |
+| `EditorClient`, `EditorState` (Go to Type Definition) | The ViewModel class |
+
+The map's locations are those of the [development source map](#development-source-map);
+its `sources` are relative to the map, so a client committed to source control
+is the same on every machine. A member without a location (no PDB, or a source
+on another drive than the generated directory) stays in the `.d.ts`, and a
+client without any gets no map. Everything else, such as `connectEditor` or the
+page reference's `connect`, stays in the generated TypeScript.
+
+Imports don't change: `import { connectEditor, type EditorState } from "./generated/editor.js"`
+works as before, because `editor.ts` re-exports every type of the contract with
+`export type`. `.contract.d.ts` holds only types, so bundlers never load it and
+the built JavaScript is unchanged. Commit the `.contract.d.ts` and its map with
+the client. A library that compiles the generated directory with `tsc
+--declaration` into another directory copies the `.contract.d.ts` files there
+too, since `tsc` does not copy `.d.ts` inputs.
 
 ## Ship the frontend inside the executable
 
