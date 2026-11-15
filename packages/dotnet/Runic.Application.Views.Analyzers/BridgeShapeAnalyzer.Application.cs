@@ -190,6 +190,8 @@ public sealed partial class BridgeShapeAnalyzer
             return;
         }
         if (NameCollisions(application).Any()) return;
+        foreach (var (owner, message) in FileCollisions(application))
+            if (SymbolEqualityComparer.Default.Equals(owner, view)) Report(context, BridgeRules.NameCollision, view, message);
         var kinds = application.Views.Keys.SelectMany(owner => application.ValidViews(owner)
                 .Where(candidate => IsFirstOfContract(application, owner, candidate))
                 .Select(candidate => (Kind: PageKind(PublicName(owner), ContractOf(candidate)), View: candidate)))
@@ -222,6 +224,31 @@ public sealed partial class BridgeShapeAnalyzer
         foreach (var group in NameCollisions(application).Where(group => SymbolEqualityComparer.Default.Equals(group.Last(), model)))
             Report(context, BridgeRules.NameCollision, model,
                 $"Bridge ViewModel names must be unique within an application: {string.Join(" and ", group.Select(FullName))} both use '{group.Key}'.");
+        if (!NameCollisions(application).Any())
+            foreach (var (owner, message) in FileCollisions(application))
+                if (SymbolEqualityComparer.Default.Equals(owner, model)) Report(context, BridgeRules.NameCollision, model, message);
+    }
+
+    // Program.cs, the generated files (RUNICBRIDGE004): each ViewModel's {FullName}.Bridge.g.cs, {name}.ts and
+    // {name}.mock.ts, each View's {FullName}.View.g.cs and the named types' types.ts, unique ignoring case. Reported at
+    // the first ViewModel that writes one, else at the first View. The shared clients' modules (RUNICBRIDGE036) stay
+    // the generator's.
+    private static IEnumerable<(INamedTypeSymbol Owner, string Message)> FileCollisions(BridgeApplication application)
+    {
+        var models = application.Views.Keys.Where(model => !model.IsGenericType).ToArray();
+        var views = models.SelectMany(model => application.ValidViews(model).Where(view => IsFirstOfContract(application, model, view))).ToArray();
+        var outputs = models.Select(model => (Path: FullName(model) + ".Bridge.g.cs", Owner: (INamedTypeSymbol?)model, Name: FullName(model)))
+            .Concat(views.Select(view => (Path: FullName(view) + ".View.g.cs", Owner: (INamedTypeSymbol?)view, Name: FullName(view))))
+            .Concat(models.Select(model => (Path: LowerFirst(PublicName(model)) + ".ts", Owner: (INamedTypeSymbol?)model, Name: FullName(model))))
+            .Concat(models.Select(model => (Path: LowerFirst(PublicName(model)) + ".mock.ts", Owner: (INamedTypeSymbol?)model, Name: FullName(model))))
+            .Append((Path: "types.ts", Owner: null, Name: "the generated named types"));
+        foreach (var group in outputs.GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+        {
+            var owner = models.FirstOrDefault(model => group.Any(output => output.Name == FullName(model)))
+                ?? group.Select(output => output.Owner).FirstOrDefault(candidate => candidate is not null);
+            if (owner is not null)
+                yield return (owner, $"generated file '{group.Key}' would be written by {string.Join(" and ", group.Select(output => output.Name))}. Rename one type.");
+        }
     }
 
     // RUNICBRIDGE013 at the ViewModel without a View, from that type's own analysis so the IDE shows it in its file.

@@ -2,6 +2,32 @@
   <!-- This file is imported from source during development and from
        buildTransitive when consumed as a package. -->
 
+  <!-- D066.35: the RUNICBRIDGE warnings fail a build that treats warnings as errors, as the compiler's do. The
+       analyzer's warnings are compiler warnings; the generator's own (logged by RunicViewsReportCommandResult) and
+       these targets' are MSBuild warnings, which TreatWarningsAsErrors does not reach. With it, MSBuild turns them into
+       errors (MSBuildWarningsAsErrors), except those named in WarningsNotAsErrors or NoWarn (NoWarn already makes them
+       messages). WarningsAsErrors is included, as Microsoft.Common.CurrentVersion.targets includes it only when
+       MSBuildWarningsAsErrors is empty. The list is every RUNICBRIDGE warning of docs/runicbridge-diagnostics.json
+       (eng/diagnostics.test.mjs checks it). -->
+  <PropertyGroup Condition="'$(TreatWarningsAsErrors)' == 'true'">
+    <_RunicBridgeWarningsKept>;$([System.Text.RegularExpressions.Regex]::Replace('$(WarningsNotAsErrors);$(NoWarn)', '[\s,;]+', ';').ToUpperInvariant());</_RunicBridgeWarningsKept>
+    <_RunicBridgeWarningsAsErrors></_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE013;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE013</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE015;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE015</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE019;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE019</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE020;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE020</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE028;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE028</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE029;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE029</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE030;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE030</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE031;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE031</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE032;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE032</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE033;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE033</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE034;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE034</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE039;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE039</_RunicBridgeWarningsAsErrors>
+    <_RunicBridgeWarningsAsErrors Condition="!$(_RunicBridgeWarningsKept.Contains(';RUNICBRIDGE053;'))">$(_RunicBridgeWarningsAsErrors);RUNICBRIDGE053</_RunicBridgeWarningsAsErrors>
+    <MSBuildWarningsAsErrors Condition="'$(_RunicBridgeWarningsAsErrors)' != ''">$(MSBuildWarningsAsErrors);$(WarningsAsErrors)$(_RunicBridgeWarningsAsErrors)</MSBuildWarningsAsErrors>
+  </PropertyGroup>
+
   <!-- Every build property of these targets starts with RunicApplicationFrontend.
        The RunicBridge* and RunicViewsWindowProject names of 0.7.0-preview.6 and
        earlier, and the runic-app template's RunicApplicationId and
