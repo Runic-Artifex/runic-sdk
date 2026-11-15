@@ -46,6 +46,28 @@ internal sealed partial class LinuxWebKitGtkHost
     private void ReleaseRestoreBounds() => _restore.Reset(_restore.Current);
     // Which wait the one-second fallback belongs to, so an earlier wait's fallback cannot end a later one.
     private int _maximizeAtSizeWait;
+    // GTK thread only: when Runic last asked GTK to maximize the shown window (Environment.TickCount64), until GTK reports
+    // it maximized or Runic unmaximizes it. On its way to maximized, Openbox reports the window normal at another frame,
+    // which is not the bounds it restores to (#1004); a window manager may also refuse the maximize, so it counts as
+    // pending for MaximizeRequestWait at most.
+    private long? _maximizeRequestedAt;
+    private const long MaximizeRequestWait = 3000;
+
+    // GTK thread only: Runic asked for a maximize that GTK does not report yet.
+    private bool MaximizePending => _maximizeRequestedAt is { } at && Environment.TickCount64 - at < MaximizeRequestWait;
+
+    // GTK thread only: gtk_window_maximize and gtk_window_unmaximize, with the request recorded for MaximizePending.
+    private void RequestMaximize()
+    {
+        _maximizeRequestedAt = Api.GtkWidgetGetVisible(_window) ? Environment.TickCount64 : null;
+        Api.GtkWindowMaximize(_window);
+    }
+
+    private void RequestUnmaximize()
+    {
+        _maximizeRequestedAt = null;
+        Api.GtkWindowUnmaximize(_window);
+    }
 
     public ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() =>
@@ -62,7 +84,7 @@ internal sealed partial class LinuxWebKitGtkHost
                 return;
             }
             if ((flags & GdkWindowStateIconified) != 0) Deiconify();
-            Api.GtkWindowMaximize(_window);
+            RequestMaximize();
         }, cancellationToken);
 
     // On X11 a minimized window comes back normal (D064.13). Wayland tells GTK nothing of a minimized window, and
@@ -76,7 +98,7 @@ internal sealed partial class LinuxWebKitGtkHost
             var flags = Api.GetWindowStateFlags(_window);
             if (CurrentRestore() is { } bounds)
             {
-                _restore.Set(bounds, _restoreClock.Elapsed, (flags & (GdkWindowStateMaximized | GdkWindowStateIconified)) != 0);
+                _restore.Set(bounds, _restoreClock.Elapsed, (flags & (GdkWindowStateMaximized | GdkWindowStateIconified)) != 0 || MaximizePending);
             }
             if ((flags & GdkWindowStateFullscreen) != 0 && Api.CanUseFullScreen) Api.GtkWindowUnfullscreen(_window);
             if (!Api.GtkWidgetGetVisible(_window))
@@ -85,7 +107,7 @@ internal sealed partial class LinuxWebKitGtkHost
                 ReportPlacement(maximized: false, fullScreen: false);
                 return;
             }
-            Api.GtkWindowUnmaximize(_window);
+            RequestUnmaximize();
             if ((flags & GdkWindowStateIconified) != 0) Deiconify();
         }, cancellationToken);
 
@@ -132,14 +154,14 @@ internal sealed partial class LinuxWebKitGtkHost
             }
             else
             {
-                if (maximized) Api.GtkWindowUnmaximize(_window);
+                if (maximized) RequestUnmaximize();
                 if (x is { } newX && y is { } newY) Api.GtkWindowMove(_window, newX, newY);
                 Api.GtkWindowResize(_window, width, height);
                 if (placement.Maximized)
                 {
                     // A maximized window whose restored size changes maximizes once the window manager has the size.
                     var sized = !maximized && (currentWidth, currentHeight) == (width, height);
-                    if (sized) Api.GtkWindowMaximize(_window);
+                    if (sized) RequestMaximize();
                     else MaximizeOnceSized(width, height);
                 }
             }
@@ -160,7 +182,7 @@ internal sealed partial class LinuxWebKitGtkHost
         var (geometry, maximize) = (_geometryWhenShown, _maximizedWhenShown);
         (_geometryWhenShown, _maximizedWhenShown) = (null, null);
         if (maximize is null && geometry is null) return;
-        if (maximize is false || (geometry is not null && Api.GtkWindowIsMaximized(_window))) Api.GtkWindowUnmaximize(_window);
+        if (maximize is false || (geometry is not null && Api.GtkWindowIsMaximized(_window))) RequestUnmaximize();
         if (geometry is { } pending)
         {
             if (pending is { X: { } x, Y: { } y }) Api.GtkWindowMove(_window, x, y);
@@ -169,7 +191,7 @@ internal sealed partial class LinuxWebKitGtkHost
         if (maximize is not true) return;
         if (geometry is not { } sized)
         {
-            Api.GtkWindowMaximize(_window);
+            RequestMaximize();
             return;
         }
         MaximizeOnceSized(sized.Width, sized.Height);
@@ -202,7 +224,7 @@ internal sealed partial class LinuxWebKitGtkHost
         if (_maximizeAtSize is not { } size || !IsOpen || _window == 0) return;
         if (!force && (width, height) != size) return;
         _maximizeAtSize = null;
-        Api.GtkWindowMaximize(_window);
+        RequestMaximize();
     }
 
     // GTK thread only, from UpdateState: the restore bounds after a report of the window, which a window back from
