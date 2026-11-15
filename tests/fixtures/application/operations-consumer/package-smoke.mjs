@@ -91,12 +91,14 @@ try {
   // install again (RUNICBRIDGE026 would refuse an unlocked install).
   await run("dotnet", ["build", "OperationsConsumer.csproj", "-c", "Release", ...properties, "-p:RunicApplicationFrontendInstallEnabled=false"]);
   await run("bun", ["run", "--bun", "check"], frontend);
-  const generated = await readFile(join(frontend, "src/generated/operations.ts"), "utf8");
+  // The client's types are in operations.contract.d.ts (#952), its code (the shared DTO's codec) in operations.ts.
+  const contract = await readFile(join(frontend, "src/generated/operations.contract.d.ts"), "utf8");
+  const generated = contract + await readFile(join(frontend, "src/generated/operations.ts"), "utf8");
   assert.doesNotMatch(generated, /\bisFiltered\b/);
   assert.match(generated, /\bhint\b/);
-  assert.match(generated, /\brootVisible\b/);
+  assert.match(contract, /\brootVisible\b/);
   // #472: the keyed command takes the resolver's key.
-  assert.match(generated, /archiveEntry\(entryId: bigint\): Promise<OperationsState>;/);
+  assert.match(contract, /archiveEntry\(entryId: bigint\): Promise<OperationsState>;/);
   const assets = JSON.parse(await readFile(join(directory, "obj/project.assets.json"), "utf8"));
   assert.equal(Object.values(assets.libraries).some(library => library.type === "project"), false,
     "A ProjectReference crossed the package boundary.");

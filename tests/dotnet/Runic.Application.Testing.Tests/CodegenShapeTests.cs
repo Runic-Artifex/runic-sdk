@@ -130,7 +130,7 @@ internal sealed class CodegenShapeTests
     [Test]
     public void NullableReactiveTypeArgumentsReachTheClient()
     {
-        var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "nullableReactive.ts"));
+        var client = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "nullableReactive");
         foreach (var expected in new[]
         {
             "echo(input: string | null): Promise<NullableReactiveState>;",
@@ -176,7 +176,7 @@ internal sealed class CodegenShapeTests
                 && !parts.Any(part => part.Contains("NavTabsViewModel.tabs", StringComparison.Ordinal)),
             $"The contract fingerprint describes the selection slot by more than its part:\n{string.Join('\n', parts)}");
         var directory = GeneratedTypeScriptDirectory();
-        var tabs = File.ReadAllText(Path.Combine(directory, "navTabs.ts")).ReplaceLineEndings("\n");
+        var tabs = GeneratedClientSource.Read(directory, "navTabs").ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
             "  /** The shown tab. */\n  readonly tabs: number | null;",
@@ -204,13 +204,13 @@ internal sealed class CodegenShapeTests
                 .Any(part => part.StartsWith("scoped:", StringComparison.Ordinal) && part.Contains("DocumentedViewModel", StringComparison.Ordinal)),
             "A View without scoped commands has a scoped: part.");
         var directory = GeneratedTypeScriptDirectory();
-        var client = File.ReadAllText(Path.Combine(directory, "scopedWizard.ts")).ReplaceLineEndings("\n");
+        var client = GeneratedClientSource.Read(directory, "scopedWizard").ReplaceLineEndings("\n");
         var mock = File.ReadAllText(Path.Combine(directory, "scopedWizard.mock.ts")).ReplaceLineEndings("\n");
         Require(client.Contains("scopedCommands: [\"back\", \"next\"], timeout: options?.timeout", StringComparison.Ordinal),
             $"scopedWizard.ts does not list its scoped commands:\n{client}");
         Require(mock.Contains("  scopedCommands: [\"back\", \"next\"],\n", StringComparison.Ordinal),
             $"scopedWizard.mock.ts does not list its scoped commands:\n{mock}");
-        Require(!File.ReadAllText(Path.Combine(directory, "documented.ts")).Contains("scopedCommands", StringComparison.Ordinal),
+        Require(!GeneratedClientSource.Read(directory, "documented").Contains("scopedCommands", StringComparison.Ordinal),
             "A client without scoped commands lists scopedCommands.");
     }
 
@@ -219,9 +219,9 @@ internal sealed class CodegenShapeTests
     {
         var directory = GeneratedTypeScriptDirectory();
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
-        var documented = File.ReadAllText(Path.Combine(directory, "documented.ts")).ReplaceLineEndings("\n");
-        var collection = File.ReadAllText(Path.Combine(directory, "collectionDelta.ts")).ReplaceLineEndings("\n");
-        var shape = File.ReadAllText(Path.Combine(directory, "codegenShape.ts")).ReplaceLineEndings("\n");
+        var documented = GeneratedClientSource.Read(directory, "documented").ReplaceLineEndings("\n");
+        var collection = GeneratedClientSource.Read(directory, "collectionDelta").ReplaceLineEndings("\n");
+        var shape = GeneratedClientSource.Read(directory, "codegenShape").ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
             ("types.ts", types, "export type CodegenShapeMode = \"None\" | \"Default\" | \"Active\";"),
@@ -254,7 +254,7 @@ internal sealed class CodegenShapeTests
             ("documented.ts", documented, "  /**\n   * The note being edited.\n   *\n   * Calls the public C# setter of `DocumentedViewModel.Note`.\n   */\n  setNote(value: string): Promise<DocumentedState>;"),
             ("documented.ts", documented, "  readonly item: DocumentedItem;\n  /** Whether the note has `unsaved` changes. */\n  readonly isDirty: boolean;"),
             // C# `long` is a TypeScript bigint, and the generated comment says so.
-            ("dataShape.ts", File.ReadAllText(Path.Combine(directory, "dataShape.ts")).ReplaceLineEndings("\n"),
+            ("dataShape.ts", GeneratedClientSource.Read(directory, "dataShape").ReplaceLineEndings("\n"),
                 "  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */\n  readonly \"exact-id\": bigint;"),
             // The connect timeout is an option of the generated connect function (default 5000 ms).
             ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> {"),
@@ -263,21 +263,21 @@ internal sealed class CodegenShapeTests
             ("documented.ts", documented, "export const DocumentedFields: {\n  readonly note: BridgeField<DocumentedClient, DocumentedState, string>;\n} = {\n  note: {\n    name: \"note\", kind: \"text\",\n    read: state => state.note,\n    write: (client, value) => client.setNote(value),\n    checked: (client, value, options) => client.writeNote(value, options),\n    baseline: client => client.fieldBaseline(\"note\"),\n  },\n};"),
             ("codegenShape.ts", shape, "    name: \"mode\", kind: \"choice\", choices: [\"None\", \"Active\"],\n"),
             ("codegenShape.ts", shape, "    name: \"origin\", kind: \"value\", nullable: true,\n"),
-            ("dataShape.ts", File.ReadAllText(Path.Combine(directory, "dataShape.ts")).ReplaceLineEndings("\n"),
+            ("dataShape.ts", GeneratedClientSource.Read(directory, "dataShape").ReplaceLineEndings("\n"),
                 "  \"exact-id\": {\n    name: \"exact-id\", kind: \"bigint\",\n    read: state => state[\"exact-id\"],\n"),
-            ("scalarSetter.ts", File.ReadAllText(Path.Combine(directory, "scalarSetter.ts")).ReplaceLineEndings("\n"),
+            ("scalarSetter.ts", GeneratedClientSource.Read(directory, "scalarSetter").ReplaceLineEndings("\n"),
                 "    name: \"maybe\", kind: \"number\", nullable: true, integer: true,\n"),
-            ("scalarSetter.ts", File.ReadAllText(Path.Combine(directory, "scalarSetter.ts")).ReplaceLineEndings("\n"),
+            ("scalarSetter.ts", GeneratedClientSource.Read(directory, "scalarSetter").ReplaceLineEndings("\n"),
                 "    name: \"ratio\", kind: \"number\",\n"),
             // C1: decimals, dates and times have their own kinds; a DateTimeOffset is a datetime with an offset.
-            ("scalarSetter.ts", File.ReadAllText(Path.Combine(directory, "scalarSetter.ts")).ReplaceLineEndings("\n"),
+            ("scalarSetter.ts", GeneratedClientSource.Read(directory, "scalarSetter").ReplaceLineEndings("\n"),
                 "    name: \"price\", kind: \"decimal\",\n"),
             ("codegenShape.ts", shape, "    name: \"stamp\", kind: \"datetime\", offset: true,\n"),
             ("codegenShape.ts", shape, "    name: \"when\", kind: \"datetime\",\n"),
             ("codegenShape.ts", shape, "    name: \"at\", kind: \"time\",\n"),
-            ("reactiveRules.ts", File.ReadAllText(Path.Combine(directory, "reactiveRules.ts")).ReplaceLineEndings("\n"),
+            ("reactiveRules.ts", GeneratedClientSource.Read(directory, "reactiveRules").ReplaceLineEndings("\n"),
                 "    errors: state => fieldErrors(state.validation, \"name\", state.nameErrors),\n"),
-            ("validatableOnly.ts", File.ReadAllText(Path.Combine(directory, "validatableOnly.ts")).ReplaceLineEndings("\n"),
+            ("validatableOnly.ts", GeneratedClientSource.Read(directory, "validatableOnly").ReplaceLineEndings("\n"),
                 "    errors: state => fieldErrors(state.validation, \"name\"),\n"),
             ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
             ("documented.ts", documented, "layout: (wire: unknown) => bridgeWire.enumName<DocumentedLayout>(wire, [\"List\", \"Grid\"]),"),
@@ -285,7 +285,7 @@ internal sealed class CodegenShapeTests
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
-        var generatedReactive = File.ReadAllText(Path.Combine(directory, "generatedReactive.ts")).ReplaceLineEndings("\n");
+        var generatedReactive = GeneratedClientSource.Read(directory, "generatedReactive").ReplaceLineEndings("\n");
         Require(!documented.Contains("setIsDirty", StringComparison.Ordinal) && !documented.Contains("setLayout", StringComparison.Ordinal),
             "A Toolkit property with a private setter became settable from the web View.");
         // The summaries on [Reactive] and [ObservableProperty] partial properties are on their
@@ -310,7 +310,7 @@ internal sealed class CodegenShapeTests
         // A client imports only the protocol runtimes its ViewModel uses, from
         // the generated entry, and the decoders as a namespace so bundlers can
         // drop the ones it does not call.
-        var reactive = File.ReadAllText(Path.Combine(directory, "nullableReactive.ts")).ReplaceLineEndings("\n");
+        var reactive = GeneratedClientSource.Read(directory, "nullableReactive").ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
             ("documented.ts", documented, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
@@ -355,7 +355,7 @@ internal sealed class CodegenShapeTests
     {
         var directory = GeneratedTypeScriptDirectory();
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
-        var naming = File.ReadAllText(Path.Combine(directory, "naming.ts")).ReplaceLineEndings("\n");
+        var naming = GeneratedClientSource.Read(directory, "naming").ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
             ("types.ts", types, "export interface AlphaTag {\n  readonly name: string;\n}"),
@@ -415,22 +415,25 @@ internal sealed class CodegenShapeTests
         string Read(string file) => File.ReadAllText(Path.Combine(directory, file)).ReplaceLineEndings("\n");
         foreach (var (file, expected) in new[]
         {
-            ("wire.ts", "export interface WireState {"),
+            ("wire.contract.d.ts", "export interface WireState {"),
             ("wire.ts", "const members: BridgeMemberDecoders<WireState> = {"),
-            ("view.ts", "import type { BridgeConnectOptions, ViewClient as _ViewClient } from \"@runic-artifex/views\";"),
+            ("view.ts", "import type { BridgeConnectOptions } from \"@runic-artifex/views\";"),
+            ("view.contract.d.ts", "import type { ViewClient as _ViewClient } from \"@runic-artifex/views\";"),
+            ("view.ts", "import type { ViewState, ViewClient, ViewPageReference } from \"./view.contract.js\";"),
             ("view.ts", "import { connectView as _connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";"),
-            ("view.ts", "export interface ViewClient extends _ViewClient<ViewState> {"),
+            ("view.contract.d.ts", "export interface ViewClient extends _ViewClient<ViewState> {"),
             ("view.ts", "export function connectView(options?: BridgeConnectOptions): Promise<ViewClient & globalThis.Disposable> {"),
             ("view.ts", "  const view = await _connectView<ViewState>({ contract: bridgeContract, "),
-            ("bridge.ts", "export type BridgeInteractionContext = _BridgeInteractionContext;"),
-            ("bridge.ts", "export interface BridgeStreamOperation extends _BridgeStreamOperation<number> {}"),
-            ("bridge.ts", "export interface BridgeSaveOperation extends BridgeOperation<number> {}"),
-            ("bridgeValidation.ts", "  readonly validation: _BridgeValidationState;"),
+            ("bridge.contract.d.ts", "export type BridgeInteractionContext = _BridgeInteractionContext;"),
+            ("bridge.contract.d.ts", "export interface BridgeStreamOperation extends _BridgeStreamOperation<number> {}"),
+            ("bridge.contract.d.ts", "export interface BridgeSaveOperation extends BridgeOperation<number> {}"),
+            ("bridgeValidation.contract.d.ts", "  readonly validation: _BridgeValidationState;"),
             ("define.ts", "const interactionDefinitions = _defineInteractions({"),
-            ("define.ts", "export interface defineInteractions {"),
+            ("define.contract.d.ts", "export interface defineInteractions {"),
             ("typedView.mock.ts", "import { mockTypedView as _mockTypedView, "),
             ("typedView.mock.ts", "  return _mockTypedView(bridge, spec, definition) as TypedViewMock;"),
-            ("shelf.ts", "import { pageShelfReferences, type ShelfReferencesPageReference } from \"./shelfReferences.js\";"),
+            ("shelf.ts", "import { pageShelfReferences } from \"./shelfReferences.js\";"),
+            ("shelf.contract.d.ts", "import type { ShelfReferencesPageReference } from \"./shelfReferences.contract.js\";"),
             ("shelf.ts", "const _pageShelfReferences = viewReferences<ShelfPageReference>("),
             // A module without a colliding user name keeps the plain bindings.
             ("naming.ts", "const members: BridgeMemberDecoders<NamingState> = {"),

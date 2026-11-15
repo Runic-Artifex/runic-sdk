@@ -4,7 +4,8 @@ using System.Runtime.InteropServices;
 namespace Runic.Application.Views;
 
 // Identifies a directory beyond its path, so a watch on a directory that was deleted and created again is noticed:
-// inotify and FSEvents keep a watch on the deleted directory and report nothing for its replacement.
+// inotify and FSEvents keep a watch on the deleted directory and report nothing for its replacement. Reads a file's
+// identity the same way (a watched file's signature, a given file).
 internal static partial class DirectoryIdentity
 {
     private static volatile bool _unsupported;

@@ -50,6 +50,10 @@ internal static class BridgeSourceMap
     internal const string Request = "request";
     private static readonly string[] KindOrder = [State, Setter, Command, CommandState, Interaction, Request];
 
+    /// <summary>The location of a member id (<c>{viewModel}/{kind}/{member}</c>) or ViewModel id, for a client's declaration map (#952).</summary>
+    internal static Location? LocationOf(string id) => Members.TryGetValue(id, out var member) ? member.Location
+        : ViewModels.FirstOrDefault(entry => entry.Id == id)?.Location;
+
     internal static void RecordViewModel(Type model, string name, string route, string contract, IEnumerable<string> pageKinds) =>
         ViewModels.Add(new(model.FullName!, name, route, contract,
             pageKinds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), At(SourceLocator.Own(model))));

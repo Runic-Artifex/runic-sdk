@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Production build</title>
+    <link rel="icon" href="data:,">
+    <script>
+      // Counts async stack tasks, and with ?reader listens on the Bridge-call channel as the Vite development client does.
+      globalThis.productionTest = { tasks: [], calls: [] };
+      const createTask = console.createTask;
+      if (typeof createTask === "function")
+        console.createTask = name => { productionTest.tasks.push(name); return createTask.call(console, name); };
+      if (new URLSearchParams(location.search).has("reader"))
+        globalThis[Symbol.for("runic.views.calls")] = { listeners: new Set([event => productionTest.calls.push(event.phase)]), requested: true };
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

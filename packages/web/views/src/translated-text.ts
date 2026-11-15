@@ -106,24 +106,23 @@ function channel(slots: Slots = currentSlots()): TranslatedTextChannel {
 // The text-change channel of Runic Translations (0.12.0, `docs/guides/translations/esm.md`, "Text changes during
 // development"): under `vite dev` the plugin swaps an edited message's text into the loaded catalog, increments
 // `revision` and calls `listeners`. Whoever comes first creates it, the plugin's development client or a listener that
-// subscribes before any message module loads; code that finds it keeps it and adds only missing members. Nothing
-// writes it in production, where the listener costs a set entry and never runs. Browser only: on a server it would be
-// process-wide.
+// subscribes before any message module loads; code that finds it keeps it and adds only missing members. Only the
+// development build (the `development` export condition) has it: the production build neither creates nor reads it.
+// Browser only: on a server it would be process-wide.
 interface TranslationsTextChannel {
   version: number;
   revision: number;
   listeners: Set<() => void>;
 }
 
-const translationsTextKey = Symbol.for("runic.translations.text");
-
 function translationsTextChannel(): TranslationsTextChannel | undefined {
   if (typeof window === "undefined") return undefined;
   try {
     const root = globalThis as Record<symbol, unknown>;
-    let value = root[translationsTextKey] as Partial<TranslationsTextChannel> | null | undefined;
+    const key = Symbol.for("runic.translations.text");
+    let value = root[key] as Partial<TranslationsTextChannel> | null | undefined;
     if (typeof value !== "object" || value === null)
-      root[translationsTextKey] = value = { version: 1, revision: 0, listeners: new Set() };
+      root[key] = value = { version: 1, revision: 0, listeners: new Set() };
     if (typeof value.version !== "number") value.version = 1;
     if (typeof value.revision !== "number") value.revision = 0;
     if (!(value.listeners instanceof Set)) value.listeners = new Set();
@@ -131,6 +130,17 @@ function translationsTextChannel(): TranslationsTextChannel | undefined {
   } catch {
     return undefined;   // A frozen or foreign value: the page reloads on an edit, as before.
   }
+}
+
+/**
+ * The revision of the Runic Translations text channel, which changes with each message the Translations Vite
+ * plugin updates in place during development, for framework bindings whose text locale snapshot must change then
+ * (`useTextLocale`). 0 without the channel, and always in the production build, which has none.
+ */
+export function translationsTextRevision(): number {
+  if (!__RUNIC_DEVELOPMENT__) return 0;
+  const revision = ((globalThis as Record<symbol, unknown>)[Symbol.for("runic.translations.text")] as { revision?: unknown } | undefined)?.revision;
+  return typeof revision === "number" ? revision : 0;
 }
 
 function changed(slots: Slots): void {
@@ -156,8 +166,9 @@ export function configureTranslatedText(translations: TextTranslations): () => v
   state.translations = translations;
   let stopped = false;
   const stopLocale = translations.subscribe?.(() => { if (!stopped) changed(slots); });
-  // An edited message updated in place during development renders again like a locale switch.
-  const textChannel = translationsTextChannel();
+  // An edited message updated in place during development renders again like a locale switch. The production build has
+  // no text channel.
+  const textChannel = __RUNIC_DEVELOPMENT__ ? translationsTextChannel() : undefined;
   const onTextChange = () => { if (!stopped) changed(slots); };
   textChannel?.listeners.add(onTextChange);
   const stop = () => {

@@ -58,6 +58,7 @@ commands in the browser.
 | `--linux-gtk` | `3`, `4`: the GTK version of Runic Desktop on Linux; Windows, macOS and `cswebui` are the same with either, so the creator asks for it, and prints it, only with `--host desktop` unless you pass it | `3` |
 | `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from; asked for and printed only with `--host desktop` unless you pass it | `native` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
+| `--editor` | `none`, `vscode` (adds `.vscode/` with tasks for `dotnet runic dev`, debug configurations for the C# extension and the recommended extensions; every project has `Properties/launchSettings.json` for Visual Studio, Rider and `dotnet run`); the commands leave out `none` | `none` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
 | `--translations` | Translates the application with [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk) 0.9: one catalog in English and German for the page and C#, a language switch, the application's language for every window, `RUNIC_LOCALE` for test runs, and a test of the translated text | English text in the code |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
@@ -76,7 +77,7 @@ the command output format.
 The creator has no subcommand to name: `dnx Runic.Create -- create` creates a
 project named `create`.
 
-The frontend, package manager, host, Linux GTK and ViewModel choices, `--tests`, `--translations`, `--nix`, `--packaging`, `--restore`
+The frontend, package manager, host, Linux GTK, ViewModel and editor choices, `--tests`, `--translations`, `--nix`, `--packaging`, `--restore`
 and `--application-id` come from the template itself, so `dotnet new runic-app --help` lists the same options.
 The creator reads the template's text options, such as `--application-id`, from the template model, so a text option
 a later template adds is a creator option too. They are not asked: without a value the template computes its
@@ -100,7 +101,7 @@ with `"command": "create"` and the `runic.create/2` payload:
   "directory": "apps/MyApp",
   "fullPath": "/work/apps/MyApp",
   "version": "<VERSION>",
-  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "linux-gtk": "3", "desktop-server": "native", "view-models": "reactiveui" },
+  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "linux-gtk": "3", "desktop-server": "native", "view-models": "reactiveui", "editor": "none" },
   "toggles": { "tests": true, "translations": false, "nix": false, "packaging": false, "restore": false },
   "textOptions": {},
   "commands": [

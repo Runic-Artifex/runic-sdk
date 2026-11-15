@@ -108,7 +108,10 @@ Performance recording (turn on "Show custom tracks"), and its listening turns
 on the async stack segments that lead from a reply back to the click that made
 the call. See
 [Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
-The dock does not show these calls yet.
+The dock does not show these calls yet. Only the
+[development build](../views/README.md#development-build) of
+`@runic-artifex/views` reports calls, which `vite dev` resolves; `vite build`
+bundles the production build, which has no reporting code.
 
 ## Source map and open in editor
 
@@ -323,7 +326,12 @@ export default defineConfig({
 ```
 
 The entry's default export is the mount function of
-[`@runic-artifex/views/component`](../views/README.md#components). `vite build`
+[`@runic-artifex/views/component`](../views/README.md#components). With Angular,
+the Analog plugin (`angular()`) compiles the component's code ahead of time as
+it does the page's, and `runicComponentMount` of `@runic-artifex/angular/experimental`
+is the mount function; it keeps Angular's component styles, which Angular adds
+to the document at run time rather than to the build's CSS, in the shadow root
+([Angular components](../angular/README.md#components-experimental)). `vite build`
 then builds every environment, as `vite build --app` does, and after them the
 `runic_component` environment into `_runic_component/` of the build output:
 

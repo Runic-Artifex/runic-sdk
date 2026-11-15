@@ -25,6 +25,7 @@ internal sealed class ViewRequestCodegenTests
         var outputs = Models.SelectMany(entry => new (string Golden, string Actual)[]
         {
             (entry.Module + ".ts", Path.Combine(GeneratedDirectory(), entry.Module + ".ts")),
+            (entry.Module + ".contract.d.ts", Path.Combine(GeneratedDirectory(), entry.Module + ".contract.d.ts")),
             (entry.Module + ".mock.ts", Path.Combine(GeneratedDirectory(), entry.Module + ".mock.ts")),
             (entry.Model.Name + ".Bridge.g.cs", Path.Combine(bridges, entry.Model.FullName + ".Bridge.g.cs")),
         }).ToList();
@@ -43,7 +44,7 @@ internal sealed class ViewRequestCodegenTests
         foreach (var (model, module) in Models)
         {
             var fingerprint = BridgeContractShape.Compute(model);
-            var client = File.ReadAllText(Path.Combine(GeneratedDirectory(), module + ".ts"));
+            var client = GeneratedClientSource.Read(GeneratedDirectory(), module);
             var bridge = File.ReadAllText(Path.Combine(BridgeDirectory(), model.FullName + ".Bridge.g.cs"));
             Require(client.Contains($"const bridgeContract = \"{model.FullName}:{fingerprint}\";", StringComparison.Ordinal)
                 && bridge.Contains($"\"{fingerprint}\", content,", StringComparison.Ordinal),
@@ -81,8 +82,8 @@ internal sealed class ViewRequestCodegenTests
         foreach (var path in Directory.GetFiles(GeneratedDirectory(), "*.ts"))
         {
             var module = Path.GetFileName(path);
-            if (module.EndsWith(".mock.ts", StringComparison.Ordinal) || module == "types.ts") continue;
-            var text = File.ReadAllText(path);
+            if (module.EndsWith(".mock.ts", StringComparison.Ordinal) || module.EndsWith(".d.ts", StringComparison.Ordinal) || module == "types.ts") continue;
+            var text = GeneratedClientSource.Read(GeneratedDirectory(), module[..^".ts".Length]);
             var hasRequests = Models.Any(entry => entry.Module + ".ts" == module);
             foreach (var marker in new[] { "defineRequests", "requestDefinitions", "BridgeViewRequestContext", "requests: view.requests" })
                 Require(text.Contains(marker, StringComparison.Ordinal) == hasRequests,
