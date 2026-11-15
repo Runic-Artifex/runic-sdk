@@ -8,7 +8,8 @@ import type { SourceBindings } from "./inspect-handlers.js";
 
 /**
  * A source location of the overview, with how "open in editor" opens it: `runic` posts the source map entry's `id` to
- * `/__runic/open`; `vite` opens a frontend file through Vite's `/__open-in-editor`.
+ * `/__runic/open`; `translations` posts the `message` to `/__runic/open`, which asks the Translations dev server where
+ * it is; `vite` opens a frontend file through Vite's `/__open-in-editor`.
  */
 export interface RunicInspectLocation {
   readonly file: string;
@@ -16,9 +17,11 @@ export interface RunicInspectLocation {
   readonly line: number;
   /** 1-based. */
   readonly column: number;
-  readonly editor: "runic" | "vite";
+  readonly editor: "runic" | "translations" | "vite";
   /** The source map entry, for `editor: "runic"`. */
   readonly id?: string;
+  /** The message, for `editor: "translations"`. */
+  readonly message?: { readonly catalog: string; readonly key: string; readonly locale: string };
 }
 
 /** The element's framework component, as the framework's own development metadata gives it. */
@@ -115,6 +118,23 @@ export interface RunicInspectText {
   readonly arguments: unknown;
 }
 
+/**
+ * A message of a generated `m.*()` call that the element shows. Runic Translations marks the text of these calls while
+ * select mode is on (the `markers` of its text-change channel), so they are known only then.
+ */
+export interface RunicInspectMessage {
+  readonly catalog: string;
+  readonly key: string;
+  /** The locale whose text the element shows (a fallback names the fallback locale). */
+  readonly locale: string;
+  /** Where the element shows it: `text` (its text or a descendant's), or an attribute such as `title` or `aria-label`. */
+  readonly in: readonly string[];
+  /** The message in that locale as authored (MF2), from the Translations dev server. */
+  readonly source?: string;
+  /** Where that text is defined, in its `.rmf2`/`.mf2` source. */
+  readonly location?: RunicInspectLocation;
+}
+
 /** What Runic Inspect and `describe(element)` report for an element. */
 export interface RunicInspectDescription {
   readonly element: {
@@ -132,6 +152,8 @@ export interface RunicInspectDescription {
   /** The element's recent Bridge calls, newest first. */
   readonly calls: readonly RunicInspectCall[];
   readonly texts: readonly RunicInspectText[];
+  /** The messages of generated `m.*()` calls it shows (select mode only). */
+  readonly messages: readonly RunicInspectMessage[];
   /** What the overview cannot tell, and why. */
   readonly notes: readonly string[];
 }
@@ -166,6 +188,15 @@ export interface InspectInput {
   readonly component?: RunicInspectComponent | undefined;
   /** The element's event bindings in its components' source and the client calls they reach (handlers.ts). */
   readonly source?: SourceBindings | undefined;
+  /** The messages the element's markers name, with their sources where the Translations dev server knows them. */
+  readonly messages?: readonly RunicInspectMessage[] | undefined;
+  /**
+   * Whether message markers were readable: `on` (select mode had them on), `off` (the page has them, but not on now),
+   * `unsupported` (the page's Runic Translations has no markers), `none` (no Runic Translations text on the page).
+   */
+  readonly markerStatus?: "on" | "off" | "unsupported" | "none" | undefined;
+  /** Why the messages have no source locations: the Translations dev server's message API did not answer. */
+  readonly messageSourcesStatus?: "unavailable" | undefined;
   /** Formats a text reference as the page shows it, with the locale it used. */
   readonly resolveText?: ((reference: TextReferenceLike) => { readonly text: string; readonly locale?: string } | undefined) | undefined;
 }
@@ -182,10 +213,78 @@ export interface TextReferenceLike {
 
 const maximumTextLength = 200;
 
+/**
+ * The Runic Translations message markers (its ESM guide, "Message markers"): U+2063, the message ID in U+2061/U+2062
+ * bits, U+2064. Only while select mode is on.
+ */
+const markerPattern = /\u2063[\u2061\u2062]{1,24}\u2064/gu;
+
+/** Text without Runic Translations message markers. */
+export function stripMarkers(text: string): string {
+  return text.replace(markerPattern, "");
+}
+
 /** Collapses whitespace and shortens text for the overview. */
 export function normalizeText(text: string, maximum = maximumTextLength): string {
   const collapsed = text.replace(/\s+/gu, " ").trim();
   return collapsed.length > maximum ? `${collapsed.slice(0, maximum - 1)}…` : collapsed;
+}
+
+/** A message a marker names, as the Translations channel's `markers.decode` returns it. */
+export interface MarkedMessage {
+  readonly catalog: string;
+  readonly key: string;
+  readonly locale: string;
+}
+
+const maximumMessages = 20;
+
+/**
+ * The messages that markers name, once each per catalog, key and locale, in the order they appear, with where each
+ * appears (`text` or an attribute name); at most 20.
+ */
+export function groupMessages(found: readonly { readonly message: unknown; readonly in: string }[]): RunicInspectMessage[] {
+  const messages = new Map<string, { catalog: string; key: string; locale: string; in: string[] }>();
+  for (const { message, in: where } of found) {
+    if (typeof message !== "object" || message === null) continue;
+    const { catalog, key, locale } = message as Record<string, unknown>;
+    if (typeof catalog !== "string" || typeof key !== "string" || key.length === 0) continue;
+    const name = `${catalog}\u0000${key}\u0000${String(locale ?? "")}`;
+    let entry = messages.get(name);
+    if (entry === undefined) {
+      if (messages.size === maximumMessages) continue;
+      messages.set(name, entry = { catalog, key, locale: typeof locale === "string" ? locale : "", in: [] });
+    }
+    if (!entry.in.includes(where)) entry.in.push(where);
+  }
+  return [...messages.values()];
+}
+
+/**
+ * A message's text and source location in its locale, from the Runic Translations dev server's
+ * `GET /__runic-translations/message` reply (`{ message: { locales: [{ locale, text, source: { path, line, column } }] } }`).
+ * A message without a locale (a runtime that does not tell it) takes the base locale, which the reply lists first.
+ */
+export function messageSource(reply: unknown, message: MarkedMessage): Pick<RunicInspectMessage, "source" | "location"> {
+  const locales = (reply as { message?: { locales?: unknown } } | null)?.message?.locales;
+  if (!Array.isArray(locales)) return {};
+  const entry = (locales.find((item) => (item as { locale?: unknown } | null)?.locale === message.locale)
+    ?? (message.locale === "" ? locales[0] : undefined)) as { text?: unknown; source?: unknown } | undefined;
+  if (entry === undefined || entry === null) return {};
+  const source = entry.source as { path?: unknown; line?: unknown; column?: unknown } | null | undefined;
+  const valid = typeof source?.path === "string" && source.path.length > 0
+    && Number.isSafeInteger(source.line) && (source.line as number) > 0;
+  return {
+    ...(typeof entry.text === "string" ? { source: entry.text.length > maximumTextLength ? `${entry.text.slice(0, maximumTextLength - 1)}…` : entry.text } : {}),
+    ...(valid ? {
+      location: {
+        file: source!.path as string, line: source!.line as number,
+        column: Number.isSafeInteger(source!.column) && (source!.column as number) > 0 ? source!.column as number : 1,
+        editor: "translations",
+        message: { catalog: message.catalog, key: message.key, locale: (entry as { locale?: string }).locale ?? message.locale },
+      },
+    } : {}),
+  };
 }
 
 /** A JSON-safe, shortened copy of a state value for the overview. */
@@ -498,6 +597,17 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
   if (input.component === undefined) {
     notes.push("No framework component found for this element (React, Vue, Svelte or Angular in development mode).");
   }
+  const messages = input.messages ?? [];
+  if (input.element.text.length > 0 && messages.length === 0) {
+    if (input.markerStatus === "off") {
+      notes.push("Message keys of m.*() calls show in select mode (Alt+Shift+X, or toggle(true) before describe), which marks their text.");
+    } else if (input.markerStatus === "unsupported") {
+      notes.push("No message keys for m.*() calls: they need @runic-artifex/vite-plugin-runic-translations 0.12 or later under vite dev.");
+    }
+  }
+  if (input.messageSourcesStatus === "unavailable" && messages.some((message) => message.location === undefined)) {
+    notes.push("No .rmf2 locations: the Translations dev server's message API (/__runic-translations/message, plugin 0.12 or later in project mode with inPageEditing) did not answer.");
+  }
 
   return {
     element: {
@@ -513,6 +623,7 @@ export function assembleDescription(input: InspectInput): RunicInspectDescriptio
     commands,
     calls: input.calls,
     texts,
+    messages,
     notes,
   };
 }

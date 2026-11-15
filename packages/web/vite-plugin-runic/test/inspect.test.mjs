@@ -10,9 +10,10 @@ import test from "node:test";
 import { build } from "vite";
 import { runic } from "../dist/index.js";
 import {
-  assembleDescription, findTextReferences, isTextReference, memberKinds, normalizeText, previewValue, viewModelForRoute,
-  indexSourceMap,
+  assembleDescription, findTextReferences, groupMessages, isTextReference, memberKinds, messageSource, normalizeText, previewValue,
+  stripMarkers, viewModelForRoute, indexSourceMap,
 } from "../dist/inspect-data.js";
+import { findMessageSource, messageLocation, messageUrl, parseMessageReference } from "../dist/translations-source.js";
 import {
   absolutePath, angularComponent, applicationFrame, decodeMappings, findComponent, findComponentSync, inlineSourceMap,
   originalPosition, parseStack, sourceFile, svelteComponent, vueComponent,
@@ -145,6 +146,75 @@ test("notes say what the overview cannot tell", () => {
   assert.deepEqual(learned.commands, [{ route: "editor", member: "save", evidence: "call", calls: 0 }]);
   assert.deepEqual(learned.viewModels, [{ route: "editor", contract: "Demo.EditorViewModel:F1" }]);
   assert.match(learned.notes[0], /does not serve the Bridge source map/u);
+});
+
+// Runic Translations' message markers (its ESM guide, "Message markers"): U+2063, the ID in U+2061/U+2062 bits, U+2064.
+const marker = id => `\u2063${id.toString(2).replaceAll("0", "\u2061").replaceAll("1", "\u2062")}\u2064`;
+
+test("message markers: stripped from the text, grouped by message, with sources from the Translations message API", () => {
+  assert.equal(stripMarkers(`${marker(0)}Save ${marker(5)}draft`), "Save draft");
+  assert.equal(stripMarkers("plain \u2063 text"), "plain \u2063 text", "a lone fence is not a marker");
+  const heading = { catalog: "app", key: "heading", locale: "en" };
+  const tip = { catalog: "app", key: "tip", locale: "de" };
+  assert.deepEqual(groupMessages([
+    { message: heading, in: "text" }, { message: tip, in: "title" }, { message: heading, in: "text" }, { message: heading, in: "aria-label" },
+    { message: { catalog: "acme.grid", key: "empty" }, in: "text" }, { message: null, in: "text" }, { message: { catalog: "app", key: "" }, in: "text" },
+  ]), [
+    { ...heading, in: ["text", "aria-label"] }, { ...tip, in: ["title"] }, { catalog: "acme.grid", key: "empty", locale: "", in: ["text"] },
+  ]);
+  assert.equal(groupMessages(Array.from({ length: 30 }, (_, index) => ({ message: { catalog: "app", key: `k${index}`, locale: "en" }, in: "text" }))).length, 20);
+
+  // The reply of GET /__runic-translations/message (runic-translations-sdk#182).
+  const reply = { message: { catalog: "app", key: "heading", baseLocale: "en", locales: [
+    { locale: "en", origin: "catalog", text: "Counter", source: { path: "/app/translations/en.rmf2", line: 2, column: 1 } },
+    { locale: "de", origin: "catalog", text: "Zähler", source: { path: "/app/translations/de.rmf2", line: 4, column: 3 } },
+  ] } };
+  assert.deepEqual(messageSource(reply, { catalog: "app", key: "heading", locale: "de" }), {
+    source: "Zähler",
+    location: { file: "/app/translations/de.rmf2", line: 4, column: 3, editor: "translations", message: { catalog: "app", key: "heading", locale: "de" } },
+  });
+  assert.equal(messageSource(reply, { catalog: "app", key: "heading", locale: "" }).location.message.locale, "en", "no locale: the base locale");
+  assert.deepEqual(messageSource(reply, { catalog: "app", key: "heading", locale: "fr" }), {});
+  assert.deepEqual(messageSource(undefined, heading), {});
+  assert.deepEqual(messageSource({ message: { locales: [{ locale: "en", text: null, source: null }] } }, heading), {}, "a missing locale has neither");
+
+  const description = assembleDescription(input({ element: element({ text: "Counter", ownText: "Counter" }),
+    messages: [{ ...heading, in: ["text"], ...messageSource(reply, heading) }], markerStatus: "on" }));
+  assert.equal(description.messages[0].location.line, 2);
+  assert.ok(!description.notes.some(note => /select mode|vite-plugin-runic-translations|\.rmf2 locations/u.test(note)));
+  const notes = status => assembleDescription(input({ markerStatus: status })).notes.join("\n");
+  assert.match(notes("off"), /Message keys of m\.\*\(\) calls show in select mode/u);
+  assert.match(notes("unsupported"), /vite-plugin-runic-translations 0\.12 or later/u);
+  assert.doesNotMatch(notes("none"), /Message keys/u);
+  assert.doesNotMatch(assembleDescription(input({ element: element({ text: "", ownText: "" }), markerStatus: "off" })).notes.join("\n"), /Message keys/u,
+    "no note for an element without text");
+  assert.match(assembleDescription(input({ messages: [{ ...heading, in: ["text"] }], markerStatus: "on", messageSourcesStatus: "unavailable" })).notes.join("\n"),
+    /No \.rmf2 locations/u);
+});
+
+test("open in editor for a message: a well-formed reference, and only a .rmf2/.mf2 source the Translations dev server names", async () => {
+  assert.deepEqual(parseMessageReference({ catalog: "acme.grid", key: "shop.cart_title", locale: "de-CH" }), { catalog: "acme.grid", key: "shop.cart_title", locale: "de-CH" });
+  assert.deepEqual(parseMessageReference({ catalog: "app", key: "title", locale: "" }), { catalog: "app", key: "title", locale: "" });
+  for (const value of [null, [], "app", { catalog: "App", key: "t", locale: "en" }, { catalog: "app", key: "../t", locale: "en" },
+    { catalog: "app", key: "t", locale: "en/../x" }, { catalog: "app", key: "t" }, { catalog: "app", key: "x".repeat(600), locale: "en" }])
+    assert.equal(parseMessageReference(value), undefined, JSON.stringify(value));
+  const reference = { catalog: "app", key: "title", locale: "en" };
+  const reply = path => ({ message: { locales: [{ locale: "en", source: { path, line: 3, column: 2 } }] } });
+  assert.deepEqual(messageLocation(reply("/app/translations/en.rmf2"), reference), { file: "/app/translations/en.rmf2", line: 3, column: 2 });
+  assert.deepEqual(messageLocation(reply("/app/translations/en/title.MF2"), reference), { file: "/app/translations/en/title.MF2", line: 3, column: 2 });
+  assert.equal(messageLocation(reply("/etc/passwd"), reference), undefined, "only translation sources");
+  assert.equal(messageLocation(reply("/app/src/main.ts"), reference), undefined);
+  assert.equal(messageLocation({ message: { locales: [{ locale: "en", source: { path: "/a.rmf2", line: 0 } }] } }, reference), undefined);
+  assert.equal(messageLocation(reply("/app/translations/en.rmf2"), { ...reference, locale: "de" }), undefined);
+
+  assert.equal(messageUrl({ address: { address: "127.0.0.1", family: "IPv4", port: 5173 }, https: false, base: "/" }, reference).href,
+    "http://127.0.0.1:5173/__runic-translations/message?key=title&catalog=app");
+  assert.equal(messageUrl({ address: { address: "::", family: "IPv6", port: 5173 }, https: true, base: "https://cdn.test/app" }, reference).href,
+    "https://127.0.0.1:5173/app/__runic-translations/message?key=title&catalog=app", "any address: loopback; a URL base: its path");
+  assert.equal(messageUrl({ address: { address: "::1", family: "IPv6", port: 1 }, https: false, base: "/x/" }, reference).host, "[::1]:1");
+  assert.equal(messageUrl({ address: { address: "0.0.0.0", family: "IPv4", port: 1 }, https: false, base: "/" }, reference).hostname, "127.0.0.1");
+  assert.equal(messageUrl({ address: null, https: false, base: "/" }, reference), undefined, "middleware mode: no server address");
+  assert.equal(await findMessageSource({ address: "/tmp/socket", https: false, base: "/" }, reference), undefined);
 });
 
 test("ViewModels resolve by contract, route, then state members", () => {
@@ -286,7 +356,7 @@ test("vite build output is byte-identical with and without Runic Inspect", async
     assert.deepEqual(builds.inspect, builds["without-inspect"]);
     assert.deepEqual(builds.inspect, builds["without-client"]);
     const text = Object.values(builds.inspect).map((content) => content.toString("utf8")).join("\n");
-    assert.doesNotMatch(text, /runic\.vite\.inspect|runic-inspect|Runic Inspect|__open-in-editor|__runic\//u);
+    assert.doesNotMatch(text, /runic\.vite\.inspect|runic-inspect|Runic Inspect|__open-in-editor|__runic\/|runic\.translations\.text|__runic-translations|\u2063/u);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

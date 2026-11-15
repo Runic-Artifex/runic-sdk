@@ -54,15 +54,15 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
     const paths = [];
     runic(options).configureServer({
       ws: { on: () => undefined, send: () => undefined },
-      middlewares: { use: (path) => paths.push(path) },
+      middlewares: { use: (path) => paths.push(typeof path === "function" ? path.name : path) },
       httpServer: undefined,
     });
     return paths;
   };
-  assert.deepEqual(endpoints({ sourceMap: false }), ["/__runic/state", "/__runic/diagnostics", "/__runic/handlers"],
-    "sourceMap: false adds no source map endpoint");
+  assert.deepEqual(endpoints({ sourceMap: false }), ["/__runic/state", "/__runic/diagnostics", "runicOpenInEditor", "/__runic/handlers"],
+    "sourceMap: false serves no map; Runic Inspect still opens Translations sources");
   assert.deepEqual(endpoints({ sourceMap: false, inspect: false }), ["/__runic/state", "/__runic/diagnostics"],
-    "inspect: false adds no handler analysis");
+    "without the map and Runic Inspect, no endpoint");
 });
 
 test("injects the Desktop bootstrap while leaving Vite and HMR ownership intact", async () => {

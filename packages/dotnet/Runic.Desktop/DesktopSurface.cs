@@ -2136,7 +2136,9 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// <returns>A task that completes when the window has been moved.</returns>
     /// <remarks>
     /// Requires <see cref="DesktopWindowCapabilities.Move"/>. Moving and then resizing shows the window moved but not
-    /// yet resized in between; <see cref="SetBoundsAsync"/> does both in one operation.
+    /// yet resized in between; <see cref="SetBoundsAsync"/> does both in one operation. On macOS a position that would
+    /// put the title bar behind a menu bar, such as <c>y</c> 0, puts it just below the menu bar (the work area's top),
+    /// as <see cref="SetBoundsAsync"/> does.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>

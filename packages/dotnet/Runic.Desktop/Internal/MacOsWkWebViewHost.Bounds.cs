@@ -22,6 +22,9 @@ internal sealed partial class MacOsWkWebViewHost
             var bottom = bounds.Y is { } y
                 ? MacOsCoordinates.FlipY(y, bounds.Height, PrimaryScreenHeight())
                 : frame.Y + frame.Height - bounds.Height;
+            // As MoveAsync: a title bar behind a menu bar moves down below it.
+            if (bounds.Y is not null)
+                bottom = MacOsCoordinates.BottomBelowMenuBar(x, bottom, bounds.Width, bounds.Height, Api.GetScreenFrames());
             Api.SendVoidRectBool(_window, "setFrame:display:", new CGRect(x, bottom, bounds.Width, bounds.Height), true);
             UpdateState();
         }, cancellationToken);

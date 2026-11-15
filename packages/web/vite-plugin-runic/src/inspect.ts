@@ -10,6 +10,13 @@
 // locations from the development source map (`/__runic/sources`), opening from `/__runic/open` (C#) and Vite's
 // `/__open-in-editor` (frontend files).
 //
+// Text from generated `m.*()` calls carries Runic Translations' invisible message markers while select mode is on: turning
+// it on calls `markers.set(true)` on the Translations text-change channel (`Symbol.for("runic.translations.text")`,
+// vite-plugin-runic-translations 0.12 under `vite dev`), which renders the page again with a marker in front of every
+// message's text; turning it off renders the plain text again. The overview decodes the markers of the selected
+// element's text and attributes, and reads each message's source location from the Translations dev server's message API
+// (`/__runic-translations/message`). Outside select mode the page's text has no markers.
+//
 // `globalThis[Symbol.for("runic.vite.inspect")]` is the API for agents and tests: `describe(element)` returns the
 // overview as JSON-safe data. Everything here is part of the development client, which a build replaces with an empty
 // module; it uses only the DOM, so every engine under `dotnet runic dev` runs it.
@@ -19,8 +26,8 @@ import { handlersPath, openPath, sourcesPath } from "./channel.js";
 import type { RunicHandlerAnalysis } from "./handlers.js";
 import { findProbes, matchBindings, probeFiles, type RequestedAnalysis, type SourceBindings } from "./inspect-handlers.js";
 import {
-  assembleDescription, normalizeText, type LearnedBinding, type RunicInspectCall, type RunicInspectDescription,
-  type RunicInspectLocation, type TextReferenceLike,
+  assembleDescription, groupMessages, messageSource, normalizeText, stripMarkers, type LearnedBinding, type RunicInspectCall,
+  type RunicInspectDescription, type RunicInspectLocation, type RunicInspectMessage, type TextReferenceLike,
 } from "./inspect-data.js";
 import { findComponent, findComponentSync, type AngularDebug, type NodeLike } from "./inspect-frameworks.js";
 
@@ -29,7 +36,10 @@ export interface RunicInspectApi {
   readonly version: 1;
   /** Whether select mode is on. */
   readonly active: boolean;
-  /** Turns select mode on or off (the opposite of now without an argument); returns whether it is on. */
+  /**
+   * Turns select mode on or off (the opposite of now without an argument); returns whether it is on. While it is on, the
+   * text of generated `m.*()` calls carries Runic Translations' message markers, so `describe` can name the messages.
+   */
   toggle(on?: boolean): boolean;
   /** The overview of an element, as JSON-safe data. */
   describe(element: Element): Promise<RunicInspectDescription>;
@@ -48,6 +58,10 @@ export const inspectKey = Symbol.for("runic.vite.inspect");
 const callsKey = Symbol.for("runic.views.calls");
 const inspectorKey = Symbol.for("runic.views.inspector");
 const translatedTextKey = Symbol.for("runic.views.translated-text");
+const translationsTextKey = Symbol.for("runic.translations.text");
+const messagePath = "__runic-translations/message";
+/** The attributes whose text the overview reads message markers from, besides the element's text. */
+const messageAttributes = ["title", "aria-label", "aria-description", "aria-placeholder", "placeholder", "alt", "label"] as const;
 const tagName = "runic-inspect";
 const interactiveSelector = "button, a[href], input, select, textarea, summary, [role=button], [role=link], " +
   "[role=checkbox], [role=switch], [role=menuitem], [role=tab], [role=option], [contenteditable=true]";
@@ -71,6 +85,13 @@ interface TranslatedText {
     getLocale?(): string;
     setLocale?: unknown;
   };
+}
+
+/** The `markers` member of the Runic Translations text-change channel (its ESM guide, "Message markers"). */
+interface TranslationMarkers {
+  readonly enabled: boolean;
+  set(on: boolean): number;
+  decode(text: string): readonly unknown[];
 }
 
 type MutableCall = { -readonly [K in keyof RunicInspectCall]: RunicInspectCall[K] };
@@ -242,6 +263,48 @@ export function installInspect(options: InspectOptions = {}): () => void {
     }
   }
 
+  function translationMarkers(): TranslationMarkers | undefined {
+    const markers = (host[translationsTextKey] as { markers?: Partial<TranslationMarkers> } | undefined)?.markers;
+    return typeof markers?.set === "function" && typeof markers.decode === "function" ? markers as TranslationMarkers : undefined;
+  }
+
+  // The messages whose markers are in the element's text or its attributes, with their sources.
+  async function readMessages(element: Element): Promise<{
+    messages: RunicInspectMessage[]; status: "on" | "off" | "unsupported" | "none"; sources?: "unavailable";
+  }> {
+    const markers = translationMarkers();
+    if (markers === undefined) return { messages: [], status: host[translationsTextKey] === undefined ? "none" : "unsupported" };
+    const found: { message: unknown; in: string }[] = [];
+    const decode = (text: string | null | undefined, where: string): void => {
+      if (typeof text !== "string" || text.length === 0) return;
+      try {
+        for (const message of markers.decode(text)) found.push({ message, in: where });
+      } catch { /* a foreign channel */ }
+    };
+    decode(element.textContent, "text");
+    for (const name of messageAttributes) decode(element.getAttribute(name), name);
+    if ((element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) && element.type !== "password") decode(element.value, "value");
+    const messages = groupMessages(found);
+    const status = markers.enabled ? "on" : "off";
+    if (messages.length === 0) return { messages, status };
+    let unavailable = false;
+    const replies = new Map<string, Promise<unknown>>();
+    const withSources = await Promise.all(messages.map(async (message) => {
+      const query = `key=${encodeURIComponent(message.key)}&catalog=${encodeURIComponent(message.catalog)}`;
+      let reply = replies.get(query);
+      if (reply === undefined) {
+        reply = fetch(`${base.endsWith("/") ? base : `${base}/`}${messagePath}?${query}`, { credentials: "same-origin", cache: "no-store" })
+          .then((response) => response.ok ? response.json() as Promise<unknown> : undefined)
+          .catch(() => undefined);
+        replies.set(query, reply);
+      }
+      const value = await reply;
+      if (value === undefined) unavailable = true;
+      return { ...message, ...messageSource(value, message) };
+    }));
+    return { messages: withSources, status, ...(unavailable ? { sources: "unavailable" as const } : {}) };
+  }
+
   async function describe(element: Element): Promise<RunicInspectDescription> {
     if (!(element instanceof Element)) throw new TypeError("describe needs an element.");
     const targets = new Set<Element>([bindingElement(element)]);
@@ -253,15 +316,17 @@ export function installInspect(options: InspectOptions = {}): () => void {
       elementCallList.push(...(elementCalls.get(target) ?? []).map((call) => ({ ...call })));
     }
     elementCallList.sort((a, b) => b.id - a.id);
-    const ownText = element.children.length === 0 ? element.textContent ?? ""
-      : [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" ");
+    // The text as the page shows it outside select mode: without message markers.
+    const ownText = stripMarkers(element.children.length === 0 ? element.textContent ?? ""
+      : [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" "));
     const control = element as Partial<HTMLInputElement>;
     const hasValue = (element instanceof HTMLInputElement && element.type !== "password" && element.type !== "checkbox" && element.type !== "radio")
       || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement;
-    const [sourceMap, component, source] = await Promise.all([
+    const [sourceMap, component, source, messages] = await Promise.all([
       readSourceMap(),
       findComponent(element as unknown as NodeLike, { root, ng: host.ng, fetchText }),
       readSourceBindings(bindingElement(element)),
+      readMessages(element),
     ]);
     const role = element.getAttribute("role");
     return assembleDescription({
@@ -270,9 +335,9 @@ export function installInspect(options: InspectOptions = {}): () => void {
         ...(element.id === "" ? {} : { id: element.id }),
         classes: [...element.classList].slice(0, 8),
         ...(role === null ? {} : { role }),
-        text: normalizeText(element.textContent ?? ""),
+        text: normalizeText(stripMarkers(element.textContent ?? "")),
         ownText,
-        ...(hasValue && typeof control.value === "string" ? { value: control.value } : {}),
+        ...(hasValue && typeof control.value === "string" ? { value: stripMarkers(control.value) } : {}),
         interactive: element.matches(interactiveSelector) || element.closest(interactiveSelector) !== null,
       },
       learned: bindings,
@@ -284,15 +349,22 @@ export function installInspect(options: InspectOptions = {}): () => void {
       component,
       source,
       resolveText,
+      messages: messages.messages,
+      markerStatus: messages.status,
+      messageSourcesStatus: messages.sources,
     });
   }
 
   async function open(location: RunicInspectLocation): Promise<boolean> {
     try {
-      const response = location.editor === "runic" && location.id !== undefined
+      const body = location.editor === "runic" && location.id !== undefined ? { id: location.id }
+        : location.editor === "translations" && location.message !== undefined
+          ? { message: { catalog: location.message.catalog, key: location.message.key, locale: location.message.locale } }
+          : undefined;
+      const response = body !== undefined
         ? await fetch(openPath, {
           method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: location.id }),
+          body: JSON.stringify(body),
         })
         : await fetch(`${base.endsWith("/") ? base : `${base}/`}__open-in-editor?file=${
           encodeURIComponent(`${location.file}:${location.line}:${location.column}`)}`, { credentials: "same-origin" });
@@ -455,6 +527,12 @@ export function installInspect(options: InspectOptions = {}): () => void {
       ...(call.outcome === undefined ? [] : [` ${call.outcome}${call.reason === undefined ? "" : ` (${call.reason})`}`]),
       ...(call.revision === undefined ? [] : [muted(` · revision ${call.revision}`)]),
     ]));
+    section("Messages", description.messages.map((message) => [
+      code(`${message.catalog}:${message.key}`), message.locale === "" ? "" : muted(` [${message.locale}]`),
+      ...(message.source === undefined ? [] : [` ${JSON.stringify(message.source.length > 80 ? `${message.source.slice(0, 79)}…` : message.source)}`]),
+      ...(message.in.length === 1 && message.in[0] === "text" ? [] : [muted(` · in ${message.in.join(", ")}`)]),
+      ...(message.location === undefined ? [] : [" ", link(message.location)]),
+    ]));
     section("Texts from the ViewModel", description.texts.map((entry) => [
       code(`${entry.catalog}:${entry.key}`), entry.locale === undefined ? "" : muted(` [${entry.locale}]`),
       ` ${JSON.stringify(entry.text)}`, muted(` · ${entry.route}.${entry.path}`),
@@ -479,6 +557,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
   function setActive(on: boolean): boolean {
     if (on === active) return active;
     active = on;
+    // Message markers only while selecting: the page renders again with them, and again without them.
+    try { translationMarkers()?.set(on); } catch { /* a foreign channel */ }
     if (on) overlay ??= createOverlay();
     if (overlay !== undefined) {
       overlay.glass.hidden = overlay.bar.hidden = !on;
@@ -551,6 +631,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     for (const type of swallowed) removeEventListener(type, onPointer, { capture: true });
     removeEventListener("keydown", onKey, { capture: true });
     if (frame !== undefined) cancelAnimationFrame(frame);
+    if (active) try { translationMarkers()?.set(false); } catch { /* a foreign channel */ }
     overlay?.host.remove();
     overlay = undefined;
     if (host[inspectKey] === api) delete host[inspectKey];

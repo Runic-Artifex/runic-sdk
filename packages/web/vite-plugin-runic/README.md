@@ -232,6 +232,11 @@ them. **Esc** or Alt+Shift+X turns it off. The overview shows:
   the reply's revision.
 - **Texts from the ViewModel**: text references (`TextReference` members) the
   element shows, with their catalog, key, locale and arguments.
+- **Messages**: the messages of generated `m.*()` calls the element shows, in
+  its text or in an attribute (`title`, `aria-label`, `placeholder`, `alt`, an
+  input's value), each with its catalog, key, locale, its text as authored and
+  the `.rmf2`/`.mf2` file:line that defines it. See
+  [Messages of `m.*()` calls](#messages-of-m-calls).
 
 C# locations open in your editor through [`/__runic/open`](#source-map-and-open-in-editor);
 frontend files through Vite's `/__open-in-editor`.
@@ -291,17 +296,19 @@ field controller sends after its previous one finished, is not attributed.
 
 ```ts
 const inspect = (globalThis as any)[Symbol.for("runic.vite.inspect")];
+inspect.toggle(true);        // select mode on, which marks m.*() text; returns whether it is on
 const overview = await inspect.describe(document.querySelector("#save"));
-// { element, component, viewModels, members, commands, calls, texts, notes }
-inspect.toggle(true);        // select mode on; returns whether it is on
+// { element, component, viewModels, members, commands, calls, texts, messages, notes }
 await inspect.select(document.querySelector("#save")); // shows the overview card
 await inspect.open(overview.commands[0].location); // opens it in the editor
 ```
 
 `describe(element)` resolves to JSON-safe data (the type is exported as
 `RunicInspectDescription`); values are shortened, and `notes` says what the
-overview cannot tell, such as a missing source map. With
-`chrome-devtools-mcp` or Playwright, evaluate it in the page.
+overview cannot tell, such as a missing source map. `messages` is filled only
+while select mode is on: call `toggle(true)` and let the page render once
+before `describe`. With `chrome-devtools-mcp` or Playwright, evaluate it in
+the page.
 
 Runic Inspect is plain DOM in a shadow root, so it works in every engine
 `dotnet runic dev` runs: an installed browser, WebView2, WKWebView and
@@ -312,6 +319,39 @@ an empty module: `vite build` output is byte-identical with and without it.
 `/__runic/sources`, `/__runic/open` and `/__runic/handlers` too
 ([SvelteKit and Angular](#sveltekit-and-angular)), so the overview has the C#
 handlers and the commands before the first click there as well.
+
+### Messages of `m.*()` calls
+
+A generated message function returns a plain string, so nothing in the page
+says which message a text came from. Runic Inspect asks Runic Translations to
+mark it, **only while select mode is on**:
+
+- Turning select mode on calls `markers.set(true)` on the Translations
+  text-change channel (`globalThis[Symbol.for("runic.translations.text")]`).
+  The page renders its messages again, as on a language switch, and every
+  `m.*()` call puts an invisible marker in front of its text that names the
+  message. Turning select mode off renders the plain text again. Outside
+  select mode the page's text, `textContent`, copied text and tests see no
+  markers.
+- The markers are invisible format characters that take no width, so the
+  layout does not change. While select mode is on they are also in attribute
+  values and anything else the text went into; the overview strips them from
+  the element's text.
+- For each message it finds, the overview asks the Translations dev server
+  for its source (`GET /__runic-translations/message`), and its link opens it
+  through `/__runic/open` with `{ "message": { catalog, key, locale } }`. The
+  open action never takes a path for a message: it asks the same API and
+  opens only the `.rmf2`/`.mf2` source it names.
+
+It needs `@runic-artifex/vite-plugin-runic-translations` 0.12 or later under
+`vite dev` (the markers, and in project mode with in-page editing on, the
+source locations), and text helpers that render again on the text-change
+channel: `useTextLocale` in React and Vue, Svelte's `useTextLocale` or
+`useMessageLocale`, Angular's `textLocaleSignal`, as for a language switch. A
+component that does not render again, or a value computed once (such as
+`document.title`), keeps its text unmarked. Text formatted from a ViewModel's
+text reference is listed under **Texts from the ViewModel** instead. With an
+earlier plugin, the overview has no messages and its notes say why.
 
 ## Component build target
 

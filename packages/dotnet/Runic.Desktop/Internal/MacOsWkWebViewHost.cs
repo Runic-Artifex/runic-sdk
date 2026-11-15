@@ -362,9 +362,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(after.X, before.Y + before.Height - after.Height));
         }, cancellationToken);
 
-    // x and y are the frame's top-left corner, measured down from the primary screen's top (MacOsCoordinates).
+    // x and y are the frame's top-left corner, measured down from the primary screen's top (MacOsCoordinates). A title
+    // bar behind a menu bar moves down below it (MacOsCoordinates.BottomBelowMenuBar).
     public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
-        => InvokeAsync(() => SetFramePosition(x, y, bottomLeft: false), cancellationToken);
+        => InvokeAsync(() =>
+        {
+            var frame = Api.SendRect(_window, "frame");
+            var bottom = MacOsCoordinates.FrameBottom(y, frame.Height, PrimaryScreenHeight(), bottomLeft: false);
+            bottom = MacOsCoordinates.BottomBelowMenuBar(x, bottom, frame.Width, frame.Height, Api.GetScreenFrames());
+            Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, bottom));
+        }, cancellationToken);
 
     // Main thread only. Moves the frame's corner to x, y: its top-left corner in Runic's coordinates, or for a placement
     // saved by Runic 0.11 or earlier its bottom-left corner in AppKit's, which setFrameOrigin: takes as it is.
@@ -2770,6 +2777,24 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 var visible = SendRect(screen, "visibleFrame");
                 frames.Add(new ScreenRect((int)Math.Round(visible.X), (int)Math.Round(visible.Y),
                     (int)Math.Round(visible.Width), (int)Math.Round(visible.Height)));
+            }
+            return frames;
+        }
+
+        // The frame and visible frame of every screen, in AppKit screen coordinates (MacOsCoordinates.BottomBelowMenuBar).
+        internal List<(MacOsCoordinates.Rect Frame, MacOsCoordinates.Rect Visible)> GetScreenFrames()
+        {
+            List<(MacOsCoordinates.Rect, MacOsCoordinates.Rect)> frames = [];
+            var screens = SendNint(GetClass("NSScreen"), "screens");
+            if (screens == 0) return frames;
+            var count = (long)SendUlong(screens, "count");
+            for (long index = 0; index < count; index++)
+            {
+                var screen = SendNintNint(screens, "objectAtIndex:", (nint)index);
+                if (screen == 0) continue;
+                var frame = SendRect(screen, "frame");
+                var visible = SendRect(screen, "visibleFrame");
+                frames.Add((new(frame.X, frame.Y, frame.Width, frame.Height), new(visible.X, visible.Y, visible.Width, visible.Height)));
             }
             return frames;
         }

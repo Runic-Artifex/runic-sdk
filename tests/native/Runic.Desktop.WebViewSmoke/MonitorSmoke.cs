@@ -424,14 +424,26 @@ internal static partial class MonitorSmoke
                     $"the frame's top ({atTop.Frame}) at the top of the primary screen's visible frame, below the menu bar ({atTop.Visible})");
                 Console.WriteLine($"PASS top-left: MoveAsync({work.X + 20}, {work.Y}) put the frame's top below the menu bar ({atTop.Frame}).");
 
-                // y = 0 is the primary screen's top edge, behind the menu bar; AppKit may keep a title bar below it.
+                // y = 0 is the primary screen's top edge, behind the menu bar. MoveAsync puts the title bar below the
+                // menu bar itself (the work area's top, 0 with the menu bar hidden): AppKit took the frame behind it
+                // and moved the window back to where it had opened seconds later (#1000). The window keeps the
+                // position for as long as AppKit took then.
                 await window.MoveAsync(work.X + 20, 0);
-                var atZero = await TryWaitForAsync(window, static state => state.Y == 0, TimeSpan.FromSeconds(3));
+                if (await TryWaitForAsync(window, state => state.X == work.X + 20 && state.Y == work.Y, TimeSpan.FromSeconds(10)) is null)
+                    throw new InvalidOperationException($"Monitors: MoveAsync({work.X + 20}, 0) did not put the window below the menu bar at "
+                        + $"{work.X + 20},{work.Y}: {window.State} ({await DescribeFramesAsync(window)}).");
+                var kept = System.Diagnostics.Stopwatch.StartNew();
+                while (kept.Elapsed < TimeSpan.FromSeconds(3))
+                {
+                    if (window.State is not { } state || state.X != work.X + 20 || state.Y != work.Y)
+                        throw new InvalidOperationException($"Monitors: after MoveAsync({work.X + 20}, 0) the window left {work.X + 20},{work.Y} "
+                            + $"after {kept.ElapsedMilliseconds} ms: {window.State} ({await DescribeFramesAsync(window)}).");
+                    await Task.Delay(100);
+                }
                 var zero = await RequireReportedTopAsync(window, "moved to y 0");
-                Require(window.State!.Y == 0 || window.State.Y == work.Y, $"MoveAsync(x, 0) at the screen's top or below the menu bar: {window.State}");
-                Console.WriteLine(atZero is not null
-                    ? $"Coordinates: MoveAsync(x, 0) put the frame's top at the screen's top edge ({zero.Frame})."
-                    : $"Coordinates: AppKit kept the title bar below the menu bar for MoveAsync(x, 0): {window.State} ({zero.Frame}).");
+                Require(Math.Abs(zero.Frame.MaxY - zero.Visible.MaxY) < 1,
+                    $"MoveAsync(x, 0) kept the title bar out from behind the menu bar ({await DescribeFramesAsync(window)})");
+                Console.WriteLine($"PASS top-left: MoveAsync({work.X + 20}, 0) put the frame's top below the menu bar and kept it there ({zero.Frame}).");
 
                 await window.MoveAsync(target.X!.Value, target.Y!.Value);
                 await WaitForAsync(window, state => state.X == target.X && state.Y == target.Y, "the position back");
@@ -480,6 +492,13 @@ internal static partial class MonitorSmoke
         }
 
         private readonly record struct Frames(NSRect Frame, NSRect Primary, NSRect Visible);
+
+        // For a failure: AppKit's frame and the primary screen's frame and visible frame, bottom-left coordinates.
+        private static async Task<string> DescribeFramesAsync(DesktopWindow window)
+        {
+            var frames = await ReadFramesAsync(window);
+            return $"AppKit frame {frames.Frame}, primary screen {frames.Primary}, visible frame {frames.Visible}";
+        }
 
         // The window's frame and the primary screen's frame and visible frame, in AppKit's bottom-left coordinates.
         private static async Task<Frames> ReadFramesAsync(DesktopWindow window)

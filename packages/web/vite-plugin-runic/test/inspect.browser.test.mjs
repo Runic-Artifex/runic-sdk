@@ -2,11 +2,14 @@
 // element calls, Alt+Shift+X turns select mode on, a selecting click shows the overview without running the page's
 // handler, its links open C# locations through /__runic/open, and `describe(element)` returns the same data. A React
 // page and a Svelte page, each with a mock Bridge that answers over a MessageChannel, as a host transport does.
+// On the React and Vue pages, a stand-in Runic Translations catalog marks its messages while select mode is on (the
+// text-change channel's `markers`), and a stand-in message API names their .rmf2 lines: select mode shows a text's
+// message key and source line, and the page's text has no markers outside it.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { chromium, webkit } from "playwright-core";
@@ -89,6 +92,65 @@ export const client = await connectView({ contract: "Demo.CounterViewModel:ABC",
     label: same, canIncrement: same, status: same } });
 `;
 
+// A stand-in for a catalog under vite-plugin-runic-translations 0.12's dev server: the text-change channel's `markers`
+// member as its development client adds it (runic-translations-sdk#184, "Message markers" in its ESM guide), and
+// message functions that put a marker in front of their text while marker mode is on.
+const translations = String.raw`
+const key = Symbol.for("runic.translations.text");
+const text = (globalThis[key] ??= { version: 1, revision: 0, listeners: new Set() });
+const pattern = /\u2063([\u2061\u2062]{1,24})\u2064/g;
+const marked = [], ids = new Map();
+let enabled = false;
+text.markers ??= {
+  version: 1,
+  get enabled() { return enabled; },
+  set(on) {
+    if (on === enabled) return 0;
+    enabled = on;
+    text.revision++;
+    const listeners = [...text.listeners];
+    for (const listener of listeners) listener();
+    return listeners.length;
+  },
+  marker(catalog, messageKey, locale) {
+    const name = catalog + "/" + messageKey + "/" + locale;
+    if (!ids.has(name)) { ids.set(name, marked.length); marked.push({ catalog, key: messageKey, locale }); }
+    return "\u2063" + ids.get(name).toString(2).replaceAll("0", "\u2061").replaceAll("1", "\u2062") + "\u2064";
+  },
+  decode(value) {
+    return [...String(value).matchAll(pattern)].map(match => marked[parseInt(match[1].replaceAll("\u2061", "0").replaceAll("\u2062", "1"), 2)]).filter(Boolean);
+  },
+  strip(value) { return value.replace(pattern, ""); },
+};
+const message = (messageKey, value) => () => text.markers.enabled ? text.markers.marker("app", messageKey, "en") + value : value;
+export const m = { heading: message("heading", "Counter"), increment_tip: message("increment_tip", "Adds the step") };
+`;
+const translationSource = "# The application's messages\nheading = Counter\nincrement_tip = Adds the step\n";
+
+// The Translations dev server's message API (GET /__runic-translations/message, runic-translations-sdk#182).
+function translationsApi() {
+  const lines = { heading: [2, "Counter"], increment_tip: [3, "Adds the step"] };
+  return {
+    name: "translations-message-api",
+    configureServer(server) {
+      server.middlewares.use("/__runic-translations/message", (request, response) => {
+        const url = new URL(request.url, "http://localhost");
+        const key = url.searchParams.get("key");
+        response.setHeader("Content-Type", "application/json");
+        if (url.searchParams.get("catalog") !== "app" || !Object.hasOwn(lines, key)) {
+          response.statusCode = 404;
+          response.end(JSON.stringify({ error: "not-found", detail: "Unknown message." }));
+          return;
+        }
+        const [line, text] = lines[key];
+        response.end(JSON.stringify({ message: { catalog: "app", kind: "catalog", key, logicalKey: key, baseLocale: "en", locales: [
+          { locale: "en", origin: "catalog", text, source: { path: join(server.config.root, "translations", "en.rmf2"), line, column: 1 }, editable: true },
+        ] } }));
+      });
+    },
+  };
+}
+
 function sourceMap(root) {
   const file = join(root, "CounterViewModel.cs");
   const member = (kind, name, symbol, line, extra = {}) => ({
@@ -128,7 +190,10 @@ async function withPage(files, plugins, run, engine = engines.chromium) {
     await writeFile(file, "namespace Demo;\n\npublic partial class CounterViewModel\n{\n}\n");
     await writeFile(join(root, "sources.json"), JSON.stringify(map));
     await writeFile(join(root, "bridge.js"), bridge);
-    for (const [name, content] of Object.entries(files)) await writeFile(join(root, name), content);
+    for (const [name, content] of Object.entries(files)) {
+      await mkdir(dirname(join(root, name)), { recursive: true });
+      await writeFile(join(root, name), content);
+    }
     await link(root, "@runic-artifex/vite-plugin-runic", here);
     await link(root, "@runic-artifex/views", join(packages, "views"));
     await link(root, "@runic-artifex/react", join(packages, "react"));
@@ -282,21 +347,80 @@ async function exercise({ page, root, csharp }, { framework, component, componen
   await page.waitForFunction(() => globalThis.inspectTest.received.filter(member => member === "increment").length === 2);
 }
 
+// Messages of generated m.*() calls: markers only in select mode, the message key and .rmf2 line in the overview, and
+// open in editor through /__runic/open with the message, never a path.
+async function exerciseMessages({ page, root }) {
+  const rmf2 = join(root, "translations", "en.rmf2");
+  const markerCharacters = /[\u2061-\u2064]/u;
+  const markup = () => page.evaluate(() => document.getElementById("root").innerHTML);
+  const width = () => page.evaluate(() => {
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector("#heading"));
+    return Math.round(range.getBoundingClientRect().width * 100) / 100;
+  });
+  // Outside select mode the text and attributes are plain, and describe says when keys show.
+  assert.equal(await page.locator("#heading").textContent(), "Counter");
+  assert.equal(await page.locator("#increment").getAttribute("title"), "Adds the step");
+  assert.doesNotMatch(await markup(), markerCharacters);
+  let description = await describe(page, "#heading");
+  assert.deepEqual(description.messages, []);
+  assert.ok(description.notes.some(note => note.startsWith("Message keys of m.*() calls show in select mode")), JSON.stringify(description.notes));
+  const plainWidth = await width();
+
+  // Select mode: the page renders again with markers, which take no space.
+  await page.keyboard.press("Alt+Shift+X");
+  await page.waitForFunction(() => document.querySelector("#heading").textContent !== "Counter", null, { timeout: scaled(10_000) });
+  assert.equal(await width(), plainWidth, "markers take no space");
+  const location = (key, line) => ({ file: rmf2, line, column: 1, editor: "translations", message: { catalog: "app", key, locale: "en" } });
+  description = await describe(page, "#heading");
+  assert.equal(description.element.text, "Counter", "the overview shows the text without its markers");
+  assert.deepEqual(description.messages, [{ catalog: "app", key: "heading", locale: "en", in: ["text"], source: "Counter", location: location("heading", 2) }]);
+  description = await describe(page, "#increment");
+  assert.deepEqual(description.messages,
+    [{ catalog: "app", key: "increment_tip", locale: "en", in: ["title"], source: "Adds the step", location: location("increment_tip", 3) }]);
+  assert.equal(description.element.text, "Increment");
+
+  // Selecting the heading shows its message; its link opens through /__runic/open with the message.
+  await page.unroute("**/__runic/open");
+  let opened;
+  await page.route("**/__runic/open", async route => {
+    opened = route.request().postDataJSON();
+    await route.fulfill({ status: 200, body: "" });
+  });
+  const { x, y } = await center(page, "#heading");
+  await page.mouse.click(x, y);
+  const card = page.locator("runic-inspect .card");
+  await card.getByText("app:heading").waitFor({ timeout: scaled(10_000) });
+  assert.match(await card.textContent(), /app:heading \[en\] "Counter"/u);
+  await card.locator("a", { hasText: "translations/en.rmf2:2" }).click();
+  for (let attempt = 0; opened === undefined && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.deepEqual(opened, { message: { catalog: "app", key: "heading", locale: "en" } });
+
+  // Off: the page renders its plain text again.
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector("#heading").textContent === "Counter", null, { timeout: scaled(10_000) });
+  assert.doesNotMatch(await markup(), markerCharacters, "no marker left in text or attributes");
+  assert.deepEqual((await describe(page, "#heading")).messages, []);
+}
+
 for (const [name, engine] of Object.entries(engines)) test(`Runic Inspect on a React page in ${name}`, {
   timeout: scaled(90_000), skip: !engine.executablePath,
 }, async () => {
   const counter = `import { useSyncExternalStore } from "react";
-import { useCommand } from "@runic-artifex/react";
+import { useCommand, useTextLocale } from "@runic-artifex/react";
 import { resolveText } from "@runic-artifex/views";
+import { m } from "./translations.js";
 
 export function CounterPage({ client }) {
+  useTextLocale();
   const state = useSyncExternalStore(client.subscribe, () => client.snapshot);
   const increment = useCommand(() => client.command("increment"));
   return <section>
+    <h1 id="heading">{m.heading()}</h1>
     <p className="count">{state.count}</p>
     <p className="status">{resolveText(state.status)}</p>
     <input id="step" value={state.step} onChange={event => void client.set("step", Number(event.target.value))} />
-    <button id="increment" onClick={() => void increment.run()}>Increment</button>
+    <button id="increment" title={m.increment_tip()} onClick={() => void increment.run()}>Increment</button>
   </section>;
 }
 `;
@@ -311,10 +435,15 @@ globalThis.inspectTest = { received, ready: true };
     "index.html": '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.jsx"></script></body></html>',
     "main.jsx": main,
     "CounterPage.jsx": counter,
-  }, [], page => exercise(page, {
-    framework: "react", component: "CounterPage", componentFile: { file: "CounterPage.jsx", line: 12 },
-    source: { file: "CounterPage.jsx", ...positionOf(counter, '"increment"));'), via: "helper" },
-  }), engine);
+    "translations.js": translations,
+    "translations/en.rmf2": translationSource,
+  }, [translationsApi()], async page => {
+    await exercise(page, {
+      framework: "react", component: "CounterPage", componentFile: { file: "CounterPage.jsx", line: 15 },
+      source: { file: "CounterPage.jsx", ...positionOf(counter, '"increment"));'), via: "helper" },
+    });
+    await exerciseMessages(page);
+  }, engine);
 });
 
 test("Runic Inspect on a Svelte page", { timeout: scaled(90_000), skip }, async () => {
@@ -356,7 +485,9 @@ globalThis.inspectTest = { received, ready: true };
 test("Runic Inspect on a Vue page", { timeout: scaled(90_000), skip }, async () => {
   const main = `import { createApp, defineComponent, h, onUnmounted, shallowRef } from "vue";
 import { resolveText } from "@runic-artifex/views";
+import { useTextLocale } from "@runic-artifex/vue";
 import { client, received } from "./bridge.js";
+import { m } from "./translations.js";
 
 const CounterPage = defineComponent({
   __name: "CounterPage",
@@ -364,13 +495,15 @@ const CounterPage = defineComponent({
   props: ["client"],
   setup(props) {
     const state = shallowRef(props.client.snapshot);
+    const textLocale = useTextLocale();
     onUnmounted(props.client.subscribe(next => { state.value = next; }));
-    return () => h("section", [
+    return () => (textLocale.value, h("section", [
+      h("h1", { id: "heading" }, m.heading()),
       h("p", { class: "count" }, String(state.value.count)),
       h("p", { class: "status" }, resolveText(state.value.status)),
       h("input", { id: "step", value: state.value.step, onInput: event => void props.client.set("step", Number(event.target.value)) }),
-      h("button", { id: "increment", onClick: () => void props.client.command("increment") }, "Increment"),
-    ]);
+      h("button", { id: "increment", title: m.increment_tip(), onClick: () => void props.client.command("increment") }, "Increment"),
+    ]));
   },
 });
 createApp(CounterPage, { client }).mount("#root");
@@ -379,9 +512,12 @@ globalThis.inspectTest = { received, ready: true };
   await withPage({
     "index.html": '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>',
     "main.js": main,
-  }, [], page => exercise(page, {
-    framework: "vue", component: "CounterPage", componentFile: { file: "CounterPage.vue", line: 1 },
-  }));
+    "translations.js": translations,
+    "translations/en.rmf2": translationSource,
+  }, [translationsApi()], async page => {
+    await exercise(page, { framework: "vue", component: "CounterPage", componentFile: { file: "CounterPage.vue", line: 1 } });
+    await exerciseMessages(page);
+  });
 });
 
 // Before the first click (#976): a single-file component compiled by @vitejs/plugin-vue, whose template calls the
