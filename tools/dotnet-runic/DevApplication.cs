@@ -229,19 +229,10 @@ internal static class DevApplication
         CancellationToken monitorToken = monitorStop.Token;
         Task frontendRenewal = session.RenewFrontendAsync(TimeProvider.System, monitorToken);
         // The IDE contract: a line for each Window process, then Ready once the frontend and the Window can be used.
+        var contract = new ContractReporter(session, Console.WriteLine, WriteSession);
         Task windowMonitor = host.MonitorWindowAsync(
-            started: processId =>
-            {
-                Console.WriteLine(WindowStartedLine(processId));
-                WriteSession(() => session.WindowStarted(processId));
-                Console.WriteLine(ReadyLine);
-                WriteSession(session.Ready);
-            },
-            exited: processId =>
-            {
-                Console.WriteLine(WindowExitedLine(processId));
-                WriteSession(() => session.WindowExited(processId));
-            },
+            started: contract.WindowStarted,
+            exited: contract.WindowExited,
             monitorToken);
         // Runic Views owns source contract generation; the CLI coordinates the frontend and native Window process
         // only. Without a development server, the Runic Desktop host serves the frontend output directory live.
@@ -389,8 +380,7 @@ internal static class DevApplication
         WriteSession(() => session.PublishFrontend(developmentServer is null ? [] : configuration.DevelopmentServerDocuments));
         Console.WriteLine("[dev] Window: not started (--no-window). Start it from your IDE with DOTNET_ENVIRONMENT=Development;");
         Console.WriteLine($"[dev] its builds keep the development pages while dev runs. Session: {session.Path}");
-        Console.WriteLine(ReadyLine);
-        WriteSession(session.Ready);
+        new ContractReporter(session, Console.WriteLine, WriteSession).Ready();
 
         using var renewalStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task renewal = session.RenewFrontendAsync(TimeProvider.System, renewalStop.Token);
@@ -840,4 +830,33 @@ internal static class DevApplication
         }
     }
 
+    /// <summary>
+    /// The IDE contract's lines with the session file. Each line follows the session file write it announces, so a
+    /// reader that reacts to <c>[dev] Ready</c> or a Window line, as the template's VS Code tasks and IDE extensions do,
+    /// finds that state in the file (#1026). Each write replaces the file whole.
+    /// </summary>
+    internal sealed class ContractReporter(DevSession session, Action<string> writeLine, Action<Action> writeSession)
+    {
+        /// <summary>A Window process started: the file names it, then its line, then Ready.</summary>
+        internal void WindowStarted(int processId)
+        {
+            writeSession(() => session.WindowStarted(processId));
+            writeLine(WindowStartedLine(processId));
+            Ready();
+        }
+
+        /// <summary>The Window process exited: the file drops it and says starting, then its line.</summary>
+        internal void WindowExited(int processId)
+        {
+            writeSession(() => session.WindowExited(processId));
+            writeLine(WindowExitedLine(processId));
+        }
+
+        /// <summary>The frontend and the Window can be used: the file says ready, then <see cref="ReadyLine"/>.</summary>
+        internal void Ready()
+        {
+            writeSession(session.Ready);
+            writeLine(ReadyLine);
+        }
+    }
 }

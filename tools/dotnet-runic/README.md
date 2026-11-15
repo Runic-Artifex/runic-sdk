@@ -608,6 +608,12 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
 
+`dev` writes the [session file](#session-file) before it prints each of these
+lines, so a reader that reacts to a line finds the same state there: after
+`Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
+after `Window exited`, no Window process and `"state": "starting"`. In 0.20.0
+previews, `dev` printed the line first.
+
 `dev` finds the Window process below the `dotnet watch` or `dotnet run`
 process it started: the shallowest process that runs the project's program
 (MSBuild's `RunCommand`, so on macOS the development bundle's executable, or

@@ -222,6 +222,45 @@ internal sealed partial class ToolTests
         await monitor.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
     }
 
+    // #1026: IDE tasks and extensions react to [dev] Ready or a Window line and then read the session file, so each line
+    // follows the write it announces. Each line is checked against the file as it is when the line is printed.
+    [Test, DisplayName("a reader who sees a dev contract line finds its state in the session file")]
+    public void DevContractLinesFollowTheSessionFile()
+    {
+        using var workspace = new TestWorkspace();
+        var session = new DevSession(CreateConfiguration(workspace, "vite"), new DevOptions(null, "Debug", true, true, true, false, []), [],
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        session.Start();
+        var seen = new List<string>();
+        void Read(string line)
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(session.Path));
+            JsonElement root = document.RootElement;
+            JsonElement process = root.GetProperty("window").GetProperty("processId");
+            seen.Add($"{line} | {root.GetProperty("state").GetString()} | {(process.ValueKind == JsonValueKind.Null ? "null" : process.GetInt32().ToString(System.Globalization.CultureInfo.InvariantCulture))}");
+        }
+        var contract = new DevApplication.ContractReporter(session, Read, write => write());
+
+        contract.WindowStarted(4242);
+        contract.WindowExited(4242);
+        contract.WindowStarted(4243);
+        SequenceEqual([
+            "[dev] Window started: process 4242 | starting | 4242",
+            "[dev] Ready | ready | 4242",
+            "[dev] Window exited: process 4242 | starting | null",
+            "[dev] Window started: process 4243 | starting | 4243",
+            "[dev] Ready | ready | 4243",
+        ], seen);
+
+        // --no-window: dev serves only the frontend, and Ready follows the ready file too.
+        seen.Clear();
+        var frontendOnly = new DevSession(CreateConfiguration(workspace, "vite"),
+            new DevOptions(null, "Debug", true, true, true, false, []) { StartWindow = false }, [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        frontendOnly.Start();
+        new DevApplication.ContractReporter(frontendOnly, Read, write => write()).Ready();
+        SequenceEqual(["[dev] Ready | ready | null"], seen);
+    }
+
     [Test, DisplayName("the dev session file describes the frontend, pages, Window and stop")]
     public void DevSessionFileDescribesTheSession()
     {
