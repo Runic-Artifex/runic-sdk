@@ -11,6 +11,8 @@ export const diagnosticEvent = "runic:diagnostic";
 export const connectionEvent = "runic:connection";
 /** The state inspector: a View's state, a closed View, or a page that went away (`DevelopmentTimeline.applyView`). */
 export const viewEvent = "runic:view";
+/** One settled Bridge call with a trace context, for the server's OTLP export (otlp.ts). */
+export const spanEvent = "runic:span";
 
 /** The endpoint a client posts `{ "event", "data" }` to, one message per request, answered with 204. */
 export const diagnosticsPath = "/__runic/diagnostics";
@@ -36,4 +38,9 @@ export interface RunicClientOptions {
   readonly base?: string;
   /** The Vite root, which relative component paths (Svelte, Angular) are relative to. */
   readonly root?: string;
+  /**
+   * The development server exports the page's spans of Bridge calls over OTLP: the client gives each call a W3C trace
+   * context (which its request carries to .NET) and sends the call's span as a `runic:span` message.
+   */
+  readonly trace?: boolean;
 }

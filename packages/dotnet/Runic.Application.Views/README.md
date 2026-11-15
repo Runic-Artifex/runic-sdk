@@ -5050,6 +5050,25 @@ one instance. The duration histograms advise buckets from 0.5 ms to 10 s, and
 the size histogram from 256 B to 4 MiB. The queue depth reports the frames
 waiting for slow hosts across all Bridges when it is observed.
 
+**One trace with the page (0.20).** Under `vite dev` with an OTLP export, the
+page's Vite development client gives each Bridge call a W3C trace context, and
+the call's request carries it (Views protocol feature `trace-context/1`). While
+the `ActivitySource` has a listener, the request's first `runic.bridge.*` span
+takes the page's span as its remote parent and has the kind `Server`; the
+ViewModel's own spans, and the `HttpClient` or database spans they start, follow
+it, because model turns run in the `ExecutionContext` of the request that queued
+them. Without a listener, the member is not read. Export with the application's
+own OpenTelemetry setup; [Tracing Bridge calls](../../../docs/tracing.md) shows
+it with a local viewer.
+
+**Handler timing in Development (0.20).** When `DOTNET_ENVIRONMENT`, or else
+`ASPNETCORE_ENVIRONMENT`, is `Development` (`dotnet runic dev` sets it), the
+producer offers `handler-timing/1`: a request from a page whose development tools
+follow its calls asks for its timing, and the reply names the C# handler and
+its duration (`handler: { name, duration }`, such as `EditorViewModel.Save` and
+milliseconds). The Vite development client shows it on the "C# handlers" track
+of the browser's Performance panel. Outside Development, replies never carry it.
+
 ## Incremental generation
 
 The generated C# goes to `runic-bridge/` in the project's `IntermediateOutputPath`

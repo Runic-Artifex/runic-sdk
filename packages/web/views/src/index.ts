@@ -16,10 +16,12 @@ export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, t
 export type {
   BridgeCallChannel,
   BridgeCallEvent,
+  BridgeCallHandler,
   BridgeCallIdentity,
   BridgeCallKind,
   BridgeCallListener,
   BridgeCallOutcome,
+  BridgeCallTrace,
 } from "./calls.js";
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";

@@ -588,16 +588,20 @@ console.log('Packed npm consumers passed.');
   run("node", ["--conditions=development", "consumer.mjs"], frontend);
   writeFileSync(join(frontend, "views-builds.mjs"), `
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 const development = process.execArgv.includes('--conditions=development');
 const manifest = JSON.parse(readFileSync(new URL(import.meta.resolve('@runic-artifex/views/package.json')), 'utf8'));
 for (const entry of Object.keys(manifest.exports).filter(entry => entry !== './package.json')) {
   const url = import.meta.resolve('@runic-artifex/views' + entry.slice(1));
   assert.equal(url.includes('/dist/development/'), development, url);
   assert.ok(existsSync(new URL(url.replace('/dist/development/', '/dist/').replace(/\\.js$/, '.d.ts'))), url + ' has no declarations');
-  if (!development) for (const marker of ['runic.views.calls', 'createTask', 'runic.translations.text'])
+  if (!development) for (const marker of ['runic.views.calls', 'createTask', 'runic.translations.text', 'trace-context/1', 'handler-timing/1'])
     assert.ok(!readFileSync(new URL(url), 'utf8').includes(marker), url + ' contains ' + marker);
 }
+// No packed module of either build names the build's flag, which no application bundler defines (#958).
+const packed = new URL('dist/', import.meta.resolve('@runic-artifex/views/package.json'));
+for (const name of readdirSync(packed, { recursive: true }).filter(name => String(name).endsWith('.js')))
+  assert.ok(!readFileSync(new URL(String(name), packed), 'utf8').includes('__RUNIC_DEVELOPMENT__'), name + ' references __RUNIC_DEVELOPMENT__');
 console.log('The ' + (development ? 'development' : 'production') + ' build of @runic-artifex/views resolves.');
 `);
   run("node", ["views-builds.mjs"], frontend);

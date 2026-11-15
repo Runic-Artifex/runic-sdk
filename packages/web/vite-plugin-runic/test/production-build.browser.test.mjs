@@ -18,7 +18,9 @@ import { scaled } from "../../../../tests/support/timeouts.mjs";
 const root = fileURLToPath(new URL("./fixtures/production/", import.meta.url));
 const views = fileURLToPath(new URL("../../views/", import.meta.url));
 // What only the development build of views contains.
-const markers = ["runic.views.calls", "createTask", "runic.translations.text", "__RUNIC_DEVELOPMENT__"];
+const markers = ["runic.views.calls", "createTask", "runic.translations.text", "__RUNIC_DEVELOPMENT__",
+  // The development tools' Views protocol features and their trace context (#958).
+  "trace-context/1", "handler-timing/1", "traceparent"];
 const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 async function files(directory) {
@@ -47,6 +49,8 @@ async function run(browser, url) {
         title: document.querySelector("h1")?.textContent,
         calls: productionTest.calls,
         tasks: productionTest.tasks,
+        hello: productionTest.hello,
+        commands: productionTest.commands,
         textChannel: Symbol.for("runic.translations.text") in globalThis,
         callChannel: Symbol.for("runic.views.calls") in globalThis,
         views: performance.getEntriesByType("resource").map(entry => entry.name).filter(name => name.includes("/views/dist/")),
@@ -99,6 +103,9 @@ test("vite build bundles the production build of views: no development code, and
     // A reader on the page gets nothing: the production build neither reports nor tags a call.
     const read = await run(browser, `${url}?reader`);
     assert.deepEqual([read.calls, read.tasks, read.textChannel, read.errors], [[], [], false, []]);
+    // Its hello lists neither development feature, so a Development host's commands carry no trace context or timing.
+    for (const feature of ["trace-context/1", "handler-timing/1"]) assert.equal(read.hello.includes(feature), false, feature);
+    assert.deepEqual(read.commands, [["kind", "member", "route", "session"]]);
   } finally {
     await browser?.close();
     await new Promise(resolve => server ? server.httpServer.close(resolve) : resolve());
@@ -121,6 +128,9 @@ test("vite dev resolves the development build for the page and the React binding
     const page = await run(browser, `${server.resolvedUrls.local[0]}?reader`);
     assert.deepEqual(page.errors, []);
     assert.deepEqual(page.calls, ["start", "end"]);
+    // The development build lists the development tools' features and sends their members for a followed call.
+    for (const feature of ["trace-context/1", "handler-timing/1"]) assert.ok(page.hello.includes(feature), feature);
+    assert.deepEqual(page.commands, [["kind", "member", "route", "session", "timing", "trace"]]);
     // React's development build tags its own tasks.
     assert.deepEqual(page.tasks.filter(name => name.startsWith("Runic ")), ["Runic command CounterViewModel.increment"]);
     assert.equal(page.textChannel, true, "configureTranslatedText follows the Translations text channel");

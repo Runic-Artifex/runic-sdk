@@ -21,7 +21,9 @@ const realHost = process.env.RUNIC_MENU_BAR_HOST === "cswebui";
 if (!realHost && process.env.RUNIC_MENU_BAR_HOST) throw new Error(`RUNIC_MENU_BAR_HOST is "cswebui" or unset, not "${process.env.RUNIC_MENU_BAR_HOST}".`);
 // A secure origin, as the host's own, for the page's crypto.randomUUID; nothing listens there.
 const origin = "http://localhost:4173";
-const mock = fileURLToPath(new URL("../../packages/web/views/src/mock.ts", import.meta.url));
+// The production build of @runic-artifex/views' mock. Not src/: the source references __RUNIC_DEVELOPMENT__, which only
+// the package's build (scripts/build.mjs) defines.
+const mock = fileURLToPath(new URL("../../packages/web/views/dist/mock.js", import.meta.url));
 // axe-core is a development dependency of the plain frontend, installed by its test step.
 const axe = createRequire(new URL("./Frontend/package.json", import.meta.url)).resolve("axe-core/axe.min.js");
 
