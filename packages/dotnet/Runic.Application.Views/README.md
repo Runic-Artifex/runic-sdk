@@ -3878,8 +3878,9 @@ one that calls it shows the new text wherever it renders again on a language
 switch.
 Text computed once, such as a `const` in a script, a SvelteKit `load` result or
 a `document.title` set in code, keeps its old text until it is computed again,
-as after a language switch. In production nothing writes the channel: the
-listener `configureTranslatedText` adds never runs, and the helpers behave as
+as after a language switch. Only the development build of
+`@runic-artifex/views`, which `vite dev` resolves, follows the channel: a
+production bundle neither creates nor reads it, and the helpers behave as
 before. The Angular CLI's dev server (`ng serve`) runs no Vite
 plugins: a page built with it imports the ESM of the .NET build and reloads
 after `dotnet build`. In-place updates in Angular need Angular built with Vite
@@ -5041,7 +5042,10 @@ command, `RunicApplicationHost`, `NODE_ENV` and the environment variables named 
 `RunicApplicationFrontendBuildEnvironment` items; only the hash is written, to
 `runic-bridge-frontend.state` in `BaseIntermediateOutputPath` (`obj/` by default). `dist` serves every configuration and target
 framework, so a build whose state differs from the one that last built `dist`
-builds it again, for example Debug after a Release build with other variables. Generated TypeScript is rewritten only when its
+builds it again, for example Debug after a Release build with other variables. An optimized build (`Optimize=true`:
+Release, `dotnet publish`) runs the frontend build with `NODE_ENV=production` unless the environment sets `NODE_ENV`,
+and the build state uses that value, so a Bun-built frontend (`Bun.build`, `bun build`) bundles the production build of
+`@runic-artifex/views` in Release and the development build in Debug. Generated TypeScript is rewritten only when its
 content changes, so C#-only edits skip the frontend build.
 `RunicApplicationFrontendInput` items are the extension point for inputs outside
 the frontend directory, such as workspace packages, shared components imported

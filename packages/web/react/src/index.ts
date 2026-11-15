@@ -56,7 +56,12 @@ import {
   type ViewSource,
   type RunicInstance,
 } from "@runic-artifex/views";
-import { isViewClient, missingViewMessage, reportMissingView, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
+// `translationsTextRevision`: the revision of the Runic Translations text-change channel, which the Translations Vite
+// plugin increments during development when it updates an edited message in place; always 0 in the production build of
+// views, which has no channel.
+import {
+  isViewClient, missingViewMessage, reportMissingView, translationsTextRevision, viewSourceIdentity, viewSourcePreview,
+} from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
@@ -779,14 +784,6 @@ interface InstanceText {
 }
 const instanceTexts = new WeakMap<RunicInstance, InstanceText>();
 
-// The revision of the Runic Translations text-change channel, which the Translations Vite plugin increments during
-// development when it updates an edited message in place (`configureTranslatedText` then notifies text subscribers).
-// 0 without the channel, as in production.
-const translationsTextKey = Symbol.for("runic.translations.text");
-function translationsTextRevision(): number {
-  const revision = ((globalThis as Record<symbol, unknown>)[translationsTextKey] as { revision?: unknown } | undefined)?.revision;
-  return typeof revision === "number" ? revision : 0;
-}
 
 function instanceText(instance: RunicInstance): InstanceText {
   let text = instanceTexts.get(instance);

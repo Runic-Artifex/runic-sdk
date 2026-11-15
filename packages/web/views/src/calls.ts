@@ -8,7 +8,8 @@ import type { Slots } from "./scope.js";
 // client makes, with a client-local id, its timing, its outcome and the reply's revision, and runs it in a V8 async
 // stack task, so a reply leads back to the call. The reader draws the calls, such as the Vite development client's
 // "Runic" track in Chromium's Performance panel, so production bundles carry no drawing code. Without a reader, a call
-// costs one property read and nothing is kept or tagged.
+// costs one property read and nothing is kept or tagged. Only the development build (the `development` export
+// condition, scripts/build.mjs) reports calls: the production build does not contain this module.
 const callsKey = Symbol.for("runic.views.calls");
 
 /**

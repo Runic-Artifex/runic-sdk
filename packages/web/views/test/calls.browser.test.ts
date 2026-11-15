@@ -3,19 +3,22 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright-core";
 
-// The development Bridge-call channel in Chromium: while a reader listens, a click's command is reported, and a
+// The development Bridge-call channel in Chromium, of the development build: while a reader listens, a click's command is reported, and a
 // breakpoint in the state subscriber the reply notifies has a "Runic command …" segment that leads to the click
 // (console.createTask). Without a reader there is neither. Drawing the Performance track is the reader's
 // (vite-plugin-runic's test/calls.browser.test.mjs): views makes no Performance entries. The Bridge answers over a
-// MessageChannel, as a host transport does.
+// MessageChannel, as a host transport does. The production build reports nothing, also while a reader listens.
 const dist = new URL("../dist/", import.meta.url);
 
 const page = `<!doctype html><html><body>
 <button id="increment">Increment</button>
 <script type="module">
-import { connectView } from "/dist/generated.js";
-import * as bridgeWire from "/dist/wire.js";
-const listen = new URLSearchParams(location.search).has("listen");
+const query = new URLSearchParams(location.search);
+// The development build (the \`development\` export condition) unless the page asks for the production build.
+const build = query.has("production") ? "/dist/" : "/dist/development/";
+const { connectView } = await import(build + "generated.js");
+const bridgeWire = await import(build + "wire.js");
+const listen = query.has("listen");
 const calls = [];
 if (listen) globalThis[Symbol.for("runic.views.calls")] = { listeners: new Set([event => calls.push(event)]), requested: true };
 const tasks = [];
@@ -141,6 +144,23 @@ test("Chromium: without a reader, a command is not reported and makes no task", 
     assert.deepEqual(recorded.calls, []);
     assert.deepEqual(recorded.tasks, []);
     assert.deepEqual(recorded.measures, []);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+  }
+});
+
+test("Chromium: the production build reports nothing and makes no task while a reader listens", { timeout: 60_000, skip: !chromiumPath }, async () => {
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ executablePath: chromiumPath!, headless: true });
+    const { tab, errors } = await open(browser, "?listen&production");
+    await tab.click("#increment");
+    await tab.waitForFunction(() => (globalThis as unknown as { callsTest: CallsTest }).callsTest.seen.length === 1);
+    const recorded = await state(tab);
+    assert.deepEqual(recorded.calls, []);
+    assert.deepEqual(recorded.tasks, []);
+    assert.equal(await tab.evaluate(() => (globalThis as Record<symbol, { sequence?: number }>)[Symbol.for("runic.views.calls")]?.sequence), undefined);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

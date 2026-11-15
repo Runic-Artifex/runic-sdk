@@ -119,6 +119,10 @@ on the async stack segments that lead from a reply back to the click that made
 the call. See
 [Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
 The dock lists the same calls with their C# handlers (next section).
+Only the
+[development build](../views/README.md#development-build) of
+`@runic-artifex/views` reports calls, which `vite dev` resolves; `vite build`
+bundles the production build, which has no reporting code.
 
 ### Bridge call timeline in the dock
 
