@@ -50,8 +50,9 @@ internal static class BridgeMessages
 
     // grant is the connection's upload grant (blobs/1), when the connection uses blobs/1 and the host takes uploads.
     // grantsNavigationPath: whether the producer offers navigation-path/1 to the connection; not to a side panel's page.
+    // handlerTiming: whether the producer offers handler-timing/1, which it does only in Development.
     internal static byte[] Hello(BridgeUploadGrant? grant = null, string? path = null, bool navigationPath = false,
-        bool grantsNavigationPath = true) =>
+        bool grantsNavigationPath = true, bool handlerTiming = false) =>
         Write(writer =>
         {
             writer.WriteStartObject();
@@ -76,6 +77,8 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.AppearanceFeature);
             writer.WriteStringValue(BridgeDispatcher.ClientLanguagesFeature);
             writer.WriteStringValue(BridgeHostedRegions.Feature);
+            writer.WriteStringValue(BridgeDispatcher.TraceContextFeature);
+            if (handlerTiming) writer.WriteStringValue(BridgeDispatcher.HandlerTimingFeature);
             writer.WriteEndArray();
             if (grant is not null)
             {

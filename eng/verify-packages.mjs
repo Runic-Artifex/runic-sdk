@@ -588,16 +588,20 @@ console.log('Packed npm consumers passed.');
   run("node", ["--conditions=development", "consumer.mjs"], frontend);
   writeFileSync(join(frontend, "views-builds.mjs"), `
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 const development = process.execArgv.includes('--conditions=development');
 const manifest = JSON.parse(readFileSync(new URL(import.meta.resolve('@runic-artifex/views/package.json')), 'utf8'));
 for (const entry of Object.keys(manifest.exports).filter(entry => entry !== './package.json')) {
   const url = import.meta.resolve('@runic-artifex/views' + entry.slice(1));
   assert.equal(url.includes('/dist/development/'), development, url);
   assert.ok(existsSync(new URL(url.replace('/dist/development/', '/dist/').replace(/\\.js$/, '.d.ts'))), url + ' has no declarations');
-  if (!development) for (const marker of ['runic.views.calls', 'createTask', 'runic.translations.text'])
+  if (!development) for (const marker of ['runic.views.calls', 'createTask', 'runic.translations.text', 'trace-context/1', 'handler-timing/1'])
     assert.ok(!readFileSync(new URL(url), 'utf8').includes(marker), url + ' contains ' + marker);
 }
+// No packed module of either build names the build's flag, which no application bundler defines (#958).
+const packed = new URL('dist/', import.meta.resolve('@runic-artifex/views/package.json'));
+for (const name of readdirSync(packed, { recursive: true }).filter(name => String(name).endsWith('.js')))
+  assert.ok(!readFileSync(new URL(String(name), packed), 'utf8').includes('__RUNIC_DEVELOPMENT__'), name + ' references __RUNIC_DEVELOPMENT__');
 console.log('The ' + (development ? 'development' : 'production') + ' build of @runic-artifex/views resolves.');
 `);
   run("node", ["views-builds.mjs"], frontend);
@@ -677,7 +681,7 @@ function verifyViewsTranslationsConsumer(directory, env) {
 // The RUNICBRIDGE shape analyzers of the packed Runic.Application.Views (#962), in a project that gets it through a host
 // adapter, whose dependency excludes analyzers, and in one that also references it directly: each loads them once. A
 // design-time build, like the IDE's, skips the Bridge generator, and the analyzer reports the error; a build reports it
-// once, from the generator, which runs before the compiler and stops the build.
+// once, from the generator, which runs before the compiler and stops the build. A warning is reported once by either.
 function verifyViewsAnalyzerConsumers(directory, env) {
   const adapter = "Runic.Application.Views.CsWebUi";
   const expected = "error RUNICBRIDGE009: MainViewModel.Save: Bridge commands must end with Command.";
@@ -712,6 +716,38 @@ public sealed class MainViewModel : INotifyPropertyChanged
       // The generator's report ends with "See <link>"; the compiler's, the analyzer's, with "(<link>)".
       assert.ok(designTime ? !reports[0].includes(" See https://") : reports[0].includes(" See https://"),
         `The ${label} reported RUNICBRIDGE009 from the ${designTime ? "generator" : "analyzer"}: ${reports[0]}`);
+    }
+    // A warning that the analyzer owns (BridgeDiagnosticCodes.AnalyzerWarnings): the generator leaves it to the
+    // compiler, so a build and a design-time build each report it once, from the analyzer, and TreatWarningsAsErrors and
+    // NoWarn apply to it as to any compiler warning.
+    writeFileSync(join(consumer, "MainWindow.cs"), `using System.ComponentModel;
+using System.Windows.Input;
+using Runic.Application.Views;
+namespace AnalyzerConsumer;
+public sealed partial class MainWindow : RunicWindow<MainViewModel>;
+public sealed class MainViewModel : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+    [RunicCommandInput(typeof(string))] public ICommand SaveCommand { get; } = null!;
+    [RunicPresentationScoped] public int Total { get; }
+}
+`);
+    const warning = "warning RUNICBRIDGE034: MainViewModel.Total: RunicPresentationScoped applies only to a Bridge command property";
+    const cases = [["build", [], 0, warning], ["design-time build", ["-p:DesignTimeBuild=true"], 0, warning],
+      ...(direct ? [] : [["build with TreatWarningsAsErrors", ["-p:TreatWarningsAsErrors=true"], 1, warning.replace("warning", "error")],
+        ["build with NoWarn", ["-p:NoWarn=RUNICBRIDGE034"], 0, null]])];
+    for (const [kind, properties, status, report] of cases) {
+      const label = `${direct ? "direct" : "adapter"} ${kind}`;
+      // A compiler warning appears only when the compiler runs, so each build compiles again.
+      const result = spawnSync("dotnet", ["build", "Consumer.csproj", "--no-restore", "--no-incremental", "--configuration", configuration, ...properties],
+        { cwd: consumer, encoding: "utf8", env: { ...process.env, ...env } });
+      const output = `${result.stdout}${result.stderr}`;
+      const reports = output.split(/\r?\nBuild (?:FAILED|succeeded)\./)[0].split(/\r?\n/)
+        .filter(line => !/^\s/.test(line) && line.includes("RUNICBRIDGE034"));
+      assert.equal(result.status === 0 ? 0 : 1, status, `The ${label} of the analyzer consumer exited with ${result.status}:\n${output}`);
+      assert.equal(reports.length, report ? 1 : 0, `The ${label} reported RUNICBRIDGE034 ${reports.length} times:\n${output}`);
+      if (report) assert.ok(reports[0].includes(report) && !reports[0].includes(" See https://"),
+        `The ${label} did not report RUNICBRIDGE034 from the analyzer: ${reports[0]}`);
     }
   }
 }

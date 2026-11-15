@@ -45,6 +45,49 @@ public sealed class WindowActivityTests
         Assert.Equal(new DesktopWindowActivity(), window.Activity);
     }
 
+    // #1014: a hide and a show that arrive while a handler runs each raise their own event, in order; before, the dispatch
+    // read only the latest activity, which equalled the one last raised, and raised nothing for them.
+    [Test]
+    public async Task EveryActivityChangeRaisesOneEventInOrder()
+    {
+        var factory = new ActivityFactory { InitialActivity = Active };
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
+        var hidden = new DesktopWindowActivity();
+        var changes = new List<DesktopWindowActivity>();
+        var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new ManualResetEventSlim();
+        var all = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.ActivityChanged += (_, args) =>
+        {
+            int count;
+            lock (changes)
+            {
+                changes.Add(args.Activity);
+                count = changes.Count;
+            }
+            if (count == 1)
+            {
+                first.TrySetResult();
+                release.Wait(TimeSpan.FromSeconds(10));
+            }
+            if (count == 3) all.TrySetResult();
+        };
+
+        factory.Hosts[0].Report(Inactive);
+        await first.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        // While the handler runs: hidden, then shown as it was.
+        factory.Hosts[0].Report(hidden);
+        factory.Hosts[0].Report(Inactive);
+        Assert.Equal(Inactive, window.Activity);
+        release.Set();
+        await all.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        DesktopWindowActivity[] expected = [Inactive, hidden, Inactive];
+        lock (changes) Assert.True(changes.SequenceEqual(expected), $"Expected {string.Join(", ", expected)}, got {string.Join(", ", changes)}.");
+    }
+
     [Test]
     public async Task AWindowTheUserClosedReportsItselfInactiveAndHidden()
     {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 // The package's entries are its public API (W319-003 D02, D07, D35). Each test imports through
@@ -58,4 +58,15 @@ test("the declarations of ./mock do not expose the mock's internal state", () =>
     for (const name of ["mockBridgeInternals", "MockBridgeInternals", "mockFailureOf"])
       assert.equal(declarations.includes(name), false, `${file} declares ${name}`);
   }
+});
+
+test("no example or test script bundles the source of this package, which only scripts/build.mjs can build", () => {
+  // The source references __RUNIC_DEVELOPMENT__ (src/development.d.ts), which an esbuild or Bun bundle of src/ leaves
+  // undefined, so such a page throws a ReferenceError (#958). Scripts bundle dist/, the package's own build.
+  const repository = new URL("../../../../", import.meta.url);
+  const scripts = ["examples", "tests"].flatMap(folder =>
+    readdirSync(new URL(folder, repository), { recursive: true, withFileTypes: false }).map(name => `${folder}/${String(name)}`))
+    .filter(name => /\.(?:mjs|js|ts)$/.test(name) && !name.includes("node_modules") && !/\/(?:dist|bin|obj)\//.test(name));
+  const offenders = scripts.filter(name => /packages\/web\/views\/src\/[\w-]+\.ts/.test(readFileSync(new URL(name, repository), "utf8")));
+  assert.deepEqual(offenders, []);
 });

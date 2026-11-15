@@ -24,6 +24,10 @@ The [hosted regions guide](hosted-regions.md) shows a guest application's Window
 in a region of a host page, in a frame or as a component, with the security
 notes and troubleshooting for both.
 
+The [tracing guide](tracing.md) shows the C# handler timing in the browser's
+Performance panel under `dotnet runic dev`, and one trace from a click in the
+page to the C# it runs in a local viewer such as the Aspire dashboard.
+
 The [side panel guide](side-panel.md) opens a second page beside a window's
 page, growing the window instead of covering the page, with the fallback where
 the window cannot grow and each platform's limits.

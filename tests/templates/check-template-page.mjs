@@ -154,11 +154,17 @@ async function exercisePage(page, csp, url, expectedHeader, metaPolicy, failed) 
   // no Bridge-call channel and no Translations text channel (#975). Angular's zone tags its own tasks with
   // console.createTask: the frontends' bundles are checked for the Bridge-call channel, which Runic's tagging needs
   // (Test-Templates.sh).
-  const development = await page.evaluate(() => ({
-    calls: Symbol.for("runic.views.calls") in globalThis,
-    text: Symbol.for("runic.translations.text") in globalThis,
-  }));
-  if (development.calls || development.text)
+  // Its connection uses neither development feature of the Views protocol (#958): the .NET host lists trace-context/1
+  // always, so the production client's hello must not.
+  const development = await page.evaluate(() => {
+    const features = globalThis[Symbol.for("runic.views.generated-client-runtime")]?.features;
+    return {
+      calls: Symbol.for("runic.views.calls") in globalThis,
+      text: Symbol.for("runic.translations.text") in globalThis,
+      features: ["trace-context/1", "handler-timing/1"].filter(feature => features?.has?.(feature) === true),
+    };
+  });
+  if (development.calls || development.text || development.features.length > 0)
     throw new Error(`The production page runs development tools of @runic-artifex/views: ${JSON.stringify(development)}`);
   const report = csp.report();
   if (report) throw new Error(`The page violated its Content-Security-Policy:\n${report}`);

@@ -252,17 +252,20 @@ emit({ ...identity, phase: "end", end: 22.5, duration: 12.5, outcome: "ok", revi
 emit({ ...identity, id: 8, phase: "end", end: 30, duration: 20, outcome: "error", reason: "domain-failed" });
 calls.devtools = false;
 emit({ ...identity, id: 9, phase: "end", end: 30, duration: 20, outcome: "ok" });
-process.stdout.write(JSON.stringify({ requested: calls.requested, listeners: calls.listeners.size, measures, cleared }));
+process.stdout.write(JSON.stringify({ requested: calls.requested, listeners: calls.listeners.size, trace: typeof calls.trace, measures, cleared }));
 `;
   const { stdout } = await execFile(process.execPath, ["--experimental-vm-modules", "--input-type=module", "--eval", harness],
     { cwd: process.cwd() });
   const result = JSON.parse(stdout);
   assert.equal(result.requested, true);
   assert.equal(result.listeners, 1);
+  // Without an OTLP export no call gets a trace context.
+  assert.equal(result.trace, "undefined");
   assert.deepEqual(result.measures, [
     { name: "EditorViewModel.save #7", options: { start: 10, end: 22.5, detail: { devtools: {
       dataType: "track-entry", track: "Bridge calls", trackGroup: "Runic", color: "primary",
-      properties: [["Kind", "command"], ["Route", "editor"], ["Contract", "Demo.EditorViewModel:ABC"], ["Request id", "7"], ["Outcome", "ok"], ["Revision", "4"]],
+      properties: [["Kind", "command"], ["Route", "editor"], ["Contract", "Demo.EditorViewModel:ABC"], ["Request id", "7"], ["Outcome", "ok"], ["Revision", "4"],
+        ["C# handler", "Demo.EditorViewModel.SaveAsync() (8.00 ms)"]],
       tooltipText: "command EditorViewModel.save: ok, 12.5 ms",
     } } } },
     { name: "Demo.EditorViewModel.SaveAsync() #7", options: { start: 12, end: 20, detail: { devtools: {
@@ -277,4 +280,55 @@ process.stdout.write(JSON.stringify({ requested: calls.requested, listeners: cal
   ]);
   // Each entry leaves the page's timeline buffer at once.
   assert.deepEqual(result.cleared, result.measures.map((entry) => entry.name));
+});
+
+test("with an OTLP export the client gives each call a trace context and sends its span with the C# handler", async () => {
+  const harness = String.raw`
+import { readFile } from "node:fs/promises";
+import { webcrypto } from "node:crypto";
+import { createContext, SourceTextModule } from "node:vm";
+
+const sent = [];
+const performance = { timeOrigin: 1_700_000_000_000, measure() {}, clearMeasures() {} };
+const hot = { data: {}, send(event, data) { sent.push({ event, data }); }, on() {}, prune() {} };
+const context = createContext({ setTimeout, clearTimeout, Promise, performance, crypto: webcrypto, Uint8Array, Array,
+  addEventListener() {}, removeEventListener() {} });
+context[Symbol.for("runic.vite.client")] = { channel: "hot", trace: true };
+const modules = new Map();
+const load = async (path, identifier, meta) => {
+  const module = new SourceTextModule(await readFile(path, "utf8"), { context, identifier, ...(meta ? { initializeImportMeta: meta } : {}) });
+  modules.set(identifier, module);
+  return module;
+};
+await load("dist/diagnostics.js", "diagnostics");
+await load("dist/stale-input.js", "stale-input");
+await load("dist/channel.js", "channel");
+await load("dist/inspect-data.js", "inspect-data");
+await load("dist/inspect-frameworks.js", "inspect-frameworks");
+await load("dist/inspect-handlers.js", "inspect-handlers");
+await load("dist/inspect.js", "inspect");
+const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
+await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
+await client.evaluate();
+const calls = context[Symbol.for("runic.views.calls")];
+const traces = [calls.trace(), calls.trace()];
+const emit = (event) => { for (const listener of [...calls.listeners]) listener(event); };
+const identity = { id: 7, kind: "command", request: "command", route: "editor", contract: "Demo.EditorViewModel:ABC", member: "save", start: 10, trace: traces[0] };
+emit({ ...identity, phase: "start" });
+emit({ ...identity, phase: "end", end: 22.5, duration: 12.5, outcome: "ok", revision: 4,
+  handler: { name: "EditorViewModel.Save", start: 12, end: 20, duration: 8 } });
+// A call without a trace context (taken before the export started) sends no span.
+emit({ ...identity, id: 8, trace: undefined, phase: "end", end: 30, duration: 20, outcome: "ok" });
+process.stdout.write(JSON.stringify({ traces, sent: sent.filter((entry) => entry.event === "runic:span") }));
+`;
+  const { stdout } = await execFile(process.execPath, ["--experimental-vm-modules", "--input-type=module", "--eval", harness],
+    { cwd: process.cwd() });
+  const result = JSON.parse(stdout);
+  for (const trace of result.traces) assert.match(trace.traceparent, /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/u);
+  assert.notEqual(result.traces[0].traceparent, result.traces[1].traceparent);
+  assert.deepEqual(result.sent, [{ event: "runic:span", data: {
+    traceparent: result.traces[0].traceparent, name: "command EditorViewModel.save", start: 1_700_000_000_010, end: 1_700_000_000_022.5,
+    kind: "command", request: "command", route: "editor", contract: "Demo.EditorViewModel:ABC", member: "save",
+    outcome: "ok", revision: 4, handler: { name: "EditorViewModel.Save", duration: 8 },
+  } }]);
 });

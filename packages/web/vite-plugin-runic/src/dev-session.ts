@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
-import { connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, viewEvent } from "./channel.js";
+import { connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, spanEvent, viewEvent } from "./channel.js";
 import { readLimitedBody, sameOrigin } from "./requests.js";
 import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl } from "./sources.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
@@ -71,7 +71,7 @@ export async function answerClientMessage(
   catch { return answerStatus(response, 400); }
   if (typeof message !== "object" || message === null || Array.isArray(message)) return answerStatus(response, 400);
   const { event, data } = message as { event?: unknown; data?: unknown };
-  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent) return answerStatus(response, 400);
+  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent && event !== spanEvent) return answerStatus(response, 400);
   deliver(event, data);
   answerStatus(response, 204);
 }
@@ -131,6 +131,8 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
       timeline.applyView(data);
       return;
     }
+    // This proxy exports no spans: its client is not configured to send them.
+    if (event === spanEvent) return;
     const entry = timeline.appendDiagnostic(data);
     if (entry?.failure && printFailures) console.warn(formatFailure(entry));
   };

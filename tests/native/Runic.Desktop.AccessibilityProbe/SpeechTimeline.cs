@@ -55,6 +55,21 @@ internal sealed class SpeechTimeline(DateTime start)
         lock (_lock) return now - (_lastPhrase > _lastAction ? _lastPhrase : _lastAction) >= window;
     }
 
+    /// <summary>Whether the screen reader is done: quiet for the window (<see cref="QuietFor"/>), and either quiet until
+    /// the hint delay has passed or its last phrase, after the last action, was its hint. VoiceOver speaks a hint 1 to
+    /// 2.5 s after a control's phrase, and an action made before it lost its speech (sdk#1015). A hint delay no longer
+    /// than the window is the window alone.</summary>
+    internal bool SettledFor(TimeSpan window, TimeSpan hintDelay, Func<string, bool> isHint, DateTime now)
+    {
+        lock (_lock)
+        {
+            var last = _lastPhrase > _lastAction ? _lastPhrase : _lastAction;
+            if (now - last < window) return false;
+            if (now - last >= hintDelay) return true;
+            return _phrases.Count > 0 && _lastPhrase >= _lastAction && isHint(_phrases[^1]);
+        }
+    }
+
     /// <summary>Whether, from the mark on, the screen reader last named the control rather than the page: the last phrase
     /// with the control's name comes after the last phrase with the page's (WebView2 can take NVDA to the document,
     /// I-185).</summary>
