@@ -69,7 +69,7 @@ public sealed class TranslatedTextTests
     public void GeneratedClientsTypeAndDecodeTextReferences()
     {
         var directory = GeneratedTypeScriptDirectory();
-        var module = File.ReadAllText(Path.Combine(directory, "translatedText.ts")).ReplaceLineEndings("\n");
+        var module = GeneratedClientSource.Read(directory, "translatedText").ReplaceLineEndings("\n");
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
         var mock = File.ReadAllText(Path.Combine(directory, "translatedText.mock.ts")).ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]

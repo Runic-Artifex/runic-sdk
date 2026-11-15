@@ -53,9 +53,9 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PlainWindow : RunicWindow<PlainViewModel>;
                 """).ConfigureAwait(false);
             var typescript = Path.Combine(Path.GetDirectoryName(valid)!, "ts");
-            var shared = File.ReadAllText(Path.Combine(typescript, "resultPage.ts"));
-            var orders = File.ReadAllText(Path.Combine(typescript, "orders.ts"));
-            var plain = File.ReadAllText(Path.Combine(typescript, "plain.ts"));
+            var shared = GeneratedClientSource.Read(typescript, "resultPage");
+            var orders = GeneratedClientSource.Read(typescript, "orders");
+            var plain = GeneratedClientSource.Read(typescript, "plain");
             Require(shared.Contains("export interface ResultPageState {", StringComparison.Ordinal)
                     && shared.Contains("  readonly rows: readonly ResultRow[];", StringComparison.Ordinal)
                     && shared.Contains("  readonly title: string;", StringComparison.Ordinal)

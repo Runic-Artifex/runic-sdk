@@ -126,8 +126,10 @@ internal sealed class DomainFailureCodegenTests
         var outputs = new (string Golden, string Actual)[]
         {
             ("failureToolkit.ts", Path.Combine(generated, "failureToolkit.ts")),
+            ("failureToolkit.contract.d.ts", Path.Combine(generated, "failureToolkit.contract.d.ts")),
             ("failureToolkit.mock.ts", Path.Combine(generated, "failureToolkit.mock.ts")),
             ("failureReactive.ts", Path.Combine(generated, "failureReactive.ts")),
+            ("failureReactive.contract.d.ts", Path.Combine(generated, "failureReactive.contract.d.ts")),
             ("failureReactive.mock.ts", Path.Combine(generated, "failureReactive.mock.ts")),
             ("types.ts", Path.Combine(generated, "types.ts")),
             ("FailureToolkitViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.FailureToolkitViewModel.Bridge.g.cs")),
@@ -137,6 +139,7 @@ internal sealed class DomainFailureCodegenTests
         CompareGolden(project, "navigation-region",
         [
             ("navShell.ts", Path.Combine(generated, "navShell.ts")),
+            ("navShell.contract.d.ts", Path.Combine(generated, "navShell.contract.d.ts")),
             ("NavShellViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.NavShellViewModel.Bridge.g.cs")),
         ]);
     }

@@ -136,7 +136,7 @@ internal sealed class RegionCollectionTests
         Require(BridgeContractShape.Parts(typeof(NavTabsViewModel)).Contains("selection:Runic.Application.Testing.Tests.NavTabsViewModel:tabs")
                 && !BridgeContractShape.Parts(typeof(NavTabsViewModel)).Any(part => part.StartsWith("region-collection:Runic.Application.Testing.Tests.NavTabsViewModel:", StringComparison.Ordinal)),
             "A plain selection slot changed its contract part.");
-        var generated = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navDocuments.ts")).ReplaceLineEndings("\n");
+        var generated = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "navDocuments").ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
             "  readonly documents: RegionCollection<ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | NavTabbedPagePageReference>;",
@@ -146,7 +146,7 @@ internal sealed class RegionCollectionTests
             "  documents: (wire: unknown) => regionCollection(wire, item => { const reference = contentReference(item);",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navDocuments.ts is missing:\n{expected}\n---\n{generated}");
-        var reactive = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "reactiveNavDocuments.ts"));
+        var reactive = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "reactiveNavDocuments");
         Require(reactive.Contains("selectTabs(key: string)", StringComparison.Ordinal) && !reactive.Contains("closeTabs", StringComparison.Ordinal),
             "A collection with PageCanClose = false has a close method, or no select method.");
         var mock = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navDocuments.mock.ts"));

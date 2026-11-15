@@ -42,7 +42,7 @@ internal sealed class ToolkitResultTests
             Require(state.RootElement.GetProperty("state").GetProperty("runs").GetInt32() == 1 && model.Runs == 1,
                 $"The awaited command's effects were not in the state: {state.RootElement}");
 
-        var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "toolkitResult.ts")).ReplaceLineEndings("\n");
+        var client = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "toolkitResult").ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
             "export interface ToolkitResultEstimateOperation extends BridgeOperation<ToolkitEstimate> {}",

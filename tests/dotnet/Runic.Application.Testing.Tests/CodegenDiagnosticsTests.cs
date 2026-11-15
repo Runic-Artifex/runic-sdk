@@ -209,12 +209,15 @@ internal sealed partial class CodegenDiagnosticsTests
                     && !Bridge("NoCloseOperationViewModel").Contains("RUNICDESK105", StringComparison.Ordinal),
                 "The generated Bridges do not suppress RUNICDESK105 exactly where they use RunicOperationClose.");
 
-            // The same models without the declarations: the TypeScript client and its contract hash are identical.
+            // The same models without the declarations: the TypeScript client and its contract hash are identical. The
+            // declaration maps (#952) differ only because the attribute lines move the members.
             var plain = Preamble + string.Join('\n', Models.Split('\n').Where(line => !line.Contains("[RunicOperationClose(", StringComparison.Ordinal)));
             var (plainExit, plainOutput, plainDirectory) = await RunGeneratorAsync(generator, Path.Combine(temporaryRoot, "plain"), "Close", plain).ConfigureAwait(false);
             Require(plainExit == 0, $"The undeclared models did not generate.\n{plainOutput}");
-            var declaredTs = Directory.GetFiles(Path.Combine(directory, "ts"), "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
-            var plainTs = Directory.GetFiles(Path.Combine(plainDirectory, "ts"), "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
+            var declaredTs = Directory.GetFiles(Path.Combine(directory, "ts"), "*", SearchOption.AllDirectories)
+                .Where(path => !path.EndsWith(".map", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray();
+            var plainTs = Directory.GetFiles(Path.Combine(plainDirectory, "ts"), "*", SearchOption.AllDirectories)
+                .Where(path => !path.EndsWith(".map", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray();
             Require(declaredTs.Length > 0 && declaredTs.Select(Path.GetFileName).SequenceEqual(plainTs.Select(Path.GetFileName))
                     && declaredTs.Zip(plainTs).All(pair => File.ReadAllText(pair.First) == File.ReadAllText(pair.Second)),
                 "RunicOperationClose changed the generated TypeScript or contract hash.");

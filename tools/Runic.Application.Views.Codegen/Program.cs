@@ -114,8 +114,12 @@ try
             foreach (var path in Directory.GetFiles(positional[2], "*.g.cs"))
                 if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
             if (Directory.Exists(positional[3]))
+            {
                 foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
                     if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
+                foreach (var path in Directory.GetFiles(positional[3], "*" + ClientDeclarationMap.Suffix + ".map"))
+                    if (ClientDeclarationMap.IsGeneratedMap(path)) File.Delete(path);
+            }
             File.WriteAllText(Path.Combine(positional[2], "RunicBridge.NoViews.marker"), "");
             BridgeSourceMap.Remove(positional[2]);
             Console.WriteLine($"{assembly.GetName().Name}: no Runic Window/View classes found; skipping Bridge generation.");
@@ -175,6 +179,7 @@ try
             .ToArray();
         var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
             .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
+            .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}{ClientDeclarationMap.Suffix}", Owner: entry.Model.FullName!)))
             .Concat(sharedClients.Select(shared => (Path: $"{shared.Module}.ts", Owner: shared.Interface.FullName!)))
             .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types")).ToArray();
         foreach (var group in csharpOutputs.Concat(typescriptOutputs)
@@ -197,6 +202,8 @@ try
                 && !expectedCsharp.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
         foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
             if (!expectedTypescript.Contains(Path.GetFullPath(path)) && GeneratedOutput.IsGenerated(path)) File.Delete(path);
+        foreach (var path in Directory.GetFiles(positional[3], "*" + ClientDeclarationMap.Suffix + ".map"))
+            if (!expectedTypescript.Contains(Path.GetFullPath(path[..^".map".Length])) && ClientDeclarationMap.IsGeneratedMap(path)) File.Delete(path);
         var contentRequired = new HashSet<Type>();
         foreach (var entry in models)
         {
@@ -1508,16 +1515,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // types, decoders and connect functions, so every module and bundle on a
     // page shares one BridgeError class and one route registry.
     var ts = new StringBuilder();
-    var contentImports = new StringBuilder();
+    // The page functions and page reference types of the content's modules.
+    var contentImports = new List<(string Module, string[] Functions, string[] References)>();
     foreach (var (pageName, contracts) in contentBindings.SelectMany(entry => entry.Value.Select(page => (page.Name, Contract: ContractFor(entry.Key))))
         .GroupBy(entry => entry.Name).Select(group => (group.Key, Contracts: group.Select(entry => entry.Contract).Distinct())))
     {
-        var members = string.Join(", ", contracts.SelectMany(contract =>
-        {
-            var variant = char.ToUpperInvariant(PageKind(pageName, contract)[0]) + PageKind(pageName, contract)[1..];
-            return new[] { $"page{variant}", $"type {variant}PageReference" };
-        }));
-        contentImports.AppendLine($"import {{ {members} }} from \"./{LowerFirst(pageName)}.js\";");
+        var variants = contracts.Select(contract => char.ToUpperInvariant(PageKind(pageName, contract)[0]) + PageKind(pageName, contract)[1..]).ToArray();
+        contentImports.Add((LowerFirst(pageName), [.. variants.Select(variant => $"page{variant}")], [.. variants.Select(variant => $"{variant}PageReference")]));
     }
     // region-collections/1: select{Name}(key) and close{Name}(key) of each region collection. RUNICBRIDGE071 when one
     // collides with another member of the generated client.
@@ -1545,8 +1549,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
     }
     var clientName = $"{shortName}Client";
-    ts.AppendLine($"export interface {shortName}State {{");
-    if (hasValidation) ts.AppendLine($"  readonly validation: {Ref("BridgeValidationState")};");
+    // The client's types go to <view>.contract.d.ts (#952), whose declaration map leads each member marked here to its
+    // C# declaration or handler in the development source map (#951).
+    var dts = new StringBuilder();
+    string Mapped(string? kind, string member, string token) =>
+        ClientDeclarationMap.Mark(kind is null ? model.FullName! : $"{model.FullName}/{kind}/{member}", token);
+    dts.AppendLine($"export interface {shortName}State {{{Mapped(null, "", $"{shortName}State")}");
+    if (hasValidation) dts.AppendLine($"  readonly validation: {Ref("BridgeValidationState")};");
     foreach (var property in properties)
     {
         var propertyType = contentProperties.TryGetValue(property, out var pages)
@@ -1567,9 +1576,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var stateDocumentation = XmlDocumentation.Summary(property);
         if (valueProperties.TryGetValue(property, out var documentedGraph))
             stateDocumentation = BridgeTypeGraph.WithTypeScriptNote(stateDocumentation, documentedGraph.Root);
-        XmlDocumentation.Append(ts, "  ", stateDocumentation);
-        ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};");
-        if (hasErrors) ts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];");
+        XmlDocumentation.Append(dts, "  ", stateDocumentation);
+        dts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property)))}");
+        if (hasErrors) dts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property) + "Errors"))}");
         var referencedPages = contentProperties.GetValueOrDefault(property) ?? regionCollections.GetValueOrDefault(property)
             ?? contentCollections.GetValueOrDefault(property) ?? [];
         Shared(property, "state", "state", $"readonly {TsPropertyName(WireName(property))}: {propertyType};", stateDocumentation,
@@ -1583,53 +1592,57 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var plan = commandPlans[command];
         if (!plan.HasArgument)
         {
-            ts.AppendLine($"  readonly can{command.Name[..^"Command".Length]}: boolean;");
+            var canState = $"can{command.Name[..^"Command".Length]}";
+            dts.AppendLine($"  readonly {canState}: boolean;{Mapped(BridgeSourceMap.CommandState, canState, canState)}");
             Shared(command, "can-state", "state", $"readonly can{command.Name[..^"Command".Length]}: boolean;");
         }
         if (plan.HasExecutionState)
         {
-            ts.AppendLine($"  readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
+            var executingState = $"is{command.Name[..^"Command".Length]}Executing";
+            dts.AppendLine($"  readonly {executingState}: boolean;{Mapped(BridgeSourceMap.CommandState, executingState, executingState)}");
             Shared(command, "executing-state", "state", $"readonly is{command.Name[..^"Command".Length]}Executing: boolean;");
         }
     }
-    ts.AppendLine("}");
-    ts.AppendLine();
-    InteractionCodeEmitter.AppendTypeScriptSurface(ts, interactions, shortName);
-    InteractionCodeEmitter.AppendTypeScriptRequestSurface(ts, requests, shortName);
+    dts.AppendLine("}");
+    dts.AppendLine();
+    InteractionCodeEmitter.AppendTypeScriptSurface(dts, interactions, shortName,
+        member => Mapped(BridgeSourceMap.Interaction, member, member));
+    InteractionCodeEmitter.AppendTypeScriptRequestSurface(dts, requests, shortName,
+        member => Mapped(BridgeSourceMap.Request, member, member));
     if (needsCheckedWriter)
     {
-        ts.AppendLine($"export interface {shortName}CheckedFields {{");
+        dts.AppendLine($"export interface {shortName}CheckedFields {{");
         foreach (var property in checkedProperties)
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {TsPropertyType(property)};");
-        ts.AppendLine("}");
-        ts.AppendLine();
+            dts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {TsPropertyType(property)};{Mapped(BridgeSourceMap.Setter, WireName(property), TsPropertyName(WireName(property)))}");
+        dts.AppendLine("}");
+        dts.AppendLine();
     }
-    OperationTypeScriptEmitter.AppendDefinitions(ts, operationPlans, shortName);
+    OperationTypeScriptEmitter.AppendDefinitions(dts, operationPlans, shortName);
     var modelDocumentation = XmlDocumentation.Summary(model);
-    XmlDocumentation.Append(ts, "", $"A connected {shortName} ViewModel. Dispose it when its presentation ends."
+    XmlDocumentation.Append(dts, "", $"A connected {shortName} ViewModel. Dispose it when its presentation ends."
         + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
-    ts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{");
-    if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
-    if (requests.Length > 0) ts.AppendLine($"  readonly requests: {shortName}ViewRequests;");
+    dts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{{Mapped(null, "", clientName)}");
+    if (interactions.Length > 0) dts.AppendLine($"  readonly interactions: {shortName}Interactions;");
+    if (requests.Length > 0) dts.AppendLine($"  readonly requests: {shortName}ViewRequests;");
     if (queryCollections.Count > 0)
     {
-        ts.AppendLine("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");
-        ts.AppendLine("  readonly queries: {");
+        dts.AppendLine("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");
+        dts.AppendLine("  readonly queries: {");
         foreach (var (property, plan) in queryCollections)
         {
-            XmlDocumentation.Append(ts, "    ", XmlDocumentation.Summary(property));
-            ts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;");
+            XmlDocumentation.Append(dts, "    ", XmlDocumentation.Summary(property));
+            dts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;{Mapped(BridgeSourceMap.State, WireName(property), TsPropertyName(WireName(property)))}");
             Shared(property, "query", "queries", $"readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;",
                 XmlDocumentation.Summary(property));
         }
-        ts.AppendLine("  };");
+        dts.AppendLine("  };");
     }
     const string UploadDocumentation = "Uploads a file to the window's .NET host over HTTP (blobs/1) and resolves with the reference that a command's\n`RunicUpload` input takes. `options.onProgress` reports the bytes sent; `options.signal` aborts the upload.";
     const string UploadDeclaration = "upload(content: Blob, options?: import(\"@runic-artifex/views\").UploadOptions): Promise<import(\"@runic-artifex/views\").BlobRef>;";
     if (usesUploads)
     {
-        XmlDocumentation.Append(ts, "  ", UploadDocumentation);
-        ts.AppendLine("  " + UploadDeclaration);
+        XmlDocumentation.Append(dts, "  ", UploadDocumentation);
+        dts.AppendLine("  " + UploadDeclaration);
     }
     foreach (var command in commands.Where(command => commandPlans[command].InputGraph?.Nodes.Any(node => node.Kind == BridgeWireKind.Upload) == true))
         Shared(command, "upload", "client", UploadDeclaration, UploadDocumentation);
@@ -1637,27 +1650,27 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         Shared(property, "upload", "client", UploadDeclaration, UploadDocumentation);
     foreach (var property in properties.Where(PageSettable))
     {
-        XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
-        ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
+        XmlDocumentation.Append(dts, "  ", SetterDocumentation(property));
+        dts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;{Mapped(BridgeSourceMap.Setter, WireName(property), $"set{property.Name}")}");
         Shared(property, "setter", "client", $"set{property.Name}(value: {TsPropertyType(property)}): Promise<{SharedClients.Owner}State>;");
     }
     foreach (var property in checkedProperties)
     {
-        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property)
+        XmlDocumentation.Append(dts, "  ", XmlDocumentation.Summary(property)
             ?? $"Writes `{property.ReflectedType?.Name}.{property.Name}` with an acknowledged field write, which reports whether .NET committed it.");
-        ts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: {Ref("FieldWriteOptions")}<{TsPropertyType(property)}>): Promise<{Ref("FieldWriteReceipt")}<{TsPropertyType(property)}>>;");
+        dts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: {Ref("FieldWriteOptions")}<{TsPropertyType(property)}>): Promise<{Ref("FieldWriteReceipt")}<{TsPropertyType(property)}>>;{Mapped(BridgeSourceMap.Setter, WireName(property), $"write{property.Name}")}");
     }
     if (needsCheckedWriter)
     {
-        ts.AppendLine("  /** The value and version of a checked field that a `write…` call is based on. */");
-        ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>;");
+        dts.AppendLine("  /** The value and version of a checked field that a `write…` call is based on. */");
+        dts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>;");
     }
     if (hasFieldPaths)
     {
-        ts.AppendLine("  /** A checked write of a field path below a member (field-paths/1); `{View}Fields` descriptors call it. */");
-        ts.AppendLine($"  writePath<T>(member: string, path: readonly string[], write: {Ref("BridgeFieldWriteRequest")}, decode: (wire: unknown) => T): Promise<{Ref("FieldWriteReceipt")}<T>>;");
-        ts.AppendLine("  /** The version a field path write is based on: the revision of the state the client shows. */");
-        ts.AppendLine("  fieldPathVersion(): number;");
+        dts.AppendLine("  /** A checked write of a field path below a member (field-paths/1); `{View}Fields` descriptors call it. */");
+        dts.AppendLine($"  writePath<T>(member: string, path: readonly string[], write: {Ref("BridgeFieldWriteRequest")}, decode: (wire: unknown) => T): Promise<{Ref("FieldWriteReceipt")}<T>>;");
+        dts.AppendLine("  /** The version a field path write is based on: the revision of the state the client shows. */");
+        dts.AppendLine("  fieldPathVersion(): number;");
     }
     foreach (var command in commands)
     {
@@ -1667,22 +1680,23 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         // A RunicCommandKey command (#472) sends the key; .NET resolves it to the command's parameter.
         var unresolved = plan.Key is null ? null
             : $"Rejects with a `BridgeError` of kind `rejected` and reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.";
-        XmlDocumentation.Append(ts, "  ", unresolved is null ? documentation
+        XmlDocumentation.Append(dts, "  ", unresolved is null ? documentation
             : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved);
         var reply = plan.FailureGraph is { } declaredFailure
             ? $"{Ref("BridgeOutcome")}<{SharedClients.Owner}State, {declaredFailure.TypeScriptType()}>" : $"{SharedClients.Owner}State";
         var commandDeclaration = $"{LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;";
-        ts.AppendLine("  " + commandDeclaration.Replace(SharedClients.Owner, shortName, StringComparison.Ordinal));
+        var commandMember = LowerFirst(command.Name[..^"Command".Length]);
+        dts.AppendLine("  " + commandDeclaration.Replace(SharedClients.Owner, shortName, StringComparison.Ordinal) + Mapped(BridgeSourceMap.Command, commandMember, commandMember));
         var comparableInput = plan.HasArgument ? $"{SharedClients.Parameter}: {CommandInputType(plan)}" : "";
         Shared(command, "command", "client", commandDeclaration, unresolved is null ? documentation
             : string.IsNullOrWhiteSpace(documentation) ? unresolved : documentation + "\n\n" + unresolved,
             comparable: $"{LowerFirst(command.Name[..^"Command".Length])}({comparableInput}): Promise<{reply}>;");
         var availabilityDocumentation = plan.Key is null ? null
             : $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.";
-        XmlDocumentation.Append(ts, "  ", availabilityDocumentation);
+        XmlDocumentation.Append(dts, "  ", availabilityDocumentation);
         if (plan.HasArgument)
         {
-            ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
+            dts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;{Mapped(BridgeSourceMap.Command, commandMember, $"can{command.Name[..^"Command".Length]}")}");
             Shared(command, "can-method", "client", $"can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;", availabilityDocumentation,
                 comparable: $"can{command.Name[..^"Command".Length]}({comparableInput}): Promise<boolean>;");
         }
@@ -1692,8 +1706,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var regionDocumentation = action == "select"
             ? $"Selects the region of `{WireName(property)}` with `key`. The departure guards of the region left decide; resolves with the request's outcome once the state includes it (`region-collections/1`)."
             : $"Closes the region of `{WireName(property)}` with `key` and removes it. Its departure guards decide; resolves with the request's outcome once the state includes it (`region-collections/1`).";
-        XmlDocumentation.Append(ts, "  ", regionDocumentation);
-        ts.AppendLine($"  {method}(key: string): Promise<{Ref("RegionOutcome")}>;");
+        XmlDocumentation.Append(dts, "  ", regionDocumentation);
+        dts.AppendLine($"  {method}(key: string): Promise<{Ref("RegionOutcome")}>;{Mapped(BridgeSourceMap.State, WireName(property), method)}");
         Shared(property, "region-" + action, "client", $"{method}(key: string): Promise<{Ref("RegionOutcome")}>;", regionDocumentation);
     }
     foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
@@ -1701,15 +1715,15 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var plan = commandPlans[command];
         var operationName = command.Name[..^"Command".Length];
         var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}, " : "";
-        ts.AppendLine($"  /**");
-        ts.AppendLine($"   * Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;");
-        ts.AppendLine($"   * the default is a random id. A start with a request id that .NET already admitted returns that operation.");
+        dts.AppendLine($"  /**");
+        dts.AppendLine($"   * Starts `{operationName}` as an operation that the page can observe, cancel and recover. `options.requestId` names it;");
+        dts.AppendLine($"   * the default is a random id. A start with a request id that .NET already admitted returns that operation.");
         if (plan.Key is not null)
-            ts.AppendLine($"   * A new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.");
-        ts.AppendLine($"   */");
-        ts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;");
-        ts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
-        ts.AppendLine($"  recover{operationName}(requestId: string): Promise<{shortName}{operationName}Operation>;");
+            dts.AppendLine($"   * A new start is rejected with reason `unresolved-key` when .NET finds no object for `{plan.ParameterName}`.");
+        dts.AppendLine($"   */");
+        dts.AppendLine($"  start{operationName}({input}options?: {Ref("BridgeOperationStartOptions")}): Promise<{shortName}{operationName}Operation>;{Mapped(BridgeSourceMap.Command, LowerFirst(operationName), $"start{operationName}")}");
+        dts.AppendLine($"  /** Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded. */");
+        dts.AppendLine($"  recover{operationName}(requestId: string): Promise<{shortName}{operationName}Operation>;{Mapped(BridgeSourceMap.Command, LowerFirst(operationName), $"recover{operationName}")}");
         var operation = operationPlans.Single(candidate => candidate.Name == operationName);
         Shared(command, "operation", "operations",
             $"export interface {SharedClients.Owner}{operationName}Operation extends {Ref(operation.IsStream ? "BridgeStreamOperation" : "BridgeOperation")}<{operation.TypeArguments}> {{}}");
@@ -1721,8 +1735,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         Shared(command, "recover", "client", $"recover{operationName}(requestId: string): Promise<{SharedClients.Owner}{operationName}Operation>;",
             $"Returns the `{operationName}` operation started with `requestId`, for example after the page reloaded.");
     }
-    ts.AppendLine("}");
-    ts.AppendLine();
+    dts.AppendLine("}");
+    dts.AppendLine();
     var connectAt = Ref($"connect{shortName}At");
     var ownContracts = viewTypes is not null && viewTypes.TryGetValue(model, out var ownViews)
         ? ownViews.Select(ContractFor).ToArray() : [null];
@@ -1734,16 +1748,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var cacheName = Ref($"page{functionName}References");
         // A ViewModel with shared clients (#839): its reference is each shared reference, which the extends clause makes
         // the compiler check, and names them for the frameworks' ViewRegistry types.
-        ts.AppendLine(sharedClients.Count == 0 ? $"export interface {referenceType} {{"
-            : $"export interface {referenceType} extends {string.Join(", ", sharedClients.Select(shared => shared.ReferenceType))} {{");
-        ts.AppendLine($"  readonly kind: \"{ownKind}\";");
-        ts.AppendLine($"  connect(): Promise<{clientName}>;");
+        dts.AppendLine((sharedClients.Count == 0 ? $"export interface {referenceType} {{"
+            : $"export interface {referenceType} extends {string.Join(", ", sharedClients.Select(shared => shared.ReferenceType))} {{")
+            + Mapped(null, "", referenceType));
+        dts.AppendLine($"  readonly kind: \"{ownKind}\";");
+        dts.AppendLine($"  connect(): Promise<{clientName}>;");
         if (sharedClients.Count > 0)
         {
-            ts.AppendLine("  /** Type-only: the shared page references (`[RunicSharedClient]`) whose components a `ViewRegistry` accepts for this kind. */");
-            ts.AppendLine($"  readonly [{Ref("sharedPageReferences")}]?: {string.Join(" | ", sharedClients.Select(shared => shared.ReferenceType))};");
+            dts.AppendLine("  /** Type-only: the shared page references (`[RunicSharedClient]`) whose components a `ViewRegistry` accepts for this kind. */");
+            dts.AppendLine($"  readonly [{Ref("sharedPageReferences")}]?: {string.Join(" | ", sharedClients.Select(shared => shared.ReferenceType))};");
         }
-        ts.AppendLine("}");
+        dts.AppendLine("}");
+        dts.AppendLine();
         ts.AppendLine($"const {cacheName} = {Ref("viewReferences")}<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => {connectAt}(`content${{id}}`) }}));");
         ts.AppendLine($"export function page{functionName}(id: string): {referenceType} {{ return {cacheName}(id); }}");
         ts.AppendLine();
@@ -1957,6 +1973,19 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasFieldPaths) { runtimeImports.Add(Import("fieldPath")); runtimeImports.Add("type " + Import("BridgeFieldWriteRequest")); }
     if (rowPaths.Values.Any(leaves => leaves.Count > 0)) runtimeImports.Add(Import("rowFields"));
     if (usesUploads) runtimeImports.Add(Import("upload"));
+    // <view>.ts imports what its own code uses and re-exports the contract's types, so imports from it keep working;
+    // the contract imports what its declarations use.
+    var contractBody = dts.ToString().TrimEnd() + "\n";
+    var contractNames = TypeScriptModuleBindings.TopLevelBindings(contractBody).ToArray();
+    var code = TypeScriptModuleBindings.WithoutComments(body);
+    var declarations = TypeScriptModuleBindings.WithoutComments(contractBody);
+    bool Uses(string text, string specifier) => text.Contains(Ref(Unmarked(specifier)), StringComparison.Ordinal);
+    static string Unmarked(string specifier) => specifier.Replace("type ", "", StringComparison.Ordinal).Trim('\u0003', '\u0004', '\u0005');
+    // An import only the contract uses moves there; a type neither uses is dropped.
+    bool Moved(string specifier) => !Uses(body, specifier)
+        && (Uses(contractBody, specifier) || specifier.StartsWith("type ", StringComparison.Ordinal));
+    publicImports.RemoveAll(Moved);
+    runtimeImports.RemoveAll(Moved);
     ts.Clear();
     ts.AppendLine("// <auto-generated />");
     ts.AppendLine(publicImports.All(name => name.StartsWith("type ", StringComparison.Ordinal))
@@ -1966,15 +1995,48 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // A namespace import of the decoder module lets every bundler drop unused decoders.
     if (body.Contains("bridgeWire.", StringComparison.Ordinal))
         ts.AppendLine("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
-    ts.Append(contentImports);
-    foreach (var shared in sharedClients)
+    foreach (var (module, functions, references) in contentImports)
+    {
+        var used = functions.Concat(references.Where(reference => TypeScriptModuleBindings.Mentions(code, reference)).Select(reference => "type " + reference));
+        ts.AppendLine($"import {{ {string.Join(", ", used)} }} from \"./{module}.js\";");
+    }
+    foreach (var shared in sharedClients.Where(shared => TypeScriptModuleBindings.Mentions(code, shared.ReferenceType)))
         ts.AppendLine($"import type {{ {shared.ReferenceType} }} from \"./{shared.Module}.js\";");
+    var contractImports = contractNames.Where(name => TypeScriptModuleBindings.Mentions(code, name)).ToArray();
+    if (contractImports.Length > 0)
+        ts.AppendLine($"import type {{ {string.Join(", ", contractImports)} }} from \"{ClientDeclarationMap.Specifier(typescriptPath)}\";");
+    ts.AppendLine($"export type {{ {string.Join(", ", contractNames)} }} from \"{ClientDeclarationMap.Specifier(typescriptPath)}\";");
     ts.AppendLine(TypeScriptModules.NamedTypeImports);
     ts.AppendLine();
     ts.Append(body);
 
+    var contractModule = new StringBuilder();
+    contractModule.AppendLine("// <auto-generated />");
+    string[] publicTypes = ["BridgeValidationState", "ViewClient", "sharedPageReferences", "FieldBaseline", "FieldWriteOptions",
+        "FieldWriteReceipt", "BridgeOutcome", "BridgeOperation", "BridgeOperationStartOptions", "BridgeStreamOperation",
+        "BridgeInteractionContext", "BridgeViewRequestContext", "RegionCollection", "RegionOutcome", "QueryCollection",
+        "QueryCollectionState"];
+    string[] runtimeTypes = ["BridgeFieldWriteRequest"];
+    foreach (var (names, module) in new[] { (publicTypes, "@runic-artifex/views"), (runtimeTypes, "@runic-artifex/views/generated") })
+        if (names.Where(name => contractBody.Contains(Ref(name), StringComparison.Ordinal)).ToArray() is { Length: > 0 } used)
+            contractModule.AppendLine($"import type {{ {string.Join(", ", used.Select(Import))} }} from \"{module}\";");
+    if (contractBody.Contains("bridgeWire.", StringComparison.Ordinal))
+        contractModule.AppendLine("import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
+    foreach (var (module, _, references) in contentImports)
+        if (references.Where(reference => TypeScriptModuleBindings.Mentions(declarations, reference)).ToArray() is { Length: > 0 } used)
+            contractModule.AppendLine($"import type {{ {string.Join(", ", used)} }} from \"./{module}.contract.js\";");
+    foreach (var shared in sharedClients.Where(shared => TypeScriptModuleBindings.Mentions(declarations, shared.ReferenceType)))
+        contractModule.AppendLine($"import type {{ {shared.ReferenceType} }} from \"./{shared.Module}.js\";");
+    contractModule.AppendLine(TypeScriptModules.NamedTypeImports);
+    contractModule.AppendLine();
+    contractModule.Append(contractBody);
+    // Every own binding the declarations name is one of the types imported above.
+    if (TypeScriptModuleBindings.References(contractBody).FirstOrDefault(name => !publicTypes.Contains(name) && !runtimeTypes.Contains(name)) is { } unknown)
+        throw new InvalidOperationException($"{model.Name}: the generated client contract uses {unknown}, which it does not import.");
+
     WriteIfChanged(csharpPath, cs.ToString());
     TypeScriptModules.Add(typescriptPath, ts.ToString(), model);
+    TypeScriptModules.Add(ClientDeclarationMap.ContractPath(typescriptPath), contractModule.ToString(), model);
     TypeScriptModules.Add(MockModulePath(typescriptPath), MockTypeScriptEmitter.Emit(new MockTypeScriptPlan(
         shortName, prefix,
         ownContracts.Select(contract => PageKind(shortName, contract)).ToArray(),
@@ -2917,17 +2979,32 @@ static class TypeScriptModules
         if (TypeScriptNamedTypes.Any && File.Exists(typesPath) && !GeneratedOutput.IsGenerated(typesPath))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                 $"{Path.GetFullPath(typesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or generate into a dedicated directory.");
+        var texts = Pending.ToDictionary(module => Path.GetFullPath(module.Path), module => module.Text, StringComparer.Ordinal);
         foreach (var (path, text) in Pending)
         {
+            var contract = path.EndsWith(ClientDeclarationMap.Suffix, StringComparison.Ordinal);
             var used = TypeScriptNamedTypes.Used(text);
-            var values = TypeScriptNamedTypes.UsedValues(text);
-            var imports = used.Count == 0 ? ""
-                : $"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";{Environment.NewLine}"
-                  + $"export type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";"
-                  + (values.Count == 0 ? "" : $"{Environment.NewLine}export {{ {string.Join(", ", values)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
+            // A client module also re-exports the named types of its contract (#952), as when it declared them itself.
+            var exported = contract ? text
+                : text + (texts.GetValueOrDefault(Path.GetFullPath(ClientDeclarationMap.ContractPath(path))) ?? "");
+            var reexported = TypeScriptNamedTypes.Used(exported);
+            var values = TypeScriptNamedTypes.UsedValues(exported);
+            var lines = new List<string>();
+            if (used.Count > 0) lines.Add($"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
+            if (!contract && reexported.Count > 0) lines.Add($"export type {{ {string.Join(", ", reexported)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
+            if (!contract && values.Count > 0) lines.Add($"export {{ {string.Join(", ", values)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
             var resolved = TypeScriptNamedTypes.Resolve(text)
-                .Replace(NamedTypeImports + Environment.NewLine, imports.Length == 0 ? "" : imports + Environment.NewLine, StringComparison.Ordinal);
-            WriteFile(path, resolved);
+                .Replace(NamedTypeImports + Environment.NewLine, lines.Count == 0 ? "" : string.Join(Environment.NewLine, lines) + Environment.NewLine, StringComparison.Ordinal);
+            if (!contract)
+            {
+                WriteFile(path, resolved);
+                continue;
+            }
+            var (declarations, map) = ClientDeclarationMap.Complete(path, resolved);
+            WriteFile(path, declarations);
+            if (map is not null) WriteFile(path + ".map", map);
+            // tsserver reads <file>.map even without a sourceMappingURL comment.
+            else if (File.Exists(path + ".map") && ClientDeclarationMap.IsGeneratedMap(path + ".map")) File.Delete(path + ".map");
         }
         if (TypeScriptNamedTypes.Any)
             WriteFile(typesPath, $"{GeneratedOutput.Header}{Environment.NewLine}{TypeScriptNamedTypes.Module()}");

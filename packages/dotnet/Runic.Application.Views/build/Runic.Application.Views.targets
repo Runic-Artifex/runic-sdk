@@ -324,11 +324,27 @@
   <!-- The bootstrap pass sets its own output paths. Referenced projects (a
        model project beside a WPF application, for example) keep the
        properties of the real build, so they are not compiled again into the
-       bootstrap directories. -->
+       bootstrap directories. The SDK adds a project's transitive references
+       (from project.assets.json) to ProjectReference during the build, in
+       IncludeTransitiveProjectReferences, so the update above evaluation
+       misses them; the target after it covers them. Without it every
+       transitive reference was compiled again with the bootstrap's output
+       paths, all into one IntermediateOutputPath, in parallel (#1003). -->
+  <PropertyGroup>
+    <_RunicBridgeBootstrapReferencePropertiesToRemove>RunicApplicationFrontendBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath</_RunicBridgeBootstrapReferencePropertiesToRemove>
+  </PropertyGroup>
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <ProjectReference Update="@(ProjectReference)"
-                      GlobalPropertiesToRemove="%(GlobalPropertiesToRemove);RunicApplicationFrontendBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath" />
+                      GlobalPropertiesToRemove="%(GlobalPropertiesToRemove);$(_RunicBridgeBootstrapReferencePropertiesToRemove)" />
   </ItemGroup>
+  <Target Name="_RunicViewsBootstrapTransitiveReferences" AfterTargets="IncludeTransitiveProjectReferences"
+          Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <ItemGroup>
+      <ProjectReference Condition="!$([System.String]::Copy(';%(ProjectReference.GlobalPropertiesToRemove);').Contains(';RunicApplicationFrontendBootstrap;'))">
+        <GlobalPropertiesToRemove>%(ProjectReference.GlobalPropertiesToRemove);$(_RunicBridgeBootstrapReferencePropertiesToRemove)</GlobalPropertiesToRemove>
+      </ProjectReference>
+    </ItemGroup>
+  </Target>
 
   <!-- RUNICBRIDGE017 fails the build once per renamed property or item that the project still sets.
        The bootstrap pass and WPF's temporary markup project see the same

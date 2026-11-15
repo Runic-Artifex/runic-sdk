@@ -7,9 +7,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isLoopbackRequest, readLimitedBody, sameOrigin } from "./dev-session.js";
+import { openPath, sourcesPath } from "./channel.js";
 
-export const sourcesPath = "/__runic/sources";
-export const openPath = "/__runic/open";
+export { openPath, sourcesPath };
 /** The `sources.json` path that `dotnet runic dev` gives the development server. */
 export const sourceMapVariable = "RUNIC_APPLICATION_DEV_SOURCE_MAP";
 const projectVariable = "RUNIC_APPLICATION_DEV_PROJECT";

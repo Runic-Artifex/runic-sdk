@@ -7,7 +7,7 @@ import type { RunicDevelopmentState } from "./timeline.js";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
+import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent, type RunicClientOptions } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
@@ -23,6 +23,11 @@ export type { RunicOtlpOptions } from "./otlp.js";
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
+export type { RunicInspectApi } from "./inspect.js";
+export type {
+  RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
+  RunicInspectLocation, RunicInspectMember, RunicInspectText, RunicInspectViewModel,
+} from "./inspect-data.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
 } from "./sources.js";
@@ -105,6 +110,12 @@ export interface RunicViteOptions {
    */
   readonly sourceMap?: string | false;
   /**
+   * `false` leaves Runic Inspect out of the development client: the select mode (Alt+Shift+X) that shows how an
+   * element is connected to its ViewModels, and `globalThis[Symbol.for("runic.vite.inspect")]`. Defaults to `true`.
+   * The build never contains it.
+   */
+  readonly inspect?: boolean;
+  /**
    * Exports the page's spans of Bridge calls over OTLP while serving, so they join the .NET host's spans in one trace
    * (W3C trace context in each call's request, `trace-context/1`). By default it is on when `OTEL_EXPORTER_OTLP_ENDPOINT`
    * or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set in the development server's environment, and off with
@@ -127,6 +138,9 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     throw new TypeError("otlp must be true, false or { url?, headers?, serviceName? }.");
   }
   const html = options.html !== false;
+  if (options.inspect !== undefined && typeof options.inspect !== "boolean") {
+    throw new TypeError("inspect must be true or false.");
+  }
   if (options.sourceMap !== undefined && options.sourceMap !== false &&
       (typeof options.sourceMap !== "string" || options.sourceMap.length === 0)) {
     throw new TypeError("sourceMap must be a path or false.");
@@ -313,8 +327,11 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
         // trace: the client gives each Bridge call a trace context and sends its span, which the server exports.
-        const clientOptions = otlp === undefined ? `{ channel: "hot" }` : `{ channel: "hot", trace: true }`;
-        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${clientOptions};`];
+        const clientOptions: RunicClientOptions = {
+          channel: "hot", base, root: resolvedRoot, ...(options.inspect === false ? { inspect: false } : {}),
+          ...(otlp === undefined ? {} : { trace: true }),
+        };
+        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${JSON.stringify(clientOptions)};`];
         if (options.staleInputWarning === false) {
           statements.push(`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`);
         }

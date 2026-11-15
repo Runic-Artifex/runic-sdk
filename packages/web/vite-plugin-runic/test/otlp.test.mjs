@@ -150,7 +150,7 @@ test("a Vite server with runic() forwards a page's span to an OTLP/HTTP receiver
     const base = `http://127.0.0.1:${server.httpServer.address().port}`;
     // The served client options turn tracing on.
     const options = await (await fetch(`${base}/@id/__x00__virtual:runic/client-options`)).text();
-    assert.match(options, /trace: true/u);
+    assert.match(options, /"trace":true/u);
     const response = await fetch(`${base}/__runic/diagnostics`, {
       method: "POST", headers: { "Content-Type": "application/json", Origin: base },
       body: JSON.stringify({ event: "runic:span", data: message }),
@@ -179,7 +179,7 @@ test("without an endpoint the served client options leave tracing off", async ()
     await server.listen();
     const base = `http://127.0.0.1:${server.httpServer.address().port}`;
     const options = await (await fetch(`${base}/@id/__x00__virtual:runic/client-options`)).text();
-    assert.doesNotMatch(options, /trace/u);
+    assert.doesNotMatch(options, /"trace"/u);
   } finally {
     await server.close();
     if (saved.endpoint !== undefined) process.env.OTEL_EXPORTER_OTLP_ENDPOINT = saved.endpoint;

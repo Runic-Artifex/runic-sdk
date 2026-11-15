@@ -34,7 +34,7 @@ internal sealed class ToolkitAvailabilityTests
             Require(created.RootElement.GetProperty("ok").GetBoolean() && model.Created == 1,
                 $"An available command did not run: {created.RootElement}");
 
-        var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "toolkitAvailability.ts")).ReplaceLineEndings("\n");
+        var client = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "toolkitAvailability").ReplaceLineEndings("\n");
         Require(Count(client, "readonly canCreate: boolean;") == 1 && client.Contains("readonly canArchive: boolean;", StringComparison.Ordinal)
             && client.Contains("canArchive(name: string): Promise<boolean>;", StringComparison.Ordinal),
             $"The generated client does not declare each availability once:\n{client}");

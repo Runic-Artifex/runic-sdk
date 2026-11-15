@@ -452,7 +452,7 @@ internal sealed class NavigationPresentationTests
         var parts = BridgeContractShape.Parts(typeof(NavShellViewModel));
         Require(parts.Contains("content:Runic.Application.Testing.Tests.NavShellViewModel:main:contract:default:region:Runic.Application.Testing.Tests.INavPageViewModel"),
             $"The contract fingerprint does not include the region slot:\n{string.Join('\n', parts)}");
-        var generated = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.ts")).ReplaceLineEndings("\n");
+        var generated = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "navShell").ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
             "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | NavTabbedPagePageReference | null;",

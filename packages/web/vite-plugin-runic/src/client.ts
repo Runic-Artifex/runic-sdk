@@ -1,8 +1,8 @@
 // The development client. It forwards the diagnostics and connection state of `@runic-artifex/views` to the
 // development server, which keeps them on its timeline, reports each View's state and superseded command replies to
 // the state inspector, draws Bridge calls on a "Runic" track of the browser's Performance panel, sends the spans of
-// Bridge calls for the server's OTLP export when it has one, and warns about script that overwrites a focused text
-// field with an older value (`stale-input`). It has no exports.
+// Bridge calls for the server's OTLP export when it has one, warns about script that overwrites a focused text field
+// with an older value (`stale-input`), and adds Runic Inspect (Alt+Shift+X, inspect.ts). It has no exports.
 //
 // `runic()` injects it into served pages through `virtual:runic/client`, and loads it through that module for an
 // application import of `@runic-artifex/vite-plugin-runic/client`; the build replaces it with an empty module. A
@@ -20,6 +20,7 @@ import {
 } from "./channel.js";
 import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
 import { installStaleInputWarning } from "./stale-input.js";
+import { installInspect } from "./inspect.js";
 
 interface ViteHotContextLike {
   readonly data: Record<string, unknown>;
@@ -420,6 +421,7 @@ function close(): void {
   const calls = viewsCalls();
   calls.listeners.delete(reportCall);
   if (calls.trace === newTrace) delete calls.trace;
+  disposeInspect();
   host.removeEventListener?.("pagehide", pageHidden);
   if (stateTimer !== undefined) clearTimeout(stateTimer);
   stateTimer = undefined;
@@ -430,6 +432,14 @@ connectViewsDiagnostics();
 connectViewsConnection();
 connectViewsInspector();
 connectViewsCalls();
+const inspectListenerKey = "runic:inspect";
+let disposeInspect: () => void = () => {};
+function connectInspect(): void {
+  (data[inspectListenerKey] as (() => void) | undefined)?.();
+  disposeInspect = options?.inspect === false ? () => {} : installInspect({ base: options?.base, root: options?.root });
+  data[inspectListenerKey] = disposeInspect;
+}
+connectInspect();
 // Vite's HMR context shows that a development server serves the page: install the warning now. Without it
 // (a production build that kept the client), the HTTP channel installs it once the server answers. Installs once
 // per page; HMR re-evaluation leaves it in place.

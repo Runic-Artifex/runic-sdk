@@ -187,7 +187,7 @@ internal sealed class BlobTests
         var served = await host.ReadBlobAsync(preview.GetProperty("url").GetString()!);
         Require(Encoding.UTF8.GetString(served.Content) == "REACTIVE" && preview.GetProperty("name").GetString() == "r.txt",
             $"The ReactiveUI blob was not served: {preview}");
-        var types = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "reactiveBlob.ts"));
+        var types = GeneratedClientSource.Read(GeneratedTypeScriptDirectory(), "reactiveBlob");
         Require(types.Contains("readonly preview: import(\"@runic-artifex/views\").RunicBlob | null;", StringComparison.Ordinal)
             && types.Contains("upload(content: Blob", StringComparison.Ordinal), $"The ReactiveUI client lacks the blob types:\n{types}");
     }
