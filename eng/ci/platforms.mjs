@@ -40,6 +40,11 @@ export const screenReaderLegs = [
 export const screenReaderPaths = ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Gtk4",
   "packages/dotnet/Runic.Application.Views.Wpf", "tests/native/Runic.Desktop.WebViewSmoke", "tests/native/Runic.Desktop.Gtk4.Smoke",
   "tests/native/Runic.Desktop.AccessibilityProbe", "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/ScreenReaderChecks.cs"];
+// The files the webkit-cdp job reads: dotnet runic dev's CDP adapter for WebKitGTK (#1029), the Linux hosts it attaches
+// to, the template it checks and the check itself. It runs on Linux only.
+export const webKitCdpPaths = ["tools/dotnet-runic", "packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Gtk4",
+  "packages/dotnet/Runic.Platform.Linux", "packages/dotnet/Runic.Platform.Linux.Gtk4", "tools/Runic.Application.Templates",
+  "tests/webkit-cdp", "tests/templates/check-webkit-cdp.mjs", "tests/templates/Test-Templates.sh"];
 export const packagingLegs = [
   { os: "windows-latest", target: "windows", platform: "win-x64" },
   { os: "macos-26", target: "macos", platform: "osx-arm64" },

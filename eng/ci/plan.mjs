@@ -2,7 +2,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
-import { platforms, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, platformRules, neutralPaths, matchesPath }
+import { platforms, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths, matchesPath }
   from "./platforms.mjs";
 
 export const managedGroups = ["platform", "assets", "navigation", "application"];
@@ -89,7 +89,7 @@ export function nodePackages() {
 // queue entry that reuses a passed pull request run skips them too (reusedSkip). `plan` always runs.
 // `verify` accepts a skipped job only when the plan skipped it.
 export const skippableJobs = ["managed", "web", "node-26", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging",
-  "screen-readers"];
+  "screen-readers", "webkit-cdp"];
 export const reusedSkip = [...skippableJobs, "native-libraries", "build", "engineering"];
 
 const owner = file => Object.entries(workspace.components)
@@ -115,20 +115,22 @@ export function affectedPlatforms(files) {
 // renames (both names); `null` means unknown. An empty list is treated as unknown too, so a
 // failed or empty diff can never skip jobs. Any unowned path that is not engineering-only
 // (see engineeringOnly in eng/run.mjs) affects every component. `screenReaders` is whether a file
-// the screen reader legs read changed (screenReaderPaths).
+// the screen reader legs read changed (screenReaderPaths), `webKitCdp` whether one the webkit-cdp job reads did
+// (webKitCdpPaths).
 export function affected(files) {
   const full = files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
   return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files),
-    screenReaders: full || files.some(file => screenReaderPaths.some(path => matchesPath(file, path))), ...affectedPlatforms(files) };
+    screenReaders: full || files.some(file => screenReaderPaths.some(path => matchesPath(file, path))),
+    webKitCdp: full || files.some(file => webKitCdpPaths.some(path => matchesPath(file, path))), ...affectedPlatforms(files) };
 }
 
 // The legs of a platform-dependent job: those without a platform, and those whose platform is planned.
 const legs = (list, planned) => list.filter(leg => !leg.platform || planned.includes(leg.platform));
 
 // The jobs, suites and legs to run for the affected components and platforms, as defined by
-// this checkout. Without platforms (an older base planner) every leg runs, and without screenReaders every
-// screen reader leg of the planned platforms.
-export function planFor({ full, components, screenReaders: readers = true, platforms: planned = platforms,
+// this checkout. Without platforms (an older base planner) every leg runs, without screenReaders every
+// screen reader leg of the planned platforms, and without webKitCdp the webkit-cdp job.
+export function planFor({ full, components, screenReaders: readers = true, webKitCdp = true, platforms: planned = platforms,
   why = everyPlatform("the base planner plans no platforms").why }) {
   const has = (...names) => names.some(name => components.includes(name));
   const managed = managedGroups.filter(group =>
@@ -161,6 +163,8 @@ export function planFor({ full, components, screenReaders: readers = true, platf
     "native-musl": native.length > 0,
     packaging: packaging.length > 0,
     "screen-readers": screenReaders.length > 0,
+    // js-debug attaches through dotnet runic dev's CDP adapter to the template's Window on GTK 3 and GTK 4 (Linux).
+    "webkit-cdp": full || webKitCdp,
   };
   return {
     full,
@@ -208,8 +212,11 @@ export function parseAffected(text) {
     if (typeof value?.full !== "boolean" || !Array.isArray(value.components) || !value.components.every(name => known.includes(name)))
       return null;
     const { full, components } = value;
-    // A base planner older than the screen reader legs gives no screenReaders: they then run.
-    const readers = typeof value.screenReaders === "boolean" ? { screenReaders: value.screenReaders } : {};
+    // A base planner older than the screen reader legs gives no screenReaders: they then run; likewise webKitCdp.
+    const readers = {
+      ...typeof value.screenReaders === "boolean" ? { screenReaders: value.screenReaders } : {},
+      ...typeof value.webKitCdp === "boolean" ? { webKitCdp: value.webKitCdp } : {},
+    };
     if (Array.isArray(value.platforms) && value.platforms.every(platform => platforms.includes(platform))
       && value.platforms.every(platform => typeof value.why?.[platform] === "string"))
       return { full, components, ...readers, platforms: value.platforms, why: value.why };

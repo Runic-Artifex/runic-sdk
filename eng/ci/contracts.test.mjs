@@ -370,11 +370,11 @@ test('template lanes cover every framework once and run the creator check in one
   for (const [, framework] of variants) assert.deepEqual(smokeFrameworks, [framework]);
 });
 
-test('native and template jobs share the WebKit sandbox permission script', () => {
+test('native, template and webkit-cdp jobs share the WebKit sandbox permission script', () => {
   const users = Object.entries(workflow.jobs)
     .filter(([, job]) => job.steps?.some(item => item.run === 'eng/ci/permit-webkit-sandbox.sh'))
     .map(([id]) => id);
-  assert.deepEqual(users.sort(), ['native', 'templates']);
+  assert.deepEqual(users.sort(), ['native', 'templates', 'webkit-cdp']);
   assert.ok(!readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8').includes('apparmor_parser'));
 });
 
