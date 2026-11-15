@@ -2167,6 +2167,28 @@ failed command that reports no such error gets one summary error instead:
 `RUNICBRIDGE024` (an internal generator error) for the generator,
 `RUNICBRIDGE016` for the frontend commands.
 
+## Development source map
+
+Each build that generates Bridges also writes a development source map,
+`runic-bridge/sources.json`, beside the generated C# in the intermediate
+directory (`obj/<Configuration>/<TargetFramework>/`). It maps every member
+that a generated client and the Bridge frames name (state, setters, commands
+with the method that handles them, the state a command adds, interactions and
+View requests) to its C# symbol and `{file, line, column}`, from the same
+portable PDB that locates generator diagnostics, so a CommunityToolkit
+`[RelayCommand]` maps to its method and an `[ObservableProperty]` to its
+field or partial property. Without a PDB or source files the map lists the
+members without locations, and the build does not fail.
+
+The map is development-only: it stays in `obj`, never enters the generated
+TypeScript, the build or publish output, or a package, and the generator's
+cache regenerates it with the other outputs. Under `vite dev`,
+`@runic-artifex/vite-plugin-runic` serves it and opens a listed location in your
+editor (VS Code, Rider, or `LAUNCH_EDITOR`); see its
+[README](../../web/vite-plugin-runic/README.md#source-map-and-open-in-editor) for
+the format and the endpoints. Generated clients' declaration maps will use the
+same locations.
+
 ## Ship the frontend inside the executable
 
 By default the build copies the frontend to `www/` next to the application.

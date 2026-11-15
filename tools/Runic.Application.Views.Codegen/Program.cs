@@ -117,6 +117,7 @@ try
                 foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
                     if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
             File.WriteAllText(Path.Combine(positional[2], "RunicBridge.NoViews.marker"), "");
+            BridgeSourceMap.Remove(positional[2]);
             Console.WriteLine($"{assembly.GetName().Name}: no Runic Window/View classes found; skipping Bridge generation.");
             return;
         }
@@ -228,6 +229,8 @@ try
         else GenerateCompositionRegistration(compositionPath, compositionType, models, contentRequired,
             viewTypes.Values.SelectMany(variants => variants).Where(view => !IsWindow(view))
                 .OrderBy(view => view.FullName, StringComparer.Ordinal));
+        // The development source map, beside the generated C# in obj; recorded by the cache like the C#.
+        BridgeSourceMap.Write(positional[2]);
         BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments, Diagnostics.Warnings);
     }
     else
@@ -1414,6 +1417,22 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         stateMembers.Add(("validation", validationContextFlavors.Length > 0
             ? "global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata, ReadValidationContextErrors)"
             : "global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata)"));
+    // The development source map (#951): each member the generated client and the Bridge frames name, with the C#
+    // that runs for it.
+    BridgeSourceMap.RecordViewModel(model, shortName, LowerFirst(shortName), $"{model.FullName}:{contractFingerprint}",
+        viewTypes is not null && viewTypes.TryGetValue(model, out var mappedViews)
+            ? mappedViews.Select(view => PageKind(shortName, ContractFor(view))) : [PageKind(shortName, null)]);
+    foreach (var property in properties)
+    {
+        BridgeSourceMap.RecordState(model, WireName(property), property);
+        if (PageSettable(property)) BridgeSourceMap.RecordSetter(model, WireName(property), property);
+    }
+    foreach (var command in commands)
+        BridgeSourceMap.RecordCommand(model, LowerFirst(command.Name[..^"Command".Length]), command, commandSources[command]);
+    foreach (var plan in interactions)
+        BridgeSourceMap.RecordInteraction(model, LowerFirst(plan.Property.Name), plan.Property, request: false);
+    foreach (var plan in requests)
+        BridgeSourceMap.RecordInteraction(model, LowerFirst(plan.Property.Name), plan.Property, request: true);
     // Availability without an argument is state; a command with an argument
     // is queried through can<Name>(argument). Execution state needs no
     // argument and is written for every asynchronous command that has it.
@@ -1423,7 +1442,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var name = command.Name[..^"Command".Length];
         var members = plan.Command is { } library ? library.StateMembers(command, name, plan)
             : plan.HasArgument ? [] : [MvvmCommand.CanExecute(command, name)];
-        foreach (var (member, value) in members) stateMembers.Add((member, $"writer.WriteBooleanValue({value})"));
+        foreach (var (member, value) in members)
+        {
+            stateMembers.Add((member, $"writer.WriteBooleanValue({value})"));
+            BridgeSourceMap.RecordCommandState(model, member, command);
+        }
     }
     var stateMemberType = "global::Runic.Application.Views.Generated.BridgeStateMember";
     if (hasContent)
