@@ -29,6 +29,41 @@ internal static class MacOsCoordinates
     internal static double FrameBottom(int y, double frameHeight, double primaryHeight, bool bottomLeft) =>
         bottomLeft ? y : FlipY(y, frameHeight, primaryHeight);
 
+    // The AppKit bottom edge of a frame that a move gives the window (MoveAsync, SetBoundsAsync): a frame whose top would
+    // be behind a menu bar, or above the top of a screen it overlaps without reaching another screen there, moves down
+    // until its top touches that screen's visible frame, just below the menu bar. setFrameOrigin: and setFrame:display:
+    // take such a frame as it is, and AppKit moves the window later, on its own terms: on the osx-arm64 runner a window
+    // at y 0 went back to the frame it had opened at seconds later, while the screen's parameters changed (#1000). A
+    // screen whose visible frame reaches its top (the menu bar hidden) keeps a frame at the screen's top. Screens are
+    // frames and visible frames in AppKit's coordinates; the frame keeps its position where no screen is above or
+    // below it.
+    internal static double BottomBelowMenuBar(double x, double bottom, double width, double height,
+        IReadOnlyList<(Rect Frame, Rect Visible)> screens)
+    {
+        const double tolerance = 0.5;
+        var top = bottom + height;
+        bool Overlaps(Rect screen) => x < screen.X + screen.Width && x + width > screen.X;
+        // The top on a screen below its menu bar, the Dock's strip included: the title bar is reachable there.
+        foreach (var (frame, visible) in screens)
+        {
+            if (Overlaps(frame) && top > frame.Y + tolerance && top <= visible.Top + tolerance) return bottom;
+        }
+        double? limit = null;
+        foreach (var (frame, visible) in screens)
+        {
+            // A screen the frame overlaps whose visible top is below the frame's top.
+            if (!Overlaps(frame) || bottom >= frame.Top || top <= visible.Top + tolerance) continue;
+            if (limit is not { } current || visible.Top > current) limit = visible.Top;
+        }
+        return limit is { } visibleTop ? visibleTop - height : bottom;
+    }
+
+    // A rectangle in AppKit's coordinates: origin bottom-left, y up.
+    internal readonly record struct Rect(double X, double Y, double Width, double Height)
+    {
+        internal double Top => Y + Height;
+    }
+
     // The position a window host reports for an AppKit frame: its top-left corner, rounded to whole points.
     internal static (int X, int Y) FrameTopLeft(double x, double y, double frameHeight, double primaryHeight) =>
         (Round(x), Round(FlipY(y, frameHeight, primaryHeight)));
