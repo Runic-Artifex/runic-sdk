@@ -411,8 +411,12 @@ tools:
 **Session file.** `dev` writes `obj/runic/dev-session.json` (below the
 project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
 development server is ready and each time the Window process starts or exits.
-When `dev` ends, the file stays with `"state": "stopped"`. Each write replaces
-the whole file, so a reader never sees half of one. Two `dev` sessions of the
+When `dev` ends, the file stays with `"state": "stopped"`. A `dev` that is
+killed (an IDE that quits while its task runs, `kill -9`, a closed terminal)
+can't write that, so the file keeps its last state: before trusting `"starting"`
+or `"ready"`, a reader checks that the top-level `processId` is a running
+`dotnet runic dev`, and treats a dead one as stopped. Each write replaces the
+whole file, so a reader never sees half of one. Two `dev` sessions of the
 same project write the same file; the later one wins. `--dry-run` writes none.
 
 ```jsonc
