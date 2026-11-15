@@ -1,6 +1,11 @@
 #!/usr/bin/env bun
 // Regenerate maintained starter locks against this checkout's package candidates.
 // Never publishes. Final archive hashes are stamped into staged locks at packaging.
+//
+//   bun eng/dependencies/update-template-locks.mjs [directory...]
+//
+// Directories, such as runic-app/frontends/react, limit the run to those starters, so that a change to one starter's
+// dependencies leaves the other locks as they are; without them every starter's locks are regenerated.
 import { spawn } from "node:child_process";
 import { copyFile, mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,6 +27,14 @@ const independentArchives = Object.values(trainFeedNpm()).map(item => item.file)
 function independentRunicPackages(manifest) {
   return Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).filter(isIndependentRunicPackage);
 }
+const selected = process.argv.slice(2).map(argument => argument.replace(/\/+$/u, ""));
+const directories = selected.length === 0 ? templateLockDirectories
+  : templateLockDirectories.filter(entry => selected.includes(entry.directory));
+for (const directory of selected) {
+  if (!templateLockDirectories.some(entry => entry.directory === directory)) {
+    throw new Error(`${directory} is not a starter with locks: ${templateLockDirectories.map(entry => entry.directory).join(", ")}`);
+  }
+}
 const temporary = await mkdtemp(join(tmpdir(), "runic-template-locks-"));
 let registry;
 try {
@@ -39,7 +52,7 @@ try {
     if (!address) await new Promise(resolve => setTimeout(resolve, 25));
   }
   if (!address) throw new Error("Candidate registry did not become ready.");
-  for (const { directory: templateDirectory, pnpmWorkspace } of templateLockDirectories) {
+  for (const { directory: templateDirectory, pnpmWorkspace } of directories) {
     const source = join(root, "tools/Runic.Application.Templates/content", templateDirectory);
     const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
     for (const section of ["dependencies", "devDependencies"]) {

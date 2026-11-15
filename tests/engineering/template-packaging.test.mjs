@@ -417,6 +417,36 @@ test("the translated Vite frontends' package.json and locks are the frontend's o
   }
 });
 
+// #954, D066.27 (9): every Vite starter registers the Vite DevTools dock while it serves, as one line that the
+// application deletes to turn it off, with the @vitejs/devtools version vite-plugin-runic is built and tested with (D038:
+// not one published the same day). The Angular CLI runs no Vite plugins and has no dock.
+test("the Vite starters register the Vite DevTools dock on a line of its own, and the Angular CLI starter has none", () => {
+  const pluginManifest = JSON.parse(readFileSync(resolve(root, "packages/web/vite-plugin-runic/package.json"), "utf8"));
+  const version = pluginManifest.devDependencies["@vitejs/devtools"];
+  assert.match(version, /^\d+\.\d+\.\d+$/, "the plugin pins @vitejs/devtools exactly");
+  for (const variant of ["frontends", "translations"]) {
+    for (const framework of ["react", "vue", "svelte", "sveltekit", "angular-vite"]) {
+      const directory = resolve(templateContent, variant, framework);
+      const name = `${variant}/${framework}`;
+      const config = readFileSync(resolve(directory, "vite.config.ts"), "utf8");
+      assert.match(config, /^import \{ DevTools \} from "@vitejs\/devtools";$/m, name);
+      assert.equal(config.match(/^    DevTools\(\),$/gm)?.length, 1, `${name}: DevTools() on a line of its own`);
+      assert.match(config, /To turn the dock off, delete this line\.\n    DevTools\(\),\n/, name);
+      const manifest = JSON.parse(readFileSync(resolve(directory, "package.json"), "utf8"));
+      assert.equal(manifest.devDependencies["@vitejs/devtools"], version, name);
+      assert.equal(manifest.dependencies?.["@vitejs/devtools"], undefined, `${name}: a development dependency only`);
+      for (const lock of ["package-lock.json", "pnpm-lock.yaml", "bun.lock"]) {
+        const text = readFileSync(resolve(directory, lock), "utf8");
+        assert.ok(text.includes(`"node_modules/@vitejs/devtools": {\n      "version": "${version}"`) ||
+          text.includes(`'@vitejs/devtools@${version}':`) || text.includes(`"@vitejs/devtools": ["@vitejs/devtools@${version}"`),
+          `${name}/${lock}: no @vitejs/devtools ${version}`);
+      }
+    }
+  }
+  const cli = JSON.parse(readFileSync(resolve(templateContent, "frontends/angular/package.json"), "utf8"));
+  assert.equal({ ...cli.dependencies, ...cli.devDependencies }["@vitejs/devtools"], undefined);
+});
+
 // tasks.json and launch.json are JSONC; the template's own comments are whole lines.
 const parseJsonc = text => JSON.parse(text.split("\n").filter(line => !/^\s*\/\//.test(line)).join("\n"));
 // VS Code's built-in $msCompile pattern (tests/dotnet/Runic.Application.Tool.Tests/DevIdeContractTests.cs).
@@ -567,6 +597,19 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     for (const path of [".vscode/tasks.json", ".vscode/launch.json", ".vscode/extensions.json", "Properties/launchSettings.json"])
       assert.equal(angularVite[path], vscode[path], path);
     assert.match(angularVite["README.md"], /live from the\s+Vite\s+development server/);
+
+    // #954: every Vite starter registers the Vite DevTools dock, which leaves the tasks that start dotnet runic dev as
+    // they are: the same .vscode/ for each, and both README sections (the dock, and debugging in the IDE).
+    const viteStarters = { react: vscode, "angular-vite": angularVite };
+    for (const framework of ["vue", "svelte", "sveltekit"]) viteStarters[framework] = create(framework, "--editor", "vscode", "--frontend", framework);
+    for (const [framework, files] of Object.entries(viteStarters)) {
+      assert.match(files["Frontend/vite.config.ts"], /^    DevTools\(\),$/m, framework);
+      for (const path of [".vscode/tasks.json", ".vscode/launch.json", ".vscode/extensions.json"]) assert.equal(files[path], vscode[path], `${framework}: ${path}`);
+      assert.match(files["README.md"], /^## The Vite DevTools dock$/m, framework);
+      assert.match(files["README.md"], /^## Debug it in your IDE$/m, framework);
+      assert.match(files["README.md"], /^### VS Code$/m, framework);
+      assert.doesNotMatch(files["README.md"], /<!--#(if|elif|else|endif)/, framework);
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

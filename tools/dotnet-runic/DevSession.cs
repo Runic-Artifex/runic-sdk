@@ -43,6 +43,7 @@ internal sealed partial class DevSession
     private readonly DevOptions _options;
     private readonly IReadOnlyList<DebugEndpoint> _debugEndpoints;
     private readonly DateTimeOffset _startedAt;
+    private readonly DateTimeOffset _processStartedAt;
     private string _state = Starting;
     private Uri? _origin;
     private bool _confirmsSession;
@@ -54,12 +55,14 @@ internal sealed partial class DevSession
         DevProjectConfiguration configuration,
         DevOptions options,
         IReadOnlyList<DebugEndpoint> debugEndpoints,
-        DateTimeOffset startedAt)
+        DateTimeOffset startedAt,
+        DateTimeOffset processStartedAt)
     {
         _configuration = configuration;
         _options = options;
         _debugEndpoints = debugEndpoints;
         _startedAt = startedAt;
+        _processStartedAt = processStartedAt.ToUniversalTime();
         Path = System.IO.Path.Combine(configuration.SessionDirectory, FileName);
     }
 
@@ -120,11 +123,24 @@ internal sealed partial class DevSession
         }
     }
 
-    /// <summary>The session of a configuration, with the debugging endpoints the Window's environment enables.</summary>
-    internal static DevSession Create(DevProjectConfiguration configuration, DevOptions options) =>
-        new(configuration, options,
-            FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable, OperatingSystem.IsWindows()),
-            DateTimeOffset.UtcNow);
+    /// <summary>
+    /// The session of a configuration, with the debugging endpoints the Window's environment enables. A Window that dev
+    /// starts has dev's token, and one that the IDE starts (<c>--no-window</c>) has the IDE's, which runs dev's task, so
+    /// dev's own elevation (<see cref="Environment.IsPrivilegedProcess"/>: an elevated token on Windows) stands for the
+    /// Window's.
+    /// </summary>
+    internal static DevSession Create(DevProjectConfiguration configuration, DevOptions options)
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        return new(configuration, options,
+            FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable, OperatingSystem.IsWindows(),
+                Environment.IsPrivilegedProcess),
+            DateTimeOffset.UtcNow,
+            new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero));
+    }
+
+    /// <summary>The debugging endpoints that the Window's environment asks for but cannot open, with the reason.</summary>
+    internal IEnumerable<DebugEndpoint> UnavailableDebugEndpoints => _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is not null);
 
     internal void Start() => Write();
 
@@ -230,6 +246,9 @@ internal sealed partial class DevSession
             json.WriteString("state", _state);
             json.WriteNumber("processId", Environment.ProcessId);
             json.WriteString("startedAt", _startedAt.ToString("O", CultureInfo.InvariantCulture));
+            // The operating system's start time of the dev process (Process.StartTime), so a reader can tell this dev
+            // from a later process that reuses processId.
+            json.WriteString("processStartedAt", _processStartedAt.ToString("O", CultureInfo.InvariantCulture));
             json.WriteString("project", _configuration.ProjectPath);
             json.WriteString("configuration", _options.Configuration);
 
@@ -248,6 +267,10 @@ internal sealed partial class DevSession
             json.WriteEndObject();
 
             json.WriteString("webRoot", _configuration.RuntimeWebRoot);
+            // The Bridge generator's development source map that dev passes to the development server
+            // (RUNIC_APPLICATION_DEV_SOURCE_MAP) for vite-plugin-runic; null when dev passes none. The build writes it.
+            WriteStringOrNull(json, "sourceMap",
+                server && _configuration.BridgeSourceMapPath.Length > 0 ? _configuration.BridgeSourceMapPath : null);
             json.WriteStartArray("pages");
             foreach (string document in server ? _configuration.DevelopmentServerDocuments : ["index.html"])
             {
@@ -276,12 +299,25 @@ internal sealed partial class DevSession
             json.WriteEndObject();
 
             json.WriteStartArray("debugEndpoints");
-            foreach (DebugEndpoint endpoint in _debugEndpoints)
+            foreach (DebugEndpoint endpoint in _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is null))
             {
                 json.WriteStartObject();
                 json.WriteString("engine", endpoint.Engine);
                 json.WriteString("protocol", endpoint.Protocol);
                 json.WriteString("url", endpoint.Url);
+                json.WriteEndObject();
+            }
+            json.WriteEndArray();
+            // Endpoints the Window's environment asks for but the engine does not open, such as WebView2's in an elevated
+            // Window, so readers that only know debugEndpoints never wait on them.
+            json.WriteStartArray("unavailableDebugEndpoints");
+            foreach (DebugEndpoint endpoint in UnavailableDebugEndpoints)
+            {
+                json.WriteStartObject();
+                json.WriteString("engine", endpoint.Engine);
+                json.WriteString("protocol", endpoint.Protocol);
+                json.WriteString("url", endpoint.Url);
+                json.WriteString("reason", endpoint.UnavailableReason);
                 json.WriteEndObject();
             }
             json.WriteEndArray();
@@ -310,21 +346,29 @@ internal sealed partial class DevSession
         else json.WriteString(name, value);
     }
 
-    /// <summary>A debugging endpoint of the page's engine that the Window's environment enables.</summary>
-    internal sealed record DebugEndpoint(string Engine, string Protocol, string Url);
+    /// <summary>
+    /// A debugging endpoint of the page's engine that the Window's environment enables, or, with
+    /// <paramref name="UnavailableReason"/>, asks for but cannot open.
+    /// </summary>
+    internal sealed record DebugEndpoint(string Engine, string Protocol, string Url, string? UnavailableReason = null);
+
+    /// <summary>The reason of a WebView2 endpoint in an elevated Window, which ignores the variable.</summary>
+    internal const string ElevatedReason = "elevated";
 
     internal const string WebView2ArgumentsVariable = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 
     /// <summary>
     /// The Chrome DevTools Protocol endpoint of WebView2 (Runic Desktop on Windows) when
     /// <c>WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS</c>, from <c>-e</c> or dev's own environment, has
-    /// <c>--remote-debugging-port=&lt;port&gt;</c>. dev does not enable remote debugging itself.
+    /// <c>--remote-debugging-port=&lt;port&gt;</c>. dev does not enable remote debugging itself. When the Window runs
+    /// <paramref name="elevated"/>, WebView2 (Runtime 150 and later) ignores the variable, so the endpoint is unavailable.
     /// </summary>
     internal static IReadOnlyList<DebugEndpoint> FindDebugEndpoints(
         DevProjectConfiguration configuration,
         IReadOnlyList<KeyValuePair<string, string>> environment,
         Func<string, string?> readEnvironment,
-        bool windows)
+        bool windows,
+        bool elevated)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(environment);
@@ -337,7 +381,8 @@ internal sealed partial class DevSession
         Match port = RemoteDebuggingPort().Match(arguments);
         return port.Success && int.TryParse(port.Groups["port"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int value) &&
             value is > 0 and <= 65535
-            ? [new DebugEndpoint("webview2", "cdp", $"http://127.0.0.1:{value.ToString(CultureInfo.InvariantCulture)}/")]
+            ? [new DebugEndpoint("webview2", "cdp", $"http://127.0.0.1:{value.ToString(CultureInfo.InvariantCulture)}/",
+                elevated ? ElevatedReason : null)]
             : [];
     }
 

@@ -2,13 +2,16 @@
 // `/__runic/open` opens only a location the map lists, or the source of a Runic Translations message that the
 // Translations dev server names, and `vite build` output does not depend on the map.
 import assert from "node:assert/strict";
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import test from "node:test";
 import { build, createServer } from "vite";
 import { runic } from "../dist/index.js";
-import { findOpenLocation, parseSourceMap } from "../dist/sources.js";
+// An editor that records its arguments, as LAUNCH_EDITOR, and the wait for a complete record (#1010).
+import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
+import { answerClientRequest, findOpenLocation, parseSourceMap } from "../dist/sources.js";
+import { AccessList, parseAllowList } from "../dist/access.js";
 
 const environment = ["RUNIC_APPLICATION_DEV_SOURCE_MAP", "RUNIC_APPLICATION_DEV_PROJECT", "LAUNCH_EDITOR", "RUNIC_TEST_EDITOR_RECORD"];
 
@@ -71,30 +74,9 @@ async function withServer(root, options, run, plugins = []) {
   } finally { await server.close(); }
 }
 
-// An editor that records its arguments, as LAUNCH_EDITOR. launch-editor calls an unknown editor with file, line, column.
-// It writes the record beside it and renames it, so that a reader never sees the file before its arguments are in it.
-async function recordingEditor(directory) {
-  const editor = join(directory, "record-editor.sh");
-  const record = join(directory, "editor-arguments.txt");
-  await writeFile(editor, '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNIC_TEST_EDITOR_RECORD.part" && mv -f "$RUNIC_TEST_EDITOR_RECORD.part" "$RUNIC_TEST_EDITOR_RECORD"\n');
-  await chmod(editor, 0o755);
-  return { editor, record };
-}
-
-async function waitForFile(path, timeout = 5000) {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    try { return await readFile(path, "utf8"); }
-    catch (error) {
-      if (Date.now() > deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  }
-}
-
 const exists = (path) => stat(path).then(() => true, () => false);
 
-test("parses only well-formed runic-bridge-sources/1 entries and finds only listed locations", () => {
+test("parses only well-formed runic-bridge-sources/1 entries and finds only locations in listed files", () => {
   assert.equal(parseSourceMap({ format: "other", viewModels: [], members: [] }), undefined);
   assert.equal(parseSourceMap(null), undefined);
   const map = parseSourceMap({
@@ -112,8 +94,11 @@ test("parses only well-formed runic-bridge-sources/1 entries and finds only list
   assert.equal(map.members[1].location, undefined, "line 0 is no location");
   assert.deepEqual(findOpenLocation(map, { id: "A/command/go" }), { file: "/src/A.cs", line: 4, column: 9 });
   assert.deepEqual(findOpenLocation(map, { file: "/src/A.cs", line: 4, column: 9 }), { file: "/src/A.cs", line: 4, column: 9 });
+  // A .NET stack frame in a listed file: another line, the column defaulting to 1.
+  assert.deepEqual(findOpenLocation(map, { file: "/src/A.cs", line: 17 }), { file: "/src/A.cs", line: 17, column: 1 });
   for (const refused of [
-    { id: "A/state/x" }, { id: "B" }, { file: "/src/A.cs", line: 5, column: 9 }, { file: "/etc/passwd", line: 1, column: 1 },
+    { id: "A/state/x" }, { id: "B" }, { file: "/etc/passwd", line: 1, column: 1 }, { file: "/src/A.cs", line: 0 },
+    { file: "/src/A.cs", line: 1.5 }, { file: "/src/A.cs", line: 4, column: -1 }, { file: "/src/A.cs", line: "4" },
     { file: "/src/../src/A.cs", line: 4, column: 9 }, { file: "/src/A.cs:4:9" }, [], "A/command/go", null,
   ]) {
     assert.equal(findOpenLocation(map, refused), undefined, JSON.stringify(refused));
@@ -181,9 +166,11 @@ test("vite dev takes the map dotnet runic dev or the sourceMap option names, and
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
-test("/__runic/open refuses everything but a listed location from the server's own origin", async () => {
+test("/__runic/open refuses everything but a location in a listed file or a served frontend file from the server's own origin", async () => {
   const fixture = await project();
   const { editor, record } = await recordingEditor(fixture.directory);
+  // A file of the Vite root that Vite's server.fs.deny keeps from the page.
+  await writeFile(join(fixture.frontend, ".env"), "SECRET=1\n");
   try {
     await withEnvironment({ LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record }, () => withServer(fixture.frontend, {}, async (base) => {
       const open = (body, headers = {}, method = "POST") => fetch(`${base}/__runic/open`, {
@@ -202,17 +189,24 @@ test("/__runic/open refuses everything but a listed location from the server's o
       assert.equal(await open({ id: "Demo.CounterViewModel/state/count" }), 404, "an entry without a location");
       assert.equal(await open({ file: join(fixture.directory, "record-editor.sh"), line: 1, column: 1 }), 404, "a file the map does not list");
       assert.equal(await open({ file: "/etc/passwd", line: 1, column: 1 }), 404);
-      assert.equal(await open({ ...location, line: location.line + 1 }), 404, "another line of a listed file");
       assert.equal(await open({ file: `${location.file}:${location.line}:${location.column}` }), 404);
+      // Frontend files (Runic Inspect's component links): only what Vite serves, by a normalized absolute path.
+      assert.equal(await open({ file: join(fixture.frontend, ".env"), line: 1 }), 404, "a file server.fs.deny keeps from the page");
+      assert.equal(await open({ file: `${fixture.frontend}/src/../index.html`, line: 1 }), 404, "a path that is not normalized");
+      assert.equal(await open({ file: "index.html", line: 1 }), 404, "a relative path");
+      assert.equal(await open({ file: join(fixture.frontend, "missing.ts"), line: 1 }), 404, "a file that does not exist");
       assert.equal(await exists(record), false, "no refused request launched the editor");
 
       if (process.platform !== "win32") {
         assert.equal(await open({ id: fixture.map.members[0].id }), 200);
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [location.file, String(location.line), String(location.column)]);
         assert.equal(await open(location), 200, "the same location by file, line and column");
-        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
-        await rm(record);
+        assert.deepEqual(await readRecord(record), [location.file, String(location.line), String(location.column)]);
+        assert.equal(await open({ file: location.file, line: 2 }), 200, "another line of a listed file, as a stack frame names it");
+        assert.deepEqual(await readRecord(record), [location.file, "2", "1"]);
+        const page = join(fixture.frontend, "index.html");
+        assert.equal(await open({ file: page, line: 3, column: 2 }), 200, "a frontend file Vite serves");
+        assert.deepEqual(await readRecord(record), [page, "3", "2"]);
       }
       // A listed file that a later edit removed opens nothing.
       await rm(fixture.source);
@@ -224,9 +218,126 @@ test("/__runic/open refuses everything but a listed location from the server's o
         method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ id: fixture.map.members[0].id }),
       });
       await response.arrayBuffer();
-      assert.notEqual(response.status, 200);
-      assert.equal(await exists(record), false, "sourceMap: false opens nothing");
+      assert.equal(response.status, 404);
+      assert.equal(await exists(record), false, "sourceMap: false opens no map entry");
+      if (process.platform !== "win32") {
+        // It still opens a frontend file Vite serves, such as Runic Inspect's component links.
+        const page = join(fixture.frontend, "index.html");
+        const frontend = await fetch(`${base}/__runic/open`, {
+          method: "POST", headers: { "Content-Type": "application/json", Origin: base }, body: JSON.stringify({ file: page, line: 1 }),
+        });
+        await frontend.arrayBuffer();
+        assert.equal(frontend.status, 200);
+        assert.deepEqual(await readRecord(record), [page, "1", "1"]);
+      }
     }));
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+// The dock's open buttons call the runic:open-in-editor DevTools action, which takes the same decision as /__runic/open
+// and launches the editor itself: a location in a file the map lists opens, anything else is refused and launches nothing.
+test("the dock's open action opens only a location in a file the map lists", { skip: process.platform === "win32" }, async () => {
+  const fixture = await project();
+  const { editor, record } = await recordingEditor(fixture.directory);
+  try {
+    await withEnvironment({ LAUNCH_EDITOR: editor, RUNIC_TEST_EDITOR_RECORD: record }, async () => {
+      for (const sourceMap of [undefined, false]) {
+        const plugin = runic(sourceMap === undefined ? {} : { sourceMap });
+        const actions = new Map();
+        const server = await createServer({ root: fixture.frontend, configFile: false, logLevel: "silent", plugins: [plugin],
+          server: { host: "127.0.0.1", port: 0, strictPort: false } });
+        try {
+          await plugin.devtools.setup({
+            rpc: {
+              sharedState: { get: async (_key, options) => ({ value: () => options.initialValue, mutate: () => undefined }) },
+              register: (definition) => actions.set(definition.name, definition.setup({}).handler),
+            },
+            createJsonRenderer: () => ({ view: {}, updateSpec: () => undefined }),
+            docks: { register: () => undefined },
+            commands: { register: () => undefined },
+          });
+          const open = actions.get("runic:open-in-editor");
+          const location = fixture.map.members[0].location;
+          for (const refused of [
+            { file: join(fixture.directory, "record-editor.sh"), line: 1, column: 1 }, { file: "/etc/passwd", line: 1 },
+            { id: "Demo.CounterViewModel/state/count" }, { id: "Demo.CounterViewModel/command/missing" },
+            { file: location.file, line: 0 }, "Demo.CounterViewModel/command/increment", null,
+            // A frontend file: /__runic/open opens it for Runic Inspect, the dock links only the map's files.
+            { file: join(fixture.frontend, "index.html"), line: 1 },
+            ...(sourceMap === false ? [{ id: fixture.map.members[0].id }, { file: location.file, line: 2 }] : []),
+          ]) {
+            await assert.rejects(open(refused), /lists no such location/u, JSON.stringify(refused));
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          assert.equal(await exists(record), false, "a refused location launched the editor");
+          if (sourceMap === false) continue;
+          await open({ id: fixture.map.members[0].id });
+          assert.deepEqual(await readRecord(record), [location.file, String(location.line), String(location.column)]);
+          await open({ file: location.file, line: 2 });
+          assert.deepEqual(await readRecord(record), [location.file, "2", "1"]);
+        } finally { await server.close(); }
+      }
+    });
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+// Runic Inspect's requests over Vite's HMR connection (#1012), which under dotnet runic dev reach the Vite server from the
+// .NET host's page: the same answers as /__runic/sources, /__runic/handlers, the Translations message API and
+// /__runic/open, the same decision for what opens, and like those endpoints only for a connection from this machine.
+test("requests over Vite's connection answer like the HTTP endpoints and open only what /__runic/open opens", async () => {
+  const fixture = await project();
+  try {
+    const map = parseSourceMap(fixture.map);
+    const location = fixture.map.members[0].location;
+    const page = join(fixture.frontend, "index.html");
+    const launched = [];
+    const ask = (message, { read = () => map, peer = "127.0.0.1", access } = {}) => answerClientRequest(message, {
+      read, peer, ...(access === undefined ? {} : { access }), launch: (target) => launched.push(target),
+      resolution: { frontendFile: (file) => file.startsWith(`${fixture.frontend}/`) },
+      analyze: async (file) => file === "src/App.tsx" ? { format: "runic-handlers/1", bindings: [] } : undefined,
+      message: async (reference) => reference.key === "heading" ? { message: { catalog: reference.catalog, key: reference.key, locales: [] } } : undefined,
+    });
+    assert.deepEqual(await ask({ id: 1, kind: "sources" }), { id: 1, status: 200, body: map });
+    assert.deepEqual(await ask({ id: 2, kind: "sources" }, { read: () => undefined }), { id: 2, status: 404 }, "no map (sourceMap: false)");
+    assert.deepEqual(await ask({ id: 3, kind: "open", target: { id: fixture.map.members[0].id } }), { id: 3, status: 200 });
+    assert.deepEqual(await ask({ id: 4, kind: "open", target: { file: page, line: 2 } }), { id: 4, status: 200 }, "a served frontend file");
+    assert.deepEqual(launched, [location, { file: page, line: 2, column: 1 }]);
+    launched.length = 0;
+    assert.deepEqual(await ask({ id: 7, kind: "handlers", file: "src/App.tsx" }), { id: 7, status: 200, body: { format: "runic-handlers/1", bindings: [] } });
+    assert.deepEqual(await ask({ id: 8, kind: "handlers", file: "src/Missing.tsx" }), { id: 8, status: 404 });
+    assert.deepEqual(await ask({ id: 9, kind: "handlers" }), { id: 9, status: 400 });
+    assert.deepEqual(await ask({ id: 10, kind: "message", target: { catalog: "app", key: "heading" } }),
+      { id: 10, status: 200, body: { message: { catalog: "app", key: "heading", locales: [] } } });
+    assert.deepEqual(await ask({ id: 11, kind: "message", target: { catalog: "app", key: "../heading" } }), { id: 11, status: 400 });
+    assert.deepEqual(await ask({ id: 12, kind: "open", target: { message: "app:heading" } }), { id: 12, status: 400 }, "a malformed message reference");
+    for (const target of [
+      { file: join(fixture.directory, "record-editor.sh"), line: 1 }, { file: "/etc/passwd", line: 1 },
+      { id: "Demo.CounterViewModel/state/count" }, { file: `${fixture.frontend}/src/../index.html`, line: 1 },
+      { file: join(fixture.frontend, "missing.ts"), line: 1 }, { file: location.file, line: 0 }, "index.html", null, undefined,
+      // A message the resolution cannot locate (no Translations dev server here) opens nothing.
+      { message: { catalog: "app", key: "heading", locale: "en" } },
+    ]) {
+      assert.equal((await ask({ id: 5, kind: "open", target }))?.status, 404, JSON.stringify(target));
+    }
+    // Another machine, judged per request by the access list as the HTTP endpoints judge it (#981): without a list or
+    // outside it, nothing; inside it, the reads (sources, handlers, message), never open, which launches the editor here.
+    const request = (kind) => ({ id: 13, kind, file: "src/App.tsx",
+      target: kind === "message" ? { catalog: "app", key: "heading" } : { id: fixture.map.members[0].id } });
+    const allowed = new AccessList(parseAllowList(["192.0.2.0/24"], "allow"));
+    for (const kind of ["sources", "handlers", "message", "open"]) {
+      assert.equal((await ask(request(kind), { peer: "192.0.2.5" }))?.status, 403, `${kind}: another machine without a list`);
+      assert.equal((await ask(request(kind), { peer: "198.51.100.7", access: allowed }))?.status, 403, `${kind}: a machine outside the list`);
+      // null: the helper defaults an undefined peer to loopback.
+      assert.equal((await ask(request(kind), { peer: null, access: allowed }))?.status, 403, `${kind}: a connection without an address`);
+      assert.equal((await ask(request(kind), { peer: "192.0.2.5", access: allowed }))?.status, kind === "open" ? 403 : 200, `${kind}: an allowed machine`);
+      assert.equal((await ask(request(kind), { peer: "::ffff:127.0.0.1", access: allowed }))?.status, 200, `${kind}: loopback`);
+    }
+    launched.length = 0;
+    assert.deepEqual(launched, [], "a refused request launched the editor");
+    assert.deepEqual(await ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
+    for (const malformed of [null, [], "sources", { kind: "sources" }, { id: -1, kind: "sources" }, { id: 1.5, kind: "sources" }, { id: "1", kind: "open" }]) {
+      assert.equal(await ask(malformed), undefined, JSON.stringify(malformed));
+    }
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
@@ -283,8 +394,7 @@ test("/__runic/open opens a Translations message's source that the Translations 
         assert.ok(requests.length > 0 && requests.every(request => request.method === "GET" && /^(?:::ffff:)?127\.0\.0\.1$|^::1$/u.test(request.address)), JSON.stringify(requests));
         if (process.platform !== "win32") {
           assert.equal(await open({ message: { catalog: "app", key: "heading", locale: "en" } }), 200);
-          assert.deepEqual((await waitForFile(record)).trim().split("\n"), [rmf2, "2", "1"]);
-          await rm(record);
+          assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
         }
         requests.length = 0;
       }, [api]));

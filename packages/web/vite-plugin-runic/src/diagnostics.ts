@@ -105,7 +105,8 @@ export function sanitizeDiagnosticSummary(
   return failure ? { ...fitted, failure } : fitted;
 }
 
-function sanitizeFailure(candidate: unknown): RunicDiagnosticFailure | undefined {
+/** A failure under the failure rules: bounded, file paths kept, credentials redacted. */
+export function sanitizeFailure(candidate: unknown): RunicDiagnosticFailure | undefined {
   if (!isRecord(candidate)) return undefined;
   const type = failureText(candidate.type, maximumFailureTypeLength, false);
   const message = failureText(candidate.message, maximumFailureMessageLength, false);

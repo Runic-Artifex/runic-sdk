@@ -4,11 +4,15 @@
 // and the texts its ViewModel sent, each location with an "open in editor" link. While it is on, the page's own
 // handlers see no pointer event: a transparent layer takes them, and the window's capture phase stops them.
 //
-// What an element calls is found before any click in its component's source (`/__runic/handlers`, handlers.ts and
-// inspect-handlers.ts), and learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in
-// the caller's stack, so the DOM event being dispatched (`globalThis.event`) names the element. States come from the state inspector channel (`runic.views.inspector`), C#
-// locations from the development source map (`/__runic/sources`), opening from `/__runic/open` (C#) and Vite's
-// `/__open-in-editor` (frontend files).
+// What an element calls is found before any click in its component's source (handlers.ts and inspect-handlers.ts),
+// and learned from the Bridge-call channel (`runic.views.calls`): its `start` report arrives in the caller's stack, so
+// the DOM event being dispatched (`globalThis.event`) names the element. States come from the state inspector channel
+// (`runic.views.inspector`), C# locations from the development source map, and every editor link opens through
+// `/__runic/open`'s decision: a C# location by its source map id, a Translations message by its reference, a frontend
+// file by path (only files Vite serves). The source map, the handler analysis, message sources and opening go over
+// Vite's HMR connection when the client has it, so they reach the Vite server also from the .NET host's page under
+// `dotnet runic dev`; else to `/__runic/sources`, `/__runic/handlers`, `/__runic-translations/message` and
+// `/__runic/open` relative to the page.
 //
 // Text from generated `m.*()` calls carries Runic Translations' invisible message markers while select mode is on: turning
 // it on calls `markers.set(true)` on the Translations text-change channel (`Symbol.for("runic.translations.text")`,
@@ -58,9 +62,23 @@ export interface RunicInspectApi {
   open(location: RunicInspectLocation): Promise<boolean>;
 }
 
+/**
+ * A request to the development server over Vite's HMR connection (channel.ts, `requestEvent`): the source map, or
+ * opening a location. Resolves to the server's status (0 when it did not answer) and, for the map, its body.
+ */
+export type InspectRequest = (kind: "sources" | "handlers" | "message" | "open", target?: unknown) =>
+  Promise<{ readonly status: number; readonly body?: unknown }>;
+
 export interface InspectOptions {
+  /** The server's base path, below which the Translations message API is (without `request`). */
   readonly base?: string | undefined;
   readonly root?: string | undefined;
+  /**
+   * The development client's request over Vite's connection. With it, the source map and opening go to the Vite server
+   * whichever origin the page has (under `dotnet runic dev` the .NET host's); without it, to `/__runic/sources` and
+   * `/__runic/open` relative to the page.
+   */
+  readonly request?: InspectRequest | undefined;
 }
 
 export const inspectKey = Symbol.for("runic.vite.inspect");
@@ -154,7 +172,7 @@ function shortFile(file: string, root: string | undefined): string {
 export function installInspect(options: InspectOptions = {}): () => void {
   const host = globalThis as unknown as Record<symbol, unknown> & { event?: Event; ng?: AngularDebug };
   if (typeof document === "undefined" || typeof Element === "undefined") return () => {};
-  const { base = "/", root } = options;
+  const { base = "/", root, request } = options;
   // A page of another machine: /__runic/open refuses it, so links show their location without opening it.
   const remote = typeof location === "object" && typeof location.hostname === "string" && location.hostname !== "" && !isLocalHostname(location.hostname);
   // The last refusals of the data endpoints (403), for the notes.
@@ -234,11 +252,20 @@ export function installInspect(options: InspectOptions = {}): () => void {
 
   async function readSourceMap(): Promise<{ map?: RunicSourceMap; status?: "missing" | "unavailable" | "forbidden" }> {
     try {
-      const response = await fetch(sourcesPath, { credentials: "same-origin", cache: "no-store" });
-      if (response.status === 404) return { status: "missing" };
-      if (response.status === 403) return { status: "forbidden" };
-      if (!response.ok) return { status: "unavailable" };
-      const map = await response.json() as RunicSourceMap;
+      let status: number;
+      let map: RunicSourceMap | undefined;
+      if (request !== undefined) {
+        const answer = await request("sources");
+        status = answer.status;
+        map = answer.body as RunicSourceMap | undefined;
+      } else {
+        const response = await fetch(sourcesPath, { credentials: "same-origin", cache: "no-store" });
+        status = response.status;
+        map = response.ok ? await response.json() as RunicSourceMap : undefined;
+      }
+      if (status === 404) return { status: "missing" };
+      if (status === 403) return { status: "forbidden" };
+      if (status !== 200) return { status: "unavailable" };
       return Array.isArray(map?.viewModels) && Array.isArray(map.members) ? { map } : { status: "unavailable" };
     } catch {
       return { status: "unavailable" };
@@ -247,10 +274,17 @@ export function installInspect(options: InspectOptions = {}): () => void {
 
   async function readAnalysis(file: string): Promise<RequestedAnalysis | undefined> {
     try {
-      const response = await fetch(`${handlersPath}?file=${encodeURIComponent(file)}`, { credentials: "same-origin", cache: "no-store" });
-      handlersForbidden = response.status === 403;
-      if (!response.ok) return undefined;
-      const analysis = await response.json() as RunicHandlerAnalysis;
+      let analysis: RunicHandlerAnalysis | undefined;
+      if (request !== undefined) {
+        const answer = await request("handlers", file);
+        handlersForbidden = answer.status === 403;
+        analysis = answer.status === 200 ? answer.body as RunicHandlerAnalysis : undefined;
+      } else {
+        const response = await fetch(`${handlersPath}?file=${encodeURIComponent(file)}`, { credentials: "same-origin", cache: "no-store" });
+        handlersForbidden = response.status === 403;
+        if (!response.ok) return undefined;
+        analysis = await response.json() as RunicHandlerAnalysis;
+      }
       return analysis?.format === "runic-handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
     } catch {
       return undefined;
@@ -315,12 +349,18 @@ export function installInspect(options: InspectOptions = {}): () => void {
       const query = `key=${encodeURIComponent(message.key)}&catalog=${encodeURIComponent(message.catalog)}`;
       let reply = replies.get(query);
       if (reply === undefined) {
-        reply = fetch(`${base.endsWith("/") ? base : `${base}/`}${messagePath}?${query}`, { credentials: "same-origin", cache: "no-store" })
-          .then((response) => {
-            if (response.status === 403) forbidden = true;
-            return response.ok ? response.json() as Promise<unknown> : undefined;
-          })
-          .catch(() => undefined);
+        reply = request !== undefined
+          ? request("message", { catalog: message.catalog, key: message.key })
+            .then((answer) => {
+              if (answer.status === 403) forbidden = true;
+              return answer.status === 200 ? answer.body : undefined;
+            }).catch(() => undefined)
+          : fetch(`${base.endsWith("/") ? base : `${base}/`}${messagePath}?${query}`, { credentials: "same-origin", cache: "no-store" })
+            .then((response) => {
+              if (response.status === 403) forbidden = true;
+              return response.ok ? response.json() as Promise<unknown> : undefined;
+            })
+            .catch(() => undefined);
         replies.set(query, reply);
       }
       const value = await reply;
@@ -384,17 +424,16 @@ export function installInspect(options: InspectOptions = {}): () => void {
 
   async function open(location: RunicInspectLocation): Promise<boolean> {
     try {
-      const body = location.editor === "runic" && location.id !== undefined ? { id: location.id }
+      // One open path for every location: the endpoint validates each kind (sources.ts, resolveOpenLocation).
+      const target = location.editor === "runic" && location.id !== undefined ? { id: location.id }
         : location.editor === "translations" && location.message !== undefined
           ? { message: { catalog: location.message.catalog, key: location.message.key, locale: location.message.locale } }
-          : undefined;
-      const response = body !== undefined
-        ? await fetch(openPath, {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-        : await fetch(`${base.endsWith("/") ? base : `${base}/`}__open-in-editor?file=${
-          encodeURIComponent(`${location.file}:${location.line}:${location.column}`)}`, { credentials: "same-origin" });
+          : { file: location.file, line: location.line, column: location.column };
+      if (request !== undefined) return (await request("open", target)).status === 200;
+      const response = await fetch(openPath, {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(target),
+      });
       return response.ok;
     } catch {
       return false;

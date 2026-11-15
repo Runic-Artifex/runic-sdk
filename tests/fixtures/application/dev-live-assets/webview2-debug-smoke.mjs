@@ -157,8 +157,8 @@ function run(command, args) {
 }
 
 // A started process with its output retained for failure detail.
-function start(label, args) {
-  const command = elevated ? [unelevated, "--run-unelevated", "dotnet", ...args] : args;
+function start(label, args, { standardUser: asStandardUser = elevated } = {}) {
+  const command = asStandardUser ? [unelevated, "--run-unelevated", "dotnet", ...args] : args;
   const child = spawn("dotnet", command, { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
   const started = { label, child, output: "" };
   child.stdout.on("data", chunk => { started.output += chunk; });
@@ -319,7 +319,43 @@ try {
     throw error;
   });
   console.log(`WEBVIEW2_DEBUG_DEV_SESSION_OK|${session.debugEndpoints[0].url}|${devPage.url}`);
-  console.log("WEBVIEW2_DEBUG_OK|launch-profile|json-version|json-list|page-target|runtime-evaluate|debugger|own-arguments|dev-session");
+  // #1001: processStartedAt is dev's own start time as Windows reports it, the check a reader makes with processId.
+  const reported = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    `(Get-Process -Id ${Number(session.processId)}).StartTime.ToUniversalTime().ToString('o')`], { encoding: "utf8", timeout: 60_000 });
+  const difference = Math.abs(Date.parse(reported.stdout.trim()) - Date.parse(session.processStartedAt));
+  if (!(difference < 1_000))
+    throw new Error(`dev-session.json's processStartedAt ${session.processStartedAt} is not process ${session.processId}'s start time ` +
+      `${reported.stdout.trim()} ${reported.stderr.trim()}`);
+  if (session.sourceMap !== null) throw new Error(`Without a development server, dev passes no source map: ${session.sourceMap}`);
+  if (session.unavailableDebugEndpoints?.length !== 0)
+    throw new Error(`An unelevated dev lists unavailable endpoints: ${JSON.stringify(session.unavailableDebugEndpoints)}`);
+  console.log(`WEBVIEW2_DEBUG_PROCESS_STARTED_AT_OK|${session.processStartedAt}|${reported.stdout.trim()}`);
+
+  // 3. #996: dev run elevated, as this script is on CI. Its Window gets dev's token, which WebView2 ignores the
+  //    variable in, so the session file lists the endpoint as unavailable and dev prints a hint.
+  if (elevated) {
+    await stop(dev);
+    dev = undefined;
+    await rm(sessionFile, { force: true });
+    dev = start("dotnet runic dev (elevated)", [tool, "dev", "--project", project, "-c", "Release", "--no-build", "--no-restore",
+      "--no-dotnet-watch", "-e", `${variable}=${debugging.environment[variable]}`], { standardUser: false });
+    const elevatedDetail = async () => `${await detailOf(dev)()}\ndev-session.json: ` +
+      `${await readFile(sessionFile, "utf8").catch(error => `(unreadable: ${error.code})`)}`;
+    const elevatedSession = await waitFor(async () => {
+      if (dev.child.exitCode !== null) throw new Error(`dotnet runic dev exited ${dev.child.exitCode}`);
+      const text = await readFile(sessionFile, "utf8").catch(() => null);
+      return text && /\[dev\] Debugging: WebView2 ignores/.test(dev.output) ? JSON.parse(text) : undefined;
+    }, { label: "the elevated dev's session file and hint", timeout: 60_000, detail: elevatedDetail });
+    const unavailable = [{ engine: "webview2", protocol: "cdp", url: endpoint, reason: "elevated" }];
+    if (elevatedSession.debugEndpoints.length !== 0 || JSON.stringify(elevatedSession.unavailableDebugEndpoints) !== JSON.stringify(unavailable))
+      throw new Error(`The elevated dev's session file: debugEndpoints ${JSON.stringify(elevatedSession.debugEndpoints)}, ` +
+        `unavailableDebugEndpoints ${JSON.stringify(elevatedSession.unavailableDebugEndpoints)}; expected ${JSON.stringify(unavailable)}`);
+    const hint = /^\[dev\] Debugging: .*$/m.exec(dev.output)[0].trim();
+    if (!hint.includes(endpoint) || !hint.includes("tools/dotnet-runic/README.md#session-file")) throw new Error(`The hint: ${hint}`);
+    console.log(`WEBVIEW2_DEBUG_ELEVATED_DEV_OK|${hint}`);
+  }
+  console.log("WEBVIEW2_DEBUG_OK|launch-profile|json-version|json-list|page-target|runtime-evaluate|debugger|own-arguments|dev-session" +
+    (elevated ? "|elevated-dev" : ""));
 } finally {
   await stop(launched);
   await stop(dev);

@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import angular from "@analogjs/vite-plugin-angular";
+import { DevTools } from "@vitejs/devtools";
 import { runic } from "@runic-artifex/vite-plugin-runic";
 import { runicTranslations } from "@runic-artifex/vite-plugin-runic-translations";
 
@@ -14,6 +15,9 @@ export default defineConfig({
     // scripts run ngc for that.
     angular({ liveReload: true }),
     runic(),
+    // The Vite DevTools dock while Vite serves: the Runic panel shows each Bridge call with its C# handler and
+    // opens it in your editor. vite build leaves it out. To turn the dock off, delete this line.
+    DevTools(),
     // Compiles the catalog, translations/runic.json, with the dotnet-runic-translations tool of the project's
     // .config/dotnet-tools.json into .runic/translations, and serves it as virtual:runic-translations/app with its types
     // in .runic/translations/virtual.d.ts. The development server compiles a changed, added or removed message again

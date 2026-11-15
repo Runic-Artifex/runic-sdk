@@ -47,9 +47,9 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   assert.equal(handlers.has("runic:connection"), true);
   assert.equal(handlers.has("runic:diagnostic"), true);
   assert.equal(handlers.has("runic:state"), false, "the page no longer reports a runtime state");
-  // The open action is mounted at the root (sources.ts), so that an accepted request continues to /__open-in-editor.
+  // The open action launches the editor itself (sources.ts, launchSourceEditor), so it is mounted at its own path.
   assert.deepEqual(middleware.map(([path]) => typeof path === "function" ? path.name : path),
-    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "runicOpenInEditor", "/__runic/handlers"]);
+    ["/__runic/state", "/__runic/diagnostics", "/__runic/sources", "/__runic/handlers", "/__runic/open"]);
   const endpoints = (options) => {
     const paths = [];
     runic(options).configureServer({
@@ -59,8 +59,9 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
     });
     return paths;
   };
-  assert.deepEqual(endpoints({ sourceMap: false }), ["/__runic/state", "/__runic/diagnostics", "runicOpenInEditor", "/__runic/handlers"],
-    "sourceMap: false serves no map; Runic Inspect still opens Translations sources");
+  // Without a map /__runic/open still opens what Runic Inspect links to (frontend files, Translations sources).
+  assert.deepEqual(endpoints({ sourceMap: false }), ["/__runic/state", "/__runic/diagnostics", "/__runic/handlers", "/__runic/open"],
+    "sourceMap: false serves no map; Runic Inspect still opens frontend files and Translations sources");
   assert.deepEqual(endpoints({ sourceMap: false, inspect: false }), ["/__runic/state", "/__runic/diagnostics"],
     "without the map and Runic Inspect, no endpoint");
 });
@@ -284,6 +285,7 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   const commands = [];
   const specs = [];
   const view = { stateKey: "runic:test-view" };
+  const actions = [];
   await plugin.devtools.setup({
     rpc: {
       sharedState: {
@@ -292,6 +294,7 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
           mutate: () => undefined,
         }),
       },
+      register: (definition) => actions.push(definition),
     },
     createJsonRenderer: (spec) => {
       specs.push(spec);
@@ -305,7 +308,11 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   assert.equal(docks[0].type, "json-render");
   assert.equal(docks[0].view, view);
   assert.equal(commands[0].id, "runic:copy-diagnostic-state");
+  // The open buttons' action (sources.test.mjs checks what it opens).
+  assert.deepEqual(actions.map((action) => [action.name, action.type]), [["runic:open-in-editor", "action"]]);
   assert.equal(specs[0].elements.heading.props.text, "Runic");
+  assert.equal(specs[0].elements.calls.props.title, "Bridge calls");
+  assert.deepEqual(specs[0].elements.calls.children, ["calls-none"]);
   assert.equal(specs.length, 1);
 });
 
@@ -836,6 +843,7 @@ const connectionState = await load(views + "connection-state.js", "views/connect
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
+await load("dist/calls.js", "plugin/calls");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
 await load("dist/inspect-edit.js", "plugin/inspect-edit");
@@ -922,6 +930,7 @@ const connectionState = await load(views + "connection-state.js", "views/connect
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
+await load("dist/calls.js", "plugin/calls");
 await load("dist/inspect-data.js", "plugin/inspect-data");
 await load("dist/inspect-frameworks.js", "plugin/inspect-frameworks");
 await load("dist/inspect-edit.js", "plugin/inspect-edit");

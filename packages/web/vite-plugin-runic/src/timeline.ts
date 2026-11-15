@@ -1,6 +1,6 @@
 // The development state that `runic()` and `runicDevSessionProxy()` keep in the development server process: the
-// contract metadata, the page's connection state, the state inspector's Views and a bounded timeline of sanitized
-// diagnostics.
+// contract metadata, the page's connection state, the state inspector's Views, a bounded timeline of sanitized
+// diagnostics and a bounded history of Bridge calls.
 import type {
   RunicDiagnosticDetail,
   RunicDiagnosticEntry,
@@ -9,6 +9,9 @@ import type {
   RunicViewStateValue,
 } from "./diagnostics.js";
 import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
+import type { RunicBridgeCall, RunicBridgeCallReport } from "./calls.js";
+import { callEntry, sanitizeCallReport } from "./calls.js";
+import type { RunicSourceMap } from "./sources.js";
 
 const defaultTimelineLimit = 200;
 const maximumTimelineLimit = 500;
@@ -40,6 +43,11 @@ export interface RunicDevelopmentState {
    */
   readonly views: readonly RunicViewSnapshot[];
   readonly timeline: readonly RunicTimelineEntry[];
+  /**
+   * The page's settled Bridge calls, the oldest first, as many as the timeline keeps: each with its duration, its C#
+   * handler from the development source map and, from a .NET host that measures it, the handler's own duration.
+   */
+  readonly calls: readonly RunicBridgeCall[];
 }
 
 /** One View in the state inspector. */
@@ -78,6 +86,11 @@ export interface DevelopmentTimeline {
    * whether the report was valid.
    */
   applyView(candidate: unknown): boolean;
+  /**
+   * Sanitizes and appends a call the development client reported, with the handler `map` names; returns it, or
+   * `undefined` for a candidate that is not a call report.
+   */
+  appendCall(candidate: unknown, map?: RunicSourceMap): RunicBridgeCall | undefined;
 }
 
 export function createDevelopmentTimeline(
@@ -87,6 +100,7 @@ export function createDevelopmentTimeline(
 ): DevelopmentTimeline {
   let state = initial;
   let nextSequence = 1;
+  let nextCall = 1;
   return {
     get state() { return state; },
     configure(update) { state = update(state); },
@@ -100,6 +114,15 @@ export function createDevelopmentTimeline(
       };
       nextSequence += 1;
       state = { ...state, timeline: [...state.timeline, entry].slice(-maxTimelineEntries) };
+      changed(state);
+      return entry;
+    },
+    appendCall(candidate, map) {
+      const report: RunicBridgeCallReport | undefined = sanitizeCallReport(candidate);
+      if (!report) return undefined;
+      const entry = callEntry(report, map, `call-${nextCall}`, new Date().toISOString());
+      nextCall += 1;
+      state = { ...state, calls: [...state.calls, entry].slice(-maxTimelineEntries) };
       changed(state);
       return entry;
     },
@@ -166,6 +189,7 @@ export function initialDevelopmentState(
     connection: { state: "unknown" },
     views: [],
     timeline: [],
+    calls: [],
   };
 }
 
@@ -175,6 +199,7 @@ export function withoutFailures(current: RunicDevelopmentState): RunicDevelopmen
   return {
     ...current,
     timeline: current.timeline.map(({ failure: _failure, ...entry }) => entry),
+    calls: current.calls.map(({ failure: _failure, ...call }) => call),
   };
 }
 

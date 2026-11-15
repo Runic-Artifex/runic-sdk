@@ -72,7 +72,7 @@ internal sealed partial class ToolTests
             DevelopmentServerDocument = "index.html;pages/settings.html",
         };
         var options = new DevOptions(null, "Debug", true, true, true, false, []) { StartWindow = false };
-        var session = new DevSession(configuration, options, [], DateTimeOffset.UnixEpoch);
+        var session = new DevSession(configuration, options, [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
         Write(Path.Combine(configuration.RuntimeWebRoot, "index.html"), "<script src=\"http://127.0.0.1:5173/@vite/client\"></script>");
         Write(Path.Combine(configuration.RuntimeWebRoot, "pages", "settings.html"), "settings");
         // A page left from an earlier session that no longer has it.

@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
-import { connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, spanEvent, viewEvent } from "./channel.js";
+import { callEvent, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, spanEvent, viewEvent } from "./channel.js";
 import { readLimitedBody, sameOrigin } from "./requests.js";
 import { parseAllowList, resolveAccessList } from "./access.js";
-import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl } from "./sources.js";
+import { answerOpen, answerSources, createSourceMapReader, launchSourceEditor } from "./sources.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 
@@ -72,7 +72,9 @@ export async function answerClientMessage(
   catch { return answerStatus(response, 400); }
   if (typeof message !== "object" || message === null || Array.isArray(message)) return answerStatus(response, 400);
   const { event, data } = message as { event?: unknown; data?: unknown };
-  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent && event !== spanEvent) return answerStatus(response, 400);
+  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent && event !== callEvent && event !== spanEvent) {
+    return answerStatus(response, 400);
+  }
   deliver(event, data);
   answerStatus(response, 204);
 }
@@ -105,12 +107,12 @@ export interface RunicDevSessionProxyOptions {
  *
  * - `/__runic/state` with the path-free development state, and under `dotnet runic dev` with its session;
  * - `/__runic/diagnostics`, which the development client (`@runic-artifex/vite-plugin-runic/client`) posts the
- *   page's Views diagnostics, connection state and View states to. The timeline is bounded, and failures go to the
- *   terminal;
- * - for Runic Inspect: `/__runic/sources` (the development source map), `/__runic/open` (opens a C# location through
- *   the server's `/__open-in-editor`) and `/__runic/handlers` (which event handlers of a component reach which
- *   commands, from its source and template), each for pages of this machine, or of the hosts and networks `allow` and
- *   `RUNIC_DEV_ALLOW` admit (`/__runic/open` for this machine only).
+ *   page's Views diagnostics, connection state, View states and Bridge calls to. The timeline is bounded, and failures go
+ *   to the terminal;
+ * - for Runic Inspect: `/__runic/sources` (the development source map), `/__runic/open` (opens a location in a file
+ *   the source map lists, with launch-editor as `runic()` does) and `/__runic/handlers` (which event handlers of a
+ *   component reach which commands, from its source and template), each for pages of this machine, or of the hosts
+ *   and networks `allow` and `RUNIC_DEV_ALLOW` admit (`/__runic/open` for this machine only).
  */
 export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}): Record<string, ProxyOptions> {
   if (options.printFailures !== undefined && typeof options.printFailures !== "boolean") {
@@ -139,6 +141,11 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
       timeline.applyView(data);
       return;
     }
+    // The Angular CLI's server has no source map reader for the calls, so they name no handler.
+    if (event === callEvent) {
+      timeline.appendCall(data);
+      return;
+    }
     // This proxy exports no spans: its client is not configured to send them.
     if (event === spanEvent) return;
     const entry = timeline.appendDiagnostic(data);
@@ -155,12 +162,14 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
       },
     };
     inspect[`^${openPath}(?:[/?#]|$)`] = {
-      // An accepted location continues to the server's own /__open-in-editor (Vite's editor launcher).
+      // The same decision and launcher as runic()'s /__runic/open (sources.ts), for the source map's files only: the
+      // Angular CLI gives this proxy no Vite configuration to tell which frontend files it serves.
       async bypass(request, response) {
         if (response === undefined) return false;
-        let editor: string | undefined;
-        await answerOpen(request, response, readSourceMap, (location) => { editor = editorRequestUrl("/", location); });
-        return editor ?? request.url ?? openPath;
+        await answerOpen(request, response, readSourceMap, (location) => {
+          launchSourceEditor(location, (message) => console.warn(`[runic] ${message}`));
+        });
+        return request.url ?? openPath;
       },
     };
   }

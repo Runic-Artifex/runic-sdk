@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { runicAdapter } from "@runic-artifex/sveltekit";
+import { DevTools } from "@vitejs/devtools";
 import { runic } from "@runic-artifex/vite-plugin-runic";
 
 export default defineConfig(({ command }) => ({
@@ -18,5 +19,8 @@ export default defineConfig(({ command }) => ({
     // confirm that the development server on its port is the one it started. html: false, because SvelteKit renders
     // the page itself and warns about a transformIndexHtml hook.
     runic({ html: false }),
+    // The Vite DevTools dock while Vite serves: the Runic panel shows each Bridge call with its C# handler and
+    // opens it in your editor. vite build leaves it out. To turn the dock off, delete this line.
+    DevTools(),
   ],
 }));

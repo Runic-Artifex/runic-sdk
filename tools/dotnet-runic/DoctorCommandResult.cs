@@ -50,12 +50,18 @@ internal sealed record DoctorCommandResult(
             report.IsHealthy,
             new DoctorSummary(report.Passed, report.Warnings, report.Failed),
             [.. report.Checks.Select(static check => new DoctorCheckResult(
-                check.Name, StatusName(check.Status), check.Message, check.Remediation))])
+                check.Name, StatusName(check.Status), check.Message, check.Remediation, CheckHelpUri(check.Name)))])
         {
             Hosts = [.. project.Hosts.Select(HostName)],
             HumanOutput = humanOutput,
         };
     }
+
+    /// <summary>
+    /// The documentation of a doctor check: its heading in the dotnet-runic README's "Doctor checks" section at this
+    /// release, whose anchor is the check's identifier.
+    /// </summary>
+    internal static string CheckHelpUri(string id) => RunicReleaseLinks.SourceUrl + "tools/dotnet-runic/README.md#" + id;
 
     /// <summary>
     /// Mirrors failing and warning checks as envelope diagnostics. Checks at or
@@ -193,7 +199,9 @@ internal sealed record DoctorCheckResult(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("message")] string Message,
-    [property: JsonPropertyName("remediation")] string? Remediation);
+    [property: JsonPropertyName("remediation")] string? Remediation,
+    // Added in 0.20: the check's section of the dotnet-runic README at this release.
+    [property: JsonPropertyName("helpUri")] string HelpUri);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(DoctorCommandResult))]
