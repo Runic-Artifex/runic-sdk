@@ -605,6 +605,12 @@ so `m.*()` runs again after a language switch; the component's children render
 with it, except memoized ones. `syncDocumentLocale()`, once in `main.tsx`, keeps
 `<html lang dir>` on that locale.
 
+In `vite dev` with the Translations Vite plugin 0.12.0 or later,
+`useTextLocale()` also renders again when you save an edited message, with the
+same locale, and the component keeps its state: the new text shows in place.
+An added, removed or renamed message, or changed inputs or markup, still reload
+the page ([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+
 ```tsx
 function Toolbar() {
   useTextLocale();

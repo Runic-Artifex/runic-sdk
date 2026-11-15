@@ -305,6 +305,8 @@
       ],
       "paths": [
         "packages/dotnet/Runic.Application.Views",
+        "packages/dotnet/Runic.Application.Views.Analyzers",
+        "packages/dotnet/Runic.Application.Views.Analyzers.CodeFixes",
         "packages/dotnet/Runic.Application.Testing",
         "packages/dotnet/Runic.Application.Views.ReactiveUI",
         "packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive",
@@ -320,6 +322,7 @@
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Logging.Tests",
         "tests/dotnet/Runic.Application.Views.Desktop.Tests",
+        "tests/dotnet/Runic.Application.Views.Analyzers.Tests",
         "tests/native/Runic.Application.HostedWindows.Smoke",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
         "tests/benchmarks/host-scripts",

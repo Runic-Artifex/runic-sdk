@@ -292,6 +292,35 @@
                       GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishReadyToRun;RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
+  <!-- The RUNICBRIDGE shape analyzers (Runic.Application.Views.Analyzers) report the rules that need only the source
+       while you type, where the generator, a build step that design-time builds skip, reports them only after a build.
+       They read whether this project generates its own Bridges, as the generator's conditions below do. In a build the
+       generator runs first and stops at these errors, so each is reported once. From source, the analyzer projects are
+       referenced as analyzers; from the package, NuGet adds them to a project that references Runic.Application.Views
+       directly, and RunicViewsAddAnalyzers to one that gets it through a host adapter, whose dependency excludes
+       analyzers. -->
+  <PropertyGroup>
+    <_RunicViewsAnalyzersProject>$(MSBuildThisFileDirectory)../../Runic.Application.Views.Analyzers/Runic.Application.Views.Analyzers.csproj</_RunicViewsAnalyzersProject>
+    <_RunicViewsAnalyzerCodeFixesProject>$(MSBuildThisFileDirectory)../../Runic.Application.Views.Analyzers.CodeFixes/Runic.Application.Views.Analyzers.CodeFixes.csproj</_RunicViewsAnalyzerCodeFixesProject>
+    <_RunicViewsPackagedAnalyzers>$(MSBuildThisFileDirectory)../analyzers/dotnet/cs/</_RunicViewsPackagedAnalyzers>
+  </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="RunicApplicationFrontendGenerationEnabled" />
+    <CompilerVisibleProperty Include="RunicApplicationFrontendModelAssembly" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(_RunicViewsAnalyzersProject)') and '$(RunicApplicationFrontendBootstrap)' != 'true'">
+    <ProjectReference Include="$(_RunicViewsAnalyzersProject);$(_RunicViewsAnalyzerCodeFixesProject)" ReferenceOutputAssembly="false" OutputItemType="Analyzer"
+                      GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishReadyToRun;RuntimeIdentifier;SelfContained" />
+  </ItemGroup>
+  <Target Name="RunicViewsAddAnalyzers" AfterTargets="ResolveLockFileAnalyzers"
+          Condition="!Exists('$(_RunicViewsAnalyzersProject)') and Exists('$(_RunicViewsPackagedAnalyzers)Runic.Application.Views.Analyzers.dll')">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Filename)' == 'Runic.Application.Views.Analyzers' or '%(Filename)' == 'Runic.Application.Views.Analyzers.CodeFixes'" />
+      <Analyzer Include="$([System.IO.Path]::GetFullPath('$(_RunicViewsPackagedAnalyzers)Runic.Application.Views.Analyzers.dll'))" />
+      <Analyzer Include="$([System.IO.Path]::GetFullPath('$(_RunicViewsPackagedAnalyzers)Runic.Application.Views.Analyzers.CodeFixes.dll'))" />
+    </ItemGroup>
+  </Target>
+
   <!-- The bootstrap pass sets its own output paths. Referenced projects (a
        model project beside a WPF application, for example) keep the
        properties of the real build, so they are not compiled again into the

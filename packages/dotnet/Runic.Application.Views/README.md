@@ -2143,6 +2143,13 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
+Since 0.20 the package also ships Roslyn analyzers for the errors that the
+source alone shows, such as a command named `NewCommand` or a `ViewRequest<T>`
+with a public setter. Your IDE reports them while you type, with the same ID
+and message, and offers a code fix where it is mechanical. The
+[diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#errors-while-you-type)
+lists them.
+
 `RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034`, `039` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
@@ -3471,7 +3478,8 @@ The page gets the same catalog's ESM one of two ways:
   `virtual:runic-translations/<catalog>`, and writes the modules' types to
   `.runic/translations/virtual.d.ts`, which a type check references. Under
   `dotnet runic dev` (or `vite dev`) it compiles an edited, added or removed
-  message again and the page shows it without a build. The .NET project then
+  message again and the page shows it without a build, in place where the page
+  allows it (**Edited messages in `vite dev`** below). The .NET project then
   sets neither property below, so its build does not run the tool.
 
   ```ts
@@ -3829,6 +3837,31 @@ again on a switch only when it reads a reactive text locale:
 | Angular | `configureSharedLocaleResolver(() => textLocaleSignal()() ?? locale.getRequestedLocale())`: one signal for the page, also for `OnPush` templates |
 | React | `configureSharedLocaleResolver(locale.getRequestedLocale)` and `useTextLocale()` in each component that renders `m.*()` (its children render with it, except memoized ones) |
 | Effect | `textLocales()`, a stream of the locale; render the messages again on each |
+
+**Edited messages in `vite dev`.** With the Translations Vite plugin 0.12.0 or
+later, saving an edited message updates the page in place: the page keeps its
+component state, its language and its connection. The plugin swaps the new text
+into the loaded catalog and signals it on the global text-change channel
+`Symbol.for("runic.translations.text")`; `configureTranslatedText` follows that
+channel in the browser, also when it runs before the catalog loads, and renders
+the text again as a language switch does, through the same reactive text locale as the table above (in React, a
+component that calls `useTextLocale()` and its children, except memoized ones).
+Text references (`useText`, `injectText`, the `runicText` pipe, `texts`) format
+again too. In place means a message's text, its plural and selector variants
+and the text inside its markup, in any locale. These still reload the page,
+with the reason in the Vite log: an added, removed or renamed message, changed
+inputs or markup, a new locale, and a `runic.json` change. A page that does not
+call `configureTranslatedText` reloads as well, so it never shows stale text;
+one that calls it shows the new text wherever it renders again on a language
+switch.
+Text computed once, such as a `const` in a script, a SvelteKit `load` result or
+a `document.title` set in code, keeps its old text until it is computed again,
+as after a language switch. In production nothing writes the channel: the
+listener `configureTranslatedText` adds never runs, and the helpers behave as
+before. The Angular CLI's dev server (`ng serve`) runs no Vite
+plugins: a page built with it imports the ESM of the .NET build and reloads
+after `dotnet build`. In-place updates in Angular need Angular built with Vite
+(`@analogjs/vite-plugin-angular`) and the Translations Vite plugin.
 
 **References of several catalogs.** `configureTranslatedText` takes one
 `resolve`, and a later call replaces an earlier one. When ViewModels send
