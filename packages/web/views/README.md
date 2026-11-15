@@ -1706,7 +1706,14 @@ packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
 `runicText` pipe (Angular) and `texts` (Effect). A template that calls the
 page's own `m.*()` renders again on a switch when the locale resolver reads
 the framework's text locale: `useTextLocale` (React, Vue, Svelte),
-`textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). The mock bridge's
+`textLocaleSignal` (Angular) or the `textLocales()` stream (Effect). In `vite dev`
+with the Translations Vite plugin 0.12.0 or later, an edited message updates in
+place: `configureTranslatedText` follows the plugin's text-change channel
+(`Symbol.for("runic.translations.text")`, which nothing writes in production) and renders the text
+again as a switch does, with the page's state kept; an added, removed or renamed
+message, changed inputs or markup still reload the page
+([Edited messages in `vite dev`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+The mock bridge's
 `setWindowLocale(locale)` pushes a locale in page tests. Every `hello` also
 reports the browser's `navigator.languages` (`client-languages/1`, a .NET host
 of 0.17 or later), so the application can choose the window's language from

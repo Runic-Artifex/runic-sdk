@@ -1,0 +1,29 @@
+<!-- A publish passes RuntimeIdentifier and PublishAot to every project it reaches, including during restore;
+     they apply to applications, never to this netstandard2.0 analyzer. -->
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="RuntimeIdentifier;SelfContained;PublishAot;PublishTrimmed">
+  <Import Project="../../../eng/build/platform.props" />
+  <PropertyGroup>
+    <!-- Roslyn analyzers of the Bridge shape rules (RUNICBRIDGE), packed into Runic.Application.Views under analyzers/;
+         never a package of their own. The Bridge generator stays the authority: these report the rules it can check
+         from source while you type (docs/diagnostics.md). -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Diagnostics link to their docs/diagnostics.md entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Analyzers.CodeFixes" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Analyzers.Tests" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

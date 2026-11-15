@@ -10,7 +10,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { basename, extname, resolve, join } from "node:path";
 import { root, workspace, run, configuration, packedNuget } from "./run.mjs";
 import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText } from "./nupkg.mjs";
@@ -87,9 +87,11 @@ export const packageLayouts = {
     includes: ["buildTransitive/Runic.Assets.props", "buildTransitive/Runic.Assets.HelpLinks.props", "buildTransitive/Runic.Assets.targets"],
     rollForwardMajor: ["tools/net10.0/Runic.Assets.Packer.runtimeconfig.json"],
   },
-  // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
+  // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3). The RUNICBRIDGE shape analyzers and
+  // their code fixes ship under analyzers/ (#962).
   "Runic.Application.Views": {
-    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets"],
+    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets",
+      "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.dll", "analyzers/dotnet/cs/Runic.Application.Views.Analyzers.CodeFixes.dll"],
     rollForwardMajor: ["tools/net10.0/BridgeCodegen.runtimeconfig.json"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
@@ -449,6 +451,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
     });
   }
   if (!packageName || packageName === viewsTranslations) verifyViewsTranslationsConsumer(directory, env);
+  if (!packageName || packageName === "Runic.Application.Views") verifyViewsAnalyzerConsumers(directory, env);
   if (packageName) {
     console.log(`Packed ${packageName} consumer passed.`);
     return;
@@ -649,6 +652,48 @@ function verifyViewsTranslationsConsumer(directory, env) {
   cpSync(resolve(root, "tests/fixtures/application/views-translations-consumer"), consumer, { recursive: true });
   writeFileSync(join(consumer, "Consumer.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled></PropertyGroup><ItemGroup><PackageReference Include="${viewsTranslations}" Version="${packageVersion(workspace, viewsTranslations)}"/><PackageReference Include="Runic.Translations.Build" Version="${pinnedPackageVersion("Runic.Translations.Build")}" PrivateAssets="all"/><PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${pinnedPackageVersion("Microsoft.Extensions.DependencyInjection")}"/></ItemGroup></Project>`);
   run("dotnet", ["run", "--project", "Consumer.csproj", "--configuration", configuration], consumer, env);
+}
+
+// The RUNICBRIDGE shape analyzers of the packed Runic.Application.Views (#962), in a project that gets it through a host
+// adapter, whose dependency excludes analyzers, and in one that also references it directly: each loads them once. A
+// design-time build, like the IDE's, skips the Bridge generator, and the analyzer reports the error; a build reports it
+// once, from the generator, which runs before the compiler and stops the build.
+function verifyViewsAnalyzerConsumers(directory, env) {
+  const adapter = "Runic.Application.Views.CsWebUi";
+  const expected = "error RUNICBRIDGE009: MainViewModel.Save: Bridge commands must end with Command.";
+  for (const direct of [false, true]) {
+    const consumer = join(directory, direct ? "views-analyzers-direct" : "views-analyzers-adapter");
+    mkdirSync(consumer);
+    const references = [adapter, ...(direct ? ["Runic.Application.Views"] : [])]
+      .map(name => `<PackageReference Include="${name}" Version="${packageVersion(workspace, name)}"/>`).join("");
+    writeFileSync(join(consumer, "Consumer.csproj"), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Library</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled></PropertyGroup><ItemGroup>${references}</ItemGroup></Project>`);
+    writeFileSync(join(consumer, "MainWindow.cs"), `using System.ComponentModel;
+using System.Windows.Input;
+using Runic.Application.Views;
+namespace AnalyzerConsumer;
+public sealed partial class MainWindow : RunicWindow<MainViewModel>;
+public sealed class MainViewModel : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+    [RunicCommandInput(typeof(string))] public ICommand Save { get; } = null!;
+}
+`);
+    run("dotnet", ["restore", "Consumer.csproj"], consumer, env);
+    for (const designTime of [true, false]) {
+      const label = `${direct ? "direct" : "adapter"} ${designTime ? "design-time build" : "build"}`;
+      const result = spawnSync("dotnet", ["build", "Consumer.csproj", "--no-restore", "--configuration", configuration,
+        ...(designTime ? ["-p:DesignTimeBuild=true"] : [])], { cwd: consumer, encoding: "utf8", env: { ...process.env, ...env } });
+      // The errors as the build logs them, before the summary that repeats them; the indented lines are the generator's
+      // own output, which the build also logs as messages.
+      const reports = `${result.stdout}${result.stderr}`.split(/\r?\nBuild (?:FAILED|succeeded)\./)[0].split(/\r?\n/)
+        .filter(line => !/^\s/.test(line) && line.includes(expected));
+      assert.notEqual(result.status, 0, `The ${label} of the analyzer consumer succeeded:\n${result.stdout}`);
+      assert.equal(reports.length, 1, `The ${label} reported RUNICBRIDGE009 ${reports.length} times:\n${result.stdout}`);
+      // The generator's report ends with "See <link>"; the compiler's, the analyzer's, with "(<link>)".
+      assert.ok(designTime ? !reports[0].includes(" See https://") : reports[0].includes(" See https://"),
+        `The ${label} reported RUNICBRIDGE009 from the ${designTime ? "generator" : "analyzer"}: ${reports[0]}`);
+    }
+  }
 }
 
 export async function verifyToolAndTemplatePackages(directory, nuget, env) {
