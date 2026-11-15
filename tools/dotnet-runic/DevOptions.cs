@@ -31,6 +31,21 @@ internal sealed record DevOptions(
 
     /// <summary>The <c>-e</c> variables for the Window process, in the order given; a later value of a name wins.</summary>
     internal IReadOnlyList<KeyValuePair<string, string>> Environment { get; init; } = [];
+
+    /// <summary>
+    /// False with <c>--no-debug-endpoint</c>: on Linux, dev opens neither WebKit's remote inspector nor Runic's CDP adapter
+    /// for the Window (<see cref="WebKit.WebKitDebugging"/>).
+    /// </summary>
+    internal bool DebugEndpoint { get; init; } = true;
+
+    /// <summary><c>--webkit-inspector</c>: WebKit's own inspector over HTTP instead of the CDP adapter, where WebKitGTK is safe.</summary>
+    internal bool WebKitInspector { get; init; }
+
+    /// <summary>
+    /// Variables dev sets for the Window so its pages can be debugged, such as <c>WEBKIT_INSPECTOR_SERVER</c>; decided after
+    /// the options are read. A Window that the IDE starts (<c>--no-window</c>) gets them from the session file.
+    /// </summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> DebugEnvironment { get; init; } = [];
 }
 
 /// <summary>Reads and checks the option values that dev and size pass on to dotnet and MSBuild.</summary>
