@@ -62,7 +62,8 @@ internal static class PackageTools
         string failureCode = PackageCodes.ToolFailed,
         bool capture = false,
         IReadOnlySet<int>? secret = null,
-        IReadOnlyDictionary<string, string>? environment = null)
+        IReadOnlyDictionary<string, string>? environment = null,
+        StringBuilder? errors = null)
     {
         Console.Out.WriteLine("> " + Describe(tool, arguments, secret));
         ProcessStartInfo startInfo = CommandRunner.CreateStartInfo(tool, workingDirectory, arguments);
@@ -85,7 +86,11 @@ internal static class PackageTools
         process.ErrorDataReceived += (_, line) =>
         {
             if (line.Data is null) return;
-            lock (gate) Console.Error.WriteLine(line.Data);
+            lock (gate)
+            {
+                errors?.AppendLine(line.Data);
+                Console.Error.WriteLine(line.Data);
+            }
         };
         try
         {

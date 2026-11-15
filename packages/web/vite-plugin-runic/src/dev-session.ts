@@ -3,6 +3,7 @@ import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
 import { callEvent, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, spanEvent, viewEvent } from "./channel.js";
 import { readLimitedBody, sameOrigin } from "./requests.js";
+import { parseAllowList, resolveAccessList } from "./access.js";
 import { answerOpen, answerSources, createSourceMapReader, launchSourceEditor } from "./sources.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
@@ -93,6 +94,11 @@ export interface RunicDevSessionProxyOptions {
   readonly sourceMap?: string | false;
   /** `false` turns off `/__runic/handlers`, Runic Inspect's handler analysis. Defaults to `true`. */
   readonly inspect?: boolean;
+  /**
+   * Hosts and networks besides this machine whose pages may read `/__runic/sources` and `/__runic/handlers`, as
+   * `runic({ allow })` takes them; `RUNIC_DEV_ALLOW` adds to them. `/__runic/open` stays loopback-only.
+   */
+  readonly allow?: readonly string[];
 }
 
 /**
@@ -105,7 +111,8 @@ export interface RunicDevSessionProxyOptions {
  *   to the terminal;
  * - for Runic Inspect: `/__runic/sources` (the development source map), `/__runic/open` (opens a location in a file
  *   the source map lists, with launch-editor as `runic()` does) and `/__runic/handlers` (which event handlers of a
- *   component reach which commands, from its source and template), each for pages of this machine only.
+ *   component reach which commands, from its source and template), each for pages of this machine, or of the hosts
+ *   and networks `allow` and `RUNIC_DEV_ALLOW` admit (`/__runic/open` for this machine only).
  */
 export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}): Record<string, ProxyOptions> {
   if (options.printFailures !== undefined && typeof options.printFailures !== "boolean") {
@@ -116,6 +123,7 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
       (typeof options.sourceMap !== "string" || options.sourceMap.length === 0)) {
     throw new TypeError("sourceMap must be a path or false.");
   }
+  const access = resolveAccessList(options.allow === undefined ? [] : parseAllowList(options.allow, "allow"));
   const session = devSessionValue(process.env[devSessionVariable]);
   const root = process.cwd();
   const printFailures = options.printFailures !== false;
@@ -147,9 +155,9 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
   if (options.sourceMap !== false) {
     const readSourceMap = createSourceMapReader(options.sourceMap, () => root);
     inspect[`^${sourcesPath}(?:[/?#]|$)`] = {
-      bypass(request, response) {
+      async bypass(request, response) {
         if (response === undefined) return false;
-        answerSources(request, response, readSourceMap);
+        await answerSources(request, response, readSourceMap, access);
         return request.url ?? sourcesPath;
       },
     };
@@ -170,7 +178,7 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
     inspect[`^${handlersPath}(?:[/?#]|$)`] = {
       async bypass(request, response) {
         if (response === undefined) return false;
-        await answerHandlers(request, response, analyze, root);
+        await answerHandlers(request, response, analyze, root, access);
         return request.url ?? handlersPath;
       },
     };

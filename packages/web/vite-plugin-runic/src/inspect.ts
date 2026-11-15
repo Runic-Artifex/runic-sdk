@@ -21,6 +21,13 @@
 // element's text and attributes, and reads each message's source location from the Translations dev server's message API
 // (`/__runic-translations/message`). Outside select mode the page's text has no markers.
 //
+// "Edit" on a message opens the translation editor (inspect-editor.ts): every locale's MF2 source, written back through
+// the same API with the file hash it read. The page shows the saved text in place through the text-change channel, and
+// the overview, which listens to that channel, describes the selected element again without losing the selection.
+//
+// From another machine (a page not on localhost), the data endpoints answer when the development server allows that
+// machine (`runic({ allow })`, `RUNIC_DEV_ALLOW`); `/__runic/open` never does, so the overview says so.
+//
 // `globalThis[Symbol.for("runic.vite.inspect")]` is the API for agents and tests: `describe(element)` returns the
 // overview as JSON-safe data. Everything here is part of the development client, which a build replaces with an empty
 // module; it uses only the DOM, so every engine under `dotnet runic dev` runs it.
@@ -34,6 +41,8 @@ import {
   type RunicInspectDescription, type RunicInspectLocation, type RunicInspectMessage, type TextReferenceLike,
 } from "./inspect-data.js";
 import { findComponent, findComponentSync, type AngularDebug, type NodeLike } from "./inspect-frameworks.js";
+import { createMessageEditor, editorStyles, type MessageEditor } from "./inspect-editor.js";
+import { hasEdits } from "./inspect-edit.js";
 
 /** The value at `globalThis[Symbol.for("runic.vite.inspect")]`. */
 export interface RunicInspectApi {
@@ -139,11 +148,18 @@ const styles = `
 .card a { color: #8fd3ff; text-decoration: underline; cursor: pointer; }
 .card button.close { all: unset; cursor: pointer; color: #c8c3e6; padding: 0 4px; font-size: 14px; }
 .card button.close:focus-visible, .card a:focus-visible { outline: 2px solid #8fd3ff; outline-offset: 1px; }
-`;
+.card .overview { display: contents; }
+` + editorStyles;
 
 function text(value: unknown): string {
   if (typeof value === "string") return JSON.stringify(value);
   try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+}
+
+/** Whether a page's host name is this machine's loopback, as `/__runic/open` requires of its client. */
+export function isLocalHostname(hostname: string): boolean {
+  const name = hostname.toLowerCase().replace(/^\[|\]$/gu, "");
+  return name === "localhost" || name.endsWith(".localhost") || name === "::1" || /^127(?:\.\d{1,3}){3}$/u.test(name);
 }
 
 function shortFile(file: string, root: string | undefined): string {
@@ -157,6 +173,10 @@ export function installInspect(options: InspectOptions = {}): () => void {
   const host = globalThis as unknown as Record<symbol, unknown> & { event?: Event; ng?: AngularDebug };
   if (typeof document === "undefined" || typeof Element === "undefined") return () => {};
   const { base = "/", root, request } = options;
+  // A page of another machine: /__runic/open refuses it, so links show their location without opening it.
+  const remote = typeof location === "object" && typeof location.hostname === "string" && location.hostname !== "" && !isLocalHostname(location.hostname);
+  // The last refusals of the data endpoints (403), for the notes.
+  let handlersForbidden = false;
 
   const learned = new WeakMap<Element, Map<string, LearnedBinding>>();
   const elementCalls = new WeakMap<Element, MutableCall[]>();
@@ -230,7 +250,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     return pending;
   }
 
-  async function readSourceMap(): Promise<{ map?: RunicSourceMap; status?: "missing" | "unavailable" }> {
+  async function readSourceMap(): Promise<{ map?: RunicSourceMap; status?: "missing" | "unavailable" | "forbidden" }> {
     try {
       let status: number;
       let map: RunicSourceMap | undefined;
@@ -244,6 +264,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
         map = response.ok ? await response.json() as RunicSourceMap : undefined;
       }
       if (status === 404) return { status: "missing" };
+      if (status === 403) return { status: "forbidden" };
       if (status !== 200) return { status: "unavailable" };
       return Array.isArray(map?.viewModels) && Array.isArray(map.members) ? { map } : { status: "unavailable" };
     } catch {
@@ -256,9 +277,11 @@ export function installInspect(options: InspectOptions = {}): () => void {
       let analysis: RunicHandlerAnalysis | undefined;
       if (request !== undefined) {
         const answer = await request("handlers", file);
+        handlersForbidden = answer.status === 403;
         analysis = answer.status === 200 ? answer.body as RunicHandlerAnalysis : undefined;
       } else {
         const response = await fetch(`${handlersPath}?file=${encodeURIComponent(file)}`, { credentials: "same-origin", cache: "no-store" });
+        handlersForbidden = response.status === 403;
         if (!response.ok) return undefined;
         analysis = await response.json() as RunicHandlerAnalysis;
       }
@@ -303,7 +326,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
 
   // The messages whose markers are in the element's text or its attributes, with their sources.
   async function readMessages(element: Element): Promise<{
-    messages: RunicInspectMessage[]; status: "on" | "off" | "unsupported" | "none"; sources?: "unavailable";
+    messages: RunicInspectMessage[]; status: "on" | "off" | "unsupported" | "none"; sources?: "unavailable" | "forbidden";
   }> {
     const markers = translationMarkers();
     if (markers === undefined) return { messages: [], status: host[translationsTextKey] === undefined ? "none" : "unsupported" };
@@ -320,7 +343,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     const messages = groupMessages(found);
     const status = markers.enabled ? "on" : "off";
     if (messages.length === 0) return { messages, status };
-    let unavailable = false;
+    let unavailable = false, forbidden = false;
     const replies = new Map<string, Promise<unknown>>();
     const withSources = await Promise.all(messages.map(async (message) => {
       const query = `key=${encodeURIComponent(message.key)}&catalog=${encodeURIComponent(message.catalog)}`;
@@ -328,9 +351,15 @@ export function installInspect(options: InspectOptions = {}): () => void {
       if (reply === undefined) {
         reply = request !== undefined
           ? request("message", { catalog: message.catalog, key: message.key })
-            .then((answer) => answer.status === 200 ? answer.body : undefined).catch(() => undefined)
+            .then((answer) => {
+              if (answer.status === 403) forbidden = true;
+              return answer.status === 200 ? answer.body : undefined;
+            }).catch(() => undefined)
           : fetch(`${base.endsWith("/") ? base : `${base}/`}${messagePath}?${query}`, { credentials: "same-origin", cache: "no-store" })
-            .then((response) => response.ok ? response.json() as Promise<unknown> : undefined)
+            .then((response) => {
+              if (response.status === 403) forbidden = true;
+              return response.ok ? response.json() as Promise<unknown> : undefined;
+            })
             .catch(() => undefined);
         replies.set(query, reply);
       }
@@ -338,7 +367,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
       if (value === undefined) unavailable = true;
       return { ...message, ...messageSource(value, message) };
     }));
-    return { messages: withSources, status, ...(unavailable ? { sources: "unavailable" as const } : {}) };
+    return { messages: withSources, status, ...(forbidden ? { sources: "forbidden" as const } : unavailable ? { sources: "unavailable" as const } : {}) };
   }
 
   async function describe(element: Element): Promise<RunicInspectDescription> {
@@ -388,6 +417,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
       messages: messages.messages,
       markerStatus: messages.status,
       messageSourcesStatus: messages.sources,
+      handlersStatus: handlersForbidden ? "forbidden" : undefined,
+      remote,
     });
   }
 
@@ -417,8 +448,17 @@ export function installInspect(options: InspectOptions = {}): () => void {
     readonly tip: HTMLElement;
     readonly bar: HTMLElement;
     readonly card: HTMLElement;
+    /** The overview's part of the card, rendered again for each description. */
+    readonly overview: HTMLElement;
+    /** The translation editor, which stays in the card while the overview is rendered again. */
+    readonly editor: MessageEditor;
   }
   let overlay: Overlay | undefined;
+  /** The element the card describes. */
+  let selected: Element | undefined;
+  /** The text-change channel the overview listens to, once there is one. */
+  let textChannel: { listeners: Set<() => void> } | undefined;
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let active = false;
   let hovered: Element | undefined;
   let frame: number | undefined;
@@ -446,8 +486,60 @@ export function installInspect(options: InspectOptions = {}): () => void {
     // Only select mode shows the glass, which takes the page's pointer events, and the bar.
     glass.hidden = bar.hidden = card.hidden = true;
     card.setAttribute("aria-label", "Runic Inspect");
+    const overview = document.createElement("div");
+    overview.className = "overview";
+    const editor = createMessageEditor({
+      base,
+      location: link,
+      onSaved: scheduleRefresh,
+      onClose: (returnFocus) => {
+        if (!returnFocus) return;
+        const opener = [...overview.querySelectorAll<HTMLElement>("button.edit")].find((button) => button.dataset["message"] === editing);
+        (opener ?? overview.querySelector<HTMLElement>("button.close"))?.focus();
+      },
+    });
+    card.append(overview, editor.root);
+    // Typing in the editor is not the page's: keys stop at the card instead of reaching the page's own handlers.
+    for (const type of ["keydown", "keyup", "keypress"] as const) card.addEventListener(type, (event) => event.stopPropagation());
     document.documentElement.append(element);
-    return { host: element, glass, box, tip, bar, card };
+    return { host: element, glass, box, tip, bar, card, overview, editor };
+  }
+
+  /** The `catalog:key` the editor was opened on, to return the focus to its Edit button. */
+  let editing: string | undefined;
+
+  function openEditor(message: RunicInspectMessage): void {
+    if (overlay === undefined) return;
+    listenToText();
+    editing = `${message.catalog}:${message.key}`;
+    void overlay.editor.open({ catalog: message.catalog, key: message.key, locale: message.locale });
+  }
+
+  // The page's text changed (an in-place update after a save, an edit in an editor, a language switch, marker mode):
+  // once the frameworks rendered it, the editor reads its message again and the overview describes the same element.
+  function listenToText(): void {
+    const channel = host[translationsTextKey] as { listeners?: unknown } | undefined;
+    if (textChannel !== undefined || !(channel?.listeners instanceof Set)) return;
+    textChannel = channel as { listeners: Set<() => void> };
+    textChannel.listeners.add(scheduleRefresh);
+  }
+
+  function scheduleRefresh(): void {
+    if (overlay === undefined || overlay.card.hidden || refreshTimer !== undefined) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = undefined;
+      void refresh();
+    }, 60);
+  }
+
+  async function refresh(): Promise<void> {
+    if (overlay === undefined || overlay.card.hidden) return;
+    void overlay.editor.refresh();
+    // Outside select mode the page has no markers, so describing it again would lose the messages the card lists.
+    if (selected === undefined || !selected.isConnected || translationMarkers()?.enabled !== true) return;
+    const current = ++selection;
+    const description = await describe(selected);
+    if (current === selection && !overlay.card.hidden) render(description);
   }
 
   function elementAt(x: number, y: number): Element | undefined {
@@ -480,6 +572,15 @@ export function installInspect(options: InspectOptions = {}): () => void {
   }
 
   function link(location: RunicInspectLocation): HTMLElement {
+    if (remote) {
+      // /__runic/open answers pages of the development machine only; the location is still worth knowing.
+      const plain = document.createElement("span");
+      plain.className = "muted";
+      plain.textContent = `${shortFile(location.file, root)}:${location.line}`;
+      plain.title = `${location.file}:${location.line}:${location.column} (opens in the editor only from the development machine)`;
+      plain.dataset["location"] = location.editor;
+      return plain;
+    }
     const anchor = document.createElement("a");
     anchor.href = "#";
     anchor.textContent = `${shortFile(location.file, root)}:${location.line}`;
@@ -492,9 +593,21 @@ export function installInspect(options: InspectOptions = {}): () => void {
     return anchor;
   }
 
+  // An overview control as it is rendered again: the same kind, message and text find its counterpart.
+  function controlKey(element: Element): string {
+    const control = element as HTMLElement;
+    return [control.tagName, control.className, control.dataset["message"] ?? "", control.dataset["open"] ?? "",
+      control.getAttribute("title") ?? "", control.textContent ?? ""].join("\u0000");
+  }
+
   function render(description: RunicInspectDescription): void {
-    const card = overlay!.card;
-    card.replaceChildren();
+    const { host: overlayHost, card, overview, editor } = overlay!;
+    // Rendering again replaces the overview's controls. A refresh (after a save, an edit elsewhere, a language switch)
+    // can arrive while the keyboard focus is on one of them, such as the Edit button Esc returned to: the focus moves
+    // to its counterpart instead of falling to the document.
+    const focused = overlayHost.shadowRoot?.activeElement;
+    const refocus = focused instanceof Element && overview.contains(focused) ? controlKey(focused) : undefined;
+    overview.replaceChildren();
     const header = document.createElement("header");
     const title = document.createElement("h2");
     const { element } = description;
@@ -503,9 +616,12 @@ export function installInspect(options: InspectOptions = {}): () => void {
     close.className = "close";
     close.textContent = "×";
     close.title = "Close";
-    close.addEventListener("click", () => { card.hidden = true; });
+    close.addEventListener("click", () => {
+      editor.close();
+      card.hidden = true;
+    });
     header.append(title, close);
-    card.append(header);
+    overview.append(header);
 
     const section = (heading: string, items: (string | Node)[][]): void => {
       if (items.length === 0) return;
@@ -517,7 +633,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
         item.append(...parts);
         list.append(item);
       }
-      card.append(h3, list);
+      overview.append(h3, list);
     };
     const code = (value: string): HTMLElement => {
       const element = document.createElement("code");
@@ -567,6 +683,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
       ...(message.source === undefined ? [] : [` ${JSON.stringify(message.source.length > 80 ? `${message.source.slice(0, 79)}…` : message.source)}`]),
       ...(message.in.length === 1 && message.in[0] === "text" ? [] : [muted(` · in ${message.in.join(", ")}`)]),
       ...(message.location === undefined ? [] : [" ", link(message.location)]),
+      ...(message.editable === true ? [editButton(message)] : []),
     ]));
     section("Texts from the ViewModel", description.texts.map((entry) => [
       code(`${entry.catalog}:${entry.key}`), entry.locale === undefined ? "" : muted(` [${entry.locale}]`),
@@ -576,13 +693,33 @@ export function installInspect(options: InspectOptions = {}): () => void {
       const paragraph = document.createElement("p");
       paragraph.className = "note";
       paragraph.textContent = note;
-      card.append(paragraph);
+      overview.append(paragraph);
     }
     card.hidden = false;
+    if (refocus !== undefined) {
+      const counterpart = [...overview.querySelectorAll<HTMLElement>("button, a")].find((control) => controlKey(control) === refocus)
+        ?? overview.querySelector<HTMLElement>("button.close");
+      counterpart?.focus({ preventScroll: true });
+    }
+  }
+
+  function editButton(message: RunicInspectMessage): HTMLElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "edit";
+    button.textContent = "Edit";
+    button.dataset["message"] = `${message.catalog}:${message.key}`;
+    button.setAttribute("aria-label", `Edit ${message.catalog}:${message.key}`);
+    button.addEventListener("click", () => openEditor(message));
+    return button;
   }
 
   async function select(element: Element): Promise<RunicInspectDescription> {
     overlay ??= createOverlay();
+    listenToText();
+    // Another element: an editor without unsaved text closes; one with unsaved text stays open.
+    if (element !== selected && overlay.editor.isOpen && overlay.editor.state !== undefined && !hasEdits(overlay.editor.state)) overlay.editor.close();
+    selected = element;
     const current = ++selection;
     const description = await describe(element);
     if (current === selection) render(description);
@@ -639,6 +776,11 @@ export function installInspect(options: InspectOptions = {}): () => void {
       event.preventDefault();
       event.stopImmediatePropagation();
       setActive(!active);
+    } else if (event.key === "Escape" && overlay?.editor.isOpen === true && event.composedPath().includes(overlay.editor.root)) {
+      // Esc in the editor closes the editor only, and the focus returns to its Edit button.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      overlay.editor.close(true);
     } else if (event.key === "Escape" && (active || overlay?.card.hidden === false)) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -667,6 +809,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
     removeEventListener("keydown", onKey, { capture: true });
     if (frame !== undefined) cancelAnimationFrame(frame);
     if (active) try { translationMarkers()?.set(false); } catch { /* a foreign channel */ }
+    textChannel?.listeners.delete(scheduleRefresh);
+    if (refreshTimer !== undefined) clearTimeout(refreshTimer);
     overlay?.host.remove();
     overlay = undefined;
     if (host[inspectKey] === api) delete host[inspectKey];

@@ -11,6 +11,7 @@ import { runic } from "../dist/index.js";
 // An editor that records its arguments, as LAUNCH_EDITOR, and the wait for a complete record (#1010).
 import { readRecord, recordingEditor } from "../../../../tests/support/recording-editor.mjs";
 import { answerClientRequest, findOpenLocation, parseSourceMap } from "../dist/sources.js";
+import { AccessList, parseAllowList } from "../dist/access.js";
 
 const environment = ["RUNIC_APPLICATION_DEV_SOURCE_MAP", "RUNIC_APPLICATION_DEV_PROJECT", "LAUNCH_EDITOR", "RUNIC_TEST_EDITOR_RECORD"];
 
@@ -290,8 +291,8 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
     const location = fixture.map.members[0].location;
     const page = join(fixture.frontend, "index.html");
     const launched = [];
-    const ask = (message, { read = () => map, local = true } = {}) => answerClientRequest(message, {
-      read, local, launch: (target) => launched.push(target),
+    const ask = (message, { read = () => map, peer = "127.0.0.1", access } = {}) => answerClientRequest(message, {
+      read, peer, ...(access === undefined ? {} : { access }), launch: (target) => launched.push(target),
       resolution: { frontendFile: (file) => file.startsWith(`${fixture.frontend}/`) },
       analyze: async (file) => file === "src/App.tsx" ? { format: "runic-handlers/1", bindings: [] } : undefined,
       message: async (reference) => reference.key === "heading" ? { message: { catalog: reference.catalog, key: reference.key, locales: [] } } : undefined,
@@ -318,10 +319,20 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
     ]) {
       assert.equal((await ask({ id: 5, kind: "open", target }))?.status, 404, JSON.stringify(target));
     }
-    // A connection from another machine gets nothing, whatever it asks: the endpoints are loopback-only.
+    // Another machine, judged per request by the access list as the HTTP endpoints judge it (#981): without a list or
+    // outside it, nothing; inside it, the reads (sources, handlers, message), never open, which launches the editor here.
+    const request = (kind) => ({ id: 13, kind, file: "src/App.tsx",
+      target: kind === "message" ? { catalog: "app", key: "heading" } : { id: fixture.map.members[0].id } });
+    const allowed = new AccessList(parseAllowList(["192.0.2.0/24"], "allow"));
     for (const kind of ["sources", "handlers", "message", "open"]) {
-      assert.deepEqual(await ask({ id: 13, kind, file: "src/App.tsx", target: { id: fixture.map.members[0].id } }, { local: false }), { id: 13, status: 403 }, kind);
+      assert.equal((await ask(request(kind), { peer: "192.0.2.5" }))?.status, 403, `${kind}: another machine without a list`);
+      assert.equal((await ask(request(kind), { peer: "198.51.100.7", access: allowed }))?.status, 403, `${kind}: a machine outside the list`);
+      // null: the helper defaults an undefined peer to loopback.
+      assert.equal((await ask(request(kind), { peer: null, access: allowed }))?.status, 403, `${kind}: a connection without an address`);
+      assert.equal((await ask(request(kind), { peer: "192.0.2.5", access: allowed }))?.status, kind === "open" ? 403 : 200, `${kind}: an allowed machine`);
+      assert.equal((await ask(request(kind), { peer: "::ffff:127.0.0.1", access: allowed }))?.status, 200, `${kind}: loopback`);
     }
+    launched.length = 0;
     assert.deepEqual(launched, [], "a refused request launched the editor");
     assert.deepEqual(await ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
     for (const malformed of [null, [], "sources", { kind: "sources" }, { id: -1, kind: "sources" }, { id: 1.5, kind: "sources" }, { id: "1", kind: "open" }]) {

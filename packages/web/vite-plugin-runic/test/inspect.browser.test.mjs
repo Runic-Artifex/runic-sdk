@@ -382,10 +382,10 @@ async function exerciseMessages({ page, root, record }) {
   const location = (key, line) => ({ file: rmf2, line, column: 1, editor: "translations", message: { catalog: "app", key, locale: "en" } });
   description = await describe(page, "#heading");
   assert.equal(description.element.text, "Counter", "the overview shows the text without its markers");
-  assert.deepEqual(description.messages, [{ catalog: "app", key: "heading", locale: "en", in: ["text"], source: "Counter", location: location("heading", 2) }]);
+  assert.deepEqual(description.messages, [{ catalog: "app", key: "heading", locale: "en", in: ["text"], source: "Counter", location: location("heading", 2), editable: true }]);
   description = await describe(page, "#increment");
   assert.deepEqual(description.messages,
-    [{ catalog: "app", key: "increment_tip", locale: "en", in: ["title"], source: "Adds the step", location: location("increment_tip", 3) }]);
+    [{ catalog: "app", key: "increment_tip", locale: "en", in: ["title"], source: "Adds the step", location: location("increment_tip", 3), editable: true }]);
   assert.equal(description.element.text, "Increment");
 
   // Selecting the heading shows its message; its link opens with the message (over Vite's connection, sources.ts), and

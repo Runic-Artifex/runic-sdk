@@ -8,7 +8,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
 import launchEditor from "launch-editor";
-import { isLoopbackRequest, mayReadLocally, readLimitedBody, sameOrigin } from "./requests.js";
+import { isLoopbackRequest, mayRead, readLimitedBody, sameOrigin } from "./requests.js";
+import type { AccessList } from "./access.js";
+import { isLoopbackAddress } from "./access.js";
 import type { RunicClientResponse } from "./channel.js";
 import { openPath, sourcesPath } from "./channel.js";
 import { parseMessageReference, type MessageReference } from "./translations-source.js";
@@ -22,6 +24,9 @@ const sourceMapFileName = "sources.json";
 // A larger file is not a map the generator wrote.
 const maximumMapBytes = 16 * 1024 * 1024;
 const maximumOpenRequestBytes = 4096;
+/** Why `/__runic/open` refuses a client of another machine. */
+export const openLoopbackOnly = "Opening in the editor works only from a page on the development machine (localhost): " +
+  "/__runic/open launches the editor there. runic({ allow }) and RUNIC_DEV_ALLOW admit other machines to Runic Inspect's data, not to this action.";
 
 /**
  * A source location: the absolute path of a local file and a 1-based line and column, as in a compiler diagnostic.
@@ -210,10 +215,12 @@ function answer(response: ServerResponse, status: number, body?: unknown, header
 }
 
 /** Answers `GET /__runic/sources` with the map, or 404 without one. */
-export function answerSources(request: IncomingMessage, response: ServerResponse, read: () => RunicSourceMap | undefined): void {
+export async function answerSources(
+  request: IncomingMessage, response: ServerResponse, read: () => RunicSourceMap | undefined, access?: AccessList,
+): Promise<void> {
   request.resume();
   if (request.method !== "GET" && request.method !== "HEAD") return answer(response, 405, undefined, { Allow: "GET, HEAD" });
-  if (!mayReadLocally(request)) return answer(response, 403);
+  if (!(await mayRead(request, access))) return answer(response, 403);
   const map = read();
   if (map === undefined) return answer(response, 404);
   answer(response, 200, map);
@@ -302,7 +309,9 @@ export function launchSourceEditor(location: RunicSourceLocation, failed: (messa
 
 /**
  * Answers a development client's request over Vite's HMR connection (channel.ts, `requestEvent`) as the HTTP endpoints
- * answer, for a connection from this machine only (`local`; 403 otherwise, as the endpoints are loopback-only):
+ * answer, under the same access rules, judged per request from the connection's `peer` address: `sources`, `handlers`
+ * and `message` for this machine or one the access list admits (`runic({ allow })`, `RUNIC_DEV_ALLOW`), `open` for
+ * this machine only, as `/__runic/open` (403 otherwise):
  * `sources` with the map (200) or 404; `handlers` with Runic Inspect's handler analysis of a `file` (200), 404 or 400;
  * `message` with the Translations message API's reply for a `target` `{ catalog, key }` (200), 404 or 400;
  * `open` with the same decision as `/__runic/open` (`resolveOpenLocation`), 200 after `launch`, else 404 (400 for a
@@ -315,13 +324,17 @@ export async function answerClientRequest(message: unknown, context: {
   readonly resolution?: RunicOpenResolution;
   readonly analyze?: (file: string) => Promise<unknown>;
   readonly message?: (message: MessageReference) => Promise<unknown>;
-  readonly local: boolean;
+  /** The HMR connection's client address, and who besides this machine may read (loopback only without it). */
+  readonly peer: string | undefined;
+  readonly access?: AccessList;
 }): Promise<RunicClientResponse | undefined> {
   if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
   const { id, kind, target, file } = message as Record<string, unknown>;
   if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return undefined;
   if (kind !== "sources" && kind !== "handlers" && kind !== "message" && kind !== "open") return { id, status: 400 };
-  if (!context.local) return { id, status: 403 };
+  const admitted = kind === "open" ? isLoopbackAddress(context.peer)
+    : context.access === undefined ? isLoopbackAddress(context.peer) : await context.access.allows(context.peer);
+  if (!admitted) return { id, status: 403 };
   if (kind === "sources") {
     const map = context.read();
     return map === undefined ? { id, status: 404 } : { id, status: 200, body: map };
@@ -363,9 +376,14 @@ export async function answerOpen(
     request.resume();
     return answer(response, 405, undefined, { Allow: "POST" });
   }
-  if (!sameOrigin(request) || !isLoopbackRequest(request)) {
+  if (!sameOrigin(request)) {
     request.resume();
     return answer(response, 403);
+  }
+  // Loopback only, whatever the allow list says: the editor opens on this machine, not on the client's.
+  if (!isLoopbackRequest(request)) {
+    request.resume();
+    return answer(response, 403, { error: "loopback-only", detail: openLoopbackOnly });
   }
   const type = request.headers["content-type"];
   if (typeof type !== "string" || !/^application\/json\s*(?:;|$)/iu.test(type)) {

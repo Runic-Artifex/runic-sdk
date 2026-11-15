@@ -52,6 +52,18 @@ internal sealed partial class ToolTests
             Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.ParseUrlSchemes(scheme)).Code);
     }
 
+    // sdk#1018: hdiutil create failed with "Resource busy" on the hosted macOS runners while another image was busy.
+    [Test, DisplayName("package retries hdiutil's transient disk image failures for up to a minute, and nothing else")]
+    public void PackageDiskImageRetries()
+    {
+        True(MacOSPackager.IsTransientDiskImageFailure("hdiutil: create failed - Resource busy\n"), "Resource busy is retried");
+        True(MacOSPackager.IsTransientDiskImageFailure("hdiutil: attach failed - Resource temporarily unavailable\n"), "EAGAIN is retried");
+        False(MacOSPackager.IsTransientDiskImageFailure("hdiutil: create failed - No space left on device\n"), "a full disk is not retried");
+        False(MacOSPackager.IsTransientDiskImageFailure(""), "a failure without output is not retried");
+        Equal(60.0, MacOSPackager.DiskImageRetryDelays.Sum(static delay => delay.TotalSeconds));
+        True(MacOSPackager.DiskImageRetryDelays.Zip(MacOSPackager.DiskImageRetryDelays.Skip(1)).All(static pair => pair.First < pair.Second), "the delays grow");
+    }
+
     [Test, DisplayName("package accepts file types and web link hosts every platform declares")]
     public void PackageFileTypesAndHosts()
     {
