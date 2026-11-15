@@ -247,6 +247,7 @@ async function evaluateClient(generation) {
   await load("dist/diagnostics.js", "diagnostics");
   await load("dist/stale-input.js", "stale-input");
   await load("dist/channel.js", "channel");
+  await load("dist/calls.js", "calls");
   const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
   await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
   await client.evaluate();
@@ -313,6 +314,7 @@ const load = async (path, identifier, meta) => {
 await load("dist/diagnostics.js", "diagnostics");
 await load("dist/stale-input.js", "stale-input");
 await load("dist/channel.js", "channel");
+await load("dist/calls.js", "calls");
 const client = await load("dist/client.js", "client", (meta) => { if (${withHot}) meta.hot = hot; });
 await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
 await client.evaluate();

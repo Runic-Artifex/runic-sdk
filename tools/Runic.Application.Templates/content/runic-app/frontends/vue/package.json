@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
+    "@vitejs/devtools": "0.7.6",
     "@vitejs/plugin-vue": "6.0.9",
     "happy-dom": "21.0.4",
     "typescript": "6.0.3",

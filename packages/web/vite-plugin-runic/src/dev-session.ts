@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
-import { connectionEvent, diagnosticEvent, diagnosticsPath, maximumClientMessageBytes, viewEvent } from "./channel.js";
+import { callEvent, connectionEvent, diagnosticEvent, diagnosticsPath, maximumClientMessageBytes, viewEvent } from "./channel.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 
 // `dotnet runic dev` gives the development server process a random session value and accepts the server as ready
@@ -93,7 +93,9 @@ export async function answerClientMessage(
   catch { return answerStatus(response, 400); }
   if (typeof message !== "object" || message === null || Array.isArray(message)) return answerStatus(response, 400);
   const { event, data } = message as { event?: unknown; data?: unknown };
-  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent) return answerStatus(response, 400);
+  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent && event !== callEvent) {
+    return answerStatus(response, 400);
+  }
   deliver(event, data);
   answerStatus(response, 204);
 }
@@ -140,7 +142,7 @@ export interface RunicDevSessionProxyOptions {
  *
  * - `/__runic/state` with the path-free development state, and under `dotnet runic dev` with its session;
  * - `/__runic/diagnostics`, which the development client (`@runic-artifex/vite-plugin-runic/client`) posts the
- *   page's Views diagnostics, connection state and View states to. The timeline is bounded, and failures go to the
+ *   page's Views diagnostics, connection state, View states and Bridge calls to. The timeline is bounded, and failures go to the
  *   terminal.
  */
 export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}): Record<string, ProxyOptions> {
@@ -161,6 +163,11 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
     }
     if (event === viewEvent) {
       timeline.applyView(data);
+      return;
+    }
+    // The Angular CLI's server has no source map reader, so its calls name no handler.
+    if (event === callEvent) {
+      timeline.appendCall(data);
       return;
     }
     const entry = timeline.appendDiagnostic(data);

@@ -19,9 +19,19 @@ omit the plugin entirely. A Runic Views frontend needs neither: its page loads
 `base: "./"` builds one page for Runic Desktop and CS-WebUI. The Views build
 passes the host it builds for as `RUNIC_APPLICATION_HOST` for a configuration
 that still differs per host. The optional
-`@vitejs/devtools` peer enables the Runic dock; register `DevTools()` in your
-Vite configuration when selecting `devtools: true`. The plugin runs on Node 24.18
-or later 24.x, or Node 26.
+`@vitejs/devtools` peer enables the Runic panel of the Vite DevTools dock (in
+this README, "the dock"; not the browser's own developer tools, which open with
+F12 or Inspect): register `DevTools()` in your Vite configuration, as the
+`runic-app` template's Vite starters do. The plugin runs on Node 24.18 or later
+24.x, or Node 26.
+
+```ts
+import { defineConfig } from "vite";
+import { DevTools } from "@vitejs/devtools";
+import { runic } from "@runic-artifex/vite-plugin-runic";
+
+export default defineConfig({ plugins: [runic(), DevTools()] });
+```
 
 `devtools` takes `true`, `false` or `"auto"`. `"auto"` is the default and the
 same as omitting the option: the development client is injected while serving,
@@ -108,7 +118,56 @@ Performance recording (turn on "Show custom tracks"), and its listening turns
 on the async stack segments that lead from a reply back to the click that made
 the call. See
 [Bridge calls in the browser's developer tools](../views/README.md#bridge-calls-in-the-browsers-developer-tools).
-The dock does not show these calls yet.
+The dock lists the same calls with their C# handlers (next section).
+
+### Bridge call timeline in the dock
+
+The client also sends each settled call to the development server, and the
+dock's **Bridge calls** card shows the latest 20, the newest first:
+
+```text
+command EditorViewModel.save → SaveAsync() 23 ms
+C# 21 ms · revision 4 · EditorViewModel.cs:42 · 2026-11-15T10:12:03.120Z
+[Open SaveAsync()]
+```
+
+- **The call.** Its kind (`command`, `set`, `write`, `can`, `region`,
+  `operation`, `query`), the C# ViewModel and the member, and how long the page
+  waited from the call to its settled reply. A call that did not end `ok` adds
+  its outcome and reason, such as `· cancelled (superseded)` or
+  `· error (domain-failed)`.
+- **The C# handler.** The plugin looks the call up in the
+  [source map](#source-map-and-open-in-editor): `SaveAsync()` for a command's
+  `[RelayCommand]` method, `Title.set` for a setter. The button opens it in the
+  editor through `/__runic/open`. Without a map (no build yet, or
+  `sourceMap: false`) the row has no handler.
+- **The handler's own duration.** When the reply carries .NET's timing of the
+  handler (a .NET host in Development that measures it), the second line
+  starts with `C# <n> ms`, and the call's `handlerDuration` holds it; without it
+  the row shows the page's duration only.
+- **Failures.** A failed call shows .NET's exception (the development detail of
+  the error reply) and a button for each stack frame in a file of the source
+  map, which opens that line, such as `EditorViewModel.SaveAsync() ·
+  EditorViewModel.cs:12`. Other frames stay text on the **Last failure** card,
+  which links the same frames.
+- **Bounds and privacy.** The server keeps as many calls as timeline entries
+  (`maxTimelineEntries`, 200 by default). What the page sends is checked like a
+  timeline entry: names and routes of a fixed shape, finite durations, and the
+  failure under the failure rules (bounded, credential values redacted). The
+  handler comes from the server's own map, and an entry names it by the map's
+  member id and the file's name, never a path. `/__runic/state` has the calls
+  (`calls`, typed `RunicBridgeCall`) without failures, like the timeline.
+
+Under `dotnet runic dev` the window's document is the .NET host's page, which
+loads Vite's modules from Vite's origin, so the dock's own loader (a script
+that loads `/__devtools/embedded.js` relative to the document) finds nothing.
+The development client is one of Vite's modules, so it loads the dock from
+Vite's origin whenever the document's scripts did not; with `html: false`
+(SvelteKit) it always does, and `runic()` removes the dock's HTML hook, which
+SvelteKit would warn about. The first time a page opens the dock, the dock asks
+for the one-time code that Vite DevTools prints in the development server's
+output (shown by `dotnet runic dev`); keep that check on, as it is what keeps
+other pages of this machine out of the dock.
 
 ## Source map and open in editor
 
@@ -169,12 +228,14 @@ it.
   "../obj/Debug/net10.0/runic-bridge/sources.json" })` names the file, or a
   directory to search, relative to the Vite root, and `sourceMap: false` turns
   both endpoints off. Without a map `/__runic/sources` answers 404.
-- **Opening.** `POST /__runic/open` with `{ "id": "<entry id>" }`, or with the
-  exact `{ "file", "line", "column" }` of an entry, opens that location through
+- **Opening.** `POST /__runic/open` with `{ "id": "<entry id>" }`, or with
+  `{ "file", "line", "column" }` in a file of an entry (`column` defaults to 1;
+  a .NET stack frame's line), opens that location through
   Vite's own editor launcher ([launch-editor](https://github.com/vitejs/launch-editor):
   `LAUNCH_EDITOR`, else a running editor such as VS Code or a JetBrains IDE like
   Rider, else `VISUAL`/`EDITOR`) and answers 200. It is meant for the page,
-  DevTools panels and the Runic dock:
+  other development tools and the dock, whose open buttons send their request
+  through this endpoint:
 
   ```ts
   await fetch("/__runic/open", {
@@ -185,12 +246,12 @@ it.
   ```
 
 - **What it refuses.** Vite's `/__open-in-editor` opens any path; the Runic
-  action opens only a location the map lists, of a file that exists, so a
-  page cannot open anything else. It answers a POST of JSON (415 otherwise)
+  action opens only a file the map lists, at a positive line and column, and
+  only while the file exists, so a page cannot open anything else. It answers a POST of JSON (415 otherwise)
   from a page of the development server's own origin (`Origin` and
   `Sec-Fetch-Site`; a cross-origin page cannot send JSON without a CORS
   preflight, which it never grants) and from this machine (a loopback client
-  address), else 403; an id or location the map does not list, an entry
+  address), else 403; an id or file the map does not list, an entry
   without a location, and a file that no longer exists answer 404. The map
   itself answers only same-origin requests from this machine too.
 - **Only `vite dev`.** Both endpoints exist only on the development server, not
@@ -275,13 +336,17 @@ The page loads the client from its client hooks:
 
 ```ts
 // vite.config.ts
-plugins: [sveltekit({ adapter: runicAdapter() }), runic({ html: false })],
+plugins: [sveltekit({ adapter: runicAdapter() }), runic({ html: false }), DevTools()],
 ```
 
 ```ts
 // src/hooks.client.ts
 import "@runic-artifex/vite-plugin-runic/client";
 ```
+
+With `DevTools()` registered the client loads the dock as well, and `runic()`
+removes the dock's own HTML hook, which SvelteKit would warn about and never
+run.
 
 `html: false` cannot be combined with `desktop`, whose bootstrap is a script
 tag in the HTML: `runic({ html: false, desktop: true })` throws.
@@ -313,7 +378,8 @@ the build cannot evaluate a function call.
 The entries keep the development state in the `ng serve` process and answer:
 
 - `/__runic/state` with that state, as `runic()` does: the connection, the
-  timeline without failures, and under `dotnet runic dev` the session header
+  timeline and the Bridge calls (without C# handlers: the Angular CLI's server
+  reads no source map) without failures, and under `dotnet runic dev` the session header
   ([Dev session](#dev-session-and-host-scripts)). The answer is `200` with JSON; without `dotnet runic dev` the
   entry answers too, without the header.
 - `/__runic/diagnostics`, which the client posts its reports to. Each Views

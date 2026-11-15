@@ -6,10 +6,15 @@ import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
+import { callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
-import { answerOpen, answerSources, createSourceMapReader, editorRequestUrl, openPath, sourcesPath } from "./sources.js";
+import type { RunicSourceMap } from "./sources.js";
+import {
+  answerOpen, answerSources, createSourceMapReader, editorRequestUrl, listsFile, openPath, openThroughEndpoint, sourcesPath,
+} from "./sources.js";
+import type { RunicBridgeCall } from "./calls.js";
+import { formatMilliseconds, stackFrames } from "./calls.js";
 import {
   buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
   type RunicComponentOptions,
@@ -20,6 +25,7 @@ export type { RunicComponentOptions } from "./component.js";
 export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
 export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
+export type { RunicBridgeCall, RunicBridgeCallHandler, RunicBridgeCallOutcome } from "./calls.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
 } from "./sources.js";
@@ -122,6 +128,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   let jsonRenderer: JsonRenderer | undefined;
   let resolvedRoot = process.cwd();
   let base = "/";
+  // Whether the Vite DevTools dock is registered (DevTools() from @vitejs/devtools), which the client then loads.
+  let dock = false;
   const desktopBootstrapUrl = resolveDesktopBootstrapUrl(options.desktop);
   if (!html && desktopBootstrapUrl !== undefined) {
     throw new TypeError("desktop requires html: true: the Desktop bootstrap is a script tag the plugin adds to the HTML.");
@@ -133,15 +141,20 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const inComponent = (environment: { name: string } | undefined): boolean =>
     components !== undefined && environment?.name === componentEnvironment;
 
+  // The development source map, read while serving only (sources.ts).
+  const readSourceMap = options.sourceMap === false
+    ? () => undefined
+    : createSourceMapReader(options.sourceMap, () => resolvedRoot);
   const timeline = createDevelopmentTimeline(initialDevelopmentState(options.contract), maxTimelineEntries, (state) => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
-    void jsonRenderer?.updateSpec(createDevtoolsSpec(state));
+    void jsonRenderer?.updateSpec(createDevtoolsSpec(state, readSourceMap()));
     server?.ws.send({ type: "custom", event: stateEvent, data: state });
   });
   const deliver = (event: string, data: unknown): void => {
     if (event === connectionEvent) timeline.applyConnection(data);
     else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
     else if (event === viewEvent) timeline.applyView(data);
+    else if (event === callEvent) timeline.appendCall(data, readSourceMap());
   };
   const command = (): string => timeline.state.vite.command;
 
@@ -224,6 +237,13 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           !resolved.plugins.some((plugin) => plugin.name === "vite:devtools:server")) {
         throw new Error('RUNICP007: devtools: true requires DevTools() from @vitejs/devtools in the Vite plugins array.');
       }
+      dock = resolved.command === "serve" && resolved.plugins.some((plugin) => plugin.name === "vite:devtools:server");
+      if (dock && !html) {
+        // With html: false the page owns its HTML (SvelteKit renders it and runs no transformIndexHtml, and warns about
+        // a plugin that has one), so the dock's HTML loader never runs: the client loads the dock instead.
+        const injection = resolved.plugins.find((plugin) => plugin.name === "vite:devtools:injection");
+        if (injection !== undefined) delete (injection as { transformIndexHtml?: unknown }).transformIndexHtml;
+      }
       resolvedRoot = resolved.root;
       const configuredBase = resolved.base || "/";
       base = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
@@ -237,6 +257,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       viteServer.ws.on(connectionEvent, (payload) => deliver(connectionEvent, payload));
       viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
       viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
+      viteServer.ws.on(callEvent, (payload) => deliver(callEvent, payload));
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
         answerState(response, timeline.state, devSession);
@@ -246,7 +267,6 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         answerClientMessage(request, response, deliver).catch(next);
       });
       if (options.sourceMap !== false) {
-        const readSourceMap = createSourceMapReader(options.sourceMap, () => resolvedRoot);
         viteServer.middlewares.use(sourcesPath, (request, response) => {
           answerSources(request, response, readSourceMap);
         });
@@ -285,7 +305,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       if (id === resolvedEmptyClientId) return "export {};";
       if (id === resolvedClientOptionsId) {
-        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = { channel: "hot" };`];
+        const clientOptions = dock ? `{ channel: "hot", dock: true }` : `{ channel: "hot" }`;
+        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = ${clientOptions};`];
         if (options.staleInputWarning === false) {
           statements.push(`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`);
         }
@@ -306,7 +327,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       async setup(context) {
         if (!client) return;
         sharedState = await context.rpc.sharedState.get(stateKey, { initialValue: timeline.state });
-        const renderer = context.createJsonRenderer(createDevtoolsSpec(timeline.state));
+        const renderer = context.createJsonRenderer(createDevtoolsSpec(timeline.state, readSourceMap()));
         jsonRenderer = renderer;
         context.docks.register({
           id: "runic:overview",
@@ -314,6 +335,20 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
           icon: "ph:diamond-duotone",
           type: "json-render",
           view: renderer.view,
+        });
+        // The dock's open buttons: `{ id }` of a map entry or `{ file, line }` of a stack frame, which go through the
+        // server's own /__runic/open, so the dock opens only what the source map lists.
+        context.rpc.register({
+          name: openInEditorAction,
+          type: "action",
+          setup: () => ({
+            handler: async (target: unknown) => {
+              const status = options.sourceMap === false ? 404
+                : await openThroughEndpoint(server?.resolvedUrls?.local[0], target);
+              if (status === 0) throw new Error("The development server has no local URL for /__runic/open.");
+              if (status !== 200) throw new Error(`The source map lists no such location: /__runic/open answered ${status}.`);
+            },
+          }),
         });
         context.commands.register({
           id: "runic:copy-diagnostic-state",
@@ -342,7 +377,72 @@ function resolveDesktopBootstrapUrl(
   return url.href;
 }
 
-function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
+const openInEditorAction = "runic:open-in-editor";
+// The dock shows the most recent calls; the state keeps as many as the timeline.
+const dockCalls = 20;
+const dockFrames = 8;
+
+type Elements = JsonRenderSpec["elements"];
+
+function openButton(label: string, target: Record<string, string | number>): Elements[string] {
+  return {
+    type: "Button",
+    props: { label, icon: "ph:arrow-square-out", variant: "ghost" },
+    on: { press: { action: openInEditorAction, params: target } },
+  } as Elements[string];
+}
+
+// A .NET stack as text, with a button for each frame in a file of the source map.
+function stackElements(id: string, stack: string | undefined, map: RunicSourceMap | undefined): [string[], Elements] {
+  const elements: Elements = {};
+  const frames = stackFrames(stack, dockFrames).filter((frame) => listsFile(map, frame.file));
+  const children = frames.map((frame, index) => {
+    const name = `${id}-frame-${index}`;
+    const fileName = frame.file.split(/[\\/]/u).pop();
+    elements[name] = openButton(`${frame.method.replace(/^.*\.(?=[^.]+\.[^.]+$)/u, "")} · ${fileName}:${frame.line}`,
+      { file: frame.file, line: frame.line });
+    return name;
+  });
+  return [children, elements];
+}
+
+// The call timeline: the newest call first, each with its handler's open button and a failed call's frames.
+function callsSection(current: RunicDevelopmentState, map: RunicSourceMap | undefined): Elements {
+  const calls = current.calls.slice(-dockCalls).reverse();
+  const elements: Elements = {};
+  const rows = calls.map((call: RunicBridgeCall) => {
+    const id = `calls-${call.id}`;
+    const children = [`${id}-label`];
+    elements[`${id}-label`] = { type: "Text", props: { text: call.label, variant: call.outcome === "error" ? "body" : "code" } };
+    const details = [
+      ...(call.handlerDuration === undefined ? [] : [`C# ${formatMilliseconds(call.handlerDuration)}`]),
+      ...(call.revision === undefined ? [] : [`revision ${call.revision}`]),
+      ...(call.handler?.fileName === undefined ? [] : [`${call.handler.fileName}${call.handler.line === undefined ? "" : `:${call.handler.line}`}`]),
+      call.timestamp,
+    ];
+    elements[`${id}-detail`] = { type: "Text", props: { text: details.join(" · "), variant: "caption" } };
+    children.push(`${id}-detail`);
+    if (call.handler?.line !== undefined) {
+      elements[`${id}-open`] = openButton(`Open ${call.handler.method}`, { id: call.handler.source });
+      children.push(`${id}-open`);
+    }
+    if (call.failure) {
+      elements[`${id}-failure`] = { type: "Text", props: { text: `${call.failure.type}: ${call.failure.message}`, variant: "caption" } };
+      const [frames, frameElements] = stackElements(id, call.failure.stack, map);
+      Object.assign(elements, frameElements);
+      children.push(`${id}-failure`, ...frames);
+    }
+    elements[id] = { type: "Stack", props: { direction: "column", gap: 2 }, children };
+    return id;
+  });
+  if (rows.length === 0) elements["calls-none"] = { type: "Text", props: { text: "No Bridge call yet" } };
+  return {
+    calls: { type: "Card", props: { title: "Bridge calls" }, children: rows.length === 0 ? ["calls-none"] : rows },
+    ...elements,
+  };
+}
+
+function createDevtoolsSpec(current: RunicDevelopmentState, map?: RunicSourceMap): JsonRenderSpec {
   const section = (id: string, title: string, data: Record<string, string>): JsonRenderSpec["elements"] => ({
     [id]: { type: "Card", props: { title }, children: [`${id}-data`] },
     [`${id}-data`]: { type: "KeyValueTable", props: { data } },
@@ -353,7 +453,7 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
       root: {
         type: "Stack",
         props: { direction: "column", gap: 12 },
-        children: ["heading", "connection", "contract", "views", "superseded", "failure", "timeline"],
+        children: ["heading", "connection", "contract", "calls", "views", "superseded", "failure", "timeline"],
       },
       heading: { type: "Text", props: { text: "Runic", variant: "heading" } },
       ...section("connection", "Connection", {
@@ -364,9 +464,10 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
         Version: current.contract.version || "not reported",
         Fingerprint: current.contract.fingerprint || "not reported",
       }),
+      ...callsSection(current, map),
       ...viewsSection(current),
       ...section("superseded", "Superseded commands", supersededCommands(current)),
-      ...section("failure", "Last failure", lastFailure(current)),
+      ...failureSection(current, map),
       ...section("timeline", "Recent timeline", current.timeline.length === 0
         ? { Events: "none" }
         : Object.fromEntries(current.timeline.slice(-12).reverse().map((entry) => [
@@ -410,14 +511,20 @@ function supersededCommands(current: RunicDevelopmentState): Record<string, stri
   ]));
 }
 
-function lastFailure(current: RunicDevelopmentState): Record<string, string> {
+// The last failure, with an open button for each of its frames in a file of the source map.
+function failureSection(current: RunicDevelopmentState, map: RunicSourceMap | undefined): Elements {
   const entry = [...current.timeline].reverse().find((candidate) => candidate.failure !== undefined);
-  if (!entry?.failure) return { Failure: "none" };
-  return {
+  const data: Record<string, string> = !entry?.failure ? { Failure: "none" } : {
     Event: `${entry.id} · ${entry.source} · ${entry.timestamp}`,
     Label: entry.label,
     Type: entry.failure.type,
     Message: entry.failure.message,
     ...(entry.failure.stack ? { Stack: entry.failure.stack } : {}),
+  };
+  const [frames, elements] = stackElements("failure", entry?.failure?.stack, map);
+  return {
+    failure: { type: "Card", props: { title: "Last failure" }, children: ["failure-data", ...frames] },
+    "failure-data": { type: "KeyValueTable", props: { data } },
+    ...elements,
   };
 }

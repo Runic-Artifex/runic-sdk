@@ -21,6 +21,7 @@
   "devDependencies": {
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@vitejs/devtools": "0.7.6",
     "happy-dom": "21.0.4",
     "svelte-check": "4.7.6",
     "typescript": "6.0.3",

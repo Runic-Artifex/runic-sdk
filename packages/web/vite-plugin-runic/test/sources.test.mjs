@@ -92,7 +92,7 @@ async function waitForFile(path, timeout = 5000) {
 
 const exists = (path) => stat(path).then(() => true, () => false);
 
-test("parses only well-formed runic-bridge-sources/1 entries and finds only listed locations", () => {
+test("parses only well-formed runic-bridge-sources/1 entries and finds only locations in listed files", () => {
   assert.equal(parseSourceMap({ format: "other", viewModels: [], members: [] }), undefined);
   assert.equal(parseSourceMap(null), undefined);
   const map = parseSourceMap({
@@ -110,8 +110,11 @@ test("parses only well-formed runic-bridge-sources/1 entries and finds only list
   assert.equal(map.members[1].location, undefined, "line 0 is no location");
   assert.deepEqual(findOpenLocation(map, { id: "A/command/go" }), { file: "/src/A.cs", line: 4, column: 9 });
   assert.deepEqual(findOpenLocation(map, { file: "/src/A.cs", line: 4, column: 9 }), { file: "/src/A.cs", line: 4, column: 9 });
+  // A .NET stack frame in a listed file: another line, the column defaulting to 1.
+  assert.deepEqual(findOpenLocation(map, { file: "/src/A.cs", line: 17 }), { file: "/src/A.cs", line: 17, column: 1 });
   for (const refused of [
-    { id: "A/state/x" }, { id: "B" }, { file: "/src/A.cs", line: 5, column: 9 }, { file: "/etc/passwd", line: 1, column: 1 },
+    { id: "A/state/x" }, { id: "B" }, { file: "/etc/passwd", line: 1, column: 1 }, { file: "/src/A.cs", line: 0 },
+    { file: "/src/A.cs", line: 1.5 }, { file: "/src/A.cs", line: 4, column: -1 }, { file: "/src/A.cs", line: "4" },
     { file: "/src/../src/A.cs", line: 4, column: 9 }, { file: "/src/A.cs:4:9" }, [], "A/command/go", null,
   ]) {
     assert.equal(findOpenLocation(map, refused), undefined, JSON.stringify(refused));
@@ -179,7 +182,7 @@ test("vite dev takes the map dotnet runic dev or the sourceMap option names, and
   } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
 
-test("/__runic/open refuses everything but a listed location from the server's own origin", async () => {
+test("/__runic/open refuses everything but a location in a listed file from the server's own origin", async () => {
   const fixture = await project();
   const { editor, record } = await recordingEditor(fixture.directory);
   try {
@@ -200,7 +203,6 @@ test("/__runic/open refuses everything but a listed location from the server's o
       assert.equal(await open({ id: "Demo.CounterViewModel/state/count" }), 404, "an entry without a location");
       assert.equal(await open({ file: join(fixture.directory, "record-editor.sh"), line: 1, column: 1 }), 404, "a file the map does not list");
       assert.equal(await open({ file: "/etc/passwd", line: 1, column: 1 }), 404);
-      assert.equal(await open({ ...location, line: location.line + 1 }), 404, "another line of a listed file");
       assert.equal(await open({ file: `${location.file}:${location.line}:${location.column}` }), 404);
       assert.equal(await exists(record), false, "no refused request launched the editor");
 
@@ -210,6 +212,9 @@ test("/__runic/open refuses everything but a listed location from the server's o
         await rm(record);
         assert.equal(await open(location), 200, "the same location by file, line and column");
         assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, String(location.line), String(location.column)]);
+        await rm(record);
+        assert.equal(await open({ file: location.file, line: 2 }), 200, "another line of a listed file, as a stack frame names it");
+        assert.deepEqual((await waitForFile(record)).trim().split("\n"), [location.file, "2", "1"]);
         await rm(record);
       }
       // A listed file that a later edit removed opens nothing.

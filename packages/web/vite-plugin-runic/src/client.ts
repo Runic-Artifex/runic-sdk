@@ -1,6 +1,7 @@
 // The development client. It forwards the diagnostics and connection state of `@runic-artifex/views` to the
 // development server, which keeps them on its timeline, reports each View's state and superseded command replies to
-// the state inspector, draws Bridge calls on a "Runic" track of the browser's Performance panel, and warns about script that overwrites a focused text field with an older value
+// the state inspector, sends each settled Bridge call to the dock's call timeline and draws it on a "Runic" track of
+// the browser's Performance panel, and warns about script that overwrites a focused text field with an older value
 // (`stale-input`). It has no exports.
 //
 // `runic()` injects it into served pages through `virtual:runic/client`, and loads it through that module for an
@@ -9,6 +10,7 @@
 // in development only, and it reports to `runicDevSessionProxy()` (see channel.ts).
 import type { RunicClientOptions } from "./channel.js";
 import {
+  callEvent,
   clientOptionsKey,
   connectionEvent,
   diagnosticEvent,
@@ -17,6 +19,7 @@ import {
   viewEvent,
 } from "./channel.js";
 import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
+import { sanitizeCallReport } from "./calls.js";
 import { installStaleInputWarning } from "./stale-input.js";
 
 interface ViteHotContextLike {
@@ -288,9 +291,10 @@ function connectViewsInspector(): void {
 
 // The Bridge-call channel. @runic-artifex/views 0.20 or later reports each generated client call to it once a reader
 // set `requested` and listens (specs/application, "Shared globals"), and then runs each call in a V8 async stack task,
-// so a breakpoint after a reply shows the click that made the call. This client draws each settled call as an entry of
-// the "Bridge calls" track in the "Runic" track group of Chromium's Performance panel (`performance.measure` with
-// `detail.devtools`); other engines keep a plain measure or skip it. The calls are not sent to the server yet.
+// so a breakpoint after a reply shows the click that made the call. This client sends each settled call to the
+// development server for the dock's call timeline (calls.ts), and draws it as an entry of the "Bridge calls" track in
+// the "Runic" track group of Chromium's Performance panel (`performance.measure` with `detail.devtools`); other engines
+// keep a plain measure or skip it.
 const viewsCallsKey = Symbol.for("runic.views.calls");
 const callsListenerKey = "runic:calls-listener";
 const runicTrackGroup = "Runic";
@@ -308,8 +312,8 @@ interface ViewsCallsChannel {
 interface CallEvent {
   readonly phase: string; readonly id: number; readonly kind: string; readonly request: string; readonly route: string;
   readonly contract: string; readonly member: string; readonly start: number; readonly end?: number; readonly duration?: number;
-  readonly outcome?: string; readonly revision?: number; readonly reason?: string;
-  readonly handler?: { readonly name: string; readonly start: number; readonly end: number };
+  readonly outcome?: string; readonly revision?: number; readonly reason?: string; readonly error?: unknown;
+  readonly handler?: { readonly name: string; readonly start: number; readonly end: number; readonly duration?: number };
 }
 
 type UserTiming = { measure?(name: string, options: object): unknown; clearMeasures?(name?: string): void };
@@ -332,9 +336,36 @@ function measure(name: string, start: number, end: number, devtools: Record<stri
 
 const outcomeColors: Readonly<Record<string, string>> = { ok: "primary", error: "error", cancelled: "tertiary" };
 
+// The exception of a failed call: .NET's development detail of a `BridgeError`, else a browser error's own.
+function callFailure(error: unknown): unknown {
+  if (typeof error !== "object" || error === null) return undefined;
+  const { name, message, stack, detail } = error as { name?: unknown; message?: unknown; stack?: unknown; detail?: unknown };
+  if (typeof detail === "object" && detail !== null) {
+    const { type, message: detailMessage, stack: detailStack } = detail as Record<string, unknown>;
+    return { type: typeof type === "string" ? type : name, message: detailMessage, stack: detailStack };
+  }
+  return { type: name, message, stack };
+}
+
+// The dock's call timeline. The server names the handler from its source map.
+function sendCall(event: CallEvent): void {
+  const handler = typeof event.handler === "object" && event.handler !== null ? event.handler : undefined;
+  const handlerDuration = typeof handler?.duration === "number" ? handler.duration
+    : typeof handler?.start === "number" && typeof handler.end === "number" ? handler.end - handler.start : undefined;
+  const report = sanitizeCallReport({
+    page, kind: event.kind, route: event.route, contract: event.contract, member: event.member,
+    duration: (event.end as number) - event.start, outcome: event.outcome, reason: event.reason, revision: event.revision,
+    handlerDuration, handlerName: handler?.name,
+    failure: event.outcome === "error" ? callFailure(event.error) : undefined,
+  });
+  if (report) send(callEvent, report);
+}
+
 function reportCall(event: CallEvent): void {
-  if (typeof event !== "object" || event === null || event.phase !== "end" || viewsCalls().devtools === false) return;
+  if (typeof event !== "object" || event === null || event.phase !== "end") return;
   if (typeof event.start !== "number" || typeof event.end !== "number") return;
+  sendCall(event);
+  if (viewsCalls().devtools === false) return;
   // `Demo.EditorViewModel:3F2A…` names the C# view model `EditorViewModel`.
   const model = String(event.contract).split(":", 1)[0]!.split(".").pop() || event.route;
   const label = `${model}.${event.member}`;
@@ -380,6 +411,32 @@ function close(): void {
   pendingStates.clear();
 }
 
+// The Vite DevTools dock. Its own loader is an inline module that loads `/__devtools/embedded.js` relative to the
+// document. Under `dotnet runic dev` the document is the .NET host's page, which loads Vite's modules from Vite's
+// origin, so that URL names the host and the dock never appears; SvelteKit runs no `transformIndexHtml` and adds no
+// loader at all. This client is a module of Vite's origin, so it loads the dock from there once the document's own
+// scripts ran, unless one of them already loads that script.
+const dockPath = "/__devtools/embedded.js";
+
+function loadDock(): void {
+  const document = (globalThis as { document?: Document }).document;
+  if (options?.dock !== true || document === undefined) return;
+  const source = new URL(dockPath, import.meta.url).href;
+  const load = (): void => {
+    for (const script of document.querySelectorAll("script[src]")) {
+      if ((script as HTMLScriptElement).src === source) return;
+    }
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = source;
+    document.body.appendChild(script);
+  };
+  // The document's module scripts, the dock's loader among them, all ran by the window's load event; this client runs
+  // first, while the document is still "interactive", or later from a page module (SvelteKit's hooks.client.ts).
+  if (document.readyState === "complete") load();
+  else host.addEventListener?.("load", load);
+}
+
 connectViewsDiagnostics();
 connectViewsConnection();
 connectViewsInspector();
@@ -388,3 +445,4 @@ connectViewsCalls();
 // (a production build that kept the client), the HTTP channel installs it once the server answers. Installs once
 // per page; HMR re-evaluation leaves it in place.
 if (hot) installStaleInputWarning(globalThis);
+loadDock();

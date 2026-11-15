@@ -228,21 +228,56 @@ export function answerSources(request: IncomingMessage, response: ServerResponse
 }
 
 /**
- * The location `{ "id" }` or `{ "file", "line", "column" }` names, when the map lists it; otherwise undefined.
- * A `file` must be exactly the path of a location in the map.
+ * The location `{ "id" }` of a map entry names, or `{ "file", "line", "column"? }` in a file the map lists, such as a
+ * frame of a .NET stack in a ViewModel's file; otherwise undefined. A `file` must be exactly the path of a location in
+ * the map, and `line` and `column` positive integers (`column` defaults to 1).
  */
 export function findOpenLocation(map: RunicSourceMap, message: unknown): RunicSourceLocation | undefined {
   if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
-  const { id, file, line, column } = message as Record<string, unknown>;
+  const { id, file, line, column = 1 } = message as Record<string, unknown>;
   const entries: readonly (RunicSourceMember | RunicSourceViewModel)[] = [...map.viewModels, ...map.members];
   if (typeof id === "string") return entries.find((entry) => entry.id === id)?.location;
-  if (typeof file !== "string" || typeof line !== "number" || typeof column !== "number") return undefined;
-  return entries.find((entry) => entry.location !== undefined && entry.location.file === file
-    && entry.location.line === line && entry.location.column === column)?.location;
+  if (typeof file !== "string" || !Number.isSafeInteger(line) || (line as number) < 1
+      || !Number.isSafeInteger(column) || (column as number) < 1) return undefined;
+  const listed = entries.find((entry) => entry.location?.file === file)?.location;
+  return listed === undefined ? undefined : { file: listed.file, line: line as number, column: column as number };
+}
+
+/** Whether `file` is exactly the path of a location in the map, so that `/__runic/open` opens it. */
+export function listsFile(map: RunicSourceMap | undefined, file: string): boolean {
+  return map !== undefined && [...map.viewModels, ...map.members].some((entry) => entry.location?.file === file);
 }
 
 /**
- * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or a `{ "file", "line", "column" }` the map lists, as
+ * What the dock's open action sends through `/__runic/open`: the server's own endpoint on its loopback URL, with the
+ * server's origin, so that the dock opens exactly what a page of the server may open, through the same checks and
+ * Vite's editor launcher. Resolves with the endpoint's status, or 0 when the server has no local URL.
+ */
+export async function openThroughEndpoint(localUrl: string | undefined, target: unknown): Promise<number> {
+  if (localUrl === undefined) return 0;
+  const url = new URL(openPath.slice(1), localUrl.endsWith("/") ? localUrl : `${localUrl}/`);
+  const body = JSON.stringify(target);
+  const { request } = url.protocol === "https:" ? await import("node:https") : await import("node:http");
+  return new Promise((resolve) => {
+    const sent = request(url, {
+      method: "POST",
+      headers: {
+        Origin: url.origin, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+      // A development server's own certificate: the request goes to this process.
+      rejectUnauthorized: false,
+    }, (response) => {
+      response.resume();
+      resolve(response.statusCode ?? 0);
+    });
+    sent.on("error", () => resolve(0));
+    sent.end(body);
+  });
+}
+
+/**
+ * Answers `POST /__runic/open`: `{ "id" }` of a map entry, or `{ "file", "line", "column" }` in a file the map lists, as
  * JSON from a page of this server on this machine. Anything else is refused and opens nothing. An accepted location
  * goes to Vite's own editor launcher (launch-editor: `LAUNCH_EDITOR`, then the running or configured editor, such as
  * VS Code or Rider) through `/__open-in-editor`, which answers 200.

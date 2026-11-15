@@ -278,6 +278,7 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   const commands = [];
   const specs = [];
   const view = { stateKey: "runic:test-view" };
+  const actions = [];
   await plugin.devtools.setup({
     rpc: {
       sharedState: {
@@ -286,6 +287,7 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
           mutate: () => undefined,
         }),
       },
+      register: (definition) => actions.push(definition),
     },
     createJsonRenderer: (spec) => {
       specs.push(spec);
@@ -299,7 +301,11 @@ test("registers the official Vite DevTools dock, shared state, and command", asy
   assert.equal(docks[0].type, "json-render");
   assert.equal(docks[0].view, view);
   assert.equal(commands[0].id, "runic:copy-diagnostic-state");
+  // The open buttons' action, which sends its request through /__runic/open.
+  assert.deepEqual(actions.map((action) => [action.name, action.type]), [["runic:open-in-editor", "action"]]);
   assert.equal(specs[0].elements.heading.props.text, "Runic");
+  assert.equal(specs[0].elements.calls.props.title, "Bridge calls");
+  assert.deepEqual(specs[0].elements.calls.children, ["calls-none"]);
   assert.equal(specs.length, 1);
 });
 
@@ -830,6 +836,7 @@ const connectionState = await load(views + "connection-state.js", "views/connect
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
+await load("dist/calls.js", "plugin/calls");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
@@ -910,6 +917,7 @@ const connectionState = await load(views + "connection-state.js", "views/connect
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
 await load("dist/channel.js", "plugin/channel");
+await load("dist/calls.js", "plugin/calls");
 // virtual:runic/client selects the HMR channel before the client evaluates.
 context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });

@@ -415,3 +415,33 @@ test("the translated Vite frontends' package.json and locks are the frontend's o
     }
   }
 });
+
+// #954, D066.27 (9): every Vite starter registers the Vite DevTools dock while it serves, as one line that the
+// application deletes to turn it off, with the @vitejs/devtools version vite-plugin-runic is built and tested with (D038:
+// not one published the same day). The Angular CLI runs no Vite plugins and has no dock.
+test("the Vite starters register the Vite DevTools dock on a line of its own, and the Angular CLI starter has none", () => {
+  const pluginManifest = JSON.parse(readFileSync(resolve(root, "packages/web/vite-plugin-runic/package.json"), "utf8"));
+  const version = pluginManifest.devDependencies["@vitejs/devtools"];
+  assert.match(version, /^\d+\.\d+\.\d+$/, "the plugin pins @vitejs/devtools exactly");
+  for (const variant of ["frontends", "translations"]) {
+    for (const framework of ["react", "vue", "svelte", "sveltekit", "angular-vite"]) {
+      const directory = resolve(templateContent, variant, framework);
+      const name = `${variant}/${framework}`;
+      const config = readFileSync(resolve(directory, "vite.config.ts"), "utf8");
+      assert.match(config, /^import \{ DevTools \} from "@vitejs\/devtools";$/m, name);
+      assert.equal(config.match(/^    DevTools\(\),$/gm)?.length, 1, `${name}: DevTools() on a line of its own`);
+      assert.match(config, /To turn the dock off, delete this line\.\n    DevTools\(\),\n/, name);
+      const manifest = JSON.parse(readFileSync(resolve(directory, "package.json"), "utf8"));
+      assert.equal(manifest.devDependencies["@vitejs/devtools"], version, name);
+      assert.equal(manifest.dependencies?.["@vitejs/devtools"], undefined, `${name}: a development dependency only`);
+      for (const lock of ["package-lock.json", "pnpm-lock.yaml", "bun.lock"]) {
+        const text = readFileSync(resolve(directory, lock), "utf8");
+        assert.ok(text.includes(`"node_modules/@vitejs/devtools": {\n      "version": "${version}"`) ||
+          text.includes(`'@vitejs/devtools@${version}':`) || text.includes(`"@vitejs/devtools": ["@vitejs/devtools@${version}"`),
+          `${name}/${lock}: no @vitejs/devtools ${version}`);
+      }
+    }
+  }
+  const cli = JSON.parse(readFileSync(resolve(templateContent, "frontends/angular/package.json"), "utf8"));
+  assert.equal({ ...cli.dependencies, ...cli.devDependencies }["@vitejs/devtools"], undefined);
+});
