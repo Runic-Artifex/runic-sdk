@@ -18,6 +18,7 @@ dotnet runic dev
 | Option | Choices | Default |
 | --- | --- | --- |
 | `--frontend` | `react`, `vue`, `svelte`, `sveltekit`, `angular` | `react` |
+| `--angular-build` | `cli` (the Angular CLI), `vite` (Vite with the Analog Angular plugin): what builds, serves and tests an Angular frontend | `cli` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `desktop` (Runic Desktop), `cswebui` (CS-WebUI) | `desktop` |
 | `--linux-gtk` | `3` (GTK 3 and WebKitGTK 4.1), `4` (GTK 4 and WebKitGTK 6): the GTK version of Runic Desktop on Linux | `3` |
@@ -46,6 +47,18 @@ Project dialog the templates have an icon and list the same options, except
 `@runic-artifex/svelte` for the Views. It works with either host and either
 ViewModel library, and `dotnet runic dev` serves it from SvelteKit's
 development server.
+
+`--frontend angular` builds with the Angular CLI. `--angular-build vite` builds,
+serves and tests the same Angular frontend with Vite instead, through the Analog
+Angular plugin (`@analogjs/vite-plugin-angular`) and the Runic Vite plugin,
+which adds what the other frontends have: with `--translations`, the
+Translations Vite plugin, so an edited message reaches the page under
+`dotnet runic dev` without a build; the Runic DevTools dock of
+`@vitejs/devtools`; and the component build target of trusted component mode.
+`vite build` checks no types, so the frontend's `build` and `typecheck` scripts
+run `ngc --noEmit`, and its test runs on Vitest with the same plugin. The Analog
+plugin is a third-party package that uses Angular's internal compiler API, so
+update Angular and the plugin together.
 
 `dotnet runic dev` restores NuGet packages, installs the frontend packages,
 builds the application, starts the frontend development server, and opens the

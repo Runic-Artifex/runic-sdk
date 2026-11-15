@@ -2025,7 +2025,10 @@ globalization on for helpers.
 ## Runic.Platform analyzers
 
 The `Runic.Platform` package carries Roslyn analyzers for its API, with code
-fixes in the IDE (since 0.14).
+fixes in the IDE (since 0.14). They run in every project that uses
+`Runic.Platform`, also one that gets it only through another package, such as
+`Runic.Desktop` or a Views host adapter. They report while you type and in a
+build.
 
 ### RUNICPLAT001
 

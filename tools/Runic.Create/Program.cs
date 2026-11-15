@@ -86,6 +86,7 @@ internal static class Program
         [Argument(Description = "Project name and default directory.")] string? name = null,
         [Option("--output", "-o", ValueName = "PATH", Description = "Create the project in this directory instead, as dotnet new --output does.")] string? output = null,
         [Option("--frontend", Description = "Frontend framework.")] string? frontend = null,
+        [Option("--angular-build", Description = "What builds an Angular frontend: cli (the Angular CLI) or vite (Vite with the Analog Angular plugin).")] string? angularBuild = null,
         [Option("--package-manager", Description = "JavaScript package manager.")] string? packageManager = null,
         [Option("--host", Description = "Window host: desktop opens a native window, cswebui opens a browser window.")] string? host = null,
         [Option("--linux-gtk", Description = "GTK version of Runic Desktop on Linux: 3 or 4.")] string? linuxGtk = null,
@@ -109,6 +110,7 @@ internal static class Program
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["frontend"] = frontend ?? "",
+                ["angular-build"] = angularBuild ?? "",
                 ["package-manager"] = packageManager ?? "",
                 ["host"] = host ?? "",
                 ["linux-gtk"] = linuxGtk ?? "",
@@ -129,7 +131,7 @@ internal static class Program
     }
 
     /// <summary>The template options the creator exposes as flags, by long name.</summary>
-    internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "linux-gtk", "desktop-server", "view-models", "editor"];
+    internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "angular-build", "package-manager", "host", "linux-gtk", "desktop-server", "view-models", "editor"];
 
     /// <summary>The template's Boolean parameters the creator exposes as presence flags, by long name.</summary>
     internal static IReadOnlyList<string> ToggleFlags { get; } = ["tests", "translations", "nix", "packaging", "restore"];

@@ -791,6 +791,8 @@ jobs:
           # The starters' engines.node admits Node 24 and 26 (D031.3); this lane builds them on Node 26.
           - first: sveltekit
             node: "26.12.1"
+          # #946: Angular built with Vite and the Analog plugin (--angular-build vite), with every package manager.
+          - first: angular-vite
           # D059.17: the generated projects have no global.json, so they build with SDK 11 and run on the .NET 10
           # runtime that the pinned SDK brings; doctor must pass both its dotnet-sdk and dotnet-runtime checks.
           - first: react

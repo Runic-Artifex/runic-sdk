@@ -52,6 +52,7 @@ commands in the browser.
 | Option | Choices | Default |
 | --- | --- | --- |
 | `--frontend` | `react`, `vue`, `svelte`, `sveltekit`, `angular` | `react` |
+| `--angular-build` | `cli` (the Angular CLI), `vite` (Vite with the Analog Angular plugin and the Runic Vite plugins): what builds an Angular frontend; the other frontends build with Vite, so the creator asks for it, and prints it, only with `--frontend angular` unless you pass it | `cli` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `desktop`, `cswebui` | `desktop` |
 | `--linux-gtk` | `3`, `4`: the GTK version of Runic Desktop on Linux; Windows, macOS and `cswebui` are the same with either, so the creator asks for it, and prints it, only with `--host desktop` unless you pass it | `3` |

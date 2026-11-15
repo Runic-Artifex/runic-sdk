@@ -4,6 +4,7 @@
   "defaultSymbolVisibility": true,
   "symbolInfo": [
     { "id": "frontend" },
+    { "id": "angularBuild" },
     { "id": "packageManager" },
     { "id": "host" },
     { "id": "linuxGtk" },
