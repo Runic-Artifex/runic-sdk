@@ -11,7 +11,7 @@
       },
       "devDependencies": {
         "@runic-artifex/vite-plugin-runic": "0.20.0",
-        "@runic-artifex/vite-plugin-runic-translations": "0.11.0",
+        "@runic-artifex/vite-plugin-runic-translations": "0.12.0",
         "@vitejs/devtools": "0.7.6",
         "@vitejs/plugin-vue": "6.0.9",
         "happy-dom": "21.0.4",
@@ -113,7 +113,7 @@
 
     "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.20.0", "", { "dependencies": { "launch-editor": "2.14.2" }, "peerDependencies": { "@vitejs/devtools": "^0.7.6", "vite": ">=8.3.3 <9" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-TH9vlI4AE9kantdT/C0Gv+SGuWRPGzSitKl7E+wHp8Vx8UEwnjXoxry3mw+OaOrV8476chCSLFWX2Z4JVKBLZA=="],
 
-    "@runic-artifex/vite-plugin-runic-translations": ["@runic-artifex/vite-plugin-runic-translations@0.11.0", "", { "peerDependencies": { "vite": ">=8.3.3 <9" }, "optionalPeers": ["vite"] }, "sha512-gG3PwlDyfgJIhdQHKbrMth1KFfT1dG61zX91pbzK/E0sqyjf8Zs+utIHa9Kgd7GNacF5bnTJrT274TP5o8iL2g=="],
+    "@runic-artifex/vite-plugin-runic-translations": ["@runic-artifex/vite-plugin-runic-translations@0.12.0", "", { "peerDependencies": { "vite": ">=8.3.3 <9" }, "optionalPeers": ["vite"] }, "sha512-bW6SbCrKKhlldfXuqkwr4KBWL+bQLMDkeJqRPTtdoaWBicysHrjhhaDU2TbxSE+yWw7CpZ1QylSdmVa8PW0nmg=="],
 
     "@runic-artifex/vue": ["@runic-artifex/vue@0.20.0", "", { "peerDependencies": { "@runic-artifex/views": "0.20.0", "vue": ">=3.5.30 <4" } }, "sha512-sr5Or9iP5O+nZyiIm/DM+bIumgfE/IrGpIz+xPSIDZ3fKXRRIx9I74jUQO5i8S/2ViuS/JDMfrkrjR9m39fr6A=="],
 

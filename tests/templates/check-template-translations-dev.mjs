@@ -6,10 +6,11 @@
 //
 // The command (dotnet runic dev) starts the application with RUNIC_APPLICATION_SERVE_ONLY=1, as check-template-page.mjs
 // does. The check opens the page in Chromium, waits for the Bridge, then edits the title in Frontend/translations/en.rmf2
-// and waits for the page's heading to show it; adds a message to every locale's file and waits until the development
-// server's virtual:runic-translations/app module exports it; removes it again and waits until the module no longer has
-// it. It restores the catalog's files in every case. The page reloads for a change today; runic-translations-sdk#176
-// updates it in place, which this check accepts as well.
+// and waits for the page's heading to show it in place: the template's plugin (0.12, runic-translations-sdk#179) updates
+// an edited message without reloading the page, and configureTranslatedText renders it again. It then adds a message to
+// every locale's file and waits until the development server's virtual:runic-translations/app module exports it, and
+// removes it again and waits until the module no longer has it (an added or removed message may reload the page). It
+// restores the catalog's files in every case.
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -65,13 +66,16 @@ async function check(url, viteOrigin, catalog) {
     await page.getByRole("status").filter({ hasText: "Connected to the .NET Window." }).waitFor({ timeout });
     await page.getByRole("heading", { level: 1, name: "Runic Views", exact: true }).waitFor({ timeout });
 
-    // An edited message: the page shows the new text.
+    // An edited message: the page shows the new text in place. A reload would lose this marker.
+    await page.evaluate(() => { window.__runicTemplateCheck = "before the edit"; });
     const edited = originals.en.replace(/^  title = Runic Views$/m, "  title = Runic Views, edited in development");
     if (edited === originals.en) throw new Error(`${files.en} has no "  title = Runic Views" line to edit.`);
     const started = Date.now();
     writeFileSync(files.en, edited);
     await page.getByRole("heading", { level: 1, name: "Runic Views, edited in development", exact: true }).waitFor({ timeout });
     const editMs = Date.now() - started;
+    if (await page.evaluate(() => window.__runicTemplateCheck) !== "before the edit")
+      throw new Error("The page reloaded for an edited message; the Translations Vite plugin 0.12 updates it in place.");
 
     // An added and a removed message: every locale translates it, else the catalog does not compile (RTR0010). The page
     // renders no new message, so the check reads the development server's module, as an import of it would.
@@ -117,7 +121,7 @@ async function main(args) {
     const viteOrigin = new URL(await waitForOutput(application, /Vite development server ready at (http:\/\/127\.0\.0\.1:\d+)\//)).origin;
     const url = await waitForOutput(application, /RUNIC_APPLICATION_URL=(\S+)/);
     const editMs = await check(url, viteOrigin, join(project, "Frontend/translations"));
-    console.log(`TRANSLATIONS_DEV_OK|edited message shown after ${editMs} ms|added and removed message served`);
+    console.log(`TRANSLATIONS_DEV_OK|edited message shown in place after ${editMs} ms|added and removed message served`);
   } catch (error) {
     error.message += `\ndotnet runic dev output:\n${tail(application.output)}`;
     throw error;

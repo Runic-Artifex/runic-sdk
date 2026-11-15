@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { copyFile, mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { root, workspace, run } from "../run.mjs";
 import { readToolchain } from "../toolchain.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
@@ -24,6 +24,12 @@ const toolchain = readToolchain(root);
 // them through from npm, or from the train feed, without publish times.
 const runicPackages = workspace.npm.map(entry => entry.name);
 const independentArchives = Object.values(trainFeedNpm()).map(item => item.file);
+// The archives the registry serves, so that each lock names npm's URL instead of the registry's: the candidates, and the
+// train feed's npm candidates of the independently released packages (their tarballs are the ones npm gets).
+const servedArchives = [
+  ...workspace.npm.map(entry => ({ name: entry.name, version: workspace.version, file: `${entry.name.replace('@', '').replace('/', '-')}-${workspace.version}.tgz` })),
+  ...Object.entries(trainFeedNpm()).map(([name, item]) => ({ name, version: item.version, file: basename(item.file) })),
+];
 function independentRunicPackages(manifest) {
   return Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).filter(isIndependentRunicPackage);
 }
@@ -77,12 +83,11 @@ try {
       if (manager === "pnpm") await copyFile(join(root, "tools/Runic.Application.Templates/content", pnpmWorkspace), join(directory, "pnpm-workspace.yaml")).catch(error => { if (error.code !== "ENOENT") throw error; });
       run(manager, args, directory, nodeCompatibility().env);
       let lock = await readFile(join(directory, filename), "utf8");
-      for (const entry of workspace.npm) {
-        const basename = entry.name.slice(entry.name.indexOf('/') + 1);
-        const local = `${address}/archives/${entry.name.replace('@', '').replace('/', '-')}-${workspace.version}.tgz`;
+      for (const entry of servedArchives) {
+        const local = `${address}/archives/${entry.file}`;
         if (manager === "bun") lock = lock.replaceAll(`"${local}"`, '""');
         else if (manager === "pnpm") lock = lock.replaceAll(`, tarball: ${local}`, "");
-        else lock = lock.replaceAll(local, `https://registry.npmjs.org/${entry.name}/-/${basename}-${workspace.version}.tgz`);
+        else lock = lock.replaceAll(local, `https://registry.npmjs.org/${entry.name}/-/${entry.name.slice(entry.name.indexOf('/') + 1)}-${entry.version}.tgz`);
       }
       if (lock.includes(address) || lock.includes(temporary)) throw new Error(`Local path escaped into ${templateDirectory}/${filename}.`);
       await writeFile(join(source, filename), lock);
