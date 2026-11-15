@@ -212,7 +212,12 @@ export default defineConfig({
 ```
 
 The entry's default export is the mount function of
-[`@runic-artifex/views/component`](../views/README.md#components). `vite build`
+[`@runic-artifex/views/component`](../views/README.md#components). With Angular,
+the Analog plugin (`angular()`) compiles the component's code ahead of time as
+it does the page's, and `runicComponentMount` of `@runic-artifex/angular/experimental`
+is the mount function; it keeps Angular's component styles, which Angular adds
+to the document at run time rather than to the build's CSS, in the shadow root
+([Angular components](../angular/README.md#components-experimental)). `vite build`
 then builds every environment, as `vite build --app` does, and after them the
 `runic_component` environment into `_runic_component/` of the build output:
 

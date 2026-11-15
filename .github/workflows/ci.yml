@@ -558,6 +558,13 @@ jobs:
       # A browser (serve-only) host shows a hosted guest's window in a region of its page, in Chromium (region/1).
       - name: Exercise a browser host's hosted region
         run: node tests/dotnet/Runic.Application.Views.Desktop.Tests/hosted-region-browser-smoke.mjs
+      # An Angular guest's component (#947): the hosted components widget's Angular frontend, built by Vite with the
+      # Analog plugin and the component target, in a host page under the dashboard's policy, with the component
+      # conformance checks.
+      - name: Exercise an Angular guest's component
+        run: |
+          (cd examples/hosted-components/Widget/Angular && bun install --frozen-lockfile && bun run build)
+          node examples/hosted-components/angular-component-smoke.mjs
       # The hosted windows example's shell runs in the native job's Linux legs, which have GTK 3 and WebKitGTK 4.1.
       - name: Exercise CommunityToolkit and ReactiveUI typed clients
         run: |

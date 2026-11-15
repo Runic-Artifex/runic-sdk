@@ -5,6 +5,7 @@
     "": {
       "name": "@runic-artifex/sdk-workspace",
       "devDependencies": {
+        "@runic-artifex/angular": "workspace:*",
         "@runic-artifex/views": "workspace:*",
         "@runic-artifex/views-effect": "workspace:*",
         "@runic-artifex/vite-plugin-runic": "workspace:*",
@@ -37,10 +38,12 @@
       "peerDependencies": {
         "@angular/core": ">=22.0.0 <23",
         "@angular/forms": ">=22.0.0 <23",
+        "@angular/platform-browser": ">=22.0.0 <23",
         "@runic-artifex/views": "0.20.0",
       },
       "optionalPeers": [
         "@angular/forms",
+        "@angular/platform-browser",
       ],
     },
     "packages/web/react": {
