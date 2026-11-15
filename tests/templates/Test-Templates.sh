@@ -720,6 +720,14 @@ verify_template() {
     test -f "$output/publish/www/settings.html"
     cmp "$output/publish/www/$host_client" "$output/publish/www/runic-views.js"
   fi
+  # Every frontend, the Angular CLI's and Vite's (angular-vite) included, bundles the production build of
+  # @runic-artifex/views (README, "Development build"): its development tools, the Bridge-call channel with its async
+  # stack tagging, the development features trace-context/1 and handler-timing/1 (#958), and the Translations text
+  # channel, are not in the page (#975).
+  if grep -rlE 'runic\.views\.calls|runic\.translations\.text|trace-context/1|handler-timing/1' "$output/Frontend/dist"; then
+    echo "The built $framework frontend contains development code of @runic-artifex/views." >&2
+    exit 1
+  fi
   # Runic Desktop serves each Window below its own path, where root-absolute
   # asset URLs leave the page blank. Desktop variants are not started here.
   if grep -nE '(src|href)="/[^/]' "$output/Frontend/dist/index.html"; then

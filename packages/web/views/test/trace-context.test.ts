@@ -1,12 +1,16 @@
 // trace-context/1 and handler-timing/1 (specs/application/README.md, "Trace context and handler timing"): while a reader of
 // the development Bridge-call channel listens, a call's request carries the trace context the reader gave it and asks
 // for its C# handler's timing, but only on a connection that uses the feature; the end event carries the handler a
-// reply named. Without a reader, nothing is added, and a producer of an earlier release sees requests as before.
+// reply named. Without a reader, nothing is added, and a producer of an earlier release sees requests as before. Both
+// are development tools: only the development build (README, "Development build") implements them, and the last test
+// checks that the production build lists neither feature and sends neither member.
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { BridgeCallEvent, BridgeCallTrace, RunicBridgeClient } from "../dist/index.js";
-import { bridgeOperations, connectView } from "../dist/generated.js";
-import * as bridgeWire from "../dist/wire.js";
+import * as production from "../dist/generated.js";
+import { developmentGenerated, developmentWire as bridgeWire } from "./support/development.js";
+
+const { bridgeOperations, connectView } = developmentGenerated;
 
 const callsKey = Symbol.for("runic.views.calls");
 const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
@@ -165,4 +169,20 @@ test("a trace hook that throws or returns nothing leaves the call untraced", asy
   } finally {
     console.error = saved;
   }
+});
+
+test("the production build lists neither feature and sends neither member, also while a reader with a trace hook listens", async () => {
+  const bridge = installBridge([...baseFeatures, "trace-context/1", "handler-timing/1"], { name: "EditorViewModel.Save", duration: 1 });
+  const reader = listen(() => ({ traceparent }));
+  const client = await production.connectView<State>({ contract, route: "editor", members, operations: production.bridgeOperations });
+  await client.command("save");
+  await client.set("title", "b");
+  const hello = bridge.requests.find(request => request["kind"] === "hello")!;
+  assert.equal((hello["features"] as string[]).some(feature => feature === "trace-context/1" || feature === "handler-timing/1"), false);
+  for (const request of bridge.calls()) {
+    assert.equal(request["trace"], undefined, JSON.stringify(request));
+    assert.equal(request["timing"], undefined, JSON.stringify(request));
+  }
+  assert.deepEqual(reader.events, []);
+  client.dispose();
 });

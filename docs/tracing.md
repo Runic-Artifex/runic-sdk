@@ -5,8 +5,10 @@ Since 0.20, a click in the page and the C# it runs can be one trace: the page's 
 and database calls. This guide shows the C# handler timing that `dotnet runic dev` gives you without any setup, and
 how to see the joined traces in a local viewer.
 
-Everything here is for development. A production build contains none of the page-side code, and a production host
-neither times handlers nor reads trace context unless your application records spans.
+Everything here is for development. The page side is in the development build of `@runic-artifex/views`, which
+`vite dev` resolves; a production build (`vite build`, or a Release build of a Bun-bundled frontend) contains none of
+it, and its requests carry no trace context. A production host never times handlers, and reads a trace context only
+while your application records spans.
 
 ## C# handler timing
 

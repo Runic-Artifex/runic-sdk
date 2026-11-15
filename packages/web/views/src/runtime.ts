@@ -79,8 +79,9 @@ export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
   translationTextFeature, navigationPathFeature, appearanceFeature, clientLanguagesFeature, hostedRegionsFeature,
-  // Development only in effect: a request carries them only while a reader of the Bridge-call channel follows it.
-  traceContextFeature, handlerTimingFeature,
+  // Development tools (calls.ts): only the development build lists them, and a request carries their members only while
+  // a reader of the Bridge-call channel follows its call. The production build's hello is the same as without them.
+  ...__RUNIC_DEVELOPMENT__ ? [traceContextFeature, handlerTimingFeature] : [],
 ];
 
 /** A push handler, registered per push kind and route. */

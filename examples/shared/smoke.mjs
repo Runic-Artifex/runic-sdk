@@ -2,7 +2,7 @@
 // timeout reports the last result, the last error and optional page and host
 // detail, so a CI failure never ends with "no detail".
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +14,31 @@ import { reportIfSlow, scaled, startWait, timeoutScale } from "../../tests/suppo
  */
 export { reportIfSlow, scaled, startWait, timeoutScale };
 export const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+// What only the development build of @runic-artifex/views contains (views README, "Development build", #975): the
+// Bridge-call channel with its async stack tagging and the Runic Translations text channel, which are globals on the
+// page, and the development tools' Views protocol features (#958).
+const viewsDevelopmentGlobalKeys = ["runic.views.calls", "runic.translations.text"];
+const viewsDevelopmentMarkers = [...viewsDevelopmentGlobalKeys, "trace-context/1", "handler-timing/1"];
+
+/**
+ * Fails unless the scripts of a built page (a Release or published `www/`) carry the production build of
+ * @runic-artifex/views. Bun's bundler resolves the development build unless NODE_ENV is production, which the
+ * Views MSBuild targets set for an optimized build.
+ */
+export async function assertProductionViews(webRoot) {
+  const scripts = (await readdir(webRoot, { recursive: true })).filter(name => name.endsWith(".js"));
+  if (scripts.length === 0) throw new Error(`${webRoot} has no scripts.`);
+  for (const name of scripts) {
+    const text = await readFile(join(webRoot, name), "utf8");
+    const found = viewsDevelopmentMarkers.filter(marker => text.includes(marker));
+    if (found.length) throw new Error(`${join(webRoot, name)} has the development build of @runic-artifex/views (${found.join(", ")}).`);
+  }
+}
+
+/** The development globals of @runic-artifex/views on the page: none in a production build. */
+export const viewsDevelopmentGlobals = evaluate => evaluate(`JSON.stringify(${JSON.stringify(viewsDevelopmentGlobalKeys)}
+  .filter(key => Symbol.for(key) in globalThis))`).then(JSON.parse);
 
 /** The last `limit` characters of process output. */
 export const tail = (text, limit = 6000) => text.length > limit ? `…${text.slice(-limit)}` : text;

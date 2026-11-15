@@ -547,7 +547,7 @@ export const bridgeOperations: BridgeOperations = {
       const message = {
         kind: "start", route: channel.route, member, operation, contract: channel.contract, ...(input === undefined ? {} : { input }),
       };
-      reply = await (call === undefined ? runtime.request(message, channel.route)
+      reply = await (!__RUNIC_DEVELOPMENT__ || call === undefined ? runtime.request(message, channel.route)
         : requestCall(call, runtime.features, sent => runtime.request(sent, channel.route), message));
     } catch (cause) {
       // The start may have been admitted: its status tells.

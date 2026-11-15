@@ -42,7 +42,7 @@ export default defineConfig({
 That adds the Translations development loop (an edited message reaches the
 page without a build), the Runic DevTools dock and the
 [component build target](../vite-plugin-runic/README.md#component-build-target),
-which the Angular CLI cannot build. `vite build` checks no types: run
+which the Angular CLI cannot build ([components](#components-experimental)). `vite build` checks no types: run
 `ngc -p tsconfig.app.json --noEmit` for that, as the template's `build` and
 `typecheck` scripts do. Without `angular.json`, `dotnet runic dev` serves the
 page with Vite. Tests run on Vitest with the same plugin, after
@@ -923,3 +923,65 @@ guest page shows in it, and `state()` tells which state the region is in:
 ```
 
 Add `RunicHostedRegion` to the component's `imports`.
+
+## Components (experimental)
+
+In [trusted component mode](../../../docs/hosted-regions.md#component-mode) a
+guest's Views render as a custom element in the host application's page. A
+guest built with Vite and the Analog plugin builds its component with the
+`component` target of `runic()`, and `runicComponentMount` from
+`@runic-artifex/angular/experimental` is the entry's mount function:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  base: "./",
+  plugins: [angular(), runic({ component: { entry: "src/component.ts", name: "service-widget" } })],
+});
+```
+
+```ts
+// src/component.ts
+import { runicComponentMount } from "@runic-artifex/angular/experimental";
+import { Widget } from "./app/widget";
+
+export default runicComponentMount(Widget);
+```
+
+The entry imports `@angular/platform-browser`, an optional peer of this package
+that every browser application has. Each element gets an Angular application of
+its own (`createApplication`, zoneless), whose `RUNIC_INSTANCE` is the element's Runic instance, so
+`injectView` and the other helpers connect to the guest's Window, never to the
+host page's. The standalone component renders in the element's shadow root.
+`runicComponentMount(Widget, { providers })` adds providers to each
+application; leave out document-level ones such as the router's history,
+`provideBrowserGlobalErrorListeners` and `Title`.
+
+- **Styles.** Angular adds component styles to `document.head`, where they
+  would neither apply in the shadow root nor leave the host document unchanged.
+  Each application's shared styles host (`ɵSHARED_STYLES_HOST`) is replaced by
+  one that adopts every component style as a constructable stylesheet of the
+  shadow root: no `<style>` element, so the host page's Content-Security-Policy
+  needs no `'unsafe-inline'` in `style-src`. `styles` and `styleUrl` work with
+  `Emulated` (the default) and `None` encapsulation. A
+  `ViewEncapsulation.ShadowDom` component writes `<style>` elements into its own
+  shadow root, which needs `'unsafe-inline'`; prefer `Emulated`. CSS that the
+  entry imports (`import "./widget.css"`) becomes the element's stylesheets too.
+  Use `:host` rather than `:root`; the host page's custom properties inherit.
+- **Teardown.** Removing the element destroys its application, its stylesheets
+  and its instance; the last element of the bundle also destroys the bundle's
+  Angular platform. An element removed while its application starts never
+  renders.
+- **Document state.** The application registers no global listener and writes
+  no history, title or `<html lang dir>`. Keep the component's own code free of
+  them too: `host: { "(window:resize)": … }`, `Router` with a location strategy,
+  `Title`, and overlays attached to `document.body` (CDK Overlay) leave the
+  shadow root.
+- **Text outside DI.** Code outside an injection context, such as an event
+  handler calling `defaultInstance()`, reaches the element's instance while one
+  element of the bundle is on the page
+  ([components](../views/README.md#components)).
+
+The [hosted components example](../../../examples/hosted-components/README.md#an-angular-widget)
+shows a widget built this way. Angular's private `ɵSHARED_STYLES_HOST` is
+covered by the package's `@angular/core` range (`>=22 <23`) and its tests.

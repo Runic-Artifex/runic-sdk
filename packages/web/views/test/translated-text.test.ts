@@ -11,6 +11,9 @@ import {
 import { connectView, decodeBridgeValidation, fieldErrors } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge, type MockBridge } from "../dist/mock.js";
+// The development build (the `development` export condition), which alone follows the Translations text channel.
+import { development } from "./support/development.js";
+import { translationsTextRevision } from "../dist/bindings.js";
 
 const titleTooLong: TextReference = {
   version: 2, catalog: "notes", contractFingerprint: "sha256:1", key: "title_too_long",
@@ -115,7 +118,8 @@ test("a configured runtime formats references in its locale, and a locale switch
 
 // The Runic Translations text-change channel (Translations 0.12.0, esm.md "Text changes during development"): the Vite
 // plugin's development client creates it when it loads, or keeps the one a listener created first, and an in-place
-// update increments `revision` and calls every listener. The channel is followed in a browser only.
+// update increments `revision` and calls every listener. The channel is followed in a browser only, and by the
+// development build only (README, "Development build").
 const textChannelKey = Symbol.for("runic.translations.text");
 type TextChannel = { version: number; revision: number; listeners: Set<() => void> };
 function inBrowser(): void {
@@ -141,18 +145,18 @@ test("an in-place message update during development notifies text subscribers li
   inBrowser();
   const { channel, update } = loadDevClient();
   const runtime = translations();
-  const stop = configureTranslatedText(runtime);
+  const stop = development.configureTranslatedText(runtime);
   cleanup.push(stop);
   assert.equal(channel.listeners.size, 1, "configureTranslatedText follows the channel");
   let notified = 0;
-  cleanup.push(subscribeText(() => { notified++; }));
-  const version = textVersion();
+  cleanup.push(development.subscribeText(() => { notified++; }));
+  const version = development.textVersion();
   update();
   assert.equal(notified, 1);
-  assert.equal(textVersion(), version + 1);
-  assert.equal(textLocale(), "en", "the locale stays");
+  assert.equal(development.textVersion(), version + 1);
+  assert.equal(development.textLocale(), "en", "the locale stays");
   // A later configureTranslatedText replaces the earlier one, and its stop leaves the channel.
-  const replacement = configureTranslatedText(translations());
+  const replacement = development.configureTranslatedText(translations());
   assert.equal(channel.listeners.size, 1, "the replaced runtime left the channel");
   replacement();
   assert.equal(channel.listeners.size, 0);
@@ -164,14 +168,14 @@ test("an in-place message update during development notifies text subscribers li
 test("configureTranslatedText before any message module loads creates the channel, and the development client keeps it (translations#176)", () => {
   inBrowser();
   assert.equal(textChannel(), undefined);
-  cleanup.push(configureTranslatedText(translations()));
+  cleanup.push(development.configureTranslatedText(translations()));
   const created = textChannel()!;
   assert.deepEqual({ version: created.version, revision: created.revision, listeners: created.listeners.size },
     { version: 1, revision: 0, listeners: 1 });
   const { channel, update } = loadDevClient();
   assert.equal(channel, created, "the client keeps the channel it finds");
   let notified = 0;
-  cleanup.push(subscribeText(() => { notified++; }));
+  cleanup.push(development.subscribeText(() => { notified++; }));
   update();
   assert.equal(notified, 1);
 });
@@ -182,32 +186,55 @@ test("a channel with missing members gets them, and one that is not an object is
   cleanup.push(() => { delete root[textChannelKey]; });
   const partial: Partial<TextChannel> = { revision: 4 };
   root[textChannelKey] = partial;
-  cleanup.push(configureTranslatedText(translations()));
+  cleanup.push(development.configureTranslatedText(translations()));
   assert.equal(textChannel(), partial, "kept");
   assert.equal(partial.version, 1);
   assert.equal(partial.revision, 4);
   assert.equal(partial.listeners?.size, 1);
   root[textChannelKey] = 42;
-  cleanup.push(configureTranslatedText(translations()));
+  cleanup.push(development.configureTranslatedText(translations()));
   assert.equal(textChannel()!.listeners.size, 1, "replaced");
 });
 
-test("in production nothing writes the channel, and outside a browser nothing follows it (translations#176)", () => {
+test("the production build neither creates nor follows the channel, and outside a browser nothing does (translations#176)", () => {
   // Outside a browser (server rendering) the channel would be process-wide: nothing is created or followed.
-  cleanup.push(configureTranslatedText(translations()));
+  cleanup.push(development.configureTranslatedText(translations()));
   assert.equal(textChannelKey in globalThis, false, "no global outside a browser");
-  // In a production page the listener waits on a channel nothing writes: a locale switch notifies as before, and
-  // nothing else does.
+  // A production page has no text channel: configureTranslatedText creates no global, and a locale switch notifies as
+  // before.
   inBrowser();
   const runtime = translations();
   cleanup.push(configureTranslatedText(runtime));
-  cleanup.push(() => { delete (globalThis as Record<symbol, unknown>)[textChannelKey]; });
-  assert.equal(textChannel()!.revision, 0);
+  assert.equal(textChannelKey in globalThis, false, "no global in a production page");
   let notified = 0;
   cleanup.push(subscribeText(() => { notified++; }));
   runtime.setLocale!("de");
   assert.equal(notified, 1, "a locale switch notifies as before");
-  assert.equal(textChannel()!.revision, 0);
+  // Nor does it follow a channel that something else created.
+  const { channel, update } = loadDevClient();
+  cleanup.push(configureTranslatedText(translations()));
+  assert.equal(channel.listeners.size, 0);
+  notified = 0;
+  update();
+  assert.equal(notified, 0);
+  // The framework bindings read the channel's revision through views: always 0 in the production build.
+  assert.equal(translationsTextRevision(), 0);
+});
+
+test("both builds in one page share the text state: an update the development build follows notifies a production subscriber", async () => {
+  inBrowser();
+  const { update } = loadDevClient();
+  cleanup.push(development.configureTranslatedText(translations()));
+  let notified = 0;
+  cleanup.push(subscribeText(() => { notified++; }));
+  const version = textVersion();
+  update();
+  assert.equal(notified, 1);
+  assert.equal(textVersion(), version + 1);
+  assert.equal(resolveText(saved), "Saved.", "the production build resolves with the runtime the development build configured");
+  const { translationsTextRevision: developmentRevision } = await import(new URL("../dist/development/bindings.js", import.meta.url).href) as
+    typeof import("../dist/bindings.js");
+  assert.equal(developmentRevision(), 1, "the development build reads the channel's revision");
 });
 
 test("the window's locale sets the runtime's locale, also one pushed before the runtime was configured", async () => {

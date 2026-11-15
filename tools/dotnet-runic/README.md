@@ -387,6 +387,12 @@ the options that describe how `dev` starts the Window (`RAPPDEV1014`).
 2. Start the Window with the IDE's debugger (F5) from a launch profile with
    `DOTNET_ENVIRONMENT=Development`.
 
+Since 0.20, projects from the `runic-app` template have that launch profile,
+named after the project, and with `--editor vscode` VS Code tasks and
+configurations like the ones below: see the template README's
+[Debug it in your IDE](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Application.Templates/content/runic-app/README.md#debug-it-in-your-ide).
+For another project, add the snippets below.
+
 A launch profile for Visual Studio and Rider (and `dotnet run`), in
 `Properties/launchSettings.json`:
 
@@ -533,10 +539,14 @@ tools:
 **Session file.** `dev` writes `obj/runic/dev-session.json` (below the
 project's `BaseIntermediateOutputPath`) when it starts, and rewrites it when the
 development server is ready and each time the Window process starts or exits.
-When `dev` ends, the file stays with `"state": "stopped"`. Beside it, `dev`
-keeps `dev-frontend` and `dev-pages/` while it serves the frontend, for the
-build ([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write replaces
-the whole file, so a reader never sees half of one. Two `dev` sessions of the
+When `dev` ends, the file stays with `"state": "stopped"`. A `dev` that is
+killed (an IDE that quits while its task runs, `kill -9`, a closed terminal)
+can't write that, so the file keeps its last state: before trusting `"starting"`
+or `"ready"`, a reader checks that the top-level `processId` is a running
+`dotnet runic dev`, and treats a dead one as stopped. Beside it, `dev` keeps
+`dev-frontend` and `dev-pages/` while it serves the frontend, for the build
+([Debug the Window in your IDE](#debug-the-window-in-your-ide)). Each write
+replaces the whole file, so a reader never sees half of one. Two `dev` sessions of the
 same project write the same file; the later one wins. `--dry-run` writes none.
 
 ```jsonc
