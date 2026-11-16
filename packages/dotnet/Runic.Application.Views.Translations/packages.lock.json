@@ -24,19 +24,19 @@
         "type": "Direct",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "wZg7TuzBgc3qNoPjcB4TzmX5VEkOBjvKQAXRbRYTb8hwQXAhwnjB4DOSHH2g/q6BnggXxjTlLxUCEJqhl32nPw=="
+        "contentHash": "npP6sj4LsnZeAWZwSGM7w4iq1A0AtiVu/kDuRN8E7pbTTX2eP++by/diK7NLQC4hOqUg31rvRgq3FOFwWS7s9A=="
       },
       "Runic.Translations.Build": {
         "type": "Direct",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "UjkBRfHCQ8egmX34BYDS+izbrruP7LEskg5upHENg+zUwSJugBYDs93zvZKtDrrvoEDvSbFOw8tfbmWPhvfZpw=="
+        "contentHash": "/Bd01/ZzdXNpRDM8UcIFsEfdRH4Qqv7IyD92WWMPOtLmvbje51q8zvAvvUP+G0kdQ+hla+gmPrt/e9LwzmFRJg=="
       },
       "Runic.Translations.Hosting": {
         "type": "Direct",
         "requested": "[0.12.0, )",
         "resolved": "0.12.0",
-        "contentHash": "TUgghCb9Vg/a2F/lRXNHsgC6e1A5Jdd64BYE875JZ29cDlqe2OfBEwsnc/0FKaNkyQimL0PUqHgnMxNzqoDO5A==",
+        "contentHash": "hpUKhSgfkN3/rC4iWXFnLwOdSWwOJCH3SwMUnlwGvqjEBIYMEUpVH4CnXrBMNaP7q2WG1rWIAV4u5iOTShlsgw==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
           "Runic.Translations": "[0.12.0, 0.13.0-0.0)"
