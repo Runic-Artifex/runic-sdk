@@ -4,6 +4,7 @@
 // `[dev] Debugging:` hint and the endpoint's refusal of other origins and host names.
 //
 //   node check-webkit-cdp.mjs --project <generated project directory> [--js-debug <unpacked js-debug directory>]
+//     [--only <scenario,…>] [--modules <count>] [--per-script-sourcemaps auto|yes|no] [--trace <js-debug log file>]
 //
 // With --browser (#1031), the project's "Window in Chrome" launch configuration instead (it is generated with --editor
 // vscode): `dotnet runic dev --browser` without a display, the entry address in its output and session file and its
@@ -26,7 +27,14 @@ import { scaled } from "../support/timeouts.mjs";
 const jsDebugVersion = "1.140.1";
 const jsDebugSha256 = "c72fab31bcbfdce6ad1f42adfd28eff8d4681dd3b03b5e2e6f9e72e6f9927faf";
 
-const { values } = parseArgs({ options: { project: { type: "string" }, "js-debug": { type: "string" }, browser: { type: "boolean" } } });
+const { values } = parseArgs({ options: {
+  project: { type: "string" }, "js-debug": { type: "string" },
+  // Passed to dap-scenarios.mjs: the scenarios to run, the late-module scenario's module count, js-debug's
+  // perScriptSourcemaps and its log.
+  // --browser: the "Window in Chrome" lane instead (#1031).
+  browser: { type: "boolean" },
+  only: { type: "string" }, modules: { type: "string" }, "per-script-sourcemaps": { type: "string" }, trace: { type: "string" },
+} });
 if (!values.project) throw new Error("--project is required");
 const project = values.project;
 const scenarios = join(dirname(fileURLToPath(import.meta.url)), "../webkit-cdp/dap-scenarios.mjs");
@@ -120,7 +128,8 @@ try {
   console.log("WEBKIT_CDP_SECURITY_OK|loopback without Origin 200|foreign Origin 403|foreign Host 403");
 
   const run = spawnSync(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--port", port,
-    "--frontend", join(project, "Frontend"), "--restart-file", csharp], { encoding: "utf8", timeout: scaled(900_000) });
+    "--frontend", join(project, "Frontend"), "--restart-file", csharp,
+    ...["only", "modules", "per-script-sourcemaps", "trace"].flatMap(name => values[name] ? [`--${name}`, values[name]] : [])], { encoding: "utf8", timeout: scaled(900_000) });
   process.stdout.write(run.stdout);
   process.stderr.write(run.stderr);
   if (run.status !== 0) {
