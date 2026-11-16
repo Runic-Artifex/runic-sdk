@@ -1,7 +1,8 @@
 // React DevTools labels (#1041): the development build (dist/development/, the `development` export condition) passes
 // each hook's value and a label function to `useDebugValue`; the production build (dist/) does not call it. React calls
 // the label function only while React DevTools inspects a component, so the spy below calls it to read the label.
-import { act, createElement, StrictMode, type ReactNode } from "react";
+import * as React from "react";
+import { createElement, StrictMode, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { BridgeError, type BridgeField } from "@runic-artifex/views";
@@ -14,6 +15,7 @@ vi.mock("react", async original => {
   const react = await original<typeof import("react")>();
   return {
     ...react,
+    act: react.act ?? (react as unknown as { unstable_act: typeof react.act }).unstable_act,
     useDebugValue: (value: unknown, format?: (value: unknown) => unknown) => {
       labels.push(format ? format(value) : value);
       react.useDebugValue(value, format);
@@ -28,6 +30,8 @@ const production = await import("../dist/index.js");
 const { commandLabel, fieldLabel, operationLabel, preview, viewLabel } = await load("debug-labels.js") as typeof import("../dist/debug-labels.js");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// React 18.3 (the peer floor) has `act` as `unstable_act`; the mock below gives it as `act`.
+const act: typeof React.act = React.act;
 const contract = "Demo.Notes.NotesViewModel:ABC";
 type State = { readonly title: string };
 type Client = Awaited<ReturnType<typeof connectView<State>>>;

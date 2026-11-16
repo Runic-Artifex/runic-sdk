@@ -40,21 +40,19 @@ try {
   assert.deepEqual(Object.keys(svelteManifest.exports), [".", "./experimental", "./package.json"]);
   for (const file of ["package/dist/experimental.js", "package/dist/experimental.d.ts", "package/dist/views/RunicHostedRegion.svelte",
     "package/dist/views/RunicHostedRegion.svelte.d.ts"]) assert.ok(viewFiles.includes(file), `${file} is not packed`);
-  // @runic-artifex/views has a development build (the `development` export condition, views README "Development
-  // build"); the bindings have one build.
+  // @runic-artifex/views, react and vue have a development build (the `development` export condition, views README
+  // "Development build"; the bindings since 0.21, for their DevTools integration).
   const experimentalConditions = {
     "@runic-artifex/views": ["types", "development", "import", "default"],
-    "@runic-artifex/react": ["types", "import", "default"],
-    "@runic-artifex/vue": ["types", "import", "default"],
+    "@runic-artifex/react": ["types", "development", "import", "default"],
+    "@runic-artifex/vue": ["types", "development", "import", "default"],
   };
   for (const archive of archives.slice(3)) {
     const manifest = JSON.parse((await execFile("tar", ["-xOf", archive, "package/package.json"])).stdout);
     assert.deepEqual(Object.keys(manifest.exports["./experimental"]), experimentalConditions[manifest.name], manifest.name);
-    if (manifest.name === "@runic-artifex/views") {
-      const files = (await execFile("tar", ["-tf", archive])).stdout.split("\n");
-      for (const file of ["package/dist/experimental.js", "package/dist/experimental.d.ts", "package/dist/development/experimental.js"])
-        assert.ok(files.includes(file), `${file} is not packed`);
-    }
+    const files = (await execFile("tar", ["-tf", archive])).stdout.split("\n");
+    for (const file of ["package/dist/experimental.js", "package/dist/experimental.d.ts", "package/dist/development/experimental.js"])
+      assert.ok(files.includes(file), `${manifest.name}: ${file} is not packed`);
   }
   assert.deepEqual(archives.slice(3).length, Object.keys(experimentalConditions).length);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module" }), "utf8");
@@ -82,6 +80,19 @@ try {
     'import.meta.resolve("@runic-artifex/svelte/experimental");',
   ].join("\n"), "utf8");
   await execFile(process.execPath, ["experimental.mjs"], { cwd: root });
+  // An installed consumer resolves each package's development build only under the `development` condition, as
+  // `vite dev` does, and the production build otherwise; both builds of the experimental entries load.
+  await writeFile(join(root, "builds.mjs"), [
+    'const development = process.execArgv.includes("--conditions=development");',
+    'for (const name of ["@runic-artifex/views", "@runic-artifex/react", "@runic-artifex/vue"]) for (const entry of ["", "/experimental"]) {',
+    '  const url = import.meta.resolve(name + entry);',
+    '  if (url.includes("/dist/development/") !== development) throw new Error(`${name}${entry} resolved ${url}`);',
+    '}',
+    'await import("@runic-artifex/react/experimental");',
+    'await import("@runic-artifex/vue/experimental");',
+  ].join("\n"), "utf8");
+  await execFile(process.execPath, ["builds.mjs"], { cwd: root });
+  await execFile(process.execPath, ["--conditions=development", "builds.mjs"], { cwd: root });
   await writeFile(join(root, "experimental.ts"), [
     'import { defineHostedRegion, type HostedRegionState, type RunicHostedRegionElement } from "@runic-artifex/views/experimental";',
     'import { RunicHostedRegion as ReactRegion, type RunicHostedRegionProps } from "@runic-artifex/react/experimental";',
