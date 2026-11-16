@@ -899,7 +899,9 @@ right click on the title bar), and `DesktopWindow.OpenDevToolsAsync` opens the
 same Edge DevTools window from code, for example from a menu item that the
 application declares only in Development. It returns `false` when the window's
 developer tools are off, as in production, and on WKWebView, WebKitGTK, an
-installed browser or a custom window host.
+installed browser or a custom window host. A DevTools window that WebView2
+fails to open from the system menu is reported to `DiagnosticSink` as
+`devtools-window-failed`.
 
 `DesktopHostOptions.DevToolsExtensions` lists unpacked browser extensions, such
 as React Developer Tools or Vue.js devtools, that WebView2 windows load in

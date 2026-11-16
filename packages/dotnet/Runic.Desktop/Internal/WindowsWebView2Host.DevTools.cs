@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal;
@@ -13,6 +12,7 @@ internal sealed partial class WindowsWebView2Host
     internal const uint OpenDevToolsSystemCommand = 0x0DE0;
     internal const string OpenDevToolsTitle = "Open DevTools";
     internal const string DevToolsExtensionFailedCode = "devtools-extension-failed";
+    internal const string DevToolsWindowFailedCode = "devtools-window-failed";
     private const uint MfString = 0x0, MfSeparator = 0x800;
 
     // The extensions installed in this process, by user data folder and folder: a second window of the same profile does
@@ -78,7 +78,9 @@ internal sealed partial class WindowsWebView2Host
         try { _ = OpenDevTools(); }
         catch (Exception error) when (error is COMException or InvalidOperationException)
         {
-            Trace.TraceWarning($"WebView2 did not open its DevTools window: {error.Message}");
+            if (_options is { } options)
+                ReportDevTools(options, DevToolsWindowFailedCode, $"WebView2 did not open its DevTools window: {error.Message}",
+                    "Check that the WebView2 runtime is current.", "DesktopWebContentPolicy.DevTools");
         }
         return true;
     }
@@ -147,23 +149,31 @@ internal sealed partial class WindowsWebView2Host
         try { DevToolsExtensionRecord.Write(profile, record); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            Trace.TraceWarning($"Runic could not record its DevTools extensions in the user data folder: {error.Message}");
+            // The next run cannot tell which extensions Runic installed, so it removes none of them.
+            ReportDevTools(options, DevToolsExtensionFailedCode,
+                $"Runic could not record its DevTools extensions in the user data folder: {error.Message}",
+                "Check that the application can write to its WebView2 user data folder.", "DesktopHostOptions.DevToolsExtensions");
         }
     }
 
     private static void ReportExtensionFailure(WebUiEmbeddedHostOptions options, string folder, Exception error)
     {
         var detail = error.InnerException is { } inner ? $"{error.Message} {inner.Message}" : error.Message;
-        var message = $"The DevTools extension in '{Path.GetFileName(folder)}' was not loaded: {detail}";
-        Trace.TraceWarning(message);
+        ReportDevTools(options, DevToolsExtensionFailedCode, $"The DevTools extension in '{Path.GetFileName(folder)}': {detail}",
+            "Check that the folder holds an unpacked extension with its manifest.json and that the WebView2 runtime is current.",
+            "DesktopHostOptions.DevToolsExtensions");
+    }
+
+    // A warning to the window's diagnostics (WebUiWindow.ReportEmbeddedDiagnostic), which go to DiagnosticSink and are
+    // logged through the application's ILogger, or to Trace without one.
+    private static void ReportDevTools(WebUiEmbeddedHostOptions options, string code, string message, string remediation, string option)
+    {
         try
         {
-            options.ReportDiagnostic?.Invoke(new DesktopDiagnostic(DesktopErrorCategory.Unavailable, DevToolsExtensionFailedCode, message,
-                Retryable: false,
-                Remediation: "Check that the folder holds an unpacked extension with its manifest.json and that the WebView2 runtime is current.")
+            options.ReportDiagnostic?.Invoke(new DesktopDiagnostic(DesktopErrorCategory.Unavailable, code, message, Retryable: false, Remediation: remediation)
             {
                 Severity = DesktopDiagnosticSeverity.Warning,
-                Option = "DesktopHostOptions.DevToolsExtensions",
+                Option = option,
             });
         }
         catch (Exception sinkError) when (sinkError is not OutOfMemoryException) { }
