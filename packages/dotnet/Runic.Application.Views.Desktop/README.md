@@ -959,7 +959,7 @@ if (args is ["hosted"])
   **Your first window starts as the application's, not the user's:** the
   application opened it, so a button in it that copies, pastes or opens a link
   through these services gets `PermissionDenied` until the user switches away
-  and back, clicks its native menu bar (not on GTK 4 yet) or drops files onto
+  and back, clicks its native menu bar or drops files onto
   it. The same holds after the application presents, shows, maximizes or opens
   a window, also when the desktop activates it only later, such as macOS when
   the user next switches to the host. A host that started the application at
