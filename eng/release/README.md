@@ -11,7 +11,9 @@ releases and their evidence remain historical records.
    `eng/release/notes/<version>/`), run `bun eng/release/notes.mjs assemble <version>`,
    which writes `eng/release/notes/<version>.md` from the fragments and removes them
    (see [Release notes](#release-notes)), review the assembled notes, and commit them
-   with the [migration guide](../../docs/migration-1.0.md).
+   with the [migration guide](../../docs/migration-1.0.md). Do the
+   [rechecks](#rechecks-before-each-release) and record their results in the pull
+   request's description.
    `main` already carries the version, set after the previous release (step 6);
    package versions must agree with `eng/workspace.json`, and published versions
    cannot be overwritten.
@@ -85,6 +87,24 @@ for relevant changes and regression investigations; they are not routine gates.
 Keep release notes focused on changes, installation, migration and meaningful
 known issues. Put logs and internal package metadata in Actions artifacts. Record
 nonblocking limitations as issues rather than introducing custom waiver formats.
+
+## Rechecks before each release
+
+Some code relies on another project's internals or carries a workaround until an
+upstream release ships. Recheck each one in every release pull request (also for an
+rc) and record the result in its description. Change the code, or the version it
+accepts, only when the check says so.
+
+| What | Where | Check | Then |
+| --- | --- | --- | --- |
+| Angular component mode replaces Angular's private `ɵSHARED_STYLES_HOST` | `packages/web/angular/src/component.ts` | For the Angular versions the `@runic-artifex/angular` peer range admits, and for a new major before widening it: the token is still exported with the same interface; Angular's bundles still have no `adoptedStyleSheets` support; the status of angular/angular#59429 and #68691; the component-mode browser test passes. | If Angular gains a public way, move to it. If the token changes, adapt it or use the public-API `RendererFactory2` fallback in local-planning's `design/dx-0.21/ANGULAR-SHADOW-STYLES.md`. Component mode stays experimental while it uses the token. |
+| The Angular starter overrides `vite` | the `runic-app` Angular starter (`overrides`, `pnpm-workspace.yaml`), the Notes Angular examples | Whether a stable `@angular/build` depends on a Vite with the GHSA-587h-7wmj-h5pm fix (8.3.3 or later). | Remove the overrides and regenerate the starter locks (`eng/dependencies/README.md`, Vite 8.3.4 row). |
+| WebKitGTK's HTTP inspector accepts any origin (WebKit bug 330602) | the version gate in `tools/dotnet-runic/WebKit/WebKitDebugging.cs` | Which WebKitGTK release contains the fix. The gate assumes 2.54.3. | Correct the gate and the docs' version; the HTTP inspector then opens by default where WebKit allows it (D066.38). |
+| `deepmerge` in the starter locks has GHSA-gcqx-w48m-w2h4 (low) and no fixed release | the starters' lock files | Whether a fixed `deepmerge` is published (and at least a day old, D038). | Update the starter locks (`bun eng/dependencies/update-template-locks.mjs`). |
+
+Add a row when new code starts relying on internals or on a pending upstream fix, and
+remove it when the dependency is gone. The tracking issue of such a check closes once
+its row is here.
 
 ## Release notes
 
@@ -766,7 +786,9 @@ requirement, not a consumer one.
   a minor release; graduation moves an export to the root entry. 0.10.0 removed
   every `./experimental` entry; 0.18 added new ones for hosted regions, 0.19
   `onBridgeDraining` for the close drain, and 0.20 `runicComponentMount` in
-  `@runic-artifex/angular` for Angular guests in trusted component mode.
+  `@runic-artifex/angular` for Angular guests in trusted component mode; 0.21
+  moved trusted component mode of `@runic-artifex/views` and the `component`
+  build target of `@runic-artifex/vite-plugin-runic` there.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each release on a
   prerelease version, `<release major.minor.patch>-preview.N` with a counter of its

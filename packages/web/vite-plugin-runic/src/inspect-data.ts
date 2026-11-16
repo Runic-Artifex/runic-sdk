@@ -411,7 +411,7 @@ export function viewModelForRoute(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function runicLocation(entry: RunicSourceMember | RunicSourceViewModel): RunicInspectLocation | undefined {
+export function runicLocation(entry: RunicSourceMember | RunicSourceViewModel): RunicInspectLocation | undefined {
   const location = entry.location;
   return location === undefined ? undefined
     : { file: location.file, line: location.line, column: location.column, editor: "runic", id: entry.id };

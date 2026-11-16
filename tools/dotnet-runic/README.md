@@ -754,6 +754,33 @@ debug configuration, such as Rider's "JavaScript Debug" with that URL.
 - **Not debugging endpoints.** `--browser` lists no `debugEndpoints` and opens
   neither WebView2's nor WebKit's: the debugger owns the browser it launched.
 
+## The Runic DevTools extension
+
+Since 0.21 the tool ships an unpacked Chrome DevTools extension (Manifest V3) in
+its `devtools-extension` folder, beside its assembly:
+`tools/net10.0/any/devtools-extension` in the package, so
+`~/.nuget/packages/dotnet-runic/<version>/tools/net10.0/any/devtools-extension`
+for a local tool. It adds a **Runic** panel (the page's Views with their state
+and C# ViewModels, and the recent Bridge calls with timing, outcome and C#
+handler) and a **Runic** pane in the Elements panel (the selected element's
+bindings and commands, as Runic Inspect shows them). It reads Runic Inspect's
+development API on the page (`snapshot()` and `describe($0)` on
+`globalThis[Symbol.for("runic.vite.inspect")]`), so it works on pages that
+vite-plugin-runic 0.21 or later serves under `vite dev` or `dev`, and asks for
+no permissions besides DevTools.
+
+`dev` prints `[dev] DevTools extension: <folder>` when the page has a
+development server, and writes the folder to the [session file](#session-file)
+as `devtoolsExtension`, with its fixed id `cddbfcinbkaindmfgcfdgapddkjeadgh` as
+`devtoolsExtensionId` (the manifest's public `key` fixes it; there is no private
+key). The build stamps the manifest with the package version: `X.Y.Z`, or
+`X.Y.Z.N` for a prerelease `X.Y.Z-label.N` (a Chrome manifest version has only
+numbers), with the full version as `version_name`. Load it in Chrome or Edge with **Load unpacked** on
+`chrome://extensions` (Developer mode), or start Chromium with
+`--load-extension=<folder>`. There is no Chrome Web Store listing.
+[The Runic DevTools extension](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#the-runic-devtools-extension)
+in the debugging guide has the steps and what each pane shows.
+
 ## IDE contract
 
 Since 0.20, `dev` gives IDEs, tasks and extensions stable lines to wait on and a
@@ -766,9 +793,15 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. With `--browser`, `Ready` waits for the Window's first page instead: it follows the first `Browser` line of each Window process, which can come before `Window started`, so a browser that an IDE opens at `Ready` finds the page. |
 | `[dev] Browser: Window serves at <url>` | With `--browser` (since 0.21), each time the Window process serves a Window: the first at `dev`'s root address, later ones at `/windows/<n>` ([Debug the page in Chrome](#debug-the-page-in-chrome---browser)). One form for every Window; match it with `^\[dev\] Browser: Window serves at (?<url>http://\S+)$`. Other `[dev] Browser:` lines are human text. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
+| `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
+| `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
-`dev` writes the [session file](#session-file) before it prints each of these
-lines, so a reader that reacts to a line finds the same state there: after
+The two prefix lines are where a background task's `beginsPattern` starts a new
+build cycle, as the template's `.vscode/tasks.json` below does; the text after
+the prefix is not part of the contract.
+
+`dev` writes the [session file](#session-file) before it prints each of the
+first three lines, so a reader that reacts to a line finds the same state there: after
 `Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
 after `Window exited`, no Window process and `"state": "starting"`; after a
 `Browser` line, its address in `browser.windows`. In 0.20.0
@@ -909,7 +942,11 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     // Endpoints the environment asks for but the engine does not open, with the reason. Since 0.20, an elevated dev
     // (run as administrator, so its Window runs elevated too) lists WebView2's here with "reason": "elevated" instead of
     // in debugEndpoints, and prints a [dev] Debugging: hint.
-  ]
+  ],
+  // The unpacked Runic DevTools extension beside this tool, for Load unpacked or a browser's --load-extension;
+  // null when the tool has none. Since 0.21.
+  "devtoolsExtension": "/home/me/.nuget/packages/dotnet-runic/0.21.0/tools/net10.0/any/devtools-extension",
+  "devtoolsExtensionId": "cddbfcinbkaindmfgcfdgapddkjeadgh" // its fixed id, null without the extension; since 0.21
 }
 ```
 
@@ -917,8 +954,8 @@ Paths are absolute. Later versions of the schema only add properties, so a
 reader ignores properties it doesn't know; a change that removes or changes one
 gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
-added the `webkitgtk` endpoints, with `--no-window` on Linux
-`WEBKIT_INSPECTOR_SERVER` in `window.environment`, and `browser`.
+added the `webkitgtk` endpoints, `devtoolsExtension`, `devtoolsExtensionId`, `browser` and, with
+`--no-window` on Linux, `WEBKIT_INSPECTOR_SERVER` in `window.environment`.
 
 WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
 (and its other `WEBVIEW2_*` variables and current-user policy overrides) in an

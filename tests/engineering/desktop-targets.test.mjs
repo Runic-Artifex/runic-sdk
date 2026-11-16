@@ -102,7 +102,7 @@ test("the referenced server package selects the server and writes the trimmable 
 });
 
 function validateServer(name, properties, servers) {
-  return spawnSync("dotnet", ["msbuild", project(name, properties, servers), "-t:RunicDesktopValidateServer", "-nologo",
+  return spawnSync("dotnet", ["msbuild", project(name, properties, servers), "-t:_RunicDesktopValidateServer", "-nologo",
     "-noAutoResponse", "-nodeReuse:false", "-v:m", "-tl:off"], { encoding: "utf8" });
 }
 
@@ -137,7 +137,7 @@ function nativeLinkage(name, properties, { rid = "linux-x64", libraries = ["libr
   for (const file of libraries) writeFileSync(join(library, file), "");
   const result = spawnSync("dotnet", ["msbuild", project(name, `<OutputType>Exe</OutputType><PublishAot>true</PublishAot>
 <RuntimeIdentifier>${rid}</RuntimeIdentifier><RunicDesktopNativeServerLibraryDirectory>${library}</RunicDesktopNativeServerLibraryDirectory>
-${properties}`, ["native"]), "-t:RunicDesktopValidateNativeServer;RunicDesktopLinkNativeServer", "-getItem:NativeLibrary",
+${properties}`, ["native"]), "-t:_RunicDesktopValidateNativeServer;_RunicDesktopLinkNativeServer", "-getItem:NativeLibrary",
   "-getItem:DirectPInvoke", "-getItem:None", "-getProperty:_RunicDesktopNativeServerLinked", "-nologo", "-noAutoResponse",
   "-nodeReuse:false"], { encoding: "utf8" });
   if (result.status !== 0) return { error: result.stdout + result.stderr };

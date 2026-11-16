@@ -20,7 +20,7 @@ test("every entry resolves for types, the development build, import and require-
     assert.equal(conditions["types"], conditions["default"]!.replace(/\.js$/, ".d.ts"), `${entry}: types`);
   }
   assert.deepEqual(Object.keys(manifest.exports),
-    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./component", "./mock", "./experimental", "./package.json"]);
+    [".", "./bindings", "./generated", "./generated/wire", "./generated/mock", "./mock", "./experimental", "./package.json"]);
 });
 
 test("binding and generator APIs are not in the application entries; graduated APIs are", async () => {
@@ -30,9 +30,11 @@ test("binding and generator APIs are not in the application entries; graduated A
   // Graduated from ./experimental in 0.10 (docs/experimental.md).
   for (const name of ["collectionViewport", "createCollectionViewportController", "createLatestOperationController"])
     assert.equal(typeof (root as Record<string, unknown>)[name], "function", `${name} is a root export`);
-  // Hosted regions (0.18) and the close drain's flag (0.19) are experimental: only ./experimental exports them.
+  // Hosted regions (0.18), the close drain's flag (0.19) and trusted component mode (0.18, moved from ./component in
+  // 0.21) are experimental: only ./experimental exports them.
   const experimental = await import("@runic-artifex/views/experimental");
-  assert.deepEqual(Object.keys(experimental).sort(), ["defineHostedRegion", "hostedRegionTag", "onBridgeDraining"]);
+  assert.deepEqual(Object.keys(experimental).sort(),
+    ["connectComponentBridge", "defineHostedRegion", "defineRunicComponent", "hostedRegionTag", "onBridgeDraining"]);
   for (const name of Object.keys(experimental)) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   const bindings = await import("@runic-artifex/views/bindings");
   assert.deepEqual(Object.keys(bindings).sort(), [
@@ -43,7 +45,7 @@ test("binding and generator APIs are not in the application entries; graduated A
   const mock = await import("@runic-artifex/views/mock");
   for (const name of ["mockBridgeInternals", "mockFailureOf", "mockTypedView"])
     assert.equal(name in mock, false, `${name} must not be exported from ./mock`);
-  assert.deepEqual(Object.keys(mock).sort(), ["createMockBridge", "installMockBridge", "installMockMenuBar", "mockBlob", "mockFailure"]);
+  assert.deepEqual(Object.keys(mock).sort(), ["createMockBridge", "installMockBridge", "installMockMenuBar", "mockBlob", "mockFailure", "releaseKeptViews"]);
   // Generated clients add Symbol.dispose through ./generated, not the application entry (0.11).
   const generated = await import("@runic-artifex/views/generated");
   assert.equal(typeof generated.disposable, "function");

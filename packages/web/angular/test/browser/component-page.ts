@@ -5,7 +5,7 @@
 import "@angular/compiler";
 import { Component, ViewEncapsulation } from "@angular/core";
 import { defaultInstance } from "@runic-artifex/views";
-import { defineRunicComponent, type RunicComponentElement } from "@runic-artifex/views/component";
+import { defineRunicComponent, type RunicComponentElement } from "@runic-artifex/views/experimental";
 import { connectView } from "@runic-artifex/views/generated";
 import * as wire from "@runic-artifex/views/generated/wire";
 import { createMockBridge, type MockBridge } from "@runic-artifex/views/mock";

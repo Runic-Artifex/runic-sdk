@@ -253,6 +253,7 @@ async function evaluateClient(generation) {
   await load("dist/inspect-edit.js", "inspect-edit");
   await load("dist/inspect-editor.js", "inspect-editor");
   await load("dist/inspect-handlers.js", "inspect-handlers");
+  await load("dist/inspect-snapshot.js", "inspect-snapshot");
   await load("dist/inspect.js", "inspect");
   const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
   await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
@@ -326,6 +327,7 @@ await load("dist/inspect-frameworks.js", "inspect-frameworks");
 await load("dist/inspect-edit.js", "inspect-edit");
 await load("dist/inspect-editor.js", "inspect-editor");
 await load("dist/inspect-handlers.js", "inspect-handlers");
+await load("dist/inspect-snapshot.js", "inspect-snapshot");
 await load("dist/inspect.js", "inspect");
 const client = await load("dist/client.js", "client", (meta) => { if (${withHot}) meta.hot = hot; });
 await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));

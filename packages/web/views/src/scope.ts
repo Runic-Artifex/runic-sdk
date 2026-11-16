@@ -182,7 +182,7 @@ export function pageInstance(): RunicInstance {
 
 /**
  * The instance that code uses outside {@link RunicInstance.run} and outside a framework binding's instance provider.
- * On a page it is the page instance. In a component bundle (`@runic-artifex/views/component`), which carries its own
+ * On a page it is the page instance. In a component bundle (`@runic-artifex/views/experimental`), which carries its own
  * copy of this package, it is the instance of the bundle's connected component element while exactly one is connected,
  * and otherwise an instance without a Bridge, never the host page's.
  */

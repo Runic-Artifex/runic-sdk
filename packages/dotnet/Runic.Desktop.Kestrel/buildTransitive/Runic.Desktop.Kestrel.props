@@ -3,6 +3,6 @@
   <Import Project="$(MSBuildThisFileDirectory)Runic.Desktop.Kestrel.HelpLinks.props" Condition="Exists('$(MSBuildThisFileDirectory)Runic.Desktop.Kestrel.HelpLinks.props')" />
   <PropertyGroup>
     <!-- Runic.Desktop's targets choose the presentation server from the server packages the project references. -->
-    <RunicDesktopKestrelReferenced>true</RunicDesktopKestrelReferenced>
+    <_RunicDesktopKestrelReferenced>true</_RunicDesktopKestrelReferenced>
   </PropertyGroup>
 </Project>

@@ -171,7 +171,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Console.WriteLine("[dev] Reloading the Runic Views Window application.");
+            Console.WriteLine(DevApplication.ReloadingLine);
             _host = Start();
             Volatile.Write(ref _hostProcessId, _host.Id);
             ObserveExit(_host);

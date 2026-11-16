@@ -29,8 +29,10 @@
 // machine (`runic({ allow })`, `RUNIC_DEV_ALLOW`); `/__runic/open` never does, so the overview says so.
 //
 // `globalThis[Symbol.for("runic.vite.inspect")]` is the API for agents and tests: `describe(element)` returns the
-// overview as JSON-safe data. Everything here is part of the development client, which a build replaces with an empty
-// module; it uses only the DOM, so every engine under `dotnet runic dev` runs it.
+// overview as JSON-safe data, and `snapshot()` the page's Views and recent Bridge calls (inspect-snapshot.ts), which the
+// Runic DevTools extension (tools/dotnet-runic/devtools-extension) reads with `inspectedWindow.eval`. Everything here
+// is part of the development client, which a build replaces with an empty module; it uses only the DOM, so every engine
+// under `dotnet runic dev` runs it.
 
 import type { RunicSourceMap } from "./sources.js";
 import { handlersPath, openPath, sourcesPath } from "./channel.js";
@@ -43,6 +45,7 @@ import {
 import { findComponent, findComponentSync, type AngularDebug, type NodeLike } from "./inspect-frameworks.js";
 import { createMessageEditor, editorStyles, type MessageEditor } from "./inspect-editor.js";
 import { hasEdits } from "./inspect-edit.js";
+import { assembleSnapshot, CallLog, type RunicInspectSnapshot, type ViewRecord } from "./inspect-snapshot.js";
 
 /** The value at `globalThis[Symbol.for("runic.vite.inspect")]`. */
 export interface RunicInspectApi {
@@ -60,6 +63,11 @@ export interface RunicInspectApi {
   select(element: Element): Promise<RunicInspectDescription>;
   /** Opens a location of an overview in the editor; resolves to whether the server accepted it. */
   open(location: RunicInspectLocation): Promise<boolean>;
+  /**
+   * The page's Views with their states and C# ViewModels, and its recent Bridge calls with their timing and C# handlers,
+   * as JSON-safe data. The Runic DevTools extension's panel reads it.
+   */
+  snapshot(): Promise<RunicInspectSnapshot>;
 }
 
 /**
@@ -100,7 +108,12 @@ interface CallEvent {
   readonly phase?: unknown; readonly id?: unknown; readonly kind?: unknown; readonly request?: unknown;
   readonly route?: unknown; readonly contract?: unknown; readonly member?: unknown; readonly start?: unknown;
   readonly end?: unknown; readonly duration?: unknown; readonly outcome?: unknown; readonly reason?: unknown;
-  readonly revision?: unknown;
+  readonly revision?: unknown; readonly handler?: unknown;
+}
+
+interface InspectorEvent {
+  readonly kind?: unknown; readonly route?: unknown; readonly state?: unknown; readonly revision?: unknown;
+  readonly epoch?: unknown; readonly presentations?: unknown;
 }
 
 interface Channel<T> { readonly listeners: Set<(event: T) => void>; requested?: boolean }
@@ -182,6 +195,8 @@ export function installInspect(options: InspectOptions = {}): () => void {
   const elementCalls = new WeakMap<Element, MutableCall[]>();
   const pendingCalls = new Map<number, MutableCall>();
   const states = new Map<string, unknown>();
+  const views = new Map<string, ViewRecord>();
+  const callLog = new CallLog();
   const contracts = new Map<string, string>();
   const modules = new Map<string, Promise<string | undefined>>();
 
@@ -189,6 +204,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
   // element. The event's target, not its currentTarget: React handles events on its root container.
   function onCall(event: CallEvent): void {
     if (typeof event !== "object" || event === null || typeof event.id !== "number") return;
+    callLog.record(event);
     if (event.phase === "start") {
       if (typeof event.route !== "string" || typeof event.member !== "string") return;
       if (typeof event.contract === "string") contracts.set(event.route, event.contract);
@@ -221,16 +237,24 @@ export function installInspect(options: InspectOptions = {}): () => void {
     }
   }
 
-  function onInspector(event: { kind?: unknown; route?: unknown; state?: unknown }): void {
+  function onInspector(event: InspectorEvent): void {
     if (typeof event !== "object" || event === null || typeof event.route !== "string") return;
-    if (event.kind === "state") states.set(event.route, event.state);
-    else if (event.kind === "closed") states.delete(event.route);
+    if (event.kind === "state") {
+      states.set(event.route, event.state);
+      const number = (value: unknown) => typeof value === "number" ? value : undefined;
+      views.set(event.route, {
+        state: event.state, revision: number(event.revision), epoch: number(event.epoch), presentations: number(event.presentations),
+      });
+    } else if (event.kind === "closed") {
+      states.delete(event.route);
+      views.delete(event.route);
+    }
   }
 
   const calls = (host[callsKey] ??= { listeners: new Set() }) as Channel<CallEvent>;
   calls.listeners.add(onCall);
   calls.requested = true;
-  const inspector = (host[inspectorKey] ??= { listeners: new Set() }) as Channel<{ kind?: unknown; route?: unknown; state?: unknown }>;
+  const inspector = (host[inspectorKey] ??= { listeners: new Set() }) as Channel<InspectorEvent>;
   inspector.listeners.add(onInspector);
   inspector.requested = true;
 
@@ -285,7 +309,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
         if (!response.ok) return undefined;
         analysis = await response.json() as RunicHandlerAnalysis;
       }
-      return analysis?.format === "runic-handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
+      return analysis?.format === "runic.vite.handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
     } catch {
       return undefined;
     }
@@ -419,6 +443,13 @@ export function installInspect(options: InspectOptions = {}): () => void {
       messageSourcesStatus: messages.sources,
       handlersStatus: handlersForbidden ? "forbidden" : undefined,
       remote,
+    });
+  }
+
+  async function snapshot(): Promise<RunicInspectSnapshot> {
+    const sourceMap = await readSourceMap();
+    return assembleSnapshot({
+      views, contracts, calls: callLog.list(), sourceMap: sourceMap.map, sourceMapStatus: sourceMap.status,
     });
   }
 
@@ -590,6 +621,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
       event.preventDefault();
       void open(location);
     });
+    bound.set(anchor, JSON.stringify(location));
     return anchor;
   }
 
@@ -600,14 +632,17 @@ export function installInspect(options: InspectOptions = {}): () => void {
       control.getAttribute("title") ?? "", control.textContent ?? ""].join("\u0000");
   }
 
+  /** What an overview control's click handler acts on (a link's location, an Edit button's message). */
+  const bound = new WeakMap<Element, string>();
+  /** A control and what it acts on: a control with the same identity can stand in for another. */
+  const identity = (control: Element): string => `${controlKey(control)}\u0000${bound.get(control) ?? ""}`;
+
   function render(description: RunicInspectDescription): void {
-    const { host: overlayHost, card, overview, editor } = overlay!;
-    // Rendering again replaces the overview's controls. A refresh (after a save, an edit elsewhere, a language switch)
-    // can arrive while the keyboard focus is on one of them, such as the Edit button Esc returned to: the focus moves
-    // to its counterpart instead of falling to the document.
-    const focused = overlayHost.shadowRoot?.activeElement;
-    const refocus = focused instanceof Element && overview.contains(focused) ? controlKey(focused) : undefined;
-    overview.replaceChildren();
+    const { host: overlayHost, card, overview: shown, editor } = overlay!;
+    // The overview is drawn apart and replaces the shown one only where it differs. A refresh after each text change of
+    // the page (scheduleRefresh) mostly describes the same thing; replacing the controls then would make a click whose
+    // mousedown and mouseup straddle the refresh reach no link (#1062).
+    const overview = document.createElement("div");
     const header = document.createElement("header");
     const title = document.createElement("h2");
     const { element } = description;
@@ -696,11 +731,76 @@ export function installInspect(options: InspectOptions = {}): () => void {
       overview.append(paragraph);
     }
     card.hidden = false;
-    if (refocus !== undefined) {
-      const counterpart = [...overview.querySelectorAll<HTMLElement>("button, a")].find((control) => controlKey(control) === refocus)
-        ?? overview.querySelector<HTMLElement>("button.close");
+    const focused = overlayHost.shadowRoot?.activeElement;
+    const refocus = focused instanceof Element && shown.contains(focused) ? controlKey(focused) : undefined;
+    patchChildren(shown, overview);
+    // A refresh can arrive while the focus is on a control that is now gone, such as the Edit button Esc returned to:
+    // the focus moves to its counterpart instead of falling to the document.
+    const active = overlayHost.shadowRoot?.activeElement;
+    if (refocus !== undefined && !(active instanceof Element && shown.contains(active))) {
+      const counterpart = [...shown.querySelectorAll<HTMLElement>("button, a")].find((control) => controlKey(control) === refocus)
+        ?? shown.querySelector<HTMLElement>("button.close");
       counterpart?.focus({ preventScroll: true });
     }
+  }
+
+  /** The overview's controls in and under `node`, which carry click handlers. */
+  function controlsOf(node: Node): Element[] {
+    if (!(node instanceof Element)) return [];
+    return [...node.matches("button, a") ? [node] : [], ...node.querySelectorAll("button, a")];
+  }
+
+  /** Whether `node` can stay for `next`: drawn the same way, and its controls act on the same things. */
+  function same(node: Node, next: Node): boolean {
+    if (!node.isEqualNode(next)) return false;
+    const controls = controlsOf(node), nextControls = controlsOf(next);
+    return controls.every((control, index) => bound.get(control) === bound.get(nextControls[index]!));
+  }
+
+  /** Whether `node` can be updated into `next` in place: the same kind of node, and not a control acting on another thing. */
+  function patchable(node: Node, next: Node): boolean {
+    if (node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) return false;
+    return !(node instanceof Element && node.matches("button, a")) || identity(node) === identity(next as Element);
+  }
+
+  /**
+   * Makes `parent`'s children look like `next`'s, keeping the nodes that can stay where they are. A kept node is never
+   * moved: moving a link between a click's mousedown and mouseup loses the click as replacing it does.
+   */
+  function patchChildren(parent: Node, next: Node): void {
+    let cursor = parent.firstChild;
+    for (const node of [...next.childNodes]) {
+      let match: ChildNode | null = cursor;
+      while (match !== null && !same(match, node)) match = match.nextSibling;
+      if (match !== null) {
+        while (cursor !== match) {
+          const removed: ChildNode = cursor!;
+          cursor = removed.nextSibling;
+          removed.remove();
+        }
+        cursor = match.nextSibling;
+      } else if (cursor !== null && patchable(cursor, node)) {
+        patch(cursor, node);
+        cursor = cursor.nextSibling;
+      } else {
+        parent.insertBefore(node, cursor);
+      }
+    }
+    while (cursor !== null) {
+      const removed: ChildNode = cursor;
+      cursor = removed.nextSibling;
+      removed.remove();
+    }
+  }
+
+  function patch(node: ChildNode, next: ChildNode): void {
+    if (!(node instanceof Element) || !(next instanceof Element)) {
+      if (node.nodeValue !== next.nodeValue) node.nodeValue = next.nodeValue;
+      return;
+    }
+    for (const { name } of [...node.attributes]) if (!next.hasAttribute(name)) node.removeAttribute(name);
+    for (const { name, value } of next.attributes) if (node.getAttribute(name) !== value) node.setAttribute(name, value);
+    patchChildren(node, next);
   }
 
   function editButton(message: RunicInspectMessage): HTMLElement {
@@ -711,6 +811,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     button.dataset["message"] = `${message.catalog}:${message.key}`;
     button.setAttribute("aria-label", `Edit ${message.catalog}:${message.key}`);
     button.addEventListener("click", () => openEditor(message));
+    bound.set(button, JSON.stringify(message));
     return button;
   }
 
@@ -799,6 +900,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     describe,
     select,
     open,
+    snapshot,
   };
   host[inspectKey] = api;
 

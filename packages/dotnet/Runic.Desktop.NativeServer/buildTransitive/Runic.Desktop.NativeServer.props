@@ -3,6 +3,6 @@
   <Import Project="$(MSBuildThisFileDirectory)Runic.Desktop.NativeServer.HelpLinks.props" Condition="Exists('$(MSBuildThisFileDirectory)Runic.Desktop.NativeServer.HelpLinks.props')" />
   <PropertyGroup>
     <!-- Runic.Desktop's targets choose the presentation server from the server packages the project references. -->
-    <RunicDesktopNativeServerReferenced>true</RunicDesktopNativeServerReferenced>
+    <_RunicDesktopNativeServerReferenced>true</_RunicDesktopNativeServerReferenced>
   </PropertyGroup>
 </Project>

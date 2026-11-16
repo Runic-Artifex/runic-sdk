@@ -192,7 +192,7 @@ public sealed class ComponentAdmissionTests
 
     // A real engine: a Runic host page with a Content-Security-Policy that names http://127.0.0.1:* and
     // ws://127.0.0.1:*, as the security guide says, imports the guest's component from the guest's origin, built on the
-    // real @runic-artifex/views `component` entry, and connects it with the token; the guest counts the connection.
+    // real @runic-artifex/views `experimental` entry, and connects it with the token; the guest counts the connection.
     [Test]
     public async Task AChromiumHostPageLoadsAndConnectsTheGuestsComponent()
     {
@@ -206,7 +206,7 @@ public sealed class ComponentAdmissionTests
             foreach (var file in Directory.EnumerateFiles(views, "*.js")) File.Copy(file, Path.Combine(componentFolder.FullName, Path.GetFileName(file)));
             File.WriteAllText(Path.Combine(content.FullName, "index.html"), "<!doctype html><title>Guest</title>");
             File.WriteAllText(Path.Combine(content.FullName, "_runic_component", "component.js"), """
-                import { defineRunicComponent } from "./views/component.js";
+                import { defineRunicComponent } from "./views/experimental.js";
                 const definition = defineRunicComponent({
                   tag: "guest-e2e-0a1b2c3d",
                   mount({ container }) { container.textContent = "Guest component"; },
