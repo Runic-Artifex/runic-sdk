@@ -508,7 +508,7 @@ whose release guides add only their own rules. The
 same policy.
 
 Applications on 0.9 follow the [migration guide to 1.0](../../docs/migration-1.0.md),
-which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0, 0.19.0 and 0.20.0.
+which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0, 0.13.0, 0.14.0, 0.15.0, 0.16.0, 0.17.0, 0.18.0, 0.19.0, 0.20.0 and 0.21.0.
 
 ### Version numbers
 
@@ -775,7 +775,7 @@ requirement, not a consumer one.
   where the prefix already names diagnostics, such as `RUNICDBUS100`).
   Experimental now: `RUNICDESK103` (hosted application windows and the Runic
   host protocol, through 1.0), and from 0.19 `RUNICDESK104` (the side panel)
-  and `RUNICDESK105` (the close drain), still experimental in 0.20.
+  and `RUNICDESK105` (the close drain), still experimental in 0.21.
   Retired: `RUNICNAV001` (Navigation, graduated in 0.7.0-preview.7),
   `RUNICWPF001` (WPF child web presentation, graduated in 0.9.0),
   `RUNICDESK100` (custom Desktop window hosts, graduated in 0.10.0),
