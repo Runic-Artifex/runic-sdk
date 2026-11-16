@@ -276,6 +276,18 @@ Add the plugin as the
 [`dotnet runic dev` documentation](../tools/dotnet-runic/README.md) describes
 for your frontend.
 
+The development server is not a boundary against other users of the same
+machine. Loopback admits every local account, and Vite serves the frontend
+sources to any of them. Runic's development endpoints add little to that: the
+reads are judged by address, not by account. The actions that change something
+check the account on Linux: `/__runic/open` and Runic Translations' in-page
+editing write route accept a loopback client only when its socket belongs to
+the account that runs the server. macOS and Windows offer no such check to an
+unprivileged process, so there any local account that reaches the server can
+open a listed file in your editor and write translation sources. On a shared
+machine, run the dev server only for projects that the other accounts may see
+([vite-plugin-runic, "Security"](../packages/web/vite-plugin-runic/README.md#runic-inspect-from-another-machine)).
+
 ## Hosted application windows
 
 A Runic Desktop application can show another Runic Desktop application's windows: the **host** starts the

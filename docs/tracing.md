@@ -36,15 +36,16 @@ metrics without further setup:
 
 ```sh
 podman run --rm -d --name aspire-dashboard \
-  -p 18888:18888 -p 4317:18889 -p 4318:18890 \
+  -p 127.0.0.1:18888:18888 -p 127.0.0.1:4317:18889 -p 127.0.0.1:4318:18890 \
   -e ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true \
   mcr.microsoft.com/dotnet/aspire-dashboard:13
 ```
 
 `docker run` takes the same arguments. The dashboard is at <http://localhost:18888>; it receives OTLP/gRPC on port
 4317 and OTLP/HTTP on port 4318. `ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS` turns off the dashboard's sign-in and
-OTLP API key, which is fine on your own machine only: the ports are published on every interface. Publish them as
-`-p 127.0.0.1:18888:18888` and so on to keep them local. Stop the dashboard with `podman stop aspire-dashboard`; it
+OTLP API key, so the ports are published on loopback only: other users of this machine can still reach them, other
+machines cannot. Publish them on every interface (`-p 18888:18888`) only on a network you trust, since anyone who
+reaches the ports reads your traces and can send spans of their own. Stop the dashboard with `podman stop aspire-dashboard`; it
 keeps telemetry in memory only.
 
 `dotnet runic dev` starts no container or viewer of its own: start the viewer you want, once, and leave it running.
@@ -121,7 +122,11 @@ The export needs the development client (`devtools` not `false`). The Angular CL
 ### How it fits together
 
 - `trace-context/1`: the request of a call carries `trace: { traceparent }`. The .NET host reads it only while its
-  `ActivitySource` has a listener, and makes it the parent of the call's `runic.bridge.*` span. The ViewModel's spans
+  `ActivitySource` has a listener, and makes it the parent of the call's `runic.bridge.*` span. This holds outside
+  Development too, by design, as for any W3C trace context a server receives: a page can choose the trace and parent
+  ids of the Bridge spans in your telemetry. The values are bounded (256 characters for `traceparent`, 512 for
+  `tracestate`), one that does not parse is ignored, and handler timing stays Development-only. Treat trace ids from
+  the page as untrusted, as you would those of an incoming HTTP request. The ViewModel's spans
   follow, because Runic runs model turns in the `ExecutionContext` of the request that queued them.
 - The page's span is a client span from the call's start (the click) to the moment the page reached the reply's
   revision. The .NET span is a server span inside it.

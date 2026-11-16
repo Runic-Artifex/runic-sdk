@@ -11,6 +11,7 @@ import launchEditor from "launch-editor";
 import { isLoopbackRequest, mayRead, readLimitedBody, sameOrigin } from "./requests.js";
 import type { AccessList } from "./access.js";
 import { isLoopbackAddress } from "./access.js";
+import { isLocalUser, type LocalUserCheck } from "./local-user.js";
 import type { RunicClientResponse } from "./channel.js";
 import { openPath, sourcesPath } from "./channel.js";
 import { parseMessageReference, type MessageReference } from "./translations-source.js";
@@ -27,6 +28,9 @@ const maximumOpenRequestBytes = 4096;
 /** Why `/__runic/open` refuses a client of another machine. */
 export const openLoopbackOnly = "Opening in the editor works only from a page on the development machine (localhost): " +
   "/__runic/open launches the editor there. runic({ allow }) and RUNIC_DEV_ALLOW admit other machines to Runic Inspect's data, not to this action.";
+/** Why `/__runic/open` refuses a loopback client that another user of this machine runs (local-user.ts). */
+export const openOtherUser = "Opening in the editor works only for the user who runs the development server: " +
+  "this request came from a program of another account on this machine.";
 
 /**
  * A source location: the absolute path of a local file and a 1-based line and column, as in a compiler diagnostic.
@@ -311,7 +315,7 @@ export function launchSourceEditor(location: RunicSourceLocation, failed: (messa
  * Answers a development client's request over Vite's HMR connection (channel.ts, `requestEvent`) as the HTTP endpoints
  * answer, under the same access rules, judged per request from the connection's `peer` address: `sources`, `handlers`
  * and `message` for this machine or one the access list admits (`runic({ allow })`, `RUNIC_DEV_ALLOW`), `open` for
- * this machine only, as `/__runic/open` (403 otherwise):
+ * this machine's user only (a loopback peer that `localUser` confirms), as `/__runic/open` (403 otherwise):
  * `sources` with the map (200) or 404; `handlers` with Runic Inspect's handler analysis of a `file` (200), 404 or 400;
  * `message` with the Translations message API's reply for a `target` `{ catalog, key }` (200), 404 or 400;
  * `open` with the same decision as `/__runic/open` (`resolveOpenLocation`), 200 after `launch`, else 404 (400 for a
@@ -327,12 +331,14 @@ export async function answerClientRequest(message: unknown, context: {
   /** The HMR connection's client address, and who besides this machine may read (loopback only without it). */
   readonly peer: string | undefined;
   readonly access?: AccessList;
+  /** Whether the connection's client is a program of this server's user (local-user.ts); refused without it. */
+  readonly localUser?: () => Promise<boolean>;
 }): Promise<RunicClientResponse | undefined> {
   if (typeof message !== "object" || message === null || Array.isArray(message)) return undefined;
   const { id, kind, target, file } = message as Record<string, unknown>;
   if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return undefined;
   if (kind !== "sources" && kind !== "handlers" && kind !== "message" && kind !== "open") return { id, status: 400 };
-  const admitted = kind === "open" ? isLoopbackAddress(context.peer)
+  const admitted = kind === "open" ? isLoopbackAddress(context.peer) && context.localUser !== undefined && await context.localUser()
     : context.access === undefined ? isLoopbackAddress(context.peer) : await context.access.allows(context.peer);
   if (!admitted) return { id, status: 403 };
   if (kind === "sources") {
@@ -362,8 +368,8 @@ export async function answerClientRequest(message: unknown, context: {
 /**
  * Answers `POST /__runic/open`: `{ "id" }` of a map entry, `{ "file", "line", "column" }` in a file the map lists or a
  * frontend file Vite serves, or `{ "message": { catalog, key, locale } }` of a Runic Translations message
- * (`resolveOpenLocation`), as JSON from a page of this server on this machine. Anything else is refused and opens
- * nothing. An accepted location goes to `launch` (launch-editor, as the dock's open action) and is answered 200.
+ * (`resolveOpenLocation`), as JSON from a page of this server on this machine, from a program of this server's user
+ * (`localUser`, local-user.ts). Anything else is refused and opens nothing. An accepted location goes to `launch` (launch-editor, as the dock's open action) and is answered 200.
  */
 export async function answerOpen(
   request: IncomingMessage,
@@ -371,6 +377,7 @@ export async function answerOpen(
   read: () => RunicSourceMap | undefined,
   launch: (location: RunicSourceLocation) => void,
   resolution: RunicOpenResolution = {},
+  localUser: LocalUserCheck = isLocalUser,
 ): Promise<void> {
   if (request.method !== "POST") {
     request.resume();
@@ -384,6 +391,11 @@ export async function answerOpen(
   if (!isLoopbackRequest(request)) {
     request.resume();
     return answer(response, 403, { error: "loopback-only", detail: openLoopbackOnly });
+  }
+  // Another account of this machine is loopback too, and a program sends any Origin it likes.
+  if (!(await localUser(request.socket))) {
+    request.resume();
+    return answer(response, 403, { error: "other-user", detail: openOtherUser });
   }
   const type = request.headers["content-type"];
   if (typeof type !== "string" || !/^application\/json\s*(?:;|$)/iu.test(type)) {

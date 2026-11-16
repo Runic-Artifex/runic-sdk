@@ -578,17 +578,9 @@ test("excludes the official DevTools client from production output", async () =>
   }
 });
 
-test("fails closed on hostile summaries and bounds a million-key detail object", () => {
+test("fails closed on hostile summaries and bounds a million-key detail object", async () => {
   const plugin = runic({ devtools: false });
-  let latest;
-  plugin.configureServer({
-    ws: {
-      on: () => undefined,
-      send: (message) => { latest = message.data; },
-    },
-    middlewares: { use: () => undefined },
-    httpServer: undefined,
-  });
+  const page = serveToLoopbackClient(plugin);
   const detail = Object.create(null);
   detail.nested = { secret: "must-not-escape" };
   detail.authorization = "must-not-escape";
@@ -606,7 +598,7 @@ test("fails closed on hostile summaries and bounds a million-key detail object",
     label: "Asset at /private/customer/project refreshed",
     detail,
   });
-  const entry = latest.timeline[0];
+  const entry = (await page.state()).timeline[0];
   assert.equal(entry.id, "diagnostic-1");
   assert.match(entry.timestamp, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(entry.label, "[redacted]");
@@ -621,17 +613,9 @@ test("fails closed on hostile summaries and bounds a million-key detail object",
   assert.ok(JSON.stringify(entry).length <= 2_048);
 });
 
-test("accepts view, asset, and translation summaries through one bounded timeline", () => {
+test("accepts view, asset, and translation summaries through one bounded timeline", async () => {
   const plugin = runic({ devtools: false, maxTimelineEntries: 2 });
-  let latest;
-  plugin.configureServer({
-    ws: {
-      on: () => undefined,
-      send: (message) => { latest = message.data; },
-    },
-    middlewares: { use: () => undefined },
-    httpServer: undefined,
-  });
+  const page = serveToLoopbackClient(plugin);
   plugin.api.reportDiagnostic({ source: "views", kind: "connection", label: "Connected" });
   plugin.api.reportDiagnostic({ source: "assets", kind: "event", label: "Asset refreshed" });
   plugin.api.reportDiagnostic({
@@ -641,7 +625,7 @@ test("accepts view, asset, and translation summaries through one bounded timelin
     detail: { key: "home.title", authorization: "must-not-escape" },
   });
   assert.deepEqual(
-    latest.timeline.map((entry) => [entry.source, entry.id, entry.detail]),
+    (await page.state()).timeline.map((entry) => [entry.source, entry.id, entry.detail]),
     [
       ["assets", "diagnostic-2", {}],
       ["translations", "diagnostic-3", { key: "home.title" }],
@@ -649,14 +633,9 @@ test("accepts view, asset, and translation summaries through one bounded timelin
   );
 });
 
-test("keeps a bounded, credential-redacted failure only on error entries", () => {
+test("keeps a bounded, credential-redacted failure only on error entries", async () => {
   const plugin = runic({ devtools: false });
-  let latest;
-  plugin.configureServer({
-    ws: { on: () => undefined, send: (message) => { latest = message.data; } },
-    middlewares: { use: () => undefined },
-    httpServer: undefined,
-  });
+  const page = serveToLoopbackClient(plugin);
   const stack = [
     "System.InvalidOperationException: Disk full at /home/dev/notes.db",
     ...Array.from({ length: 200 }, (_, index) => `   at Notes.Save${index}() in /home/dev/Notes/Editor.cs:line ${index}`),
@@ -673,7 +652,7 @@ test("keeps a bounded, credential-redacted failure only on error entries", () =>
     label: "Save timed-out",
     failure: { type: "Ignored", message: "Not an error entry." },
   });
-  const [error, operation] = latest.timeline;
+  const [error, operation] = (await page.state()).timeline;
   assert.equal(error.failure.type, "System.InvalidOperationException");
   assert.equal(error.failure.message, "Disk full. Authorization: [redacted]");
   assert.match(error.failure.stack, /^System\.InvalidOperationException: Disk full at \/home\/dev\/notes\.db\n   at Notes\.Save0\(\) in \/home\/dev\/Notes\/Editor\.cs:line 0/);
@@ -682,15 +661,10 @@ test("keeps a bounded, credential-redacted failure only on error entries", () =>
   assert.equal(operation.failure, undefined);
 });
 
-test("redacts credential values in failures and leaves failures out of the state endpoint", () => {
+test("redacts credential values in failures and leaves failures out of the state endpoint", async () => {
   const plugin = runic({ devtools: false });
-  let latest;
   const middleware = [];
-  plugin.configureServer({
-    ws: { on: () => undefined, send: (message) => { latest = message.data; } },
-    middlewares: { use: (path, handler) => middleware.push([path, handler]) },
-    httpServer: undefined,
-  });
+  const page = serveToLoopbackClient(plugin, { use: (path, handler) => middleware.push([path, handler]) });
   const secrets = [
     ["access_token=abc123", "access_token=[redacted]"],
     ["client_secret: s3cr3t", "client_secret: [redacted]"],
@@ -706,16 +680,18 @@ test("redacts credential values in failures and leaves failures out of the state
   for (const [input, expected] of secrets) {
     plugin.api.reportDiagnostic({ source: "views", kind: "error", label: "editorSave failed",
       failure: { type: "System.Exception", message: input, stack: `System.Exception: ${input}\n   at Save()` } });
-    const failure = latest.timeline.at(-1).failure;
+    const failure = (await page.state()).timeline.at(-1).failure;
     assert.equal(failure.message, expected, input);
     assert.equal(failure.stack.split("\n")[0], `System.Exception: ${expected}`, input);
   }
   let body = "";
-  middleware[0][1]({}, { setHeader: () => undefined, end: (text) => { body = text; } });
+  middleware[0][1]({ headers: {}, socket: { remoteAddress: "127.0.0.1" }, resume: () => undefined },
+    { setHeader: () => undefined, end: (text) => { body = text; } }, (error) => { throw error; });
+  await settle();
   const state = JSON.parse(body);
   assert.equal(state.timeline.length, secrets.length);
   assert.ok(state.timeline.every((entry) => entry.failure === undefined), "The state endpoint exposed a failure.");
-  assert.ok(latest.timeline.every((entry) => entry.failure !== undefined), "The dock state lost its failures.");
+  assert.ok((await page.state()).timeline.every((entry) => entry.failure !== undefined), "The dock state lost its failures.");
 });
 
 test("injects the Views diagnostics client only while serving with DevTools enabled", async () => {
@@ -774,24 +750,46 @@ for (const order of ["client-first", "views-first"]) {
   });
 }
 
-test("the dock shows the connection state the page forwards", () => {
+test("the dock shows the connection state the page forwards", async () => {
   const plugin = runic({ devtools: false });
-  const handlers = new Map();
-  let latest;
-  plugin.configureServer({
-    ws: { on: (event, handler) => handlers.set(event, handler), send: (message) => { latest = message.data; } },
-    middlewares: { use: () => undefined },
-    httpServer: undefined,
-  });
-  handlers.get("runic:connection")({ state: "reconnecting" });
-  assert.deepEqual(latest.connection, { state: "reconnecting" });
+  const page = serveToLoopbackClient(plugin);
+  page.send("runic:connection", { state: "reconnecting" });
+  assert.deepEqual((await page.state()).connection, { state: "reconnecting" });
   // presented/1: the application closed the window.
-  handlers.get("runic:connection")({ state: "closed" });
-  assert.deepEqual(latest.connection, { state: "closed" });
-  handlers.get("runic:connection")({ state: "paused" });
+  page.send("runic:connection", { state: "closed" });
+  assert.deepEqual((await page.state()).connection, { state: "closed" });
+  page.send("runic:connection", { state: "paused" });
+  const latest = await page.state();
   assert.deepEqual(latest.connection, { state: "unknown" }, "an unknown state is not shown as a Views state");
   assert.equal("operations" in latest, false);
 });
+
+/** Waits until the plugin's asynchronous admission of HMR events and state broadcasts has run. */
+function settle() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/**
+ * Configures `plugin` with a stand-in for Vite's dev server that has one HMR client, connected from loopback: `send`
+ * delivers an event from it, `state()` resolves to the last runic:state it received.
+ */
+function serveToLoopbackClient(plugin, middlewares = { use: () => undefined }) {
+  const handlers = new Map();
+  let latest;
+  const socket = {};
+  const client = { socket, send: (event, data) => { if (event === "runic:state") latest = data; } };
+  plugin.configureServer({
+    ws: { on: (event, handler) => handlers.set(event, handler), send: () => undefined, clients: new Set([client]) },
+    middlewares,
+    httpServer: undefined,
+  });
+  handlers.get("connection")(socket, { headers: { host: "127.0.0.1:5173" }, socket: { remoteAddress: "127.0.0.1" } });
+  return {
+    handlers,
+    send: (event, data) => handlers.get(event)(data, client),
+    state: async () => { await settle(); return latest; },
+  };
+}
 
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-fixture-"));

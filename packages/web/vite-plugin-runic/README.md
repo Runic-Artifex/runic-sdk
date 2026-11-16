@@ -552,7 +552,10 @@ runic({ allow: ["100.64.0.0/10", "192.168.1.20", "laptop.tailnet.ts.net"] })
 ```
 
 Entries are IPv4 or IPv6 addresses, CIDR networks, or host names (resolved
-when a request arrives, and cached for 30 seconds); the environment variable
+when a request arrives, and cached for 30 seconds). A host name is only as
+trustworthy as the resolver that answers for it: when MagicDNS is unavailable
+and a network's own resolver answers instead, it can point the name at another
+machine. Prefer addresses and networks, such as Tailscale's `100.64.0.0/10`. The environment variable
 takes the same entries separated by commas or spaces and adds to the option.
 An invalid entry stops the dev server with its name, and a non-empty list is
 logged at start. `RUNIC_DEV_ALLOW` is one setting for both plugins: Runic
@@ -564,8 +567,11 @@ and edit translations.
 | Endpoint | Loopback | An allowed machine | Any other machine |
 | --- | --- | --- | --- |
 | `/__runic/sources`, `/__runic/handlers` | yes | yes | 403 |
+| `/__runic/state`, `/__runic/diagnostics` | yes | yes | 403 |
+| Runic's HMR events: the state the server sends, the views, calls, diagnostics and spans the page sends | yes | yes | not sent, ignored |
+| Runic Inspect's requests over HMR (source map, handlers, messages) | yes | yes | 403 |
 | `/__runic-translations/message` (Runic Translations) | yes | yes | 403 |
-| `/__runic/open` | yes | 403 | 403 |
+| `/__runic/open`, open over HMR | your account only | 403 | 403 |
 
 `/__runic/open` launches an editor **on the development machine**, so it stays
 loopback-only. A page opened from another machine (its address is not
@@ -579,15 +585,36 @@ setting that allows it.
   machine the dev server runs on (`127.0.0.0/8`, `::1`), judged by the TCP
   connection's address; `X-Forwarded-For` and similar headers are ignored. A
   reverse proxy on the same machine makes every client look like loopback.
-- **Same origin.** A request must come from a page of the dev server itself
-  (`Sec-Fetch-Site`, `Origin`), so another site, or another dev server on a
-  different port, cannot read the data or write a translation. Vite's host check
-  (`server.allowedHosts`) runs first and refuses DNS-rebinding hosts; allow the
-  host names your other machines use there (IP addresses are allowed by
-  default).
+- **Same origin.** An HTTP request must come from a page of the dev server
+  itself (`Sec-Fetch-Site`, `Origin`), so another site cannot read the data or
+  write a translation. Pages of other `localhost` origins (another dev server,
+  Storybook, a notebook) are not kept out entirely: Vite's default CORS lets
+  them load `/@vite/client` with its HMR token, and over HMR they get Runic
+  Inspect's reads and its open action. Writes to translations are not on the HMR
+  channel. Do not run untrusted local web apps beside the dev server.
+- **Host check.** Vite's host check (`server.allowedHosts`) runs first and
+  refuses DNS-rebinding hosts; allow the host names your other machines use
+  there (IP addresses are allowed by default). With `allowedHosts: true`, Vite
+  answers any name, so Runic's endpoints and HMR events then check `Host`
+  themselves: they answer IP addresses, `localhost` (and names below it) and the
+  host names of `allow`/`RUNIC_DEV_ALLOW`, and refuse other names. The dev
+  server logs this at start. `runicDevSessionProxy()` sees no server
+  configuration and relies on the Angular CLI's host check: keep its
+  `allowedHosts` a list of names.
+- **Other users of this machine.** Loopback admits every account on the
+  machine, and a program, unlike a browser, sends any `Origin` it likes. Vite
+  itself serves the frontend sources to them, and Runic's reads are no
+  different. On Linux, the open action (`/__runic/open` and over HMR) checks
+  that the client's socket belongs to the account that runs the dev server
+  (`/proc/net/tcp`), so another account cannot launch your editor. macOS and
+  Windows give an unprivileged process no such table, so there the dev server
+  does not tell local accounts apart, and logs this at start: on a shared
+  machine, do not run the dev server for a project that other accounts must not
+  touch.
 - **Allow only machines you trust with your sources.** An allowed machine can
-  read the source map and the analysis of frontend files, and change the
-  catalog's translation sources.
+  read the source map, the analysis of frontend files and the development state
+  (View states and the Bridge call timeline), and change the catalog's
+  translation sources.
 - **Development only.** Nothing of it is in `vite build` or `vite preview`
   output: the build is byte-identical with and without Runic Inspect, the
   editor and the allow list.

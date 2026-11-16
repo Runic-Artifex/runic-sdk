@@ -122,6 +122,33 @@ export class AccessList {
   }
 }
 
+/**
+ * Whether a `Host` header may be answered when Vite's own host check is off (`server.allowedHosts: true`): an IP literal,
+ * `localhost` or a name below it, or a host name of the allow list. A name that DNS-rebinding points at loopback is
+ * none of these. A request without `Host` (HTTP/1.0, a tool) did not come from a browser and passes.
+ */
+export function isTrustedHost(host: string | undefined, access: AccessList): boolean {
+  if (host === undefined) return true;
+  const text = host.trim().toLowerCase();
+  if (text.startsWith("[")) {
+    const end = text.indexOf("]");
+    if (end < 0 || !/^(?::\d{1,5})?$/u.test(text.slice(end + 1))) return false;
+    return isIP(text.slice(1, end)) === 6;
+  }
+  const port = /:\d{1,5}$/u.exec(text);
+  const name = (port === null ? text : text.slice(0, port.index)).replace(/\.$/u, "");
+  if (name.length === 0) return false;
+  if (isIP(name) === 4) return true;
+  if (name === "localhost" || name.endsWith(".localhost")) return true;
+  return access.rules.some((rule) => rule.kind === "host" && rule.name === name);
+}
+
+/** The request's `Host` (or HTTP/2 `:authority`), the value `isTrustedHost` judges. */
+export function requestHost(request: IncomingMessage): string | undefined {
+  const value = request.headers.host ?? request.headers[":authority"];
+  return typeof value === "string" ? value : undefined;
+}
+
 /** Loopback only: what the endpoints accept without configuration. */
 export const loopbackOnly = new AccessList();
 
