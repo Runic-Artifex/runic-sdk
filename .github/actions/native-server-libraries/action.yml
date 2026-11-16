@@ -62,4 +62,8 @@ runs:
         path: artifacts/native/runic-server/downloaded
     - name: Check that every runtime identifier has its libraries
       shell: bash
+      env:
+        # download-artifact extracts a pattern's only match straight into the path, without its runic-server-<rid>
+        # directory; collect-libraries.mjs then takes the runtime identifier from this list.
+        RUNIC_SERVER_BUILT: ${{ inputs.built }}
       run: node eng/native/collect-libraries.mjs
