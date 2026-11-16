@@ -162,9 +162,13 @@ export function originalPosition(map: SourceMapLike, line: number, column: numbe
   return { source: root === "" || /^(?:[a-z]+:|\/)/iu.test(source) ? source : `${root.replace(/\/?$/u, "/")}${source}`, line: best![2]! + 1, column: best![3]! + 1 };
 }
 
-/** The inline source map of a served module's code (`//# sourceMappingURL=data:application/json;base64,…`). */
+// Assembled, so that this file's own text never contains a source map comment that js-debug and other tools, which
+// take the last one they find anywhere in a file, would read as this file's source map (#1050).
+const inlineSourceMapComment = new RegExp(String.raw`//[#@] ${"sourceMappingURL"}=data:application/json[^,]*;base64,([A-Za-z0-9+/=]+)\s*$`, "u");
+
+/** The inline source map of a served module's code: the base64 JSON `data:` URL of its trailing source map comment. */
 export function inlineSourceMap(code: string): SourceMapLike | undefined {
-  const match = /\/\/[#@] sourceMappingURL=data:application\/json[^,]*;base64,([A-Za-z0-9+/=]+)\s*$/u.exec(code);
+  const match = inlineSourceMapComment.exec(code);
   if (match === null) return undefined;
   try {
     const binary = atob(match[1]!);
