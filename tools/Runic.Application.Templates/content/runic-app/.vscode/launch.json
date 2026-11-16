@@ -25,6 +25,17 @@
       "request": "attach",
       "preLaunchTask": "runic: dev",
       "processId": "${command:pickProcess}"
+    },
+    {
+      // Every OS: dotnet runic dev --browser serves the Window without a native window, and VS Code's JavaScript debugger
+      // opens it in Chrome through dev's address, so breakpoints in Frontend/src work on Linux and macOS too. The pages run
+      // on Chromium, not the Window's WebView, without native window features. For Edge, set "type": "msedge".
+      "name": "Window in Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "runic: dev --browser",
+      "url": "http://127.0.0.1:9224/",
+      "webRoot": "${workspaceFolder}/Frontend"
 //#if (desktopHost)
     },
     {

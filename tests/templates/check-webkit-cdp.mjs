@@ -5,6 +5,11 @@
 //
 //   node check-webkit-cdp.mjs --project <generated project directory> [--js-debug <unpacked js-debug directory>]
 //
+// With --browser (#1031), the project's "Window in Chrome" launch configuration instead (it is generated with --editor
+// vscode): `dotnet runic dev --browser` without a display, the entry address in its output and session file and its
+// refusal of web pages, and js-debug launching Chrome at the configuration's url with the same scenarios on Chromium.
+// PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH selects the browser; otherwise js-debug finds the installed Chrome.
+//
 // RUNIC_DEV_TOOL_DLL=<path to dotnet-runic.dll> runs a locally built dev instead of the project's dotnet-runic tool.
 // The project's dotnet-runic must be restored. Needs Xvfb, dbus-run-session and the WebKitGTK of the project's GTK.
 import { spawn, spawnSync } from "node:child_process";
@@ -21,7 +26,7 @@ import { scaled } from "../support/timeouts.mjs";
 const jsDebugVersion = "1.140.1";
 const jsDebugSha256 = "c72fab31bcbfdce6ad1f42adfd28eff8d4681dd3b03b5e2e6f9e72e6f9927faf";
 
-const { values } = parseArgs({ options: { project: { type: "string" }, "js-debug": { type: "string" } } });
+const { values } = parseArgs({ options: { project: { type: "string" }, "js-debug": { type: "string" }, browser: { type: "boolean" } } });
 if (!values.project) throw new Error("--project is required");
 const project = values.project;
 const scenarios = join(dirname(fileURLToPath(import.meta.url)), "../webkit-cdp/dap-scenarios.mjs");
@@ -71,6 +76,7 @@ const trace = join(traceDirectory, `${project.split("/").filter(Boolean).at(-1)}
 // Its own process group, so stopping it ends dotnet watch, the Window and the development server.
 // RUNIC_DEV_TOOL_DLL runs a locally built dotnet-runic instead of the project's tool (tools/dotnet-runic/bin/...).
 const runicDev = process.env.RUNIC_DEV_TOOL_DLL ? ["dotnet", process.env.RUNIC_DEV_TOOL_DLL, "dev"] : ["dotnet", "runic", "dev"];
+if (values.browser) await checkBrowser();
 const dev = spawn("dbus-run-session", ["--", "xvfb-run", "-a", "-s", "-screen 0 1280x900x24", ...runicDev], {
   cwd: project,
   detached: true,
@@ -131,4 +137,67 @@ try {
   throw error;
 } finally {
   stop();
+}
+
+// `dotnet runic dev --browser` and the template's "Window in Chrome" launch configuration (#1031); exits when done.
+async function checkBrowser() {
+  // The configuration as VS Code reads it: JSONC whose comments are whole lines, ${workspaceFolder} the project.
+  const launch = JSON.parse(readFileSync(join(project, ".vscode/launch.json"), "utf8").split("\n").filter(line => !/^\s*\/\//.test(line)).join("\n"));
+  const configuration = launch.configurations.find(entry => entry.name === "Window in Chrome");
+  if (configuration?.type !== "chrome" || configuration.request !== "launch") throw new Error("The project has no \"Window in Chrome\" launch configuration");
+  const webRoot = configuration.webRoot.replace("${workspaceFolder}", project);
+  // No display: serve-only needs none.
+  const environment = { ...process.env };
+  for (const name of ["DISPLAY", "WAYLAND_DISPLAY", "RUNIC_APPLICATION_SERVE_ONLY"]) delete environment[name];
+  const dev = spawn(runicDev[0], [...runicDev.slice(1), "--browser"], { cwd: project, detached: true, stdio: ["ignore", "pipe", "pipe"], env: environment });
+  let output = "", exited = null;
+  dev.stdout.on("data", chunk => { output += chunk; });
+  dev.stderr.on("data", chunk => { output += chunk; });
+  dev.on("exit", (code, signal) => { exited = { code, signal }; });
+  const stop = () => { try { process.kill(-dev.pid, "SIGKILL"); } catch { } };
+  process.on("exit", stop);
+  try {
+    for (let waited = 0; !/^\[dev\] Ready$/m.test(output); waited += 500) {
+      if (exited) throw new Error(`dotnet runic dev --browser exited (${JSON.stringify(exited)}) before it was ready`);
+      if (waited > startTimeout) throw new Error("dotnet runic dev --browser was not ready in time");
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    const url = /^\[dev\] Browser: the Window serves at (http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(output)?.[1];
+    if (!url) throw new Error("dotnet runic dev --browser printed no [dev] Browser: line for the Window");
+    if (url !== configuration.url) throw new Error(`dev serves the Window at ${url}, the launch configuration opens ${configuration.url}`);
+    const session = JSON.parse(readFileSync(join(project, "obj/runic/dev-session.json"), "utf8"));
+    if (session.browser?.url !== url || session.browser.windows[0]?.url !== url) throw new Error(`The session file lists ${JSON.stringify(session.browser)}`);
+    if (session.debugEndpoints.length !== 0) throw new Error(`--browser listed debugging endpoints: ${JSON.stringify(session.debugEndpoints)}`);
+    // The surface's own address carries its credential: dev does not print it.
+    if (/RUNIC_APPLICATION_(URL|WINDOW)=/.test(output)) throw new Error("dotnet runic dev --browser printed the Window's surface address");
+    console.log(`DEV_BROWSER_ENTRY|${url}`);
+
+    // The browser's own navigation is sent to the Window; a web page's, a foreign Origin or a DNS-rebound name is not.
+    const status = headers => spawnSync("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}",
+      ...headers.flatMap(header => ["-H", header]), url], { encoding: "utf8" }).stdout;
+    for (const [headers, expected] of [[["Sec-Fetch-Site: none"], "302"], [["Sec-Fetch-Site: cross-site"], "403"],
+      [["Origin: https://example.com"], "403"], [[`Host: example.com:${new URL(url).port}`], "403"]]) {
+      const actual = status(headers);
+      if (actual !== expected) throw new Error(`${JSON.stringify(headers)}: HTTP ${actual}, expected ${expected}`);
+    }
+    console.log("DEV_BROWSER_SECURITY_OK|browser navigation 302|cross-site 403|foreign Origin 403|foreign Host 403");
+
+    // The page in Chrome under js-debug, as VS Code runs the configuration. A restart needs the address opened again, so
+    // the Window restart scenario is left out.
+    const browser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    const run = spawnSync(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--launch", configuration.url,
+      "--frontend", webRoot, ...(browser ? ["--browser", browser] : []),
+      "--only", "step-in-out,conditional,logpoint,exception,uncaught-output,console-levels,set-variable,reload,hmr"],
+      { encoding: "utf8", timeout: scaled(900_000) });
+    process.stdout.write(run.stdout);
+    process.stderr.write(run.stderr);
+    if (run.status !== 0) throw new Error(`js-debug scenarios in Chrome failed (exit ${run.status ?? run.signal})`);
+    console.log(`DEV_BROWSER_OK|${/^\[[\d.]+s\] (\d+\/\d+) passed$/m.exec(run.stdout)?.[1] ?? "?"}`);
+  } catch (error) {
+    console.error(tail(output));
+    throw error;
+  } finally {
+    stop();
+  }
+  process.exit(0);
 }

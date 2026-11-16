@@ -5,8 +5,11 @@
 // conditions, logpoints, exceptions, console output, locals and hover, a breakpoint in the first render after a reload,
 // HMR, and the Window restarting under dotnet watch. Each prints PASS or FAIL with what it saw; the exit code is 0 when
 // all pass.
+// With --launch, js-debug instead launches Chrome at that address, as the template's `"request": "launch"` configuration
+// "Window in Chrome" does for `dotnet runic dev --browser` (#1031): the same scenarios on Chromium.
 // usage: node dap-scenarios.mjs --jsdebug <js-debug dir> --port <cdp port> --frontend <Frontend dir>
 //          [--restart-file <a .cs file of the application>] [--only a,b] [--trace <js-debug log file>]
+//        node dap-scenarios.mjs --jsdebug <js-debug dir> --launch <url> --frontend <Frontend dir> [--browser <executable>] …
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -18,6 +21,8 @@ const { values: a } = parseArgs({ options: {
   "restart-file": { type: "string" },
   // The attach configuration's type: pwa-chrome ("chrome" in launch.json) or pwa-msedge with useWebView, the template's.
   type: { type: "string", default: "pwa-chrome" },
+  // A launch configuration's url, and the Chrome or Chromium it starts: js-debug's installed Chrome ("stable") by default.
+  launch: { type: "string" }, browser: { type: "string" },
 } });
 const app = `${a.frontend}/src/App.tsx`;
 const counterPage = `${a.frontend}/src/pages/CounterPage.tsx`;
@@ -33,7 +38,10 @@ const renderLine = lineOf(app, "useView(workspace)");
 const counterLine = lineOf(counterPage, "const error = increment.error");
 const t0 = Date.now();
 const log = (...x) => console.log(`[${((Date.now() - t0) / 1000).toFixed(2)}s]`, ...x);
-const dapPort = 42000 + Math.floor(Math.random() * 1000);
+// A port the system says is free, not a random one that a development server or the Window may hold.
+const dapPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer().once("error", reject).listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 const server = spawn(process.execPath, [`${a.jsdebug}/src/dapDebugServer.js`, String(dapPort), "127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
 server.stderr.on("data", d => process.stderr.write(`[js-debug] ${d}`));
 const done = code => { try { server.kill(); } catch {} setTimeout(() => process.exit(code), 200); };
@@ -94,8 +102,12 @@ const childP = new Promise(res => { parent.handlers.startDebugging = async req =
 }; });
 const parentInitialized = parent.wait("initialized", () => true, 120000);
 await parent.send("initialize", init);
-const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
-  ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
+const pa = a.launch
+  // Headless without a display; --no-sandbox for CI runners whose kernel refuses Chrome's sandbox.
+  ? parent.send("launch", { type: a.type, request: "launch", name: "browser", url: a.launch, webRoot: a.frontend, timeout: 30000,
+    runtimeExecutable: a.browser ?? "stable", runtimeArgs: ["--headless=new", "--no-sandbox"], ...(a.trace ? { trace: { logFile: a.trace } } : {}) })
+  : parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
+    ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
 await parentInitialized; await parent.send("configurationDone"); await pa;
 const first = await childP;
 current = first.c;

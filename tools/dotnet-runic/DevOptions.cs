@@ -42,6 +42,13 @@ internal sealed record DevOptions(
     internal bool WebKitInspector { get; init; }
 
     /// <summary>
+    /// <c>--browser</c>: dev starts the Window serve-only (<c>RUNIC_APPLICATION_SERVE_ONLY=1</c>), without a native window,
+    /// and serves a fixed loopback address that sends a browser to it (<see cref="BrowserEntry"/>), so the IDE's own Chrome
+    /// or Edge can open the pages under its JavaScript debugger on every operating system (D066.38 item 4).
+    /// </summary>
+    internal bool Browser { get; init; }
+
+    /// <summary>
     /// Variables dev sets for the Window so its pages can be debugged, such as <c>WEBKIT_INSPECTOR_SERVER</c>; decided after
     /// the options are read. A Window that the IDE starts (<c>--no-window</c>) gets them from the session file.
     /// </summary>
@@ -64,6 +71,7 @@ internal static class ToolOptionValues
         ArgumentNullException.ThrowIfNull(options);
         if (options.StartWindow) return;
         var conflicts = new List<string>();
+        if (options.Browser) conflicts.Add("--browser");
         if (!options.WatchFrontend) conflicts.Add("--no-frontend-watch");
         if (!options.WatchHost) conflicts.Add("--no-dotnet-watch");
         if (options.LaunchProfile is not null) conflicts.Add("--launch-profile");

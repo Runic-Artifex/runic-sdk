@@ -2646,7 +2646,9 @@ jobs:
   # D066.39: VS Code's JavaScript debugger (vscode-js-debug's DAP server, pinned in tests/templates/check-webkit-cdp.mjs)
   # attached through dotnet runic dev's CDP adapter (#1029) to the runic-app template's WebKitGTK Window, GTK 3 and GTK 4,
   # from this run's package candidates: source-mapped breakpoints from a click, stepping, conditions, logpoints, exceptions,
-  # the console, a reload, HMR and a Window restart under dotnet watch. Planned for the adapter, the Linux hosts, the
+  # the console, a reload, HMR and a Window restart under dotnet watch. Then the template's "Window in Chrome" launch
+  # configuration (#1031): js-debug launches the runner's Chrome at dotnet runic dev --browser's address, with the same
+  # scenarios. Planned for the adapter, the Linux hosts, the
   # template and the check (webKitCdpPaths in eng/ci/platforms.mjs). Preview until it has run through one release.
   webkit-cdp:
     name: WebKitGTK debugging / js-debug

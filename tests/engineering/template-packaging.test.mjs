@@ -512,13 +512,15 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     const tasks = parseJsonc(vscode[".vscode/tasks.json"]);
     assert.equal(tasks.version, "2.0.0");
     const task = Object.fromEntries(tasks.tasks.map(entry => [entry.label, entry]));
-    assert.deepEqual(Object.keys(task), ["dotnet: tool restore", "runic: dev", "runic: dev --no-window", "build", "runic: window", "runic: doctor"]);
+    assert.deepEqual(Object.keys(task), ["dotnet: tool restore", "runic: dev", "runic: dev --no-window", "runic: dev --browser", "build",
+      "runic: window", "runic: doctor"]);
     for (const entry of tasks.tasks) {
       for (const dependency of [entry.dependsOn ?? []].flat()) assert.ok(task[dependency], `${entry.label} depends on ${dependency}`);
       if (entry.command) assert.deepEqual([entry.type, entry.command], ["process", "dotnet"], entry.label);
     }
     assert.deepEqual(task["runic: dev"].args, ["runic", "dev"]);
     assert.deepEqual(task["runic: dev --no-window"].args, ["runic", "dev", "--no-window"]);
+    assert.deepEqual(task["runic: dev --browser"].args, ["runic", "dev", "--browser"]);
     assert.deepEqual(task["build"].args.slice(0, 2), ["build", "${workspaceFolder}/Ide.App.csproj"]);
     assert.equal(task["build"].problemMatcher, "$msCompile");
     assert.deepEqual(task["runic: window"].dependsOn, ["runic: dev --no-window", "build"]);
@@ -530,7 +532,7 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
       ["dotnet-runic : error RAPPDEV1014: --no-window cannot be combined with --no-dotnet-watch.", "RAPPDEV1014"],
       ["/src/Ide.App/WorkspaceViewModel.cs(18,5): error CS1002: ; expected [/src/Ide.App/Ide.App.csproj]", "CS1002"],
     ];
-    for (const label of ["runic: dev", "runic: dev --no-window"]) {
+    for (const label of ["runic: dev", "runic: dev --no-window", "runic: dev --browser"]) {
       const { isBackground, problemMatcher: { base, background } } = task[label];
       assert.equal(isBackground, true, label);
       assert.equal(base, "$msCompile", label);
@@ -544,15 +546,18 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     }
     assert.match("[dev] Window exited: process 4242", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
     assert.match("[dev] Reloading the Runic Views Window application.", new RegExp(task["runic: dev"].problemMatcher.background.beginsPattern));
+    // --browser: after a restart the task is ready again once the new Window serves (dev's Ready follows its first page).
+    assert.match("[dev] Window exited: process 4242", new RegExp(task["runic: dev --browser"].problemMatcher.background.beginsPattern));
+    assert.doesNotMatch("[dev] Browser: the Window serves at http://127.0.0.1:9224/", new RegExp(task["runic: dev --browser"].problemMatcher.background.endsPattern));
 
     const launch = parseJsonc(vscode[".vscode/launch.json"]);
     assert.equal(launch.version, "0.2.0");
     const configuration = Object.fromEntries(launch.configurations.map(entry => [entry.name, entry]));
-    assert.deepEqual(Object.keys(configuration), ["Window", "Attach to the Window (dotnet runic dev)",
+    assert.deepEqual(Object.keys(configuration), ["Window", "Attach to the Window (dotnet runic dev)", "Window in Chrome",
       "Window with WebView2 debugging (Windows)", "Window with JavaScript debugging (Linux)", "Attach to the page (JavaScript)"]);
     for (const entry of [...launch.configurations, ...launch.compounds])
       if (entry.preLaunchTask) assert.ok(task[entry.preLaunchTask], `${entry.name}: ${entry.preLaunchTask}`);
-    assert.ok(launch.configurations.every(entry => entry.type === "coreclr" || entry.type === "msedge"));
+    assert.ok(launch.configurations.every(entry => ["coreclr", "msedge", "chrome"].includes(entry.type)));
     const program = `\${workspaceFolder}/bin/Debug/${framework}/Ide.App`;
     assert.deepEqual(configuration["Window"], {
       name: "Window", type: "coreclr", request: "launch", preLaunchTask: "runic: window", program,
@@ -560,6 +565,14 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     });
     assert.equal(configuration["Attach to the Window (dotnet runic dev)"].request, "attach");
     assert.equal(configuration["Attach to the Window (dotnet runic dev)"].preLaunchTask, "runic: dev");
+    // #1031: js-debug launches Chrome at dev --browser's fixed entry address (tools/dotnet-runic/BrowserEntry.cs), which
+    // sends it to the serve-only Window's page; the same webRoot as the attach configuration.
+    const browserPort = Number(/internal const int DefaultPort = (\d+);/
+      .exec(readFileSync(resolve(root, "tools/dotnet-runic/BrowserEntry.cs"), "utf8"))?.[1]);
+    assert.deepEqual(configuration["Window in Chrome"], {
+      name: "Window in Chrome", type: "chrome", request: "launch", preLaunchTask: "runic: dev --browser",
+      url: `http://127.0.0.1:${browserPort}/`, webRoot: "${workspaceFolder}/Frontend",
+    });
     // Windows: the Window with the same variable as the launch profile, and js-debug on the same port.
     const webView2Window = configuration["Window with WebView2 debugging (Windows)"];
     assert.equal(webView2Window.program, `${program}.exe`);
@@ -591,7 +604,9 @@ test("--editor vscode adds VS Code tasks and launch configurations; every projec
     const cswebui = create("cswebui", "--editor", "vscode", "--host", "cswebui");
     assert.deepEqual(Object.keys(JSON.parse(cswebui["Properties/launchSettings.json"]).profiles), ["Ide.App"]);
     const cswebuiLaunch = parseJsonc(cswebui[".vscode/launch.json"]);
-    assert.deepEqual(cswebuiLaunch.configurations.map(entry => entry.name), ["Window", "Attach to the Window (dotnet runic dev)"]);
+    // Serve-only is the same contract on CS-WebUI, so it gets the browser configuration too.
+    assert.deepEqual(cswebuiLaunch.configurations.map(entry => entry.name), ["Window", "Attach to the Window (dotnet runic dev)", "Window in Chrome"]);
+    assert.deepEqual(cswebuiLaunch.configurations[2], configuration["Window in Chrome"]);
     assert.ok(!("compounds" in cswebuiLaunch));
     assert.equal(cswebui[".vscode/tasks.json"], vscode[".vscode/tasks.json"]);
     for (const [path, text] of Object.entries(cswebui)) assert.doesNotMatch(text, /\/\/#(if|else|endif)/, path);

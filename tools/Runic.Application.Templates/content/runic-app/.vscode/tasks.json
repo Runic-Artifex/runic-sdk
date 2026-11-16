@@ -47,6 +47,24 @@
       }
     },
     {
+      // The Window served to a browser instead of a native window (launch.json, "Window in Chrome"); ready once it serves.
+      "label": "runic: dev --browser",
+      "detail": "dotnet runic dev --browser",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["runic", "dev", "--browser"],
+      "dependsOn": ["dotnet: tool restore"],
+      "isBackground": true,
+      "problemMatcher": {
+        "base": "$msCompile",
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\[dev\\] (Evaluating|Window exited|Reloading)",
+          "endsPattern": "^\\[dev\\] Ready$"
+        }
+      }
+    },
+    {
       "label": "build",
       "detail": "dotnet build",
       "type": "process",

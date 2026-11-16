@@ -949,6 +949,25 @@ verify_webkit_cdp() {
   printf 'WEBKIT_CDP_TEMPLATE_OK|gtk%s\n' "$linux_gtk"
 }
 
+# dotnet runic dev --browser (#1031): the "Window in Chrome" launch configuration of a project generated with --editor
+# vscode, run as VS Code runs it: js-debug launches Chrome at dev's entry address, which sends it to the serve-only
+# Window, and the same scenarios run on Chromium (check-webkit-cdp.mjs --browser). Part of RUNIC_TEMPLATE_WEBKIT_CDP=only.
+verify_dev_browser() {
+  local project_name="AcceptanceDevBrowser"
+  local output="$template_tmp/dev-browser"
+  dotnet new runic-app --name "$project_name" --output "$output" --frontend react --package-manager npm --host desktop --editor vscode
+  configure_candidate_registry npm "$output"
+  (cd "$output" && dotnet tool restore)
+  local log="$output/dev-browser-check.log"
+  if ! node "$script_directory/check-webkit-cdp.mjs" --project "$output" --browser > "$log" 2>&1; then
+    echo "js-debug did not debug the Window in Chrome through dotnet runic dev --browser." >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  grep -E '^(DEV_BROWSER|\[[0-9.]+s\] (PASS|FAIL))' "$log" || true
+  echo "DEV_BROWSER_TEMPLATE_OK"
+}
+
 # The generated DiagnosticsLog keeps the Desktop diagnostics that standard error loses outside a terminal. A copy of
 # the built application whose page never loads the Runic client reports presentation-connection-timeout; the log in
 # the user's data directory, named after the application ID, holds it once, and a second start replaces the log.
@@ -1174,6 +1193,7 @@ case "${RUNIC_TEMPLATE_WEBKIT_CDP:-0}" in
   only)
     verify_webkit_cdp 3
     verify_webkit_cdp 4
+    verify_dev_browser
     exit 0
     ;;
   0) ;;

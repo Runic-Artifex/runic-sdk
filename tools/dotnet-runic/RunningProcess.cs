@@ -54,13 +54,16 @@ internal sealed class RunningProcess : IAsyncDisposable
         IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string?>? environment = null,
         Func<string, bool>? suppressLine = null,
-        Action<string>? observeLine = null)
+        Action<string>? observeLine = null,
+        bool holdInput = false)
     {
         ProcessStartInfo startInfo = CommandRunner.CreateStartInfo(
             executable,
             workingDirectory,
             arguments);
-        startInfo.RedirectStandardInput = false;
+        // holdInput: a pipe that stays open and empty instead of dev's terminal, for a serve-only Window, which stops
+        // serving at a line on its standard input (an Enter in the terminal) but not at its end.
+        startInfo.RedirectStandardInput = holdInput;
         if (environment is not null)
         {
             foreach ((string key, string? value) in environment)

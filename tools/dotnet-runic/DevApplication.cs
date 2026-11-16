@@ -41,6 +41,29 @@ internal static class DevApplication
         $"opens no DevTools Protocol endpoint at {endpoint.Url}. Run dotnet runic dev (and your IDE) without elevation; see " +
         $"{SessionFileHelpUri}";
 
+    internal const string BrowserUnavailableCode = "RAPPDEV1016";
+
+    /// <summary>
+    /// The <c>--browser</c> hint: where the browser opens the Window, and what it does not get there. A port other than
+    /// <see cref="BrowserEntry.DefaultPort"/> means the launch configuration needs it.
+    /// </summary>
+    internal static string BrowserHint(int port)
+    {
+        string url = BrowserEntry.RootUrl(port);
+        string moved = port == BrowserEntry.DefaultPort
+            ? ""
+            : $" Port {BrowserEntry.DefaultPort.ToString(System.Globalization.CultureInfo.InvariantCulture)} was taken: set \"url\": \"{url}\" in your launch configuration.";
+        return $"[dev] Browser: the Window serves without a native window (--browser). Open {url} in Chrome or Edge, as your " +
+            "IDE's launch configuration does, and again after the Window restarts. The pages run on Chromium, not the Window's " +
+            $"WebView, and native window features such as dialogs and menus report OwnerUnavailable.{moved}";
+    }
+
+    /// <summary>The line for a Window that the serve-only Window process serves, at its entry address.</summary>
+    internal static string BrowserServedLine(BrowserEntry.ServedWindow served) =>
+        served.Index == 0
+            ? $"[dev] Browser: the Window serves at {served.EntryUrl}"
+            : $"[dev] Browser: another Window serves at {served.EntryUrl}";
+
     /// <summary>The session file's section of the dotnet-runic README at this release.</summary>
     internal static string SessionFileHelpUri => RunicReleaseLinks.SourceUrl + "tools/dotnet-runic/README.md#session-file";
 
@@ -95,6 +118,12 @@ internal static class DevApplication
         WebKitDebugging.Plan debugging = WebKitDebugging.Decide(configuration, options, Environment.GetEnvironmentVariable,
             OperatingSystem.IsLinux(), LoopbackPort.Reserve, WebKitDebugging.ReadInstalledVersion);
         options = options with { DebugEnvironment = debugging.WindowEnvironment };
+        // --browser: a fixed loopback address for the IDE's browser, which sends it to the serve-only Window's page.
+        await using BrowserEntry? browser = options.Browser
+            ? BrowserEntry.TryStart(BrowserEntry.DefaultPort) ?? BrowserEntry.TryStart(0)
+                ?? throw new DevDevelopmentException(BrowserUnavailableCode,
+                    "--browser could not open a loopback port for the browser's address.", category: CommandExitCategory.Unavailable)
+            : null;
         await using WebKitDebugEndpoint? adapter = debugging.StartAdapter
             ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort)
             : null;
@@ -118,6 +147,11 @@ internal static class DevApplication
         foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints) Console.WriteLine(UnavailableEndpointHint(endpoint));
         foreach (string hint in debuggingHints) Console.WriteLine(hint);
         WriteSession(session.Start);
+        if (browser is not null)
+        {
+            WriteSession(() => session.BrowserStarted(browser.Url));
+            Console.WriteLine(BrowserHint(browser.Port));
+        }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
         // an IDE or terminal ends only this process. A repeated signal must not
@@ -182,6 +216,7 @@ internal static class DevApplication
                 configuration,
                 options,
                 session,
+                browser,
                 stop.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -204,6 +239,7 @@ internal static class DevApplication
         DevProjectConfiguration configuration,
         DevOptions options,
         DevSession session,
+        BrowserEntry? browser,
         CancellationToken cancellationToken)
     {
         bool useDevelopmentServer =
@@ -221,11 +257,15 @@ internal static class DevApplication
         {
             WriteSession(() => session.PublishFrontend(configuration.DevelopmentServerDocuments));
         }
+        // The IDE contract: a line for each Window process, then Ready once the frontend and the Window can be used; with
+        // --browser, once the Window serves its first page.
+        var contract = new ContractReporter(session, Console.WriteLine, WriteSession, browser);
         await using var host = new HostProcessController(
             dotnetHost,
             configuration,
             options,
-            developmentServer?.HostEnvironment);
+            developmentServer?.HostEnvironment,
+            contract.ServeOnlyLine);
         using (PhaseTimer phase = PhaseTimer.Start("Starting native application host"))
         {
             await host.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -252,8 +292,6 @@ internal static class DevApplication
         using var monitorStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken monitorToken = monitorStop.Token;
         Task frontendRenewal = session.RenewFrontendAsync(TimeProvider.System, monitorToken);
-        // The IDE contract: a line for each Window process, then Ready once the frontend and the Window can be used.
-        var contract = new ContractReporter(session, Console.WriteLine, WriteSession);
         Task windowMonitor = host.MonitorWindowAsync(
             started: contract.WindowStarted,
             exited: contract.WindowExited,
@@ -839,6 +877,10 @@ internal static class DevApplication
                 "[dev] Compiler: external integration with diagnostics and compatible fragment refresh");
         }
 
+        if (options.Browser)
+        {
+            Console.WriteLine($"[dev] Window: serve-only, for a browser (--browser, {BrowserEntry.ServeOnlyVariable}=1)");
+        }
         if (options.LaunchProfile is not null)
         {
             Console.WriteLine($"[dev] Launch profile: {options.LaunchProfile}");
@@ -859,21 +901,45 @@ internal static class DevApplication
     /// reader that reacts to <c>[dev] Ready</c> or a Window line, as the template's VS Code tasks and IDE extensions do,
     /// finds that state in the file (#1026). Each write replaces the file whole.
     /// </summary>
-    internal sealed class ContractReporter(DevSession session, Action<string> writeLine, Action<Action> writeSession)
+    internal sealed class ContractReporter(DevSession session, Action<string> writeLine, Action<Action> writeSession,
+        BrowserEntry? browser = null)
     {
-        /// <summary>A Window process started: the file names it, then its line, then Ready.</summary>
+        /// <summary>
+        /// A Window process started: the file names it, then its line, then Ready. With <c>--browser</c>, Ready waits for
+        /// the Window's first page (<see cref="ServeOnlyLine"/>), so a browser that the IDE opens at Ready finds it.
+        /// </summary>
         internal void WindowStarted(int processId)
         {
             writeSession(() => session.WindowStarted(processId));
             writeLine(WindowStartedLine(processId));
-            Ready();
+            if (browser is null) Ready();
         }
 
-        /// <summary>The Window process exited: the file drops it and says starting, then its line.</summary>
+        /// <summary>The Window process exited: the file drops it, and its pages with <c>--browser</c>, and says starting, then its line.</summary>
         internal void WindowExited(int processId)
         {
+            if (browser is not null)
+            {
+                // A restart takes a few seconds of building, so the next process's pages arrive after this.
+                browser.Clear();
+                writeSession(() => session.BrowserWindows([]));
+            }
             writeSession(() => session.WindowExited(processId));
             writeLine(WindowExitedLine(processId));
+        }
+
+        /// <summary>
+        /// A serve-only line of the Window's output (<c>--browser</c>): the file lists the Window at its entry address, then
+        /// its line, then Ready for the first Window.
+        /// </summary>
+        internal void ServeOnlyLine(string line)
+        {
+            if (browser?.Observe(line) is not { } served) return;
+            writeSession(() => session.BrowserWindows(browser.Windows));
+            // The URL line; the Window line that follows it only adds the type.
+            if (served.Type is not null) return;
+            writeLine(BrowserServedLine(served));
+            if (served.Index == 0) Ready();
         }
 
         /// <summary>The frontend and the Window can be used: the file says ready, then <see cref="ReadyLine"/>.</summary>

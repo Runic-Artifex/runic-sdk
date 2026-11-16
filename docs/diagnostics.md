@@ -1170,6 +1170,15 @@ or `RunicApplicationFrontendDevWatchTarget`). Exit code 1. Since 0.20.
 **Fix:** run `dotnet runic dev` without `--no-window`, or give the frontend a
 development server or a `dev` script.
 
+### RAPPDEV1016
+
+`dev --browser` could open no loopback port for the address that sends a browser
+to the Window: neither 9224 nor any free port. Exit code 1. Since 0.21.
+
+**Fix:** check that the machine allows listening on `127.0.0.1`, for example in a
+sandbox or container. See
+[Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).
+
 ### RAPPPKG1001
 
 `package` found an invalid application identity: `ApplicationId` is not a

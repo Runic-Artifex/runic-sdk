@@ -50,6 +50,8 @@ internal sealed partial class DevSession
     private int? _windowProcessId;
     private int _windowStarts;
     private bool _frontendPublished;
+    private string? _browserUrl;
+    private IReadOnlyList<BrowserEntry.ServedWindow> _browserWindows = [];
 
     internal DevSession(
         DevProjectConfiguration configuration,
@@ -133,9 +135,10 @@ internal sealed partial class DevSession
         IReadOnlyList<DebugEndpoint>? webKitEndpoints = null)
     {
         using var process = System.Diagnostics.Process.GetCurrentProcess();
+        // --browser: the Window opens no WebView2, so WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS opens nothing either.
         return new(configuration, options,
-            [.. FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable, OperatingSystem.IsWindows(),
-                Environment.IsPrivilegedProcess), .. webKitEndpoints ?? []],
+            options.Browser ? [] : [.. FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable,
+                OperatingSystem.IsWindows(), Environment.IsPrivilegedProcess), .. webKitEndpoints ?? []],
             DateTimeOffset.UtcNow,
             new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero));
     }
@@ -183,6 +186,24 @@ internal sealed partial class DevSession
         Write();
     }
 
+    /// <summary>
+    /// <c>--browser</c>: the entry address that sends a browser to the Window (<see cref="BrowserEntry"/>), written as
+    /// <c>browser.url</c>; without <c>--browser</c>, <c>browser</c> is null.
+    /// </summary>
+    internal void BrowserStarted(string url)
+    {
+        lock (_gate) _browserUrl = url;
+        Write();
+    }
+
+    /// <summary>The Windows the serve-only Window process serves now, as <c>browser.windows</c>.</summary>
+    internal void BrowserWindows(IReadOnlyList<BrowserEntry.ServedWindow> windows)
+    {
+        ArgumentNullException.ThrowIfNull(windows);
+        lock (_gate) _browserWindows = windows;
+        Write();
+    }
+
     internal void Ready()
     {
         lock (_gate) _state = ReadyState;
@@ -196,6 +217,7 @@ internal sealed partial class DevSession
         {
             _state = Stopped;
             _windowProcessId = null;
+            _browserWindows = [];
         }
         try
         {
@@ -298,6 +320,28 @@ internal sealed partial class DevSession
             }
             json.WriteEndObject();
             json.WriteEndObject();
+
+            // --browser: the Window serves without a native window; a browser opens it through the entry address. The
+            // Windows' own addresses carry the surface's credential, so only the entry's are written.
+            if (_options.Browser)
+            {
+                json.WriteStartObject("browser");
+                WriteStringOrNull(json, "url", _browserUrl);
+                json.WriteStartArray("windows");
+                foreach (BrowserEntry.ServedWindow served in _browserWindows)
+                {
+                    json.WriteStartObject();
+                    json.WriteString("url", served.EntryUrl);
+                    WriteStringOrNull(json, "type", served.Type);
+                    json.WriteEndObject();
+                }
+                json.WriteEndArray();
+                json.WriteEndObject();
+            }
+            else
+            {
+                json.WriteNull("browser");
+            }
 
             json.WriteStartArray("debugEndpoints");
             foreach (DebugEndpoint endpoint in _debugEndpoints.Where(static endpoint => endpoint.UnavailableReason is null))

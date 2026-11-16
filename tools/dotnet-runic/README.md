@@ -146,6 +146,12 @@ Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-page
 | `--no-debug-endpoint` | Opens neither WebKit's remote inspector for the Window nor Runic's CDP adapter on port 9222. |
 | `--webkit-inspector` | Opens WebKit's own Web Inspector over HTTP for a browser instead of the CDP adapter, on WebKitGTK 2.54.3 or later; on an older WebKitGTK, `dev` opens the `inspector://` server and the adapter as usual and says why. |
 
+Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the-page-in-chrome---browser)):
+
+| Option | Effect |
+| --- | --- |
+| `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://127.0.0.1:9224/`, so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
+
 `dev` passes these variables to the Window process:
 
 | Variable | Value |
@@ -155,6 +161,7 @@ Since 0.21, on Linux (see [Debug the page's JavaScript on Linux](#debug-the-page
 | `DOTNET_WATCH_RESTART_ON_RUDE_EDIT` | `1` |
 | `RUNIC_APPLICATION_DEVELOPMENT_ASSETS` | Without a development server, the absolute frontend output directory; cleared while one runs. An internal contract with the Runic Desktop host, which reads it only in a `Development` environment. |
 | `RUNIC_APPLICATION_VITE_*`, `RUNIC_APPLICATION_FRONTEND_*`, `RUNIC_APPLICATION_DEV_PROJECT` | The development server's address, entry and compiler integration while one runs; cleared otherwise. Internal. |
+| `RUNIC_APPLICATION_SERVE_ONLY` | `1` with `--browser`, over a value from `-e` or the environment; otherwise as you set it. |
 
 `doctor` checks the Views Window opt-in, the .NET SDK, the declared JavaScript
 runtime and package manager, the matching lock file, the configured
@@ -646,6 +653,80 @@ names. The session file lists both under `debugEndpoints`.
 - **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
   traffic, which contains the page's data, to that file.
 
+## Debug the page in Chrome (`--browser`)
+
+Since 0.21, `dotnet runic dev --browser` serves the Window to a browser instead
+of opening it, so your IDE's JavaScript debugger can open its pages in Chrome or
+Edge on every operating system (D066.38). On macOS, where WKWebView offers only
+Safari's Web Inspector, it is the way to stop on breakpoints in the frontend's
+sources from the IDE. The page runs on Chromium, not on the Window's engine
+(WebKit on Linux and macOS, WebView2 on Windows), so check engine-specific
+behaviour in the Window itself.
+
+`dev` starts the Window with `RUNIC_APPLICATION_SERVE_ONLY=1` (the
+[serve-only mode](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md)
+of Runic Desktop and CS-WebUI) and opens no native window. Everything else is
+as without `--browser`: the development server or watcher, the build, `dotnet
+watch` restarting the Window after C# edits. The page reaches its Bridge
+directly, through the Window's own loopback server, as in the Window. Native
+window features are unavailable: platform services such as file dialogs, menus
+and the window's own commands report `OwnerUnavailable`, a Window with
+`GuardClose` opens unguarded, and there is no side panel.
+
+The Window's own address changes with every start and carries its server's
+credential, so `dev` does not print it. Instead it listens on
+`http://127.0.0.1:9224/` (another free port when 9224 is taken; the line says
+which) and sends a browser that opens that address to the Window's first page;
+`/windows/2` and so on are the Windows the application opens after it. Until the
+Window serves, and while `dotnet watch` restarts it, the address shows a page
+that reloads itself every second. The Window admits one browser, the first that
+connects, so open the address once; after `dotnet watch` restarts the Window,
+open it again (or reload it) in the same tab.
+
+```text
+[dev] Browser: the Window serves without a native window (--browser). Open http://127.0.0.1:9224/ in Chrome or Edge, …
+[dev] Browser: the Window serves at http://127.0.0.1:9224/
+[dev] Ready
+```
+
+A VS Code launch configuration (the `runic-app` template's `Window in Chrome`)
+runs `dev --browser` as a background task that ends at `[dev] Ready` and opens
+the address with VS Code's JavaScript debugger, with `webRoot` set to the
+frontend directory for the development server's source maps:
+
+```jsonc
+// .vscode/launch.json; the task is the IDE contract's "runic: dev" task with "args": ["runic", "dev", "--browser"]
+{
+  "name": "Window in Chrome",
+  "type": "chrome",                 // "msedge" for Edge
+  "request": "launch",
+  "preLaunchTask": "runic: dev --browser",
+  "url": "http://127.0.0.1:9224/",
+  "webRoot": "${workspaceFolder}/Frontend"
+}
+```
+
+Breakpoints in the frontend's sources, stepping, conditions, logpoints,
+exceptions, the console, the page's variables, reloads and HMR updates work as
+in any Chrome page. Other IDEs open the same address from their own JavaScript
+debug configuration, such as Rider's "JavaScript Debug" with that URL.
+
+- **Security.** The address listens on 127.0.0.1 only and redirects only a
+  navigation that the browser starts itself, such as one from its address bar,
+  its command line or a debugger: it refuses (403) a request whose `Host` is not
+  an IP address or `localhost`, any request with an `Origin`, and a
+  `Sec-Fetch-Site` other than `none` or `same-origin`, so a web page in a browser
+  cannot send it to the Window and take its one client slot. The redirect is not
+  cached and sends no referrer.
+- **Standard input.** A serve-only Window stops serving at a line on its
+  standard input, so `dev` gives it an empty pipe instead of the terminal.
+- **The .NET debugger.** Attach it to the process that
+  `[dev] Window started: process <pid>` names, as without `--browser`;
+  `--no-window` and `--browser` do not combine, because the IDE could not tell
+  `dev` the Window's address.
+- **Not debugging endpoints.** `--browser` lists no `debugEndpoints` and opens
+  neither WebView2's nor WebKit's: the debugger owns the browser it launched.
+
 ## IDE contract
 
 Since 0.20, `dev` gives IDEs, tasks and extensions stable lines to wait on and a
@@ -655,13 +736,15 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | Line (standard output) | When |
 | --- | --- |
 | `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
-| `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
+| `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. With `--browser`, after the `Browser` line of the Window's first page instead, which can come before `Window started`. |
+| `[dev] Browser: the Window serves at <url>` | With `--browser` (since 0.21), each time a Window process serves its first page; `<url>` is `dev`'s address for it ([Debug the page in Chrome](#debug-the-page-in-chrome---browser)). Each Window it opens after that prints `[dev] Browser: another Window serves at <url>`. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
 
 `dev` writes the [session file](#session-file) before it prints each of these
 lines, so a reader that reacts to a line finds the same state there: after
 `Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
-after `Window exited`, no Window process and `"state": "starting"`. In 0.20.0
+after `Window exited`, no Window process and `"state": "starting"`; after a
+`Browser` line, its address in `browser.windows`. In 0.20.0
 previews, `dev` printed the line first.
 
 `dev` finds the Window process below the `dotnet watch` or `dotnet run`
@@ -778,8 +861,16 @@ same project write the same file; the later one wins. `--dry-run` writes none.
       // and RUNIC_APPLICATION_DEVELOPMENT_ASSETS without a development server, for Runic Desktop
     }
   },
+  // With --browser (since 0.21): dev's address for a browser, and the Windows the running Window process serves,
+  // each at its address there (not the Windows' own addresses, which carry their credential); null without --browser.
+  "browser": {
+    "url": "http://127.0.0.1:9224/",
+    "windows": [
+      { "url": "http://127.0.0.1:9224/", "type": "App.MainWindow" } // type: the Window's class, null until the host names it
+    ]
+  },
   "debugEndpoints": [
-    // Debugging endpoints of the page's engine. On Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222
+    // Debugging endpoints of the page's engine; none with --browser. On Windows, -e WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222
     // (or the variable in dev's own environment) lists WebView2's Chrome DevTools Protocol endpoint:
     { "engine": "webview2", "protocol": "cdp", "url": "http://127.0.0.1:9222/" }
     // On Linux since 0.21, dev's CDP adapter for the WebKitGTK Window and WebKit's inspector:// server
@@ -799,8 +890,8 @@ Paths are absolute. Later versions of the schema only add properties, so a
 reader ignores properties it doesn't know; a change that removes or changes one
 gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
-added the `webkitgtk` endpoints and, with `--no-window` on Linux,
-`WEBKIT_INSPECTOR_SERVER` in `window.environment`.
+added the `webkitgtk` endpoints, with `--no-window` on Linux
+`WEBKIT_INSPECTOR_SERVER` in `window.environment`, and `browser`.
 
 WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
 (and its other `WEBVIEW2_*` variables and current-user policy overrides) in an

@@ -67,7 +67,8 @@ internal static class WebKitDebugging
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(options);
-        if (!linux || configuration.RunsOnCsWebUiOnly || !options.DebugEndpoint) return Plan.None;
+        // --browser: no WebKit view; js-debug owns the debugging connection of the browser it launches.
+        if (!linux || configuration.RunsOnCsWebUiOnly || !options.DebugEndpoint || options.Browser) return Plan.None;
         string? Chosen(string name) =>
             options.Environment.LastOrDefault(variable => variable.Key.Equals(name, StringComparison.Ordinal)).Value
             ?? readEnvironment(name);
