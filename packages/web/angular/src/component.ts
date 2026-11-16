@@ -3,7 +3,7 @@
 // application per element, zoneless, with the element's Runic instance, and renders the guest's standalone component
 // into the element's shadow root.
 //
-// The component contract (`@runic-artifex/views/component`) allows no document stylesheets. Angular adds component
+// The component contract (`@runic-artifex/views/experimental`) allows no document stylesheets. Angular adds component
 // styles as `<style>` elements to a style host: `document.head`, or the shadow root that contains the root component.
 // Inside a shadow root they would apply, but a `<style>` element needs `'unsafe-inline'` in the host page's
 // `style-src`, which the page should not have to grant. So the application's shared styles host (Angular's
@@ -22,7 +22,7 @@ import {
   ɵSHARED_STYLES_HOST as SHARED_STYLES_HOST,
 } from "@angular/core";
 import { createApplication } from "@angular/platform-browser";
-import type { RunicComponentMount } from "@runic-artifex/views/component";
+import type { RunicComponentMount } from "@runic-artifex/views/experimental";
 // The primary entry point, not ./instance.js: this entry point's bundle would get a second RUNIC_INSTANCE token.
 import { provideRunicInstance } from "@runic-artifex/angular";
 

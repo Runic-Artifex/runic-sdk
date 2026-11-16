@@ -58,11 +58,15 @@ internal sealed class HostInput
 }
 
 // What hosted mode knows about this process's privileges and its parent's (host-protocol.md, Same user, Elevated
-// host). Elevated: root on Linux and macOS (an effective uid 0), an elevated token on Windows. SameUser: the parent runs
-// as this process's user, as GuestPrivileges shows it; false when that cannot be shown. ParentElevated: that same,
-// verified parent runs elevated; false when it cannot be shown or SameUser is false.
+// host). Elevated: root on Linux and macOS (an effective uid 0), on Linux also a non-empty effective or permitted
+// capability set, an elevated token on Windows. SameUser: the parent runs as this process's user, as GuestPrivileges
+// shows it; false when that cannot be shown. ParentElevated: that same, verified parent runs elevated; false when it
+// cannot be shown or SameUser is false. Capabilities: Elevated only because, on Linux, this process holds capabilities
+// (or its capability sets cannot be read) without running as root; it only picks the refusal's message.
 internal readonly record struct GuestPrivilegeFacts(bool Elevated, bool SameUser, bool ParentElevated)
 {
+    internal bool Capabilities { get; init; }
+
     // A standard user's process started by its own user: the in-process runners' guest.
     internal static GuestPrivilegeFacts StandardUser => new(Elevated: false, SameUser: true, ParentElevated: false);
 }
@@ -79,12 +83,34 @@ internal static class GuestPrivileges
 {
     internal const string OtherUserMessage = "The application runs as another user than the process that started it, so it cannot be hosted.";
 
+    internal const string CapabilitiesMessage =
+        "The application holds Linux capabilities (CapEff or CapPrm in /proc/self/status is not empty, or cannot be read), so it runs elevated";
+
     internal static GuestPrivilegeFacts Read()
     {
-        // Root on Linux and macOS, an elevated token on Windows.
+        if (OperatingSystem.IsLinux()) return ReadOnLinux(ReadLines, Environment.IsPrivilegedProcess);
+        // Root on macOS, an elevated token on Windows.
         var elevated = Environment.IsPrivilegedProcess;
         var parent = Parent();
         return new GuestPrivilegeFacts(elevated, parent.SameUser, parent.SameUser && parent.Elevated);
+    }
+
+    // Whether this process runs elevated, as hosted mode defines it: root on Linux and macOS, on Linux also a non-empty
+    // effective or permitted capability set, an elevated token on Windows.
+    internal static bool RunsElevated() =>
+        Environment.IsPrivilegedProcess || (OperatingSystem.IsLinux() && !(ReadLines("/proc/self/status") is { } self && Capabilities(self) == 0));
+
+    // Linux: this process runs elevated as root or when its effective or permitted capability set is not empty (a
+    // status without both sets counts as elevated), and its parent as ParentOnLinux finds it, from one read of
+    // /proc/self/status. root is this process's effective uid 0 (Environment.IsPrivilegedProcess).
+    internal static GuestPrivilegeFacts ReadOnLinux(Func<string, string[]?> read, bool root)
+    {
+        var self = read("/proc/self/status");
+        var capabilities = self is null ? null : Capabilities(self);
+        var parent = self is null ? default : ParentOnLinux(self, read, capabilities);
+        // Unreadable: the parent check fails too, and refuses as guest-other-user unless this process runs as root.
+        var held = self is not null && capabilities != 0;
+        return new GuestPrivilegeFacts(root || held, parent.SameUser, parent.SameUser && parent.Elevated) { Capabilities = !root && held };
     }
 
     // Every combination outside the one pair both sides opted into keeps its refusal: an elevated guest without its
@@ -92,14 +118,18 @@ internal static class GuestPrivileges
     internal static GuestPrivilegeDecision Decide(GuestPrivilegeFacts facts, bool guestAllowsElevatedHost, bool hostAllowsElevatedGuest)
     {
         if (!facts.Elevated) return facts.SameUser ? default : new("guest-other-user", OtherUserMessage);
+        var elevated = facts.Capabilities ? CapabilitiesMessage : "The application runs elevated";
         if (!guestAllowsElevatedHost)
-            return new("guest-elevated", "The application runs elevated, so it cannot be hosted; it does not allow an elevated host (RunicGuestOptions.AllowElevatedHost).");
+            return new("guest-elevated", elevated + ", so it cannot be hosted; it does not allow an elevated host (RunicGuestOptions.AllowElevatedHost).");
         if (!hostAllowsElevatedGuest)
-            return new("guest-elevated", "The application runs elevated, so it cannot be hosted; the host's offer does not allow an elevated guest (RunicGuestStartInfo.AllowElevatedGuest).");
+            return new("guest-elevated", elevated + ", so it cannot be hosted; the host's offer does not allow an elevated guest (RunicGuestStartInfo.AllowElevatedGuest).");
         if (!facts.SameUser) return new("guest-other-user", OtherUserMessage);
         if (!facts.ParentElevated)
-            return new("guest-elevated-host-not-elevated",
-                "The application runs elevated and allows an elevated host, but the process that started it does not run elevated, so it cannot be hosted.");
+            return new("guest-elevated-host-not-elevated", facts.Capabilities
+                ? CapabilitiesMessage + " and allows an elevated host, but the process that started it does not run as root, so it cannot be hosted."
+                : OperatingSystem.IsLinux()
+                    ? "The application runs elevated and allows an elevated host, but the process that started it does not run elevated (as root, holding every capability the application holds), so it cannot be hosted."
+                    : "The application runs elevated and allows an elevated host, but the process that started it does not run elevated, so it cannot be hosted.");
         return new(null, "The application runs elevated, as does the process that started it, as the same user; both allow an elevated pair, so it is hosted elevated.");
     }
 
@@ -141,17 +171,39 @@ internal static class GuestPrivileges
     // that is gone (PPid 0 or 1) or whose status cannot be read, as under hidepid for another user's process, fails.
     internal static bool SameUserOnLinux(Func<string, string[]?> read) => ParentOnLinux(read).SameUser;
 
-    // The same check; the parent runs elevated when, from the same read of its status, its effective uid is 0.
-    internal static ParentFacts ParentOnLinux(Func<string, string[]?> read)
+    // The same check; the parent runs elevated when, from the same read of its status, its effective uid is 0 and its
+    // effective and permitted capability sets hold every capability in this process's.
+    internal static ParentFacts ParentOnLinux(Func<string, string[]?> read) =>
+        read("/proc/self/status") is { } self ? ParentOnLinux(self, read, Capabilities(self)) : default;
+
+    // capabilities: this process's effective and permitted sets together, from the same read as self; null when unknown.
+    private static ParentFacts ParentOnLinux(string[] self, Func<string, string[]?> read, ulong? capabilities)
     {
-        if (read("/proc/self/status") is not { } self || Field(self, "PPid:", 0) is not { } parent || parent <= 1 ||
+        if (Field(self, "PPid:", 0) is not { } parent || parent <= 1 ||
             Field(self, "Uid:", 0) is not { } real || Field(self, "Uid:", 1) is not { } effective)
             return default;
         if (read($"/proc/{parent.ToString(CultureInfo.InvariantCulture)}/status") is not { } parentStatus ||
             Field(parentStatus, "Uid:", 0) is not { } parentReal || Field(parentStatus, "Uid:", 1) is not { } parentEffective)
             return default;
         var same = real == effective && parentReal == real && parentEffective == real;
-        return new ParentFacts(same, same && parentEffective == 0);
+        var covers = capabilities is { } own && Capabilities(parentStatus) is { } parentCapabilities && (own & ~parentCapabilities) == 0;
+        return new ParentFacts(same, same && parentEffective == 0 && covers);
+    }
+
+    // The effective and permitted capability sets (CapEff, CapPrm: hexadecimal masks) together; null without both.
+    internal static ulong? Capabilities(string[] lines) =>
+        Mask(lines, "CapEff:") is { } effective && Mask(lines, "CapPrm:") is { } permitted ? effective | permitted : null;
+
+    private static ulong? Mask(string[] lines, string name)
+    {
+        foreach (var line in lines)
+        {
+            if (!line.StartsWith(name, StringComparison.Ordinal)) continue;
+            return ulong.TryParse(line.AsSpan(name.Length).Trim(), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : null;
+        }
+        return null;
     }
 
     private static string[]? ReadLines(string path)

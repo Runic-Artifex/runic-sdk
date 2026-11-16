@@ -75,7 +75,7 @@ createRoot(document.getElementById("root")).render(<CounterPage />);
 globalThis.editTest = { ready: true };
 `);
     await writeFile(join(root, "index.html"), '<!doctype html><html lang="en"><body><div id="root"></div><script type="module" src="/main.jsx"></script></body></html>');
-    await writeFile(join(root, "sources.json"), JSON.stringify({ format: "runic-bridge-sources/1", viewModels: [], members: [] }));
+    await writeFile(join(root, "sources.json"), JSON.stringify({ format: "runic.views.bridge-sources/1", viewModels: [], members: [] }));
     await link(root, "@runic-artifex/vite-plugin-runic", here);
     await link(root, "@runic-artifex/views", join(packages, "views"));
     await link(root, "@runic-artifex/react", join(packages, "react"));

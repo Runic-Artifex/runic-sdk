@@ -6,7 +6,7 @@ import { serveLoopback, startComponentGuest, type ComponentGuest } from "./compo
 
 // <runic-hosted-region> in component mode (region-component/1), in Chromium: a host page on a loopback server with a
 // fake producer behind its Bridge and a Content-Security-Policy, and a guest on another loopback port that serves a
-// component module built on this package's `component` entry, with CORS for the host page alone, and admits its
+// component module built on this package's `experimental` entry, with CORS for the host page alone, and admits its
 // WebSocket with the token and the host page's Origin. Both are real loopback servers: Chromium's Local Network Access
 // lets only a page that is itself on loopback reach a loopback address without a prompt.
 const dist = new URL("../dist/", import.meta.url);
@@ -40,7 +40,7 @@ globalThis.regionTest = { requests, events, push(message) { for (const listener 
 </script></body></html>`;
 
 // The guest's component entry: it renders what its guest answers and pushes, through the element's own instance.
-const componentModule = `import { defineRunicComponent } from "./views/component.js";
+const componentModule = `import { defineRunicComponent } from "./views/experimental.js";
 const definition = defineRunicComponent({
   tag: "guest-check-1a2b3c4d",
   mount({ container, instance }) {

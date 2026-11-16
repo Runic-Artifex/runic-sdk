@@ -197,10 +197,13 @@ Guest = RunicGuestOptions.FromStandardInput() with
 ```
 
 The guest lists `region-component/1` only for a host it allows. It also needs a **component build**: the `component`
-target of `@runic-artifex/vite-plugin-runic` builds an ES module that defines the guest's element, next to its page:
+target of `@runic-artifex/vite-plugin-runic` (experimental: the `runic` of its `./experimental` entry) builds an ES
+module that defines the guest's element, next to its page:
 
 ```ts
 // vite.config.ts
+import { runic } from "@runic-artifex/vite-plugin-runic/experimental";
+
 export default defineConfig({
   base: "./",
   plugins: [runic({ component: { entry: "src/component.ts", name: "service-widget" } })],
@@ -209,7 +212,7 @@ export default defineConfig({
 
 ```ts
 // src/component.ts: the mount function. It runs inside the element's own Runic instance.
-import type { RunicComponentMount } from "@runic-artifex/views/component";
+import type { RunicComponentMount } from "@runic-artifex/views/experimental";
 
 const mount: RunicComponentMount = ({ container }) => {
   const stop = new AbortController();

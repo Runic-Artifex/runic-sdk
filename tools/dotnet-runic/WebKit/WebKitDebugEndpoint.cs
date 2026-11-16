@@ -14,9 +14,11 @@ namespace Runic.Application.Tool.WebKit;
 /// <see cref="CdpServer"/> on loopback, and a connection to the Window's WebKit remote inspector server that exists only
 /// while a debugger is connected, since WebKit serves one client and GNOME Web may want <c>inspector://</c> otherwise.
 /// When the Window restarts (<c>dotnet watch</c>), the connection closes with it; while debuggers stay connected, the
-/// endpoint reconnects to the new Window's server and announces its pages. When another client takes WebKit's single
-/// client slot (<see cref="InspectorConnection"/>), the endpoint abandons its connection, the debuggers learn that their
-/// pages detached, and it connects again only for a debugger that attaches after that.
+/// endpoint reconnects to the new Window's server and announces its pages. On Linux it talks only to an inspector port
+/// whose listener belongs to the user who runs dev, so another user who took the port first does not receive the
+/// debugger's traffic. When another client takes WebKit's single client slot (<see cref="InspectorConnection"/>), the
+/// endpoint abandons its connection, the debuggers learn that their pages detached, and it connects again only for a
+/// debugger that attaches after that.
 /// </summary>
 internal sealed class WebKitDebugEndpoint : IAsyncDisposable
 {
@@ -27,8 +29,9 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     private const int VettingProbes = 3;
     private readonly string _inspectorHost;
     private readonly int _inspectorPort;
-    private readonly Action<string> _writeLine;
-    private readonly Func<IReadOnlySet<int>> _readPeers;
+    private readonly LoopbackSockets? _sockets;
+    private readonly Action<string> _report;
+    private readonly HashSet<uint?> _reportedListeners = [];
     // This endpoint's own connections to the inspector, also closed ones that TIME_WAIT still lists.
     private readonly HashSet<int> _ownPorts = [];
     // The debuggers that were connected when another client took the slot: they do not reconnect the endpoint.
@@ -43,17 +46,16 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     private long _idleGeneration;
     private bool _replaced;
 
-    /// <param name="inspectorHost">The loopback address of the Window's inspector server.</param>
-    /// <param name="inspectorPort">Its port.</param>
-    /// <param name="writeLine">Where the <c>[dev]</c> line about a replaced connection goes; the console by default.</param>
-    /// <param name="readPeers">The peer ports of the inspector server (<see cref="InspectorPeers"/>); for tests.</param>
-    internal WebKitDebugEndpoint(string inspectorHost, int inspectorPort, Action<string>? writeLine = null, Func<IReadOnlySet<int>>? readPeers = null)
+    /// <summary>
+    /// <paramref name="sockets"/> tells who owns a loopback socket (<see cref="LoopbackSockets.Current"/>; null: no check);
+    /// <paramref name="report"/> receives the <c>[dev]</c> lines for refused connections.
+    /// </summary>
+    internal WebKitDebugEndpoint(string inspectorHost, int inspectorPort, LoopbackSockets? sockets, Action<string> report)
     {
         _inspectorHost = inspectorHost;
         _inspectorPort = inspectorPort;
-        _writeLine = writeLine ?? Console.WriteLine;
-        IPAddress address = IPAddress.Parse(inspectorHost);
-        _readPeers = readPeers ?? (() => InspectorPeers.Read(address, inspectorPort));
+        _sockets = sockets;
+        _report = report;
     }
 
     /// <summary>How often an attached connection checks for other clients of the inspector server.</summary>
@@ -93,7 +95,7 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     /// <summary>Listens for debuggers on 127.0.0.1:<paramref name="port"/>; false when the port is taken.</summary>
     internal bool Start(int port, IReadOnlySet<string>? allowedOrigins = null)
     {
-        _server = CdpServer.TryStart(port, this, allowedOrigins);
+        _server = CdpServer.TryStart(port, this, allowedOrigins, _sockets, _report);
         return _server is not null;
     }
 
@@ -144,17 +146,17 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
             var connection = new InspectorConnection();
             try
             {
-                await connection.ConnectAsync(_inspectorHost, _inspectorPort, cancellationToken).ConfigureAwait(false);
+                await connection.ConnectAsync(_inspectorHost, _inspectorPort, VerifyInspectorListener, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception error) when (error is SocketException or IOException or TimeoutException)
             {
-                // No Window yet, or it does not answer.
+                // No Window yet, it does not answer, or another user's process listens.
                 await connection.DisposeAsync().ConfigureAwait(false);
                 return null;
             }
             connection.TargetsChanged += () => _ = NotifyTargetsChangedAsync();
             connection.Closed += OnConnectionClosed;
-            HashSet<int> known = [.. _readPeers()];
+            HashSet<int> known = [.. ReadPeers()];
             lock (_gate)
             {
                 _connection = connection;
@@ -187,7 +189,7 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
                 IReadOnlyList<WebKitPage> pages = connection.Pages;
                 if (pages.Count == 0) continue;
                 WebKitPage page = pages[0];
-                IReadOnlySet<int> peers = _readPeers();
+                HashSet<int> peers = ReadPeers();
                 // A port that left the table may come back for another client.
                 known.IntersectWith(peers);
                 List<int> newcomers;
@@ -230,7 +232,7 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
         await connection.DisposeAsync().ConfigureAwait(false);
         await NotifyTargetsChangedAsync().ConfigureAwait(false);
         // Last: a console that nobody reads blocks the write.
-        _writeLine(ReplacedLine($"{_inspectorHost}:{_inspectorPort.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+        _report(ReplacedLine($"{_inspectorHost}:{_inspectorPort.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
     }
 
     // A debugger attaches after a replacement: the endpoint may connect again. Called under the lock.
@@ -238,6 +240,24 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     {
         _replaced = false;
         _replacedClients.Clear();
+    }
+
+    // The ports at the other end of the inspector server's connections; none without the TCP tables.
+    private HashSet<int> ReadPeers() =>
+        _sockets is not null && IPAddress.TryParse(_inspectorHost, out IPAddress? address) ? _sockets.Peers(address, _inspectorPort) : new HashSet<int>();
+
+    // Checked once connected and before anything is sent, so the port cannot change hands between the check and the
+    // connection: a listener of another user would receive the debugger's breakpoints, evaluations and sources.
+    private void VerifyInspectorListener()
+    {
+        if (_sockets is null) return;
+        IReadOnlyList<uint> owners = IPAddress.TryParse(_inspectorHost, out IPAddress? address) ? _sockets.ListenerOwners(address, _inspectorPort) : [];
+        if (owners.Count > 0 && owners.All(owner => owner == _sockets.User)) return;
+        uint? foreign = owners.Cast<uint?>().FirstOrDefault(owner => owner != _sockets.User);
+        bool first;
+        lock (_reportedListeners) first = _reportedListeners.Add(foreign);
+        if (first) _report(WebKitDebugging.ForeignInspectorHint(_inspectorHost, _inspectorPort, foreign));
+        throw new IOException($"The inspector port {_inspectorHost}:{_inspectorPort} does not belong to this user.");
     }
 
     private void OnConnectionClosed()

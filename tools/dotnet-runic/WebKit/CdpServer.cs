@@ -71,8 +71,9 @@ internal static class CdpBrowser
 /// The Chrome DevTools Protocol endpoint for the Window's WebKitGTK pages, on loopback: <c>/json/version</c>,
 /// <c>/json/list</c> (and <c>/json</c>), and WebSockets at <c>/devtools/browser/&lt;secret&gt;</c> (flat sessions, what
 /// js-debug uses) and <c>/devtools/page/&lt;secret&gt;/&lt;id&gt;</c>. The WebSocket paths carry a random secret that
-/// only the <c>/json</c> answers reveal, which a page in a browser cannot read. A small HTTP/1.1 reader of its own keeps
-/// dotnet-runic free of ASP.NET Core; it answers GET only.
+/// only the <c>/json</c> answers reveal, which a page in a browser cannot read. Loopback admits every local user, so on
+/// Linux it also closes a connection whose other end belongs to another user (<see cref="LoopbackSockets"/>) before
+/// reading a byte. A small HTTP/1.1 reader of its own keeps dotnet-runic free of ASP.NET Core; it answers GET only.
 /// </summary>
 internal sealed class CdpServer : IAsyncDisposable
 {
@@ -81,22 +82,31 @@ internal sealed class CdpServer : IAsyncDisposable
     private readonly TcpListener _listener;
     private readonly WebKitDebugEndpoint _endpoint;
     private readonly IReadOnlySet<string> _allowedOrigins;
+    private readonly LoopbackSockets? _sockets;
+    private readonly Action<string> _report;
+    private readonly HashSet<uint?> _reportedPeers = [];
     private readonly string _secret = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
     private readonly CancellationTokenSource _stop = new();
     private readonly List<Task> _connections = [];
     private Task _accepting = Task.CompletedTask;
 
-    private CdpServer(TcpListener listener, WebKitDebugEndpoint endpoint, IReadOnlySet<string> allowedOrigins)
+    private CdpServer(TcpListener listener, WebKitDebugEndpoint endpoint, IReadOnlySet<string> allowedOrigins, LoopbackSockets? sockets, Action<string> report)
     {
         _listener = listener;
         _endpoint = endpoint;
         _allowedOrigins = allowedOrigins;
+        _sockets = sockets;
+        _report = report;
     }
 
     internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
-    /// <summary>Listens on 127.0.0.1:<paramref name="port"/>; null when the port is taken.</summary>
-    internal static CdpServer? TryStart(int port, WebKitDebugEndpoint endpoint, IReadOnlySet<string>? allowedOrigins = null)
+    /// <summary>
+    /// Listens on 127.0.0.1:<paramref name="port"/>; null when the port is taken. <paramref name="sockets"/> tells who owns a
+    /// connection's other end (null: no check, off Linux); <paramref name="report"/> receives the <c>[dev]</c> line for a
+    /// refused connection.
+    /// </summary>
+    internal static CdpServer? TryStart(int port, WebKitDebugEndpoint endpoint, IReadOnlySet<string>? allowedOrigins, LoopbackSockets? sockets, Action<string> report)
     {
         var listener = new TcpListener(IPAddress.Loopback, port);
         try
@@ -108,7 +118,7 @@ internal sealed class CdpServer : IAsyncDisposable
             listener.Dispose();
             return null;
         }
-        var server = new CdpServer(listener, endpoint, allowedOrigins ?? new HashSet<string>(StringComparer.Ordinal));
+        var server = new CdpServer(listener, endpoint, allowedOrigins ?? new HashSet<string>(StringComparer.Ordinal), sockets, report);
         server._accepting = Task.Run(server.AcceptAsync);
         return server;
     }
@@ -141,6 +151,7 @@ internal sealed class CdpServer : IAsyncDisposable
         {
             try
             {
+                if (!IsOwnUsers(client)) return;
                 NetworkStream stream = client.GetStream();
                 HttpRequestHead? request;
                 using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token))
@@ -156,6 +167,28 @@ internal sealed class CdpServer : IAsyncDisposable
             }
         }
     }
+
+    // Another local user could otherwise script the developer's Window and its Bridge through the adapter.
+    private bool IsOwnUsers(TcpClient client)
+    {
+        if (_sockets is null) return true;
+        if (client.Client.LocalEndPoint is not IPEndPoint local || client.Client.RemoteEndPoint is not IPEndPoint remote) return false;
+        uint? owner = _sockets.PeerOwner(local, remote);
+        if (owner == _sockets.User) return true;
+        CdpTrace.Write("http>", $"refused {remote}: owner {(owner is { } uid ? uid.ToString(CultureInfo.InvariantCulture) : "unknown")}");
+        // An unlisted peer that closed already (a port probe) is not worth a line; tables that cannot be read are.
+        if (owner is null && _sockets.ListenerOwners(local.Address, local.Port).Count > 0) return false;
+        bool first;
+        lock (_reportedPeers) first = _reportedPeers.Add(owner);
+        if (first) _report(RefusedPeerMessage(Port, owner));
+        return false;
+    }
+
+    internal static string RefusedPeerMessage(int port, uint? owner) => owner is { } uid
+        ? $"[dev] Debugging: refused a connection to Runic's CDP adapter on 127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)} " +
+          $"from another user (uid {uid.ToString(CultureInfo.InvariantCulture)}); it accepts only the user who runs dotnet runic dev."
+        : $"[dev] Debugging: refused a connection to Runic's CDP adapter on 127.0.0.1:{port.ToString(CultureInfo.InvariantCulture)} " +
+          "whose user could not be determined from /proc/net/tcp; it accepts only the user who runs dotnet runic dev.";
 
     private async Task RouteAsync(HttpRequestHead request, NetworkStream stream)
     {

@@ -1170,6 +1170,19 @@ or `RunicApplicationFrontendDevWatchTarget`). Exit code 1. Since 0.20.
 **Fix:** run `dotnet runic dev` without `--no-window`, or give the frontend a
 development server or a `dev` script.
 
+### RAPPDEV1017
+
+`dev --no-window` on Linux could not open Runic's CDP adapter on port 9222,
+which the IDE's attach configuration names (the template's
+`Attach to the page (JavaScript)`): another process holds it, often another
+`dotnet runic dev` session or a browser with remote debugging. Without
+`--no-window`, `dev` moves the adapter to a free port and names it instead.
+Exit code 1. Since 0.21.
+
+**Fix:** stop the process that holds 9222, or run `dev` with
+`--no-debug-endpoint`. See
+[Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview).
+
 ### RAPPPKG1001
 
 `package` found an invalid application identity: `ApplicationId` is not a

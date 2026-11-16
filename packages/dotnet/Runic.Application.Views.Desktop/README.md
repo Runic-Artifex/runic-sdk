@@ -892,10 +892,13 @@ if (args is ["hosted"])
   mode refuses to start with `DesktopHostOptions.NetworkExposure` other than
   loopback, or when it runs as another user than its parent or cannot read its
   parent's (`guest-other-user`). It refuses to start elevated
-  (`guest-elevated`), unless the application sets
+  (`guest-elevated`): as root, with an elevated token on Windows, or on Linux
+  holding capabilities (a non-empty `CapEff` or `CapPrm`, such as from
+  `setcap`), unless the application sets
   `RunicGuestOptions.AllowElevatedHost` and its host
   `RunicGuestStartInfo.AllowElevatedGuest`: then its parent must run elevated
-  as the same user (`guest-elevated-host-not-elevated` otherwise), which the
+  as the same user, on Linux as root holding every capability the application
+  holds (`guest-elevated-host-not-elevated` otherwise), which the
   application checks itself, and it logs event 2025. An unelevated host cannot
   allow an elevated guest (`host-not-elevated`). The
   [security guide](../../../docs/security.md#elevated-hosts-and-guests) lists
@@ -959,7 +962,7 @@ if (args is ["hosted"])
   **Your first window starts as the application's, not the user's:** the
   application opened it, so a button in it that copies, pastes or opens a link
   through these services gets `PermissionDenied` until the user switches away
-  and back, clicks its native menu bar (not on GTK 4 yet) or drops files onto
+  and back, clicks its native menu bar or drops files onto
   it. The same holds after the application presents, shows, maximizes or opens
   a window, also when the desktop activates it only later, such as macOS when
   the user next switches to the host. A host that started the application at

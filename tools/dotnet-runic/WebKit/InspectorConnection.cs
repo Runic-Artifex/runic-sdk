@@ -10,11 +10,12 @@ using System.Threading.Tasks;
 namespace Runic.Application.Tool.WebKit;
 
 /// <summary>
-/// A client of the Window's WebKit remote inspector server (<see cref="InspectorWire"/>). WebKit has one client slot
-/// (<c>RemoteInspectorServer::setupInspectorClient</c>), so the adapter holds a connection only while a debugger is
-/// attached, and GNOME Web can open <c>inspector://</c> otherwise. Another client that sets up takes the slot without a
-/// word to this one: the server sends the replies to this client's messages to the new one, and once that one leaves, a
-/// <c>Setup</c> on the old connection makes the server send to an empty slot, which crashes the Window (WebKitGTK 2.54).
+/// A client of the Window's WebKit remote inspector server (<see cref="InspectorWire"/>). WebKit serves one client at a
+/// time (<c>RemoteInspectorServer::setupInspectorClient</c>), so the adapter holds a connection only while a debugger is
+/// attached, and GNOME Web can open <c>inspector://</c> otherwise. A new client does not wait: WebKitGTK 2.54 answers its
+/// setup and makes it the client in place of the current one, without a word to that one, so holding the connection
+/// would not keep others out. The server then sends the replies to this client's messages to the new one, and once that
+/// one leaves, a <c>Setup</c> on the old connection makes the server send to an empty slot, which crashes the Window.
 /// Each <see cref="SetupAsync"/> therefore claims the slot again in the same write, and a connection that
 /// <see cref="WebKitDebugEndpoint"/> finds replaced is <see cref="Abandon">abandoned</see> without another message.
 /// </summary>
@@ -84,16 +85,20 @@ internal sealed class InspectorConnection : IAsyncDisposable
         lock (_gate) _pages.Remove(page);
     }
 
-    /// <summary>Connects and announces this client; completes once the server described its protocol.</summary>
-    internal async Task ConnectAsync(string host, int port, CancellationToken cancellationToken)
+    /// <summary>
+    /// Connects and announces this client; completes once the server described its protocol. <paramref name="verifyServer"/>
+    /// runs once the TCP connection is open and before anything is sent; it throws to refuse the server.
+    /// </summary>
+    internal async Task ConnectAsync(string host, int port, Action? verifyServer, CancellationToken cancellationToken)
     {
         await _client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+        verifyServer?.Invoke();
         CdpTrace.Write("webkit", $"inspector connection {_generation} to {host}:{port}");
         _stream = _client.GetStream();
         LocalPort = ((IPEndPoint)_client.Client.LocalEndPoint!).Port;
         _reading = Task.Run(() => ReadAsync(_stop.Token), CancellationToken.None);
         await SendAsync(InspectorWire.SetupInspectorClient(), cancellationToken).ConfigureAwait(false);
-        // Bounded: a Window that is still starting, or whose main thread is stopped, does not answer.
+        // A server that never describes itself (not WebKit's, or a stalled one) must not block the debugger, so the wait is bounded.
         await _described.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
     }
 

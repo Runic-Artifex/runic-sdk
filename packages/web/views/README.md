@@ -282,18 +282,19 @@ controllers in [Framework bindings](#framework-bindings).
 | Entry | For |
 | --- | --- |
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
-| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure` and the `Mock*` types of generated mocks |
+| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure`, `releaseKeptViews` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
-| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), `onBridgeDraining` |
+| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), `onBridgeDraining`, [components](#components-experimental) |
 
 Every entry has `types`, `development`, `import` and `default` conditions (see
 [Development build](#development-build)); the package is ESM only. Application code imports the root entry and `/mock`. The `/experimental`
 entry holds APIs that may change in a minor release; importing it is the opt-in.
 The `/experimental` entry of 0.9 was removed in 0.10, when its APIs graduated to
-the root entry, and 0.18 added it again for hosted regions. The
+the root entry, and 0.18 added it again for hosted regions. 0.21 moved trusted
+component mode from the `/component` entry, which it removed, to `/experimental`. The
 `/bindings` and `/generated*` entries are versioned with the generator and the
 .NET packages: code that a release generated keeps working with the runtime of
 any later release of the same major, but their shape is not for hand-written
@@ -569,6 +570,10 @@ follows the same connector takes it over with its state. The component shows its
   hidden), `state` stays the last state the controller showed, with `pending: true`; a different source shows
   nothing of the previous one.
 - An observed client (`useView(client)`) is never kept or disposed by a binding; its owner disposes it.
+- A kept client belongs to the Bridge it connected over. Once its instance uses another Bridge, such as a new mock
+  Bridge in the next test or a page runtime replaced at runtime, no binding takes it over: the next binding connects
+  to the new Bridge, and the kept client is released (since 0.21; before, the next test's binding took over the
+  client of the previous test's mock). `installMockBridge` releases them at once.
 
 `preloadView(source, { keepAlive? })` connects ahead of the component, as in a router's `load` function: it resolves
 with `source` once the client connected (and rejects with the failure, so the router shows its error page), and the
@@ -1245,7 +1250,8 @@ import { connectEditor } from "../src/generated/editor.js";
 import { mockEditor } from "../src/generated/editor.mock.js";
 
 let bridge: MockBridge;
-// Each test installs a new Bridge; generated clients then start from a new page runtime.
+// Each test installs a new Bridge; generated clients then start from a new page runtime, and the clients that
+// `useView` / `injectView` kept for the previous test's mock are released.
 beforeEach(() => { bridge = installMockBridge(createMockBridge()); });
 
 test("saving clears the dirty flag", async () => {
@@ -1265,6 +1271,13 @@ test("saving clears the dirty flag", async () => {
   assert.equal(outcome.ok && outcome.value.savedMessage, "Saved Groceries");
 });
 ```
+
+A framework binding keeps its client for `keepAlive` milliseconds after its component is destroyed ([Client
+lifetime](#client-lifetime)). With a new mock Bridge per test, the next test's binding does not take that client
+over, so a test needs no fake timers or wait for `defaultKeepAlive`. A suite that keeps one Bridge across tests calls
+`releaseKeptViews()` from `@runic-artifex/views/mock` after each test (after the framework destroyed the component,
+for example after `TestBed.resetTestingModule()` or React Testing Library's `cleanup()`): it releases the kept clients
+of the current instance at once, so the next test's bindings open their routes again.
 
 A View with a query collection takes its rows in `queries`, which the mock filters, sorts and serves by range, with
 optional latency (virtual time with `manual` scheduling). `queries.{name}` of the mock shows what the page loaded:
@@ -1976,10 +1989,12 @@ The page's history (`installNavigationPath`, `installBackNavigation`) and its
 uncaught errors (`installErrorReporting`) stay with the page instance. See
 [Runic instances](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#runic-instances).
 
-### Components
+### Components (experimental)
 
-`@runic-artifex/views/component` is the runtime of trusted component mode: a
-guest's Views as a custom element in a host page's own document. The `component`
+`defineRunicComponent` and the `RunicComponent*` types of
+`@runic-artifex/views/experimental` are the runtime of trusted component mode
+(experimental, the .NET side is `RUNICDESK103`; until 0.20 the `./component`
+entry): a guest's Views as a custom element in a host page's own document. The `component`
 build target of `@runic-artifex/vite-plugin-runic` builds it; the guest writes the
 mount function:
 
@@ -1987,7 +2002,7 @@ mount function:
 // src/component.tsx
 import { createRoot } from "react-dom/client";
 import { RunicInstanceProvider } from "@runic-artifex/react";
-import type { RunicComponentMount } from "@runic-artifex/views/component";
+import type { RunicComponentMount } from "@runic-artifex/views/experimental";
 
 const mount: RunicComponentMount = ({ container, instance }) => {
   const root = createRoot(container);

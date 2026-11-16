@@ -17,6 +17,7 @@ import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText }
 import { packageVersion } from "./version.mjs";
 import { npmReleaseAgeArguments } from "./dependencies/release-age.mjs";
 import { trainFeedNpmSpec, trainFeedSource } from "./ci/train-feed.mjs";
+import { packageSourceMapProblems } from "./source-map-comments.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -176,7 +177,12 @@ export const packageLayouts = {
     dependencies: ["Runic.Platform.Runtime"],
     exactDependencies: ["Runic.Platform.Runtime"],
   },
-  "dotnet-runic": { rollForwardMajor: ["tools/net10.0/any/dotnet-runic.runtimeconfig.json"] },
+  // The unpacked Runic DevTools extension ships beside the tool (#1044).
+  "dotnet-runic": {
+    rollForwardMajor: ["tools/net10.0/any/dotnet-runic.runtimeconfig.json"],
+    includes: ["tools/net10.0/any/devtools-extension/manifest.json", "tools/net10.0/any/devtools-extension/devtools.html",
+      "tools/net10.0/any/devtools-extension/panel.html", "tools/net10.0/any/devtools-extension/sidebar.html"],
+  },
   "Runic.Create": { rollForwardMajor: ["tools/net10.0/any/runic-create.runtimeconfig.json"] },
 };
 
@@ -510,6 +516,8 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
       path.startsWith(frontend),
       `${name} is linked to the source workspace`,
     );
+    // A debugger reads a source map comment anywhere in a file as its source map (#1050).
+    assert.deepEqual(packageSourceMapProblems(path), [], `${name} ships JavaScript with a source map comment that is not its own trailing one`);
     const manifest = JSON.parse(
       readFileSync(join(path, "package.json"), "utf8"),
     );
