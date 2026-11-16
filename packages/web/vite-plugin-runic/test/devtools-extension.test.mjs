@@ -2,6 +2,7 @@
 // (inspect-snapshot.ts), the extension's eval protocol against a stand-in page (tools/dotnet-runic/devtools-extension/
 // page.js), and the rows and sections its panel and Elements pane draw (model.js).
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
@@ -238,6 +239,13 @@ test("the extension is a Manifest V3 DevTools extension without other permission
   assert.equal(manifest.host_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined);
   assert.equal(manifest.background, undefined);
+  // The public key fixes the id wherever the folder is: Chromium's id is the key's SHA-256, 32 hex digits as a-p. The
+  // build stamps "version" over the "0.0.0" placeholder (Runic.Application.Tool.csproj).
+  const id = [...createHash("sha256").update(Buffer.from(manifest.key, "base64")).digest("hex").slice(0, 32)]
+    .map((digit) => String.fromCharCode(97 + Number.parseInt(digit, 16))).join("");
+  assert.equal(id, "cddbfcinbkaindmfgcfdgapddkjeadgh");
+  assert.ok((await readFile(new URL("../../../../docs/debugging.md", import.meta.url), "utf8")).includes(id));
+  assert.equal(manifest.version, "0.0.0");
   // The extension's pages load only its own scripts: MV3 allows no inline script.
   for (const page of ["devtools.html", "panel.html", "sidebar.html"]) {
     const html = await readFile(new URL(page, extension), "utf8");

@@ -331,6 +331,7 @@ internal sealed partial class DevSession
             // The unpacked Runic DevTools extension that ships with this tool, for a browser's --load-extension or a
             // WebView2 Window's extension loading; null when the tool has none.
             WriteStringOrNull(json, "devtoolsExtension", DevToolsExtension);
+            WriteStringOrNull(json, "devtoolsExtensionId", DevToolsExtension is null ? null : Tool.DevToolsExtension.Id);
             json.WriteEndObject();
         }
         return stream.ToArray();

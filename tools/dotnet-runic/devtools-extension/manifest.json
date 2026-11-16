@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Runic DevTools",
-  "version": "1",
+  "version": "0.0.0",
   "description": "A Runic panel and an Elements pane for pages under vite dev or dotnet runic dev: Views, Bridge calls, bindings and commands.",
   "minimum_chrome_version": "120",
-  "devtools_page": "devtools.html"
+  "devtools_page": "devtools.html",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmCYGkgr8RI8B35cN/H+KSYQJDNAlOSI2yj5cjM1wZdXepgcBU3HVzNRxpLeS9IPo01Yi6GI9dCrj+xwZfdgRZTw2WCjG53TIyjL5x1l48u7nksXIkd8qHXxQKenY1/JqiOg2zQzujHzTXLgFLvsfEDfbSePvOO4wZx6ut9mn5TRCjyqGApRLBDItKvsxMxOCJ7qZHebi+9RrlP9ZSKnU5oi+e794zq3InrJnkuObwf//54wIYF2U8LVOwplPBs5JjOoeCUJ+n+MFrdjbf6by4BunDbVSu+IWHLpQ59lNzjYHDHmBH2WXVjYrpaY+xOqrZt9wgquwvSecqYqxVgwkNQIDAQAB"
 }

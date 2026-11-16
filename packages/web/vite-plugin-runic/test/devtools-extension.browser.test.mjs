@@ -5,7 +5,6 @@
 // `describe`. DevTools itself cannot be automated here, so the panel page opens as a tab with a stand-in for
 // `chrome.devtools.inspectedWindow.eval` that evaluates in the application's page, and the check of its UI stays light.
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, writeFile, rm, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -97,11 +96,8 @@ async function link(root, name, target) {
   await symlink(await realpath(target), path, "dir");
 }
 
-/** Chromium's id of an unpacked extension: the SHA-256 of its absolute path, the first 32 hex digits as a–p. */
-function unpackedExtensionId(path) {
-  return [...createHash("sha256").update(path).digest("hex").slice(0, 32)]
-    .map((digit) => String.fromCharCode(97 + Number.parseInt(digit, 16))).join("");
-}
+// The id that the manifest's public key fixes (docs/debugging.md, devtools-extension.test.mjs).
+const extensionId = "cddbfcinbkaindmfgcfdgapddkjeadgh";
 
 test("the DevTools extension loads unpacked and reads the page's Views and Bridge calls", { skip }, async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "runic-devtools-extension-")));
@@ -185,7 +181,7 @@ test("the DevTools extension loads unpacked and reads the page's Views and Bridg
         network: { onNavigated: { addListener() {} } },
       };
     });
-    const response = await panel.goto(`chrome-extension://${unpackedExtensionId(extension)}/panel.html`);
+    const response = await panel.goto(`chrome-extension://${extensionId}/panel.html`);
     assert.ok(response === null || response.ok(), "The extension's panel page did not load.");
     await panel.locator("tr[data-call] code", { hasText: "CounterViewModel.increment" }).first().waitFor({ timeout: scaled(10_000) });
     assert.match(await panel.locator("main").textContent(), /Demo\.CounterViewModel\.Increment\(\)/u);
@@ -205,7 +201,7 @@ test("the DevTools extension loads unpacked and reads the page's Views and Bridg
         panels: { themeName: "dark", elements: { onSelectionChanged: { addListener() {} } } },
       };
     });
-    await sidebar.goto(`chrome-extension://${unpackedExtensionId(extension)}/sidebar.html`);
+    await sidebar.goto(`chrome-extension://${extensionId}/sidebar.html`);
     await sidebar.locator("h2", { hasText: "Commands" }).waitFor({ timeout: scaled(10_000) });
     assert.match(await sidebar.locator("main").textContent(), /button#increment.*Demo\.CounterViewModel\.Increment\(\)/su);
     assert.equal(await sidebar.evaluate(() => document.documentElement.dataset.theme), "dark");

@@ -663,7 +663,11 @@ no permissions besides DevTools.
 
 `dev` prints `[dev] DevTools extension: <folder>` when the page has a
 development server, and writes the folder to the [session file](#session-file)
-as `devtoolsExtension`. Load it in Chrome or Edge with **Load unpacked** on
+as `devtoolsExtension`, with its fixed id `cddbfcinbkaindmfgcfdgapddkjeadgh` as
+`devtoolsExtensionId` (the manifest's public `key` fixes it; there is no private
+key). The build stamps the manifest with the package version: `X.Y.Z`, or
+`X.Y.Z.N` for a prerelease `X.Y.Z-label.N` (a Chrome manifest version has only
+numbers), with the full version as `version_name`. Load it in Chrome or Edge with **Load unpacked** on
 `chrome://extensions` (Developer mode), or start Chromium with
 `--load-extension=<folder>`. There is no Chrome Web Store listing.
 [The Runic DevTools extension](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#the-runic-devtools-extension)
@@ -817,7 +821,8 @@ same project write the same file; the later one wins. `--dry-run` writes none.
   ],
   // The unpacked Runic DevTools extension beside this tool, for Load unpacked or a browser's --load-extension;
   // null when the tool has none. Since 0.21.
-  "devtoolsExtension": "/home/me/.nuget/packages/dotnet-runic/0.21.0/tools/net10.0/any/devtools-extension"
+  "devtoolsExtension": "/home/me/.nuget/packages/dotnet-runic/0.21.0/tools/net10.0/any/devtools-extension",
+  "devtoolsExtensionId": "cddbfcinbkaindmfgcfdgapddkjeadgh" // its fixed id, null without the extension; since 0.21
 }
 ```
 
@@ -825,7 +830,7 @@ Paths are absolute. Later versions of the schema only add properties, so a
 reader ignores properties it doesn't know; a change that removes or changes one
 gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
-added the `webkitgtk` endpoints, `devtoolsExtension` and, with `--no-window` on Linux,
+added the `webkitgtk` endpoints, `devtoolsExtension`, `devtoolsExtensionId` and, with `--no-window` on Linux,
 `WEBKIT_INSPECTOR_SERVER` in `window.environment`.
 
 WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`

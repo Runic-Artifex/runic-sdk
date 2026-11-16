@@ -14,6 +14,12 @@ internal static class DevToolsExtension
 {
     internal const string DirectoryName = "devtools-extension";
 
+    /// <summary>
+    /// The extension's id, which the manifest's public <c>key</c> fixes wherever the folder is: the first 16 bytes of the
+    /// key's SHA-256 as the letters a-p. No private key exists; nothing is signed or published.
+    /// </summary>
+    internal const string Id = "cddbfcinbkaindmfgcfdgapddkjeadgh";
+
     /// <summary>The unpacked extension's directory beside the tool, or null when the tool was built without it.</summary>
     internal static string? Find(string? baseDirectory = null)
     {

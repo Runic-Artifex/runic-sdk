@@ -363,7 +363,22 @@ internal sealed partial class ToolTests
             Equal(3, manifest.RootElement.GetProperty("manifest_version").GetInt32());
             string page = manifest.RootElement.GetProperty("devtools_page").GetString()!;
             True(File.Exists(Path.Combine(extension, page)), page);
+            // The public key fixes the id: Chromium's is the key's SHA-256, its first 32 hex digits as a-p.
+            byte[] key = Convert.FromBase64String(manifest.RootElement.GetProperty("key").GetString()!);
+            string id = string.Concat(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(key))[..32].Select(static digit => (char)('a' + Convert.ToInt32(digit.ToString(), 16))));
+            Equal(DevToolsExtension.Id, id);
+            // The build stamps the package version: X.Y.Z, or X.Y.Z.N for a prerelease X.Y.Z-label.N.
+            string package = typeof(DevToolsExtension).Assembly
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .Cast<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+')[0];
+            Equal(package, manifest.RootElement.GetProperty("version_name").GetString());
+            Match prerelease = Regex.Match(package, @"^(\d+\.\d+\.\d+)(?:-(?:.*?\.)?(\d+)$|-.*$|$)");
+            string expected = prerelease.Groups[1].Value + (package.Contains('-') ? "." + (prerelease.Groups[2].Success ? prerelease.Groups[2].Value : "0") : "");
+            Equal(expected, manifest.RootElement.GetProperty("version").GetString());
         }
+        // The documented id.
+        True(File.ReadAllText(Path.Combine(RepositoryRoot(), "docs", "debugging.md")).Contains(DevToolsExtension.Id, StringComparison.Ordinal),
+            "docs/debugging.md does not name the extension's id.");
         True(File.Exists(Path.Combine(extension, "panel.html")) && File.Exists(Path.Combine(extension, "sidebar.html")), "The extension's pages are missing.");
         StartsWith(DevToolsExtension.Hint(extension), $"[dev] DevTools extension: {extension} ");
         Equal(null, DevToolsExtension.Find(Path.GetTempPath()));
@@ -374,10 +389,12 @@ internal sealed partial class ToolTests
         using (JsonDocument document = JsonDocument.Parse(session.Render()))
         {
             Equal(extension, document.RootElement.GetProperty("devtoolsExtension").GetString());
+            Equal(DevToolsExtension.Id, document.RootElement.GetProperty("devtoolsExtensionId").GetString());
         }
         var without = new DevSession(CreateConfiguration(workspace, "vite"), options, [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
         using JsonDocument none = JsonDocument.Parse(without.Render());
         Equal(JsonValueKind.Null, none.RootElement.GetProperty("devtoolsExtension").ValueKind);
+        Equal(JsonValueKind.Null, none.RootElement.GetProperty("devtoolsExtensionId").ValueKind);
     }
 
     [Test, DisplayName("the session lists WebView2's debugging port when the Window's environment enables it")]

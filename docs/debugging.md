@@ -265,6 +265,12 @@ changes with the tool's version.
 4. Open the page's developer tools (F12, or Inspect) and choose the **Runic** panel, or the **Runic** pane in
    Elements. Reopen developer tools that were open before you loaded it.
 
+Its id is always `cddbfcinbkaindmfgcfdgapddkjeadgh` (the manifest's public `key` fixes it, whatever folder you
+load), so its pages are `chrome-extension://cddbfcinbkaindmfgcfdgapddkjeadgh/…` and an allowlist can name it. The
+session file has it as `devtoolsExtensionId`. No private key exists: the extension is not signed or published.
+Its version is the tool's: `0.21.0` for 0.21.0, and for a prerelease `X.Y.Z-label.N` the manifest version is
+`X.Y.Z.N` (Chrome allows only numbers) while `chrome://extensions` shows the full version (`version_name`).
+
 After a tool update, load the new folder and remove the old entry. Chromium (not Google Chrome, whose branded builds
 ignore the switch since Chrome 137) and automation can also start with
 `--load-extension=<folder> --disable-extensions-except=<folder>`, for example in the `runtimeArgs` of a VS Code
