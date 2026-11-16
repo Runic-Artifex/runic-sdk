@@ -323,7 +323,9 @@ public sealed record DesktopHostOptions
     /// <para>
     /// Extensions belong to the WebView2 profile, so every window of a profile (<see cref="DesktopWindowOptions.ProfilePath"/>)
     /// runs them, also one whose developer tools are off. WebView2 keeps an installed extension in the profile until
-    /// its files change; removing a folder from the list does not uninstall it. Hosted windows load none. WKWebView,
+    /// its files change. In Development, Runic removes from the profile the extensions it installed whose folders are no
+    /// longer listed, once per profile and process; it records them in <c>Runic.DevToolsExtensions.json</c> in the user
+    /// data folder and never removes an extension it did not install. Hosted windows load none. WKWebView,
     /// WebKitGTK and installed browsers ignore the option. A folder that WebView2 cannot install, or a runtime without
     /// extensions, is reported to <see cref="DiagnosticSink"/> as <c>devtools-extension-failed</c> and the window opens
     /// without it; so does an installation that takes longer than 15 seconds, and a profile folder that another process

@@ -79,6 +79,10 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2", "OpenDevToolsWindow", WindowsWebView2Interop.OpenDevToolsWindowSlot),
             ("ICoreWebView2Profile7", "AddBrowserExtension", WindowsWebView2Interop.ProfileAddBrowserExtensionSlot),
             ("ICoreWebView2BrowserExtension", "get_Id", WindowsWebView2Interop.BrowserExtensionIdSlot),
+            ("ICoreWebView2BrowserExtension", "Remove", WindowsWebView2Interop.BrowserExtensionRemoveSlot),
+            ("ICoreWebView2Profile7", "GetBrowserExtensions", WindowsWebView2Interop.ProfileGetBrowserExtensionsSlot),
+            ("ICoreWebView2BrowserExtensionList", "get_Count", WindowsWebView2Interop.BrowserExtensionListCountSlot),
+            ("ICoreWebView2BrowserExtensionList", "GetValueAtIndex", WindowsWebView2Interop.BrowserExtensionListValueSlot),
             ("ICoreWebView2EnvironmentOptions6", "get_AreBrowserExtensionsEnabled", 3),
             ("ICoreWebView2EnvironmentOptions6", "put_AreBrowserExtensionsEnabled", 4),
         })
@@ -142,6 +146,8 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.Equal(Interface("ICoreWebView2EnvironmentOptions6"), typeof(IWebViewEnvironmentOptions6).GUID);
         Assert.Equal(Interface("ICoreWebView2Profile7"), WindowsWebView2Interop.Profile7Interface);
         Assert.Equal(Interface("ICoreWebView2ProfileAddBrowserExtensionCompletedHandler"), typeof(IWebViewBrowserExtensionAdded).GUID);
+        Assert.Equal(Interface("ICoreWebView2ProfileGetBrowserExtensionsCompletedHandler"), typeof(IWebViewBrowserExtensionsListed).GUID);
+        Assert.Equal(Interface("ICoreWebView2BrowserExtensionRemoveCompletedHandler"), typeof(IWebViewBrowserExtensionRemoved).GUID);
     }
 
     [Test]
@@ -154,6 +160,24 @@ public sealed partial class WindowsWebView2InteropTests
         var missing = new WebViewBrowserExtensionCompletion();
         Assert.Equal(0, missing.Invoke(0, 0));
         Assert.Null(await missing.Task);
+    }
+
+    [Test]
+    public async Task ExtensionListingAndRemovalReportFailures()
+    {
+        var listing = new WebViewBrowserExtensionList(["aaa"]);
+        Assert.Equal(0, listing.Invoke(unchecked((int)0x80004005), 0));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => listing.Task);
+        var empty = new WebViewBrowserExtensionList(["aaa"]);
+        Assert.Equal(0, empty.Invoke(0, 0));
+        await empty.Task;
+        Assert.Empty(empty.Found);
+        var removal = new WebViewBrowserExtensionRemoval();
+        Assert.Equal(0, removal.Invoke(unchecked((int)0x80004005)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => removal.Task);
+        var removed = new WebViewBrowserExtensionRemoval();
+        Assert.Equal(0, removed.Invoke(0));
+        await removed.Task;
     }
 
     [Test]

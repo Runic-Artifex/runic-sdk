@@ -21,21 +21,39 @@ internal static partial class DevToolsSmoke
     private static readonly TimeSpan PhaseDeadline = TimeSpan.FromSeconds(75);
     private static readonly Stopwatch Clock = Stopwatch.StartNew();
 
-    // --devtools, and the end of --menus: both phases, each in a child process.
+    private const string ExtraMarker = "data-runic-devtools-smoke-extra";
+    private const string RootVariable = "RUNIC_DEVTOOLS_SMOKE_ROOT";
+    // Development with the second extension no longer listed, in the same user data folder (D067.6).
+    private const string Pruned = "Pruned";
+
+    // --devtools, and the end of --menus: the phases, each in a child process, sharing the extensions and, for the
+    // Development phases, the user data folder in one temporary folder.
     internal static async Task RunAsync()
     {
-        foreach (var phase in (string[])["Production", "Development"])
+        var root = Directory.CreateTempSubdirectory("runic-devtools-smoke-");
+        try
         {
-            // The child has its own deadline below the smoke's watchdog.
-            SmokeSoak.Watchdog?.Change(TimeSpan.FromSeconds(180), Timeout.InfiniteTimeSpan);
-            await RunChildAsync(phase);
+            WriteExtension(root.CreateSubdirectory("extension").FullName, Marker);
+            WriteExtension(root.CreateSubdirectory("extra").FullName, ExtraMarker);
+            foreach (var phase in (string[])["Production", "Development", Pruned])
+            {
+                // The child has its own deadline below the smoke's watchdog.
+                SmokeSoak.Watchdog?.Change(TimeSpan.FromSeconds(180), Timeout.InfiniteTimeSpan);
+                await RunChildAsync(phase, root.FullName);
+            }
+        }
+        finally
+        {
+            // WebView2's processes may still hold the profile folders for a moment.
+            try { root.Delete(recursive: true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
         Console.WriteLine("DevTools passed: in Production no extension runs and no DevTools window opens; in Development the " +
-            "unpacked extension runs in the first page, a second window of the profile opens, and the system menu item and " +
-            "OpenDevToolsAsync open the DevTools window.");
+            "unpacked extensions run in the first page, a second window of the profile opens, and the system menu item and " +
+            "OpenDevToolsAsync open the DevTools window; an extension no longer listed is removed from the profile.");
     }
 
-    private static async Task RunChildAsync(string phase)
+    private static async Task RunChildAsync(string phase, string root)
     {
         var entry = Environment.GetCommandLineArgs()[0];
         var start = new ProcessStartInfo { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -50,7 +68,8 @@ internal static partial class DevToolsSmoke
         }
         start.ArgumentList.Add("--devtools-phase");
         start.ArgumentList.Add(phase);
-        start.Environment["DOTNET_ENVIRONMENT"] = phase;
+        start.Environment["DOTNET_ENVIRONMENT"] = phase == Pruned ? "Development" : phase;
+        start.Environment[RootVariable] = root;
         start.Environment.Remove("ASPNETCORE_ENVIRONMENT");
         start.Environment.Remove(Runic.Desktop.Internal.DevToolsExtensionFolders.Variable);
         Log(phase, "starting its process");
@@ -75,32 +94,50 @@ internal static partial class DevToolsSmoke
         Log(phase, "passed");
     }
 
-    // --devtools-phase Production|Development, in the process that RunAsync started.
+    // --devtools-phase Production|Development|Pruned, in the process that RunAsync started.
     internal static async Task RunPhaseAsync(DesktopHostOptions options, string phase)
     {
-        var development = string.Equals(phase, "Development", StringComparison.Ordinal);
+        var development = phase != "Production";
         Check(development == string.Equals(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT"), "Development", StringComparison.Ordinal),
             $"{phase}: DOTNET_ENVIRONMENT is {Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")}");
-        var root = Directory.CreateTempSubdirectory("runic-devtools-smoke-");
-        try
-        {
-            var extension = WriteExtension(root.CreateSubdirectory("extension").FullName);
-            await CheckAsync(options, phase, extension, Path.Combine(root.FullName, "profile"), development);
-        }
-        finally
-        {
-            // WebView2's processes may still hold the profile folder for a moment.
-            try { root.Delete(recursive: true); }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-        }
+        var root = Environment.GetEnvironmentVariable(RootVariable) ?? throw new InvalidOperationException($"{RootVariable} is not set.");
+        var extension = Path.Combine(root, "extension");
+        var extra = Path.Combine(root, "extra");
+        var profile = Path.Combine(root, development ? "development-profile" : "production-profile");
+        if (phase == Pruned) await CheckPrunedAsync(options, extension, profile);
+        else await CheckAsync(options, phase, [extension, extra], profile, development);
     }
 
-    private static async Task CheckAsync(DesktopHostOptions options, string phase, string extension, string profile, bool development)
+    // The second extension, which Runic installed in the Development phase, is removed: its script no longer runs, and
+    // the profile's record names the first extension only.
+    private static async Task CheckPrunedAsync(DesktopHostOptions options, string extension, string profile)
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
-        var host = await StepAsync(phase, "start the host", TimeSpan.FromSeconds(30), () => DesktopHost.StartAsync(options with
+        var host = await StartHostAsync(options, Pruned, [extension], diagnostics);
+        await using var hostScope = host;
+        var surface = await StepAsync(Pruned, "create the surface", TimeSpan.FromSeconds(30), () => host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            DevToolsExtensions = [extension],
+            Content = new DesktopContent.Html(PageHtml),
+        }).AsTask());
+        await using var surfaceScope = surface;
+        var window = await StepAsync(Pruned, "open the window", TimeSpan.FromSeconds(50), () => surface.OpenWindowAsync(Window(profile)).AsTask());
+        var mark = await ReadMarkAsync(surface, Pruned, Marker, TimeSpan.FromSeconds(15));
+        var extra = await ReadMarkAsync(surface, Pruned, ExtraMarker, TimeSpan.FromSeconds(2));
+        Check(mark == "loaded" && extra == "none", $"{Pruned}: the listed extension left {mark}, the removed one {extra}");
+        CheckNoFailures(diagnostics, Pruned);
+        var record = Runic.Desktop.Internal.DevToolsExtensionRecord.Read(profile);
+        Check(record.Count == 1 && record.Values.Single() == extension, $"{Pruned}: the record holds {string.Join(", ", record.Values)}");
+        Log(Pruned, $"extension {mark}, removed extension {extra}, record {record.Count}");
+        await StepAsync(Pruned, "close the window", TimeSpan.FromSeconds(20), () => window.CloseAsync().AsTask());
+    }
+
+    private const string PageHtml = "<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"webui.js\"></script><title>DevTools smoke</title></head><body><p>DevTools</p></body></html>";
+
+    private static Task<DesktopHost> StartHostAsync(DesktopHostOptions options, string phase, IReadOnlyList<string> extensions,
+        ConcurrentQueue<DesktopDiagnostic> diagnostics) =>
+        StepAsync(phase, "start the host", TimeSpan.FromSeconds(30), () => DesktopHost.StartAsync(options with
+        {
+            DevToolsExtensions = extensions,
             ConnectionTimeout = TimeSpan.FromSeconds(40),
             DiagnosticSink = diagnostic =>
             {
@@ -108,30 +145,53 @@ internal static partial class DevToolsSmoke
                 options.DiagnosticSink?.Invoke(diagnostic);
             },
         }).AsTask());
+
+    // The marker's value, waiting up to wait for "loaded".
+    private static async Task<string> ReadMarkAsync(DesktopSurface surface, string phase, string marker, TimeSpan wait)
+    {
+        var deadline = Clock.Elapsed + wait;
+        return await StepAsync(phase, $"read {marker}", wait + TimeSpan.FromSeconds(15), async () =>
+        {
+            string mark;
+            do
+            {
+                mark = await surface.ExecuteJavaScriptAsync($"return document.documentElement.getAttribute('{marker}') ?? 'none';", TimeSpan.FromSeconds(10));
+                if (mark == "loaded") break;
+                await Task.Delay(250);
+            }
+            while (Clock.Elapsed < deadline);
+            return mark;
+        });
+    }
+
+    private static void CheckNoFailures(ConcurrentQueue<DesktopDiagnostic> diagnostics, string phase)
+    {
+        var failures = diagnostics.Where(static diagnostic => diagnostic.Code == WebView2Host.DevToolsExtensionFailedCode).ToArray();
+        Check(failures.Length == 0, $"{phase}: {string.Join("; ", failures.Select(static failure => failure.Message))}");
+    }
+
+    private static async Task CheckAsync(DesktopHostOptions options, string phase, IReadOnlyList<string> extensions, string profile, bool development)
+    {
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        var host = await StartHostAsync(options, phase, extensions, diagnostics);
         await using var hostScope = host;
         var surface = await StepAsync(phase, "create the surface", TimeSpan.FromSeconds(30), () => host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            Content = new DesktopContent.Html("<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"webui.js\"></script><title>DevTools smoke</title></head><body><p>DevTools</p></body></html>"),
+            Content = new DesktopContent.Html(PageHtml),
         }).AsTask());
         await using var surfaceScope = surface;
         var window = await StepAsync(phase, "open the window", TimeSpan.FromSeconds(50), () => surface.OpenWindowAsync(Window(profile)).AsTask());
 
-        var mark = "none";
-        var markDeadline = Clock.Elapsed + TimeSpan.FromSeconds(development ? 15 : 2);
-        await StepAsync(phase, "read the extension's mark", TimeSpan.FromSeconds(30), async () =>
+        var mark = await ReadMarkAsync(surface, phase, Marker, TimeSpan.FromSeconds(development ? 15 : 2));
+        var extra = await ReadMarkAsync(surface, phase, ExtraMarker, TimeSpan.FromSeconds(development ? 5 : 1));
+        var expected = development ? "loaded" : "none";
+        Check(mark == expected && extra == expected, $"{phase}: the extensions' content scripts left {mark} and {extra}");
+        CheckNoFailures(diagnostics, phase);
+        if (development)
         {
-            do
-            {
-                mark = await surface.ExecuteJavaScriptAsync($"return document.documentElement.getAttribute('{Marker}') ?? 'none';", TimeSpan.FromSeconds(10));
-                if (mark == "loaded") break;
-                await Task.Delay(250);
-            }
-            while (Clock.Elapsed < markDeadline);
-            return mark;
-        });
-        Check(mark == (development ? "loaded" : "none"), $"{phase}: the extension's content script left {mark}");
-        var failures = diagnostics.Where(static diagnostic => diagnostic.Code == WebView2Host.DevToolsExtensionFailedCode).ToArray();
-        Check(failures.Length == 0, $"{phase}: {string.Join("; ", failures.Select(static failure => failure.Message))}");
+            var record = Runic.Desktop.Internal.DevToolsExtensionRecord.Read(profile);
+            Check(record.Count == 2, $"{phase}: the profile's record holds {record.Count} extensions");
+        }
 
         var hasItem = false;
         await StepAsync(phase, "read the system menu", TimeSpan.FromSeconds(10), () => window.InvokeNativeAsync(handle =>
@@ -202,7 +262,7 @@ internal static partial class DevToolsSmoke
         Console.WriteLine($"DevTools ({phase}) [{Clock.Elapsed.TotalSeconds:0.0} s]: {message}");
 
     // A Manifest V3 extension whose content script marks every page at document start.
-    private static string WriteExtension(string folder)
+    private static string WriteExtension(string folder, string marker)
     {
         File.WriteAllText(Path.Combine(folder, "manifest.json"), """
             {
@@ -212,7 +272,7 @@ internal static partial class DevToolsSmoke
               "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_start" }]
             }
             """);
-        File.WriteAllText(Path.Combine(folder, "content.js"), $"document.documentElement.setAttribute('{Marker}', 'loaded');\n");
+        File.WriteAllText(Path.Combine(folder, "content.js"), $"document.documentElement.setAttribute('{marker}', 'loaded');\n");
         return folder;
     }
 

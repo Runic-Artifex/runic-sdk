@@ -919,7 +919,10 @@ Only in Development does the WebView2 environment enable extensions; outside it
 the list is ignored and the environment keeps them off. Extensions belong to the
 WebView2 profile: a window installs them before its first page loads, once per
 profile and process, and every window of the profile then runs them. WebView2
-keeps an installed extension until its files change. A folder it rejects is
+keeps an installed extension until its files change; in Development Runic
+removes the ones it installed whose folders are no longer listed, recorded in
+`Runic.DevToolsExtensions.json` in the user data folder, and never another
+extension. A folder it rejects is
 reported to `DiagnosticSink` as `devtools-extension-failed`. Hosted windows load
 none. See the [debugging guide](../../../docs/debugging.md#the-browsers-developer-tools-per-engine).
 

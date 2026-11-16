@@ -84,9 +84,12 @@ internal sealed partial class WindowsWebView2Host
     }
 
     // Before the first navigation, so an extension's content scripts, such as React DevTools' hook, run in the first page.
-    // A folder that fails is reported and skipped; the window opens without it.
+    // A folder that fails is reported and skipped; the window opens without it. Then the extensions that Runic installed
+    // into this user data folder earlier and that are no longer listed are removed (D067.6).
     private async Task InstallDevToolsExtensionsAsync(WebUiEmbeddedHostOptions options)
     {
+        var installed = new Dictionary<string, string>(StringComparer.Ordinal);
+        var complete = true;
         foreach (var folder in options.DevToolsExtensions)
         {
             var key = (options.ProfilePath ?? string.Empty) + "\0" + folder;
@@ -94,7 +97,8 @@ internal sealed partial class WindowsWebView2Host
             try
             {
                 // The first page waits for the installation; one that never completes must not hold the window.
-                await _controller!.AddBrowserExtensionAsync(folder).WaitAsync(ExtensionInstallDeadline);
+                if (await _controller!.AddBrowserExtensionAsync(folder).WaitAsync(ExtensionInstallDeadline) is { Length: > 0 } id)
+                    installed[id] = folder;
             }
             catch (Exception error) when (error is NotSupportedException or InvalidOperationException or COMException or TimeoutException)
             {
@@ -104,7 +108,46 @@ internal sealed partial class WindowsWebView2Host
                     : error);
                 // A runtime without extensions, or one that does not answer, installs none of the others either.
                 if (error is NotSupportedException or TimeoutException) return;
+                complete = false;
             }
+        }
+        // Once per user data folder and process, by the window that installed the list.
+        if (installed.Count > 0 || complete)
+        {
+            if (options.ProfilePath is { } profile && ReconciledProfiles.TryAdd(profile, 0))
+                await RemoveUnlistedExtensionsAsync(options, profile, installed);
+        }
+    }
+
+    // The user data folders whose record this process reconciled.
+    private static readonly ConcurrentDictionary<string, byte> ReconciledProfiles = new(StringComparer.OrdinalIgnoreCase);
+
+    private async Task RemoveUnlistedExtensionsAsync(WebUiEmbeddedHostOptions options, string profile, Dictionary<string, string> installed)
+    {
+        var recorded = DevToolsExtensionRecord.Read(profile);
+        var (record, stale) = DevToolsExtensionRecord.Reconcile(recorded, options.DevToolsExtensions, installed);
+        if (stale.Count > 0)
+        {
+            try
+            {
+                var (_, failed) = await _controller!.RemoveBrowserExtensionsAsync(stale).WaitAsync(ExtensionInstallDeadline);
+                // One that could not be removed stays recorded, for the next run.
+                foreach (var (id, error) in failed)
+                {
+                    record[id] = recorded[id];
+                    ReportExtensionFailure(options, recorded[id], new InvalidOperationException("WebView2 did not remove the extension, which is no longer listed.", error));
+                }
+            }
+            catch (Exception error) when (error is NotSupportedException or InvalidOperationException or COMException or TimeoutException)
+            {
+                foreach (var id in stale) record[id] = recorded[id];
+                ReportExtensionFailure(options, recorded[stale[0]], new InvalidOperationException("WebView2 did not remove the extensions that are no longer listed.", error));
+            }
+        }
+        try { DevToolsExtensionRecord.Write(profile, record); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning($"Runic could not record its DevTools extensions in the user data folder: {error.Message}");
         }
     }
 

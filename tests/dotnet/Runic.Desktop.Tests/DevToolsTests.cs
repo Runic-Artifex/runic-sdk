@@ -79,6 +79,49 @@ public sealed class DevToolsTests
         Assert.False(await host.OpenDevToolsAsync());
     }
 
+    // D067.6: Runic removes from a profile the extensions it installed whose folders are no longer listed, and only those.
+    [Test]
+    public void ExtensionsNoLongerListedAreRemovedAndOnlyRunicsOwn()
+    {
+        var recorded = new Dictionary<string, string> { ["aaa"] = First, ["bbb"] = Second };
+        // Second is no longer listed: removed. First installed again: recorded with the id it has now.
+        var (record, stale) = DevToolsExtensionRecord.Reconcile(recorded, [First], new Dictionary<string, string> { ["aaa"] = First });
+        Assert.Equal(["bbb"], stale);
+        Assert.Equal(new Dictionary<string, string> { ["aaa"] = First }, record);
+        // A listed folder that did not install this time keeps its entry, so it is not removed.
+        (record, stale) = DevToolsExtensionRecord.Reconcile(recorded, [First, Second], new Dictionary<string, string> { ["aaa"] = First });
+        Assert.Empty(stale);
+        Assert.Equal(recorded, record);
+        // A folder that installs under a new id: the old id is removed.
+        (record, stale) = DevToolsExtensionRecord.Reconcile(recorded, [First, Second],
+            new Dictionary<string, string> { ["aaa"] = First, ["ccc"] = Second });
+        Assert.Equal(["bbb"], stale);
+        Assert.Equal(new Dictionary<string, string> { ["aaa"] = First, ["ccc"] = Second }, record);
+        // Nothing recorded: nothing to remove, whatever else the profile has.
+        (record, stale) = DevToolsExtensionRecord.Reconcile(new Dictionary<string, string>(), [First], new Dictionary<string, string> { ["aaa"] = First });
+        Assert.Empty(stale);
+        Assert.Single(record);
+    }
+
+    [Test]
+    public void TheRecordLivesInTheUserDataFolderAndAnUnreadableOneIsEmpty()
+    {
+        var folder = Directory.CreateTempSubdirectory("runic-devtools-record-");
+        try
+        {
+            Assert.Empty(DevToolsExtensionRecord.Read(folder.FullName));
+            DevToolsExtensionRecord.Write(folder.FullName, new Dictionary<string, string> { ["bbb"] = Second, ["aaa"] = First });
+            Assert.True(File.Exists(Path.Combine(folder.FullName, DevToolsExtensionRecord.FileName)));
+            Assert.Equal(new Dictionary<string, string> { ["aaa"] = First, ["bbb"] = Second }, DevToolsExtensionRecord.Read(folder.FullName));
+            File.WriteAllText(Path.Combine(folder.FullName, DevToolsExtensionRecord.FileName), "{ not json");
+            Assert.Empty(DevToolsExtensionRecord.Read(folder.FullName));
+            File.WriteAllText(Path.Combine(folder.FullName, DevToolsExtensionRecord.FileName), """{ "aaa": 1, "bbb": "" , "ccc": "x" }""");
+            Assert.Equal(new Dictionary<string, string> { ["ccc"] = "x" }, DevToolsExtensionRecord.Read(folder.FullName));
+            Assert.Empty(DevToolsExtensionRecord.Read(Path.Combine(folder.FullName, "missing")));
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class DevToolsHostFactory : IDesktopWindowHostFactory
     {
         internal DevToolsHost? Host { get; private set; }

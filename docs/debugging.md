@@ -156,8 +156,9 @@ a Windows release's environment can script its page and Bridge through that endp
   `packages/chrome-extension`) or by extracting its release package. Outside Development the list is ignored and
   WebView2's extensions stay off, also those that a development run installed into the same profile. Extensions are
   installed into the window's WebView2 profile before its first page loads, so every window of that profile runs them;
-  WebView2 keeps one until its files change, and removing a folder from the list does not uninstall it (delete the
-  profile folder for a clean start). A folder that WebView2 rejects is reported as `devtools-extension-failed`, and the
+  WebView2 keeps one until its files change. When a folder leaves the list, the next Development run with a non-empty
+  list removes the extension that Runic installed from it; Runic records what it installed in
+  `Runic.DevToolsExtensions.json` in the user data folder and never removes an extension it did not install. A folder that WebView2 rejects is reported as `devtools-extension-failed`, and the
   window opens without it. WKWebView, WebKitGTK and installed browsers ignore the list. Runic's CI checks that an
   extension's content script runs in the page; whether a given extension's DevTools panel works is up to WebView2's
   extension support, which does not cover every Chrome extension API.
