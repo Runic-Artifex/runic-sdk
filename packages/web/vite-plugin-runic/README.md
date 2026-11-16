@@ -556,8 +556,8 @@ when a request arrives, and cached for 30 seconds); the environment variable
 takes the same entries separated by commas or spaces and adds to the option.
 An invalid entry stops the dev server with its name, and a non-empty list is
 logged at start. `RUNIC_DEV_ALLOW` is one setting for both plugins: Runic
-Translations' in-page editing API reads it too (its older
-`RUNIC_TRANSLATIONS_EDIT_ALLOW` and `inPageEditing: { allow }` still work), so
+Translations' in-page editing API reads it too (its `inPageEditing: { allow }`
+adds to it; Translations 0.13 removed the former `RUNIC_TRANSLATIONS_EDIT_ALLOW`), so
 the same variable lets that machine read the source map and handler analysis
 and edit translations.
 

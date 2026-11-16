@@ -1,4 +1,4 @@
-// Editing a translation on the page (#957) against the real Runic Translations dev server: its Vite plugin (0.12, with
+// Editing a translation on the page (#957) against the real Runic Translations dev server: its Vite plugin (0.13, with
 // the in-page editing API of runic-translations-sdk#182, the markers of #184 and RUNIC_DEV_ALLOW of #186) and its
 // compiler (`runic-translations serve`). A React page shows `m.heading()`; Runic Inspect selects it, edits and saves.
 // The page shows the new text without a reload, the `.rmf2` file changes only in that entry, a stale edit gives 409,
@@ -83,7 +83,6 @@ globalThis.editTest = { ready: true };
     await link(root, "react-dom", join(here, "node_modules", "react-dom"));
     await link(root, "vite", join(here, "node_modules", "vite"));
     if (allow === undefined) delete process.env.RUNIC_DEV_ALLOW; else process.env.RUNIC_DEV_ALLOW = allow;
-    delete process.env.RUNIC_TRANSLATIONS_EDIT_ALLOW;
     server = await createServer({
       root, configFile: false, logLevel: "warn",
       plugins: [

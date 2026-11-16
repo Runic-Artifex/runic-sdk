@@ -292,7 +292,7 @@ the template's default is the Angular CLI. What Vite adds:
   reaches the page without a build. See [Translate it](#translate-it).
 <!--#else -->
 - **The Translations development loop**: with the
-  [Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk/tree/v0.12.0/packages/web/vite-plugin-runic-translations)
+  [Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk/tree/v0.13.0/packages/web/vite-plugin-runic-translations)
   (`dotnet new runic-app --frontend angular --angular-build vite --translations`
   sets it up), a message you edit under `dotnet runic dev` reaches the page
   without a build.
@@ -346,9 +346,9 @@ and the component build target.
 <!--#endif -->
 <!--#if (translations) -->
 <!--#if (translationsVitePlugin) -->
-| `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The .NET build generates `AppText` for C#, and `runicTranslations()` in `Frontend/vite.config.ts` compiles the page's modules into `Frontend/.runic/translations`. See [Translate it](#translate-it). |
+| `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The .NET build generates `AppText` for C#, and `runicTranslations()` in `Frontend/vite.config.ts` compiles the page's modules into `Frontend/.runic/translations`. See [Translate it](#translate-it). |
 <!--#else -->
-| `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The build generates `AppText` for C# and the page's ESM in `Frontend/.runic/translations`. See [Translate it](#translate-it). |
+| `Frontend/translations/` | The [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/runic-views.md) catalog for the page and C#: `runic.json`, `en.rmf2` and `de.rmf2`. The build generates `AppText` for C# and the page's ESM in `Frontend/.runic/translations`. See [Translate it](#translate-it). |
 <!--#endif -->
 <!--#endif -->
 | `Properties/launchSettings.json` | Launch profiles for Visual Studio, Rider and `dotnet run`. See [Debug it in your IDE](#debug-it-in-your-ide). |
@@ -451,7 +451,7 @@ the page and C# share; `dotnet build` checks every translation on both sides.
 To add a language, add it to `locales` in `runic.json`, then copy `en.rmf2`
 to `<locale>.rmf2` and translate it. The page imports the catalog as
 `virtual:runic-translations/app` from the
-[Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk/tree/v0.12.0/packages/web/vite-plugin-runic-translations),
+[Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk/tree/v0.13.0/packages/web/vite-plugin-runic-translations),
 `runicTranslations()` in `Frontend/vite.config.ts`. It compiles the catalog
 with the `dotnet-runic-translations` tool of `.config/dotnet-tools.json`
 (`dotnet tool restore` installs it), the release that generates `AppText`, so
@@ -472,7 +472,7 @@ does not reload messages.
 <!--#endif -->
 Native text such as menus, a tray icon and dialogs
 formats from the same catalog in C#: `new AppText(translations).Messages`.
-See [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/runic-views.md).
+See [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/runic-views.md).
 
 <!--#endif -->
 ## Test it

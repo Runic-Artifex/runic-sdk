@@ -40,7 +40,7 @@ var developing = string.Equals(Environment.GetEnvironmentVariable("DOTNET_ENVIRO
 #if (frontend == "sveltekit")
 // SvelteKit starts the page with an inline script. vite.config.ts makes it add a policy of its own that allows
 // only that script by its hash; the browser enforces both policies. style-src-attr allows exactly the style attribute
-// of SvelteKit's route announcer (root.svelte in @sveltejs/kit 3.0.0) by its hash; update it with SvelteKit.
+// of SvelteKit's route announcer (root.svelte in @sveltejs/kit 3.0.0 to 3.1.1) by its hash; update it with SvelteKit.
 const string contentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src-attr 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 #elif (frontend == "angular")
 // Angular adds component styles as <style> elements.

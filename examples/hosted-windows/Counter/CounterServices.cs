@@ -28,7 +28,7 @@ public static class CounterServices
         // to the catalog's: a host in French shows the counter in English.
         services.AddSingleton(provider =>
         {
-            var translations = TranslationContext.CreateBuilder().Add(CounterTextCatalog.Registration).Build();
+            var translations = TranslationContext.CreateBuilder().AddCatalog(CounterTextCatalog.Registration).Build();
             provider.GetRequiredService<IRunicApplicationLocale>().Follow((locale, token) => translations.SetLocaleAsync(
                 LocaleNegotiation.Match(locale, translations.SupportedLocales) ?? CounterTextCatalog.DefaultLocale, token));
             return translations;
