@@ -16,8 +16,11 @@ internal sealed class PhaseTimer : IDisposable
         _name = string.IsNullOrWhiteSpace(name)
             ? throw new ArgumentException("A phase name is required.", nameof(name))
             : name;
-        Console.WriteLine($"[dev] {_name}...");
+        Console.WriteLine(StartLine(_name));
     }
+
+    /// <summary>The line a phase prints when it starts: <c>[dev] &lt;name&gt;...</c>.</summary>
+    internal static string StartLine(string name) => $"[dev] {name}...";
 
     internal static PhaseTimer Start(string name) => new(name);
 

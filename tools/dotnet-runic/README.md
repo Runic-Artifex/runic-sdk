@@ -657,9 +657,15 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
 | `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
+| `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
+| `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
-`dev` writes the [session file](#session-file) before it prints each of these
-lines, so a reader that reacts to a line finds the same state there: after
+The two prefix lines are where a background task's `beginsPattern` starts a new
+build cycle, as the template's `.vscode/tasks.json` below does; the text after
+the prefix is not part of the contract.
+
+`dev` writes the [session file](#session-file) before it prints each of the
+first three lines, so a reader that reacts to a line finds the same state there: after
 `Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
 after `Window exited`, no Window process and `"state": "starting"`. In 0.20.0
 previews, `dev` printed the line first.

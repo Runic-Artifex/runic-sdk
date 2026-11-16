@@ -25,6 +25,18 @@ internal static class DevApplication
     internal const string ReadyLine = "[dev] Ready";
 
     /// <summary>
+    /// The phase dev starts with; <see cref="PhaseTimer"/> prints <c>[dev] Evaluating Views Window project...</c>. The
+    /// README's IDE contract names its prefix, <c>[dev] Evaluating</c>, which the template's tasks.json waits on.
+    /// </summary>
+    internal const string EvaluatingPhase = "Evaluating Views Window project";
+
+    /// <summary>
+    /// The line dev prints when it restarts the Window process itself. The README's IDE contract names its prefix,
+    /// <c>[dev] Reloading</c>, which the template's tasks.json waits on.
+    /// </summary>
+    internal const string ReloadingLine = "[dev] Reloading the Runic Views Window application.";
+
+    /// <summary>
     /// A failure as one line in MSBuild's canonical form, <c>&lt;project&gt; : error RAPPDEV1007: &lt;message&gt;</c>, which VS Code's
     /// <c>$msCompile</c> problem matcher and the regex in the README match like the build's own errors. The origin is
     /// the project file, or <c>dotnet-runic</c> before dev found one.
@@ -79,7 +91,7 @@ internal static class DevApplication
         CancellationToken cancellationToken)
     {
         string dotnetHost = ResolveDotNetHost();
-        using PhaseTimer evaluation = PhaseTimer.Start("Evaluating Views Window project");
+        using PhaseTimer evaluation = PhaseTimer.Start(EvaluatingPhase);
         DevProjectConfiguration configuration = await DevProjectConfiguration
             .EvaluateAsync(dotnetHost, project, options.Configuration, cancellationToken)
             .ConfigureAwait(false);
