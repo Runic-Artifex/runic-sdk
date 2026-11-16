@@ -892,10 +892,13 @@ if (args is ["hosted"])
   mode refuses to start with `DesktopHostOptions.NetworkExposure` other than
   loopback, or when it runs as another user than its parent or cannot read its
   parent's (`guest-other-user`). It refuses to start elevated
-  (`guest-elevated`), unless the application sets
+  (`guest-elevated`): as root, with an elevated token on Windows, or on Linux
+  holding capabilities (a non-empty `CapEff` or `CapPrm`, such as from
+  `setcap`), unless the application sets
   `RunicGuestOptions.AllowElevatedHost` and its host
   `RunicGuestStartInfo.AllowElevatedGuest`: then its parent must run elevated
-  as the same user (`guest-elevated-host-not-elevated` otherwise), which the
+  as the same user, on Linux as root holding every capability the application
+  holds (`guest-elevated-host-not-elevated` otherwise), which the
   application checks itself, and it logs event 2025. An unelevated host cannot
   allow an elevated guest (`host-not-elevated`). The
   [security guide](../../../docs/security.md#elevated-hosts-and-guests) lists

@@ -567,11 +567,16 @@ enforces:
 
 - **Only this pair.** An elevated guest is hosted only when its parent process, the one that started it and not a newer
   process that reused its id, runs as the same user and runs elevated itself: on Windows its token is elevated or has
-  an integrity level of High or above, on Linux and macOS its effective user id is 0. The guest reads this from its
-  parent's token or user ids; the offer's opt-in only says that the host allows it, and never counts as evidence. An
+  an integrity level of High or above, on Linux and macOS its effective user id is 0, and on Linux its capability
+  sets hold every capability the guest holds. The guest reads this from its parent's token, user ids and capability
+  sets; the offer's opt-in only says that the host allows it, and never counts as evidence. An
   elevated guest without its own opt-in, or whose host did not allow it, refuses with `guest-elevated` as before; one
   whose parent does not run elevated refuses with `guest-elevated-host-not-elevated`; one whose parent is another
   user, or cannot be read, with `guest-other-user`. The guest logs the accepted pair as event 2025.
+- **Linux capabilities count.** On Linux a guest that holds capabilities without running as root, a non-empty
+  effective or permitted set (`CapEff`, `CapPrm` in `/proc/self/status`) from `setcap` or ambient capabilities, runs
+  elevated too and refuses with `guest-elevated`. The pair needs a root parent, so such a guest is never hosted; run it
+  without capabilities, or as root in an elevated pair.
 - **Only an elevated host.** A host that does not run elevated cannot allow an elevated guest: the start fails with
   `host-not-elevated` before any process starts. The host starts an elevated guest only from a fully qualified path,
   never by looking it up in `PATH` or the current directory.
