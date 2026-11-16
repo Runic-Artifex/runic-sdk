@@ -23,9 +23,10 @@ export async function recordingEditor(directory) {
 
 /**
  * The arguments of the next launch, `[file, line, column]`: waits until the record holds them, then removes it. Throws
- * when no editor was launched within `timeout`.
+ * when no editor was launched within `timeout`; the error ends with what `explain` returns, such as the open requests
+ * the server received and what it answered.
  */
-export async function readRecord(record, timeout = scaled(10_000)) {
+export async function readRecord(record, timeout = scaled(10_000), explain = undefined) {
   const deadline = Date.now() + timeout;
   for (;;) {
     const text = await readFile(record, "utf8").catch(() => "");
@@ -34,7 +35,10 @@ export async function readRecord(record, timeout = scaled(10_000)) {
       await rm(record, { force: true });
       return text.trimEnd().split("\n");
     }
-    if (Date.now() > deadline) throw new Error(`No editor was launched: ${record} holds no arguments.`);
+    if (Date.now() > deadline) {
+      const detail = explain === undefined ? "" : await Promise.resolve().then(explain).catch((error) => `(${error})`);
+      throw new Error(`No editor was launched within ${timeout} ms: ${record} holds no arguments.${detail ? `\n${detail}` : ""}`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
