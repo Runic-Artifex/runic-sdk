@@ -485,6 +485,7 @@ test('the WPF lane runs the STA tests and the packed consumer on Windows', () =>
     'dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release'];
   for (const step of job.steps.filter(step => step.run))
     assert.equal(step.if, hosts.includes(step.run) || step.run.includes('HybridNotes.WindowsSmoke') || step.run.includes('source-state.mjs check')
+      || step.run === 'eng/ci/windows-dismiss-oobe.ps1'
       ? undefined : "matrix.rid == 'win-x64'", step.name);
   const runs = job.steps.map(step => step.run).filter(Boolean);
   const tests = runs.indexOf('dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release');

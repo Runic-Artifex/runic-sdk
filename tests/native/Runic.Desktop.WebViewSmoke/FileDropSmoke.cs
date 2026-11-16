@@ -277,21 +277,12 @@ internal static partial class WindowsFileDropSmoke
             int effect;
             try
             {
-                // On Windows arm64 the drag is expected never to end (#391), so its 30 s is a probe, not a scaled wait.
-                effect = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-                    ? await drag.Task.WaitAsync(TimeSpan.FromSeconds(30))
-                    : await drag.Task.WaitScaledAsync(TimeSpan.FromSeconds(30));
+                effect = await drag.Task.WaitScaledAsync(TimeSpan.FromSeconds(30));
             }
             catch (TimeoutException)
             {
                 // End a stuck drag loop, so the window and the process can close.
                 Escape();
-                // On the arm64 runner the drag starts but its modal loop never sees the release (#391).
-                if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
-                {
-                    Console.WriteLine("File drop: unverified on Windows arm64: the OLE drag did not end within 30 seconds (#391).");
-                    return;
-                }
                 throw new TimeoutException($"The OLE drag did not end within {TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds:0} seconds.");
             }
             if (effect == NoDesktopInput)
@@ -318,12 +309,6 @@ internal static partial class WindowsFileDropSmoke
 
     private static async Task DragOutAsync(DesktopHost host, string[] paths)
     {
-        // win-arm64: the OLE drag loop does not start on the runner (I-077, I-103).
-        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
-        {
-            Console.WriteLine("Drag out and frame drops: unverified on Windows arm64, whose runner does not run the OLE drag loop (I-077).");
-            return;
-        }
         if (!await RunDragOutAsync(host, paths)) return;
         await RunFrameDropsAsync(host, paths);
     }

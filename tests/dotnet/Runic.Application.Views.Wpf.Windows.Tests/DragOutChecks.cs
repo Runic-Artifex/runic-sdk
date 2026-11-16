@@ -72,11 +72,6 @@ internal sealed partial class DragOutChecks
             await using var view = await provider.CreateWpfViewAsync(host, new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) }, new object());
             await view.OpenAsync();
             await view.Surface.ExecuteJavaScriptAsync("return document.readyState;", TimeSpan.FromSeconds(15));
-            if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
-            {
-                Console.WriteLine("WPF drag out: the OLE drag is unverified on Windows arm64, whose runner does not run the OLE drag loop (I-077).");
-                return;
-            }
             window.Activate();
             var press = child.PointToScreen(new System.Windows.Point(120, 100));
             var drop = target.PointToScreen(new System.Windows.Point(100, 100));

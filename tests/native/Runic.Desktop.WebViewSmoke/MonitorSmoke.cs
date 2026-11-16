@@ -275,8 +275,7 @@ internal static partial class MonitorSmoke
             var ltr = await ProbeAsync(host, rightToLeft: false);
             var rtl = await ProbeAsync(surface, window);
             Console.WriteLine($"Right to left: left-to-right window {ltr}; right-to-left window {rtl}.");
-            // Like the file drop smoke (#391): a runner whose desktop neither shows the window's pixels nor delivers its
-            // input cannot check either direction.
+            // A runner whose desktop neither shows the window's pixels nor delivers its input cannot check either direction.
             if (!ltr.ShownAtPage || !ltr.ClickedAtPage)
             {
                 Console.WriteLine($"Right to left: rendering and hit-testing unverified on this runner: the left-to-right baseline failed too ({ltr}).");
