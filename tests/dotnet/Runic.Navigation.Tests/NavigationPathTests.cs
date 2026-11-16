@@ -323,6 +323,32 @@ internal sealed partial class NavigationTests
         Require(Throws<FormatException>(() => NavigationPath.FromJson(deep.ToString())), "A path nested 40 levels deep was accepted.");
     }
 
+    [Test]
+    public void SelectionAndRegionJsonRoundTrip()
+    {
+        var selection = new NavigationSelectionPath(
+            [new NavigationRegionPath([new("customers"), new("customers/42")]), new NavigationRegionPath([])], 1);
+        var json = selection.ToJson();
+        Require(json == """{"version":1,"regions":[],"selections":[{"selected":1,"regions":[{"entries":[{"route":"customers","regions":[],"selections":[]},{"route":"customers/42","regions":[],"selections":[]}]},{"entries":[]}]}]}""",
+            $"The selection JSON format changed: {json}");
+        var read = NavigationSelectionPath.FromJson(json);
+        Require(read.Selected == 1 && read.Regions.Count == 2 && read.Regions[0].Entries[1].Route == "customers/42" && read.ToJson() == json,
+            $"The selection JSON did not round-trip: {read.ToJson()}");
+        Require(NavigationSelectionPath.FromJson("""{"selections":[{"regions":[]}]}""").Selected == -1,
+            "A selection without 'selected' did not read as empty.");
+
+        var region = new NavigationRegionPath([new("overview")]);
+        Require(NavigationRegionPath.FromJson(region.ToJson()).Entries[0].Route == "overview", "The region JSON did not round-trip.");
+
+        foreach (var bad in new[]
+                 {
+                     "[]", "{\"version\":2,\"selections\":[{}]}", "{\"selections\":[]}", "{\"selections\":[{},{}]}",
+                     region.ToJson(), "{\"regions\":[{}],\"selections\":[{}]}", "{\"selections\":[3]}", "not json",
+                 })
+            Require(Throws<FormatException>(() => NavigationSelectionPath.FromJson(bad)), $"{bad} was accepted as a selection.");
+        Require(Throws<FormatException>(() => NavigationRegionPath.FromJson(json)), "A selection was accepted as a region.");
+    }
+
     // ---- Window Back ----------------------------------------------------------------------------------------------------
 
     // The window's Back goes back in the innermost presented region that can: the selected tab before its page, a

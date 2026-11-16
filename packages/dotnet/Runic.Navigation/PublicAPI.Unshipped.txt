@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Navigation.NavigationSelectionPath.ToJson() -> string!
+static Runic.Navigation.NavigationSelectionPath.FromJson(string! json) -> Runic.Navigation.NavigationSelectionPath!

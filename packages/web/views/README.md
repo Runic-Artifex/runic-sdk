@@ -287,13 +287,14 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
-| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), `onBridgeDraining` |
+| `@runic-artifex/views/experimental` | Experimental APIs ([docs/experimental.md](../../../docs/experimental.md#npm-packages)): [hosted regions](#hosted-regions-experimental), `onBridgeDraining`, [components](#components-experimental) |
 
 Every entry has `types`, `development`, `import` and `default` conditions (see
 [Development build](#development-build)); the package is ESM only. Application code imports the root entry and `/mock`. The `/experimental`
 entry holds APIs that may change in a minor release; importing it is the opt-in.
 The `/experimental` entry of 0.9 was removed in 0.10, when its APIs graduated to
-the root entry, and 0.18 added it again for hosted regions. The
+the root entry, and 0.18 added it again for hosted regions. 0.21 moved trusted
+component mode from the `/component` entry, which it removed, to `/experimental`. The
 `/bindings` and `/generated*` entries are versioned with the generator and the
 .NET packages: code that a release generated keeps working with the runtime of
 any later release of the same major, but their shape is not for hand-written
@@ -2014,10 +2015,12 @@ The page's history (`installNavigationPath`, `installBackNavigation`) and its
 uncaught errors (`installErrorReporting`) stay with the page instance. See
 [Runic instances](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#runic-instances).
 
-### Components
+### Components (experimental)
 
-`@runic-artifex/views/component` is the runtime of trusted component mode: a
-guest's Views as a custom element in a host page's own document. The `component`
+`defineRunicComponent` and the `RunicComponent*` types of
+`@runic-artifex/views/experimental` are the runtime of trusted component mode
+(experimental, the .NET side is `RUNICDESK103`; until 0.20 the `./component`
+entry): a guest's Views as a custom element in a host page's own document. The `component`
 build target of `@runic-artifex/vite-plugin-runic` builds it; the guest writes the
 mount function:
 
@@ -2025,7 +2028,7 @@ mount function:
 // src/component.tsx
 import { createRoot } from "react-dom/client";
 import { RunicInstanceProvider } from "@runic-artifex/react";
-import type { RunicComponentMount } from "@runic-artifex/views/component";
+import type { RunicComponentMount } from "@runic-artifex/views/experimental";
 
 const mount: RunicComponentMount = ({ container, instance }) => {
   const root = createRoot(container);

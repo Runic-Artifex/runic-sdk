@@ -553,6 +553,34 @@ internal sealed partial class ToolTests
         }
     }
 
+    [Test, DisplayName("RUNIC_DEV_CDP_TRACE keeps the start of long strings, such as script sources, only")]
+    public void CdpTraceShortensLongStrings()
+    {
+        string source = string.Concat(Enumerable.Repeat("const a = \\\"x\\\";\\n", 1000));
+        string response = $$$"""{"id":7,"result":{"scriptSource":"{{{source}}}","base64Encoded":false}}""";
+        string shortened = CdpTrace.ShortenLongStrings(response);
+        True(shortened.Length < 400, $"shortened to {shortened.Length} characters");
+        StartsWith(shortened, "{\"id\":7,\"result\":{\"scriptSource\":\"const a = \\\"x\\\";");
+        Contains(shortened, "characters left out; RUNIC_DEV_CDP_TRACE_SOURCES=1 keeps them]\",\"base64Encoded\":false}}");
+        // The cut ends after a whole escape sequence: the kept start is still a valid JSON string.
+        string kept = shortened[(shortened.IndexOf(":\"", StringComparison.Ordinal) + 2)..shortened.IndexOf('…', StringComparison.Ordinal)];
+        JsonSerializer.Deserialize<string>($"\"{kept}\"");
+        string small = """{"id":8,"result":{"result":{"type":"number","value":42}}}""";
+        Equal(small, CdpTrace.ShortenLongStrings(small));
+        // "data:application/json;base64," and 170 characters put a \u escape across the 200th character.
+        string unicode = $$"""{"sourceMapURL":"data:application/json;base64,{{new string('A', 170)}}\u00e9{{new string('B', 5000)}}"}""";
+        JsonSerializer.Deserialize<string>($"\"{CdpTrace.ShortenLongStrings(unicode)[17..].Split('…')[0]}\"");
+    }
+
+    [Test, DisplayName("under --no-window, a taken port 9222 is an error that names the holder")]
+    public void NoWindowCdpPortTakenMessage()
+    {
+        Equal("RAPPDEV1017", WebKitDebugging.NoWindowCdpPortTakenCode);
+        Contains(WebKitDebugging.NoWindowCdpPortTakenMessage(null), "--no-window needs port 9222");
+        Contains(WebKitDebugging.NoWindowCdpPortTakenMessage(null), "another dotnet runic dev session");
+        Contains(WebKitDebugging.NoWindowCdpPortTakenMessage(1001), "another user (uid 1001) holds it");
+    }
+
     [Test, DisplayName("the session file lists the CDP adapter and gives an IDE-started Window the inspector address")]
     public void DevSessionListsTheWebKitEndpoints()
     {

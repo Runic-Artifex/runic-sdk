@@ -300,9 +300,9 @@ the template's default is the Angular CLI. What Vite adds:
 - **The Vite DevTools dock**: `runic()` adds the Runic development client to
   the page while Vite serves it, and `DevTools()` the dock with its Runic
   panel ([The Vite DevTools dock](#the-vite-devtools-dock)).
-- **The component build target**: `runic({ component: { entry: "src/component.ts" } })`
-  also builds the page as a component for trusted component mode
-  ([Component build target](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/web/vite-plugin-runic/README.md#component-build-target)).
+- **The component build target** (experimental): `runic({ component: { entry: "src/component.ts" } })`,
+  with `runic` from `@runic-artifex/vite-plugin-runic/experimental`, also builds the page as a component for trusted component mode
+  ([Component build target](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/web/vite-plugin-runic/README.md#component-build-target-experimental)).
   The Angular CLI cannot build one. A component touches no document
   stylesheet, so its Angular components must keep their styles out of the
   document's head, for example with `ViewEncapsulation.ShadowDom`.

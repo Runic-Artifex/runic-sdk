@@ -176,7 +176,12 @@ export const packageLayouts = {
     dependencies: ["Runic.Platform.Runtime"],
     exactDependencies: ["Runic.Platform.Runtime"],
   },
-  "dotnet-runic": { rollForwardMajor: ["tools/net10.0/any/dotnet-runic.runtimeconfig.json"] },
+  // The unpacked Runic DevTools extension ships beside the tool (#1044).
+  "dotnet-runic": {
+    rollForwardMajor: ["tools/net10.0/any/dotnet-runic.runtimeconfig.json"],
+    includes: ["tools/net10.0/any/devtools-extension/manifest.json", "tools/net10.0/any/devtools-extension/devtools.html",
+      "tools/net10.0/any/devtools-extension/panel.html", "tools/net10.0/any/devtools-extension/sidebar.html"],
+  },
   "Runic.Create": { rollForwardMajor: ["tools/net10.0/any/runic-create.runtimeconfig.json"] },
 };
 

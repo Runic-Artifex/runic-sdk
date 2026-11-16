@@ -7,9 +7,18 @@ it in full; the defaults there are the reference. The
 names on this page: a removed or renamed one, or a changed default that breaks a
 build, is a breaking change.
 
-Not on this page, and not settings: names that start with `_Runic`, targets named
-`RunicViews*`, the Bridge generator's command line and the files it writes under
-`obj/`. A renamed property keeps its old name working with a warning; the former
+Not on this page, and not settings: names that start with `_Runic`, the
+targets of the Runic packages, the Bridge generator's command line and the files
+it writes under `obj/`. A target's name and order are internal, so run your own
+targets around MSBuild's (`AfterTargets="Build"`), except for the three extension
+points that Runic.Application.Views documents, `RunicViewsGenerateBridge`,
+`RunicViewsBuildFrontend` and `RunicViewsCopyFrontend`
+([Build properties](../packages/dotnet/Runic.Application.Views/README.md#build-properties)).
+Internal properties and items start with `_Runic`. The `RunicTranslationsGeneratedFile` item is
+the handshake between Runic Translations' build, which adds the files it
+generates, and Runic.Application.Views, which mirrors them into the frontend
+(`RunicApplicationFrontendTranslations`); it is not a setting either, and the
+two packages change it together. A renamed setting keeps its old name working with a warning; the former
 names are listed in
 [Moved and renamed since 0.7.0-preview.6](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
 and the [migration guide](migration-1.0.md).

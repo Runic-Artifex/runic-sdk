@@ -47,7 +47,8 @@ dotnet run --project examples/hosted-components/Widget -c Release -- Indexer
   `RunicHostedWindowRequest.CanEmbedComponent` allows; for any other guest it
   falls back to a frame (`Embed`).
 - **The component build.** `vite build` builds the widget's page and then,
-  with `runic({ component: { entry, name } })`, an ES module that defines the
+  with `runic({ component: { entry, name } })` (the experimental entry
+  `@runic-artifex/vite-plugin-runic/experimental`), an ES module that defines the
   widget's custom element, with the bundle's CSS as constructable stylesheets,
   its own copy of `@runic-artifex/views`, and `runic-component.json`. The .NET
   build copies both to `www/`; the widget serves `_runic_component/` only to the

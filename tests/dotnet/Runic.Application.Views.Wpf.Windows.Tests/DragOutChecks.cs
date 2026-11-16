@@ -74,7 +74,7 @@ internal sealed partial class DragOutChecks
             await view.Surface.ExecuteJavaScriptAsync("return document.readyState;", TimeSpan.FromSeconds(15));
             if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
             {
-                Console.WriteLine("WPF drag out: the OLE drag is unverified on Windows arm64, whose runner does not run the OLE drag loop (I-077).");
+                Console.WriteLine("WPF drag out: unverified on Windows arm64, whose runner delivers no SendInput to WebView2 (#391).");
                 return;
             }
             window.Activate();

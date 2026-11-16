@@ -7,7 +7,7 @@ import { parseSourceMap } from "../dist/sources.js";
 import { createDevelopmentTimeline, initialDevelopmentState, withoutFailures } from "../dist/timeline.js";
 
 const map = parseSourceMap({
-  format: "runic-bridge-sources/1",
+  format: "runic.views.bridge-sources/1",
   viewModels: [{
     id: "Demo.EditorViewModel", name: "Editor", route: "editor", contract: "Demo.EditorViewModel:AA", pageKinds: ["editor"],
     symbol: "Demo.EditorViewModel", location: { file: "/src/EditorViewModel.cs", line: 5, column: 29 },

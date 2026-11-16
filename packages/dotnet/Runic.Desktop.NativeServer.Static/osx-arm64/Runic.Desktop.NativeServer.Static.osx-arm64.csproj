@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../../eng/build/desktop.props" />
   <PropertyGroup>
-    <RunicNativeServerRuntime>osx-arm64</RunicNativeServerRuntime>
+    <_RunicNativeServerRuntime>osx-arm64</_RunicNativeServerRuntime>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>

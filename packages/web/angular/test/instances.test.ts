@@ -10,7 +10,7 @@ import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { createMockBridge, type MockBridge, type MockView } from "@runic-artifex/views/mock";
 import {
   configureTranslatedText, createRunicInstance, injectBridgeConnection, injectRunicInstance, injectText, injectView,
-  injectWindowLocale, pageInstance, provideRunicInstance, RUNIC_INSTANCE, RunicTextPipe, textLocaleSignal,
+  injectTextLocale, injectWindowLocale, pageInstance, provideRunicInstance, RUNIC_INSTANCE, RunicTextPipe, textLocaleSignal,
   type RunicInstance, type TextReference,
 } from "@runic-artifex/angular";
 
@@ -87,6 +87,10 @@ describe("Runic instances", () => {
     expect(textLocaleSignal(a.instance)()).toBe("en");
     expect(textLocaleSignal(b.instance)()).toBe("de");
     expect(textLocaleSignal(a.instance), "one signal per instance").toBe(textLocaleSignal(a.instance));
+    const environment = createEnvironmentInjector([provideRunicInstance(b.instance)], TestBed.inject(EnvironmentInjector));
+    cleanup.push(() => environment.destroy());
+    expect(injectTextLocale({ injector: environment }), "injectTextLocale is the instance's signal").toBe(textLocaleSignal(b.instance));
+    expect(runInInjectionContext(environment, () => injectTextLocale())()).toBe("de");
 
     b.bridge.disconnect();
     await settle([first, second], a);
@@ -120,5 +124,7 @@ describe("Runic instances", () => {
     expect(TestBed.inject(RUNIC_INSTANCE)).toBe(pageInstance());
     expect(TestBed.runInInjectionContext(() => injectRunicInstance())).toBe(pageInstance());
     expect(textLocaleSignal()).toBe(textLocaleSignal(pageInstance()));
+    expect(TestBed.runInInjectionContext(() => injectTextLocale())).toBe(textLocaleSignal(pageInstance()));
+    expect(() => injectTextLocale(), "outside an injection context without an injector").toThrow();
   });
 });

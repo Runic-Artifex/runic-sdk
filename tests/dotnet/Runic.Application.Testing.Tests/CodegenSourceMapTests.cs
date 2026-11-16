@@ -78,7 +78,7 @@ internal sealed partial class CodegenDiagnosticsTests
             var source = Path.GetFullPath(Path.Combine(directory, "Fixture.cs"));
             using var map = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "cs", "sources.json")));
             var root = map.RootElement;
-            Require(root.GetProperty("format").GetString() == "runic-bridge-sources/1", "The map has no runic-bridge-sources/1 format.");
+            Require(root.GetProperty("format").GetString() == "runic.views.bridge-sources/1", "The map has no runic.views.bridge-sources/1 format.");
             var lines = SourceMapFixture.Split('\n');
             // A text ending in a line break is a whole line.
             int Line(string text) => Array.FindIndex(lines, line => text.EndsWith('\n')

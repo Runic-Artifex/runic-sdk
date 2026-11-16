@@ -17,8 +17,8 @@ such as `RUNICASSETS001`. A prefix that already names compiler or build
 diagnostics numbers them from `100`, so the two never share a number: the D-Bus
 source generator reports `RUNICDBUS001` to `RUNICDBUS013`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
-Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
-experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
+Runic.Desktop, Runic.Desktop.Kestrel and Runic.Desktop.NativeServer build targets
+report `RUNICDESK001` to `RUNICDESK006`, so the experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
 `RUNICDESK102` are retired, `RUNICDESK103` to `RUNICDESK105` are in use, so the
 next is `RUNICDESK106`. The Navigation
 ReactiveUI build targets report `RUNICNAV002`, after the retired `RUNICNAV001`,
@@ -167,6 +167,8 @@ Experimental npm APIs:
 | `@runic-artifex/views` | Hosted regions: `defineHostedRegion`, `hostedRegionTag`, `HostedRegionSizing`, `HostedRegionState`, `HostedRegionStateChangeDetail`, `HostedRegionTitleChangeDetail` and `RunicHostedRegionElement`, the `<runic-hosted-region>` element that shows a hosted guest's Window in a region of a host page ([hosted regions](../specs/application/README.md#hosted-regions), feature `hosted-regions/1`). From 0.19 it sets the CSS `color-scheme` of the frame, or of a component's element, from the region's appearance override. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 |
 | `@runic-artifex/views` | The close drain: `onBridgeDraining`, whether the application closed the window with a close drain, which keeps it visible and connected while its work drains (`closing` with `draining: true`, [window close](../specs/application/README.md#window-close)). Its .NET side is [`RUNICDESK105`](#RUNICDESK105). | 0.19.0 |
 | `@runic-artifex/react`, `@runic-artifex/vue`, `@runic-artifex/svelte`, `@runic-artifex/angular` | `RunicHostedRegion`, the framework's component for `<runic-hosted-region>`, and the element's types (Angular also `HostedRegionStateChange`) | 0.18.0 |
+| `@runic-artifex/views` | Trusted component mode: `defineRunicComponent`, `connectComponentBridge` and the types `RunicComponentBridge`, `RunicComponentConnection`, `RunicComponentContext`, `RunicComponentDefinition`, `RunicComponentElement`, `RunicComponentEndpoint`, `RunicComponentMount`, `RunicComponentOptions` and `RunicComponentStyle`, the runtime of a guest's Views as a custom element in a host page's own document ([components](../packages/web/views/README.md#components-experimental)). The `./component` entry of 0.18 to 0.20 exported them; 0.21 removed it. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 (`./experimental` since 0.21.0) |
+| `@runic-artifex/vite-plugin-runic` | `runic` with the `component` build target, which builds a guest's component next to its page, and the types `RunicExperimentalViteOptions` and `RunicComponentOptions` ([component build target](../packages/web/vite-plugin-runic/README.md#component-build-target-experimental)). Until 0.20 the root entry's `runic` took `component`; from 0.21 it throws for it. Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.18.0 (`./experimental` since 0.21.0) |
 | `@runic-artifex/angular` | `runicComponentMount` and `RunicComponentMountOptions`: the mount function of an Angular guest's component build in [trusted component mode](hosted-regions.md#component-mode), with its styles in the element's shadow root ([components](../packages/web/angular/README.md#components-experimental)). Its .NET side is [`RUNICDESK103`](#RUNICDESK103). | 0.20.0 |
 
 The APIs below graduated in 0.10.0, which removed the `./experimental` entries of
