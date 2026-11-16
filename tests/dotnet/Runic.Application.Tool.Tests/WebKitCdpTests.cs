@@ -273,6 +273,43 @@ internal sealed partial class ToolTests
         Equal("Runtime.executionContextsCleared", webKit.Emitted[^1].Method);
     }
 
+    [Test, DisplayName("a breakpoint that WebKit sets in a script parsed later reaches the debugger, as with Chromium")]
+    public async Task ResolvedBreakpointsReachTheDebugger()
+    {
+        // A breakpoint set while a reload replaced the script: WebKit has no location yet, and binds it once the new
+        // script is parsed. js-debug shows the breakpoint unverified until it hears of that location.
+        const string id = "http://h/src/App.tsx:68:13";
+        var webKit = new FakeWebKit
+        {
+            Answer = static (method, _) => method == "Debugger.setBreakpointByUrl" ? Json($$"""{"breakpointId":"{{id}}","locations":[]}""") : [],
+        };
+        CdpPageSession session = webKit.Session();
+        JsonObject set = await session.HandleAsync("Debugger.setBreakpointByUrl", Json("""{"url":"http://h/src/App.tsx","lineNumber":68,"columnNumber":13}"""));
+        Equal(0, set["locations"]!.AsArray().Count);
+        const string parsed = """{"scriptId":"4673","url":"http://h/src/App.tsx","startLine":0,"startColumn":0,"endLine":142,"endColumn":0,"sourceMapURL":"data:x"}""";
+        const string resolved = $$$"""{"breakpointId":"{{{id}}}","location":{"scriptId":"4673","lineNumber":70,"columnNumber":19}}""";
+        await session.TranslateEventAsync("Debugger.scriptParsed", Json(parsed));
+        string scriptId = webKit.Emitted[^1].Parameters["scriptId"]!.GetValue<string>();
+        await session.TranslateEventAsync("Debugger.breakpointResolved", Json(resolved));
+        (string method, JsonObject parameters) = webKit.Emitted[^1];
+        Equal(("Debugger.breakpointResolved", id, scriptId, 70, 19), (method, parameters["breakpointId"]!.GetValue<string>(),
+            parameters["location"]!["scriptId"]!.GetValue<string>(), parameters["location"]!["lineNumber"]!.GetValue<int>(),
+            parameters["location"]!["columnNumber"]!.GetValue<int>()));
+
+        // Not one that the debugger did not set.
+        int emitted = webKit.Emitted.Count;
+        await session.TranslateEventAsync("Debugger.breakpointResolved", Json("""{"breakpointId":"other","location":{"scriptId":"4673","lineNumber":1,"columnNumber":0}}"""));
+        Equal(emitted, webKit.Emitted.Count);
+
+        // In the replay of Debugger.enable, after the replayed scripts.
+        await session.TranslateEventAsync(CdpPageSession.ReplayStart, []);
+        await session.TranslateEventAsync("Debugger.scriptParsed", Json(parsed));
+        await session.TranslateEventAsync("Debugger.breakpointResolved", Json(resolved));
+        Equal(emitted, webKit.Emitted.Count);
+        await session.TranslateEventAsync(CdpPageSession.ReplayEnd, []);
+        SequenceEqual(["Debugger.scriptParsed", "Debugger.breakpointResolved"], [.. webKit.Emitted.Skip(emitted).Select(static e => e.Method)]);
+    }
+
     [Test, DisplayName("the replay on attach is in creation order, without stale or superseded scripts")]
     public void ReplayKeepsTheCurrentScripts()
     {
@@ -723,6 +760,15 @@ internal sealed partial class ToolTests
         JsonObject detached = await ide.EventAsync("Inspector.detached");
         Equal((session, CdpClient.ReplacedReason), (detached["sessionId"]?.GetValue<string>(), detached["params"]!["reason"]!.GetValue<string>()));
         Equal(session, (await ide.EventAsync("Target.detachedFromTarget"))["params"]!["sessionId"]!.GetValue<string>());
+        // dev prints its line after the sessions ended.
+        for (int attempt = 0; attempt < 200; attempt++)
+        {
+            lock (lines)
+            {
+                if (lines.Count > 0) break;
+            }
+            await Task.Delay(25);
+        }
         lock (lines) Equal(WebKitDebugEndpoint.ReplacedLine($"127.0.0.1:{server.Port}"), lines.Single());
 
         // Until the other client leaves and afterwards, the replaced connection sent only its probe: no Setup that could

@@ -42,7 +42,10 @@ const renderLine = lineOf(app, "useView(workspace)");
 const counterLine = lineOf(counterPage, "const error = increment.error");
 const t0 = Date.now();
 const log = (...x) => console.log(`[${((Date.now() - t0) / 1000).toFixed(2)}s]`, ...x);
-const dapPort = 42000 + Math.floor(Math.random() * 1000);
+// A port that the system has free, for js-debug's DAP server: a random one could be taken.
+const dapPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer().once("error", reject).listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 const server = spawn(process.execPath, [`${a.jsdebug}/src/dapDebugServer.js`, String(dapPort), "127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
 server.stderr.on("data", d => process.stderr.write(`[js-debug] ${d}`));
 const done = code => { try { server.kill(); } catch {} setTimeout(() => process.exit(code), 200); };
