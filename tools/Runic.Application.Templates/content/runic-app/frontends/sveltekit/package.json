@@ -22,7 +22,7 @@
     "@runic-artifex/sveltekit": "__RUNIC_NPM_VERSION__",
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
     "@sveltejs/adapter-static": "4.0.1",
-    "@sveltejs/kit": "3.0.0",
+    "@sveltejs/kit": "3.1.1",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@vitejs/devtools": "0.7.6",
     "happy-dom": "21.0.4",

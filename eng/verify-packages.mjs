@@ -485,7 +485,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           react: "19.3.0",
           "@types/react": "19.3.0",
           vue: "3.5.43",
-          "@sveltejs/kit": "3.0.0",
+          "@sveltejs/kit": "3.1.1",
           "@sveltejs/adapter-static": "4.0.1",
           "@sveltejs/vite-plugin-svelte": "7.3.1",
           // The release of the compiler that builds the runic-views catalog (one pin, eng/workspace.test.mjs).
