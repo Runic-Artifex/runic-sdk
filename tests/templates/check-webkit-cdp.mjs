@@ -162,7 +162,7 @@ async function checkBrowser() {
       if (waited > startTimeout) throw new Error("dotnet runic dev --browser was not ready in time");
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    const url = /^\[dev\] Browser: the Window serves at (http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(output)?.[1];
+    const url = /^\[dev\] Browser: Window serves at (http:\/\/127\.0\.0\.1:\d+\/)$/m.exec(output)?.[1];
     if (!url) throw new Error("dotnet runic dev --browser printed no [dev] Browser: line for the Window");
     if (url !== configuration.url) throw new Error(`dev serves the Window at ${url}, the launch configuration opens ${configuration.url}`);
     const session = JSON.parse(readFileSync(join(project, "obj/runic/dev-session.json"), "utf8"));

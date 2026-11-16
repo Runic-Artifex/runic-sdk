@@ -19,7 +19,9 @@ namespace Runic.Application.Tool;
 /// <c>/windows/&lt;n&gt;</c> the n-th Window it opened since it started; until that Window serves, a page that reloads
 /// itself every second. Only a navigation the browser itself starts gets the redirect: a typed address, a command line or
 /// a reload, not a link or script of a web page (<see cref="Respond"/>), which could otherwise take the surface's one
-/// client slot.
+/// client slot. On Linux it also answers only the user who runs dev (<see cref="CheckPeer"/>): loopback admits every local
+/// account, and the redirect hands out the Window's credential. macOS and Windows offer no unprivileged way to tell a
+/// loopback connection's user, so there any local user's process can follow it.
 /// </summary>
 internal sealed class BrowserEntry : IAsyncDisposable
 {
@@ -40,9 +42,17 @@ internal sealed class BrowserEntry : IAsyncDisposable
     private readonly List<Served> _windows = [];
     private readonly CancellationTokenSource _stop = new();
     private readonly List<Task> _connections = [];
+    private readonly LoopbackSockets? _sockets;
+    private readonly Action<string> _report;
+    private readonly HashSet<uint?> _reportedPeers = [];
     private Task _accepting = Task.CompletedTask;
 
-    private BrowserEntry(TcpListener listener) => _listener = listener;
+    private BrowserEntry(TcpListener listener, LoopbackSockets? sockets, Action<string> report)
+    {
+        _listener = listener;
+        _sockets = sockets;
+        _report = report;
+    }
 
     internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
@@ -55,8 +65,12 @@ internal sealed class BrowserEntry : IAsyncDisposable
     internal static string WindowUrl(int port, int index) =>
         index == 0 ? RootUrl(port) : $"{RootUrl(port)}windows/{(index + 1).ToString(CultureInfo.InvariantCulture)}";
 
-    /// <summary>Listens on 127.0.0.1:<paramref name="port"/> (0 for any free port); null when the port is taken.</summary>
-    internal static BrowserEntry? TryStart(int port)
+    /// <summary>
+    /// Listens on 127.0.0.1:<paramref name="port"/> (0 for any free port); null when the port is taken.
+    /// <paramref name="sockets"/> tells who owns a connection's other end (null: no check, off Linux); <paramref name="report"/>
+    /// receives the <c>[dev]</c> line for each user whose request it refused.
+    /// </summary>
+    internal static BrowserEntry? TryStart(int port, LoopbackSockets? sockets = null, Action<string>? report = null)
     {
         var listener = new TcpListener(IPAddress.Loopback, port);
         try
@@ -68,7 +82,7 @@ internal sealed class BrowserEntry : IAsyncDisposable
             listener.Dispose();
             return null;
         }
-        var entry = new BrowserEntry(listener);
+        var entry = new BrowserEntry(listener, sockets, report ?? Console.Error.WriteLine);
         entry._accepting = Task.Run(entry.AcceptAsync);
         return entry;
     }
@@ -174,6 +188,42 @@ internal sealed class BrowserEntry : IAsyncDisposable
         return index < targets.Count ? new(302, targets[index], "") : new(200, null, WaitingPage);
     }
 
+    /// <summary>What <see cref="CheckPeer"/> decided for a connection.</summary>
+    internal readonly record struct PeerCheck(bool Allowed, bool Report, uint? Owner);
+
+    /// <summary>
+    /// Whether the other end of a connection belongs to the user who runs dev, as #1046's CDP adapter decides it. A peer that
+    /// is not listed while the entry's listener is (it closed already, such as a port probe) is refused without a line;
+    /// tables that cannot be read are refused with one.
+    /// </summary>
+    internal static PeerCheck CheckPeer(LoopbackSockets? sockets, IPEndPoint local, IPEndPoint remote)
+    {
+        if (sockets is null) return new(true, false, null);
+        uint? owner = sockets.PeerOwner(local, remote);
+        if (owner == sockets.User) return new(true, false, owner);
+        return new(false, owner is not null || sockets.ListenerOwners(local.Address, local.Port).Count == 0, owner);
+    }
+
+    internal static string RefusedPeerMessage(int port, uint? owner) => owner is { } uid
+        ? $"[dev] Warning: refused a request to {RootUrl(port)} from another user (uid {uid.ToString(CultureInfo.InvariantCulture)}); " +
+          "--browser's address answers only the user who runs dotnet runic dev."
+        : $"[dev] Warning: refused a request to {RootUrl(port)} whose user could not be determined from /proc/net/tcp; " +
+          "--browser's address answers only the user who runs dotnet runic dev.";
+
+    internal const string RefusedPeerBody = "Forbidden: this address answers only the user who runs dotnet runic dev.";
+
+    private bool IsOwnUsers(TcpClient client)
+    {
+        if (_sockets is null) return true;
+        if (client.Client.LocalEndPoint is not IPEndPoint local || client.Client.RemoteEndPoint is not IPEndPoint remote) return false;
+        PeerCheck check = CheckPeer(_sockets, local, remote);
+        if (check.Allowed) return true;
+        bool first;
+        lock (_reportedPeers) first = check.Report && _reportedPeers.Add(check.Owner);
+        if (first) _report(RefusedPeerMessage(Port, check.Owner));
+        return false;
+    }
+
     private async Task AcceptAsync()
     {
         try
@@ -207,6 +257,12 @@ internal sealed class BrowserEntry : IAsyncDisposable
                     request = await HttpRequestHead.ReadAsync(stream, MaximumRequestHead, timeout.Token).ConfigureAwait(false);
                 }
                 if (request is null) return;
+                // Another local user would otherwise receive the Window's credentialed address.
+                if (!IsOwnUsers(client))
+                {
+                    await WriteAsync(stream, new Response(403, null, RefusedPeerBody), headOnly: false).ConfigureAwait(false);
+                    return;
+                }
                 string[] targets;
                 lock (_gate) targets = [.. _windows.ConvertAll(static window => window.Target)];
                 Response response = Respond(request.Method, request.Path, request.Header("Host"), request.Header("Origin"),

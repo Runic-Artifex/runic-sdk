@@ -20,6 +20,9 @@ internal sealed partial class ToolTests
     private const string DocumentedDiagnosticPattern =
         @"^\s*(?:\d+>)?(?<file>\S.*?)(?:\((?<line>\d+)(?:,(?<column>\d+))?(?:,\d+,\d+)?\))?\s*:\s+(?:\S+\s+)?(?<severity>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<message>.*?)(?:\s+\[[^\]]+\])?$";
 
+    /// <summary>The regex (API-26) tools/dotnet-runic/README.md documents for the [dev] Browser contract line.</summary>
+    private const string DocumentedBrowserLinePattern = @"^\[dev\] Browser: Window serves at (?<url>http://\S+)$";
+
     /// <summary>VS Code 1.119's built-in <c>$msCompile</c> pattern.</summary>
     private const string MsCompilePattern =
         @"^\s*(?:\s*\d+>)?(\S.*?)(?:\((\d+|\d+,\d+|\d+,\d+,\d+,\d+)\))?\s*:\s+(?:(\S+)\s+)?((?:fatal +)?error|warning|info)\s+(\w+\d+)?\s*:\s*(.*)$";

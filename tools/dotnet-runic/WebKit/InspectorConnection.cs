@@ -51,10 +51,14 @@ internal sealed class InspectorConnection : IAsyncDisposable
 
     internal bool IsClosed => Volatile.Read(ref _closed) != 0;
 
-    /// <summary>Connects and announces this client; completes once the server described its protocol.</summary>
-    internal async Task ConnectAsync(string host, int port, CancellationToken cancellationToken)
+    /// <summary>
+    /// Connects and announces this client; completes once the server described its protocol. <paramref name="verifyServer"/>
+    /// runs once the TCP connection is open and before anything is sent; it throws to refuse the server.
+    /// </summary>
+    internal async Task ConnectAsync(string host, int port, Action? verifyServer, CancellationToken cancellationToken)
     {
         await _client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+        verifyServer?.Invoke();
         CdpTrace.Write("webkit", $"inspector connection {_generation} to {host}:{port}");
         _stream = _client.GetStream();
         _reading = Task.Run(() => ReadAsync(_stop.Token), CancellationToken.None);

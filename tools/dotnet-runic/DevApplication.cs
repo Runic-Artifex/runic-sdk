@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
@@ -58,11 +59,16 @@ internal static class DevApplication
             $"WebView, and native window features such as dialogs and menus report OwnerUnavailable.{moved}";
     }
 
-    /// <summary>The line for a Window that the serve-only Window process serves, at its entry address.</summary>
-    internal static string BrowserServedLine(BrowserEntry.ServedWindow served) =>
-        served.Index == 0
-            ? $"[dev] Browser: the Window serves at {served.EntryUrl}"
-            : $"[dev] Browser: another Window serves at {served.EntryUrl}";
+    /// <summary>
+    /// The IDE contract line for each Window that the serve-only Window process serves, at its entry address: one form for
+    /// every Window, which <see cref="BrowserServedPattern"/> matches. The first Window's address is the root, <c>/</c>.
+    /// </summary>
+    internal static string BrowserServedLine(BrowserEntry.ServedWindow served) => BrowserServedPrefix + served.EntryUrl;
+
+    internal const string BrowserServedPrefix = "[dev] Browser: Window serves at ";
+
+    /// <summary>The regex the README documents for <see cref="BrowserServedLine"/>.</summary>
+    internal const string BrowserServedPattern = @"^\[dev\] Browser: Window serves at (?<url>http://\S+)$";
 
     /// <summary>The session file's section of the dotnet-runic README at this release.</summary>
     internal static string SessionFileHelpUri => RunicReleaseLinks.SourceUrl + "tools/dotnet-runic/README.md#session-file";
@@ -118,24 +124,36 @@ internal static class DevApplication
         WebKitDebugging.Plan debugging = WebKitDebugging.Decide(configuration, options, Environment.GetEnvironmentVariable,
             OperatingSystem.IsLinux(), LoopbackPort.Reserve, WebKitDebugging.ReadInstalledVersion);
         options = options with { DebugEnvironment = debugging.WindowEnvironment };
+        // On Linux the adapter and --browser's address accept only connections of this user, and the adapter talks only to an
+        // inspector port of this user.
+        LoopbackSockets? sockets = LoopbackSockets.Current;
         // --browser: a fixed loopback address for the IDE's browser, which sends it to the serve-only Window's page.
         await using BrowserEntry? browser = options.Browser
-            ? BrowserEntry.TryStart(BrowserEntry.DefaultPort) ?? BrowserEntry.TryStart(0)
+            ? BrowserEntry.TryStart(BrowserEntry.DefaultPort, sockets, Console.Error.WriteLine) ?? BrowserEntry.TryStart(0, sockets, Console.Error.WriteLine)
                 ?? throw new DevDevelopmentException(BrowserUnavailableCode,
                     "--browser could not open a loopback port for the browser's address.", category: CommandExitCategory.Unavailable)
             : null;
         await using WebKitDebugEndpoint? adapter = debugging.StartAdapter
-            ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort)
+            ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort, sockets, Console.Error.WriteLine)
             : null;
         var webKitEndpoints = new List<DevSession.DebugEndpoint>(debugging.Endpoints);
         var debuggingHints = new List<string>(debugging.Hints);
         if (adapter is not null)
         {
+            // A fixed inspector port (--no-window, or the developer's) that another user holds already: say so now.
+            if (sockets is not null && IPAddress.TryParse(debugging.InspectorHost, out IPAddress? inspectorAddress) &&
+                sockets.ForeignListener(inspectorAddress, debugging.InspectorPort) is { } inspectorOwner)
+            {
+                debuggingHints.Add(WebKitDebugging.ForeignInspectorHint(debugging.InspectorHost!, debugging.InspectorPort, inspectorOwner));
+            }
             // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port.
             if (adapter.Start(WebKitDebugging.DefaultCdpPort) || adapter.Start(0))
             {
                 webKitEndpoints.Insert(0, WebKitDebugging.CdpEndpoint(adapter.Port!.Value));
-                debuggingHints.Add(WebKitDebugging.CdpHint(adapter.Port.Value, debugging));
+                uint? defaultPortOwner = adapter.Port.Value == WebKitDebugging.DefaultCdpPort
+                    ? null
+                    : sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
+                debuggingHints.AddRange(WebKitDebugging.CdpHints(adapter.Port.Value, debugging, defaultPortOwner));
             }
             else
             {

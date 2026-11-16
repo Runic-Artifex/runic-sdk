@@ -92,7 +92,7 @@ IDE tasks and extensions read `dotnet runic dev` through stable lines and a sess
 [IDE contract](../tools/dotnet-runic/README.md#ide-contract):
 
 - **Lines:** `[dev] Window started: process <pid>` (the process to attach to), `[dev] Ready`, and
-  `[dev] Window exited: process <pid>`, and with `--browser` `[dev] Browser: the Window serves at <url>`. A failure is one line in MSBuild's form,
+  `[dev] Window exited: process <pid>`, and with `--browser` `[dev] Browser: Window serves at <url>`. A failure is one line in MSBuild's form,
   `<project> : error RAPPDEV1007: <message>`, which `$msCompile` matches.
 - **Session file:** `obj/runic/dev-session.json` (`runic.application.tool.dev-session/1`), rewritten on each change.
   `state` is `starting`, `ready` or `stopped`; a `dev` that was killed leaves its last state, so a reader trusts
@@ -175,7 +175,9 @@ development server's source maps, stepping, conditions, logpoints, exceptions, t
 
 Two differences from the Window: the page runs on **Chromium**, not on the Window's engine, so check WebKit- or
 WebView2-specific behaviour in the Window; and it has **no native window features**: file dialogs, menus and the
-window's commands report `OwnerUnavailable`, and there is no side panel. The Window admits one browser, and after
+window's commands report `OwnerUnavailable`, and there is no side panel. On Linux the address answers only the user who
+runs `dev`; macOS and Windows cannot tell a loopback connection's user, so on a shared machine another local user's
+process can follow it there. The Window admits one browser, and after
 `dotnet watch` restarts it, open the address again. Attach the .NET debugger to the process that
 `[dev] Window started` names, as without `--browser`. See the dotnet-runic README's
 [Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).

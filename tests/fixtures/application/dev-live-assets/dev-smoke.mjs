@@ -62,7 +62,7 @@ const save = async text => {
 try {
   // Ready once the Window serves its first page; the session file lists the entry address.
   const started = await until(() => dev.exitCode !== null ? { exited: dev.exitCode }
-    : /^\[dev\] Ready$/m.test(output) && output.match(/^\[dev\] Browser: the Window serves at (\S+)$/m)?.[1], "the Window's entry address", 180_000);
+    : /^\[dev\] Ready$/m.test(output) && output.match(/^\[dev\] Browser: Window serves at (\S+)$/m)?.[1], "the Window's entry address", 180_000);
   if (typeof started !== "string")
     throw new Error(`dotnet runic dev exited with ${started.exited}:\n${tail(output)}\n${tail(errors)}`);
   const session = JSON.parse(await readFile(sessionFile, "utf8"));

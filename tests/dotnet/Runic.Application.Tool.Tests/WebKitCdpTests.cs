@@ -391,11 +391,25 @@ internal sealed partial class ToolTests
         WebKitDebugging.Plan chosen = Decide(options with { Environment = [new("WEBKIT_INSPECTOR_SERVER", "127.0.0.1:5555")] },
             name => name == "WEBKIT_INSPECTOR_SERVER" ? "127.0.0.1:6666" : null);
         Equal((true, "127.0.0.1", 5555, 0), (chosen.StartAdapter, chosen.InspectorHost, chosen.InspectorPort, chosen.WindowEnvironment.Count));
-        False(Decide(options, name => name == "WEBKIT_INSPECTOR_SERVER" ? "0.0.0.0:5555" : null).StartAdapter, "a non-loopback address");
-        // WEBKIT_INSPECTOR_HTTP_SERVER replaces the socket server in WebKit, so no adapter.
-        WebKitDebugging.Plan http = Decide(options, name => name == "WEBKIT_INSPECTOR_HTTP_SERVER" ? "127.0.0.1:7777" : null);
+        WebKitDebugging.Plan exposed = Decide(options, name => name == "WEBKIT_INSPECTOR_SERVER" ? "0.0.0.0:5555" : null);
+        False(exposed.StartAdapter, "a non-loopback address");
+        Contains(exposed.Hints[^1], "[dev] Warning: WEBKIT_INSPECTOR_SERVER=0.0.0.0:5555 is not a loopback address");
+        // WEBKIT_INSPECTOR_HTTP_SERVER replaces the socket server in WebKit, so no adapter; it is checked like --webkit-inspector.
+        WebKitDebugging.Plan http = Decide(options, name => name == "WEBKIT_INSPECTOR_HTTP_SERVER" ? "127.0.0.1:7777" : null,
+            version: new Version(2, 56, 0));
         Equal((false, "webkit-inspector"), (http.StartAdapter, http.Endpoints.Single().Protocol));
         Contains(http.Hints.Single(), "ignores WEBKIT_INSPECTOR_SERVER");
+        foreach (Version? unsafeVersion in (Version?[])[new Version(2, 54, 2), new Version(2, 55, 4), null])
+        {
+            WebKitDebugging.Plan unsafeHttp = Decide(options with { Environment = [new("WEBKIT_INSPECTOR_HTTP_SERVER", "127.0.0.1:7777")] },
+                version: unsafeVersion);
+            Equal(2, unsafeHttp.Hints.Count);
+            Contains(unsafeHttp.Hints[1], "[dev] Warning: WebKitGTK");
+            Contains(unsafeHttp.Hints[1], "any web page");
+        }
+        WebKitDebugging.Plan exposedHttp = Decide(options, name => name == "WEBKIT_INSPECTOR_HTTP_SERVER" ? "0.0.0.0:7777" : null,
+            version: new Version(2, 56, 0));
+        Contains(exposedHttp.Hints[^1], "WEBKIT_INSPECTOR_HTTP_SERVER=0.0.0.0:7777 is not a loopback address");
 
         // --webkit-inspector: WebKit's HTTP inspector only where WebKitGTK refuses other origins (bug 330602).
         WebKitDebugging.Plan fixedVersion = Decide(options with { WebKitInspector = true }, version: new Version(2, 54, 3));
@@ -408,9 +422,135 @@ internal sealed partial class ToolTests
             Equal("WEBKIT_INSPECTOR_SERVER", refused.WindowEnvironment.Single().Key);
             Contains(refused.Hints.Single(), "bug 330602");
         }
+        // Under --no-window the IDE's Window may load another WebKitGTK than dev.
+        Contains(Decide(options with { WebKitInspector = true, StartWindow = false }, version: new Version(2, 54, 0)).Hints.Single(),
+            "The check used the WebKitGTK that dev loads");
 
-        Contains(WebKitDebugging.CdpHint(9222, defaults), "http://127.0.0.1:9222/");
-        Contains(WebKitDebugging.CdpHint(9333, defaults), "Port 9222 was taken");
+        Contains(WebKitDebugging.CdpHints(9222, defaults).Single(), "http://127.0.0.1:9222/");
+        Contains(WebKitDebugging.CdpHints(9333, defaults).Single(), "Port 9222 was taken");
+        // Another user holds 9222: an attach configuration that keeps it would reach their process.
+        IReadOnlyList<string> squatted = WebKitDebugging.CdpHints(9333, defaults, 1001);
+        Equal(2, squatted.Count);
+        Contains(squatted[1], "[dev] Warning: port 9222 belongs to another user (uid 1001)");
+        Contains(WebKitDebugging.ForeignInspectorHint("127.0.0.1", 9223, 1001), "127.0.0.1:9223 belongs to another user (uid 1001)");
+    }
+
+    [Test, DisplayName("only WebKitGTK releases with the fix for bug 330602 count as fixed")]
+    public void HttpInspectorVersionGate()
+    {
+        foreach ((Version? version, bool expected) in (ValueTuple<Version?, bool>[])[
+            (null, false), (new Version(2, 52, 9), false), (new Version(2, 54, 2), false), (new Version(2, 54, 3), true),
+            (new Version(2, 54, 10), true), (new Version(2, 55, 0), false), (new Version(2, 55, 9), false),
+            (new Version(2, 56, 0), true), (new Version(2, 57, 1), true), (new Version(3, 0, 0), true)])
+        {
+            Equal(expected, WebKitDebugging.HttpInspectorIsFixed(version));
+        }
+    }
+
+    // As /proc/net/tcp and /proc/net/tcp6 print them on a little-endian machine: 0100007F is 127.0.0.1, 2406 is 9222.
+    private const string SyntheticTcp = """
+          sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+           0: 0100007F:2406 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 101 1 0000000000000000 100 0 0 10 0
+           1: 0100007F:2406 0100007F:A000 01 00000000:00000000 00:00000000 00000000  1000        0 102 1 0000000000000000 20 4 30 10 -1
+           2: 0100007F:A000 0100007F:2406 01 00000000:00000000 00:00000000 00000000  1001        0 103 1 0000000000000000 20 4 30 10 -1
+           3: 0100007F:A001 0100007F:2406 06 00000000:00000000 03:00001770 00000000     0        0 0 3 0000000000000000
+           4: 00000000:240F 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1002        0 104 1 0000000000000000 100 0 0 10 0
+           5: 0100007F:2406 0100007F:A003 01 00000000:00000000 00:00000000 00000000  1000        0 105 1 0000000000000000 20 4 30 10 -1
+           6: 0100007F:A003 0100007F:2406 01 00000000:00000000 00:00000000 00000000  1000        0 106 1 0000000000000000 20 4 30 10 -1
+           7: not a row
+        """;
+
+    private const string SyntheticTcp6 = """
+          sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+           0: 0000000000000000FFFF00000100007F:A002 0000000000000000FFFF00000100007F:2406 01 00000000:00000000 00:00000000 00000000  1003        0 107 1 0000000000000000 20 4 30 10 -1
+           1: 00000000000000000000000001000000:2410 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1004        0 108 1 0000000000000000 100 0 0 10 0
+        """;
+
+    [Test, DisplayName("the owner of a loopback connection's other end and of a listener, from /proc/net/tcp")]
+    public void LoopbackSocketOwnersFromProcNetTcp()
+    {
+        var sockets = new LoopbackSockets(path => path.EndsWith("tcp6", StringComparison.Ordinal) ? SyntheticTcp6 : SyntheticTcp, 1000);
+        var adapter = new IPEndPoint(IPAddress.Loopback, 9222);
+        IPEndPoint Client(int port) => new(IPAddress.Loopback, port);
+        Equal(1001u, sockets.PeerOwner(adapter, Client(0xA000)));
+        Equal(1000u, sockets.PeerOwner(adapter, Client(0xA003)));
+        Equal(1003u, sockets.PeerOwner(adapter, Client(0xA002)));
+        Equal((uint?)null, sockets.PeerOwner(adapter, Client(0xA001)));
+        Equal((uint?)null, sockets.PeerOwner(adapter, Client(0xBEEF)));
+
+        SequenceEqual([1000u], sockets.ListenerOwners(IPAddress.Loopback, 9222));
+        Equal((uint?)null, sockets.ForeignListener(IPAddress.Loopback, 9222));
+        Equal(1000u, new LoopbackSockets(path => path.EndsWith("tcp6", StringComparison.Ordinal) ? SyntheticTcp6 : SyntheticTcp, 1001)
+            .ForeignListener(IPAddress.Loopback, 9222));
+        // A wildcard listener receives loopback connections too; ::1 is not 127.0.0.1.
+        SequenceEqual([1002u], sockets.ListenerOwners(IPAddress.Loopback, 0x240F));
+        SequenceEqual([1004u], sockets.ListenerOwners(IPAddress.IPv6Loopback, 0x2410));
+        SequenceEqual(Array.Empty<uint>(), sockets.ListenerOwners(IPAddress.Loopback, 0x2410));
+        SequenceEqual(Array.Empty<uint>(), new LoopbackSockets(static _ => null, 1000).ListenerOwners(IPAddress.Loopback, 9222));
+        Equal(7, LoopbackSockets.Parse(SyntheticTcp).Count);
+    }
+
+    // The machine's real tables with the owner of the rows that match replaced, as another user's sockets would look.
+    private static LoopbackSockets ForeignOwner(Func<LoopbackSockets.Entry, bool> foreign) => new(path =>
+    {
+        string table = File.ReadAllText(path);
+        return string.Join('\n', table.Split('\n').Select(line =>
+        {
+            string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (LoopbackSockets.Parse("x\n" + line).SingleOrDefault() is not { Local: not null } entry || !foreign(entry)) return line;
+            fields[7] = "4242";
+            return string.Join(' ', fields);
+        }));
+    }, LoopbackSockets.Current!.User);
+
+    [Test, DisplayName("the CDP adapter closes connections of other local users and reports them once")]
+    public async Task CdpEndpointRefusesOtherUsers()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        using var server = new FakeInspectorServer();
+        var reported = new List<string>();
+        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port,
+            ForeignOwner(static entry => entry.State == 1 && entry.Remote.Port != 0), line => { lock (reported) reported.Add(line); });
+        True(endpoint.Start(0), "the endpoint listens");
+        using var http = new HttpClient();
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            await ThrowsAsync<HttpRequestException>(() => http.GetStringAsync($"http://127.0.0.1:{endpoint.Port}/json/version"));
+        }
+        lock (reported) Contains(reported.Single(), "from another user (uid 4242)");
+    }
+
+    [Test, DisplayName("the CDP adapter does not connect to an inspector port that another local user listens on")]
+    public async Task CdpEndpointRefusesAnotherUsersInspector()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        using var server = new FakeInspectorServer();
+        var reported = new List<string>();
+        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port,
+            ForeignOwner(entry => entry.State == LoopbackSockets.ListenState && entry.Local.Port == server.Port), line => { lock (reported) reported.Add(line); });
+        True(endpoint.Start(0), "the endpoint listens");
+        using var http = new HttpClient();
+        Equal("[]", await http.GetStringAsync($"http://127.0.0.1:{endpoint.Port}/json/list"));
+        lock (reported) Contains(reported.Single(), $"127.0.0.1:{server.Port} belongs to another user (uid 4242)");
+        lock (server.Commands) Equal(0, server.Commands.Count);
+    }
+
+    [Test, DisplayName("RUNIC_DEV_CDP_TRACE's file is readable by its user only")]
+    public void CdpTraceFileIsPrivate()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        string path = Path.Combine(Path.GetTempPath(), $"runic-cdp-trace-{Guid.NewGuid():N}.log");
+        try
+        {
+            CdpTrace.Append(path, "one\n");
+            CdpTrace.Append(path, "two\n");
+            Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+            Equal("one\ntwo\n", File.ReadAllText(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Test, DisplayName("the session file lists the CDP adapter and gives an IDE-started Window the inspector address")]
@@ -441,7 +581,9 @@ internal sealed partial class ToolTests
     public async Task CdpEndpointRoundTripsThroughAnInspectorServer()
     {
         using var server = new FakeInspectorServer();
-        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port);
+        // This user's own debugger and inspector server pass the checks of LoopbackSockets on Linux.
+        var reported = new List<string>();
+        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port, LoopbackSockets.Current, line => { lock (reported) reported.Add(line); });
         True(endpoint.Start(0), "the endpoint listens");
         int port = endpoint.Port!.Value;
         using var http = new HttpClient();
@@ -482,6 +624,7 @@ internal sealed partial class ToolTests
         JsonObject evaluated = await Command(2, "Runtime.evaluate", new JsonObject { ["expression"] = "6 * 7" }, session);
         Equal(42, evaluated["result"]!["result"]!["value"]!.GetValue<int>());
         lock (server.Commands) Equal("Runtime.evaluate", server.Commands.Last());
+        lock (reported) Equal(0, reported.Count);
     }
 
     // WebKit's remote inspector server, as far as one page and Runtime.evaluate go.

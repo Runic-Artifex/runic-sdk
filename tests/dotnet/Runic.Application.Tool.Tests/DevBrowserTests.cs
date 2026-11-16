@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Runic.Application.Tool;
@@ -179,12 +180,12 @@ internal sealed partial class ToolTests
             contract.ServeOnlyLine("RUNIC_APPLICATION_URL=http://127.0.0.1:41236/");
             SequenceEqual([
                 "[dev] Window started: process 4242 | starting | []",
-                "[dev] Browser: the Window serves at <entry>/ | starting | [=?]",
+                "[dev] Browser: Window serves at <entry>/ | starting | [=?]",
                 "[dev] Ready | ready | [=?]",
-                "[dev] Browser: another Window serves at <entry>/windows/2 | ready | [=App.MainWindow,windows/2=?]",
+                "[dev] Browser: Window serves at <entry>/windows/2 | ready | [=App.MainWindow,windows/2=?]",
                 "[dev] Window exited: process 4242 | starting | []",
                 "[dev] Window started: process 4243 | starting | []",
-                "[dev] Browser: the Window serves at <entry>/ | starting | [=?]",
+                "[dev] Browser: Window serves at <entry>/ | starting | [=?]",
                 "[dev] Ready | ready | [=?]",
             ], seen);
 
@@ -218,7 +219,77 @@ internal sealed partial class ToolTests
         Contains(hint, "Chromium, not the Window's WebView");
         DoesNotContain(hint, "was taken");
         Contains(DevApplication.BrowserHint(40001), "Port 9224 was taken: set \"url\": \"http://127.0.0.1:40001/\"");
-        Equal("[dev] Browser: the Window serves at http://127.0.0.1:9224/",
+        Equal("[dev] Browser: Window serves at http://127.0.0.1:9224/",
             DevApplication.BrowserServedLine(new BrowserEntry.ServedWindow(0, "http://127.0.0.1:9224/", null)));
+    }
+
+    [Test, DisplayName("the [dev] Browser contract line has one form for every Window, which the documented regex matches")]
+    public void BrowserContractLineHasOneForm()
+    {
+        Equal(DocumentedBrowserLinePattern, DevApplication.BrowserServedPattern);
+        foreach ((int index, string url) in new[] { (0, "http://127.0.0.1:9224/"), (1, "http://127.0.0.1:9224/windows/2"), (0, "http://127.0.0.1:40001/") })
+        {
+            Match match = Regex.Match(DevApplication.BrowserServedLine(new BrowserEntry.ServedWindow(index, url, null)), DocumentedBrowserLinePattern);
+            True(match.Success, url);
+            Equal(url, match.Groups["url"].Value);
+        }
+        // The other [dev] Browser: lines are human text and do not match.
+        False(Regex.IsMatch(DevApplication.BrowserHint(9224), DocumentedBrowserLinePattern), "the hint");
+        False(Regex.IsMatch(BrowserEntry.RefusedPeerMessage(9224, 1001), DocumentedBrowserLinePattern), "the refusal");
+        Contains(File.ReadAllText(Path.Combine(RepositoryRoot(), "tools", "dotnet-runic", "README.md")),
+            "`" + DocumentedBrowserLinePattern + "`");
+    }
+
+    [Test, DisplayName("the browser entry answers only the user who runs dev, from /proc/net/tcp")]
+    public void BrowserEntryChecksThePeersUser()
+    {
+        // The synthetic tables of #1046's tests: the entry stands where the adapter does, on 127.0.0.1:9222.
+        var sockets = new LoopbackSockets(path => path.EndsWith("tcp6", StringComparison.Ordinal) ? SyntheticTcp6 : SyntheticTcp, 1000);
+        var entry = new IPEndPoint(IPAddress.Loopback, 9222);
+        IPEndPoint Client(int port) => new(IPAddress.Loopback, port);
+        Equal(new BrowserEntry.PeerCheck(true, false, 1000u), BrowserEntry.CheckPeer(sockets, entry, Client(0xA003)));
+        Equal(new BrowserEntry.PeerCheck(false, true, 1001u), BrowserEntry.CheckPeer(sockets, entry, Client(0xA000)));
+        Equal(new BrowserEntry.PeerCheck(false, true, 1003u), BrowserEntry.CheckPeer(sockets, entry, Client(0xA002)));
+        // A peer gone already while the listener is listed: refused without a line. Unreadable tables: refused with one.
+        Equal(new BrowserEntry.PeerCheck(false, false, null), BrowserEntry.CheckPeer(sockets, entry, Client(0xBEEF)));
+        Equal(new BrowserEntry.PeerCheck(false, true, null), BrowserEntry.CheckPeer(new LoopbackSockets(static _ => null, 1000), entry, Client(0xA003)));
+        // Off Linux there are no tables to read.
+        Equal(new BrowserEntry.PeerCheck(true, false, null), BrowserEntry.CheckPeer(null, entry, Client(0xA000)));
+        Contains(BrowserEntry.RefusedPeerMessage(9224, 1001), "from another user (uid 1001)");
+        Contains(BrowserEntry.RefusedPeerMessage(9224, null), "could not be determined from /proc/net/tcp");
+    }
+
+    [Test, DisplayName("the browser entry refuses another local user's request with 403 and reports it once")]
+    public async Task BrowserEntryRefusesOtherUsers()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var reported = new List<string>();
+        await using BrowserEntry entry = BrowserEntry.TryStart(0,
+            ForeignOwner(static row => row.State == 1 && row.Remote.Port != 0), line => { lock (reported) reported.Add(line); })!;
+        entry.Observe("RUNIC_APPLICATION_URL=" + SurfaceUrl);
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using HttpResponseMessage refused = await client.GetAsync(new Uri(entry.Url));
+            Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+            string body = await refused.Content.ReadAsStringAsync();
+            DoesNotContain(body, "credential");
+            Equal(null, refused.Headers.Location);
+        }
+        lock (reported) Contains(reported.Single(), "from another user (uid 4242)");
+    }
+
+    [Test, DisplayName("the browser entry redirects the developer's own requests through the real /proc/net/tcp lookup")]
+    public async Task BrowserEntryAdmitsTheDevelopersUser()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var reported = new List<string>();
+        await using BrowserEntry entry = BrowserEntry.TryStart(0, LoopbackSockets.Current, line => { lock (reported) reported.Add(line); })!;
+        entry.Observe("RUNIC_APPLICATION_URL=" + SurfaceUrl);
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
+        using HttpResponseMessage redirect = await client.GetAsync(new Uri(entry.Url));
+        Equal(HttpStatusCode.Found, redirect.StatusCode);
+        Equal(new Uri(SurfaceUrl), redirect.Headers.Location);
+        lock (reported) Equal(0, reported.Count);
     }
 }
