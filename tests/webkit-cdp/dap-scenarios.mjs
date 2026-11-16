@@ -3,11 +3,12 @@
 // (startDebugging), which gets the breakpoints again when a new page replaces its target. The scenarios use the runic-app
 // template's React page under `dotnet runic dev` (#1029): breakpoints through Vite's source maps hit from a click, stepping,
 // conditions, logpoints, exceptions, console output, locals and hover, a breakpoint in the first render after a reload,
-// a breakpoint and a logpoint in a module that loads after thousands of others (#1051), HMR, and the Window restarting
-// under dotnet watch. Each prints PASS or FAIL with what it saw; the exit code is 0 when all pass.
+// a breakpoint and a logpoint in a module that loads after thousands of others (#1051), HMR, the Window restarting
+// under dotnet watch, and another client taking WebKit's inspector from the adapter (D068.1). Each prints PASS or FAIL
+// with what it saw; the exit code is 0 when all pass.
 // usage: node dap-scenarios.mjs --jsdebug <js-debug dir> --port <cdp port> --frontend <Frontend dir>
-//          [--restart-file <a .cs file of the application>] [--modules <count>] [--per-script-sourcemaps auto|yes|no]
-//          [--only a,b] [--trace <js-debug log file>]
+//          [--restart-file <a .cs file of the application>] [--inspector <WebKit inspector host:port>] [--modules <count>]
+//          [--per-script-sourcemaps auto|yes|no] [--only a,b] [--trace <js-debug log file>]
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -17,6 +18,8 @@ const { values: a } = parseArgs({ options: {
   jsdebug: { type: "string" }, port: { type: "string" }, frontend: { type: "string" }, only: { type: "string" }, trace: { type: "string" },
   // A C# file of the application: appending a comment makes dotnet watch (no hot reload under dev) restart the Window.
   "restart-file": { type: "string" },
+  // The Window's WebKit inspector server (WEBKIT_INSPECTOR_SERVER), which another client connects to.
+  inspector: { type: "string" },
   // The late-module scenario's page load: this many modules, each with its own inline source map, before the late one.
   modules: { type: "string", default: "2000" },
   // js-debug's perScriptSourcemaps. With "auto", once paused in Vite's client, js-debug stops where a file it has
@@ -39,7 +42,10 @@ const renderLine = lineOf(app, "useView(workspace)");
 const counterLine = lineOf(counterPage, "const error = increment.error");
 const t0 = Date.now();
 const log = (...x) => console.log(`[${((Date.now() - t0) / 1000).toFixed(2)}s]`, ...x);
-const dapPort = 42000 + Math.floor(Math.random() * 1000);
+// A port that the system has free, for js-debug's DAP server: a random one could be taken.
+const dapPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer().once("error", reject).listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 const server = spawn(process.execPath, [`${a.jsdebug}/src/dapDebugServer.js`, String(dapPort), "127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
 server.stderr.on("data", d => process.stderr.write(`[js-debug] ${d}`));
 const done = code => { try { server.kill(); } catch {} setTimeout(() => process.exit(code), 200); };
@@ -81,32 +87,38 @@ class Dap {
 }
 const init = { clientID: "runic-webkit-cdp", adapterID: a.type, linesStartAt1: true, columnsStartAt1: true, pathFormat: "path", supportsVariableType: true, supportsStartDebuggingRequest: true };
 
-const parent = new Dap("parent"); await parent.connect();
 // Every page js-debug attaches to is a child session (startDebugging), as in VS Code. The first is the scenarios'
 // session; a later one (another Window) gets the breakpoints VS Code would send it. A Window restart keeps the session.
 const breakpoints = new Map();
 let current = null;
 let children = 0;
-const childP = new Promise(res => { parent.handlers.startDebugging = async req => {
-  parent.reply(req); const child = new Dap(`child${++children}`); await child.connect();
-  // js-debug can send "initialized" in the same read as the initialize response: wait for it before sending.
-  const initialized = child.wait("initialized", () => true, 120000);
-  await child.send("initialize", init);
-  const attached = child.send("attach", req.arguments.configuration); await initialized;
-  if (children === 1) { res({ c: child, attached }); return; }
-  for (const [path, bps] of breakpoints) await child.send("setBreakpoints", { source: { path }, breakpoints: bps });
-  await child.send("configurationDone"); await attached;
-  log(`child session ${children} attached (another page)`);
-}; });
-const parentInitialized = parent.wait("initialized", () => true, 120000);
-await parent.send("initialize", init);
-const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
-  perScriptSourcemaps: a["per-script-sourcemaps"],
-  ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
-await parentInitialized; await parent.send("configurationDone"); await pa;
-const first = await childP;
-current = first.c;
-await current.send("configurationDone"); await first.attached;
+// Attaches as VS Code does when debugging starts: the parent session, then its first child session.
+async function attachIde() {
+  const parent = new Dap("parent"); await parent.connect();
+  let own = 0;
+  const childP = new Promise(res => { parent.handlers.startDebugging = async req => {
+    parent.reply(req); const child = new Dap(`child${++children}`); await child.connect();
+    // js-debug can send "initialized" in the same read as the initialize response: wait for it before sending.
+    const initialized = child.wait("initialized", () => true, 120000);
+    await child.send("initialize", init);
+    const attached = child.send("attach", req.arguments.configuration); await initialized;
+    if (++own === 1) { res({ c: child, attached }); return; }
+    for (const [path, bps] of breakpoints) await child.send("setBreakpoints", { source: { path }, breakpoints: bps });
+    await child.send("configurationDone"); await attached;
+    log(`child session ${children} attached (another page)`);
+  }; });
+  const parentInitialized = parent.wait("initialized", () => true, 120000);
+  await parent.send("initialize", init);
+  const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
+    perScriptSourcemaps: a["per-script-sourcemaps"],
+    ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
+  await parentInitialized; await parent.send("configurationDone"); await pa;
+  const first = await childP;
+  await first.c.send("configurationDone"); await first.attached;
+  return { parent, child: first.c };
+}
+let { parent, child: firstChild } = await attachIde();
+current = firstChild;
 // The scenarios' child session.
 const c = new Proxy({}, { get: (_, name) => { const v = current[name]; return typeof v === "function" ? v.bind(current) : v; } });
 log("attached");
@@ -148,6 +160,25 @@ function saveAtomically(path, text) {
   fs.renameSync(temporary, path);
 }
 const counterReady = `document.querySelector(${JSON.stringify(counter)})?.disabled === false`;
+// A plain client of WebKit's inspector server (WEBKIT_INSPECTOR_SERVER), as GNOME Web's inspector:// connects: it sets
+// up, which gives it WebKit's single client slot, and resolves once the server described its protocol.
+function inspectorClient(address) {
+  const colon = address.lastIndexOf(":");
+  const socket = net.connect(Number(address.slice(colon + 1)), address.slice(0, colon).replace(/^\[|\]$/g, ""));
+  const name = Buffer.from("SetupInspectorClient\0");
+  const header = Buffer.alloc(5);
+  header.writeUInt32BE(name.length + 1);
+  header[4] = 1; // little-endian parameters
+  return new Promise((resolve, reject) => {
+    let received = Buffer.alloc(0);
+    socket.once("error", reject);
+    socket.once("connect", () => socket.write(Buffer.concat([header, name, Buffer.from([0])])));
+    socket.on("data", data => {
+      received = Buffer.concat([received, data]);
+      if (received.length >= 5 + 24 && received.subarray(5, 5 + 23).toString() === "DidSetupInspectorClient") resolve(socket);
+    });
+  });
+}
 const results = [];
 // Each scenario's wall-clock window in the adapter trace's format (HH:mm:ss.fff, local time), for its failures.
 const clock = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`; };
@@ -350,6 +381,31 @@ const scenarios = {
       saveAtomically(app, original);
       await until(`!document.querySelector("header h1")?.textContent.includes("(edited)")`, "the HMR update back").catch(() => null);
     }
+  },
+  async "replaced-client"() {
+    // D068.1: another local client takes WebKit's single client slot during the session and leaves. WebKit tells the
+    // adapter nothing, and the adapter's next Setup on its old connection would crash the Window. The debugger must be
+    // told that its page detached, the Window must keep running, and attaching again must work.
+    if (!a.inspector) return [true, "skipped (no --inspector)"];
+    await c.send("evaluate", { expression: "globalThis.__webkitCdpBeforeReplace = true", context: "repl" });
+    const old = { parent, child: current };
+    const terminated = old.child.wait("terminated", () => true, 30000).then(() => true, () => false);
+    const other = await inspectorClient(a.inspector);
+    const told = await terminated;
+    await sleep(1000);
+    other.destroy();
+    await sleep(1500);
+    // The developer starts debugging again, as with F5 after the session ended.
+    await Promise.race([old.parent.send("disconnect", {}), sleep(3000)]);
+    ({ parent, child: current } = await attachIde());
+    await until(counterReady, "the page after attaching again");
+    const same = (await c.send("evaluate", { expression: "globalThis.__webkitCdpBeforeReplace === true", context: "repl" })).body?.result === "true";
+    await setBps([{ line: clickLine }]);
+    const s = c.wait("stopped", () => true, 15000); await click(counter); const st = await s.catch(() => null);
+    const f = st ? await top(st.threadId) : null;
+    await setBps([]); if (st) await c.send("continue", { threadId: st.threadId });
+    return [told && same && !!st, `the debugger was told it detached: ${told}; the same Window after the other client left: ${same}; ` +
+      `breakpoint after attaching again: ${f ? "stopped at " + where(f) : "NOT stopped"}`];
   },
 };
 

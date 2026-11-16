@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,8 +13,11 @@ namespace Runic.Application.Tool.WebKit;
 /// A client of the Window's WebKit remote inspector server (<see cref="InspectorWire"/>). WebKit serves one client at a
 /// time (<c>RemoteInspectorServer::setupInspectorClient</c>), so the adapter holds a connection only while a debugger is
 /// attached, and GNOME Web can open <c>inspector://</c> otherwise. A new client does not wait: WebKitGTK 2.54 answers its
-/// setup and makes it the client in place of the current one, which gets no more answers, and the Window can crash when
-/// the replaced client sends again after the new one left. So holding the connection would not keep others out.
+/// setup and makes it the client in place of the current one, without a word to that one, so holding the connection
+/// would not keep others out. The server then sends the replies to this client's messages to the new one, and once that
+/// one leaves, a <c>Setup</c> on the old connection makes the server send to an empty slot, which crashes the Window.
+/// Each <see cref="SetupAsync"/> therefore claims the slot again in the same write, and a connection that
+/// <see cref="WebKitDebugEndpoint"/> finds replaced is <see cref="Abandon">abandoned</see> without another message.
 /// </summary>
 internal sealed class InspectorConnection : IAsyncDisposable
 {
@@ -23,11 +27,14 @@ internal sealed class InspectorConnection : IAsyncDisposable
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly object _gate = new();
     private readonly Dictionary<ulong, IReadOnlyList<InspectorTarget>> _targets = [];
+    private readonly List<WebKitPage> _pages = [];
     private readonly TaskCompletionSource _described = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stop = new();
     private NetworkStream? _stream;
     private Task _reading = Task.CompletedTask;
+    private string _backendCommandsHash = "";
     private int _closed;
+    private int _replaced;
 
     /// <summary>A protocol message from a target's backend: connection, target, JSON text. Raised on the read loop.</summary>
     internal event Action<ulong, ulong, string>? MessageToFrontend;
@@ -53,6 +60,31 @@ internal sealed class InspectorConnection : IAsyncDisposable
 
     internal bool IsClosed => Volatile.Read(ref _closed) != 0;
 
+    /// <summary>Another client took WebKit's slot: nothing more is sent on this connection.</summary>
+    internal bool IsReplaced => Volatile.Read(ref _replaced) != 0;
+
+    /// <summary>This end's TCP port, once connected: the inspector server's peer for this connection.</summary>
+    internal int LocalPort { get; private set; }
+
+    /// <summary>The pages opened on this connection and not yet closed.</summary>
+    internal IReadOnlyList<WebKitPage> Pages
+    {
+        get
+        {
+            lock (_gate) return [.. _pages];
+        }
+    }
+
+    internal void PageOpened(WebKitPage page)
+    {
+        lock (_gate) _pages.Add(page);
+    }
+
+    internal void PageClosed(WebKitPage page)
+    {
+        lock (_gate) _pages.Remove(page);
+    }
+
     /// <summary>
     /// Connects and announces this client; completes once the server described its protocol. <paramref name="verifyServer"/>
     /// runs once the TCP connection is open and before anything is sent; it throws to refuse the server.
@@ -63,14 +95,21 @@ internal sealed class InspectorConnection : IAsyncDisposable
         verifyServer?.Invoke();
         CdpTrace.Write("webkit", $"inspector connection {_generation} to {host}:{port}");
         _stream = _client.GetStream();
+        LocalPort = ((IPEndPoint)_client.Client.LocalEndPoint!).Port;
         _reading = Task.Run(() => ReadAsync(_stop.Token), CancellationToken.None);
         await SendAsync(InspectorWire.SetupInspectorClient(), cancellationToken).ConfigureAwait(false);
         // A server that never describes itself (not WebKit's, or a stalled one) must not block the debugger, so the wait is bounded.
         await _described.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Attaches to a target, claiming WebKit's client slot first in the same write: the server handles both messages in
+    /// one read, so the target's messages cannot meet an empty slot (<see cref="InspectorConnection"/>). While this
+    /// connection holds the slot, the claim changes nothing; the server answers it with an empty protocol description.
+    /// </summary>
     internal Task SetupAsync(InspectorTarget target, CancellationToken cancellationToken) =>
-        SendAsync(InspectorWire.Setup(target.ConnectionId, target.TargetId), cancellationToken);
+        SendAsync([.. InspectorWire.SetupInspectorClient(_backendCommandsHash), .. InspectorWire.Setup(target.ConnectionId, target.TargetId)],
+            cancellationToken);
 
     internal Task FrontendDidCloseAsync(InspectorTarget target, CancellationToken cancellationToken) =>
         SendAsync(InspectorWire.FrontendDidClose(target.ConnectionId, target.TargetId), cancellationToken);
@@ -84,6 +123,7 @@ internal sealed class InspectorConnection : IAsyncDisposable
         await _write.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (IsReplaced || IsClosed) throw new IOException("The connection to the Window's WebKit inspector closed.");
             await stream.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException or SocketException)
@@ -126,7 +166,12 @@ internal sealed class InspectorConnection : IAsyncDisposable
         switch (name)
         {
             case "DidSetupInspectorClient":
-                Protocol = WebKitProtocol.Parse(InspectorWire.ReadBackendCommands(parameters));
+                // Empty when the client's hash matched, as after the claim in SetupAsync: the protocol stays.
+                if (parameters.Length > 1 && parameters[0] != 0)
+                {
+                    Protocol = WebKitProtocol.Parse(InspectorWire.ReadBackendCommands(parameters));
+                    _backendCommandsHash = InspectorWire.BackendCommandsHash(parameters);
+                }
                 _described.TrySetResult();
                 break;
             case "SetTargetList":
@@ -145,6 +190,16 @@ internal sealed class InspectorConnection : IAsyncDisposable
                 MessageToFrontend?.Invoke(connection, target, message);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Another client took WebKit's slot: closes the connection without another message. A <c>FrontendDidClose</c> could
+    /// end the other client's session on the same page, and a <c>Setup</c> could crash the Window.
+    /// </summary>
+    internal void Abandon()
+    {
+        Volatile.Write(ref _replaced, 1);
+        Close();
     }
 
     private void Close()

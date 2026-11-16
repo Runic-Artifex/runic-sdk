@@ -79,6 +79,8 @@ internal sealed partial class CdpPageSession
     private volatile bool _debuggerPauseRequested;
     private bool _ignoreResumed;
     private List<JsonObject>? _replay;
+    // The debugger's breakpoints that WebKit set in scripts of the replay, sent after the replayed scripts.
+    private List<JsonObject>? _replayResolved;
     private int _defaultContextId;
     private string? _mainFrameId;
 
@@ -678,26 +680,54 @@ internal sealed partial class CdpPageSession
                 return;
             case ReplayStart:
                 _replay = [];
+                _replayResolved = [];
                 return;
             case ReplayEnd:
+            {
                 List<JsonObject> replay = _replay ?? [];
+                List<JsonObject> resolvedInReplay = _replayResolved ?? [];
                 _replay = null;
-                foreach (JsonObject script in CurrentScripts(replay)) await _emit("Debugger.scriptParsed", script).ConfigureAwait(false);
+                _replayResolved = null;
+                var replayed = new HashSet<string>(StringComparer.Ordinal);
+                foreach (JsonObject script in CurrentScripts(replay))
+                {
+                    replayed.Add(script["scriptId"]?.GetValue<string>() ?? "");
+                    await _emit("Debugger.scriptParsed", script).ConfigureAwait(false);
+                }
+                foreach (JsonObject resolved in resolvedInReplay.Where(resolved => replayed.Contains(resolved["location"]?["scriptId"]?.GetValue<string>() ?? "")))
+                    await _emit("Debugger.breakpointResolved", resolved).ConfigureAwait(false);
                 return;
+            }
             case "Runtime.executionContextCreated":
                 await ExecutionContextCreatedAsync(p).ConfigureAwait(false);
                 return;
             case "Debugger.breakpointResolved":
-                // WebKit set a URL breakpoint in a script it parsed.
+            {
+                // WebKit set a URL breakpoint in a script it parsed. Like Chromium, the debugger hears of its own: a
+                // breakpoint set while a navigation replaced the script gets its location only this way, and js-debug
+                // shows it unverified until then.
+                JsonObject? forward = null;
                 lock (_stateGate)
                 {
                     if (p["breakpointId"]?.GetValue<string>() is not { } resolved || p["location"] is not JsonObject location) return;
                     if (resolved == _instrumentationBreakpointId)
+                    {
                         _instrumentationLocations[location["scriptId"]?.GetValue<string>() ?? ""] = LocationKey(location);
+                    }
                     else if (_breakpointLocations.TryGetValue(resolved, out (string? Condition, HashSet<string> Locations) tracked))
+                    {
                         tracked.Locations.Add(LocationKey(location));
+                        var cdpLocation = (JsonObject)location.DeepClone();
+                        cdpLocation["scriptId"] = ToCdpScriptId(location["scriptId"]?.GetValue<string>() ?? "");
+                        forward = new JsonObject { ["breakpointId"] = resolved, ["location"] = cdpLocation };
+                    }
                 }
+                if (forward is null) return;
+                // The script's scriptParsed comes first: WebKit sends it before, and a replay sends its scripts at its end.
+                if (_replayResolved is not null) _replayResolved.Add(forward);
+                else await _emit("Debugger.breakpointResolved", forward).ConfigureAwait(false);
                 return;
+            }
             case "Debugger.globalObjectCleared":
                 _scriptUrls.Clear();
                 _instrumentationScripts.Clear();

@@ -74,6 +74,25 @@ internal sealed partial class LoopbackSockets
             .ToList();
     }
 
+    /// <summary>
+    /// The ports at the other end of the connections to <paramref name="address"/>:<paramref name="port"/>, open or
+    /// recently closed (TIME_WAIT keeps one listed for about a minute), listed from either end. WebKit tells an inspector
+    /// client nothing when another client takes its place, so a new one here is how the CDP adapter learns that it may have
+    /// been replaced (<see cref="WebKitDebugEndpoint"/>).
+    /// </summary>
+    internal HashSet<int> Peers(IPAddress address, int port)
+    {
+        IPAddress server = Normalize(address);
+        var peers = new HashSet<int>();
+        foreach (Entry entry in Read())
+        {
+            if (entry.State == ListenState) continue;
+            if (entry.Local.Port == port && entry.Local.Address.Equals(server)) peers.Add(entry.Remote.Port);
+            else if (entry.Remote.Port == port && entry.Remote.Address.Equals(server)) peers.Add(entry.Local.Port);
+        }
+        return peers;
+    }
+
     /// <summary>A listener of another user on that address and port, if any.</summary>
     internal uint? ForeignListener(IPAddress address, int port) =>
         ListenerOwners(address, port).Cast<uint?>().FirstOrDefault(owner => owner != User);
