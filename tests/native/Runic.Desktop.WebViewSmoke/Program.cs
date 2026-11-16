@@ -115,6 +115,12 @@ try
         // #1028: WebKitGTK's remote inspector opens in Development only; see InspectorEnvironmentSmoke.cs.
         Environment.ExitCode = InspectorEnvironmentSmoke.Run(args, CreateHostOptions());
     }
+    else if (args.Contains(WebView2EnvironmentSmoke.Argument, StringComparer.Ordinal))
+    {
+        // D067.15: WebView2's DevTools Protocol endpoint from the environment opens in Development only; see
+        // WebView2EnvironmentSmoke.cs.
+        Environment.ExitCode = WebView2EnvironmentSmoke.Run(args, CreateHostOptions());
+    }
     else if (args.Contains("--window-placement", StringComparer.Ordinal))
     {
         // sdk#897 W1a. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.

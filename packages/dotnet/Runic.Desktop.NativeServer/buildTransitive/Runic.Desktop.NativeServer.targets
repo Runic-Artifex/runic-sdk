@@ -25,12 +25,12 @@
     <_RunicDesktopNativeServerStaticName Condition="'$(_RunicDesktopNativeServerStaticName)' == ''">librunic_server.a</_RunicDesktopNativeServerStaticName>
   </PropertyGroup>
   <!-- Like the package's shared library, in every build and publish output; a NativeAOT publish that links the server
-       removes it (RunicDesktopRemoveLinkedNativeServer). -->
+       removes it (_RunicDesktopRemoveLinkedNativeServer). -->
   <ItemGroup Condition="'$(_RunicDesktopNativeServer)' == 'true' and '$(_RunicDesktopNativeServerOverride)' != ''">
     <None Include="$(_RunicDesktopNativeServerOverride)$(_RunicDesktopNativeServerSharedName)" Link="$(_RunicDesktopNativeServerSharedName)"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
-  <Target Name="RunicDesktopValidateNativeServer" BeforeTargets="PrepareForBuild">
+  <Target Name="_RunicDesktopValidateNativeServer" BeforeTargets="PrepareForBuild">
     <Error Code="RUNICDESK006" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk006"
            Condition="'$(_RunicDesktopNativeServer)' == 'true' and '$(RunicDesktopNativeServerLinkage)' != 'Static' and '$(RunicDesktopNativeServerLinkage)' != 'Shared' and '$(RunicDesktopNativeServerLinkage)' != 'Application'"
            Text="RunicDesktopNativeServerLinkage is '$(RunicDesktopNativeServerLinkage)'; it must be Static, Shared or Application." />
@@ -40,7 +40,7 @@
   </Target>
   <!-- The static libraries are for the NativeAOT linker only: they never reach the output, and a replaced library
        leaves the package's out. -->
-  <Target Name="RunicDesktopResolveNativeServer" AfterTargets="ResolvePackageAssets">
+  <Target Name="_RunicDesktopResolveNativeServer" AfterTargets="ResolvePackageAssets">
     <ItemGroup>
       <_RunicDesktopNativeServerStaticAsset Include="@(NativeCopyLocalItems)"
           Condition="$([System.String]::Copy('%(NativeCopyLocalItems.NuGetPackageId)').StartsWith('Runic.Desktop.NativeServer.Static.')) and '%(NativeCopyLocalItems.Filename)%(NativeCopyLocalItems.Extension)' == '$(_RunicDesktopNativeServerStaticName)'" />
@@ -53,7 +53,7 @@
   <!-- NativeAOT links the server into the executable, one file with no librunic_server next to it: the static library
        (Static), or the application's own library with the runic-server crate in it (Application), whose C functions the
        executable binds at link time all the same. Shared leaves the shared library beside the executable. -->
-  <Target Name="RunicDesktopLinkNativeServer" AfterTargets="RunicDesktopResolveNativeServer"
+  <Target Name="_RunicDesktopLinkNativeServer" AfterTargets="_RunicDesktopResolveNativeServer"
           Condition="'$(_RunicDesktopNativeServer)' == 'true' and '$(PublishAot)' == 'true' and '$(RuntimeIdentifier)' != '' and '$(RunicDesktopNativeServerLinkage)' != 'Shared'">
     <PropertyGroup>
       <_RunicDesktopNativeServerLinked>true</_RunicDesktopNativeServerLinked>
@@ -70,7 +70,7 @@
       <NativeLibrary Include="ntdll.lib;ws2_32.lib;userenv.lib;bcrypt.lib" Condition="$(RuntimeIdentifier.StartsWith('win-'))" />
     </ItemGroup>
   </Target>
-  <Target Name="RunicDesktopRemoveLinkedNativeServer" AfterTargets="ComputeFilesToPublish"
+  <Target Name="_RunicDesktopRemoveLinkedNativeServer" AfterTargets="ComputeFilesToPublish"
           Condition="'$(_RunicDesktopNativeServerLinked)' == 'true'">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"

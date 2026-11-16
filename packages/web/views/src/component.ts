@@ -120,7 +120,7 @@ function absoluteUrls(text: string, href: string): string {
  * // src/component.tsx
  * import { createRoot } from "react-dom/client";
  * import { RunicInstanceProvider } from "@runic-artifex/react";
- * import type { RunicComponentMount } from "@runic-artifex/views/component";
+ * import type { RunicComponentMount } from "@runic-artifex/views/experimental";
  *
  * const mount: RunicComponentMount = ({ container, instance }) => {
  *   const root = createRoot(container);

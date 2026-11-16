@@ -1,0 +1,311 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.Extensions.Logging.Console": {
+        "type": "Direct",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "8Qx57p3sUAajSZHLQf8eihZqMtSIeI4fZ1JVpL4fvg4QqSbbgJkN0X0owX1cVJJRW2Xw4uqtVv9F7LgdXOBQHQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Logging": "10.0.14",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Logging.Configuration": "10.0.14",
+          "Microsoft.Extensions.Options": "10.0.14"
+        }
+      },
+      "GirCore.Cairo-1.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "esyYCfjlJxi5+f0gwEnkL6VvXqlCeLGg0TnshXZMQAPVc8+HhOiML4UTR79DP3FWxa+thVp4YTEQGR2dxBwx0Q==",
+        "dependencies": {
+          "GirCore.GObject-2.0": "0.8.1"
+        }
+      },
+      "GirCore.FreeType2-2.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "qnYts6YndqwBcqBFLDp2HB+2pzb8fG6Jo1ygti1kz2d07BWU0Md+C9IrbG5/G0soZlZ42eDkKcWDNe0ID6vx1w==",
+        "dependencies": {
+          "GirCore.GLib-2.0": "0.8.1",
+          "GirCore.GObject-2.0": "0.8.1"
+        }
+      },
+      "GirCore.Gdk-4.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "lC9H41XOwW5d1NbbkptNcsuUwJDoqIHNTmI8ft6ueOSAwUCnLR5m0g0tPg03dCELeiCltOoihbjCQPbZaWG2Jg==",
+        "dependencies": {
+          "GirCore.Cairo-1.0": "0.8.1",
+          "GirCore.GdkPixbuf-2.0": "0.8.1",
+          "GirCore.Gio-2.0": "0.8.1",
+          "GirCore.Pango-1.0": "0.8.1",
+          "GirCore.PangoCairo-1.0": "0.8.1"
+        }
+      },
+      "GirCore.GdkPixbuf-2.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "Ez5HUcV3vjgqOAxFzo4b7YjbBTSIEFafeUDmzs4GlzjyT1ST6G3R/5lqWduNk2guCWHefa6/GkgThPirL/X6Fg==",
+        "dependencies": {
+          "GirCore.Gio-2.0": "0.8.1"
+        }
+      },
+      "GirCore.Gio-2.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "/Ddc3QqosowxKBdNx2bYGjfkwpCvn0bJg2v1XPfR/IE6fDEsAw7zPEhLMJKeFPehl6Dlm2no/SKh/QXoJCYkTQ==",
+        "dependencies": {
+          "GirCore.GObject-2.0": "0.8.1"
+        }
+      },
+      "GirCore.GLib-2.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "WKEIITNPAYuqIic4zXUm021bJFnWCPqt5IW7mqGTlvJBZ+C6VJZukRt0hDSplQifbpEYzlCgxeinyqyyMtVbEA=="
+      },
+      "GirCore.GObject-2.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "fu6jkSGTzV8v+kRRLfDnTnfzJ1K+/EoMc55u0OSsfV5tleZY3VJAjyf5MnMmY5SBn1Mj0DE712YMPoQDR3G7RA==",
+        "dependencies": {
+          "GirCore.GLib-2.0": "0.8.1"
+        }
+      },
+      "GirCore.Graphene-1.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "g947SPM7uTI0+a+ev6pT22Jyh08V1U8IAjbNO8aOOrvWYCzyg6nJBw8iHt2DrW9VTsqi7M1zmoMmkuSYGLQiDQ==",
+        "dependencies": {
+          "GirCore.GObject-2.0": "0.8.1"
+        }
+      },
+      "GirCore.Gsk-4.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "QLNB/ozKTsrGuhXPsTBBOjmR08DqZ+objRf4M3WCcjh21aUaGl5aLXcN9NaHa/wgpyJo29eGCpVW26O3CphecQ==",
+        "dependencies": {
+          "GirCore.Gdk-4.0": "0.8.1",
+          "GirCore.Graphene-1.0": "0.8.1"
+        }
+      },
+      "GirCore.HarfBuzz-0.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "N52x5hStRH0l/gQ6XyvZUDs1bh454i9KlUS3nNE34v3h6r63o+CiM1cGIXYBshrBPXlAR6LsiqPs1dryBGi+xQ==",
+        "dependencies": {
+          "GirCore.FreeType2-2.0": "0.8.1",
+          "GirCore.GObject-2.0": "0.8.1"
+        }
+      },
+      "GirCore.JavaScriptCore-6.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "iOWFjG8FKZCAYefZiezqHN6v4hYqPX6zG/WbQL+uUBWTfzutYO2SZgxwjFgYt7Pu2pBVvPwPwg43G/HivuhKdg==",
+        "dependencies": {
+          "GirCore.GObject-2.0": "0.8.1"
+        }
+      },
+      "GirCore.Pango-1.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "HU7ob5yHvo/pVjjjd9SiKGUw3FTACUC+7KDbmvcIrI+1TpoWnwqYzOiymPZ2bi3CRyK2M4Drn6NKDmfuV2eY2A==",
+        "dependencies": {
+          "GirCore.Cairo-1.0": "0.8.1",
+          "GirCore.GObject-2.0": "0.8.1",
+          "GirCore.Gio-2.0": "0.8.1",
+          "GirCore.HarfBuzz-0.0": "0.8.1"
+        }
+      },
+      "GirCore.PangoCairo-1.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "aqTSYA2zQMGIc7d/UFDBl7hhURKAxGFI2dSwTBPcmHWu73MuIConw9hnQEwVYJF3svtP86Y3yfjP85xwHLfHKw==",
+        "dependencies": {
+          "GirCore.Cairo-1.0": "0.8.1",
+          "GirCore.GObject-2.0": "0.8.1",
+          "GirCore.Pango-1.0": "0.8.1"
+        }
+      },
+      "GirCore.Soup-3.0": {
+        "type": "Transitive",
+        "resolved": "0.8.1",
+        "contentHash": "IodvJWL/UEAcdc+iT29KiBkdK3zTc312mfUqI5OrkB/fjeEFIm6BvcTwcurbDWRm4L+nPr0WVDjsb4QnEuxhZw==",
+        "dependencies": {
+          "GirCore.Gio-2.0": "0.8.1"
+        }
+      },
+      "Microsoft.Extensions.Configuration": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "UcnvaEaMvRckDDhyqY1OZkFwBqpZArkHFKB6dWaQWT9XTuNttNNX8Cqsb/Sic2LfJxsMLJUXnYrxY3iX5LN9pQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Primitives": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Configuration.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "4YdfvaoWn3tB1xQQHGrhRTFWJ8fGOqxThxduynSZy9ZFTiSaUi3vX4EK/kj8h2HQMwTlks9MWV1fv2WRBv5/1w==",
+        "dependencies": {
+          "Microsoft.Extensions.Primitives": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Configuration.Binder": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "brDb5kgle2iY2lWHgeV/KOqnBEpVnlMFigGJ/WW7KP9Nj6C/t53f/h5boYyVXB0bEhgpL+ctbewDJMI+zAMj1w==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "10.0.14",
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Logging.Configuration": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "CfFSNbVSXSl8UTH453c0HoY5owcpaY1PMh1xsB+3NWcEq6WUSPHRotydbnMJtmw7Kybp6cTba8e+/uaJI52ANw==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration": "10.0.14",
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.14",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Logging": "10.0.14",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Options": "10.0.14",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Options": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "EeN/33S418m9oWEaZY4N5T+BNxtOqNTIFoFbIgBKwylh4OJPKIWFAzbIhpTdNbwUs26MhkmbLCAbdY+YCJ1dIQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Primitives": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Options.ConfigurationExtensions": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "4wcIU0rE04ejEfCwHTftu9O8fgH6CRYCe+tseRapikUBn1Kic3QdO7ku22SwFyLrzdWGYPUZMEgv57ZYuuc5gA==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.14",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Options": "10.0.14",
+          "Microsoft.Extensions.Primitives": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Primitives": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "1bbZqqCJTPba3inTADExbp/9PsGVyvGOX3zr6tFr7ySCgVkX9Lpw7BV0TizktNItd3SsbUu1sQfSAYm1GZMoNw=="
+      },
+      "runic.desktop": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
+          "Microsoft.Web.WebView2": "[1.0.4258.31, )",
+          "Runic.Platform": "[0.21.0, )",
+          "Runic.Platform.Linux.DBus": "[0.21.0, )"
+        }
+      },
+      "runic.desktop.gtk4": {
+        "type": "Project",
+        "dependencies": {
+          "GirCore.Gtk-4.0": "[0.8.1, )",
+          "GirCore.WebKit-6.0": "[0.8.1, )",
+          "Runic.Desktop": "[0.21.0, )"
+        }
+      },
+      "runic.desktop.kestrel": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Desktop": "[0.21.0, )"
+        }
+      },
+      "runic.platform": {
+        "type": "Project"
+      },
+      "runic.platform.linux.dbus": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
+          "Runic.Platform": "[0.21.0, )",
+          "Tmds.DBus.Protocol": "[0.95.2, )"
+        }
+      },
+      "GirCore.Gtk-4.0": {
+        "type": "CentralTransitive",
+        "requested": "[0.8.1, )",
+        "resolved": "0.8.1",
+        "contentHash": "voCdlOtmgciZAthyL4Q/5HHJbzAhQfRVO0XzXApOkEs9iSire0umhuHHf7/PIpTCpde1CARzTTtTcZXu/5oRbA==",
+        "dependencies": {
+          "GirCore.Gdk-4.0": "0.8.1",
+          "GirCore.Gsk-4.0": "0.8.1"
+        }
+      },
+      "GirCore.WebKit-6.0": {
+        "type": "CentralTransitive",
+        "requested": "[0.8.1, )",
+        "resolved": "0.8.1",
+        "contentHash": "pJ6mFmHcixKr66U1xZxGIOFEwI9SK8XD3uEPPpPYa5zkXMh6QhE3K5vRyvW3JZj4qF2GeN9Sv8hw12iyjcRLjA==",
+        "dependencies": {
+          "GirCore.Gtk-4.0": "0.8.1",
+          "GirCore.JavaScriptCore-6.0": "0.8.1",
+          "GirCore.Soup-3.0": "0.8.1"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "2LzcuVjemeXR+WdY9wGIr8iGb7fYsDAit+IScxXX2XJnX0b++mWcE/WO6fEGIqhdMfSQM2ZS5JGMHYZix7YXZg==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "QtpQzuSZVyTPCuHW058yCs9Nj0394uUkNyFHS813nOmK9UgUdBdaprJ5PPsBgsQIpxADTsTkbaMMonykem6qdw=="
+      },
+      "Microsoft.Extensions.Logging": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "O2fXL6JmtkFwkigxS8fPTQpLXxGDjgZco5D+h88s++Cl0bDCs023PVkpNoifciJ+f30I82jnp8tpwF0wCLdFtA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "10.0.14",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Options": "10.0.14"
+        }
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "SwcbEBtkECq3D2oywvHkm46fyrX9Dd2JPWphDnHUc2+cUWR1Mdo41atAjh/9iZjgQxuvbKfZKXqostT/LZfefA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14"
+        }
+      },
+      "Microsoft.Web.WebView2": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.4258.31, )",
+        "resolved": "1.0.4258.31",
+        "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+      },
+      "Tmds.DBus.Protocol": {
+        "type": "CentralTransitive",
+        "requested": "[0.95.2, )",
+        "resolved": "0.95.2",
+        "contentHash": "4zlJSYYZGCKnF5xE1L5VEm5YsfjLTz5jlWBgvBxHA7yk8Lnys/6WWpeD+CWmNm4QmawR+x0xIbGGZNcMxcy8nQ=="
+      }
+    }
+  }
+}

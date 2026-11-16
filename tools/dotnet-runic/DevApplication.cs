@@ -26,6 +26,18 @@ internal static class DevApplication
     internal const string ReadyLine = "[dev] Ready";
 
     /// <summary>
+    /// The phase dev starts with; <see cref="PhaseTimer"/> prints <c>[dev] Evaluating Views Window project...</c>. The
+    /// README's IDE contract names its prefix, <c>[dev] Evaluating</c>, which the template's tasks.json waits on.
+    /// </summary>
+    internal const string EvaluatingPhase = "Evaluating Views Window project";
+
+    /// <summary>
+    /// The line dev prints when it restarts the Window process itself. The README's IDE contract names its prefix,
+    /// <c>[dev] Reloading</c>, which the template's tasks.json waits on.
+    /// </summary>
+    internal const string ReloadingLine = "[dev] Reloading the Runic Views Window application.";
+
+    /// <summary>
     /// A failure as one line in MSBuild's canonical form, <c>&lt;project&gt; : error RAPPDEV1007: &lt;message&gt;</c>, which VS Code's
     /// <c>$msCompile</c> problem matcher and the regex in the README match like the build's own errors. The origin is
     /// the project file, or <c>dotnet-runic</c> before dev found one.
@@ -80,7 +92,7 @@ internal static class DevApplication
         CancellationToken cancellationToken)
     {
         string dotnetHost = ResolveDotNetHost();
-        using PhaseTimer evaluation = PhaseTimer.Start("Evaluating Views Window project");
+        using PhaseTimer evaluation = PhaseTimer.Start(EvaluatingPhase);
         DevProjectConfiguration configuration = await DevProjectConfiguration
             .EvaluateAsync(dotnetHost, project, options.Configuration, cancellationToken)
             .ConfigureAwait(false);
@@ -111,14 +123,20 @@ internal static class DevApplication
             {
                 debuggingHints.Add(WebKitDebugging.ForeignInspectorHint(debugging.InspectorHost!, debugging.InspectorPort, inspectorOwner));
             }
-            // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port.
-            if (adapter.Start(WebKitDebugging.DefaultCdpPort) || adapter.Start(0))
+            // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port, but
+            // not under --no-window, whose IDE attach configuration expects 9222 (#1065).
+            if (adapter.Start(WebKitDebugging.DefaultCdpPort) || (options.StartWindow && adapter.Start(0)))
             {
                 webKitEndpoints.Insert(0, WebKitDebugging.CdpEndpoint(adapter.Port!.Value));
                 uint? defaultPortOwner = adapter.Port.Value == WebKitDebugging.DefaultCdpPort
                     ? null
                     : sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
                 debuggingHints.AddRange(WebKitDebugging.CdpHints(adapter.Port.Value, debugging, defaultPortOwner));
+            }
+            else if (!options.StartWindow)
+            {
+                throw new DevDevelopmentException(WebKitDebugging.NoWindowCdpPortTakenCode, WebKitDebugging.NoWindowCdpPortTakenMessage(
+                    sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort)));
             }
             else
             {
@@ -129,6 +147,10 @@ internal static class DevApplication
         var session = DevSession.Create(configuration, options, webKitEndpoints);
         foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints) Console.WriteLine(UnavailableEndpointHint(endpoint));
         foreach (string hint in debuggingHints) Console.WriteLine(hint);
+        if (configuration.HasDevelopmentServer && options.WatchFrontend && session.DevToolsExtension is { } extension)
+        {
+            Console.WriteLine(DevToolsExtension.Hint(extension));
+        }
         WriteSession(session.Start);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when

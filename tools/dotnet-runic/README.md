@@ -638,8 +638,10 @@ names. The session file lists both under `debugEndpoints`.
     to you. If another user holds 9222, `dev` warns that an attach
     configuration with that port would reach their process.
   - WebKit's own `inspector://` port is WebKit's, so `dev` cannot filter it.
-    While no debugger is attached, other local users can connect to it and
-    script the Window. On a machine that you share with other users, run
+    Other local users can connect to it and script the Window, also while a
+    debugger is attached: WebKit serves one client and lets a new one take
+    its place (WebKitGTK 2.54), and the Window can crash when the replaced
+    client sends again. On a machine that you share with other users, run
     `dev` with `--no-debug-endpoint`.
   - It runs only under `dotnet runic dev` and adds nothing to the application.
 - **Not supported.** Setting a variable to an object or a `const` (WebKit has no
@@ -660,10 +662,43 @@ names. The session file lists both under `debugEndpoints`.
 - **Port 9222 taken.** `dev` uses another free port and says which; change the
   attach configuration's `port`. When another user holds 9222, or the
   inspector port 9223 under `--no-window`, the `[dev]` line is a warning.
-  `--no-debug-endpoint` opens nothing.
+  Under `--no-window`, which the IDE's compound starts with an attach
+  configuration on 9222, `dev` does not move: it stops with `RAPPDEV1017` and
+  names what holds the port, often another `dev` session. `--no-debug-endpoint`
+  opens nothing.
 - **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
   traffic, which contains the page's data, to that file. `dev` creates the
-  file readable by you only.
+  file readable by you only. JSON strings longer than 4096 characters, such as
+  script sources and inline source maps, keep only their first 200 characters;
+  `RUNIC_DEV_CDP_TRACE_SOURCES=1` keeps them whole, which on a page with
+  thousands of modules writes hundreds of megabytes in minutes.
+
+## The Runic DevTools extension
+
+Since 0.21 the tool ships an unpacked Chrome DevTools extension (Manifest V3) in
+its `devtools-extension` folder, beside its assembly:
+`tools/net10.0/any/devtools-extension` in the package, so
+`~/.nuget/packages/dotnet-runic/<version>/tools/net10.0/any/devtools-extension`
+for a local tool. It adds a **Runic** panel (the page's Views with their state
+and C# ViewModels, and the recent Bridge calls with timing, outcome and C#
+handler) and a **Runic** pane in the Elements panel (the selected element's
+bindings and commands, as Runic Inspect shows them). It reads Runic Inspect's
+development API on the page (`snapshot()` and `describe($0)` on
+`globalThis[Symbol.for("runic.vite.inspect")]`), so it works on pages that
+vite-plugin-runic 0.21 or later serves under `vite dev` or `dev`, and asks for
+no permissions besides DevTools.
+
+`dev` prints `[dev] DevTools extension: <folder>` when the page has a
+development server, and writes the folder to the [session file](#session-file)
+as `devtoolsExtension`, with its fixed id `cddbfcinbkaindmfgcfdgapddkjeadgh` as
+`devtoolsExtensionId` (the manifest's public `key` fixes it; there is no private
+key). The build stamps the manifest with the package version: `X.Y.Z`, or
+`X.Y.Z.N` for a prerelease `X.Y.Z-label.N` (a Chrome manifest version has only
+numbers), with the full version as `version_name`. Load it in Chrome or Edge with **Load unpacked** on
+`chrome://extensions` (Developer mode), or start Chromium with
+`--load-extension=<folder>`. There is no Chrome Web Store listing.
+[The Runic DevTools extension](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#the-runic-devtools-extension)
+in the debugging guide has the steps and what each pane shows.
 
 ## IDE contract
 
@@ -676,9 +711,15 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
 | `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
+| `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
+| `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
-`dev` writes the [session file](#session-file) before it prints each of these
-lines, so a reader that reacts to a line finds the same state there: after
+The two prefix lines are where a background task's `beginsPattern` starts a new
+build cycle, as the template's `.vscode/tasks.json` below does; the text after
+the prefix is not part of the contract.
+
+`dev` writes the [session file](#session-file) before it prints each of the
+first three lines, so a reader that reacts to a line finds the same state there: after
 `Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
 after `Window exited`, no Window process and `"state": "starting"`. In 0.20.0
 previews, `dev` printed the line first.
@@ -810,7 +851,11 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     // Endpoints the environment asks for but the engine does not open, with the reason. Since 0.20, an elevated dev
     // (run as administrator, so its Window runs elevated too) lists WebView2's here with "reason": "elevated" instead of
     // in debugEndpoints, and prints a [dev] Debugging: hint.
-  ]
+  ],
+  // The unpacked Runic DevTools extension beside this tool, for Load unpacked or a browser's --load-extension;
+  // null when the tool has none. Since 0.21.
+  "devtoolsExtension": "/home/me/.nuget/packages/dotnet-runic/0.21.0/tools/net10.0/any/devtools-extension",
+  "devtoolsExtensionId": "cddbfcinbkaindmfgcfdgapddkjeadgh" // its fixed id, null without the extension; since 0.21
 }
 ```
 
@@ -818,7 +863,7 @@ Paths are absolute. Later versions of the schema only add properties, so a
 reader ignores properties it doesn't know; a change that removes or changes one
 gets a new schema name. 0.20 added `processStartedAt`, `sourceMap` and
 `unavailableDebugEndpoints` within `runic.application.tool.dev-session/1`; 0.21
-added the `webkitgtk` endpoints and, with `--no-window` on Linux,
+added the `webkitgtk` endpoints, `devtoolsExtension`, `devtoolsExtensionId` and, with `--no-window` on Linux,
 `WEBKIT_INSPECTOR_SERVER` in `window.environment`.
 
 WebView2 Runtime 150 and later ignores `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`

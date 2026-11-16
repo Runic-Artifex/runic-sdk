@@ -45,6 +45,11 @@ format needs, and how you sign the packages with your own credentials.
 The [MSBuild reference](msbuild.md) lists every MSBuild property and item that
 the SDK packages and tools read, with links to where each is described.
 
+The [environment variables reference](environment.md) lists the `RUNIC_*`
+variables that the SDK packages and tools read or set: which ones are settings,
+which are handshakes between Runic processes, and which take effect only during
+development.
+
 The [configuration guide](configuration.md) shows how an application configures
 itself with Generic Host and `Microsoft.Extensions.Configuration`, ships
 `appsettings.json`, and stores per-user settings; Runic has no configuration API
