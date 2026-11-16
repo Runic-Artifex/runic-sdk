@@ -894,6 +894,43 @@ application's origins besides the presented URL's in
 `DesktopWindowHostOptions.AdditionalOrigins`; `RunicWebView` applies it as the
 built-in hosts do.
 
+### The WebView2 DevTools window and DevTools extensions
+
+Since 0.21 a WebView2 window whose developer tools are on (in Development, by
+default) has an **Open DevTools** item in its system menu (Alt+Space, or a
+right click on the title bar), and `DesktopWindow.OpenDevToolsAsync` opens the
+same Edge DevTools window from code, for example from a menu item that the
+application declares only in Development. It returns `false` when the window's
+developer tools are off, as in production, and on WKWebView, WebKitGTK, an
+installed browser or a custom window host. A DevTools window that WebView2
+fails to open from the system menu is reported to `DiagnosticSink` as
+`devtools-window-failed`.
+
+`DesktopHostOptions.DevToolsExtensions` lists unpacked browser extensions, such
+as React Developer Tools or Vue.js devtools, that WebView2 windows load in
+Development, so their panels appear in the DevTools window. The
+`RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` variable adds folders for one session,
+separated by `;`, for example with `dotnet runic dev -e`.
+
+```csharp
+await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    DevToolsExtensions = [@"C:\Tools\react-devtools-extension"],
+});
+await window.OpenDevToolsAsync();
+```
+
+Only in Development does the WebView2 environment enable extensions; outside it
+the list is ignored and the environment keeps them off. Extensions belong to the
+WebView2 profile: a window installs them before its first page loads, once per
+profile and process, and every window of the profile then runs them. WebView2
+keeps an installed extension until its files change; in Development Runic
+removes the ones it installed whose folders are no longer listed, recorded in
+`Runic.DevToolsExtensions.json` in the user data folder, and never another
+extension. A folder it rejects is
+reported to `DiagnosticSink` as `devtools-extension-failed`. Hosted windows load
+none. See the [debugging guide](../../../docs/debugging.md#the-browsers-developer-tools-per-engine).
+
 ### Printing
 
 Runic has no printing API: the page prints itself with `window.print()`, and an

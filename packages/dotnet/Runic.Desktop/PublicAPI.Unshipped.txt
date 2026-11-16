@@ -1,7 +1,10 @@
 #nullable enable
-[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Closed = 9 -> Runic.Desktop.DesktopSidePanelRefusal
 Runic.Desktop.DesktopHost.AddRecentDocumentAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 *REMOVED*Runic.Desktop.DesktopHost.NoteRecentDocumentAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopHostOptions.DevToolsExtensions.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopHostOptions.DevToolsExtensions.init -> void
+[RUNICDESK104]Runic.Desktop.DesktopSidePanelRefusal.Closed = 9 -> Runic.Desktop.DesktopSidePanelRefusal
+Runic.Desktop.DesktopWindow.OpenDevToolsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
 Runic.Desktop.DesktopWindowCapabilities.Placement = 8388608 -> Runic.Desktop.DesktopWindowCapabilities
 *REMOVED*Runic.Desktop.DesktopWindowCapabilities.WindowPlacement = 8388608 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.IDesktopBoundsWindowHost
