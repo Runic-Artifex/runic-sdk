@@ -178,13 +178,13 @@ importers:
     devDependencies:
       '@runic-artifex/sveltekit':
         specifier: 0.20.0
-        version: 0.20.0(@sveltejs/adapter-static@4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)))(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(vite@8.3.4)
+        version: 0.20.0(@sveltejs/adapter-static@4.0.1(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)))(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(vite@8.3.4)
       '@runic-artifex/vite-plugin-runic':
         specifier: 0.20.0
         version: 0.20.0(@vitejs/devtools@0.7.6)(vite@8.3.4)
       '@sveltejs/adapter-static':
-        specifier: 4.0.0
-        version: 4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))
+        specifier: 4.0.1
+        version: 4.0.1(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))
       '@sveltejs/kit':
         specifier: 3.0.0
         version: 3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)
@@ -512,8 +512,8 @@ packages:
     peerDependencies:
       acorn: ^8.9.0
 
-  '@sveltejs/adapter-static@4.0.0':
-    resolution: {integrity: sha512-aF1J23R1ebKqUxQ4/qLr/Lxu63NFmLAtg8UZl3HFLxaoA1D/nhTVGcD9lTqx65iUbjNR2iOL0TgOxSX82x6Paw==}
+  '@sveltejs/adapter-static@4.0.1':
+    resolution: {integrity: sha512-svOU1OcBiJ9Kn1cdxHDmJIsBy1/iQe9STPvUFkO2/iinxPFS7r8fc9TiCaWWUgbrE+7ox6Bt4MURv3RPi7sunQ==}
     peerDependencies:
       '@sveltejs/kit': ^3.0.0-next.0
 
@@ -1346,9 +1346,9 @@ snapshots:
       '@runic-artifex/views': 0.20.0
       svelte: 5.57.1
 
-  '@runic-artifex/sveltekit@0.20.0(@sveltejs/adapter-static@4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)))(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(vite@8.3.4)':
+  '@runic-artifex/sveltekit@0.20.0(@sveltejs/adapter-static@4.0.1(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)))(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(vite@8.3.4)':
     dependencies:
-      '@sveltejs/adapter-static': 4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))
+      '@sveltejs/adapter-static': 4.0.1(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))
       '@sveltejs/kit': 3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)
       '@sveltejs/vite-plugin-svelte': 7.3.1(svelte@5.57.1)(vite@8.3.4)
       svelte: 5.57.1
@@ -1369,7 +1369,7 @@ snapshots:
     dependencies:
       acorn: 8.19.0
 
-  '@sveltejs/adapter-static@4.0.0(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))':
+  '@sveltejs/adapter-static@4.0.1(@sveltejs/kit@3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4))':
     dependencies:
       '@sveltejs/kit': 3.0.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.1)(vite@8.3.4))(svelte@5.57.1)(typescript@6.0.3)(vite@8.3.4)
 

@@ -63,7 +63,7 @@
     "node": "^24.18.0 || ^26.0.0"
   },
   "devDependencies": {
-    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.0.0",
     "@sveltejs/package": "3.0.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
