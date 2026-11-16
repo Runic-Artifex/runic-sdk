@@ -334,6 +334,7 @@
         "packages/web/views",
         "packages/web/react",
         "packages/web/vue",
+        "eng/web",
         "tests/fixtures/application/cswebui-window-probes",
         "tests/fixtures/application/experiments",
         "tests/fixtures/application/navigation-consumer",

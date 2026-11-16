@@ -16,11 +16,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "development": "./dist/development/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./experimental": {
       "types": "./dist/experimental.d.ts",
+      "development": "./dist/development/experimental.js",
       "import": "./dist/experimental.js",
       "default": "./dist/experimental.js"
     },
@@ -28,17 +30,24 @@
   },
   "scripts": {
     "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
-    "build": "bun run --bun clean && tsc -p tsconfig.build.json",
+    "build": "bun run --bun clean && tsc -p tsconfig.build.json && bun scripts/build.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "bun run --bun build && tsc -p tsconfig.json --noEmit && vitest run",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
     "vue": ">=3.5.30 <4",
-    "@runic-artifex/views": "0.21.0"
+    "@runic-artifex/views": "0.21.0",
+    "@vue/devtools-api": ">=8.0.0 <9"
+  },
+  "peerDependenciesMeta": {
+    "@vue/devtools-api": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@runic-artifex/views": "workspace:*",
+    "@vue/devtools-api": "8.2.1",
     "esbuild": "0.28.2",
     "happy-dom": "21.0.4",
     "playwright-core": "1.63.0",

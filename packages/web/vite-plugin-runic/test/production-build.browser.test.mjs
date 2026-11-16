@@ -19,6 +19,8 @@ const root = fileURLToPath(new URL("./fixtures/production/", import.meta.url));
 const views = fileURLToPath(new URL("../../views/", import.meta.url));
 // What only the development build of views contains.
 const markers = ["runic.views.calls", "createTask", "runic.translations.text", "__RUNIC_DEVELOPMENT__",
+  // The View descriptions of views and the React DevTools labels of the React binding (#1041).
+  "runic.views.describe", "declared failure", " · rev ",
   // The development tools' Views protocol features and their trace context (#958).
   "trace-context/1", "handler-timing/1", "traceparent"];
 const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
@@ -86,6 +88,8 @@ test("vite build bundles the production build of views: no development code, and
     assert.ok(viewsModules.some(id => id === join(views, "dist/connection.js")), `views is not bundled: ${modules.filter(id => id.includes("views")).join(", ")}`);
     assert.deepEqual(viewsModules.filter(id => !id.startsWith(join(views, "dist/")) || id.startsWith(join(views, "dist/development/"))), []);
     assert.ok(modules.some(id => id.includes("/react/dist/")), "the React binding is bundled");
+    assert.deepEqual(modules.filter(id => id.includes("/react/dist/development/") || id.endsWith("/react/dist/debug-labels.js")), [],
+      "the React binding's production build is bundled");
     // The page's inline script installs the test's reader, so the JavaScript assets are what is checked.
     for (const file of (await files(outDir)).filter(name => name.endsWith(".js"))) {
       const text = await readFile(file, "utf8");

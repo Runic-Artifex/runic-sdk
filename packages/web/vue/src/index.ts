@@ -2,6 +2,7 @@ import {
   computed,
   customRef,
   defineComponent,
+  getCurrentInstance,
   h,
   reactive,
   shallowRef,
@@ -63,6 +64,8 @@ import { missingViewMessage, reportMissingView, viewSourceIdentity } from "@runi
 import { isDevelopment } from "./development.js";
 import { releaseWithScope } from "./scope.js";
 import { useRunicInstance } from "./instance.js";
+// Vue DevTools: only the development build (src/development-build.d.ts) reaches this module.
+import { attachDevtools } from "./devtools.js";
 
 
 export interface ViewHandle<TClient extends ViewClient> {
@@ -107,6 +110,11 @@ function controllerOptions<TClient extends ViewClient>(options: UseViewOptions<T
 export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<ViewSource<TClient>>,
   options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
   // The controller connects in the component's Runic instance, also when its source changes or it retries.
+  // The development build adds the Runic inspector and timeline layer to Vue DevTools when it is on the page.
+  if (__RUNIC_DEVELOPMENT__) {
+    const app = getCurrentInstance()?.appContext.app;
+    if (app) attachDevtools(app);
+  }
   const controller = useRunicInstance().run(() => createViewController<TClient>(controllerOptions(options)));
   const state = shallowRef<TClient["snapshot"] | undefined>();
   const client = shallowRef<TClient | undefined>();

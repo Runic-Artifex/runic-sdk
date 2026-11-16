@@ -608,6 +608,31 @@ const look = useAppearance();
 const fontSize = computed(() => `${look.value.textScale ?? 1}rem`);
 ```
 
+## Vue DevTools
+
+In development, with [Vue DevTools](https://devtools.vuejs.org/) on the page (the browser extension or
+`vite-plugin-vue-devtools`), the first `useView` of an app adds a Runic plugin to it (since 0.21):
+
+- a **Runic Views** inspector that lists the page's Views by view model and route, closed ones last. Selecting one
+  shows its route, contract, revision, epoch and presentations, its state, and its last 20 calls with their outcome,
+  duration, revision, C# handler and error;
+- a **Runic Bridge calls** timeline layer with the start and the end of each call of a generated client, grouped by
+  call, and failed calls marked as errors.
+
+The plugin needs `@vue/devtools-api` 8, an optional peer dependency. Install it in the application:
+
+```sh
+npm install -D @vue/devtools-api
+```
+
+The plugin reads the development channels of `@runic-artifex/views` (its state inspector and its Bridge-call
+channel), from the first `useView` on, so a View that connected before DevTools opened is listed too. Without Vue
+DevTools on the page, or without `@vue/devtools-api`, nothing more loads and no channel is read. The package has a
+development build, like `@runic-artifex/views` ([Development build](../views/README.md#development-build)): only the
+`development` export condition, which `vite dev` and Vitest resolve, contains the plugin and imports
+`@vue/devtools-api`; the production build has neither. See
+[the debugging guide](../../../docs/debugging.md#react-devtools-and-vue-devtools).
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

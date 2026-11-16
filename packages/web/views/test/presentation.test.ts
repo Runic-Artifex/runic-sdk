@@ -212,7 +212,7 @@ test("the development state inspector receives states, superseded commands and t
     const bridge = installBridge();
     client = await connectWizard();
     assert.deepEqual(events.shift(), {
-      kind: "state", route: "wizard", revision: 1, epoch: 1, presentations: 1, state: { page: 1, title: "start" },
+      kind: "state", route: "wizard", contract: "Tests.Wizard:fp-1", revision: 1, epoch: 1, presentations: 1, state: { page: 1, title: "start" },
     });
     const command = client.command("next");
     (await bridge.take("command")).resolve({ ok: true, revision: 2, superseded: true });
@@ -221,7 +221,7 @@ test("the development state inspector receives states, superseded commands and t
     assert.deepEqual(events.filter(event => event["kind"] === "superseded"),
       [{ kind: "superseded", route: "wizard", member: "next", epoch: 1, revision: 2 }]);
     assert.deepEqual(events.filter(event => event["kind"] === "state").at(-1),
-      { kind: "state", route: "wizard", revision: 2, epoch: 2, presentations: 1, state: { page: 2, title: "start" } });
+      { kind: "state", route: "wizard", contract: "Tests.Wizard:fp-1", revision: 2, epoch: 2, presentations: 1, state: { page: 2, title: "start" } });
     // A command that ran is not reported.
     events.length = 0;
     const ran = client.command("next");

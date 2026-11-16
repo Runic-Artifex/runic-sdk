@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useReducer, useSyncExternalStore } from "react";
+import { useCallback, useDebugValue, useEffect, useReducer, useSyncExternalStore } from "react";
 import { defaultInstance, type RunicInstance, type ViewClient, type ViewConnector } from "@runic-artifex/views";
 import { checkKeepAlive, isViewClient } from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
+import { clientLabel } from "./debug-labels.js";
 
 type SuspendedConnection = {
   status: "pending" | "ready" | "failed";
@@ -159,6 +160,8 @@ export function useSuspenseView<TClient extends ViewClient>(
   const subscribe = useCallback((onChange: () => void) => client.subscribe(() => onChange()), [client]);
   const read = useCallback(() => client.snapshot as TClient["snapshot"], [client]);
   const state = useSyncExternalStore(subscribe, read, read);
+  // React DevTools shows the View: `EditorViewModel · editor · rev 12` (debug-labels.ts, development build only).
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(client, clientLabel);
   return { state, client };
 }
 
