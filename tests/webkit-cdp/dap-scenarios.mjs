@@ -108,7 +108,11 @@ const pa = a.launch
     runtimeExecutable: a.browser ?? "stable", runtimeArgs: ["--headless=new", "--no-sandbox"], ...(a.trace ? { trace: { logFile: a.trace } } : {}) })
   : parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
     ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
-await parentInitialized; await parent.send("configurationDone"); await pa;
+await parentInitialized; await parent.send("configurationDone");
+// A launch or attach that js-debug refuses, such as a browser it cannot start or attach to, starts no page session:
+// fail now with its message instead of waiting for the overall timeout.
+const started = await pa;
+if (!started.success) { log(`FAIL setup: js-debug's ${a.launch ? "launch" : "attach"} failed: ${started.message ?? JSON.stringify(started.body)}`); done(1); await new Promise(() => {}); }
 const first = await childP;
 current = first.c;
 await current.send("configurationDone"); await first.attached;

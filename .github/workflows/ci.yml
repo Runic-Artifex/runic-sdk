@@ -2683,6 +2683,10 @@ jobs:
           packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
       - name: Permit the WebKit sandbox on Ubuntu
         run: eng/ci/permit-webkit-sandbox.sh
+      # The "Window in Chrome" lane's browser: the pinned Chromium (PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH), which
+      # check-webkit-cdp.mjs hands to js-debug, rather than whichever Chrome the runner image ships. On one image build
+      # js-debug found none at its usual path and could not attach to what it found instead.
+      - uses: ./.github/actions/install-browser
       - name: Debug the template's Window with js-debug through dotnet runic dev
         run: bun run verify:templates
         env:
