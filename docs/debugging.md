@@ -11,8 +11,8 @@ Each section links the README that describes its tool in full.
 | Inspect the page's DOM, console, network, and scripts | [The browser's developer tools](#the-browsers-developer-tools-per-engine) |
 | See each Bridge call with the C# that ran and open it in the editor | [The Runic dock](#the-runic-dock) |
 | Click an element and see its commands, state, and texts | [Runic Inspect](#runic-inspect) |
-| See a component's View, field state and operation status in React DevTools or Vue DevTools | [Framework DevTools](#react-devtools-and-vue-devtools) |
 | See the same in Chrome's or Edge's own developer tools: a Runic panel and an Elements pane | [The Runic DevTools extension](#the-runic-devtools-extension) |
+| See a component's View, field state and operation status in React DevTools or Vue DevTools | [Framework DevTools](#react-devtools-and-vue-devtools) |
 | Time C# handlers, or follow a click into the ViewModel's HTTP and database calls | [Performance panel and traces](#performance-panel-async-stacks-and-traces) |
 | See Bridge errors before you build | [Analyzers](#bridge-errors-while-you-type) |
 
