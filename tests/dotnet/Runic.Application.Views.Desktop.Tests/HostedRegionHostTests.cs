@@ -37,7 +37,7 @@ internal sealed class HostedRegionHostTests
         var window = await opened.WaitScaledAsync(Timeout);
         Check(window.PresentationKind == RunicHostedWindowPresentationKind.Region && window.Region is { Name: "check" } && window.IsOpen,
             "The window does not show in the region.");
-        Check(Throws<InvalidOperationException>(() => _ = window.Presentation), "A region window reports a native window of its own.");
+        Check(Throws<InvalidOperationException>(() => _ = window.DesktopWindow), "A region window reports a native window of its own.");
         Check(fixture.Factory.Hosts.Count == 1, "The host opened a native window for the region window.");
         var hosted = window.Region!;
         Check((await attached.Task.WaitScaledAsync(Timeout)).Region == hosted, "RegionAttached named another region.");
@@ -59,10 +59,10 @@ internal sealed class HostedRegionHostTests
         var second = await WaitForSourceAsync(page, "check", first);
 
         // The page removes the region: the window stays open and detached, and its code no longer loads.
-        var detached = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var detached = new TaskCompletionSource<RunicHostedRegionDetachReason?>(TaskCreationOptions.RunContinuationsAsynchronously);
         hosted.Detached += (_, e) => detached.TrySetResult(e.Reason);
         page.Remove("check");
-        Check(await detached.Task.WaitScaledAsync(Timeout) == "removed", "The region did not detach as removed.");
+        Check(await detached.Task.WaitScaledAsync(Timeout) == RunicHostedRegionDetachReason.Removed, "The region did not detach as removed.");
         Check(window.IsOpen && hosted.State == RunicHostedRegionState.Detached, $"The window is {hosted.State} after the page removed the region.");
         using (var revoked = await client.GetAsync(new Uri(second)))
             Check(revoked.StatusCode == HttpStatusCode.Forbidden, $"A detached window's code answered {(int)revoked.StatusCode}.");

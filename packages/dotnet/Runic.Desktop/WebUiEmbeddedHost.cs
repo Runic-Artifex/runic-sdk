@@ -157,15 +157,15 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot change its minimum size."));
 
-    /// <summary>Maximizes the window, idempotently (DesktopWindow.MaximizeAsync); requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    /// <summary>Maximizes the window, idempotently (DesktopWindow.MaximizeAsync); requires <see cref="DesktopWindowCapabilities.Placement"/>.</summary>
     ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot maximize its window on request."));
 
-    /// <summary>Returns the window to its normal bounds (DesktopWindow.RestoreAsync); requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    /// <summary>Returns the window to its normal bounds (DesktopWindow.RestoreAsync); requires <see cref="DesktopWindowCapabilities.Placement"/>.</summary>
     ValueTask ShowNormalAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot restore its window on request."));
 
-    /// <summary>Gives the open window a placement in the units of DesktopWindowState.Placement; requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    /// <summary>Gives the open window a placement in the units of DesktopWindowState.Placement; requires <see cref="DesktopWindowCapabilities.Placement"/>.</summary>
     ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot take a placement while it is open."));
 

@@ -20,12 +20,12 @@ internal sealed class RegionCollectionTests
         await using var window = await DocumentsWindow.CreateAsync();
         var root = window.Host.Root;
         var empty = (await root.SnapshotAsync()).Regions(vm => vm.Documents);
-        Require(empty.Regions.Count == 0 && empty.Selected is null, $"An empty collection published {empty}.");
+        Require(empty.Regions.Count == 0 && empty.SelectedIndex is null, $"An empty collection published {empty}.");
 
         (await root.ExecuteAsync(vm => vm.OpenCommand, "\"a\"")).ThrowIfFailed();
         var opened = await root.ExecuteAsync(vm => vm.OpenCommand, "\"b\"");
         var state = opened.ThrowIfFailed().State!.Regions(vm => vm.Documents);
-        Require(state.Regions.Count == 2 && state.Selected == 1 && state.Keys.Distinct().Count() == 2
+        Require(state.Regions.Count == 2 && state.SelectedIndex == 1 && state.Keys.Distinct().Count() == 2
                 && state.Regions.All(region => region.Content?.Kind == "navEditor"),
             $"Two opened documents published {Describe(state)}.");
         Require(state.Keys.SequenceEqual(window.Shell.Documents.Regions.Select(BridgeRegionCollections.Key)),
@@ -51,13 +51,13 @@ internal sealed class RegionCollectionTests
 
         var selected = await root.SelectRegionAsync(vm => vm.Documents, keys[0]);
         Require(selected.Succeeded && selected.RegionOutcome?.Kind == NavigationOutcomeKind.Committed
-                && selected.State!.Regions(vm => vm.Documents).Selected == 0 && window.Shell.Documents.SelectedIndex == 0,
+                && selected.State!.Regions(vm => vm.Documents).SelectedIndex == 0 && window.Shell.Documents.SelectedIndex == 0,
             $"Selecting the first tab gave {selected}.");
 
         var closed = await root.CloseRegionAsync(vm => vm.Documents, keys[0]);
         var after = closed.State!.Regions(vm => vm.Documents);
         Require(closed.Succeeded && closed.RegionOutcome?.Kind == NavigationOutcomeKind.Committed
-                && after.Keys.SequenceEqual(keys.Skip(1)) && after.Selected == 0,
+                && after.Keys.SequenceEqual(keys.Skip(1)) && after.SelectedIndex == 0,
             $"Closing the selected first tab gave {closed} with {Describe(after)}.");
         await Until(() => Task.FromResult(!BridgeDispatcher.For(window.Host.Transport).Serves($"content{firstContent.Id}")),
             "The closed tab's content route is still served.");
@@ -79,18 +79,18 @@ internal sealed class RegionCollectionTests
             (transport, content, vm) => new ReactiveNavDocumentsBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = new NavViewLocator() });
         var state = (await host.Root.SnapshotAsync()).Regions(vm => vm.Tabs);
-        Require(state.Selected == 0 && state.Regions.Count == 2 && host.Root.Snapshot().Read(vm => vm.Count) == 2,
+        Require(state.SelectedIndex == 0 && state.Regions.Count == 2 && host.Root.Snapshot().Read(vm => vm.Count) == 2,
             $"The ReactiveUI tabs published {Describe(state)}.");
 
         home.Guard = _ => ValueTask.FromResult(false);
         var vetoed = await host.Root.SelectRegionAsync(vm => vm.Tabs, state.Keys[1]);
         Require(vetoed.Succeeded && vetoed.RegionOutcome is { Kind: NavigationOutcomeKind.Rejected, Rejection: NavigationRejection.Guard }
-                && vetoed.State!.Regions(vm => vm.Tabs).Selected == 0,
+                && vetoed.State!.Regions(vm => vm.Tabs).SelectedIndex == 0,
             $"A vetoed switch gave {vetoed}.");
 
         home.Guard = null;
         var switched = await host.Root.SelectRegionAsync(vm => vm.Tabs, state.Keys[1]);
-        Require(switched.RegionOutcome?.Kind == NavigationOutcomeKind.Committed && switched.State!.Regions(vm => vm.Tabs).Selected == 1,
+        Require(switched.RegionOutcome?.Kind == NavigationOutcomeKind.Committed && switched.State!.Regions(vm => vm.Tabs).SelectedIndex == 1,
             $"The switch gave {switched}.");
 
         var refused = await host.Root.CloseRegionAsync(vm => vm.Tabs, state.Keys[0]);
@@ -180,7 +180,7 @@ internal sealed class RegionCollectionTests
             Require(!await native.UserCloseAsync().WaitScaledAsync(Timeout) && native.IsOpen, "A vetoing tab did not keep the window open.");
             var left = (await native.Host.Root.SnapshotAsync()).Regions(vm => vm.Documents);
             Require(model.Documents.Regions.Count == 1 && left.Regions.Count == 1 && left.Regions[0].Content?.Kind == "navHome"
-                    && left.Selected == 0 && model.Opened["a"] is NavEditorViewModel { Disposed: 1 },
+                    && left.SelectedIndex == 0 && model.Opened["a"] is NavEditorViewModel { Disposed: 1 },
                 $"The tabs that agreed were not removed: {Describe(left)}.");
 
             keeper.Guard = null;
@@ -318,7 +318,7 @@ internal sealed class RegionCollectionTests
     }
 
     private static string Describe(RunicRegionCollectionState state) =>
-        $"[{string.Join(", ", state.Regions.Select(region => $"{region.Key}:{region.Content?.Kind ?? "empty"}"))}] selected {state.Selected?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}";
+        $"[{string.Join(", ", state.Regions.Select(region => $"{region.Key}:{region.Content?.Kind ?? "empty"}"))}] selected {state.SelectedIndex?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}";
 
     private static string GeneratedTypeScriptDirectory()
     {

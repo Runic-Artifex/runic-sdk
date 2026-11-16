@@ -41,6 +41,17 @@ internal sealed partial class CdpPageSession
     // What the debugger set up, to set it up again on a restarted Window's page (ResumeAsync).
     private readonly object _stateGate = new();
     private readonly Dictionary<string, JsonObject> _urlBreakpoints = new(StringComparer.Ordinal);
+    // Where WebKit set each of the debugger's breakpoints, as "scriptId:line:column" in WebKit's script IDs, and its
+    // condition: see BreakpointsAt. A breakpoint is here from when WebKit set it until the debugger removed it.
+    private readonly Dictionary<string, (string? Condition, HashSet<string> Locations)> _breakpointLocations = new(StringComparer.Ordinal);
+    // The breakpoints the debugger removed lately, with a URL breakpoint's parameters: WebKit can still stop at one
+    // before it reads the removal.
+    private readonly Dictionary<string, JsonObject?> _removedBreakpoints = new(StringComparer.Ordinal);
+    // Where the instrumentation breakpoint is in each script: its first statement ("scriptId:line:column").
+    private readonly Dictionary<string, string> _instrumentationLocations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Regex> _urlRegexes = new(StringComparer.Ordinal);
+    // The scripts with a source map that get instrumentation pauses, by WebKit ID. On the event loop only.
+    private readonly Dictionary<string, JsonObject> _sourceMappedScripts = new(StringComparer.Ordinal);
     private readonly List<string> _blackboxPatterns = [];
     private bool _pageEnabled;
     private bool _runtimeEnabled;
@@ -56,12 +67,20 @@ internal sealed partial class CdpPageSession
     private readonly Channel<(string Method, JsonObject Parameters)> _events =
         Channel.CreateUnbounded<(string, JsonObject)>(new UnboundedChannelOptions { SingleReader = true });
     private readonly ConcurrentDictionary<string, string> _scriptUrls = new(StringComparer.Ordinal);
+    // The emulated instrumentation pause (InstrumentationPausesAsync): the scripts with a source map that WebKit parsed
+    // since its last stop, oldest first; WebKit's ID of the breakpoint that stops each script before it runs; the
+    // debugger's answer to the instrumentation pause it was given last.
     private readonly Queue<JsonObject> _instrumentationScripts = new();
+    private volatile bool _instrumentation;
+    private volatile string? _instrumentationBreakpointId;
+    private TaskCompletionSource<string>? _instrumentationAnswer;
+    // An answer whose reply the debugger has not been sent yet (Replied).
+    private (TaskCompletionSource<string> Answer, string Command)? _repliedAnswer;
+    private volatile bool _debuggerPauseRequested;
+    private bool _ignoreResumed;
     private List<JsonObject>? _replay;
     private int _defaultContextId;
     private string? _mainFrameId;
-    private bool _instrumentation;
-    private bool _instrumentationPaused;
 
     internal CdpPageSession(WipSender wip, CdpEmitter emit, WebKitProtocol protocol)
     {
@@ -106,7 +125,37 @@ internal sealed partial class CdpPageSession
     }
 
     /// <summary>Ends <see cref="RunAsync"/> after the events posted so far.</summary>
-    internal void Complete() => _events.Writer.TryComplete();
+    internal void Complete()
+    {
+        _events.Writer.TryComplete();
+        CancelInstrumentationAnswer();
+    }
+
+    /// <summary>
+    /// The reply to a command of this page has gone to the debugger. An emulated instrumentation pause continues only
+    /// then: Chromium answers <c>Debugger.resume</c> before it reports the next pause, and js-debug, which waits for that
+    /// answer, would take a pause that came before it for the one it resumed from.
+    /// </summary>
+    internal void Replied()
+    {
+        (TaskCompletionSource<string> Answer, string Command)? answered;
+        lock (_stateGate)
+        {
+            answered = _repliedAnswer;
+            _repliedAnswer = null;
+        }
+        answered?.Answer.TrySetResult(answered.Value.Command);
+    }
+
+    private void CancelInstrumentationAnswer()
+    {
+        Interlocked.Exchange(ref _instrumentationAnswer, null)?.TrySetCanceled();
+        lock (_stateGate)
+        {
+            _repliedAnswer?.Answer.TrySetCanceled();
+            _repliedAnswer = null;
+        }
+    }
 
     /// <summary>
     /// The page went away and a restarted Window's page may take its place: until <see cref="ResumeAsync"/>, commands that
@@ -115,6 +164,7 @@ internal sealed partial class CdpPageSession
     internal void Suspend()
     {
         _suspended = true;
+        CancelInstrumentationAnswer();
         _wip = static (method, _, _) => Task.FromException<JsonObject>(new CdpException(CdpException.ServerError, "The Window is restarting."));
     }
 
@@ -127,6 +177,7 @@ internal sealed partial class CdpPageSession
         _wip = wip;
         _protocol = protocol;
         _scriptPrefix = $"r{++_restarts}.";
+        _instrumentationBreakpointId = null;
         _suspended = false;
         Post(Cleared, []);
         bool page, runtime, debugger;
@@ -147,11 +198,13 @@ internal sealed partial class CdpPageSession
         }
         if (runtime) await HandleAsync("Runtime.enable", []).ConfigureAwait(false);
         if (debugger) await HandleAsync("Debugger.enable", []).ConfigureAwait(false);
+        if (_instrumentation) await SetInstrumentationBreakpointAsync(CancellationToken.None).ConfigureAwait(false);
         foreach (JsonObject parameters in breakpoints)
         {
             try
             {
-                await Wip("Debugger.setBreakpointByUrl", parameters).ConfigureAwait(false);
+                JsonObject result = await Wip("Debugger.setBreakpointByUrl", parameters).ConfigureAwait(false);
+                TrackBreakpoint(result["breakpointId"]?.GetValue<string>(), parameters, result["locations"]);
             }
             catch (CdpException)
             {
@@ -192,6 +245,26 @@ internal sealed partial class CdpPageSession
         if (copy["scriptId"]?.GetValue<string>() is { } id) copy["scriptId"] = ToWipScriptId(id);
         return copy;
     }
+
+    // Records where WebKit set one of the debugger's breakpoints (a location or a list of them, in WebKit's script IDs).
+    private void TrackBreakpoint(string? id, JsonObject parameters, JsonNode? locations)
+    {
+        if (id is null) return;
+        lock (_stateGate)
+        {
+            _removedBreakpoints.Remove(id);
+            if (!_breakpointLocations.TryGetValue(id, out (string? Condition, HashSet<string> Locations) tracked))
+            {
+                tracked = (parameters["options"]?["condition"]?.GetValue<string>(), new HashSet<string>(StringComparer.Ordinal));
+                _breakpointLocations[id] = tracked;
+            }
+            foreach (JsonObject location in locations is JsonArray array ? array.OfType<JsonObject>() : locations is JsonObject single ? [single] : [])
+                tracked.Locations.Add(LocationKey(location));
+        }
+    }
+
+    private static string LocationKey(JsonNode location) =>
+        $"{location["scriptId"]?.GetValue<string>()}:{location["lineNumber"]?.GetValue<int>() ?? 0}:{location["columnNumber"]?.GetValue<int>() ?? 0}";
 
     // WebKit names a URL breakpoint after its URL (or /regex/), line and column, so the ID a suspended session gives out is
     // the one WebKit gives when the breakpoint is set again.
@@ -273,8 +346,12 @@ internal sealed partial class CdpPageSession
                     await Wip("Debugger.setAsyncStackTraceDepth", new() { ["depth"] = Int(p, "maxDepth") }, cancellationToken).ConfigureAwait(false);
                 return [];
             case "Debugger.setInstrumentationBreakpoint":
-                // WebKit cannot pause before a script with a source map runs; emulated in TranslateEventAsync.
-                if (p["instrumentation"]?.GetValue<string>() == BeforeScriptWithSourceMap) _instrumentation = true;
+                // WebKit cannot pause before a script with a source map runs; emulated (InstrumentationPausesAsync).
+                if (p["instrumentation"]?.GetValue<string>() == BeforeScriptWithSourceMap)
+                {
+                    _instrumentation = true;
+                    if (!_suspended) await SetInstrumentationBreakpointAsync(cancellationToken).ConfigureAwait(false);
+                }
                 return new() { ["breakpointId"] = InstrumentationBreakpointPrefix + p["instrumentation"]?.GetValue<string>() };
             case "Debugger.setBreakpointByUrl":
             {
@@ -292,6 +369,7 @@ internal sealed partial class CdpPageSession
                 }
                 JsonObject result = await Wip("Debugger.setBreakpointByUrl", parameters, cancellationToken).ConfigureAwait(false);
                 if (result["breakpointId"]?.GetValue<string>() is { } set) lock (_stateGate) _urlBreakpoints[set] = (JsonObject)parameters.DeepClone();
+                TrackBreakpoint(result["breakpointId"]?.GetValue<string>(), parameters, result["locations"]);
                 return new() { ["breakpointId"] = result["breakpointId"]?.DeepClone(), ["locations"] = CdpLocations(result["locations"]) ?? new JsonArray() };
             }
             case "Debugger.setBreakpoint":
@@ -299,6 +377,7 @@ internal sealed partial class CdpPageSession
                 var parameters = new JsonObject { ["location"] = WipLocation(Required<JsonNode>(p, "location")) };
                 if (p["condition"]?.GetValue<string>() is { Length: > 0 } condition) parameters["options"] = new JsonObject { ["condition"] = condition };
                 JsonObject result = await Wip("Debugger.setBreakpoint", parameters, cancellationToken).ConfigureAwait(false);
+                TrackBreakpoint(result["breakpointId"]?.GetValue<string>(), parameters, result["actualLocation"]);
                 return new() { ["breakpointId"] = result["breakpointId"]?.DeepClone(), ["actualLocation"] = CdpLocations(result["actualLocation"]) };
             }
             case "Debugger.removeBreakpoint":
@@ -307,9 +386,24 @@ internal sealed partial class CdpPageSession
                 if (id.StartsWith(InstrumentationBreakpointPrefix, StringComparison.Ordinal))
                 {
                     _instrumentation = false;
+                    if (Interlocked.Exchange(ref _instrumentationBreakpointId, null) is { } set && !_suspended)
+                    {
+                        try
+                        {
+                            await Wip("Debugger.removeBreakpoint", new() { ["breakpointId"] = set }, cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (CdpException)
+                        {
+                        }
+                    }
                     return [];
                 }
-                lock (_stateGate) _urlBreakpoints.Remove(id);
+                lock (_stateGate)
+                {
+                    if (_removedBreakpoints.Count >= 1024) _removedBreakpoints.Clear();
+                    _removedBreakpoints[id] = _urlBreakpoints.Remove(id, out JsonObject? removed) ? removed : null;
+                    _breakpointLocations.Remove(id);
+                }
                 if (_suspended) return [];
                 try
                 {
@@ -334,8 +428,20 @@ internal sealed partial class CdpPageSession
                 JsonObject result = await Wip("Debugger.getBreakpointLocations", new() { ["start"] = WipLocation(start), ["end"] = p["end"] is null ? end : WipLocation(end) }, cancellationToken).ConfigureAwait(false);
                 return new() { ["locations"] = CdpLocations(result["locations"]) ?? new JsonArray() };
             }
-            case "Debugger.stepOver" or "Debugger.stepInto" or "Debugger.stepOut" or "Debugger.resume" or "Debugger.pause":
+            case "Debugger.stepOver" or "Debugger.stepInto" or "Debugger.stepOut" or "Debugger.resume":
+                // The answer to an emulated instrumentation pause; WebKit stays stopped for the next one, which follows once
+                // this command has its reply (Replied).
+                if (Interlocked.Exchange(ref _instrumentationAnswer, null) is { } answer)
+                {
+                    lock (_stateGate) _repliedAnswer = (answer, method);
+                    return [];
+                }
                 // stepInto's breakOnAsyncCall has no WebKit counterpart.
+                await Wip(method, null, cancellationToken).ConfigureAwait(false);
+                return [];
+            case "Debugger.pause":
+                if (Volatile.Read(ref _instrumentationAnswer) is not null) return [];
+                _debuggerPauseRequested = true;
                 await Wip(method, null, cancellationToken).ConfigureAwait(false);
                 return [];
             case "Debugger.getScriptSource":
@@ -547,6 +653,8 @@ internal sealed partial class CdpPageSession
     internal const string ReplayEnd = "Runic.replayEnd";
     internal const string BeforeScriptWithSourceMap = "beforeScriptWithSourceMapExecution";
     internal const string InstrumentationBreakpointPrefix = "instrumentation:";
+    // Every URL: WebKit matches URL breakpoints against a script's sourceURL, or its URL.
+    internal const string InstrumentationUrlRegex = "^";
 
     /// <summary>Translates one WIP event into the CDP events js-debug expects.</summary>
     internal async Task TranslateEventAsync(string method, JsonObject p)
@@ -557,7 +665,14 @@ internal sealed partial class CdpPageSession
                 // A restarted Window's page takes over: as after a reload, the old scripts and contexts are gone.
                 _scriptUrls.Clear();
                 _instrumentationScripts.Clear();
-                _instrumentationPaused = false;
+                lock (_stateGate)
+                {
+                    _breakpointLocations.Clear();
+                    _instrumentationLocations.Clear();
+                }
+                _sourceMappedScripts.Clear();
+                _debuggerPauseRequested = false;
+                _ignoreResumed = false;
                 _defaultContextId = 0;
                 await _emit("Runtime.executionContextsCleared", []).ConfigureAwait(false);
                 return;
@@ -572,9 +687,26 @@ internal sealed partial class CdpPageSession
             case "Runtime.executionContextCreated":
                 await ExecutionContextCreatedAsync(p).ConfigureAwait(false);
                 return;
+            case "Debugger.breakpointResolved":
+                // WebKit set a URL breakpoint in a script it parsed.
+                lock (_stateGate)
+                {
+                    if (p["breakpointId"]?.GetValue<string>() is not { } resolved || p["location"] is not JsonObject location) return;
+                    if (resolved == _instrumentationBreakpointId)
+                        _instrumentationLocations[location["scriptId"]?.GetValue<string>() ?? ""] = LocationKey(location);
+                    else if (_breakpointLocations.TryGetValue(resolved, out (string? Condition, HashSet<string> Locations) tracked))
+                        tracked.Locations.Add(LocationKey(location));
+                }
+                return;
             case "Debugger.globalObjectCleared":
                 _scriptUrls.Clear();
                 _instrumentationScripts.Clear();
+                lock (_stateGate)
+                {
+                    foreach ((string? _, HashSet<string> locations) in _breakpointLocations.Values) locations.Clear();
+                    _instrumentationLocations.Clear();
+                }
+                _sourceMappedScripts.Clear();
                 await _emit("Runtime.executionContextsCleared", []).ConfigureAwait(false);
                 return;
             case "Debugger.scriptParsed":
@@ -584,12 +716,13 @@ internal sealed partial class CdpPageSession
                 await PausedAsync(p).ConfigureAwait(false);
                 return;
             case "Debugger.resumed":
-                await _emit("Debugger.resumed", []).ConfigureAwait(false);
-                if (_instrumentationPaused)
+                // The adapter resumed a stop that the debugger did not see.
+                if (_ignoreResumed)
                 {
-                    _instrumentationPaused = false;
-                    if (_instrumentationScripts.Count > 0) PauseForInstrumentation();
+                    _ignoreResumed = false;
+                    return;
                 }
+                await _emit("Debugger.resumed", []).ConfigureAwait(false);
                 return;
             case "Console.messageAdded":
                 await ConsoleMessageAsync(p).ConfigureAwait(false);
@@ -662,15 +795,36 @@ internal sealed partial class CdpPageSession
         if (_instrumentation && script["sourceMapURL"] is not null)
         {
             _instrumentationScripts.Enqueue(script);
-            if (_instrumentationScripts.Count == 1 && !_instrumentationPaused) PauseForInstrumentation();
+            _sourceMappedScripts[scriptId] = script;
+            // WebKit sets URL breakpoints only in scripts with a URL; for one without, the next statement has to do.
+            if (url.Length == 0) _ = Wip("Debugger.pause").ContinueWith(static task => _ = task.Exception, TaskScheduler.Default);
         }
     }
 
-    // CDP's instrumentation breakpoint pauses before a script with a source map runs, so js-debug can set the breakpoints
-    // that the map resolves before the code runs. WebKit has no such pause; Debugger.pause stops at the next statement,
-    // which is reported as the instrumentation pause of the newest such script.
-    private void PauseForInstrumentation() =>
-        _ = Wip("Debugger.pause").ContinueWith(static task => _ = task.Exception, TaskScheduler.Default);
+    // CDP's instrumentation breakpoint pauses before each script with a source map runs, so that js-debug can load the
+    // map and set the breakpoints it resolves before the code runs. WebKit has no such pause. It does set a URL
+    // breakpoint in each script while it parses it, before the script can run: one at the start of every script stops
+    // each script before its first statement. Debugger.pause would stop only once WebKit reads the command, after the
+    // script may have run.
+    private async Task SetInstrumentationBreakpointAsync(CancellationToken cancellationToken)
+    {
+        if (_instrumentationBreakpointId is not null) return;
+        try
+        {
+            JsonObject result = await Wip("Debugger.setBreakpointByUrl",
+                new() { ["urlRegex"] = InstrumentationUrlRegex, ["lineNumber"] = 0, ["columnNumber"] = 0 }, cancellationToken).ConfigureAwait(false);
+            _instrumentationBreakpointId = result["breakpointId"]?.GetValue<string>();
+            lock (_stateGate)
+            {
+                foreach (JsonObject location in result["locations"]?.AsArray().OfType<JsonObject>() ?? [])
+                    _instrumentationLocations[location["scriptId"]?.GetValue<string>() ?? ""] = LocationKey(location);
+            }
+        }
+        catch (CdpException error) when (error.Message.Contains("already exists", StringComparison.Ordinal))
+        {
+            _instrumentationBreakpointId = $"/{InstrumentationUrlRegex}/:0:0";
+        }
+    }
 
     /// <summary>
     /// The replay that WebKit sends when the Debugger is enabled, as js-debug needs it. WebKit lists the scripts in hash
@@ -721,28 +875,45 @@ internal sealed partial class CdpPageSession
 
     private async Task PausedAsync(JsonObject p)
     {
+        _ignoreResumed = false;
         string reason = p["reason"]?.GetValue<string>() ?? "other";
-        if (reason is "PauseOnNextStatement" or "other" && _instrumentationScripts.Count > 0)
+        // The adapter's own stops: the instrumentation breakpoint, and Debugger.pause for a script without a URL.
+        string? attributed = reason == "Breakpoint" ? p["data"]?["breakpointId"]?.GetValue<string>() : null;
+        bool adapterStop = attributed is not null
+            ? attributed == _instrumentationBreakpointId
+            : reason == "PauseOnNextStatement" && !_debuggerPauseRequested;
+        string topScript = p["callFrames"] is JsonArray { Count: > 0 } frames ? frames[0]?["location"]?["scriptId"]?.GetValue<string>() ?? "" : "";
+        JsonObject? mapped = _sourceMappedScripts.GetValueOrDefault(topScript);
+        // A breakpoint stop in a script with a source map that has not had its instrumentation pause is where the script
+        // starts: the instrumentation breakpoint would have stopped it there otherwise. So is one at js-debug's own
+        // breakpoint at line 0. The script's instrumentation pause stands in for the stop, as with Chromium, which pauses
+        // before the script runs: js-debug reports a breakpoint of its own where it is paused then.
+        if (!adapterStop && attributed is not null && mapped is not null &&
+            (_instrumentationScripts.Contains(mapped) || IsLineZeroBreakpoint(attributed))) adapterStop = true;
+        bool scriptStart = attributed is not null && adapterStop;
+        (bool ended, string? command) = await InstrumentationPausesAsync(p, scriptStart ? mapped : null).ConfigureAwait(false);
+        if (ended) return;
+        // A breakpoint stop: which of the debugger's breakpoints it hit, as the debugger has them now.
+        string? named = adapterStop ? null : attributed;
+        // Where a script with a source map starts, js-debug decides at the script's instrumentation pause whether a
+        // breakpoint there stops, as it does with Chromium; reporting it again would be a second stop.
+        List<(string Id, string? Condition)> candidates = attributed is null || scriptStart && mapped is not null ? [] : BreakpointsAt(p, named, scriptStart);
+        JsonArray? hits = candidates.Count > 0 ? await BreakpointHitsAsync(p, candidates, named).ConfigureAwait(false) : null;
+        if (hits is null && (adapterStop || attributed is not null))
         {
-            // The emulated instrumentation pause: the newest script stands for every one parsed before it, since
-            // js-debug has already read their source maps from scriptParsed.
-            JsonObject script = _instrumentationScripts.Last();
-            _instrumentationScripts.Clear();
-            _instrumentationPaused = true;
-            await _emit("Debugger.paused", new()
+            // Nothing the debugger asked for: WebKit continues, or takes the step the debugger asked for last.
+            _ignoreResumed = true;
+            try
             {
-                ["callFrames"] = CallFrames(p),
-                ["reason"] = "instrumentation",
-                ["data"] = new JsonObject
-                {
-                    ["scriptId"] = script["scriptId"]!.DeepClone(),
-                    ["url"] = script["url"]!.DeepClone(),
-                    ["sourceMapURL"] = script["sourceMapURL"]!.DeepClone(),
-                },
-                ["hitBreakpoints"] = new JsonArray(),
-            }).ConfigureAwait(false);
+                await Wip(command ?? "Debugger.resume").ConfigureAwait(false);
+            }
+            catch (CdpException)
+            {
+                _ignoreResumed = false;
+            }
             return;
         }
+        _debuggerPauseRequested = false;
         var paused = new JsonObject
         {
             ["callFrames"] = CallFrames(p),
@@ -757,10 +928,159 @@ internal sealed partial class CdpPageSession
             },
             ["hitBreakpoints"] = new JsonArray(),
         };
-        if (reason == "Breakpoint" && p["data"]?["breakpointId"]?.GetValue<string>() is { } breakpoint) paused["hitBreakpoints"] = new JsonArray(breakpoint);
+        if (hits is not null) paused["hitBreakpoints"] = hits;
         if (reason is "exception" or "assert" && p["data"] is JsonObject data) paused["data"] = data.DeepClone();
         if (p["asyncStackTrace"] is JsonObject asyncTrace) paused["asyncStackTrace"] = AsyncStackTrace(asyncTrace);
         await _emit("Debugger.paused", paused).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The emulated instrumentation pauses while WebKit is stopped: one per script with a source map that WebKit parsed
+    /// since it last stopped, oldest first, as Chromium pauses before each such script runs. js-debug loads the script's
+    /// source map, sets the breakpoints it resolves and answers; then the next script's pause follows. A WebKit stop comes
+    /// before the queued scripts run: the instrumentation breakpoint stops each of them at its start. The script that
+    /// starts at this stop comes last, also if it had its pause at an earlier stop: js-debug reports a breakpoint that
+    /// it sets where the instrumentation pause is, which WebKit would not stop at, since it already did. Returns the
+    /// debugger's last answer (resume or a step), null if there was no such pause; ended if the page went away or the
+    /// debugger detached meanwhile.
+    /// </summary>
+    private async Task<(bool Ended, string? Command)> InstrumentationPausesAsync(JsonObject p, JsonObject? starting)
+    {
+        List<JsonObject> scripts = [.. _instrumentationScripts.Where(script => script != starting)];
+        _instrumentationScripts.Clear();
+        if (!_instrumentation) return (false, null);
+        if (starting is not null) scripts.Add(starting);
+        string? command = null;
+        foreach (JsonObject script in scripts)
+        {
+            var answer = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _instrumentationAnswer, answer);
+            await _emit("Debugger.paused", new()
+            {
+                ["callFrames"] = CallFrames(p),
+                ["reason"] = "instrumentation",
+                ["data"] = new JsonObject
+                {
+                    ["scriptId"] = script["scriptId"]!.DeepClone(),
+                    ["url"] = script["url"]!.DeepClone(),
+                    ["sourceMapURL"] = script["sourceMapURL"]!.DeepClone(),
+                },
+                ["hitBreakpoints"] = new JsonArray(),
+            }).ConfigureAwait(false);
+            try
+            {
+                command = await answer.Task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return (true, null);
+            }
+            await _emit("Debugger.resumed", []).ConfigureAwait(false);
+        }
+        return (false, command);
+    }
+
+    /// <summary>
+    /// The debugger's breakpoints at the location of a breakpoint stop, the one WebKit named first. WebKit sets one
+    /// breakpoint per location, names it and evaluates no other there. At the start of a script, the instrumentation
+    /// breakpoint takes that place (or js-debug's own line 0 breakpoint, which it removes at the instrumentation pause):
+    /// WebKit does not set the debugger's URL breakpoints that would slide to it, and they are emulated here. Those are
+    /// the ones for the script's URL at or before its first statement that WebKit did not set elsewhere in the script.
+    /// </summary>
+    private List<(string Id, string? Condition)> BreakpointsAt(JsonObject p, string? named, bool atScriptStart)
+    {
+        var found = new List<(string Id, string? Condition)>();
+        lock (_stateGate)
+        {
+            if (named is not null && !_removedBreakpoints.ContainsKey(named)) found.Add((named, null));
+            if (p["callFrames"] is not JsonArray { Count: > 0 } frames || frames[0]?["location"] is not JsonObject location) return found;
+            string key = LocationKey(location);
+            string scriptId = location["scriptId"]?.GetValue<string>() ?? "";
+            found.AddRange(_breakpointLocations
+                .Where(entry => entry.Key != named && entry.Value.Locations.Contains(key))
+                .Select(static entry => (entry.Key, entry.Value.Condition)));
+            // In a script with a source map, js-debug sets its breakpoints at the instrumentation pause and reports one
+            // that is where the script starts.
+            if (_sourceMappedScripts.ContainsKey(scriptId)) return found;
+            if (!atScriptStart && _instrumentationLocations.GetValueOrDefault(scriptId) != key || !_scriptUrls.TryGetValue(scriptId, out string? url)) return found;
+            int line = location["lineNumber"]?.GetValue<int>() ?? 0, column = location["columnNumber"]?.GetValue<int>() ?? 0;
+            foreach ((string id, JsonObject parameters) in _urlBreakpoints)
+            {
+                if (id == named || found.Any(entry => entry.Id == id)) continue;
+                if (_breakpointLocations.TryGetValue(id, out (string? Condition, HashSet<string> Locations) tracked) &&
+                    tracked.Locations.Any(set => set.StartsWith(scriptId + ":", StringComparison.Ordinal))) continue;
+                int wantedLine = parameters["lineNumber"]?.GetValue<int>() ?? 0, wantedColumn = parameters["columnNumber"]?.GetValue<int>() ?? 0;
+                if (wantedLine > line || wantedLine == line && wantedColumn > column || !UrlMatches(parameters, url)) continue;
+                found.Add((id, parameters["options"]?["condition"]?.GetValue<string>()));
+            }
+        }
+        return found;
+    }
+
+    // js-debug's "entrypoint" breakpoint: a URL pattern at line 0, unconditional. It stops where a script starts, for a
+    // debugger without the instrumentation pause; the user's breakpoints are at the lines of the script's source map.
+    private bool IsLineZeroBreakpoint(string id)
+    {
+        lock (_stateGate)
+        {
+            return (_urlBreakpoints.TryGetValue(id, out JsonObject? parameters) || _removedBreakpoints.TryGetValue(id, out parameters)) &&
+                parameters?["urlRegex"] is not null &&
+                (parameters["lineNumber"]?.GetValue<int>() ?? 0) == 0 && (parameters["columnNumber"]?.GetValue<int>() ?? 0) == 0 &&
+                parameters["options"]?["condition"] is null;
+        }
+    }
+
+    private bool UrlMatches(JsonObject parameters, string url)
+    {
+        if (parameters["url"]?.GetValue<string>() is { } exact) return exact == url;
+        if (parameters["urlRegex"]?.GetValue<string>() is not { } pattern) return false;
+        try
+        {
+            if (!_urlRegexes.TryGetValue(pattern, out Regex? regex))
+                _urlRegexes[pattern] = regex = new Regex(pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+            return regex.IsMatch(url);
+        }
+        catch (Exception error) when (error is ArgumentException or RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The breakpoints a stop hit, as the debugger has them after the instrumentation pauses: those it has not removed
+    /// meanwhile, whose condition holds. WebKit evaluated the named one's; the others' are evaluated as WebKit would
+    /// have, and js-debug's logpoints log from theirs. Null if none.
+    /// </summary>
+    private async Task<JsonArray?> BreakpointHitsAsync(JsonObject p, List<(string Id, string? Condition)> breakpoints, string? named)
+    {
+        string? frame = p["callFrames"] is JsonArray { Count: > 0 } frames ? frames[0]?["callFrameId"]?.GetValue<string>() : null;
+        var hits = new JsonArray();
+        foreach ((string id, string? condition) in breakpoints)
+        {
+            lock (_stateGate)
+            {
+                if (_removedBreakpoints.ContainsKey(id)) continue;
+            }
+            bool hit = id == named || string.IsNullOrWhiteSpace(condition);
+            if (!hit && frame is not null)
+            {
+                try
+                {
+                    JsonObject result = await Wip("Debugger.evaluateOnCallFrame", new()
+                    {
+                        ["callFrameId"] = frame,
+                        ["expression"] = $"!!(\n{condition}\n)",
+                        ["returnByValue"] = true,
+                    }).ConfigureAwait(false);
+                    hit = !Bool(result, "wasThrown") && result["result"]?["value"]?.GetValue<bool>() == true;
+                }
+                catch (Exception error) when (error is CdpException or InvalidOperationException)
+                {
+                }
+            }
+            if (hit) hits.Add((JsonNode)id);
+        }
+        return hits.Count > 0 ? hits : null;
     }
 
     private JsonArray CallFrames(JsonObject p)

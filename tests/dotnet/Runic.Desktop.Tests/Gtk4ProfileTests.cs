@@ -307,7 +307,7 @@ public sealed class Gtk4ProfileTests
         const DesktopWindowCapabilities minimum = DesktopWindowCapabilities.MinimumSize;
         const DesktopWindowCapabilities bounds = DesktopWindowCapabilities.Bounds;
         // sdk#897 W1a: maximize, restore and placement on request; GTK 3 once it reports its state.
-        const DesktopWindowCapabilities windowPlacement = DesktopWindowCapabilities.WindowPlacement;
+        const DesktopWindowCapabilities windowPlacement = DesktopWindowCapabilities.Placement;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
                 DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation | ownership | direction |

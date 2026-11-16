@@ -385,26 +385,27 @@ public sealed partial class RunicTestHost : IAsyncDisposable
 
     // The base protocol's requests a guest sends for a window, with the window-open feature each needs, or none
     // (host-protocol.md, Presentation). Every other kind is not one of this protocol here: no feature is in use.
-    private static readonly Dictionary<string, Views.RunicWindowPresentationFeatures> s_presentationRequests = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, (Views.RunicWindowPresentationFeatures Feature, RunicTestPresentationKind Kind)> s_presentationRequests =
+        new(StringComparer.Ordinal)
     {
-        ["present"] = Views.RunicWindowPresentationFeatures.Present,
-        ["minimize"] = Views.RunicWindowPresentationFeatures.Minimize,
-        ["set-visible"] = Views.RunicWindowPresentationFeatures.Visibility,
-        ["set-full-screen"] = Views.RunicWindowPresentationFeatures.FullScreen,
-        ["set-document-edited"] = Views.RunicWindowPresentationFeatures.DocumentEdited,
-        ["set-color-scheme"] = Views.RunicWindowPresentationFeatures.ColorScheme,
-        ["toggle-maximized"] = Views.RunicWindowPresentationFeatures.None,
-        ["resize"] = Views.RunicWindowPresentationFeatures.None,
-        ["move"] = Views.RunicWindowPresentationFeatures.None,
-        ["set-represented-file"] = Views.RunicWindowPresentationFeatures.None,
-        ["set-layout-direction"] = Views.RunicWindowPresentationFeatures.None,
-        ["announce"] = Views.RunicWindowPresentationFeatures.None,
-        ["maximize"] = Views.RunicWindowPresentationFeatures.Maximize,
-        ["restore"] = Views.RunicWindowPresentationFeatures.Maximize,
-        ["set-placement"] = Views.RunicWindowPresentationFeatures.Placement,
+        ["present"] = (Views.RunicWindowPresentationFeatures.Present, RunicTestPresentationKind.Present),
+        ["minimize"] = (Views.RunicWindowPresentationFeatures.Minimize, RunicTestPresentationKind.Minimize),
+        ["set-visible"] = (Views.RunicWindowPresentationFeatures.Visibility, RunicTestPresentationKind.SetVisible),
+        ["set-full-screen"] = (Views.RunicWindowPresentationFeatures.FullScreen, RunicTestPresentationKind.SetFullScreen),
+        ["set-document-edited"] = (Views.RunicWindowPresentationFeatures.DocumentEdited, RunicTestPresentationKind.SetDocumentEdited),
+        ["set-color-scheme"] = (Views.RunicWindowPresentationFeatures.ColorScheme, RunicTestPresentationKind.SetColorScheme),
+        ["toggle-maximized"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.ToggleMaximized),
+        ["resize"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.Resize),
+        ["move"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.Move),
+        ["set-represented-file"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.SetRepresentedFile),
+        ["set-layout-direction"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.SetLayoutDirection),
+        ["announce"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.Announce),
+        ["maximize"] = (Views.RunicWindowPresentationFeatures.Maximize, RunicTestPresentationKind.Maximize),
+        ["restore"] = (Views.RunicWindowPresentationFeatures.Maximize, RunicTestPresentationKind.Restore),
+        ["set-placement"] = (Views.RunicWindowPresentationFeatures.Placement, RunicTestPresentationKind.SetPlacement),
         // region/1: the page title of a region window, and a move of the focus out of a region.
-        ["set-title"] = Views.RunicWindowPresentationFeatures.None,
-        ["region-focus"] = Views.RunicWindowPresentationFeatures.None,
+        ["set-title"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.SetTitle),
+        ["region-focus"] = (Views.RunicWindowPresentationFeatures.None, RunicTestPresentationKind.RegionFocus),
     };
 
     private async Task OnRequestAsync(HostRequest request)
@@ -417,7 +418,7 @@ public sealed partial class RunicTestHost : IAsyncDisposable
         }
         if (await OnFeatureRequestAsync(request, id).ConfigureAwait(false)) return;
         if (await OnServiceRequestAsync(request, id).ConfigureAwait(false)) return;
-        if (!s_presentationRequests.TryGetValue(request.Kind, out var feature))
+        if (!s_presentationRequests.TryGetValue(request.Kind, out var known))
         {
             await request.FailAsync("rejected", "invalid-request", $"'{request.Kind}' is not a request of the base protocol.").ConfigureAwait(false);
             return;
@@ -433,7 +434,8 @@ public sealed partial class RunicTestHost : IAsyncDisposable
             await request.FailAsync("rejected", "invalid-request", "The 'set-placement' request is missing a member or has one out of range.").ConfigureAwait(false);
             return;
         }
-        var presentation = new RunicTestPresentationRequest(target.Id, request.Kind, JsonDocument.Parse(request.Message.ToJsonString()).RootElement.Clone());
+        var feature = known.Feature;
+        var presentation = new RunicTestPresentationRequest(target.Id, known.Kind, JsonDocument.Parse(request.Message.ToJsonString()).RootElement.Clone());
         target.Record(presentation);
         if (!target.IsClosed && RegionOutcome(target, request.Kind) is { } regionOutcome)
         {
@@ -768,7 +770,7 @@ public sealed record RunicTestHostOptions
     /// </summary>
     /// <remarks>
     /// The guest opens the paths itself, as with its own dialogs: an open dialog's files must exist. The request's typed
-    /// members (<see cref="RunicTestDialogRequest.DialogKind"/>, <see cref="RunicTestDialogRequest.Title"/>,
+    /// members (<see cref="RunicTestDialogRequest.Kind"/>, <see cref="RunicTestDialogRequest.Title"/>,
     /// <see cref="RunicTestDialogRequest.SuggestedName"/> and others) describe the dialog. An answer that does not fit the
     /// request, or a callback that throws, fails the guest's dialog and the test host's next wait.
     /// </remarks>
@@ -805,10 +807,10 @@ public enum RunicTestDialogKind
     SaveFile,
 
     /// <summary>A dialog that selects one directory (<c>folder</c>).</summary>
-    OpenFolder,
+    OpenDirectory,
 
     /// <summary>A dialog that selects one or more directories (<c>folder-multiple</c>).</summary>
-    OpenFolders,
+    OpenDirectories,
 
     /// <summary>A message box (<c>message-box</c>).</summary>
     MessageBox,
@@ -822,22 +824,23 @@ public enum RunicTestDialogKind
 /// <c>menus/1</c>).
 /// </summary>
 /// <param name="WindowId">The window's id.</param>
-/// <param name="Kind">The request's kind on the wire: <c>file-dialog</c>, <c>message-box</c> or <c>show-context-menu</c>.</param>
+/// <param name="Kind">What the guest asks for: a file dialog's kind, a message box or a context menu.</param>
 /// <param name="Message">The whole request as the guest sent it, with its members such as <c>dialog</c>, <c>buttons</c> or <c>menu</c>.</param>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-public sealed record RunicTestDialogRequest(string WindowId, string Kind, JsonElement Message)
+public sealed record RunicTestDialogRequest(string WindowId, RunicTestDialogKind Kind, JsonElement Message)
 {
-    /// <summary>What the guest asks for.</summary>
-    public RunicTestDialogKind DialogKind => Kind switch
+    // The kind of a file-dialog, message-box or show-context-menu request (host-protocol.md); the wire tokens stay.
+    internal static RunicTestDialogKind KindOf(string requestKind, JsonElement message) => requestKind switch
     {
         "message-box" => RunicTestDialogKind.MessageBox,
         "show-context-menu" => RunicTestDialogKind.ContextMenu,
-        _ => Member("dialog") switch
+        _ => (message.ValueKind == JsonValueKind.Object && message.TryGetProperty("dialog", out var dialog) && dialog.ValueKind == JsonValueKind.String
+            ? dialog.GetString() : null) switch
         {
             "open-multiple" => RunicTestDialogKind.OpenFiles,
             "save" => RunicTestDialogKind.SaveFile,
-            "folder" => RunicTestDialogKind.OpenFolder,
-            "folder-multiple" => RunicTestDialogKind.OpenFolders,
+            "folder" => RunicTestDialogKind.OpenDirectory,
+            "folder-multiple" => RunicTestDialogKind.OpenDirectories,
             _ => RunicTestDialogKind.OpenFile,
         },
     };
@@ -855,7 +858,7 @@ public sealed record RunicTestDialogRequest(string WindowId, string Kind, JsonEl
     public IReadOnlyList<string> FilterNames => Names("filters", "name");
 
     /// <summary>A message box's message, or <see langword="null"/> for another kind.</summary>
-    public string? Text => Kind == "message-box" ? Member("message") : null;
+    public string? Text => Kind == RunicTestDialogKind.MessageBox ? Member("message") : null;
 
     /// <summary>A message box's detail, or <see langword="null"/>.</summary>
     public string? Detail => Member("detail");
@@ -950,7 +953,67 @@ public sealed record RunicTestGuest(string Name, string Version, string? Applica
 /// <param name="Kind">The request's kind.</param>
 /// <param name="Message">The whole request, with its members such as <c>fullScreen</c>.</param>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-public sealed record RunicTestPresentationRequest(string WindowId, string Kind, JsonElement Message);
+public sealed record RunicTestPresentationRequest(string WindowId, RunicTestPresentationKind Kind, JsonElement Message);
+
+/// <summary>
+/// The kind of a <see cref="RunicTestPresentationRequest"/>: a presentation request of the host protocol, whose wire
+/// token each value names.
+/// </summary>
+/// <remarks>Open: a later release can add kinds. Experimental; see <c>docs/experimental.md</c>.</remarks>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public enum RunicTestPresentationKind
+{
+    /// <summary>Bring the window forward (<c>present</c>).</summary>
+    Present,
+
+    /// <summary>Minimize the window (<c>minimize</c>).</summary>
+    Minimize,
+
+    /// <summary>Show or hide the window (<c>set-visible</c>, member <c>visible</c>).</summary>
+    SetVisible,
+
+    /// <summary>Enter or leave full screen (<c>set-full-screen</c>, member <c>fullScreen</c>).</summary>
+    SetFullScreen,
+
+    /// <summary>Mark the document edited (<c>set-document-edited</c>, member <c>edited</c>).</summary>
+    SetDocumentEdited,
+
+    /// <summary>Change the colour scheme (<c>set-color-scheme</c>, member <c>colorScheme</c>).</summary>
+    SetColorScheme,
+
+    /// <summary>Maximize or restore (<c>toggle-maximized</c>).</summary>
+    ToggleMaximized,
+
+    /// <summary>Maximize (<c>maximize</c>).</summary>
+    Maximize,
+
+    /// <summary>Restore (<c>restore</c>).</summary>
+    Restore,
+
+    /// <summary>Take a placement (<c>set-placement</c>).</summary>
+    SetPlacement,
+
+    /// <summary>Resize the window or, in a region, its content (<c>resize</c>, members <c>width</c> and <c>height</c>).</summary>
+    Resize,
+
+    /// <summary>Move the window (<c>move</c>, members <c>x</c> and <c>y</c>).</summary>
+    Move,
+
+    /// <summary>Set the represented file (<c>set-represented-file</c>, member <c>path</c>).</summary>
+    SetRepresentedFile,
+
+    /// <summary>Change the layout direction (<c>set-layout-direction</c>, member <c>direction</c>).</summary>
+    SetLayoutDirection,
+
+    /// <summary>Speak an announcement (<c>announce</c>, members <c>text</c> and <c>priority</c>).</summary>
+    Announce,
+
+    /// <summary>A region window's page title (<c>set-title</c>, member <c>title</c>).</summary>
+    SetTitle,
+
+    /// <summary>The focus leaves a region (<c>region-focus</c>).</summary>
+    RegionFocus,
+}
 
 /// <summary>A window a guest asked a <see cref="RunicTestHost"/> for.</summary>
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]

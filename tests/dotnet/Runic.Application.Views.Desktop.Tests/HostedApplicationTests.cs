@@ -36,7 +36,7 @@ internal sealed class HostedApplicationTests
         var window = await opened.WaitScaledAsync(Timeout);
         Check(window.Application == application && window.Type == typeof(ConformanceMainWindow).FullName && !window.GuardsClose && window.Owner is null,
             $"The window does not describe the guest's Window: {window.Type}.");
-        Check(application.Windows.Single() == window && window.IsOpen && window.Presentation.Browser == BrowserKind.Embedded,
+        Check(application.Windows.Single() == window && window.IsOpen && window.DesktopWindow.Browser == BrowserKind.Embedded,
             "The window is not the guest's one open embedded window.");
         // Window mode (host-protocol.md, Page admission): the guest's launch address, top-level, without the host's
         // credential or origins, in the session's own data store.
@@ -67,7 +67,7 @@ internal sealed class HostedApplicationTests
         var native = fixture.Factory.Hosts.Single();
         native.UserClose();
         await window.Closed.WaitScaledAsync(Timeout);
-        Check(!native.IsOpen && !window.Presentation.IsOpen, "The host's window did not close.");
+        Check(!native.IsOpen && !window.DesktopWindow.IsOpen, "The host's window did not close.");
         Check(await application.Exited.WaitScaledAsync(Timeout) == 0, "The guest did not exit cleanly after its Window closed.");
     }
 
@@ -758,7 +758,7 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
     // Holds each window's open until it completes, such as while the test ends the guest.
     public Func<Task>? OpenGate { get; set; }
 
-    // The windows opened from now on maximize, restore and place themselves (WindowPlacement) and report their state,
+    // The windows opened from now on maximize, restore and place themselves (Placement) and report their state,
     // from 100, 100 with 800 by 600.
     public bool Places { get; set; }
 
@@ -830,7 +830,7 @@ internal sealed class HostedWindowFactory : IDesktopWindowHostFactory
 // A headless embedded window host that honours the ephemeral data store of hosted windows and records how it opened.
 // UserClose is the title-bar close button.
 internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDataStoreWindowHost, IDesktopMenuWindowHost, IDesktopActivityWindowHost,
-    IDesktopFileDropWindowHost, IDesktopPlacementWindowHost, IDesktopWindowStateHost, IDesktopWindowShowStateHost
+    IDesktopFileDropWindowHost, IDesktopPlacementWindowHost, IDesktopWindowStateHost, IDesktopShowStateWindowHost
 {
     // sdk#897: with HostedWindowFactory.Places, the window keeps a state and takes the show-state requests, which
     // activate it as on Windows when they maximize it or bring it back from minimized.
@@ -1041,7 +1041,7 @@ internal sealed class HostedWindowHost : IDesktopWindowHost, IDesktopEphemeralDa
     public DesktopWindowHostOptions? Options { get; private set; }
     public int Focused => Volatile.Read(ref _focused);
     public DesktopWindowCapabilities Capabilities => SupportedCapabilities |
-        (_places ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.WindowPlacement : DesktopWindowCapabilities.None);
+        (_places ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Placement : DesktopWindowCapabilities.None);
     public bool SupportsCloseConfirmation => true;
     public event EventHandler? Closed;
     public bool IsOpen => _open;

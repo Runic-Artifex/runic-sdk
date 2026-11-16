@@ -280,7 +280,7 @@ public sealed partial class RunicTestHostedWindow
 
     /// <summary>The titles the guest sent for its page in the region (<c>set-title</c>), in order.</summary>
     public IReadOnlyList<string> Titles =>
-        [.. PresentationRequests.Where(static request => request.Kind == "set-title")
+        [.. PresentationRequests.Where(static request => request.Kind == RunicTestPresentationKind.SetTitle)
             .Select(static request => request.Message.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String
                 ? title.GetString()!
                 : string.Empty)];

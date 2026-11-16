@@ -43,11 +43,11 @@ internal sealed class WindowManagementTests
         await using var shell = await RunicWindowTestHost.CreateWindowAsync<ManagedShellWindow>(provider);
         var windows = provider.GetRequiredService<IRunicWindowService>();
         var vm = (ManagedShellViewModel)shell.ViewModel;
-        var changes = new List<(IRunicWindow Window, bool Opened)>();
+        var changes = new List<(IRunicWindow Window, RunicWindowsChange Change)>();
         // Only the documents: the shell's own open may still be on its way.
         windows.WindowsChanged += (_, args) =>
         {
-            if (args.Window is ManagedDocumentWindow) lock (changes) changes.Add((args.Window, args.Opened));
+            if (args.Window is ManagedDocumentWindow) lock (changes) changes.Add((args.Window, args.Change));
         };
 
         var first = await vm.OpenDocumentAsync("a.txt");
@@ -72,7 +72,8 @@ internal sealed class WindowManagementTests
         Require(!ReferenceEquals(reopened, first) && shell.OpenedWindows.Count == 3, "A closed Window was found again.");
         await WaitUntilAsync(() => { lock (changes) return changes.Count == 4; }, "WindowsChanged did not report every change.");
         lock (changes)
-            Require(changes.Count(change => change.Opened) == 3 && changes.Count(change => !change.Opened) == 1,
+            Require(changes.Count(change => change.Change == RunicWindowsChange.Opened) == 3
+                && changes.Count(change => change.Change == RunicWindowsChange.Closed) == 1,
                 $"WindowsChanged reported {changes.Count} changes.");
     }
 
@@ -271,7 +272,7 @@ internal sealed class WindowManagementTests
             if (args.Window is not ManagedDocumentWindow) return;
             if (Interlocked.Increment(ref running) > 1) overlapped = true;
             Thread.Sleep(5);
-            lock (counts) counts.Add((args.Opened, args.Windows.Count));
+            lock (counts) counts.Add((args.Change == RunicWindowsChange.Opened, args.Windows.Count));
             Interlocked.Decrement(ref running);
         };
         var context = shell.Services.GetRequiredService<IRunicModelContext>();

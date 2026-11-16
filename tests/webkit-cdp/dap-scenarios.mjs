@@ -3,10 +3,11 @@
 // (startDebugging), which gets the breakpoints again when a new page replaces its target. The scenarios use the runic-app
 // template's React page under `dotnet runic dev` (#1029): breakpoints through Vite's source maps hit from a click, stepping,
 // conditions, logpoints, exceptions, console output, locals and hover, a breakpoint in the first render after a reload,
-// HMR, and the Window restarting under dotnet watch. Each prints PASS or FAIL with what it saw; the exit code is 0 when
-// all pass.
+// a breakpoint and a logpoint in a module that loads after thousands of others (#1051), HMR, and the Window restarting
+// under dotnet watch. Each prints PASS or FAIL with what it saw; the exit code is 0 when all pass.
 // usage: node dap-scenarios.mjs --jsdebug <js-debug dir> --port <cdp port> --frontend <Frontend dir>
-//          [--restart-file <a .cs file of the application>] [--only a,b] [--trace <js-debug log file>]
+//          [--restart-file <a .cs file of the application>] [--modules <count>] [--per-script-sourcemaps auto|yes|no]
+//          [--only a,b] [--trace <js-debug log file>]
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -16,6 +17,11 @@ const { values: a } = parseArgs({ options: {
   jsdebug: { type: "string" }, port: { type: "string" }, frontend: { type: "string" }, only: { type: "string" }, trace: { type: "string" },
   // A C# file of the application: appending a comment makes dotnet watch (no hot reload under dev) restart the Window.
   "restart-file": { type: "string" },
+  // The late-module scenario's page load: this many modules, each with its own inline source map, before the late one.
+  modules: { type: "string", default: "2000" },
+  // js-debug's perScriptSourcemaps. With "auto", once paused in Vite's client, js-debug stops where a file it has
+  // breakpoints for starts instead of at the instrumentation pause before each script with a source map; "no" keeps that.
+  "per-script-sourcemaps": { type: "string", default: "auto" },
   // The attach configuration's type: pwa-chrome ("chrome" in launch.json) or pwa-msedge with useWebView, the template's.
   type: { type: "string", default: "pwa-chrome" },
 } });
@@ -95,6 +101,7 @@ const childP = new Promise(res => { parent.handlers.startDebugging = async req =
 const parentInitialized = parent.wait("initialized", () => true, 120000);
 await parent.send("initialize", init);
 const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
+  perScriptSourcemaps: a["per-script-sourcemaps"],
   ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
 await parentInitialized; await parent.send("configurationDone"); await pa;
 const first = await childP;
@@ -110,11 +117,12 @@ const top = async threadId => (await c.send("stackTrace", { threadId, levels: 1 
 const where = f => `${f.name} ${(f.source?.path ?? f.source?.name ?? "?").replace(a.frontend + "/", "")}:${f.line}:${f.column}`;
 // Sets a file's breakpoints, as VS Code does, and returns once js-debug reports each of them verified: bound to the
 // page's script through its source map. A debugger user sees that before clicking; a slow machine takes longer.
-async function setBps(bps, path = app) {
+// A file that the page has not loaded yet gets its breakpoints with verify false: js-debug binds them when it loads.
+async function setBps(bps, path = app, { verify = true } = {}) {
   breakpoints.set(path, bps);
   const seen = current.breakpointEvents.length;
   const response = await c.send("setBreakpoints", { source: { path }, breakpoints: bps });
-  const ids = (response.body?.breakpoints ?? []).filter(bp => !bp.verified).map(bp => bp.id);
+  const ids = verify ? (response.body?.breakpoints ?? []).filter(bp => !bp.verified).map(bp => bp.id) : [];
   for (const deadline = Date.now() + 30000; ids.length > 0;) {
     for (const event of current.breakpointEvents.slice(seen)) if (event.verified && ids.includes(event.id)) ids.splice(ids.indexOf(event.id), 1);
     if (ids.length === 0) break;
@@ -233,6 +241,81 @@ const scenarios = {
     const f2 = st2 ? await top(st2.threadId) : null;
     await setBps([]); if (st2) await c.send("continue", { threadId: st2.threadId });
     return [!!st2, `first render after reload: ${f ? "stopped at " + where(f) : "NOT stopped"}; click after reload: ${f2 ? "stopped at " + where(f2) : "NOT stopped"}`];
+  },
+  async "late-module"() {
+    // A page load as in a large Vite app (#1051): the template's main module imports a module that imports thousands of
+    // others, each with its own inline source map, and then imports a second group dynamically. In that group the late
+    // module runs first, but WebKit parses 200 more modules after it. The late module's breakpoint, on its first
+    // statement, and logpoint must work on its first execution, at their source lines: js-debug sets them through the
+    // module's source map before the module runs, at the module's own instrumentation pause, or, once it paused in
+    // Vite's client, where a module it has breakpoints for starts. An instrumentation pause that stood for the newest
+    // module of the group missed the late one. The page has not loaded the module before the first load, and has its
+    // old source map before the reload.
+    // js-debug stops at the start of a file it has breakpoints for by a pattern of its name: no other module has "late".
+    const directory = `${a.frontend}/src/webkit-cdp-batch`;
+    const main = `${a.frontend}/src/main.tsx`;
+    const count = Number(a.modules);
+    const late = `${directory}/late.ts`;
+    // Without the import that an interrupted run may have left.
+    const imported = `\nimport "./webkit-cdp-batch/entry";\n`;
+    const original = fs.readFileSync(main, "utf8").replaceAll(imported, "");
+    fs.rmSync(directory, { recursive: true, force: true });
+    fs.mkdirSync(directory);
+    try {
+      for (let i = 0; i < count; i++)
+        fs.writeFileSync(`${directory}/m${i}.ts`, `// One of the late-module scenario's modules.\ntype Value = number;\nexport const v${i}: Value = ${i};\n`);
+      fs.writeFileSync(`${directory}/many.ts`, Array.from({ length: count }, (_, i) => `import { v${i} } from "./m${i}";`).join("\n") +
+        `\nexport const total: number = ${Array.from({ length: count }, (_, i) => `v${i}`).join(" + ") || "0"};\n`);
+      const tail = 200;
+      for (let i = 0; i < tail; i++)
+        fs.writeFileSync(`${directory}/t${i}.ts`, `// One of the modules parsed after the late one.\ntype Value = number;\nexport const t${i}: Value = ${i};\n`);
+      fs.writeFileSync(`${directory}/tail.ts`, Array.from({ length: tail }, (_, i) => `import { t${i} } from "./t${i}";`).join("\n") +
+        `\nexport const tailTotal: number = ${Array.from({ length: tail }, (_, i) => `t${i}`).join(" + ")};\n`);
+      fs.writeFileSync(`${directory}/group.ts`, `import "./late";\nimport { tailTotal } from "./tail";\n(globalThis as Record<string, unknown>).__webkitCdpTail = tailTotal;\n`);
+      fs.writeFileSync(`${directory}/entry.ts`, `import { total } from "./many";\n(globalThis as Record<string, unknown>).__webkitCdpMany = total;\nvoid import("./group");\n`);
+      // TypeScript lines before the marked ones, so that their lines in the served JavaScript differ.
+      fs.writeFileSync(late, [
+        "// The late-module scenario's module, imported after the others.",
+        "interface Late {",
+        "  value: number;",
+        "  label: string;",
+        "}",
+        "type Doubled = number;",
+        // The module's first statement, where WebKit stops for the instrumentation pause, has the breakpoint.
+        `const late: Late = { value: 21, label: "late" }; // webkit-cdp-late-breakpoint`,
+        "const doubled: Doubled = late.value * 2; // webkit-cdp-late-logpoint",
+        "(globalThis as Record<string, unknown>).__webkitCdpLate = { doubled, at: performance.now() };",
+        "export {};",
+        "",
+      ].join("\n"));
+      const logLine = lineOf(late, "webkit-cdp-late-logpoint");
+      const breakLine = lineOf(late, "webkit-cdp-late-breakpoint");
+      await setBps([{ line: logLine, logMessage: "webkit-cdp-late value={late.value}" }, { line: breakLine }], late, { verify: false });
+      const mapped = f => f?.source?.path === late;
+      // Stopped at the breakpoint after a page load; the logpoint's output and where js-debug places it.
+      const load = async (what, start) => {
+        const output = c.wait("output", b => b.output.includes("webkit-cdp-late value=21"), 120000).catch(() => null);
+        const stopped = c.wait("stopped", () => true, 120000).catch(() => null);
+        await start();
+        const st = await stopped;
+        const f = st ? await top(st.threadId) : null;
+        if (st) await c.send("continue", { threadId: st.threadId });
+        const out = await output;
+        await until(`globalThis.__webkitCdpLate?.doubled === 42 && ${counterReady}`, `the page after ${what}`, 120000);
+        const at = Number((await c.send("evaluate", { expression: "Math.round(globalThis.__webkitCdpLate.at)", context: "repl" })).body?.result);
+        const ok = mapped(f) && f.line === breakLine && out?.source?.path === late && out.line === logLine;
+        return [ok, `${what}: ${f ? "stopped at " + where(f) : "NOT stopped"}; logpoint ${out ? `at ${(out.source?.path ?? "?").replace(a.frontend + "/", "")}:${out.line}` : "MISSING"}; late module ran ${at} ms after navigation`];
+      };
+      // The first load of the modules: Vite reloads the page for the changed main module.
+      const [first, firstDetail] = await load("first load", async () => saveAtomically(main, original + imported));
+      const [again, againDetail] = await load("reload", () => c.send("evaluate", { expression: `setTimeout(() => location.reload(), 50), "ok"`, context: "repl" }));
+      await setBps([], late, { verify: false });
+      return [first && again, `${count} + ${tail + 3} modules; expected ${breakLine} and logpoint ${logLine}; ${firstDetail}; ${againDetail}`];
+    } finally {
+      saveAtomically(main, original);
+      await until(`!globalThis.__webkitCdpMany && ${counterReady}`, "the page without the late module", 300000).catch(() => null);
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   },
   async "window-restart"() {
     if (!a["restart-file"]) return [true, "skipped (no --restart-file)"];

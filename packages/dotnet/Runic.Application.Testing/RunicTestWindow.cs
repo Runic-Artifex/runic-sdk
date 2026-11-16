@@ -331,6 +331,7 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
                     Locale = options.Locale,
                     MaximumInputBytes = opening.Options.MaximumInputBytes ?? options.MaximumInputBytes,
                     MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? options.MaximumUploadBytes,
+                    MaximumPendingUploadBytes = opening.Options.MaximumPendingUploadBytes ?? options.MaximumPendingUploadBytes,
                     PublicationTimeout = options.PublicationTimeout,
                 })
             { Services = provider, WindowPresentation = presentation };
@@ -435,7 +436,7 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
     {
         if (IsClosed || Volatile.Read(ref _draining) != 0) return true;
         if (!await AskToCloseAsync(_closeWithoutAsking.Token).ConfigureAwait(false)) return IsClosed;
-        if (_drain.KeepsWindow)
+        if (_drain.KeepWindow)
         {
             StartDrain();
             return true;

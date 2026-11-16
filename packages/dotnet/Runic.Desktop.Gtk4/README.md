@@ -159,7 +159,7 @@ and whether the compositor honours the monitor for full screen is its choice.
 header bar and the view, and `Language` WebKitGTK's preferred languages
 (`navigator.language`, `Accept-Language`) for the window's own web context.
 
-The host implements `IDesktopWindowBoundsHost`. `DesktopWindow.SetBoundsAsync`
+The host implements `IDesktopBoundsWindowHost`. `DesktopWindow.SetBoundsAsync`
 sets the default size and, on X11, moves and resizes the X window in one
 `XMoveResizeWindow`, which GTK takes as a resize by the window manager; on
 Wayland it sets the size only and refuses a position with
@@ -169,7 +169,7 @@ GDK's tiled state or, on X11, a frame that fills a half or a quarter of its
 monitor's work area, and `SetMinimumSizeAsync` sets the size request of the web
 view. See [Exact bounds](../Runic.Desktop/README.md#exact-bounds-visible-frame-and-minimum-size).
 
-It implements `IDesktopWindowShowStateHost` too. `DesktopWindow.MaximizeAsync`
+It implements `IDesktopShowStateWindowHost` too. `DesktopWindow.MaximizeAsync`
 and `RestoreAsync` maximize and unmaximize the window; GTK 4 has no call to
 un-minimize a window, so `RestoreAsync` presents a minimized one, which brings
 it back normal on X11 (Wayland reports no minimized state). `SetPlacementAsync`

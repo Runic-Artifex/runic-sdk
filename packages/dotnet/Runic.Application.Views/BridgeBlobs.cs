@@ -28,7 +28,7 @@ internal sealed class BridgeBlobs : IDisposable
     internal const string UploadTokenHeader = "X-Runic-Upload-Token";
     internal const string UploadNameHeader = "X-Runic-Upload-Name";
     internal const long DefaultMaximumUploadBytes = 256L * 1_048_576;
-    internal const long DefaultMaximumWindowUploadBytes = 1_024L * 1_048_576;
+    internal const long DefaultMaximumPendingUploadBytes = 1_024L * 1_048_576;
     internal const int MaximumConcurrentUploads = 16;
     // An upload whose body sends nothing for this long is dropped (408), on every host.
     internal static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
@@ -65,7 +65,7 @@ internal sealed class BridgeBlobs : IDisposable
     internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
     internal long MaximumUploadBytes { get; private set; } = DefaultMaximumUploadBytes;
-    internal long MaximumWindowUploadBytes { get; private set; } = DefaultMaximumWindowUploadBytes;
+    internal long MaximumPendingUploadBytes { get; private set; } = DefaultMaximumPendingUploadBytes;
 
     // The bases of the Window's upload folder (BridgeUploadFolder): null for the temporary directory and the user's
     // cache. Tests set their own.
@@ -96,10 +96,10 @@ internal sealed class BridgeBlobs : IDisposable
     }
 
     // A window session starts on the dispatcher, also one whose transport served an earlier session.
-    internal void Configure(long? maximumUploadBytes, long? maximumWindowUploadBytes)
+    internal void Configure(long? maximumUploadBytes, long? maximumPendingUploadBytes)
     {
         MaximumUploadBytes = maximumUploadBytes ?? DefaultMaximumUploadBytes;
-        MaximumWindowUploadBytes = maximumWindowUploadBytes ?? DefaultMaximumWindowUploadBytes;
+        MaximumPendingUploadBytes = maximumPendingUploadBytes ?? DefaultMaximumPendingUploadBytes;
         lock (_gate) _closed = false;
     }
 
@@ -430,7 +430,7 @@ internal sealed class BridgeBlobs : IDisposable
             if (_closed) return StoreOutcome.Rejected(410, "released", "The window closed.");
             if (_receiving >= MaximumConcurrentUploads)
                 return StoreOutcome.Rejected(429, "capacity", $"The window already receives {MaximumConcurrentUploads} uploads.");
-            if (_storedBytes + (declared ?? 0) > MaximumWindowUploadBytes)
+            if (_storedBytes + (declared ?? 0) > MaximumPendingUploadBytes)
                 return StoreOutcome.Rejected(507, "capacity", "The window's uploads that no command claimed use its whole upload space.");
             _receiving++;
             generation = _generation;
@@ -486,7 +486,7 @@ internal sealed class BridgeBlobs : IDisposable
                 {
                     if (_closed || generation != _generation)
                         outcome = StoreOutcome.Rejected(410, "released", "The window closed.");
-                    else if (_storedBytes + read > MaximumWindowUploadBytes)
+                    else if (_storedBytes + read > MaximumPendingUploadBytes)
                         outcome = StoreOutcome.Rejected(507, "capacity", "The window's uploads that no command claimed use its whole upload space.");
                     else
                     {
@@ -912,7 +912,7 @@ internal sealed class StoredUpload(BridgeBlobs owner, string id, string connecti
     // the path is in the Window's folder, which BridgeUploadFolder created for this user alone (mode 0700 below a
     // base no other user can change, or a protected ACL on Windows): no other user can replace the file or the folder
     // between the checks and the move. The checks before and after it only catch this process's own mistakes.
-    public async ValueTask SaveAsAsync(string destination, bool overwrite, CancellationToken cancellationToken)
+    public async ValueTask SaveToFileAsync(string destination, bool overwrite, CancellationToken cancellationToken)
     {
         try
         {
@@ -965,7 +965,7 @@ internal sealed class StoredUpload(BridgeBlobs owner, string id, string connecti
     internal void Expire() => owner.Expired(this);
 
     // Closes the handle, then deletes the path: Windows cannot delete an open file. Deletion also works by path, safe in
-    // the private folder for the same reason as SaveAsAsync's move; a path that was replaced by a link loses the link,
+    // the private folder for the same reason as SaveToFileAsync's move; a path that was replaced by a link loses the link,
     // never its target.
     internal void Delete(ILogger logger)
     {

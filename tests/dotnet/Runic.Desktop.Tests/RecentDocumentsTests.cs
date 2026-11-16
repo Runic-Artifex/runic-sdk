@@ -260,7 +260,7 @@ public sealed class RecentDocumentsTests
         try
         {
             await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new ClosableWindowHostFactory(), WaitForConnection = false });
-            await host.NoteRecentDocumentAsync(Root + "plan.md");
+            await host.AddRecentDocumentAsync(Root + "plan.md");
             Assert.Single(Bookmarks(file));
             await host.ClearRecentDocumentsAsync();
             Assert.Empty(Bookmarks(file));

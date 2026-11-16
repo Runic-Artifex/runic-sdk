@@ -33,7 +33,7 @@ namespace Runic.Desktop;
 /// and shrinks back to 1001.
 /// </para>
 /// <para>
-/// A custom window host (<see cref="IDesktopWindowBoundsHost"/>) defines its own units and documents them.
+/// A custom window host (<see cref="IDesktopBoundsWindowHost"/>) defines its own units and documents them.
 /// </para>
 /// </remarks>
 public sealed record DesktopWindowBounds

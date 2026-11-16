@@ -12,11 +12,11 @@ public sealed record RunicRegionSlot(string Key, PageReference? Content);
 /// its regions in order and the selected index.
 /// </summary>
 /// <param name="Regions">The regions, in the selection's order.</param>
-/// <param name="Selected">The index of the selected region, or <see langword="null"/> when there is no region.</param>
-public sealed record RunicRegionCollectionState(IReadOnlyList<RunicRegionSlot> Regions, int? Selected)
+/// <param name="SelectedIndex">The index of the selected region, or <see langword="null"/> when there is no region.</param>
+public sealed record RunicRegionCollectionState(IReadOnlyList<RunicRegionSlot> Regions, int? SelectedIndex)
 {
     /// <summary>The selected region, or <see langword="null"/>.</summary>
-    public RunicRegionSlot? SelectedRegion => Selected is { } index ? Regions[index] : null;
+    public RunicRegionSlot? SelectedRegion => SelectedIndex is { } index ? Regions[index] : null;
 
     /// <summary>The keys of the regions, in order.</summary>
     public IReadOnlyList<string> Keys => [.. Regions.Select(region => region.Key)];

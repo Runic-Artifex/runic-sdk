@@ -927,10 +927,13 @@ run_desktop_smoke() {
 
 # IDE debugging on Linux (#1029, D066.39): VS Code's JavaScript debugger attached through dotnet runic dev's CDP adapter
 # to a generated React project's WebKitGTK Window (check-webkit-cdp.mjs): source-mapped breakpoints, stepping, the
-# console, reloads, HMR and a Window restart. RUNIC_TEMPLATE_WEBKIT_CDP=only runs it alone, for GTK 3 and GTK 4 (the
-# webkit-cdp CI job); it needs Xvfb, dbus-run-session and both WebKitGTK runtimes.
+# console, reloads, a module that loads after 2,000 others, HMR and a Window restart. RUNIC_TEMPLATE_WEBKIT_CDP=only runs
+# it alone, for GTK 3 and GTK 4 (the webkit-cdp CI job); it needs Xvfb, dbus-run-session and both WebKitGTK runtimes.
+# Under Vite, js-debug's default perScriptSourcemaps soon stops at the start of each file it has breakpoints for
+# instead of at the adapter's instrumentation pause before each script; GTK 3 runs with that turned off, for both.
 verify_webkit_cdp() {
   local linux_gtk="$1"
+  local per_script_sourcemaps="$2"
   local project_name="AcceptanceWebKitCdpGtk$linux_gtk"
   local output="$template_tmp/webkit-cdp-gtk$linux_gtk"
   local gtk_options=()
@@ -940,7 +943,7 @@ verify_webkit_cdp() {
   configure_candidate_registry npm "$output"
   (cd "$output" && dotnet tool restore)
   local log="$output/webkit-cdp-check.log"
-  if ! node "$script_directory/check-webkit-cdp.mjs" --project "$output" > "$log" 2>&1; then
+  if ! node "$script_directory/check-webkit-cdp.mjs" --project "$output" --per-script-sourcemaps "$per_script_sourcemaps" > "$log" 2>&1; then
     echo "js-debug did not debug the GTK $linux_gtk Window through dotnet runic dev's CDP adapter." >&2
     cat "$log" >&2
     exit 1
@@ -1172,8 +1175,8 @@ done
 
 case "${RUNIC_TEMPLATE_WEBKIT_CDP:-0}" in
   only)
-    verify_webkit_cdp 3
-    verify_webkit_cdp 4
+    verify_webkit_cdp 3 no
+    verify_webkit_cdp 4 auto
     exit 0
     ;;
   0) ;;

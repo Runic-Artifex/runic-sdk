@@ -115,14 +115,14 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is <see langword="null"/>.</exception>
     /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask NoteRecentDocumentAsync(string path, CancellationToken cancellationToken = default)
+    public ValueTask AddRecentDocumentAsync(string path, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(path);
         ValidateDocumentPath(path, nameof(path));
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
         return OperatingSystem.IsMacOS()
-            ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken)
+            ? MacOsWkWebViewHost.AddRecentDocumentAsync(path, cancellationToken)
             : IgnoreResultAsync(RecentDocuments.Shared.AddAsync(path, cancellationToken));
     }
 

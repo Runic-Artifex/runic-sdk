@@ -78,6 +78,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         if (options.MaximumUploadBytes is < 1_024)
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
         _maximumUploadBytes = options.MaximumUploadBytes;
+        if (options.MaximumPendingUploadBytes is < 1_024)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumPendingUploadBytes,
+                "MaximumPendingUploadBytes must be at least 1 024 bytes.");
+        _maximumPendingUploadBytes = options.MaximumPendingUploadBytes;
         _assets = options.Assets;
         _menuBar = new CsWebUiMenuBar(options.MenuBar ?? throw new ArgumentNullException(nameof(options), "MenuBar is null."));
     }
@@ -107,6 +111,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     private readonly Runic.Assets.IAssetSource? _assets;
     private readonly int? _maximumInputBytes;
     private readonly long? _maximumUploadBytes;
+    private readonly long? _maximumPendingUploadBytes;
 
     private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
 
@@ -268,7 +273,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? _flowCultureFromLocale ?? false,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
-                MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,
+                MaximumPendingUploadBytes = opening.Options.MaximumPendingUploadBytes ?? _maximumPendingUploadBytes,
             });
             var menuLogger = (scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(CsWebUiLog.LogCategory))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
@@ -299,7 +304,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("CS-WebUI");
             // ...and cannot stay open while the Window drains (sdk#900); the Window's scope still waits for durable work.
 #pragma warning disable RUNICDESK105 // The experimental close drain.
-            if (opening.Options.CloseDrain is { KeepsWindow: true }) opening.ReportCloseDrainUnavailable("CS-WebUI");
+            if (opening.Options.CloseDrain is { KeepWindow: true }) opening.ReportCloseDrainUnavailable("CS-WebUI");
 #pragma warning restore RUNICDESK105
             opening.ReportOwnerIgnored("CS-WebUI cannot own windows");
 

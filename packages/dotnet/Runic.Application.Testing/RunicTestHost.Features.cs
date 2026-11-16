@@ -74,7 +74,8 @@ public sealed partial class RunicTestHost
             await request.FailAsync("rejected", "busy", "The window already shows a dialog.").ConfigureAwait(false);
             return true;
         }
-        var recorded = new RunicTestDialogRequest(window.Id, request.Kind, JsonDocument.Parse(message.ToJsonString()).RootElement.Clone());
+        var json = JsonDocument.Parse(message.ToJsonString()).RootElement.Clone();
+        var recorded = new RunicTestDialogRequest(window.Id, RunicTestDialogRequest.KindOf(request.Kind, json), json);
         window.RecordDialog(recorded);
         RunicTestDialogAnswer? answer = null;
         Exception? failure = null;
@@ -115,7 +116,7 @@ public sealed partial class RunicTestHost
         {
             // A callback that threw or answered what does not fit: the guest's dialog fails, and the test learns why.
             var name = request.Kind switch { "file-dialog" => "FileDialog", "message-box" => "MessageBox", _ => "ContextMenu" };
-            RecordAnswerFailure(new InvalidOperationException($"RunicTestHostOptions.{name} failed for {recorded.DialogKind}: {failure!.Message}", failure));
+            RecordAnswerFailure(new InvalidOperationException($"RunicTestHostOptions.{name} failed for {recorded.Kind}: {failure!.Message}", failure));
             await request.FailAsync("failed", null, $"The test host's {name} answer failed.").ConfigureAwait(false);
         }
         return true;
@@ -124,7 +125,7 @@ public sealed partial class RunicTestHost
     // Without a callback: dismissed, or a message box's cancel button (an Esc).
     private static RunicTestDialogAnswer DefaultAnswer(RunicTestDialogRequest request)
     {
-        if (request.DialogKind != RunicTestDialogKind.MessageBox) return RunicTestDialogAnswer.Dismiss();
+        if (request.Kind != RunicTestDialogKind.MessageBox) return RunicTestDialogAnswer.Dismiss();
         if (!request.Message.TryGetProperty("buttons", out var buttons) || buttons.ValueKind != JsonValueKind.Array) return RunicTestDialogAnswer.Dismiss();
         foreach (var button in buttons.EnumerateArray())
         {
@@ -141,7 +142,7 @@ public sealed partial class RunicTestHost
     {
         failure = null;
         if (answer.Failure is var (kind, reason, message)) return (kind, reason, message, null);
-        var file = request.DialogKind is not (RunicTestDialogKind.MessageBox or RunicTestDialogKind.ContextMenu);
+        var file = request.Kind is not (RunicTestDialogKind.MessageBox or RunicTestDialogKind.ContextMenu);
         if (answer.Paths is { } paths)
         {
             if (!file)
@@ -154,7 +155,7 @@ public sealed partial class RunicTestHost
                 failure = new ArgumentOutOfRangeException(nameof(answer), $"The dialog has {request.FilterNames.Count} filters, not one of index {index}.");
                 return default;
             }
-            var single = request.DialogKind is RunicTestDialogKind.OpenFile or RunicTestDialogKind.SaveFile or RunicTestDialogKind.OpenFolder;
+            var single = request.Kind is RunicTestDialogKind.OpenFile or RunicTestDialogKind.SaveFile or RunicTestDialogKind.OpenDirectory;
             return (null, null, null, new JsonObject
             {
                 ["outcome"] = "success",
@@ -166,7 +167,7 @@ public sealed partial class RunicTestHost
         switch (HostProtocol.String(reply, "outcome"))
         {
             case "dismissed":
-                return (null, null, null, request.DialogKind switch
+                return (null, null, null, request.Kind switch
                 {
                     RunicTestDialogKind.MessageBox => new JsonObject { ["outcome"] = "success", ["button"] = null },
                     RunicTestDialogKind.ContextMenu => new JsonObject { ["outcome"] = "success", ["itemId"] = null },
@@ -179,7 +180,7 @@ public sealed partial class RunicTestHost
                     return default;
                 }
                 var chosen = HostProtocol.String(reply, "chosen");
-                return (null, null, null, request.DialogKind == RunicTestDialogKind.MessageBox
+                return (null, null, null, request.Kind == RunicTestDialogKind.MessageBox
                     ? new JsonObject { ["outcome"] = "success", ["button"] = chosen }
                     : new JsonObject { ["outcome"] = "success", ["itemId"] = chosen });
             default:

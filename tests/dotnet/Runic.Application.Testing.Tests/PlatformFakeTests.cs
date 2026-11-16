@@ -318,9 +318,9 @@ internal sealed class PlatformFakeTests
             var dialogs = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
             var boxes = scope.ServiceProvider.GetRequiredService<IDesktopMessageBoxes>();
 
-            script.EnqueueOpenFile("in.txt", "hello");
-            script.EnqueueSaveFile("out.txt");
-            script.EnqueueMessageBoxAnswer("ok");
+            script.FileDialogs.EnqueueOpen("in.txt", "hello");
+            script.FileDialogs.EnqueueSave("out.txt");
+            script.MessageBoxes.EnqueueAnswer("ok");
             (await dialogs.OpenFileAsync(new OpenFileOptions { Title = "Import" })).TryGetValue(out var read);
             await using (read!)
             {
@@ -401,7 +401,7 @@ internal sealed class PlatformFakeTests
             var dialogs = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
             await File.AppendAllTextAsync(Path.Combine(script.Directory, "script.jsonl"),
                 "{not json\n{\"service\":\"printer\",\"operation\":\"print\"}\n");
-            script.EnqueueOpenFile("in.txt", "hello");
+            script.FileDialogs.EnqueueOpen("in.txt", "hello");
 
             var opened = await dialogs.OpenFileAsync(new OpenFileOptions());
             Require(opened.TryGetValue(out var read), $"The valid line after the malformed ones was not applied: {opened}.");

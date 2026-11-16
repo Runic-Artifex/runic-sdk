@@ -55,7 +55,7 @@ internal static class ShellProbe
             }
             if (first == counter.Exited) throw new ProbeException($"The counter exited with {await counter.Exited} before its window opened.");
             var window = await opened.Task;
-            Check(window.Type == "CounterTool.CounterWindow" && window.Presentation.IsOpen, $"The counter's {window.Type} is not open in a window of the shell.");
+            Check(window.Type == "CounterTool.CounterWindow" && window.DesktopWindow.IsOpen, $"The counter's {window.Type} is not open in a window of the shell.");
 
             step = "show the counter's menu bar";
             await WaitForMenuAsync(window, "Counter", timeout.Token);
@@ -67,7 +67,7 @@ internal static class ShellProbe
 
             step = "stop the counter";
             Check(await counter.StopAsync(timeout.Token) == 0, "The counter did not exit cleanly.");
-            Check(window.Closed.IsCompleted && !window.Presentation.IsOpen, "The counter's window is open after it stopped.");
+            Check(window.Closed.IsCompleted && !window.DesktopWindow.IsOpen, "The counter's window is open after it stopped.");
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {

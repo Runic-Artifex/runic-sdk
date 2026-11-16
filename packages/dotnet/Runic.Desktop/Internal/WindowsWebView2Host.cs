@@ -143,7 +143,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.Ownership |
         DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize |
-        DesktopWindowCapabilities.WindowPlacement |
+        DesktopWindowCapabilities.Placement |
         // Per window for a generated profile; WebUiWindow removes it for a ProfilePath the application configured.
         DesktopWindowCapabilities.PerWindowColorScheme;
     // A frameless or kiosk window has no frame for a menu bar.

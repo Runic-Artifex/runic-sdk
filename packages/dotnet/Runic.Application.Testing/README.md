@@ -566,7 +566,7 @@ page's select and close requests by key:
 
 ```csharp
 var tabs = (await host.Root.SnapshotAsync()).Regions(vm => vm.Documents);
-// tabs.Keys, tabs.Regions[i].Content (a PageReference or null), tabs.Selected
+// tabs.Keys, tabs.Regions[i].Content (a PageReference or null), tabs.SelectedIndex
 var closed = await host.Root.CloseRegionAsync(vm => vm.Documents, tabs.Keys[0]);
 // closed.RegionOutcome: Committed, or Rejected with Guard when a page refused
 ```
@@ -1080,7 +1080,8 @@ for a blob URL of the state or a result, as `RunicServedBlob`: status, headers
 and content, with `range` for a byte range and `head` for `HEAD`. A replaced or
 released URL answers 404, and `ServedBlobCount` counts the URLs the window
 still serves. `UploadAsync(bytes, fileName, contentType)` simulates a page's
-upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes`)
+upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes` and
+`MaximumPendingUploadBytes`)
 and returns the `RunicUpload` that a command input takes;
 `PendingUploadCount` counts the uploads no command claimed.
 
@@ -1228,15 +1229,18 @@ var start = platform.Configure(RunicServeOnlyApplication.CreateStartInfo(appPath
 await using var app = await RunicServeOnlyApplication.StartAsync(start);
 await page.GotoAsync(app.Url.ToString());
 
-platform.EnqueueSaveFile("report.csv");
+platform.FileDialogs.EnqueueSave("report.csv");
 await page.GetByRole(AriaRole.Button, new() { Name = "Export" }).ClickAsync();
 var commit = await platform.WaitForEventAsync(e => e.Operation == "commit");
 Assert.Equal("a,b\n", commit.GetText("content"));
 ```
 
-`EnqueueOpenFile`, `EnqueueSaveFile`, `EnqueueOpenDirectory`,
-`EnqueueFileDialogDismissed`, `EnqueueMessageBoxAnswer`,
-`EnqueueContextMenuChoice` and `SetClipboard` script the fakes. `ReadEvents()`
+Its `FileDialogs`, `MessageBoxes`, `ContextMenus` and `Clipboard` script the
+fakes with the names of `RunicTestPlatform`'s, so a test moves between the
+in-process host and serve-only unchanged: `FileDialogs.EnqueueOpen`,
+`EnqueueSave`, `EnqueueOpenDirectory`, `EnqueueDismissed`, `EnqueueUnavailable`
+and `EnqueueFailed`; `MessageBoxes.EnqueueAnswer`; `ContextMenus.EnqueueChoice`
+and `EnqueueDismissed`; `Clipboard.SetContent` and `SetText`. `ReadEvents()`
 and `WaitForEventAsync(match)` return each call the application made, such as
 `fileDialogs.saveFile` with its `title`, `fileDialogs.commit` with the file and
 its base64 `content`, `clipboard.write`, `messageBoxes.show` with the `button`
@@ -1280,8 +1284,9 @@ public async Task ClosesWhenTheHostAsks()
   `Protocols`), the `StartTimeout`, the presentation features each window
   reports (`WindowFeatures`), a policy that refuses windows (`OpenWindow`) and
   the outcome of each presentation request (`Presentation`). Each window's
-  `PresentationRequests` lists what the application asked, such as `present`
-  or `set-full-screen`. A request whose feature the window did not report is
+  `PresentationRequests` lists what the application asked, with its `Kind`, a
+  `RunicTestPresentationKind` such as `Present` (`present` on the wire) or
+  `SetFullScreen` (`set-full-screen`). A request whose feature the window did not report is
   answered unavailable, and a kind outside the base protocol is rejected with
   `invalid-request`, as a real host does.
 - A window is listed in `Windows`, and found by `WaitForWindowAsync`, once the
@@ -1305,7 +1310,7 @@ public async Task ClosesWhenTheHostAsks()
   `PermissionDenied`), `Fail(code)` and `Unavailable(reason)`, such as
   `OwnerClosed`. By default every dialog and menu is dismissed. Each window's
   `DialogRequests` lists what the application asked for, with typed members
-  (`DialogKind`, `Title`, `SuggestedName`, `FilterNames`, `Text`, `ButtonIds`),
+  (`Kind`, a `RunicTestDialogKind`, `Title`, `SuggestedName`, `FilterNames`, `Text`, `ButtonIds`),
   and an answer's token is cancelled when the application gives the dialog up
   or closes the window. An answer that throws or does not fit, such as a
   relative path, fails the application's dialog, and the test host's next
@@ -1329,7 +1334,7 @@ public async Task ClosesWhenTheHostAsks()
   `Appearance` (none by default) and change with `RunicTestHost.SetLocaleAsync`
   and `SetAppearanceAsync`: the application's locale follows them unless it set
   its own, each window's `Locale` is the one its `window-open` named, a
-  direction change shows in `PresentationRequests` (`set-layout-direction`),
+  direction change shows in `PresentationRequests` (`SetLayoutDirection`),
   and the Windows' pages receive the appearance.
 - Window services (`window-services/1`, listed by default): `RunicTestHost.Clipboard`
   is the host's clipboard (a `RunicTestClipboard`: `SetText` what the user
@@ -1356,7 +1361,7 @@ public async Task ClosesWhenTheHostAsks()
   once, in an `<iframe>` of a page whose origin is `embedder`, such as
   `http://127.0.0.1:<port>` of a test page your Playwright fixture serves; the
   guest lets no other origin frame its page. The page's title arrives in
-  `Titles`, its content height as a `resize` in `PresentationRequests` when the
+  `Titles`, its content height as a `Resize` in `PresentationRequests` when the
   region was attached with `sizing: "content-height"`, and what happened to the
   page in `RegionPages`. `FocusRegionAsync`, `SetRegionBoundsAsync` and
   `DetachRegionAsync` play the host page's focus, size and removal.
