@@ -2,8 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
 import { callEvent, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, maximumClientMessageBytes, openPath, sourcesPath, spanEvent, viewEvent } from "./channel.js";
-import { readLimitedBody, sameOrigin } from "./requests.js";
-import { parseAllowList, resolveAccessList } from "./access.js";
+import { mayRead, readLimitedBody, sameOrigin } from "./requests.js";
+import { loopbackOnly, parseAllowList, resolveAccessList, type AccessList } from "./access.js";
 import { answerOpen, answerSources, createSourceMapReader, launchSourceEditor } from "./sources.js";
 import { answerHandlers, createHandlerAnalyzer } from "./handlers.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
@@ -19,6 +19,20 @@ export { isLoopbackRequest, readLimitedBody, sameOrigin } from "./requests.js";
 /** The session value `dotnet runic dev` set, when it has the shape the tool writes: 32 to 128 hex digits. */
 export function devSessionValue(value: string | undefined): string | undefined {
   return value !== undefined && /^[0-9a-f]{32,128}$/.test(value) ? value : undefined;
+}
+
+/**
+ * Answers `/__runic/state` with the path-free state, and with the `dotnet runic dev` session when there is one, to the
+ * clients that may read Runic's development data (`mayRead`: this machine, or the hosts and networks `access` admits,
+ * and no page of another origin); 403 to any other.
+ */
+export async function answerStateRequest(
+  request: IncomingMessage, response: ServerResponse, state: () => RunicDevelopmentState, session: string | undefined,
+  access: AccessList = loopbackOnly,
+): Promise<void> {
+  request.resume();
+  if (!(await mayRead(request, access))) return answerStatus(response, 403);
+  answerState(response, state(), session);
 }
 
 /** Answers `/__runic/state` with the path-free state, and with the `dotnet runic dev` session when there is one. */
@@ -39,19 +53,21 @@ function answerStatus(response: ServerResponse, status: number, headers: Record<
 }
 
 /**
- * Answers a development client's POST to `/__runic/diagnostics`: `{ "event", "data" }` from the same origin, as JSON
- * of at most `maximumClientMessageBytes`. Calls `deliver` with an accepted message and answers 204.
+ * Answers a development client's POST to `/__runic/diagnostics`: `{ "event", "data" }` from the same origin and from
+ * this machine or a client `access` admits, as JSON of at most `maximumClientMessageBytes`. Calls `deliver` with an
+ * accepted message and answers 204.
  */
 export async function answerClientMessage(
   request: IncomingMessage,
   response: ServerResponse,
   deliver: (event: string, data: unknown) => void,
+  access: AccessList = loopbackOnly,
 ): Promise<void> {
   if (request.method !== "POST") {
     request.resume();
     return answerStatus(response, 405, { Allow: "POST" });
   }
-  if (!sameOrigin(request)) {
+  if (!sameOrigin(request) || !(await access.allowsRequest(request))) {
     request.resume();
     return answerStatus(response, 403);
   }
@@ -95,8 +111,9 @@ export interface RunicDevSessionProxyOptions {
   /** `false` turns off `/__runic/handlers`, Runic Inspect's handler analysis. Defaults to `true`. */
   readonly inspect?: boolean;
   /**
-   * Hosts and networks besides this machine whose pages may read `/__runic/sources` and `/__runic/handlers`, as
-   * `runic({ allow })` takes them; `RUNIC_DEV_ALLOW` adds to them. `/__runic/open` stays loopback-only.
+   * Hosts and networks besides this machine whose pages may read `/__runic/state`, `/__runic/sources` and
+   * `/__runic/handlers` and post to `/__runic/diagnostics`, as `runic({ allow })` takes them; `RUNIC_DEV_ALLOW` adds to
+   * them. `/__runic/open` stays loopback-only.
    */
   readonly allow?: readonly string[];
 }
@@ -105,8 +122,9 @@ export interface RunicDevSessionProxyOptions {
  * Vite proxy entries for a development server that takes a Vite proxy configuration but no Vite plugins: the
  * Angular CLI's `proxyConfig`. Spread the result into the proxy configuration. The entries never proxy; they answer:
  *
- * - `/__runic/state` with the path-free development state, and under `dotnet runic dev` with its session;
- * - `/__runic/diagnostics`, which the development client (`@runic-artifex/vite-plugin-runic/client`) posts the
+ * - `/__runic/state` with the path-free development state, and under `dotnet runic dev` with its session, for clients of
+ *   this machine or of the hosts and networks `allow` and `RUNIC_DEV_ALLOW` admit;
+ * - `/__runic/diagnostics`, from the same clients, which the development client (`@runic-artifex/vite-plugin-runic/client`) posts the
  *   page's Views diagnostics, connection state, View states and Bridge calls to. The timeline is bounded, and failures go
  *   to the terminal;
  * - for Runic Inspect: `/__runic/sources` (the development source map), `/__runic/open` (opens a location in a file
@@ -187,17 +205,16 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
     ...inspect,
     "^/__runic/state(?:[/?#]|$)": {
       // The entries answer in bypass and return the URL; Vite then sees the ended response and stops.
-      bypass(request, response) {
+      async bypass(request, response) {
         if (response === undefined) return false;
-        request.resume();
-        answerState(response, timeline.state, session);
+        await answerStateRequest(request, response, () => timeline.state, session, access);
         return request.url ?? statePath;
       },
     },
     [`^${diagnosticsPath}(?:[/?#]|$)`]: {
       async bypass(request, response) {
         if (response === undefined) return false;
-        await answerClientMessage(request, response, deliver);
+        await answerClientMessage(request, response, deliver, access);
         return request.url ?? diagnosticsPath;
       },
     },

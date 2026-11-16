@@ -13,7 +13,7 @@ import {
   callEvent, clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, handlersPath, requestEvent, responseEvent,
   viewEvent, type RunicClientOptions,
 } from "./channel.js";
-import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
+import { answerClientMessage, answerStateRequest, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 import type { RunicSourceLocation, RunicSourceMap } from "./sources.js";
 import {
@@ -23,7 +23,9 @@ import {
 import type { RunicBridgeCall } from "./calls.js";
 import { formatMilliseconds, stackFrames } from "./calls.js";
 import { findMessageSource, readMessageReply, type MessageReference } from "./translations-source.js";
-import { allowVariable, parseAllowList, resolveAccessList } from "./access.js";
+import { allowVariable, isTrustedHost, parseAllowList, requestHost, resolveAccessList } from "./access.js";
+import { isLocalUser, localUserCheckAvailable } from "./local-user.js";
+import { createClientGate, type ClientGate } from "./client-gate.js";
 import { answerHandlers, createHandlerAnalyzer, handlerFile } from "./handlers.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
@@ -126,8 +128,8 @@ export interface RunicViteOptions {
    */
   readonly inspect?: boolean;
   /**
-   * Hosts and networks besides this machine whose pages may read Runic Inspect's data (`/__runic/sources`,
-   * `/__runic/handlers`) when the development server is reachable from them (`server.host`): IPv4 or IPv6 addresses,
+   * Hosts and networks besides this machine whose pages may read Runic's development data (`/__runic/state`,
+   * `/__runic/sources`, `/__runic/handlers`, and the state and events over HMR) when the development server is reachable from them (`server.host`): IPv4 or IPv6 addresses,
    * CIDR networks (a Tailscale network: `100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and host names, resolved when a request
    * arrives. The `RUNIC_DEV_ALLOW` environment variable adds to them; Runic Translations' in-page editing API reads the
    * same variable. Loopback only by default. `/__runic/open` stays loopback-only: it launches the editor on this machine.
@@ -172,6 +174,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const client = options.devtools !== false;
   const allowRules = options.allow === undefined ? [] : parseAllowList(options.allow, "allow");
   let server: ViteDevServer | undefined;
+  // Who may exchange Runic's events over the HMR connection (client-gate.ts), while serving.
+  let clients: ClientGate | undefined;
   // The OTLP export of the page's spans, while serving with the development client.
   let otlp: OtlpForwarder | undefined;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
@@ -198,7 +202,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const timeline = createDevelopmentTimeline(initialDevelopmentState(options.contract), maxTimelineEntries, (state) => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
     void jsonRenderer?.updateSpec(createDevtoolsSpec(state, readSourceMap()));
-    server?.ws.send({ type: "custom", event: stateEvent, data: state });
+    // Only to the connections the access list admits (client-gate.ts): the state has the page's runtime data.
+    clients?.broadcast(stateEvent, state);
   });
   // What /__runic/open opens besides the map's files: a frontend file Vite itself would serve to the page
   // (server.fs.allow and deny; with fs.strict: false, any file, as Vite then serves any), such as a component Runic
@@ -330,25 +335,39 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     async configureServer(viteServer) {
       server = viteServer;
-      viteServer.ws.on(connectionEvent, (payload) => deliver(connectionEvent, payload));
-      viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
-      viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
-      viteServer.ws.on(callEvent, (payload) => deliver(callEvent, payload));
-      viteServer.ws.on(spanEvent, (payload) => deliver(spanEvent, payload));
       // Who besides this machine may read Runic Inspect's data: runic({ allow }) and RUNIC_DEV_ALLOW (access.ts).
       const access = resolveAccessList(allowRules);
+      // With server.allowedHosts: true Vite answers any Host, so a DNS-rebinding name would reach Runic's endpoints as a
+      // same-origin page of this machine. They then check Host themselves: IP literals, localhost and the allow list's names.
+      const checkHost = viteServer.config?.server?.allowedHosts === true;
+      if (checkHost) {
+        viteServer.config?.logger?.info("[runic] server.allowedHosts is true; Runic's endpoints and HMR events still answer only " +
+          `IP addresses, localhost and the host names of runic({ allow }) and ${allowVariable}`, { timestamp: true });
+      }
+      const trustedHost = (request: IncomingMessage): boolean => !checkHost || isTrustedHost(requestHost(request), access);
+      // Runic's events over Vite's HMR connection, judged per connection by its peer address and the upgrade request's
+      // Host, as the HTTP endpoints judge a request: the page's diagnostics, views, calls and spans are taken, and the
+      // state sent, only for connections the access list admits.
+      clients = createClientGate(access, trustedHost, () => viteServer.ws.clients ?? []);
+      viteServer.ws.on("connection", (socket: object, request: IncomingMessage) => clients?.connect(socket, request));
+      for (const event of [connectionEvent, diagnosticEvent, viewEvent, callEvent, spanEvent]) {
+        viteServer.ws.on(event, (payload: unknown, hotClient: { socket?: object }) => {
+          clients?.whenAdmitted(hotClient.socket, () => deliver(event, payload));
+        });
+      }
+      if (!localUserCheckAvailable()) {
+        viteServer.config?.logger?.info(`[runic] On ${process.platform}, /__runic/open cannot tell this machine's users apart: ` +
+          "any local account that reaches the dev server can open a listed file in your editor", { timestamp: true });
+      }
       // Runic Inspect's source map, handler analysis, message and open requests over the HMR connection, which the page
       // has also when it is not Vite's own, as under dotnet runic dev (channel.ts, requestEvent). The same answers and the
-      // same access rules as the HTTP endpoints: Vite's WebSocket server reports each connection's peer address, which
-      // the access list judges per request (reads: loopback or allowed; open: loopback only).
-      const peers = new WeakMap<object, string | undefined>();
-      viteServer.ws.on("connection", (socket: object, request: IncomingMessage) => {
-        peers.set(socket, request.socket?.remoteAddress);
-      });
+      // same access rules as the HTTP endpoints, per request from the connection's peer address (reads: loopback or
+      // allowed; open: loopback, of this server's user).
       const requestResolution = openResolution(viteServer);
       const requestAnalyzer = client && options.inspect !== false ? createHandlerAnalyzer(() => resolvedRoot) : undefined;
       viteServer.ws.on(requestEvent, (payload, hotClient) => {
         const socket = (hotClient as { socket?: object }).socket;
+        const peer = clients?.peer(socket);
         void answerClientRequest(payload, {
           read: readSourceMap, launch: openLocation, resolution: requestResolution,
           ...(requestAnalyzer === undefined ? {} : { analyze: (file: string) => requestAnalyzer(handlerFile(file, resolvedRoot)) }),
@@ -357,19 +376,31 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
               address: viteServer.httpServer?.address(), https: Boolean(viteServer.config?.server?.https), base,
             }, message),
           }),
-          peer: socket === undefined ? undefined : peers.get(socket), access,
+          // A connection whose Host failed the check has no peer, so every request is refused.
+          peer: peer?.trustedHost ? peer.socket.remoteAddress : undefined, access,
+          localUser: () => isLocalUser(peer?.socket),
         }).then((answer) => { if (answer !== undefined) hotClient.send(responseEvent, answer); });
       });
+      // Every /__runic/ endpoint refuses a Host that failed the check (DNS rebinding with allowedHosts: true).
+      if (checkHost) {
+        viteServer.middlewares.use(function runicHostCheck(request, response, next) {
+          if (!request.url?.startsWith("/__runic/") || trustedHost(request)) return next();
+          request.resume();
+          response.statusCode = 403;
+          response.setHeader("Cache-Control", "no-store");
+          response.end();
+        });
+      }
       const devSession = devSessionValue(process.env[devSessionVariable]);
-      viteServer.middlewares.use(statePath, (_request, response) => {
-        answerState(response, timeline.state, devSession);
+      viteServer.middlewares.use(statePath, (request, response, next) => {
+        answerStateRequest(request, response, () => timeline.state, devSession, access).catch(next);
       });
       // A client that the page loads without the HMR channel posts here (channel.ts).
       viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
-        answerClientMessage(request, response, deliver).catch(next);
+        answerClientMessage(request, response, deliver, access).catch(next);
       });
       if (access.remote && (options.sourceMap !== false || (client && options.inspect !== false))) {
-        viteServer.config?.logger?.info(`[runic] Runic Inspect's data (/__runic/sources, /__runic/handlers) accepts requests from loopback and ${
+        viteServer.config?.logger?.info(`[runic] Runic's development data (/__runic/state, /__runic/sources, /__runic/handlers, HMR events) accepts requests from loopback and ${
           access.rules.map((rule) => rule.text).join(", ")} (runic({ allow }), ${allowVariable}); /__runic/open stays loopback-only`, { timestamp: true });
       }
       if (options.sourceMap !== false) {
@@ -397,6 +428,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       viteServer.httpServer?.once("close", () => {
         server = undefined;
+        clients = undefined;
         void otlp?.close();
       });
     },

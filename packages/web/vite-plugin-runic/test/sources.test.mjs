@@ -293,8 +293,8 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
     const location = fixture.map.members[0].location;
     const page = join(fixture.frontend, "index.html");
     const launched = [];
-    const ask = (message, { read = () => map, peer = "127.0.0.1", access } = {}) => answerClientRequest(message, {
-      read, peer, ...(access === undefined ? {} : { access }), launch: (target) => launched.push(target),
+    const ask = (message, { read = () => map, peer = "127.0.0.1", access, localUser = async () => true } = {}) => answerClientRequest(message, {
+      read, peer, localUser, ...(access === undefined ? {} : { access }), launch: (target) => launched.push(target),
       resolution: { frontendFile: (file) => file.startsWith(`${fixture.frontend}/`) },
       analyze: async (file) => file === "src/App.tsx" ? { format: "runic.vite.handlers/1", bindings: [] } : undefined,
       message: async (reference) => reference.key === "heading" ? { message: { catalog: reference.catalog, key: reference.key, locales: [] } } : undefined,
@@ -333,7 +333,11 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
       assert.equal((await ask(request(kind), { peer: null, access: allowed }))?.status, 403, `${kind}: a connection without an address`);
       assert.equal((await ask(request(kind), { peer: "192.0.2.5", access: allowed }))?.status, kind === "open" ? 403 : 200, `${kind}: an allowed machine`);
       assert.equal((await ask(request(kind), { peer: "::ffff:127.0.0.1", access: allowed }))?.status, 200, `${kind}: loopback`);
+      // Another account of this machine (local-user.ts): the reads, which Vite's own server gives it too, never open.
+      assert.equal((await ask(request(kind), { localUser: async () => false }))?.status, kind === "open" ? 403 : 200, `${kind}: another local user`);
     }
+    assert.equal((await answerClientRequest(request("open"), { read: () => map, peer: "127.0.0.1", launch: () => launched.push("x") }))?.status,
+      403, "open without an owner check");
     launched.length = 0;
     assert.deepEqual(launched, [], "a refused request launched the editor");
     assert.deepEqual(await ask({ id: 6, kind: "delete", target: { id: fixture.map.members[0].id } }), { id: 6, status: 400 });
