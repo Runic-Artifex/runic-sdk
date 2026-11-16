@@ -99,7 +99,7 @@ the release notes, which give the full detail and the pull requests:
   [React DevTools and Vue DevTools](../eng/release/notes/0.21.0.md#runic-state-in-react-devtools-and-vue-devtools-1041),
   [Custom object formatters](../eng/release/notes/0.21.0.md#readable-view-clients-and-states-in-the-console-1042),
   [WebView2 DevTools](../eng/release/notes/0.21.0.md#webview2-devtools-window-and-devtools-extensions-in-development-1056),
-  [The Runic DevTools panel](../eng/release/notes/0.21.0.md#a-runic-panel-in-chromes-and-edges-developer-tools-1060),
+  [The Runic DevTools panel](../eng/release/notes/0.21.0.md#a-runic-panel-in-the-developer-tools-of-chrome-edge-and-the-windows-window-1060),
   [Selection paths, Angular text locale and field types](../eng/release/notes/0.21.0.md#selection-paths-angular-text-locale-and-field-types-1064),
   [Fixes](../eng/release/notes/0.21.0.md#fixes),
   [Known issues](../eng/release/notes/0.21.0.md#known-issues)
