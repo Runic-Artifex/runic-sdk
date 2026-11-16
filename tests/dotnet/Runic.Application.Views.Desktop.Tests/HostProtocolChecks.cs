@@ -134,7 +134,7 @@ internal sealed class HostProtocolChecks
         Check(!GuestPrivileges.SameUserOnLinux(Proc(null, null)), "no /proc");
         Check(!GuestPrivileges.SameUserOnLinux(Proc(Self, "Name:\thost\nUid:\t1000")), "a parent status without an effective uid");
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-            Check(GuestPrivileges.Decide(GuestPrivileges.Read(), false, false).Code is null || Environment.IsPrivilegedProcess,
+            Check(GuestPrivileges.Read() is var facts && (GuestPrivileges.Decide(facts, false, false).Code is null || facts.Elevated),
                 "this test process, started by its own user, passes");
     }
 
@@ -149,8 +149,9 @@ internal sealed class HostProtocolChecks
             "/proc/4242/status" => parent?.Split('\n'),
             _ => null,
         };
-        const string Root = "Name:\tguest\nPPid:\t4242\nUid:\t0\t0\t0\t0";
-        Check(GuestPrivileges.ParentOnLinux(Proc(Root, "Name:\thost\nUid:\t0\t0\t0\t0")) == new GuestPrivileges.ParentFacts(true, true),
+        const string All = "\nCapEff:\t000001ffffffffff\nCapPrm:\t000001ffffffffff";
+        const string Root = "Name:\tguest\nPPid:\t4242\nUid:\t0\t0\t0\t0" + All;
+        Check(GuestPrivileges.ParentOnLinux(Proc(Root, "Name:\thost\nUid:\t0\t0\t0\t0" + All)) == new GuestPrivileges.ParentFacts(true, true),
             "a root guest of a root parent");
         Check(GuestPrivileges.ParentOnLinux(Proc(Root, "Name:\thost\nUid:\t1000\t1000\t1000\t1000")) == default,
             "a root guest of a standard user's parent");
@@ -163,6 +164,60 @@ internal sealed class HostProtocolChecks
         Check(GuestPrivileges.ParentOnLinux(Proc(Root, null)) == default, "a parent that cannot be read");
         Check(GuestPrivileges.ParentOnLinux(Proc("PPid:\t4242\nUid:\t1000\t1000\t1000\t1000", "Uid:\t1000\t1000\t1000\t1000")) ==
             new GuestPrivileges.ParentFacts(true, false), "a standard user's pair");
+    }
+
+    // host-protocol.md, Elevated host, on Linux (sdk#868): a non-empty CapEff or CapPrm makes a guest elevated, also
+    // without root, and a status without both sets counts as elevated. A parent runs elevated for the pair only as root
+    // whose sets, from the same read of its status as its uids, hold every capability the guest holds.
+    [Test]
+    public void LinuxCapabilitiesCountAsElevated()
+    {
+        static Func<string, string[]?> Proc(string? self, string? parent) => path => path switch
+        {
+            "/proc/self/status" => self?.Split('\n'),
+            "/proc/4242/status" => parent?.Split('\n'),
+            _ => null,
+        };
+        static string Status(int uid, string effective, string permitted) =>
+            $"Name:\tp\nPPid:\t4242\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\nCapInh:\t0000000000000000\nCapPrm:\t{permitted}\nCapEff:\t{effective}\nCapBnd:\t000001ffffffffff";
+        const string None = "0000000000000000", NetAdmin = "0000000000001000", SysAdmin = "0000000000200000", All = "000001ffffffffff";
+        var user = Status(1000, None, None);
+
+        // The guest's own sets.
+        Check(GuestPrivileges.ReadOnLinux(Proc(user, user), root: false) == new GuestPrivilegeFacts(false, true, false), "a standard user's guest");
+        var effective = GuestPrivileges.ReadOnLinux(Proc(Status(1000, NetAdmin, NetAdmin), user), root: false);
+        Check(effective is { Elevated: true, SameUser: true, ParentElevated: false, Capabilities: true }, $"CAP_NET_ADMIN effective: {effective}");
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(1000, None, SysAdmin), user), root: false) is { Elevated: true, Capabilities: true },
+            "CAP_SYS_ADMIN permitted only (setcap without +e, or dropped from the effective set)");
+        Check(GuestPrivileges.ReadOnLinux(Proc("Name:\tp\nPPid:\t4242\nUid:\t1000\t1000\t1000\t1000\nCapEff:\t0000000000000000", user), root: false)
+            is { Elevated: true, Capabilities: true }, "a status without CapPrm (fail closed)");
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(1000, "zz", None), user), root: false) is { Elevated: true }, "an unreadable CapEff");
+        Check(GuestPrivileges.ReadOnLinux(Proc(null, null), root: false) == default, "no /proc: not same user, so refused as another user");
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(0, All, All), Status(0, All, All)), root: true) is
+            { Elevated: true, SameUser: true, ParentElevated: true, Capabilities: false }, "root: elevated as before, not by capabilities");
+
+        // The parent's sets, from the same read as its uids.
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(0, All, All), Status(0, NetAdmin, NetAdmin)), root: true) is
+            { SameUser: true, ParentElevated: false }, "a root parent that dropped capabilities the root guest holds");
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(0, NetAdmin, NetAdmin), Status(0, All, All)), root: true) is { ParentElevated: true },
+            "a root parent with more capabilities than its root guest");
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(0, All, All), "Name:\thost\nUid:\t0\t0\t0\t0"), root: true) is { SameUser: true, ParentElevated: false },
+            "a root parent whose status has no capability sets");
+        Check(GuestPrivileges.ReadOnLinux(Proc(Status(1000, NetAdmin, NetAdmin), Status(1000, All, All)), root: false) is
+            { Elevated: true, SameUser: true, ParentElevated: false }, "a capability-holding guest of a capability-holding parent: no pair without root");
+
+        // The refusals.
+        var facts = GuestPrivileges.ReadOnLinux(Proc(Status(1000, NetAdmin, NetAdmin), Status(1000, All, All)), root: false);
+        var refusal = GuestPrivileges.Decide(facts, false, false);
+        Check(refusal.Code == "guest-elevated" && refusal.Message!.StartsWith(GuestPrivileges.CapabilitiesMessage, StringComparison.Ordinal),
+            $"without opt-ins: {refusal}");
+        refusal = GuestPrivileges.Decide(facts, true, true);
+        Check(refusal.Code == "guest-elevated-host-not-elevated" && refusal.Message!.Contains("does not run as root", StringComparison.Ordinal),
+            $"with both opt-ins: {refusal}");
+        refusal = GuestPrivileges.Decide(GuestPrivileges.ReadOnLinux(Proc(Status(1000, NetAdmin, NetAdmin), Status(1001, None, None)), root: false), true, true);
+        Check(refusal.Code == "guest-other-user", $"another user's parent: {refusal}");
+        Check(GuestPrivileges.Decide(GuestPrivileges.ReadOnLinux(Proc(user, user), root: false), false, false).Code is null, "a standard user's guest is hosted");
+        Check(GuestPrivileges.Capabilities(["CapEff:\t0000000000001000", "CapPrm:\t0000000000200000"]) == 0x201000, "the sets together");
     }
 
     // host-protocol.md, Elevated host, on Windows: the elevation of the verified parent, read while it was held open.

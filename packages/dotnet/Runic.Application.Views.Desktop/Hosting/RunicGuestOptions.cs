@@ -204,9 +204,9 @@ public sealed record RunicGuestOptions
 
     internal bool CanCheckPeers { get; init; } = Runic.Desktop.Internal.ElevatedPeers.IsAvailable;
 
-    // Whether this process runs elevated (root on Linux and macOS, an elevated token on Windows): such a guest refuses a
-    // region in a browser host's page (host-protocol.md, Browser hosts); tests replace it.
-    internal Func<bool> RunsElevated { get; init; } = static () => Environment.IsPrivilegedProcess;
+    // Whether this process runs elevated (root on Linux and macOS, on Linux also with capabilities, an elevated token on
+    // Windows): such a guest refuses a region in a browser host's page (host-protocol.md, Browser hosts); tests replace it.
+    internal Func<bool> RunsElevated { get; init; } = Hosting.GuestPrivileges.RunsElevated;
 
     internal string ResolvedName =>
         ApplicationName ?? Assembly.GetEntryAssembly()?.GetName().Name ?? AppDomain.CurrentDomain.FriendlyName;

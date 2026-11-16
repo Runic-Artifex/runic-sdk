@@ -11,6 +11,7 @@ using Runic.Platform;
 //   shortcut text and no text for a reserved shortcut, read from the GTK widgets.
 // - Availability follows CanExecute when a menu is shown; choosing an item runs the window's command with its
 //   parameter, a disabled one runs nothing, and the declared check and radio state stays until SetMenuBar changes it.
+//   A choice in the bar runs as a native menu choice (HostMenuChoice, sdk#855); a shortcut and TryExecuteMenuItemAsync don't.
 // - A shortcut the page leaves alone runs its item once; one the page cancels does not (real keys through XTEST).
 // - Context menus: chosen, dismissed with Escape, replaced by a later menu, cancelled, at a page point and at the
 //   pointer after a real right-click.
@@ -69,7 +70,13 @@ internal static partial class MenuSmoke
         private readonly HashSet<string> _handled = [.. handled];
         internal ConcurrentQueue<(string Id, string? Parameter)> Executed { get; } = new();
         public bool CanExecute(DesktopMenuItem item) => _handled.Contains(item.CommandId);
-        public void Execute(DesktopMenuItem item) => Executed.Enqueue((item.CommandId, item.CommandParameter));
+        // Whether each command ran as a choice in the host's native menu (sdk#855): a bar click, not a shortcut.
+        internal ConcurrentQueue<bool> MenuChoices { get; } = new();
+        public void Execute(DesktopMenuItem item)
+        {
+            MenuChoices.Enqueue(Runic.Desktop.Internal.HostMenuChoice.IsCurrent);
+            Executed.Enqueue((item.CommandId, item.CommandParameter));
+        }
         // B3: check marks by "id" or "id:parameter"; the declaration otherwise.
         internal ConcurrentDictionary<string, bool> Checked { get; } = new(StringComparer.Ordinal);
         public bool? IsChecked(DesktopMenuItem item) =>
@@ -165,6 +172,8 @@ internal static partial class MenuSmoke
                 "the declared check and radio state after the clicks: " + string.Join(", ", bar.Menus[1].Items));
             Require(await window.TryExecuteMenuItemAsync(new DesktopMenuItem("About", "help.about")) && application.Executed.TryDequeue(out _),
                 "TryExecuteMenuItemAsync runs the application's command");
+            Require(application.MenuChoices.TryDequeue(out var executeChoice) && !executeChoice,
+                "TryExecuteMenuItemAsync does not run as a native menu choice");
             Console.WriteLine($"PASS {name} menu commands: availability on show, parameters, disabled items, declared state, the application's target.");
 
             // B3: the View menu asks IsChecked when it is shown, for check and radio items alike.
@@ -227,12 +236,14 @@ internal static partial class MenuSmoke
             await Task.Delay(300);
             await input.KeyAsync(XTest.S, XTest.ControlL);
             await WaitForAsync(() => windowTarget.Executed.TryDequeue(out var ran) && ran.Id == "file.save", "Ctrl+S to run Save");
+            Require(windowTarget.MenuChoices.TryDequeue(out var shortcutChoice) && !shortcutChoice && windowTarget.MenuChoices.IsEmpty,
+                "Ctrl+S does not run Save as a native menu choice");
             await input.KeyAsync(XTest.S, XTest.ControlL, XTest.ShiftL);
             await WaitForAsync(async () => await surface.ExecuteJavaScriptAsync("return String(window.prevented);", Deadline) == "1",
                 "the page to see and cancel Ctrl+Shift+S");
             await Task.Delay(500);
             Require(windowTarget.Executed.IsEmpty, "a shortcut the page cancelled ran " + string.Join(", ", windowTarget.Executed));
-            Console.WriteLine($"PASS {name} shortcuts: Ctrl+S runs Save after the page; Ctrl+Shift+S, which the page cancels, runs nothing.");
+            Console.WriteLine($"PASS {name} shortcuts: Ctrl+S runs Save after the page, not as a native menu choice; Ctrl+Shift+S, which the page cancels, runs nothing.");
 
             await ContextMenusAsync(window, surface, inspector, input, name, rtl);
             await window.CloseAsync();
@@ -250,6 +261,7 @@ internal static partial class MenuSmoke
             await Task.Delay(500);
             Require(!await window.ReadNativeAsync(handle => inspector.HasBar(handle)), "no bar widget in a Page window");
             windowTarget.Executed.Clear();
+            windowTarget.MenuChoices.Clear();
             await input.ClickAsync(260, 220, button: 1);
             await Task.Delay(300);
             await input.KeyAsync(XTest.S, XTest.ControlL);
@@ -322,6 +334,8 @@ internal static partial class MenuSmoke
         await window.InvokeNativeAsync(handle => inspector.Activate(handle, menu, item));
         await WaitForAsync(() => !target.Executed.IsEmpty, $"{expected.Id} to run");
         Require(target.Executed.TryDequeue(out var ran) && ran == expected && target.Executed.IsEmpty, $"{expected} ran once, not {ran}");
+        Require(target.MenuChoices.TryDequeue(out var choice) && choice && target.MenuChoices.IsEmpty,
+            $"{expected.Id} chosen in the bar ran as a native menu choice");
     }
 
     private static async Task<BarSnapshot> WaitForBarAsync(DesktopWindow window, Inspector inspector, Func<BarSnapshot, bool> condition)

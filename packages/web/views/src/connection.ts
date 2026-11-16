@@ -774,6 +774,18 @@ class RouteEntry {
 // framework binding that resolved another copy than the generated client.
 const refreshKey = Symbol.for("runic.views.presentation-refresh");
 
+// The Bridge a connected presentation belongs to, on its `dispose` function as the refresh is: the keep-alive pool hands
+// a kept client over only while its instance still uses that Bridge (README, "Client lifetime").
+const bridgeKey = Symbol.for("runic.views.presentation-bridge");
+
+/**
+ * The Bridge `client` was connected over, or undefined for a client that is not a connected presentation of this
+ * package, such as a test double.
+ */
+export function presentationBridge(client: ViewClient): unknown {
+  return (client.dispose as unknown as Record<symbol, unknown> | undefined)?.[bridgeKey];
+}
+
 /**
  * Reads the state of a kept client's route again before a binding takes it over (README, "Client lifetime"). .NET
  * suspends a content route that no slot presents and resumes the presentations it kept when the content is presented
@@ -904,6 +916,7 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
   lease.current = entry.exposed;
   lease.epoch = entry.exposedEpoch;
   Object.defineProperty(dispose, refreshKey, { value: () => { if (live() && runtime.connected) void entry.recover(); } });
+  Object.defineProperty(dispose, bridgeKey, { value: runtime.bridge });
   // The development build describes the client for the bindings' DevTools labels (describe.ts) and the console's
   // custom formatters (formatters.ts).
   if (__RUNIC_DEVELOPMENT__) installFormatters();
