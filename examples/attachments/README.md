@@ -11,7 +11,7 @@ page, on Runic Desktop with a CommunityToolkit.Mvvm ViewModel (Views feature
 - The page uploads a file with `profile.upload(file, { onProgress })`, which
   streams it to the window's surface over HTTP, and passes the resulting
   reference to `attach`, whose parameter is a `RunicUpload`. The command stores
-  it with `SaveAsAsync` and lists it as an `Attachment` whose `File` is a
+  it with `SaveToFileAsync` and lists it as an `Attachment` whose `File` is a
   download blob (`RunicBlobDisposition.Attachment`).
 - [`Frontend/src/app.ts`](Frontend/src/app.ts) uses the URLs as they are:
   `<img src>` and `<a href download>`.

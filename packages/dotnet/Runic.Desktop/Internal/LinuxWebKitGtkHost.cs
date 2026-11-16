@@ -56,7 +56,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (Api.CanReportState
-            ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.WindowPlacement
+            ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.Placement
             : DesktopWindowCapabilities.None) |
         DesktopWindowCapabilities.ColorScheme |
         (Api.CanSetDirection ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |

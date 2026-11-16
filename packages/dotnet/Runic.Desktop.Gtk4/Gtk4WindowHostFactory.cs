@@ -436,7 +436,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
         DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.LayoutDirection | DesktopWindowCapabilities.Bounds |
-        DesktopWindowCapabilities.MinimumSize | DesktopWindowCapabilities.WindowPlacement;
+        DesktopWindowCapabilities.MinimumSize | DesktopWindowCapabilities.Placement;
     private DesktopWindowState? _state;
     private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply

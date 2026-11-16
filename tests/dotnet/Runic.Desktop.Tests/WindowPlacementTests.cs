@@ -18,7 +18,7 @@ public sealed class WindowPlacementTests
         await using var surface = await host.CreateSurfaceAsync();
         await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
         var native = factory.Hosts[0];
-        Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.WindowPlacement));
+        Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.Placement));
 
         await window.MaximizeAsync();
         await window.MaximizeAsync();
@@ -53,7 +53,7 @@ public sealed class WindowPlacementTests
             var error = await Assert.ThrowsAsync<DesktopException>(async () => await call());
             Assert.Equal("window-capability-unavailable", error.Code);
             Assert.Equal(DesktopErrorCategory.Unavailable, error.Category);
-            Assert.Contains("DesktopWindowCapabilities.WindowPlacement", error.Message);
+            Assert.Contains("DesktopWindowCapabilities.Placement", error.Message);
             Assert.Contains("custom window host", error.Message);
         }
         Assert.Empty(factory.Hosts[0].Calls);
@@ -325,7 +325,7 @@ public sealed class WindowPlacementTests
     {
         internal List<ShowStateHost> Hosts { get; } = [];
         internal DesktopWindowCapabilities Capabilities { get; init; } = DesktopWindowCapabilities.NativeHandle |
-            DesktopWindowCapabilities.State | DesktopWindowCapabilities.WindowPlacement | DesktopWindowCapabilities.FullScreen;
+            DesktopWindowCapabilities.State | DesktopWindowCapabilities.Placement | DesktopWindowCapabilities.FullScreen;
         internal bool RefusePosition { get; init; }
         internal bool WithoutInterface { get; init; }
         public bool IsSupported => true;
@@ -338,7 +338,7 @@ public sealed class WindowPlacementTests
         }
     }
 
-    // A host that reports the capability without implementing IDesktopWindowShowStateHost: a programming error of the
+    // A host that reports the capability without implementing IDesktopShowStateWindowHost: a programming error of the
     // host, which surfaces as NotSupportedException.
     private sealed class PlainHost(DesktopWindowCapabilities capabilities, bool refusePosition) : ShowStateHost(capabilities, refusePosition);
 
@@ -406,7 +406,7 @@ public sealed class WindowPlacementTests
     }
 
     private sealed class FullShowStateHost(DesktopWindowCapabilities capabilities, bool refusePosition)
-        : ShowStateHost(capabilities, refusePosition), IDesktopWindowShowStateHost
+        : ShowStateHost(capabilities, refusePosition), IDesktopShowStateWindowHost
     {
         public ValueTask MaximizeAsync(CancellationToken cancellationToken = default) => Maximize();
         public ValueTask RestoreAsync(CancellationToken cancellationToken = default) => Restore();

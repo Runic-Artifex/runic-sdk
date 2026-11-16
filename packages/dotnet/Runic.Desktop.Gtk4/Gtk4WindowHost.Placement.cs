@@ -17,7 +17,7 @@ namespace Runic.Desktop.Gtk4;
 // GTK does not report maximized yet (MaximizePending), and to one whose frame target it ended before the target was
 // done, as when a placement while maximized had just unmaximized the window; otherwise that window stays at the frame
 // the window manager restored, or maximizes after the restore.
-internal sealed partial class Gtk4WindowHost : IDesktopWindowShowStateHost
+internal sealed partial class Gtk4WindowHost : IDesktopShowStateWindowHost
 {
     // GTK thread only: the frame target the window is waiting for, and one a hidden window starts when it is shown.
     private FrameTarget? _frameTarget;

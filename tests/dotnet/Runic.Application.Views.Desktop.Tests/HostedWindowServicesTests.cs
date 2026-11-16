@@ -79,7 +79,7 @@ internal sealed class HostedWindowServicesTests
         // The host's locale changes to Arabic: the application follows, and the window's direction with it.
         await host.SetLocaleAsync("ar", ["ar", "en"]);
         await WaitForAsync(Errors, "LOCALE ar", "the locale push");
-        Check(await TestTimeouts.UntilAsync(() => window.PresentationRequests.Any(static request => request.Kind == "set-layout-direction" &&
+        Check(await TestTimeouts.UntilAsync(() => window.PresentationRequests.Any(static request => request.Kind == RunicTestPresentationKind.SetLayoutDirection &&
             request.Message.GetProperty("direction").GetString() == "right-to-left"), Timeout), "The window's direction did not follow the locale: " + host.StandardError + string.Join(";", window.PresentationRequests.Select(r => r.Kind)));
         await host.SetAppearanceAsync(ForcedColors);
         await WaitForAsync(Errors, "APPEARANCE Dark ForcedColors", "the appearance push");
@@ -97,7 +97,7 @@ internal sealed class HostedWindowServicesTests
         var launches = window.LaunchRequests;
         Check(launches.Count == 5 && launches[0].Uri == new Uri("https://runic.dev/docs") && launches[2].Path == file &&
             launches[2].Operation == DesktopFileOperation.Reveal, $"The host recorded {string.Join("; ", launches)}.");
-        Check(window.PresentationRequests.Any(static request => request.Kind == "announce" && request.Message.GetProperty("text").GetString() == "Ready"),
+        Check(window.PresentationRequests.Any(static request => request.Kind == RunicTestPresentationKind.Announce && request.Message.GetProperty("text").GetString() == "Ready"),
             "The announcement did not reach the host's window.");
 
         // monitors-changed: the guest's monitor watch lists the monitors again.

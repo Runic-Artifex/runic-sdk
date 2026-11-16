@@ -60,10 +60,10 @@ internal static partial class MacOsDocumentsSmoke
         Pass("SetDocumentEditedAsync toggles NSWindow.documentEdited (the close button's dot).");
 
         await host.ClearRecentDocumentsAsync();
-        await host.NoteRecentDocumentAsync(path);
+        await host.AddRecentDocumentAsync(path);
         await WaitAsync(async () => (await RecentAsync()).Any(recent => recent.EndsWith("/" + name + ".txt", StringComparison.Ordinal)),
             "the noted document in recentDocumentURLs");
-        Pass("NoteRecentDocumentAsync adds the document to NSDocumentController.recentDocumentURLs.");
+        Pass("AddRecentDocumentAsync adds the document to NSDocumentController.recentDocumentURLs.");
 
         // Runic's menu delegate fills Open Recent as the menu opens; the smoke asks it to, as menu tracking would.
         var menu = await ReadMenuAsync();
@@ -89,7 +89,7 @@ internal static partial class MacOsDocumentsSmoke
         Expect(menu is [{ Title: "Clear Menu", Enabled: false }], $"an empty Open Recent shows only a disabled Clear Menu: {Describe(menu)}");
         Pass("Clear Menu empties the recent documents, and an empty Open Recent disables it.");
 
-        await host.NoteRecentDocumentAsync(path);
+        await host.AddRecentDocumentAsync(path);
         await WaitAsync(async () => (await RecentAsync()).Any(recent => recent.Contains(name, StringComparison.Ordinal)), "the document noted again");
         await host.ClearRecentDocumentsAsync();
         await WaitAsync(async () => !(await RecentAsync()).Any(recent => recent.Contains(name, StringComparison.Ordinal)), "an empty recent documents list");

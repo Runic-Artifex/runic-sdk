@@ -77,7 +77,7 @@ internal sealed class FakeHostDialogs : INativeFilePicker, INativeDirectoryPicke
         SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) =>
-        Paths(await ShowAsync(new FakeHostDialog(RunicHostedDialogKind.OpenFolder, request, null), cancellationToken)) is [var path, ..]
+        Paths(await ShowAsync(new FakeHostDialog(RunicHostedDialogKind.OpenDirectory, request, null), cancellationToken)) is [var path, ..]
             ? new NativeDirectorySelection(path, null)
             : null;
 
@@ -85,7 +85,7 @@ internal sealed class FakeHostDialogs : INativeFilePicker, INativeDirectoryPicke
         SelectDirectoriesAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory, AllowMultiple = true }, cancellationToken);
 
     public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) =>
-        Paths(await ShowAsync(new FakeHostDialog(RunicHostedDialogKind.OpenFolders, request, null), cancellationToken)) is { } paths
+        Paths(await ShowAsync(new FakeHostDialog(RunicHostedDialogKind.OpenDirectories, request, null), cancellationToken)) is { } paths
             ? [.. paths.Select(static path => new NativeDirectorySelection(path, null))]
             : null;
 

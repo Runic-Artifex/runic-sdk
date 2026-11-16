@@ -523,7 +523,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   application's recent documents (`DesktopPlatformServices.CreateRecentDocuments()`):
   Open Recent and the Dock on macOS, Recent items and the Jump List on Windows,
   and `recently-used.xbel` on Linux, the same lists as
-  `DesktopHost.NoteRecentDocumentAsync`, with each outcome as a `PlatformResult`.
+  `DesktopHost.AddRecentDocumentAsync`, with each outcome as a `PlatformResult`.
   It decides on first use: once a `RunicDesktopHost` with `ServeOnly` was built on
   the provider, or under `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable`.
   With `AddRunicPlatformServices(applicationId)` Linux names the application by its
@@ -1018,7 +1018,7 @@ var exitCode = await tool.Exited;
   (`guest-start-failed` for an executable that cannot be started, `guest-start-timeout`, `guest-exited`,
   `guest-not-hostable`, `guest-refused`, `protocol-unsupported`; event 2016). A shutdown or disposal of the host
   while a start is pending fails it with `InvalidOperationException` and ends the guest.
-- **Windows.** Each guest Window becomes a `RunicHostedWindow`, whose `Presentation` is a native `DesktopWindow` of
+- **Windows.** Each guest Window becomes a `RunicHostedWindow`, whose `DesktopWindow` is a native window of
   the host, embedded and without a browser fallback. It loads the guest's one-time launch address top-level from the
   guest's loopback origin: the host injects none of its credentials, admits no other origin for top-level navigation
   and gives each guest session a data store of its own that is not persisted. A user's close, and
@@ -1037,7 +1037,7 @@ var exitCode = await tool.Exited;
   Application-role menu of the guest as an ordinary menu under its own title. The standard Edit, View and Window
   menus stay in the host's language; the host's other menus give way until a window of the host is key again, and a
   shortcut both use is the host's. Shortcuts are matched by the host's native menus, and an item the user chooses
-  runs the guest's command (`menu-invoke`); `DesktopWindow.TryExecuteMenuItemAsync` on `Presentation` chooses one
+  runs the guest's command (`menu-invoke`); `TryExecuteMenuItemAsync` on its `DesktopWindow` chooses one
   from code. A guest's View or Window menu, titled as the host's standard one, joins it on macOS. The guest's context
   menus show as native context menus of its window, only while the window is active and inside its web view.
 - **Dialogs.** The guest's file dialogs (open, open several, save, folder, folders) and message boxes show as the
@@ -1140,7 +1140,7 @@ sealed class CheckPolicy : IRunicHostedWindowPolicy
 - **Attach.** `Embed(name)` needs one host window to declare the region, now or later; `Embed(hostWindow, name)` names
   the host's Window. Two host windows that declare the name when the window opens fail the guest's open with
   `region-ambiguous`. The window is open at once (`RunicHostedWindow.PresentationKind` is `Region`, and
-  `Presentation` throws), and `RunicHostedWindow.Region` follows it: `Waiting` until a page declares the region,
+  `DesktopWindow` throws), and `RunicHostedWindow.Region` follows it: `Waiting` until a page declares the region,
   `Loading` while the guest's page loads, `Attached` once it connected, `Detached` and `Ended`. Its events, and
   `IRunicHostedApplications.RegionAttached` and `RegionDetached`, are raised in order with the window events.
 - **Detach and attach again.** When the page removes the region, reloads or navigates, the window is detached and stays

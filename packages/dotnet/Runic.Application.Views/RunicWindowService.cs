@@ -351,7 +351,7 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
         lock (_gate)
         {
             _windows = [.. _windows, entry];
-            Enqueue(window, opened: true);
+            Enqueue(window, RunicWindowsChange.Opened);
         }
         RaiseChanges();
         // The entry goes when the close starts, so FindOrOpenAsync never returns a closing Window; a close the Window
@@ -373,14 +373,14 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
         {
             if (!_windows.Contains(entry)) return;
             _windows = [.. _windows.Where(item => !ReferenceEquals(item, entry))];
-            Enqueue(entry.Window, opened: false);
+            Enqueue(entry.Window, RunicWindowsChange.Closed);
         }
         RaiseChanges();
     }
 
     // Under _gate, with the change: its list and its place in the order.
-    private void Enqueue(IRunicWindow window, bool opened) =>
-        _changes.Enqueue(new RunicWindowsChangedEventArgs(window, opened, WindowList(_windows)) { Sequence = ++_sequence });
+    private void Enqueue(IRunicWindow window, RunicWindowsChange change) =>
+        _changes.Enqueue(new RunicWindowsChangedEventArgs(window, change, WindowList(_windows)) { Sequence = ++_sequence });
 
     // One thread-pool work item raises the queued changes, one at a time and in order.
     private void RaiseChanges()

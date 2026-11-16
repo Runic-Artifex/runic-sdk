@@ -681,7 +681,7 @@ public enum DesktopWindowCapabilities
     /// which <see cref="DesktopWindowState.Placement"/> then reports back. On Wayland, which lets no application position
     /// its windows, GTK windows report it for a placement without a position.
     /// </summary>
-    WindowPlacement = 1 << 23,
+    Placement = 1 << 23,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

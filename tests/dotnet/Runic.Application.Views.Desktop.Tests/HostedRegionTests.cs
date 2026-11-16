@@ -176,7 +176,7 @@ internal sealed class HostedRegionTests
     }
 
     private static IEnumerable<(int Width, int Height)> Resizes(RunicTestHostedWindow window) =>
-        window.PresentationRequests.Where(static request => request.Kind == "resize")
+        window.PresentationRequests.Where(static request => request.Kind == RunicTestPresentationKind.Resize)
             .Select(static request => (request.Message.GetProperty("width").GetInt32(), request.Message.GetProperty("height").GetInt32()));
 
     private static void Check(bool condition, string message)

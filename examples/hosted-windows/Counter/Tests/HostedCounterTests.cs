@@ -62,7 +62,7 @@ public sealed class HostedCounterTests
         using var timeout = new CancellationTokenSource(Wait);
         while (window.DialogRequests.Count == 0) await Task.Delay(50, timeout.Token);
         var question = window.DialogRequests[0];
-        await Assert.That(question.DialogKind).IsEqualTo(RunicTestDialogKind.MessageBox);
+        await Assert.That(question.Kind).IsEqualTo(RunicTestDialogKind.MessageBox);
         await Assert.That(question.Text).IsEqualTo("Den Stand 0 auf 0 zurücksetzen?");
         await Assert.That(question.ButtonIds).IsEquivalentTo(["reset", "cancel"]);
     }

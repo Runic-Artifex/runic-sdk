@@ -43,7 +43,7 @@ public sealed class ShellViewModel : ReactiveObject, IDisposable
         {
             if (_counter is { } running)
             {
-                if (running.Windows.FirstOrDefault() is { } window) await window.Presentation.FocusAsync();
+                if (running.Windows.FirstOrDefault() is { } window) await window.DesktopWindow.FocusAsync();
                 return;
             }
             CounterState = "starting";

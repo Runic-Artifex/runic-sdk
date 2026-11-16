@@ -137,7 +137,7 @@ internal sealed class RunicHostedApplications : IRunicHostedApplications, IAsync
     internal void RaiseRegionDetached(RunicHostedRegion region, string reason)
     {
         var handler = RegionDetached;
-        if (handler is not null) Post(() => handler(this, new RunicHostedRegionEventArgs(region, reason)));
+        if (handler is not null) Post(() => handler(this, new RunicHostedRegionEventArgs(region, RunicHostedRegionEventArgs.ReasonOf(reason))));
     }
 
     // A region's event, in the same order as the window events (Raise).

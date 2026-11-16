@@ -487,8 +487,8 @@ public sealed partial class RunicHostedApplication
         {
             selected = kind switch
             {
-                RunicHostedDialogKind.OpenFolder or RunicHostedDialogKind.OpenFolders when picker is INativeDirectoryPicker folders =>
-                    kind == RunicHostedDialogKind.OpenFolders
+                RunicHostedDialogKind.OpenDirectory or RunicHostedDialogKind.OpenDirectories when picker is INativeDirectoryPicker folders =>
+                    kind == RunicHostedDialogKind.OpenDirectories
                         ? folders.SupportsMultipleDirectorySelection
                             ? (await folders.SelectDirectoriesAsync(native, cancellationToken).ConfigureAwait(false))?
                                 .Select(static selection => (selection.Path, selection.Access, (FileDialogFilter?)null)).ToArray()
@@ -496,7 +496,7 @@ public sealed partial class RunicHostedApplication
                         : await folders.SelectDirectoryAsync(native, cancellationToken).ConfigureAwait(false) is { } one
                             ? [(one.Path, one.Access, (FileDialogFilter?)null)]
                             : null,
-                RunicHostedDialogKind.OpenFolder or RunicHostedDialogKind.OpenFolders => throw new NativeBackendUnavailableException(),
+                RunicHostedDialogKind.OpenDirectory or RunicHostedDialogKind.OpenDirectories => throw new NativeBackendUnavailableException(),
                 RunicHostedDialogKind.OpenFiles when !picker.SupportsMultipleSelection => throw new NativeBackendUnavailableException(),
                 _ => (await picker.SelectAsync(native, cancellationToken).ConfigureAwait(false))?
                     .Select(static selection => (selection.Path, (IAsyncDisposable?)selection.Access, selection.SelectedFilter)).ToArray(),
@@ -514,7 +514,7 @@ public sealed partial class RunicHostedApplication
             cancellationToken.ThrowIfCancellationRequested();
             if (selected is null || selected.Length == 0) return Outcome(new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.UserDismissed));
             // The guest opens the paths itself, with its own access: the host keeps no grant (host-protocol.md, Dialogs).
-            var single = kind is RunicHostedDialogKind.OpenFile or RunicHostedDialogKind.SaveFile or RunicHostedDialogKind.OpenFolder;
+            var single = kind is RunicHostedDialogKind.OpenFile or RunicHostedDialogKind.SaveFile or RunicHostedDialogKind.OpenDirectory;
             var paths = (single ? selected.Take(1) : selected).ToArray();
             // The user gave the guest these paths: it may open them through the host (window-services/1). A save dialog's
             // path is only a place: the guest writes the content, which the user did not choose.

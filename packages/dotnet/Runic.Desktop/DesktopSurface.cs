@@ -2180,7 +2180,7 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// </para>
     /// <para>Refusals:</para>
     /// <list type="bullet">
-    /// <item><description>An installed browser, a custom window host without <see cref="IDesktopWindowBoundsHost"/>, and
+    /// <item><description>An installed browser, a custom window host without <see cref="IDesktopBoundsWindowHost"/>, and
     /// WPF's <c>RunicWebView</c>, whose WPF window the application sizes itself, lack the capability
     /// (<c>window-capability-unavailable</c>). A serve-only application has no <see cref="DesktopWindow"/>, and a hosted
     /// application's guest (<c>runic-host/1</c>) only asks its host to move or resize the window; the host application's
@@ -2241,7 +2241,7 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// it is restored.
     /// </para>
     /// <para>
-    /// Refusals: an installed browser, a custom window host without <see cref="IDesktopWindowBoundsHost"/> and WPF's
+    /// Refusals: an installed browser, a custom window host without <see cref="IDesktopBoundsWindowHost"/> and WPF's
     /// <c>RunicWebView</c> lack the capability (<c>window-capability-unavailable</c>).
     /// </para>
     /// </remarks>

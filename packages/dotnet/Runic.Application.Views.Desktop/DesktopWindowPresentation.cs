@@ -18,7 +18,7 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
     private readonly Func<DesktopNativeOwner?> _owner;
     private readonly object _gate = new();
     private RunicWindowActivity _activity;
-    // sdk#897, W1b: the window's placement, for a window whose host reports it (WindowPlacement); kept after it closed.
+    // sdk#897, W1b: the window's placement, for a window whose host reports it (Placement); kept after it closed.
     private readonly bool _reportsPlacement;
     private RunicWindowPlacement? _placement;
 
@@ -27,7 +27,7 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         _window = window;
         _owner = owner;
         _activity = Convert(window.Activity);
-        _reportsPlacement = window.Capabilities.HasFlag(DesktopWindowCapabilities.WindowPlacement);
+        _reportsPlacement = window.Capabilities.HasFlag(DesktopWindowCapabilities.Placement);
         if (_reportsPlacement)
         {
             _placement = window.State?.Placement.ToRunicPlacement();
@@ -79,7 +79,7 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
             features |= RunicWindowPresentationFeatures.PerWindowColorScheme;
         if (capabilities.HasFlag(DesktopWindowCapabilities.Activity)) features |= RunicWindowPresentationFeatures.Activity;
         if (capabilities.HasFlag(DesktopWindowCapabilities.Ownership)) features |= RunicWindowPresentationFeatures.OwnedWindows;
-        if (capabilities.HasFlag(DesktopWindowCapabilities.WindowPlacement))
+        if (capabilities.HasFlag(DesktopWindowCapabilities.Placement))
             features |= RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement;
         // NSWindow.documentEdited: only the macOS window shows it; elsewhere DesktopWindow accepts it and does nothing.
         if (macOS && capabilities.HasFlag(DesktopWindowCapabilities.NativeHandle)) features |= RunicWindowPresentationFeatures.DocumentEdited;
@@ -263,6 +263,7 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         DesktopSidePanelRefusal.PositionUnavailable => RunicSidePanelRefusal.PositionUnavailable,
         DesktopSidePanelRefusal.AlreadyOpen => RunicSidePanelRefusal.AlreadyOpen,
         DesktopSidePanelRefusal.LoadFailed => RunicSidePanelRefusal.LoadFailed,
+        DesktopSidePanelRefusal.Closed => RunicSidePanelRefusal.Closed,
         _ => RunicSidePanelRefusal.Unsupported,
     };
 

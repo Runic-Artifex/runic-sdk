@@ -92,7 +92,7 @@ public sealed record NavigationPath(IReadOnlyList<NavigationRegionPath> Regions,
         foreach (var selection in selections)
         {
             writer.WriteStartObject();
-            writer.WriteNumber("selected", selection.Selected);
+            writer.WriteNumber("selected", selection.SelectedIndex);
             writer.WriteStartArray("regions");
             foreach (var region in selection.Regions) WriteRegion(writer, region);
             writer.WriteEndArray();
@@ -210,8 +210,8 @@ public sealed record NavigationEntryPath(string? Route)
 /// one. Restoring it creates regions beyond the selection's current ones with <see cref="NavigationSelectionOptions.RestoreRegion"/>.
 /// </summary>
 /// <param name="Regions">The selection's regions, in presentation order.</param>
-/// <param name="Selected">The index of the selected region, or -1 when the selection was empty.</param>
-public sealed record NavigationSelectionPath(IReadOnlyList<NavigationRegionPath> Regions, int Selected);
+/// <param name="SelectedIndex">The index of the selected region, or -1 when the selection was empty. The JSON property is <c>selected</c>.</param>
+public sealed record NavigationSelectionPath(IReadOnlyList<NavigationRegionPath> Regions, int SelectedIndex);
 
 /// <summary>What <see cref="RunicNavigator.RestoreAsync"/> could not restore.</summary>
 /// <param name="Issues">The parts of the path that were left out, in the order they were met; empty when every part was restored.</param>

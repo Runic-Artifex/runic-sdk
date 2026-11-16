@@ -15,13 +15,13 @@ namespace Runic.Application.Views;
 /// [RelayCommand]
 /// private async Task AttachAsync(RunicUpload file, CancellationToken cancellationToken)
 /// {
-///     await file.SaveAsAsync(Path.Combine(attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
+///     await file.SaveToFileAsync(Path.Combine(attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
 /// }
 /// </code>
 /// </para>
 /// <para>
 /// An upload decodes only on the Window and the page connection that uploaded it, and only until it is claimed: the
-/// first <see cref="OpenReadAsync"/>, <see cref="SaveAsAsync"/> or <see cref="Discard"/> takes it out of the Window, and a
+/// first <see cref="OpenReadAsync"/>, <see cref="SaveToFileAsync"/> or <see cref="Discard"/> takes it out of the Window, and a
 /// later request that names it is rejected as invalid input. An unclaimed upload is deleted when its connection
 /// closes, when the Window closes, or 10 minutes after it arrived. The host stores uploads in a new folder of the
 /// Window that only the user can access, and reads them through the file it created, never through its path again.
@@ -104,16 +104,20 @@ public sealed class RunicUpload
     /// </param>
     /// <exception cref="InvalidOperationException">The upload was already claimed, or its Window closed.</exception>
     /// <exception cref="IOException">The destination exists and <paramref name="overwrite"/> is <see langword="false"/>, or the move failed.</exception>
-    public async ValueTask SaveAsAsync(string path, bool overwrite = false, CancellationToken cancellationToken = default)
+    public async ValueTask SaveToFileAsync(string path, bool overwrite = false, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("The destination path must be fully qualified.", nameof(path));
         cancellationToken.ThrowIfCancellationRequested();
         Claim();
-        await _content.SaveAsAsync(path, overwrite, cancellationToken).ConfigureAwait(false);
+        await _content.SaveToFileAsync(path, overwrite, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Claims the upload and deletes its content without reading it. Does nothing when it was claimed already.</summary>
+    /// <remarks>
+    /// <c>Discard</c>, not <c>Release</c> as on <see cref="RunicBlob.Release"/>: the ViewModel refuses what the page sent
+    /// and its bytes are gone, while a released blob is content the ViewModel served and still has.
+    /// </remarks>
     public void Discard()
     {
         if (Interlocked.Exchange(ref _claimed, 1) != 0) return;
@@ -154,7 +158,7 @@ internal interface IRunicUploadContent
     bool IsGone { get; }
     bool TryClaim();
     Stream OpenRead();
-    ValueTask SaveAsAsync(string path, bool overwrite, CancellationToken cancellationToken);
+    ValueTask SaveToFileAsync(string path, bool overwrite, CancellationToken cancellationToken);
     void Discard();
 }
 
@@ -175,7 +179,7 @@ internal sealed class MemoryUploadContent(ReadOnlyMemory<byte> content) : IRunic
     public bool TryClaim() => Interlocked.Exchange(ref _claimed, 1) == 0;
     public Stream OpenRead() => new ReadOnlyMemoryStream(content);
 
-    public async ValueTask SaveAsAsync(string path, bool overwrite, CancellationToken cancellationToken)
+    public async ValueTask SaveToFileAsync(string path, bool overwrite, CancellationToken cancellationToken)
     {
         await using var file = new FileStream(path, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write,
             FileShare.None, 81_920, FileOptions.Asynchronous);
