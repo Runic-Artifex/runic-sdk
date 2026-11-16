@@ -694,7 +694,8 @@ follow a language switch. Connect the page's Translations runtime once with
 `configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
 `injectWindowLocale()` reads the window's locale. `textLocaleSignal()` is the
 locale that text is shown in, as one signal for the page that needs no injection
-context; when the locale resolver reads it, templates that call `m.*()`, also
+context; in a component or service, `injectTextLocale()` returns the same signal
+for the injection context's Runic instance (or `{ injector }`'s); when the locale resolver reads it, templates that call `m.*()`, also
 `OnPush` ones, render again on a language switch, and during development also
 when an edited message updates in place (it then notifies with the same locale):
 

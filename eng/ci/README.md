@@ -228,7 +228,8 @@ rule applies to each file:
 
 | Changed files | Legs |
 | --- | --- |
-| `Runic.Desktop.Gtk4`, its smoke, `Runic.Platform.Linux*` and their tests, `eng/portals` | Linux only |
+| Markdown files (`*.md`), including package READMEs, except the analyzers' `AnalyzerReleases.*.md` (compiler inputs) | Linux only |
+| `Runic.Desktop.Gtk4`, its smoke, the manual global menu check, `Runic.Platform.Linux*` and their tests, `eng/portals` | Linux only |
 | `Runic.Desktop`, its tests and fixtures, `Runic.Platform`, `Runic.Platform.Runtime` and its tests, the WebView smoke, the accessibility probe, `eng/build/desktop.props`, `eng/branding/desktop`, the template's packaging manifests, `ApplicationIdentity.cs` and icons, `dotnet runic package` (`tools/dotnet-runic/Packaging`), the packaging probe | all three |
 | `Runic.Application.Views`, `.Desktop` and `.CsWebUi`, `examples/first-window`, the CS-WebUI window probes, `Runic.Application.Testing` and its tests | win-x64, osx-arm64 |
 | `Runic.Platform.Windows*` and their tests, the elevation smoke, `windows-notifications` | win-x64, win-arm64 |

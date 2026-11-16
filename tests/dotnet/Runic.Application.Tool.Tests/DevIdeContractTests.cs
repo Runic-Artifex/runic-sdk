@@ -32,6 +32,10 @@ internal sealed partial class ToolTests
         Equal("[dev] Ready", DevApplication.ReadyLine);
         True(Regex.IsMatch(DevApplication.WindowStartedLine(17), @"^\[dev\] Window started: process (\d+)$"),
             "The documented Window line pattern does not match.");
+        // The two prefix lines (since 0.21) that the template's tasks.json and runic-editors' problem matcher begin on.
+        Equal("[dev] Evaluating Views Window project...", PhaseTimer.StartLine(DevApplication.EvaluatingPhase));
+        True(DevApplication.ReloadingLine.StartsWith("[dev] Reloading", StringComparison.Ordinal),
+            "The reload line no longer starts with the documented prefix.");
     }
 
     [Test, DisplayName("dev failures are one line that $msCompile and the documented regex match")]

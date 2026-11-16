@@ -228,10 +228,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
                 return;
             }
             // After GTK has closed the popover, so a command that replaces the bar does not remove it during the click.
+            // A choice in the bar, by pointer or by the bar's own keyboard navigation, as on WebKitGTK 3: the bar's
+            // actions have no accels (shortcuts run through TryRunShortcut), so only the bar activates them. A hosted
+            // window counts it as the user's work in the window (HostMenuChoice, sdk#855).
             if (entry is { Enabled: true, Item: { } item })
                 Gtk4Dispatcher.Instance.Post(() =>
                 {
-                    if (IsOpen) RunMenuItem(item);
+                    if (IsOpen) HostMenuChoice.Run(() => RunMenuItem(item));
                 });
         }
         catch
@@ -446,7 +449,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
 
         public bool? IsChecked(DesktopMenuItem item) => (host.MenuCommands is { } commands ? commands.IsChecked(item) : null) ?? item.IsChecked;
 
-        public void Execute(DesktopMenuItem item) => host.RunMenuItem(item);
+        // A click in the desktop's global menu, as on WebKitGTK 3 (HostMenuChoice, sdk#855).
+        public void Execute(DesktopMenuItem item) => HostMenuChoice.Run(() => host.RunMenuItem(item));
 
         public void PlacementChanged(bool global) => host.OnGlobalPlacement(global);
 
