@@ -910,7 +910,11 @@ fails to open from the system menu is reported to `DiagnosticSink` as
 as React Developer Tools or Vue.js devtools, that WebView2 windows load in
 Development, so their panels appear in the DevTools window. The
 `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` variable adds folders for one session,
-separated by `;`, for example with `dotnet runic dev -e`.
+separated by `;`, for example with `dotnet runic dev -e`. `dotnet runic dev`
+also appends the Runic DevTools extension that it ships (a **Runic** panel with
+the page's Views and Bridge calls) to that variable in Development, unless you
+pass `--no-devtools-extension`; see the
+[dotnet-runic README](../../../tools/dotnet-runic/README.md#the-runic-devtools-extension).
 
 ```csharp
 await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
