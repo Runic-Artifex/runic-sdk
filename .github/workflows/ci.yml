@@ -1266,6 +1266,13 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+      # D067.15: outside Development the WebView2 host clears WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS before its environment
+      # exists, so --remote-debugging-port opens no endpoint. The runner is elevated, where WebView2 ignores the variable,
+      # so the Development case checks that the variable is kept, not the port.
+      - name: Open WebView2's debugging endpoint from the environment in Development only
+        if: runner.os == 'Windows'
+        timeout-minutes: 4
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --webview2-environment
       # Region mode (#866): a host page frames a guest's page from the other loopback family; the frame gets none of the
       # host page's credential or messages, drops onto it reach the guest (WebView2, WebKitGTK), and on WebView2 a
       # shortcut it leaves unhandled runs the host window's menu item. REGION FINDING lines report how a click and a Tab

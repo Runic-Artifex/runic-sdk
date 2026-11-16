@@ -111,10 +111,10 @@ That setting covers only the tools in the window. A **remote debugging endpoint*
 process's environment asks for is the engine's own: WebView2's `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` and
 WebKitGTK's `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER`. `DevTools = false` does not close
 WebKitGTK's (WebKitGTK 2.54.0, GTK 3 and GTK 4) and is not documented to close WebView2's. Outside Development the GTK 3
-and GTK 4 hosts therefore remove both WebKit variables from the process's environment before their first web view, also
-when `DevTools` is `true`, so a release opens no WebKit inspector port. WebView2's variable is not cleared: whoever sets
-a Windows release's environment can script its page and Bridge through that endpoint
-([release builds](security.md#release-builds)).
+and GTK 4 hosts therefore remove both WebKit variables from the process's environment before their first web view, and
+the WebView2 host removes `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` before it creates its WebView2 environment, also when
+`DevTools` is `true`, so a release opens no such endpoint ([release builds](security.md#release-builds)). To debug a
+release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
 
 | Engine | Where | Open | Debugger and automation |
 | --- | --- | --- | --- |
