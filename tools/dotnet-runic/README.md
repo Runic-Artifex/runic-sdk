@@ -638,8 +638,10 @@ names. The session file lists both under `debugEndpoints`.
     to you. If another user holds 9222, `dev` warns that an attach
     configuration with that port would reach their process.
   - WebKit's own `inspector://` port is WebKit's, so `dev` cannot filter it.
-    While no debugger is attached, other local users can connect to it and
-    script the Window. On a machine that you share with other users, run
+    Other local users can connect to it and script the Window, also while a
+    debugger is attached: WebKit serves one client and lets a new one take
+    its place (WebKitGTK 2.54), and the Window can crash when the replaced
+    client sends again. On a machine that you share with other users, run
     `dev` with `--no-debug-endpoint`.
   - It runs only under `dotnet runic dev` and adds nothing to the application.
 - **Not supported.** Setting a variable to an object or a `const` (WebKit has no
@@ -660,10 +662,16 @@ names. The session file lists both under `debugEndpoints`.
 - **Port 9222 taken.** `dev` uses another free port and says which; change the
   attach configuration's `port`. When another user holds 9222, or the
   inspector port 9223 under `--no-window`, the `[dev]` line is a warning.
-  `--no-debug-endpoint` opens nothing.
+  Under `--no-window`, which the IDE's compound starts with an attach
+  configuration on 9222, `dev` does not move: it stops with `RAPPDEV1017` and
+  names what holds the port, often another `dev` session. `--no-debug-endpoint`
+  opens nothing.
 - **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
   traffic, which contains the page's data, to that file. `dev` creates the
-  file readable by you only.
+  file readable by you only. JSON strings longer than 4096 characters, such as
+  script sources and inline source maps, keep only their first 200 characters;
+  `RUNIC_DEV_CDP_TRACE_SOURCES=1` keeps them whole, which on a page with
+  thousands of modules writes hundreds of megabytes in minutes.
 
 ## IDE contract
 

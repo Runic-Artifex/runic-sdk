@@ -290,8 +290,10 @@ and its Bridge:
   The adapter connects only to a WebKit inspector port whose listener belongs
   to the same user, and `dev` warns when another user holds 9222.
 - **WebKit's `inspector://` server.** It belongs to WebKit, so `dev` cannot
-  filter its clients. While no debugger is attached, any local user can
-  connect to it.
+  filter its clients. Any local user can connect to it, also while a debugger
+  is attached: WebKit serves one client and lets a new one take its place
+  (WebKitGTK 2.54). The Window can then crash when the replaced client sends
+  again.
 
 On a machine that you share with other users, run `dev` with
 `--no-debug-endpoint`, which opens neither.

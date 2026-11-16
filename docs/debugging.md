@@ -148,8 +148,9 @@ a Windows release's environment can script its page and Bridge through that endp
   [Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview).
 
   The endpoint listens on 127.0.0.1 only and refuses requests that carry an `Origin` or a `Host` other than an IP
-  address or `localhost`, so a web page cannot reach it. WebKit's own server admits one client: while no debugger is
-  attached, GNOME Web (Epiphany), a WebKitGTK browser, opens the `inspector://` address that `[dev] Debugging:` names.
+  address or `localhost`, so a web page cannot reach it. WebKit's own server serves one client, and a new one takes its place: while no
+  debugger is attached, GNOME Web (Epiphany), a WebKitGTK browser, opens the `inspector://` address that
+  `[dev] Debugging:` names. Other local users can reach that port too.
   `--no-debug-endpoint` opens neither. WebKit serves either that socket or its Web Inspector over HTTP
   (`WEBKIT_INSPECTOR_HTTP_SERVER`) for any browser, never both; `dotnet runic dev --webkit-inspector` opens the HTTP
   one instead of the debuggers' endpoint, on WebKitGTK 2.54.3 or later. A `WEBKIT_INSPECTOR_SERVER` or
@@ -292,7 +293,8 @@ None of this ships:
 - **No JavaScript debugger endpoint on Linux.** `dev` printed no `[dev] Debugging: JavaScript debuggers attach …`
   line: it ran with `--no-debug-endpoint` or `--webkit-inspector`, `WEBKIT_INSPECTOR_HTTP_SERVER` is set, or the
   application runs on CS-WebUI only. When the attach fails although the line is there, close GNOME Web's inspector
-  (WebKit admits one client), and check the line's port: another program had 9222, and `dev` took another.
+  (WebKit serves one client at a time), and check the line's port: another program had 9222, and `dev` took another.
+  Under `--no-window`, `dev` stops with `RAPPDEV1017` instead, since the compound's attach configuration names 9222.
 - **F5 shows the production page.** `dotnet runic dev --no-window` was not running when the IDE built. Start it
   first and wait for `[dev] Ready`.
 - **The dock asks for a code.** Enter the one-time code that Vite DevTools printed in the `dotnet runic dev` output.
