@@ -211,20 +211,56 @@ async function withPage(files, plugins, run, engine = engines.chromium) {
     await link(root, "react-dom", join(here, "node_modules", "react-dom"));
     await link(root, "svelte", join(here, "node_modules", "svelte"));
     await link(root, "vue", join(here, "node_modules", "vue"));
+    // The server's warnings, such as launch-editor's "[runic] No editor could open …", for a failure's message.
+    const warnings = [];
+    const warn = (message) => { warnings.push(String(message)); };
     server = await createServer({
-      root, configFile: false, logLevel: "silent",
+      root, configFile: false, logLevel: "warn",
+      customLogger: { hasWarned: false, info() {}, warn, warnOnce: warn, error: warn, clearScreen() {}, hasErrorLogged: () => false },
       plugins: [...plugins, runic({ sourceMap: "sources.json" })],
       resolve: { dedupe: ["react", "react-dom", "vue"] },
       server: { host: "127.0.0.1", port: 0, fs: { strict: false } },
+    });
+    // The open requests over Vite's HMR connection and the server's answers (channel.ts, requestEvent/responseEvent).
+    const opens = [];
+    const started = Date.now();
+    server.ws.on("runic:request", (payload, client) => {
+      if (payload?.kind !== "open") return;
+      opens.push({ at: Date.now() - started, id: payload.id, target: payload.target });
+      if (client.runicTestSend !== undefined) return;
+      client.runicTestSend = client.send;
+      client.send = (...args) => {
+        const [event, answer] = args;
+        const open = event === "runic:response" ? opens.find((entry) => entry.id === answer?.id && entry.status === undefined) : undefined;
+        if (open !== undefined) Object.assign(open, { status: answer.status, answered: Date.now() - started });
+        return client.runicTestSend(...args);
+      };
     });
     await server.listen();
     browser = await engine.type.launch({ executablePath: engine.executablePath, headless: true });
     const page = await browser.newPage();
     const errors = [];
     page.on("pageerror", error => errors.push(String(error)));
+    // The clicks the page saw, with the element they reached, inside Runic Inspect's shadow root too.
+    await page.addInitScript(() => {
+      const clicks = globalThis.runicTestClicks = [];
+      addEventListener("click", (event) => {
+        const target = event.composedPath()[0];
+        clicks.push(`${Math.round(performance.now())} ms: ${target?.tagName?.toLowerCase() ?? "?"}${target?.isConnected === false ? " (detached)" : ""} ${JSON.stringify((target?.textContent ?? "").slice(0, 40))}`);
+      }, true);
+    });
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
     await page.waitForFunction(() => globalThis.inspectTest?.ready === true, null, { timeout: scaled(30_000) });
-    await run({ page, root, csharp: file, record });
+    // The next editor launch; a failure says which open requests reached the server, its answers and warnings, and
+    // the page's last clicks.
+    const opened = () => readRecord(record, undefined, async () => [
+      `Open requests over the HMR connection (ms since the server started):${opens.length === 0 ? " none" : ""}`,
+      ...opens.map(({ at, target, status, answered }) =>
+        `  ${at} ms ${JSON.stringify(target)}: ${status === undefined ? "not answered" : `answered ${status} at ${answered} ms`}`),
+      `Server warnings: ${warnings.length === 0 ? "none" : warnings.join(" | ")}`,
+      `Page clicks: ${(await page.evaluate(() => globalThis.runicTestClicks.slice(-6)).catch(() => [])).join(" | ") || "none"}`,
+    ].join("\n"));
+    await run({ page, root, csharp: file, opened });
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
@@ -264,7 +300,7 @@ const handler = csharp => ({
 // The shared steps: the command before any click (from the source, #976) or learned by use, select mode, the
 // overview card, open in editor. `source` is where the page's handler reaches the client call, when the analysis
 // can see it; without it, the command is learned on first click.
-async function exercise({ page, root, csharp, record }, { framework, component, componentFile, source }) {
+async function exercise({ page, root, csharp, opened }, { framework, component, componentFile, source }) {
   let description = await describe(page, "#increment");
   assert.equal(description.component?.framework, framework);
   assert.equal(description.component?.name, component);
@@ -336,10 +372,10 @@ async function exercise({ page, root, csharp, record }, { framework, component, 
   });
   if (process.platform !== "win32") {
     await card.locator("a", { hasText: "CounterViewModel.cs:11" }).click();
-    assert.deepEqual(await readRecord(record), [csharp, "11", "5"]);
+    assert.deepEqual(await opened(), [csharp, "11", "5"]);
     // The component section comes first; a client call on the same line links the same file and line.
     await card.locator("a", { hasText: `${componentFile.file}:${componentFile.line}` }).first().click();
-    const [file, line, column] = await readRecord(record);
+    const [file, line, column] = await opened();
     assert.deepEqual([file, Number(line)], [join(root, componentFile.file), componentFile.line]);
     assert.ok(Number(column) > 0, column);
   }
@@ -357,7 +393,7 @@ async function exercise({ page, root, csharp, record }, { framework, component, 
 
 // Messages of generated m.*() calls: markers only in select mode, the message key and .rmf2 line in the overview, and
 // open in editor through /__runic/open with the message, never a path.
-async function exerciseMessages({ page, root, record }) {
+async function exerciseMessages({ page, root, opened }) {
   const rmf2 = join(root, "translations", "en.rmf2");
   const markerCharacters = /[\u2061-\u2064]/u;
   const markup = () => page.evaluate(() => document.getElementById("root").innerHTML);
@@ -395,8 +431,12 @@ async function exerciseMessages({ page, root, record }) {
   const card = page.locator("runic-inspect .card");
   await card.getByText("app:heading").waitFor({ timeout: scaled(10_000) });
   assert.match(await card.textContent(), /app:heading \[en\] "Counter"/u);
-  await card.locator("a", { hasText: "translations/en.rmf2:2" }).click();
-  if (process.platform !== "win32") assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
+  // The click goes to the link in one dispatch (#1054). The card is still open from exercise's select(), so its Escape
+  // and the Alt+Shift+X above changed the text while it showed, and Runic Inspect renders the overview again 60 ms
+  // later (inspect.ts, scheduleRefresh). A pointer click whose mousedown and mouseup straddle that render reaches no
+  // link and opens nothing. exercise's links show the pointer path through select mode.
+  await card.locator("a", { hasText: "translations/en.rmf2:2" }).dispatchEvent("click");
+  if (process.platform !== "win32") assert.deepEqual(await opened(), [rmf2, "2", "1"]);
 
   // Off: the page renders its plain text again.
   await page.keyboard.press("Escape");
