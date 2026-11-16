@@ -88,6 +88,8 @@ internal static partial class Program
         [Option("--dry-run", Description = "Print the evaluated project configuration and exit without changing files or starting processes.")] bool dryRun,
         [Option("--no-build", Description = "Skip the .NET restore and build before the Window starts, as dotnet run --no-build does. dotnet watch still builds after C# edits.")] bool noBuild,
         [Option("--no-window", Description = "Run only the frontend; start the Window from your IDE, under its debugger. The IDE's build keeps dev's development pages while dev runs.")] bool noWindow,
+        [Option("--no-debug-endpoint", ConflictsWith = ["webkit-inspector"], Description = "Linux: open no endpoint for debugging the Window's pages, neither Runic's CDP adapter for JavaScript debuggers (port 9222) nor WebKit's remote inspector.")] bool noDebugEndpoint,
+        [Option("--webkit-inspector", ConflictsWith = ["no-debug-endpoint"], Description = "Linux: open WebKit's own Web Inspector over HTTP, for a browser, instead of the CDP adapter that JavaScript debuggers attach to. Needs WebKitGTK 2.54.3 or later; older versions get the inspector:// server.")] bool webkitInspector,
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
@@ -114,6 +116,8 @@ internal static partial class Program
                     Build = !noBuild,
                     StartWindow = !noWindow,
                     Environment = ToolOptionValues.ParseEnvironment(environment),
+                    DebugEndpoint = !noDebugEndpoint,
+                    WebKitInspector = webkitInspector,
                 };
                 return await DevApplication.RunAsync(context, options, cancellationToken,
                     evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false);

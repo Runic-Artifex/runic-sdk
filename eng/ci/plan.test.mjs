@@ -7,7 +7,7 @@ import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
 import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
   everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
-import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, platformRules, neutralPaths }
+import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths }
   from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
 
@@ -141,6 +141,22 @@ test('the screen reader legs run for the embedded windows, the accessibility fix
   const { screenReaders, ...older } = affected(['packages/web/views/src/index.ts']);
   assert.equal(screenReaders, false);
   assert.deepEqual(planFor(parseAffected(JSON.stringify(older)))['screen-readers'].include, legsFor(screenReaderLegs, older.platforms));
+});
+
+test('the webkit-cdp job runs for dotnet runic dev, the Linux hosts, the template and its check only', () => {
+  for (const path of webKitCdpPaths) assert.ok(tracked(path).length > 0, `${path} matches no tracked file`);
+  for (const file of ['tools/dotnet-runic/WebKit/CdpPageSession.cs', 'tools/dotnet-runic/DevApplication.cs',
+    'packages/dotnet/Runic.Desktop/Internal/LinuxWebKitGtkHost.cs', 'packages/dotnet/Runic.Desktop.Gtk4/Gtk4WindowHostFactory.cs',
+    'tools/Runic.Application.Templates/content/runic-app/.vscode/launch.json', 'tests/webkit-cdp/dap-scenarios.mjs',
+    'tests/templates/check-webkit-cdp.mjs'])
+    assert.ok(runs(plan([file]), 'webkit-cdp'), file);
+  for (const file of ['packages/dotnet/Runic.Platform.Windows/WindowsPlatformProvider.cs', 'packages/web/views/src/index.ts', 'docs/README.md'])
+    assert.ok(!runs(plan([file]), 'webkit-cdp'), file);
+  // Pushes to main run it; a base planner without webKitCdp runs it.
+  assert.ok(runs(planFor(everyLinuxJob(affected(['docs/README.md']))), 'webkit-cdp'));
+  const { webKitCdp, ...older } = affected(['packages/web/views/src/index.ts']);
+  assert.equal(webKitCdp, false);
+  assert.ok(runs(planFor(parseAffected(JSON.stringify(older))), 'webkit-cdp'));
 });
 
 test('Windows administration changes run native checks', () => {
@@ -652,7 +668,10 @@ test('a base planner without platforms plans every leg, and invalid platforms ar
   for (const older of [{ full: decided.full, components: decided.components },
     { ...decided, platforms: ['win-x64', 'linux-riscv64'] }, { ...decided, platforms: ['win-x64'], why: {} }]) {
     const parsed = parseAffected(JSON.stringify(older));
-    const readers = older.screenReaders === undefined ? {} : { screenReaders: older.screenReaders };
+    const readers = {
+      ...older.screenReaders === undefined ? {} : { screenReaders: older.screenReaders },
+      ...older.webKitCdp === undefined ? {} : { webKitCdp: older.webKitCdp },
+    };
     assert.deepEqual(parsed, { full: decided.full, components: decided.components, ...readers });
     const result = planFor(parsed);
     assert.deepEqual(result.platforms, platforms);

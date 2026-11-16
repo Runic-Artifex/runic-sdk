@@ -129,12 +129,13 @@ internal sealed partial class DevSession
     /// dev's own elevation (<see cref="Environment.IsPrivilegedProcess"/>: an elevated token on Windows) stands for the
     /// Window's.
     /// </summary>
-    internal static DevSession Create(DevProjectConfiguration configuration, DevOptions options)
+    internal static DevSession Create(DevProjectConfiguration configuration, DevOptions options,
+        IReadOnlyList<DebugEndpoint>? webKitEndpoints = null)
     {
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         return new(configuration, options,
-            FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable, OperatingSystem.IsWindows(),
-                Environment.IsPrivilegedProcess),
+            [.. FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable, OperatingSystem.IsWindows(),
+                Environment.IsPrivilegedProcess), .. webKitEndpoints ?? []],
             DateTimeOffset.UtcNow,
             new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero));
     }
@@ -328,7 +329,8 @@ internal sealed partial class DevSession
 
     /// <summary>
     /// The variables a Window that the IDE starts needs for this session, as dev would set them: a Development
-    /// environment, and without a development server the frontend output directory that Runic Desktop serves live.
+    /// environment, without a development server the frontend output directory that Runic Desktop serves live, and on
+    /// Linux the WebKit inspector address that dev's CDP adapter attaches to (<see cref="DevOptions.DebugEnvironment"/>).
     /// </summary>
     internal static IReadOnlyList<KeyValuePair<string, string>> WindowEnvironment(DevProjectConfiguration configuration, DevOptions options)
     {
@@ -337,6 +339,7 @@ internal sealed partial class DevSession
         {
             variables.Add(new(HostProcessController.DevelopmentAssetsVariable, System.IO.Path.GetFullPath(configuration.FrontendOutputDirectory)));
         }
+        variables.AddRange(options.DebugEnvironment);
         return variables;
     }
 

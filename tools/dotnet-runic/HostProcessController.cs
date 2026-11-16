@@ -195,7 +195,8 @@ internal sealed class HostProcessController : IAsyncDisposable
             _dotnetHost,
             _configuration.ProjectDirectory,
             arguments,
-            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment, environment: _options.Environment),
+            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment, environment: _options.Environment,
+                debugEnvironment: _options.DebugEnvironment),
             _options.WatchHost ? IsExpectedTerminationNotice : null);
         if (_options.WatchHost)
         {
@@ -289,7 +290,8 @@ internal sealed class HostProcessController : IAsyncDisposable
         DevProjectConfiguration configuration,
         IReadOnlyDictionary<string, string?> developmentEnvironment,
         Func<string, string?>? readEnvironment = null,
-        IReadOnlyList<KeyValuePair<string, string>>? environment = null)
+        IReadOnlyList<KeyValuePair<string, string>>? environment = null,
+        IReadOnlyList<KeyValuePair<string, string>>? debugEnvironment = null)
     {
         readEnvironment ??= Environment.GetEnvironmentVariable;
         var variables = new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -324,6 +326,11 @@ internal sealed class HostProcessController : IAsyncDisposable
         {
             variables[WatchCleanupTimeoutVariable] =
                 ((int)StopGracePeriod.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        // The debugging variables (WEBKIT_INSPECTOR_SERVER); dev leaves them out when -e or its own environment sets one.
+        foreach ((string key, string value) in debugEnvironment ?? [])
+        {
+            variables[key] = value;
         }
         // -e values win over dev's defaults, as dotnet run -e does; they cannot name the variables below
         // (ToolOptionValues.IsReservedEnvironmentVariable).

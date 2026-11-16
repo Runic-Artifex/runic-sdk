@@ -925,6 +925,30 @@ run_desktop_smoke() {
   echo "DESKTOP_SMOKE_OK|$project_name"
 }
 
+# IDE debugging on Linux (#1029, D066.39): VS Code's JavaScript debugger attached through dotnet runic dev's CDP adapter
+# to a generated React project's WebKitGTK Window (check-webkit-cdp.mjs): source-mapped breakpoints, stepping, the
+# console, reloads, HMR and a Window restart. RUNIC_TEMPLATE_WEBKIT_CDP=only runs it alone, for GTK 3 and GTK 4 (the
+# webkit-cdp CI job); it needs Xvfb, dbus-run-session and both WebKitGTK runtimes.
+verify_webkit_cdp() {
+  local linux_gtk="$1"
+  local project_name="AcceptanceWebKitCdpGtk$linux_gtk"
+  local output="$template_tmp/webkit-cdp-gtk$linux_gtk"
+  local gtk_options=()
+  [[ "$linux_gtk" == 4 ]] && gtk_options=(--linux-gtk 4)
+  dotnet new runic-app --name "$project_name" --output "$output" --frontend react --package-manager npm --host desktop \
+    "${gtk_options[@]}"
+  configure_candidate_registry npm "$output"
+  (cd "$output" && dotnet tool restore)
+  local log="$output/webkit-cdp-check.log"
+  if ! node "$script_directory/check-webkit-cdp.mjs" --project "$output" > "$log" 2>&1; then
+    echo "js-debug did not debug the GTK $linux_gtk Window through dotnet runic dev's CDP adapter." >&2
+    cat "$log" >&2
+    exit 1
+  fi
+  grep -E '^(WEBKIT_CDP|\[[0-9.]+s\] (PASS|FAIL))' "$log" || true
+  printf 'WEBKIT_CDP_TEMPLATE_OK|gtk%s\n' "$linux_gtk"
+}
+
 # The generated DiagnosticsLog keeps the Desktop diagnostics that standard error loses outside a terminal. A copy of
 # the built application whose page never loads the Runic client reports presentation-connection-timeout; the log in
 # the user's data directory, named after the application ID, holds it once, and a second start replaces the log.
@@ -1145,6 +1169,16 @@ for manager in "${managers[@]}"; do
     *) echo "Unknown template package manager: $manager" >&2; exit 2 ;;
   esac
 done
+
+case "${RUNIC_TEMPLATE_WEBKIT_CDP:-0}" in
+  only)
+    verify_webkit_cdp 3
+    verify_webkit_cdp 4
+    exit 0
+    ;;
+  0) ;;
+  *) echo "RUNIC_TEMPLATE_WEBKIT_CDP must be 0 or only." >&2; exit 2 ;;
+esac
 
 # CI runs the creator and package name checks in one framework lane only.
 case "${RUNIC_TEMPLATE_CREATOR:-1}" in

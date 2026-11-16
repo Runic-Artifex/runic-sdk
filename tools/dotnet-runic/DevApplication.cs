@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.Application.Tool.WebKit;
 using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
@@ -90,9 +91,32 @@ internal static class DevApplication
         {
             return Program.Success;
         }
+        // Linux: WebKit's remote inspector for the Window and Runic's CDP adapter for JavaScript debuggers (D066.39).
+        WebKitDebugging.Plan debugging = WebKitDebugging.Decide(configuration, options, Environment.GetEnvironmentVariable,
+            OperatingSystem.IsLinux(), LoopbackPort.Reserve, WebKitDebugging.ReadInstalledVersion);
+        options = options with { DebugEnvironment = debugging.WindowEnvironment };
+        await using WebKitDebugEndpoint? adapter = debugging.StartAdapter
+            ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort)
+            : null;
+        var webKitEndpoints = new List<DevSession.DebugEndpoint>(debugging.Endpoints);
+        var debuggingHints = new List<string>(debugging.Hints);
+        if (adapter is not null)
+        {
+            // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port.
+            if (adapter.Start(WebKitDebugging.DefaultCdpPort) || adapter.Start(0))
+            {
+                webKitEndpoints.Insert(0, WebKitDebugging.CdpEndpoint(adapter.Port!.Value));
+                debuggingHints.Add(WebKitDebugging.CdpHint(adapter.Port.Value, debugging));
+            }
+            else
+            {
+                debuggingHints.Add(WebKitDebugging.CdpUnavailableHint);
+            }
+        }
         // The session file says where the running session is, for IDEs; it is marked stopped when dev ends.
-        var session = DevSession.Create(configuration, options);
+        var session = DevSession.Create(configuration, options, webKitEndpoints);
         foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints) Console.WriteLine(UnavailableEndpointHint(endpoint));
+        foreach (string hint in debuggingHints) Console.WriteLine(hint);
         WriteSession(session.Start);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
