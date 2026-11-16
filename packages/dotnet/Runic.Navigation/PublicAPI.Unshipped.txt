@@ -7,3 +7,5 @@ Runic.Navigation.NavigationSelectionPath.NavigationSelectionPath(System.Collecti
 *REMOVED*Runic.Navigation.NavigationSelectionPath.Selected.init -> void
 Runic.Navigation.NavigationSelectionPath.SelectedIndex.get -> int
 Runic.Navigation.NavigationSelectionPath.SelectedIndex.init -> void
+Runic.Navigation.NavigationSelectionPath.ToJson() -> string!
+static Runic.Navigation.NavigationSelectionPath.FromJson(string! json) -> Runic.Navigation.NavigationSelectionPath!

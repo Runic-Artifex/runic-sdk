@@ -12,6 +12,17 @@ export { injectViewResource, type InjectViewResourceOptions, type ViewResource }
 export { injectCommand, type CommandHandle, type InjectCommandOptions } from "./inject-command.js";
 export { injectOperation, type InjectOperationOptions, type OperationHandle } from "./inject-operation.js";
 export { injectField, type FieldHandle, type FieldView, type InjectFieldOptions } from "./inject-field.js";
+// The field types that injectField's and injectForm's signatures use, as the React, Vue and Svelte adapters export them.
+export {
+  FieldError,
+  type BridgeField,
+  type BridgeFieldConstraints,
+  type BridgeFieldKind,
+  type FieldBaseline,
+  type FieldDefinition,
+  type FieldErrorKind,
+  type FieldState,
+} from "@runic-artifex/views";
 export { injectForm, type FormFieldHandle, type FormHandle, type InjectFormOptions } from "./inject-form.js";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { injectTextField, type InjectTextFieldOptions, type TextFieldHandle, type TextFieldView } from "./inject-text-field.js";
@@ -23,7 +34,9 @@ export {
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
 export { injectQueryCollection, type InjectQueryCollectionOptions, type QueryCollectionHandle } from "./inject-query-collection.js";
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
-export { injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal, type InjectTextOptions } from "./inject-text.js";
+export {
+  injectText, injectTextLocale, injectWindowLocale, RunicTextPipe, textLocaleSignal, type InjectTextOptions,
+} from "./inject-text.js";
 export { injectAppearance, type InjectAppearanceOptions } from "./inject-appearance.js";
 export {
   injectRunicInstance, provideRunicInstance, RUNIC_INSTANCE, type InjectRunicInstanceOptions,

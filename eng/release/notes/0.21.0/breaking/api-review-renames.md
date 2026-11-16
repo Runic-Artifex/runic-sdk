@@ -1,8 +1,8 @@
 - **.NET API names from the 0.21 API review.** Members added since 0.12 are
   renamed so that one feature uses one word. Rename the calls; nothing else
-  changes, and the wire formats stay: `NavigationPath.ToJson` still writes a
-  selection's index as `"selected"` (format version 1), so saved paths load
-  unchanged.
+  changes, and the wire formats stay: `NavigationPath.ToJson` and
+  `NavigationSelectionPath.ToJson` still write a selection's index as
+  `"selected"` (format version 1), so saved paths load unchanged.
 
   | Package | 0.20 | 0.21 |
   | --- | --- | --- |

@@ -27,7 +27,13 @@ internal static partial class GlobalMenuSmoke
         private readonly HashSet<string> _handled = [.. handled];
         internal ConcurrentQueue<(string Id, string? Parameter)> Executed { get; } = new();
         public bool CanExecute(DesktopMenuItem item) => _handled.Contains(item.CommandId);
-        public void Execute(DesktopMenuItem item) => Executed.Enqueue((item.CommandId, item.CommandParameter));
+        // Whether each command ran as a choice in the host's native menu (sdk#855).
+        internal ConcurrentQueue<bool> MenuChoices { get; } = new();
+        public void Execute(DesktopMenuItem item)
+        {
+            MenuChoices.Enqueue(Runic.Desktop.Internal.HostMenuChoice.IsCurrent);
+            Executed.Enqueue((item.CommandId, item.CommandParameter));
+        }
     }
 
     internal static int Run(string toolkit)
@@ -99,6 +105,7 @@ internal static partial class GlobalMenuSmoke
                 Arguments = [save[0], DBusValue.From("clicked"), DBusValue.Variant(DBusValue.From(0)), DBusValue.From(0u)],
             });
             await WaitForAsync(() => target.Executed.TryDequeue(out var ran) && ran == ("file.save", null), "a dbusmenu click to run Save");
+            Require(target.MenuChoices.TryDequeue(out var choice) && choice, "a dbusmenu click runs Save as a native menu choice");
             Console.WriteLine($"PASS {toolkit} global placement: Global, the in-window bar hidden, the exported bar and a click running its command.");
 
             // The registrar goes away: the bar comes back into the window. A new owner registers the window again.

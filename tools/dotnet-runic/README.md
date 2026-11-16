@@ -625,11 +625,23 @@ Protocol, and connects to WebKit only while a debugger is attached; in between,
 GNOME Web can open the `inspector://` address that the `[dev] Debugging:` line
 names. The session file lists both under `debugEndpoints`.
 
-- **Security.** The endpoint listens on 127.0.0.1 only and refuses (403) a
-  request whose `Host` is not an IP address or `localhost` and any request with
-  an `Origin`, so a web page in a browser cannot reach it; its WebSocket paths
-  carry a random secret that only `/json/version` and `/json/list` reveal. It runs
-  only under `dotnet runic dev` and adds nothing to the application.
+- **Security.** The endpoint can script the Window's page and its Bridge, so
+  it admits only debuggers of the user who runs `dev`:
+  - It listens on 127.0.0.1 only. It refuses (403) a request whose `Host` is
+    not an IP address or `localhost`, and any request with an `Origin`, so a
+    web page in a browser cannot reach it. Its WebSocket paths carry a random
+    secret that only `/json/version` and `/json/list` reveal.
+  - Other users on the same machine can reach loopback ports too. So `dev`
+    looks up the owner of each connection's other end in `/proc/net/tcp`,
+    closes it when that is another user, and says so in a `[dev]` line. The
+    adapter talks to WebKit's inspector port only when its listener belongs
+    to you. If another user holds 9222, `dev` warns that an attach
+    configuration with that port would reach their process.
+  - WebKit's own `inspector://` port is WebKit's, so `dev` cannot filter it.
+    While no debugger is attached, other local users can connect to it and
+    script the Window. On a machine that you share with other users, run
+    `dev` with `--no-debug-endpoint`.
+  - It runs only under `dotnet runic dev` and adds nothing to the application.
 - **Not supported.** Setting a variable to an object or a `const` (WebKit has no
   `setVariableValue`; a primitive is assigned in the frame), restarting a frame,
   and the Elements, Network and other panels of a Chrome DevTools window on this
@@ -639,12 +651,19 @@ names. The session file lists both under `debugEndpoints`.
   its Web Inspector over HTTP (`WEBKIT_INSPECTOR_HTTP_SERVER`), never both.
   `--webkit-inspector` opens the HTTP one instead of the adapter, for any browser,
   on WebKitGTK 2.54.3 or later; older WebKitGTK lets any web page reach it
-  (WebKit bug 330602). A `WEBKIT_INSPECTOR_SERVER` or `WEBKIT_INSPECTOR_HTTP_SERVER`
-  that you set with `-e` or in `dev`'s environment is used as it is.
+  (WebKit bug 330602, also fixed in 2.56; the 2.55 development releases count
+  as unfixed). A `WEBKIT_INSPECTOR_SERVER` or `WEBKIT_INSPECTOR_HTTP_SERVER`
+  that you set with `-e` or in `dev`'s environment is used as it is. `dev`
+  warns when such an HTTP inspector runs on a WebKitGTK without that fix, and
+  when either address is not loopback. Under `--no-window` the version check
+  uses the WebKitGTK that `dev` loads, which can differ from the Window's.
 - **Port 9222 taken.** `dev` uses another free port and says which; change the
-  attach configuration's `port`. `--no-debug-endpoint` opens nothing.
+  attach configuration's `port`. When another user holds 9222, or the
+  inspector port 9223 under `--no-window`, the `[dev]` line is a warning.
+  `--no-debug-endpoint` opens nothing.
 - **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
-  traffic, which contains the page's data, to that file.
+  traffic, which contains the page's data, to that file. `dev` creates the
+  file readable by you only.
 
 ## IDE contract
 
@@ -657,9 +676,15 @@ contract: they keep their form within `runic.application.tool.dev-session/1`.
 | `[dev] Window started: process <pid>` | Each time a Window process starts: the first start, a restart by `dotnet watch` after a C# edit, and a restart by `dev` itself. `<pid>` is the application's own process, the one to attach a .NET debugger to, not `dotnet watch` or `dotnet run`. |
 | `[dev] Ready` | After each `Window started` line: the frontend (its development server, or its watcher or initial build) and the Window process can be used. |
 | `[dev] Window exited: process <pid>` | When that process exits, for example before `dotnet watch` restarts it. A debugger attached to it has ended. |
+| `[dev] Evaluating` (line prefix) | Once, when `dev` starts evaluating the project, before it builds or starts anything: `[dev] Evaluating Views Window project...`, and `[dev] Evaluating Views Window project completed in <time>.` when that is done. Since 0.21 in the contract. |
+| `[dev] Reloading` (line prefix) | Each time `dev` itself restarts the Window process, for example after a frontend compiler change that hot reload cannot apply: `[dev] Reloading the Runic Views Window application.`, after the old process stopped and before the new one starts. `Window started` and `Ready` follow. Since 0.21 in the contract. |
 
-`dev` writes the [session file](#session-file) before it prints each of these
-lines, so a reader that reacts to a line finds the same state there: after
+The two prefix lines are where a background task's `beginsPattern` starts a new
+build cycle, as the template's `.vscode/tasks.json` below does; the text after
+the prefix is not part of the contract.
+
+`dev` writes the [session file](#session-file) before it prints each of the
+first three lines, so a reader that reacts to a line finds the same state there: after
 `Window started`, the file's `window.processId`; after `Ready`, `"state": "ready"`;
 after `Window exited`, no Window process and `"state": "starting"`. In 0.20.0
 previews, `dev` printed the line first.

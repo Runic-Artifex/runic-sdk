@@ -17,8 +17,8 @@ such as `RUNICASSETS001`. A prefix that already names compiler or build
 diagnostics numbers them from `100`, so the two never share a number: the D-Bus
 source generator reports `RUNICDBUS001` to `RUNICDBUS013`, and an experimental
 D-Bus family would be `RUNICDBUS100`. No D-Bus API is experimental today. The
-Runic.Desktop build targets report `RUNICDESK001` and `RUNICDESK002`, so the
-experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
+Runic.Desktop, Runic.Desktop.Kestrel and Runic.Desktop.NativeServer build targets
+report `RUNICDESK001` to `RUNICDESK006`, so the experimental Desktop families number from `RUNICDESK100`; `RUNICDESK100` to
 `RUNICDESK102` are retired, `RUNICDESK103` to `RUNICDESK105` are in use, so the
 next is `RUNICDESK106`. The Navigation
 ReactiveUI build targets report `RUNICNAV002`, after the retired `RUNICNAV001`,
