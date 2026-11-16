@@ -64,11 +64,16 @@ import {
   isViewClient, missingViewMessage, reportMissingView, translationsTextRevision, viewSourceIdentity, viewSourcePreview,
 } from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
-// React DevTools labels: only the development build (src/development.d.ts) reaches this module.
+// React DevTools labels: only the development build (`__RUNIC_DEVELOPMENT__`) reaches this module.
 import { clientLabel, commandLabel, fieldLabel, operationLabel, viewLabel } from "./debug-labels.js";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
+// `true` in the development build (`dist/development/`, the `development` export condition) and `false` in the
+// production build (`dist/`): scripts/build.mjs replaces it (eng/web/development-build.mjs). Declared in each module that
+// uses it, so a project that compiles this source through tsconfig `paths` sees it too; a bundler of this source defines
+// it, as the examples' build scripts do (`define: { __RUNIC_DEVELOPMENT__: "false" }`).
+declare const __RUNIC_DEVELOPMENT__: boolean;
 
 // The labels of useViewState and useTextField (debug-labels.ts); only the development build calls them.
 const selectedLabel = (client: unknown) => client === undefined ? "no View" : clientLabel(client);

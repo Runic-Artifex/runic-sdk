@@ -1,4 +1,4 @@
-// The React DevTools labels of the Runic hooks (#1041), in the development build only (src/development.d.ts): each hook
+// The React DevTools labels of the Runic hooks (#1041), in the development build only (`__RUNIC_DEVELOPMENT__`): each hook
 // passes its value and one of these functions to `useDebugValue`, and React calls the function only while React
 // DevTools inspects the component, so a render pays nothing for the text. The production build does not contain this
 // module.

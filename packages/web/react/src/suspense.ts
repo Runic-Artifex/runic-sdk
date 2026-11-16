@@ -3,6 +3,11 @@ import { defaultInstance, type RunicInstance, type ViewClient, type ViewConnecto
 import { checkKeepAlive, isViewClient } from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
 import { clientLabel } from "./debug-labels.js";
+// `true` in the development build (`dist/development/`, the `development` export condition) and `false` in the
+// production build (`dist/`): scripts/build.mjs replaces it (eng/web/development-build.mjs). Declared in each module that
+// uses it, so a project that compiles this source through tsconfig `paths` sees it too; a bundler of this source defines
+// it, as the examples' build scripts do (`define: { __RUNIC_DEVELOPMENT__: "false" }`).
+declare const __RUNIC_DEVELOPMENT__: boolean;
 
 type SuspendedConnection = {
   status: "pending" | "ready" | "failed";

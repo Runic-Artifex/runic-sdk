@@ -1,4 +1,4 @@
-// The Vue DevTools integration (#1041), in the development build only (src/development-build.d.ts): a "Runic Views" custom
+// The Vue DevTools integration (#1041), in the development build only (`__RUNIC_DEVELOPMENT__`): a "Runic Views" custom
 // inspector that lists the page's Views with their state and recent calls, and a "Runic Bridge calls" timeline layer.
 // It is a reader of two development channels that every copy of @runic-artifex/views shares on the page
 // (specs/application/README.md, "Shared globals"): the state inspector (`runic.views.inspector`) and the Bridge-call
