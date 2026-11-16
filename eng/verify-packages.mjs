@@ -601,7 +601,7 @@ const development = process.execArgv.includes('--conditions=development');
 // What only each package's development build contains: views' development tools, and the bindings' DevTools
 // integration (#1041).
 const packages = {
-  '@runic-artifex/views': ['runic.views.calls', 'createTask', 'runic.translations.text', 'trace-context/1', 'handler-timing/1', 'runic.views.describe'],
+  '@runic-artifex/views': ['runic.views.calls', 'createTask', 'runic.translations.text', 'trace-context/1', 'handler-timing/1', 'runic.views.describe', 'devtoolsFormatters'],
   '@runic-artifex/react': ['useDebugValue', 'describeViewClient'],
   '@runic-artifex/vue': ['@vue/devtools-api', 'runic.views.calls', 'runic.views.inspector'],
 };

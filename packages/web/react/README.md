@@ -662,6 +662,11 @@ component. The package has a development build, like `@runic-artifex/views`
 Vitest resolve, labels the hooks, and the production build has no labels and does not call `useDebugValue`. See
 [the debugging guide](../../../docs/debugging.md#react-devtools-and-vue-devtools).
 
+In the browser's console, `view.client` and `view.state` show as
+`EditorViewModel · editor · rev 12` and `EditorViewModel state · rev 12 {…}` once
+custom formatters are enabled in DevTools; see
+[Custom object formatters](../views/README.md#custom-object-formatters).
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

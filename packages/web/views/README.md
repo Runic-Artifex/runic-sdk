@@ -364,6 +364,24 @@ bindings have a development build of their own, for their
 [React DevTools labels](../react/README.md#react-devtools) and
 [Vue DevTools plugin](../vue/README.md#vue-devtools).
 
+### Custom object formatters
+
+The development build adds a formatter to `window.devtoolsFormatters` when it
+connects its first client (since 0.21). With custom formatters enabled in
+DevTools (Chromium: Settings › Preferences › Console › **Enable custom
+formatters**; Firefox: Settings › Advanced settings › **Enable custom
+formatters**), the console and the Sources panel show:
+
+- a View client as `EditorViewModel · editor · rev 12`, expanding into its view
+  model, route, contract, revision, presentations, state and the raw client;
+- a state the client delivered as `EditorViewModel state · rev 12 {title: "Draft", …}`;
+- a field controller's state (`createFieldController(…).current`) as
+  `title = "Draft" · editing · 1 error`.
+
+Other objects keep DevTools' own presentation. WebKit has no custom formatters.
+The production build has no formatter. See
+[the debugging guide](../../../docs/debugging.md#custom-object-formatters).
+
 ## Incremental collections
 
 A .NET ViewModel can mark a read-only collection of DTO rows with

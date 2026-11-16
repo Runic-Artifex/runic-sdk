@@ -12,6 +12,7 @@ Each section links the README that describes its tool in full.
 | See each Bridge call with the C# that ran and open it in the editor | [The Runic dock](#the-runic-dock) |
 | Click an element and see its commands, state, and texts | [Runic Inspect](#runic-inspect) |
 | See the same in Chrome's or Edge's own developer tools: a Runic panel and an Elements pane | [The Runic DevTools extension](#the-runic-devtools-extension) |
+| See View clients, states and field states readably in the console | [Custom object formatters](#custom-object-formatters) |
 | See a component's View, field state and operation status in React DevTools or Vue DevTools | [Framework DevTools](#react-devtools-and-vue-devtools) |
 | Time C# handlers, or follow a click into the ViewModel's HTTP and database calls | [Performance panel and traces](#performance-panel-async-stacks-and-traces) |
 | See Bridge errors before you build | [Analyzers](#bridge-errors-while-you-type) |
@@ -260,6 +261,28 @@ browser extensions; there, use the framework's standalone DevTools as its docume
 [React DevTools labels](../packages/web/react/README.md#react-devtools) and
 [Vue DevTools](../packages/web/vue/README.md#vue-devtools).
 
+## Custom object formatters
+
+In development, `@runic-artifex/views` registers custom object formatters (since 0.21), so the console and the Sources
+panel's scope and watch views show Runic objects readably instead of closures and proxies:
+
+| Object | Header | Expanded |
+| --- | --- | --- |
+| A View client (`await connectEditor()`, `view.client`) | `EditorViewModel · editor · rev 12` | view model, route, contract, revision, presentations, released, the state, and the raw client |
+| Its state (`client.snapshot`, a hook's or composable's state) | `EditorViewModel state · rev 12 {title: "Draft", …}` | each member |
+| A field controller's state (`controller.current`) | `title = "Draft" · editing · 1 error` | value, text, editing, error, errors, conflict, validating |
+
+The browser shows them only after you turn custom formatters on, once per browser profile:
+
+- **Chromium** (an installed Chrome or Edge, and WebView2's DevTools): open DevTools' **Settings** (F1, or the gear
+  icon), and under **Preferences** › **Console** check **Enable custom formatters**. Reopen DevTools.
+- **Firefox**: open DevTools' **Settings** (F1) and, under **Advanced settings**, check **Enable custom formatters**
+  (or set `devtools.custom-formatters.enabled` to `true` in `about:config`). Reopen DevTools.
+
+WebKit's Web Inspector (WKWebView, WebKitGTK, Safari) has no custom formatters and shows the objects as before. The
+production build of views contains no formatter and does not touch `window.devtoolsFormatters`. See
+[Custom object formatters](../packages/web/views/README.md#custom-object-formatters).
+
 ## The Runic DevTools extension
 
 Since 0.21, `dotnet-runic` ships an unpacked Chrome DevTools extension (Manifest V3) that shows Runic Inspect's data
@@ -345,6 +368,7 @@ None of this ships:
   build without call reporting, `console.createTask`, or trace context. `bun build` bundles the development build
   unless you pass `--production` or set `NODE_ENV=production`; the Views MSBuild targets set `NODE_ENV=production` for
   a Release build and `dotnet publish`. See [Development build](../packages/web/views/README.md#development-build).
+- Custom object formatters exist only in the development build of views.
 - `@runic-artifex/react` and `@runic-artifex/vue` have the same two builds (since 0.21): only the development build
   labels the hooks for React DevTools or adds the Vue DevTools inspector, and only it imports `@vue/devtools-api`.
 - The source map stays in `obj`: it is not in generated TypeScript, build or publish output, or a package.
