@@ -120,6 +120,9 @@ internal sealed class CdpServer : IAsyncDisposable
             while (!_stop.IsCancellationRequested)
             {
                 TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                // A debugger answers each small message before the next one comes, as at each instrumentation pause:
+                // Nagle's algorithm would hold every answer back for the delayed acknowledgement (#1051).
+                client.NoDelay = true;
                 lock (_connections)
                 {
                     _connections.RemoveAll(static task => task.IsCompleted);
