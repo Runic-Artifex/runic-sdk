@@ -76,6 +76,15 @@ public sealed partial class WindowsWebView2InteropTests
             ("ICoreWebView2_13", "get_Profile", WindowsWebView2Interop.WebView13ProfileSlot),
             ("ICoreWebView2Profile", "get_PreferredColorScheme", WindowsWebView2Interop.ProfileGetPreferredColorSchemeSlot),
             ("ICoreWebView2Profile", "put_PreferredColorScheme", WindowsWebView2Interop.ProfilePreferredColorSchemeSlot),
+            ("ICoreWebView2", "OpenDevToolsWindow", WindowsWebView2Interop.OpenDevToolsWindowSlot),
+            ("ICoreWebView2Profile7", "AddBrowserExtension", WindowsWebView2Interop.ProfileAddBrowserExtensionSlot),
+            ("ICoreWebView2BrowserExtension", "get_Id", WindowsWebView2Interop.BrowserExtensionIdSlot),
+            ("ICoreWebView2BrowserExtension", "Remove", WindowsWebView2Interop.BrowserExtensionRemoveSlot),
+            ("ICoreWebView2Profile7", "GetBrowserExtensions", WindowsWebView2Interop.ProfileGetBrowserExtensionsSlot),
+            ("ICoreWebView2BrowserExtensionList", "get_Count", WindowsWebView2Interop.BrowserExtensionListCountSlot),
+            ("ICoreWebView2BrowserExtensionList", "GetValueAtIndex", WindowsWebView2Interop.BrowserExtensionListValueSlot),
+            ("ICoreWebView2EnvironmentOptions6", "get_AreBrowserExtensionsEnabled", 3),
+            ("ICoreWebView2EnvironmentOptions6", "put_AreBrowserExtensionsEnabled", 4),
         })
         {
             var start = header.IndexOf($"typedef struct {type}Vtbl", StringComparison.Ordinal);
@@ -109,6 +118,66 @@ public sealed partial class WindowsWebView2InteropTests
             Assert.Equal(1, WindowsWebView2Interop.GetInteger(pointer, 9));
         }
         finally { WindowsWebView2Interop.Release(pointer); }
+    }
+
+    // sdk#1043: WebView2 queries ICoreWebView2EnvironmentOptions6 from the options; extensions are off unless asked for.
+    [Test]
+    [Arguments(false, 0)]
+    [Arguments(true, 1)]
+    [DisplayName("GeneratedOptionsExposeAreBrowserExtensionsEnabled(browserExtensions: $browserExtensions)")]
+    public void GeneratedOptionsExposeAreBrowserExtensionsEnabled(bool browserExtensions, int expected)
+    {
+        using var options = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(null, browserExtensions: browserExtensions));
+        var pointer = WindowsWebView2Interop.Query(options.Pointer, typeof(IWebViewEnvironmentOptions6).GUID);
+        try
+        {
+            Assert.Equal(expected, WindowsWebView2Interop.GetInteger(pointer, 3));
+            WindowsWebView2Interop.SetInteger(pointer, 4, 1 - expected);
+            Assert.Equal(1 - expected, WindowsWebView2Interop.GetInteger(pointer, 3));
+        }
+        finally { WindowsWebView2Interop.Release(pointer); }
+    }
+
+    [Test]
+    public void DevToolsInterfacesMatchThePinnedMicrosoftSdkHeader()
+    {
+        var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
+        Guid Interface(string name) => new(new Regex($@"MIDL_INTERFACE\(""([0-9a-fA-F-]+)""\)\s+{name}\b").Match(header).Groups[1].Value);
+        Assert.Equal(Interface("ICoreWebView2EnvironmentOptions6"), typeof(IWebViewEnvironmentOptions6).GUID);
+        Assert.Equal(Interface("ICoreWebView2Profile7"), WindowsWebView2Interop.Profile7Interface);
+        Assert.Equal(Interface("ICoreWebView2ProfileAddBrowserExtensionCompletedHandler"), typeof(IWebViewBrowserExtensionAdded).GUID);
+        Assert.Equal(Interface("ICoreWebView2ProfileGetBrowserExtensionsCompletedHandler"), typeof(IWebViewBrowserExtensionsListed).GUID);
+        Assert.Equal(Interface("ICoreWebView2BrowserExtensionRemoveCompletedHandler"), typeof(IWebViewBrowserExtensionRemoved).GUID);
+    }
+
+    [Test]
+    public async Task BrowserExtensionCompletionReportsFailuresAndAMissingExtension()
+    {
+        var failed = new WebViewBrowserExtensionCompletion();
+        Assert.Equal(0, failed.Invoke(unchecked((int)0x80070002), 0));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => failed.Task);
+        Assert.IsType<FileNotFoundException>(error.InnerException);
+        var missing = new WebViewBrowserExtensionCompletion();
+        Assert.Equal(0, missing.Invoke(0, 0));
+        Assert.Null(await missing.Task);
+    }
+
+    [Test]
+    public async Task ExtensionListingAndRemovalReportFailures()
+    {
+        var listing = new WebViewBrowserExtensionList(["aaa"]);
+        Assert.Equal(0, listing.Invoke(unchecked((int)0x80004005), 0));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => listing.Task);
+        var empty = new WebViewBrowserExtensionList(["aaa"]);
+        Assert.Equal(0, empty.Invoke(0, 0));
+        await empty.Task;
+        Assert.Empty(empty.Found);
+        var removal = new WebViewBrowserExtensionRemoval();
+        Assert.Equal(0, removal.Invoke(unchecked((int)0x80004005)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => removal.Task);
+        var removed = new WebViewBrowserExtensionRemoval();
+        Assert.Equal(0, removed.Invoke(0));
+        await removed.Task;
     }
 
     [Test]

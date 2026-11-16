@@ -121,7 +121,7 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
 
 | Engine | Where | Open | Debugger and automation |
 | --- | --- | --- | --- |
-| WebView2 | Windows | F12, or Inspect from the page's context menu | A DevTools Protocol endpoint on request (below) |
+| WebView2 | Windows | F12, Ctrl+Shift+I, Inspect from the page's context menu, Open DevTools in the window's system menu (Alt+Space), or `DesktopWindow.OpenDevToolsAsync()` | A DevTools Protocol endpoint on request (below); DevTools extensions (below) |
 | WKWebView | macOS 13.3 and later | Safari ▸ Develop ▸ your Mac ▸ the window's page (turn on "Show features for web developers" in Safari's Advanced settings) | Safari's Web Inspector only; no DevTools Protocol endpoint |
 | WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached) | A DevTools Protocol endpoint for JavaScript debuggers under `dotnet runic dev` (preview, below), and WebKit's remote inspector |
 | Installed browser | CS-WebUI's default, and Runic Desktop's fallback without a WebView | The browser's own F12 | The browser's own rules: Runic's policy does not apply to it |
@@ -135,6 +135,36 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
   runs as administrator, its Window does too, so `dev` lists the endpoint under `unavailableDebugEndpoints` with
   `"reason": "elevated"` and prints a `[dev] Debugging:` hint. F12 still works; for the endpoint, run `dev` and your
   IDE without elevation.
+- **WebView2 DevTools window.** While a window's developer tools are on, its system menu (Alt+Space, or a right
+  click on the title bar) has **Open DevTools**, and `await window.OpenDevToolsAsync()` opens the same Edge DevTools
+  window from code, for example from a development-only menu item of your own. It returns `false` where the developer
+  tools are off, as in production, and on WKWebView, WebKitGTK and installed browsers.
+- **WebView2 DevTools extensions** (since 0.21). In Development a WebView2 window loads unpacked browser extensions,
+  such as React Developer Tools or Vue.js devtools, so their panels appear in its DevTools window and their hooks run
+  in the page. List the extension folders (each one holds a `manifest.json`) in `DesktopHostOptions.DevToolsExtensions`,
+  or for one session in `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS`, separated by `;`:
+
+  ```csharp
+  var options = new DesktopHostOptions
+  {
+      DevToolsExtensions = [@"C:\Tools\react-devtools-extension"],
+  };
+  ```
+
+  ```powershell
+  dotnet runic dev -e RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS="C:\Tools\react-devtools-extension;C:\Tools\vue-devtools"
+  ```
+
+  Get an unpacked extension by building it from its source (React's `packages/react-devtools-extensions`, Vue's
+  `packages/chrome-extension`) or by extracting its release package. Outside Development the list is ignored and
+  WebView2's extensions stay off, also those that a development run installed into the same profile. Extensions are
+  installed into the window's WebView2 profile before its first page loads, so every window of that profile runs them;
+  WebView2 keeps one until its files change. When a folder leaves the list, the next Development run with a non-empty
+  list removes the extension that Runic installed from it; Runic records what it installed in
+  `Runic.DevToolsExtensions.json` in the user data folder and never removes an extension it did not install. A folder that WebView2 rejects is reported as `devtools-extension-failed`, and the
+  window opens without it. WKWebView, WebKitGTK and installed browsers ignore the list. Runic's CI checks that an
+  extension's content script runs in the page; whether a given extension's DevTools panel works is up to WebView2's
+  extension support, which does not cover every Chrome extension API.
 - **WKWebView** makes the page inspectable (`isInspectable`) in Development; macOS before 13.3 decides that itself.
 - **WebKitGTK.** `DevTools` controls WebKit's developer extras on both GTK hosts (and their side panels), so Inspect
   Element and the Web Inspector work in the window under `dotnet runic dev`. Since 0.21, `dotnet runic dev` also opens
@@ -372,7 +402,8 @@ None of this ships:
 - `@runic-artifex/react` and `@runic-artifex/vue` have the same two builds (since 0.21): only the development build
   labels the hooks for React DevTools or adds the Vue DevTools inspector, and only it imports `@vue/devtools-api`.
 - The source map stays in `obj`: it is not in generated TypeScript, build or publish output, or a package.
-- Outside Development, a Runic Desktop window has no developer tools in the window, replies carry no handler timing,
+- Outside Development, a Runic Desktop window has no developer tools in the window, no Open DevTools item and no
+  browser extensions (`DevToolsExtensions` is ignored), replies carry no handler timing,
   and failures carry no exception detail. A remote debugging endpoint that the process's environment asks for is the
   exception: see [the browser's developer tools per engine](#the-browsers-developer-tools-per-engine). Do not ship
   with `DOTNET_ENVIRONMENT=Development`; see the

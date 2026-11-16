@@ -1126,6 +1126,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     public Task FocusAsync(CancellationToken cancellationToken = default)
         => GetEmbeddedHost().FocusAsync(cancellationToken).AsTask();
 
+    // DesktopWindow.OpenDevToolsAsync: false for an installed browser, which has its own.
+    internal ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _embeddedHost is { IsOpen: true } host ? host.OpenDevToolsAsync(cancellationToken) : ValueTask.FromResult(false);
+    }
+
     // The window's accessibility API announces the message, except on WebView2 while the keyboard focus is in the page:
     // the focus is then in WebView2's browser process, and NVDA speaks a UI Automation notification only from the
     // focused object's process (I-184). The page's Bridge then announces it in a live region, which NVDA speaks from the
@@ -2206,6 +2213,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             IconFile = _iconFile,
             ProfilePath = profilePath,
             BrowserArguments = _browserArguments,
+            // sdk#1043: a hosted window shows its guest's page and loads no extensions.
+            DevToolsExtensions = hosted is null && OperatingSystem.IsWindows()
+                ? Internal.DevToolsExtensionFolders.Resolve(MenuHost?.DevToolsExtensions ?? [], Environment.GetEnvironmentVariable)
+                : [],
             AllowedPermissions = _allowedPermissions,
             // Only the host application's own pages show regions; a hosted window shows its guest's page.
             RegionFrames = hosted is null ? RegionFrames : null,
