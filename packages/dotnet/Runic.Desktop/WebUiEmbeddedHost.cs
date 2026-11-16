@@ -179,6 +179,12 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask<Internal.WebUiSidePanelOpening> OpenSidePanelAsync(Internal.WebUiSidePanelRequest request, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Internal.WebUiSidePanelOpening.Refused(DesktopSidePanelRefusal.Unsupported));
 
+    /// <summary>
+    /// Opens the page's developer tools in a window of their own (DesktopWindow.OpenDevToolsAsync); false where the
+    /// developer tools are off or the host cannot open them on request.
+    /// </summary>
+    ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
+
     /// <summary>Applies DesktopHost.SetSpellCheckingLanguagesAsync; a host whose checker has no languages ignores it.</summary>
     ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
         ValueTask.CompletedTask;
@@ -227,6 +233,10 @@ internal sealed record WebUiEmbeddedHostOptions
     public string? ProfilePath { get; init; }
 
     public string? BrowserArguments { get; init; }
+
+    // The unpacked DevTools extensions a WebView2 window installs when its DevTools are enabled, resolved for the process
+    // (DevToolsExtensionFolders): empty outside Development, for hosted windows and on other platforms.
+    public IReadOnlyList<string> DevToolsExtensions { get; init; } = [];
 
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 

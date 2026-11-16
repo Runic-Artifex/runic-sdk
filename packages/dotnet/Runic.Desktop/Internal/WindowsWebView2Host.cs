@@ -896,8 +896,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 url,
                 options.RegionFrames);
             if (options.RegionFrames is { } regions) _controller.EnableRegionCrashes(regions);
+            var webContent = new WebContentRules(options.WebContent, url, options.AdditionalOrigins);
             _controller.ApplyWebContent(
-                new WebContentRules(options.WebContent, url, options.AdditionalOrigins),
+                webContent,
                 target => WindowsWebView2Interop.OpenExternally(target),
                 // From a WebView2 event: navigate once the event has returned.
                 target => _ = Task.Run(async () =>
@@ -915,6 +916,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             _controller.RegisterAcceleratorKeys(IsMenuShortcut);
             var menuKeys = _controller.EnableMenuKeysAsync(url, OnMenuKey, options.RegionFrames);
             await Task.WhenAll(documentStart, fileDrops, menuKeys);
+            await EnableDevToolsAsync(options, webContent.DevToolsEnabled);
+            if (_window == 0 || _controller is null) return; // Closed meanwhile.
             _controller.Navigate(url.AbsoluteUri);
             // A window that showed its loading surface has its placement and state already.
             if (!_shown) ShowInitially();
@@ -1083,6 +1086,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 host.InitializePopup((nint)wParam);
                 return 0;
             case WmSysCommand when host is not null && host.SwallowsKeyMenu(wParam, lParam):
+                return 0;
+            case WmSysCommand when host is not null && host.RunsDevToolsSystemCommand(wParam):
                 return 0;
             case WmEnterMenuLoop:
                 host?.EnterMenuLoop();

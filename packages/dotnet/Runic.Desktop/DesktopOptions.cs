@@ -303,6 +303,34 @@ public sealed record DesktopHostOptions
     /// </remarks>
     public IReadOnlyList<string> SpellCheckingLanguages { get; init; } = [];
 
+    /// <summary>
+    /// Gets the full paths of unpacked browser extensions, such as React DevTools or Vue DevTools, that the WebView2
+    /// windows load in Development; empty, the default, for none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only when <c>DOTNET_ENVIRONMENT</c>, or else <c>ASPNETCORE_ENVIRONMENT</c>, is <c>Development</c>, as under
+    /// <c>dotnet runic dev</c>, does a window's WebView2 environment enable browser extensions
+    /// (<c>AreBrowserExtensionsEnabled</c>). A window whose developer tools are on
+    /// (<see cref="DesktopWebContentPolicy.DevTools"/>) then installs each folder into its profile before its first
+    /// page loads, once per profile and process. Outside Development the option is ignored and extensions stay off, also
+    /// those an earlier development run installed into the same profile.
+    /// </para>
+    /// <para>
+    /// The <c>RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS</c> environment variable adds folders for a development session, separated
+    /// by <see cref="Path.PathSeparator"/>; entries that are not full paths are skipped. A folder named twice loads once.
+    /// </para>
+    /// <para>
+    /// Extensions belong to the WebView2 profile, so every window of a profile (<see cref="DesktopWindowOptions.ProfilePath"/>)
+    /// runs them, also one whose developer tools are off. WebView2 keeps an installed extension in the profile until
+    /// its files change; removing a folder from the list does not uninstall it. Hosted windows load none. WKWebView,
+    /// WebKitGTK and installed browsers ignore the option. A folder that WebView2 cannot install, or a runtime without
+    /// extensions, is reported to <see cref="DiagnosticSink"/> as <c>devtools-extension-failed</c> and the window opens
+    /// without it. Building the host throws <see cref="ArgumentException"/> for an entry that is not a full path.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> DevToolsExtensions { get; init; } = [];
+
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 

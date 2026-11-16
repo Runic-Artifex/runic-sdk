@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Desktop.DesktopHostOptions.DevToolsExtensions.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopHostOptions.DevToolsExtensions.init -> void
+Runic.Desktop.DesktopWindow.OpenDevToolsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>

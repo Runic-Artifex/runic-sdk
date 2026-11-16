@@ -221,6 +221,9 @@ public sealed class DesktopHost : IAsyncDisposable
 
     private IReadOnlyList<string> _spellCheckingLanguages;
 
+    // DesktopHostOptions.DevToolsExtensions, for the windows' WebView2 environments.
+    internal IReadOnlyList<string> DevToolsExtensions => _options.DevToolsExtensions;
+
     private int _colorScheme;
 
     /// <summary>
@@ -960,6 +963,7 @@ public sealed class DesktopHost : IAsyncDisposable
         _ = DesktopMenuBar.Check(options.MenuBar, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
         options.StandardMenuTitles?.Validate();
         _ = CheckSpellCheckingLanguages(options.SpellCheckingLanguages, nameof(options));
+        Internal.DevToolsExtensionFolders.Validate(options.DevToolsExtensions, nameof(options));
         if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
         {
             throw new ArgumentOutOfRangeException(
