@@ -22,7 +22,7 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
     <RunicDiagnosticsHelpLinksPropsName>Runic.Desktop.NativeServer.HelpLinks.props</RunicDiagnosticsHelpLinksPropsName>
     <!-- eng/native/build-runic-server.sh writes one directory per runtime identifier here. -->
-    <RunicNativeServerArtifacts Condition="'$(RunicNativeServerArtifacts)' == ''">$(MSBuildThisFileDirectory)../../../artifacts/native/runic-server/</RunicNativeServerArtifacts>
+    <_RunicNativeServerArtifacts Condition="'$(_RunicNativeServerArtifacts)' == ''">$(MSBuildThisFileDirectory)../../../artifacts/native/runic-server/</_RunicNativeServerArtifacts>
     <!-- The supported runtime identifiers: one shared library each here, and one static package each. -->
     <RunicNativeServerRuntimes>linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;win-x64;win-arm64;osx-arm64</RunicNativeServerRuntimes>
     <!-- A release pack must carry every supported runtime identifier. -->
@@ -44,7 +44,7 @@
   <Target Name="RunicNativeServerPackNativeAssets" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
       <_RunicNativeServerRuntime Include="$(RunicNativeServerRuntimes)" />
-      <_RunicNativeServerShared Include="$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.so;$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.dylib;$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/runic_server.dll"
+      <_RunicNativeServerShared Include="$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.so;$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.dylib;$(_RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/runic_server.dll"
           Runtime="%(_RunicNativeServerRuntime.Identity)" />
       <_RunicNativeServerShared Remove="@(_RunicNativeServerShared)" Condition="!Exists('%(Identity)')" />
       <None Include="@(_RunicNativeServerShared)" Pack="true" PackagePath="runtimes/%(_RunicNativeServerShared.Runtime)/native/" />
@@ -60,7 +60,7 @@
 }</_RunicNativeServerRuntimeGraphText>
     </PropertyGroup>
     <Error Condition="'@(_RunicNativeServerShared)' == ''"
-           Text="No native server library was built under $(RunicNativeServerArtifacts). Run eng/native/build-runic-server.sh first." />
+           Text="No native server library was built under $(_RunicNativeServerArtifacts). Run eng/native/build-runic-server.sh first." />
     <Error Condition="'$(RunicNativeServerRequireAllRuntimes)' == 'true' and '@(_RunicNativeServerMissing)' != ''"
            Text="The native server library is missing for @(_RunicNativeServerMissing)." />
     <MakeDir Directories="$(IntermediateOutputPath)runic-native-server" />

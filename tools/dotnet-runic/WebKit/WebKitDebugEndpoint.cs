@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,9 +12,11 @@ namespace Runic.Application.Tool.WebKit;
 /// <summary>
 /// The CDP adapter for the Window's WebKitGTK pages under <c>dotnet runic dev</c> on Linux (D066.39): a
 /// <see cref="CdpServer"/> on loopback, and a connection to the Window's WebKit remote inspector server that exists only
-/// while a debugger is connected, since WebKit admits one client and GNOME Web may want <c>inspector://</c> otherwise.
+/// while a debugger is connected, since WebKit serves one client and GNOME Web may want <c>inspector://</c> otherwise.
 /// When the Window restarts (<c>dotnet watch</c>), the connection closes with it; while debuggers stay connected, the
-/// endpoint reconnects to the new Window's server and announces its pages.
+/// endpoint reconnects to the new Window's server and announces its pages. On Linux it talks only to an inspector port
+/// whose listener belongs to the user who runs dev, so another user who took the port first does not receive the
+/// debugger's traffic.
 /// </summary>
 internal sealed class WebKitDebugEndpoint : IAsyncDisposable
 {
@@ -21,6 +24,9 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     private static readonly TimeSpan ReconnectInterval = TimeSpan.FromMilliseconds(500);
     private readonly string _inspectorHost;
     private readonly int _inspectorPort;
+    private readonly LoopbackSockets? _sockets;
+    private readonly Action<string> _report;
+    private readonly HashSet<uint?> _reportedListeners = [];
     private readonly SemaphoreSlim _connecting = new(1, 1);
     private readonly object _gate = new();
     private readonly HashSet<CdpClient> _clients = [];
@@ -30,10 +36,16 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     private Task _reconnecting = Task.CompletedTask;
     private long _idleGeneration;
 
-    internal WebKitDebugEndpoint(string inspectorHost, int inspectorPort)
+    /// <summary>
+    /// <paramref name="sockets"/> tells who owns a loopback socket (<see cref="LoopbackSockets.Current"/>; null: no check);
+    /// <paramref name="report"/> receives the <c>[dev]</c> lines for refused connections.
+    /// </summary>
+    internal WebKitDebugEndpoint(string inspectorHost, int inspectorPort, LoopbackSockets? sockets, Action<string> report)
     {
         _inspectorHost = inspectorHost;
         _inspectorPort = inspectorPort;
+        _sockets = sockets;
+        _report = report;
     }
 
     /// <summary>The CDP port, once <see cref="Start"/> succeeded.</summary>
@@ -62,7 +74,7 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
     /// <summary>Listens for debuggers on 127.0.0.1:<paramref name="port"/>; false when the port is taken.</summary>
     internal bool Start(int port, IReadOnlySet<string>? allowedOrigins = null)
     {
-        _server = CdpServer.TryStart(port, this, allowedOrigins);
+        _server = CdpServer.TryStart(port, this, allowedOrigins, _sockets, _report);
         return _server is not null;
     }
 
@@ -105,11 +117,11 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
             var connection = new InspectorConnection();
             try
             {
-                await connection.ConnectAsync(_inspectorHost, _inspectorPort, cancellationToken).ConfigureAwait(false);
+                await connection.ConnectAsync(_inspectorHost, _inspectorPort, VerifyInspectorListener, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception error) when (error is SocketException or IOException or TimeoutException)
             {
-                // No Window yet, or another inspector client (GNOME Web) holds the server.
+                // No Window yet, another inspector client (GNOME Web) holds the server, or another user's process listens.
                 await connection.DisposeAsync().ConfigureAwait(false);
                 return null;
             }
@@ -122,6 +134,20 @@ internal sealed class WebKitDebugEndpoint : IAsyncDisposable
         {
             _connecting.Release();
         }
+    }
+
+    // Checked once connected and before anything is sent, so the port cannot change hands between the check and the
+    // connection: a listener of another user would receive the debugger's breakpoints, evaluations and sources.
+    private void VerifyInspectorListener()
+    {
+        if (_sockets is null) return;
+        IReadOnlyList<uint> owners = IPAddress.TryParse(_inspectorHost, out IPAddress? address) ? _sockets.ListenerOwners(address, _inspectorPort) : [];
+        if (owners.Count > 0 && owners.All(owner => owner == _sockets.User)) return;
+        uint? foreign = owners.Cast<uint?>().FirstOrDefault(owner => owner != _sockets.User);
+        bool first;
+        lock (_reportedListeners) first = _reportedListeners.Add(foreign);
+        if (first) _report(WebKitDebugging.ForeignInspectorHint(_inspectorHost, _inspectorPort, foreign));
+        throw new IOException($"The inspector port {_inspectorHost}:{_inspectorPort} does not belong to this user.");
     }
 
     private void OnConnectionClosed()

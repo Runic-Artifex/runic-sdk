@@ -24,6 +24,10 @@
 
   <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
+    <!-- The unpacked Runic DevTools extension (DevToolsExtension.cs): beside the tool's assembly, so its path is stable.
+         Its manifest is stamped with the package version (RunicStampDevToolsExtensionManifest). -->
+    <None Update="devtools-extension/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Remove="devtools-extension/manifest.json" />
     <EmbeddedResource Include="metadata/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
     <PackageReference Include="Runic.CommandLine" />
@@ -43,6 +47,33 @@
     <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk3NativeLibraries.cs" Link="Shared/Gtk3NativeLibraries.cs" />
   </ItemGroup>
   <Import Project="../../eng/build/application.targets" />
+  <!--
+    The DevTools extension's manifest with the package version. A Chrome manifest version is one to four dot-separated
+    integers (0-65535), so X.Y.Z stays X.Y.Z and a prerelease X.Y.Z-label.N becomes X.Y.Z.N (its last numeric
+    identifier, else 0); "version_name", which chrome://extensions shows, keeps the full package version. The source
+    manifest's "0.0.0" is the placeholder this replaces.
+  -->
+  <Target Name="RunicStampDevToolsExtensionManifest" BeforeTargets="AssignTargetPaths">
+    <PropertyGroup>
+      <_RunicDevToolsManifestSource>$(MSBuildProjectDirectory)/devtools-extension/manifest.json</_RunicDevToolsManifestSource>
+      <_RunicDevToolsManifest>$(IntermediateOutputPath)devtools-extension/manifest.json</_RunicDevToolsManifest>
+      <_RunicDevToolsCore>$([System.Text.RegularExpressions.Regex]::Match('$(PackageVersion)', '^\d+\.\d+\.\d+').Value)</_RunicDevToolsCore>
+      <_RunicDevToolsPrerelease>$([System.Text.RegularExpressions.Regex]::Replace('$(PackageVersion)', '^\d+\.\d+\.\d+-(?:.*?\.)?(\d+)(?:\+.*)?$', '$1'))</_RunicDevToolsPrerelease>
+      <_RunicDevToolsVersion Condition="'$(_RunicDevToolsPrerelease)' != '$(PackageVersion)'">$(_RunicDevToolsCore).$(_RunicDevToolsPrerelease)</_RunicDevToolsVersion>
+      <_RunicDevToolsVersion Condition="'$(_RunicDevToolsVersion)' == '' and $(PackageVersion.Contains('-'))">$(_RunicDevToolsCore).0</_RunicDevToolsVersion>
+      <_RunicDevToolsVersion Condition="'$(_RunicDevToolsVersion)' == ''">$(_RunicDevToolsCore)</_RunicDevToolsVersion>
+      <_RunicDevToolsManifestText>$([System.IO.File]::ReadAllText('$(_RunicDevToolsManifestSource)').Replace('"version": "0.0.0",', '"version": "$(_RunicDevToolsVersion)",
+  "version_name": "$(PackageVersion)",'))</_RunicDevToolsManifestText>
+    </PropertyGroup>
+    <Error Condition="'$(_RunicDevToolsCore)' == '' or !$(_RunicDevToolsManifestText.Contains('&quot;version_name&quot;'))"
+           Text="The DevTools extension's manifest could not be stamped with version '$(PackageVersion)'." />
+    <WriteLinesToFile File="$(_RunicDevToolsManifest)" Lines="$(_RunicDevToolsManifestText)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <None Include="$(_RunicDevToolsManifest)" Link="devtools-extension/manifest.json"
+            CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <FileWrites Include="$(_RunicDevToolsManifest)" />
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <PackageReference Include="Runic.CommandLine.Spectre" />
   </ItemGroup>

@@ -50,7 +50,7 @@ export interface RunicHandlerBinding extends RunicHandlerPosition {
 }
 
 export interface RunicHandlerAnalysis {
-  readonly format: "runic-handlers/1";
+  readonly format: "runic.vite.handlers/1";
   readonly file: string;
   readonly framework: "react" | "vue" | "svelte" | "angular" | "unknown";
   readonly bindings: readonly RunicHandlerBinding[];
@@ -683,7 +683,7 @@ export function createHandlerAnalyzer(root: () => string): (file: string) => Pro
     const base = root();
     if (!mayAnalyze(file, base)) return undefined;
     if (!await loadHandlerParser()) {
-      return { format: "runic-handlers/1", file, framework: "unknown", bindings: [], note: "vite (its parser) was not found." };
+      return { format: "runic.vite.handlers/1", file, framework: "unknown", bindings: [], note: "vite (its parser) was not found." };
     }
     const cached = cache.get(file);
     if (cached !== undefined && cached.key === [file, ...cached.templates].map(stamp).join("|")) return cached.analysis;
@@ -693,7 +693,7 @@ export function createHandlerAnalyzer(root: () => string): (file: string) => Pro
     const key = stamp(file);
     const extension = extname(file).toLowerCase();
     const result = (framework: RunicHandlerAnalysis["framework"], bindings: RunicHandlerBinding[], note?: string): RunicHandlerAnalysis =>
-      ({ format: "runic-handlers/1", file, framework, bindings, ...(note === undefined ? {} : { note }) });
+      ({ format: "runic.vite.handlers/1", file, framework, bindings, ...(note === undefined ? {} : { note }) });
     let analysis: RunicHandlerAnalysis;
     if (extension === ".svelte") {
       const svelte = await compiler<SvelteCompiler>("svelte/compiler", file);

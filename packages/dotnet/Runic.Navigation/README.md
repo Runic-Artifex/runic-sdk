@@ -907,6 +907,16 @@ foreach (var issue in result.Issues) logger.LogInformation("Not restored: {Locat
   throws `FormatException` for a text that isn't a path, a newer `version`, or
   one nested deeper than 32 levels or with more than 10,000 nodes. The SDK keeps
   no settings store: the application decides where the path lives.
+  `NavigationRegionPath` and, since 0.21, `NavigationSelectionPath` have their
+  own `ToJson` and `FromJson`, for an application that saves one region or one
+  selection, such as a tab strip, and restores it with the region's or the
+  selection's `RestoreAsync`. They write a path with only that region or
+  selection, so the same `version` and bounds apply:
+
+  ```csharp
+  File.WriteAllText(tabsPath, documents.GetPath().ToJson());
+  await documents.RestoreAsync(NavigationSelectionPath.FromJson(File.ReadAllText(tabsPath)));
+  ```
 
 **Opening a route.** `region.OpenRouteAsync(route, mode)` opens a route path
 from a deep link, a notification or an address bar. It returns the

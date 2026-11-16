@@ -415,6 +415,9 @@ internal sealed class WindowsWebView2Controller : IDisposable
         using var handler = new WebViewComReference<IWebViewEnvironmentCompleted>(completion);
         using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(
             options.BrowserArguments, options.Language, browserExtensions));
+        // D067.15: no DevTools Protocol endpoint from the environment outside Development; before every environment,
+        // also the retry without extensions (CreateAsync). Once per process.
+        WebView2BrowserArgumentsEnvironment.Apply();
         WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, handler.Pointer);
         return await completion.Task;
     }

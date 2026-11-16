@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
-import { runic } from "@runic-artifex/vite-plugin-runic";
+// The component target is experimental (RUNICDESK103): the `runic` of the experimental entry takes it.
+import { runic } from "@runic-artifex/vite-plugin-runic/experimental";
 
 // `vite build` builds the widget's page into dist/ and, with the component target, its component into
 // dist/_runic_component/: an ES module that defines the widget's custom element, which a host page of the same vendor

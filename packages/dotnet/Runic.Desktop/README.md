@@ -854,7 +854,10 @@ defaults are:
   not follow the WebKitGTK setting, so outside Development the GTK 3 and GTK 4
   hosts also remove `WEBKIT_INSPECTOR_SERVER` and `WEBKIT_INSPECTOR_HTTP_SERVER`
   from the process's environment before their first web view, also when
-  `DevTools` is `true`.
+  `DevTools` is `true`. WebView2 opens a DevTools Protocol endpoint for
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (`--remote-debugging-port`) in any
+  process, so outside Development the Windows host removes that variable before
+  it creates its WebView2 environment, too.
 
 ```csharp
 await surface.OpenWindowAsync(new DesktopWindowOptions

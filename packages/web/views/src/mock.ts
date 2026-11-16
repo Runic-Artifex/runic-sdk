@@ -5,6 +5,7 @@ export {
   createMockBridge,
   installMockBridge,
   mockFailure,
+  releaseKeptViews,
   type MockBridge,
   type MockAvailability,
   type MockBridgeOptions,

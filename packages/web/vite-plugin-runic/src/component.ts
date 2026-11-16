@@ -1,5 +1,5 @@
 // The `component` build target (trusted component mode, `region-component/1`): next to the page, `vite build` builds
-// an ES module that defines the guest's custom element (`defineRunicComponent` in `@runic-artifex/views/component`). It
+// an ES module that defines the guest's custom element (`defineRunicComponent` in `@runic-artifex/views/experimental`). It
 // bundles the framework runtime and its own copy of `@runic-artifex/views`, takes its CSS as constructable stylesheets
 // instead of document stylesheets, and addresses its chunks and assets relative to its own URL, so that they load from
 // the guest's origin in the host page's document.
@@ -28,7 +28,7 @@ const metaFile = "runic-component-meta.js";
 export interface RunicComponentOptions {
   /**
    * The component's entry module, relative to the Vite root. Its default export is the mount function
-   * (`RunicComponentMount` of `@runic-artifex/views/component`), which renders the guest's Views into the element.
+   * (`RunicComponentMount` of `@runic-artifex/views/experimental`), which renders the guest's Views into the element.
    */
   readonly entry: string;
   /**
@@ -45,6 +45,12 @@ interface ResolvedComponent {
 }
 
 const namePattern = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * The key under which the `runic` of the experimental entry (experimental.ts) hands the `component` option to the
+ * root entry's `runic`, whose options type does not name the experimental {@link RunicComponentOptions}.
+ */
+export const experimentalComponentOption: unique symbol = Symbol("runic.vite.component");
 
 export function resolveComponentOptions(options: RunicComponentOptions | undefined): ResolvedComponent | undefined {
   if (options === undefined) return undefined;
@@ -128,7 +134,7 @@ export function componentHooks(component: ResolvedComponent, root: () => string)
       return [
         `import mount from ${JSON.stringify(entry)};`,
         `import meta from ${JSON.stringify(metaId)};`,
-        `import { defineRunicComponent } from "@runic-artifex/views/component";`,
+        `import { defineRunicComponent } from "@runic-artifex/views/experimental";`,
         `const definition = defineRunicComponent({ tag: meta.tag, styles: meta.styles, mount });`,
         `export const tag = definition.tag;`,
         `export default definition.element;`,

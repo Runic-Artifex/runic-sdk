@@ -161,7 +161,7 @@ function sourceMap(root) {
   return {
     file,
     map: {
-      format: "runic-bridge-sources/1",
+      format: "runic.views.bridge-sources/1",
       viewModels: [{ id: "Demo.CounterViewModel", name: "Counter", route: "counter", contract: "Demo.CounterViewModel:ABC",
         pageKinds: ["counter"], symbol: "Demo.CounterViewModel", location: { file, line: 3, column: 14 } }],
       members: [
@@ -696,4 +696,73 @@ globalThis.inspectTest = { received, ready: true, application };
     await page.waitForFunction(async () => (await globalThis[Symbol.for("runic.vite.inspect")]
       .describe(document.querySelector("#increment"))).commands[0]?.evidence === "call");
   });
+});
+
+// A text change of the page while the card is open makes Inspect describe the selected element again (scheduleRefresh).
+// A click on a card link whose mousedown and mouseup straddle that refresh still opens the editor (#1062): an unchanged
+// overview keeps its elements, and a changed one keeps the links that did not change.
+for (const [name, engine] of Object.entries(engines)) test(`Runic Inspect keeps a pressed card link through a refresh in ${name}`, {
+  timeout: scaled(90_000), skip: !engine.executablePath || process.platform === "win32",
+}, async () => {
+  const counter = `import { useTextLocale } from "@runic-artifex/react";
+import { m } from "./translations.js";
+
+export function CounterPage() {
+  useTextLocale();
+  return <h1 id="heading">{m.heading()}{globalThis.inspectTest?.suffix ?? ""}</h1>;
+}
+`;
+  const main = `import { createRoot } from "react-dom/client";
+import { received } from "./bridge.js";
+import { CounterPage } from "./CounterPage.jsx";
+
+globalThis.inspectTest = { received, ready: true };
+createRoot(document.getElementById("root")).render(<CounterPage />);
+`;
+  await withPage({
+    "index.html": '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.jsx"></script></body></html>',
+    "main.jsx": main,
+    "CounterPage.jsx": counter,
+    "translations.js": translations,
+    "translations/en.rmf2": translationSource,
+  }, [translationsApi()], async ({ page, root, record }) => {
+    const rmf2 = join(root, "translations", "en.rmf2");
+    await page.keyboard.press("Alt+Shift+X");
+    await page.waitForFunction(() => document.querySelector("#heading").textContent !== "Counter", null, { timeout: scaled(10_000) });
+    const heading = await center(page, "#heading");
+    await page.mouse.click(heading.x, heading.y);
+    const card = page.locator("runic-inspect .card");
+    const messageLink = card.locator("a", { hasText: "translations/en.rmf2:2" });
+    await messageLink.waitFor({ timeout: scaled(10_000) });
+    // The page's text changed, as after a save or a language switch: listeners of the text-change channel run.
+    const textChanged = () => page.evaluate(() => {
+      const text = globalThis[Symbol.for("runic.translations.text")];
+      text.revision++;
+      for (const listener of [...text.listeners]) listener();
+    });
+    const pressDuring = async (change) => {
+      const { x, y } = await center(page, "runic-inspect .card a[data-open=translations]");
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await change();
+      await page.mouse.up();
+      assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
+    };
+
+    // Unchanged: the refresh 60 ms after the change describes the same thing, and the overview stays as it is.
+    await pressDuring(async () => {
+      const link = await messageLink.elementHandle();
+      await textChanged();
+      await page.waitForTimeout(500);
+      assert.equal(await link.evaluate(element => element.isConnected), true, "the refresh replaced the pressed link");
+    });
+
+    // Changed: the heading's text and with it the card's title change; the message link stays.
+    await pressDuring(async () => {
+      await page.evaluate(() => { globalThis.inspectTest.suffix = "!"; });
+      await textChanged();
+      await card.locator("h2", { hasText: "Counter!" }).waitFor({ timeout: scaled(10_000) });
+    });
+    assert.equal(await messageLink.count(), 1);
+  }, engine);
 });

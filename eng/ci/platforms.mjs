@@ -71,8 +71,8 @@ export const releaseJobs = [
 // need every leg unless they are neutral.
 const all = platforms;
 export const platformRules = [
-  // GTK 4 and the Linux providers run on the Linux legs only.
-  { platforms: [], paths: ["packages/dotnet/Runic.Desktop.Gtk4", "tests/native/Runic.Desktop.Gtk4.Smoke",
+  // GTK 4, the Linux providers and the manual global menu check run on the Linux legs only.
+  { platforms: [], paths: ["packages/dotnet/Runic.Desktop.Gtk4", "tests/native/Runic.Desktop.Gtk4.Smoke", "tests/native/Runic.Desktop.GlobalMenuCheck",
     "packages/dotnet/Runic.Platform.Linux*", "tests/dotnet/Runic.Platform.Linux*", "eng/portals"] },
   // The native window layer, platform contracts and runtime, and the packaging recipes, dotnet runic package and the probe.
   { platforms: all, paths: ["packages/dotnet/Runic.Desktop", "packages/dotnet/Runic.Desktop.Kestrel", "tests/dotnet/Runic.Desktop.Tests", "tests/fixtures/desktop",

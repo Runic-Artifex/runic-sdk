@@ -211,7 +211,28 @@ public sealed record NavigationEntryPath(string? Route)
 /// </summary>
 /// <param name="Regions">The selection's regions, in presentation order.</param>
 /// <param name="Selected">The index of the selected region, or -1 when the selection was empty.</param>
-public sealed record NavigationSelectionPath(IReadOnlyList<NavigationRegionPath> Regions, int Selected);
+public sealed record NavigationSelectionPath(IReadOnlyList<NavigationRegionPath> Regions, int Selected)
+{
+    /// <summary>
+    /// Writes the selection as JSON, as an element of <c>selections</c> in <see cref="NavigationPath.ToJson"/>:
+    /// <c>{"version":1,"regions":[],"selections":[{"selected":0,"regions":[{"entries":[…]}]}]}</c>.
+    /// </summary>
+    /// <remarks>
+    /// Use it to store one selection, such as a tab strip, without the rest of the navigator; restore it with
+    /// <see cref="NavigationSelection.RestoreAsync"/>.
+    /// </remarks>
+    public string ToJson() => new NavigationPath([], [this]).ToJson();
+
+    /// <summary>Reads a selection that <see cref="ToJson"/> wrote. Unknown properties are ignored.</summary>
+    /// <exception cref="FormatException">
+    /// The text is not one navigation selection, has a newer <c>version</c>, or exceeds the bounds of
+    /// <see cref="NavigationPath.FromJson"/>.
+    /// </exception>
+    public static NavigationSelectionPath FromJson(string json) =>
+        NavigationPath.FromJson(json) is { Regions: [], Selections: [var selection] }
+            ? selection
+            : throw new FormatException("The text is not one navigation selection.");
+}
 
 /// <summary>What <see cref="RunicNavigator.RestoreAsync"/> could not restore.</summary>
 /// <param name="Issues">The parts of the path that were left out, in the order they were met; empty when every part was restored.</param>

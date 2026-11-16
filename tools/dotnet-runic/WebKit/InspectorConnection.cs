@@ -9,9 +9,11 @@ using System.Threading.Tasks;
 namespace Runic.Application.Tool.WebKit;
 
 /// <summary>
-/// A client of the Window's WebKit remote inspector server (<see cref="InspectorWire"/>). WebKit admits one client at a
+/// A client of the Window's WebKit remote inspector server (<see cref="InspectorWire"/>). WebKit serves one client at a
 /// time (<c>RemoteInspectorServer::setupInspectorClient</c>), so the adapter holds a connection only while a debugger is
-/// attached, and GNOME Web can open <c>inspector://</c> otherwise.
+/// attached, and GNOME Web can open <c>inspector://</c> otherwise. A new client does not wait: WebKitGTK 2.54 answers its
+/// setup and makes it the client in place of the current one, which gets no more answers, and the Window can crash when
+/// the replaced client sends again after the new one left. So holding the connection would not keep others out.
 /// </summary>
 internal sealed class InspectorConnection : IAsyncDisposable
 {
@@ -51,15 +53,19 @@ internal sealed class InspectorConnection : IAsyncDisposable
 
     internal bool IsClosed => Volatile.Read(ref _closed) != 0;
 
-    /// <summary>Connects and announces this client; completes once the server described its protocol.</summary>
-    internal async Task ConnectAsync(string host, int port, CancellationToken cancellationToken)
+    /// <summary>
+    /// Connects and announces this client; completes once the server described its protocol. <paramref name="verifyServer"/>
+    /// runs once the TCP connection is open and before anything is sent; it throws to refuse the server.
+    /// </summary>
+    internal async Task ConnectAsync(string host, int port, Action? verifyServer, CancellationToken cancellationToken)
     {
         await _client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+        verifyServer?.Invoke();
         CdpTrace.Write("webkit", $"inspector connection {_generation} to {host}:{port}");
         _stream = _client.GetStream();
         _reading = Task.Run(() => ReadAsync(_stop.Token), CancellationToken.None);
         await SendAsync(InspectorWire.SetupInspectorClient(), cancellationToken).ConfigureAwait(false);
-        // A second client gets no answer at all (WebKit ignores its setup), so the wait is bounded.
+        // A server that never describes itself (not WebKit's, or a stalled one) must not block the debugger, so the wait is bounded.
         await _described.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
     }
 

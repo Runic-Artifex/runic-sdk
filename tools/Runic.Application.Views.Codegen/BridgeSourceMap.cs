@@ -27,7 +27,7 @@ using System.Text.RegularExpressions;
 internal static class BridgeSourceMap
 {
     internal const string FileName = "sources.json";
-    internal const string Format = "runic-bridge-sources/1";
+    internal const string Format = "runic.views.bridge-sources/1";
 
     internal sealed record Location(string File, int Line, int Column);
 
