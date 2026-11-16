@@ -111,7 +111,7 @@ internal static partial class DevToolsSmoke
         await using var hostScope = host;
         var surface = await StepAsync(phase, "create the surface", TimeSpan.FromSeconds(30), () => host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            Content = new DesktopContent.Html("<!doctype html><html><head><title>DevTools smoke</title></head><body><p>DevTools</p></body></html>"),
+            Content = new DesktopContent.Html("<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"webui.js\"></script><title>DevTools smoke</title></head><body><p>DevTools</p></body></html>"),
         }).AsTask());
         await using var surfaceScope = surface;
         var window = await StepAsync(phase, "open the window", TimeSpan.FromSeconds(50), () => surface.OpenWindowAsync(Window(profile)).AsTask());
@@ -158,7 +158,7 @@ internal static partial class DevToolsSmoke
             // installed in this process, is not installed again.
             await using var second = await StepAsync(phase, "create a second surface", TimeSpan.FromSeconds(30), () => host.CreateSurfaceAsync(new DesktopSurfaceOptions
             {
-                Content = new DesktopContent.Html("<!doctype html><html><head><title>DevTools smoke 2</title></head><body><p>Second</p></body></html>"),
+                Content = new DesktopContent.Html("<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"webui.js\"></script><title>DevTools smoke 2</title></head><body><p>Second</p></body></html>"),
             }).AsTask());
             var secondWindow = await StepAsync(phase, "open a second window of the profile", TimeSpan.FromSeconds(50),
                 () => second.OpenWindowAsync(Window(profile)).AsTask());
