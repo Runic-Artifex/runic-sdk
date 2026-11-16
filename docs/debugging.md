@@ -307,8 +307,11 @@ The development builds of the framework bindings show Runic's state in the frame
   it, or without Vue DevTools on the page (the browser extension, or `vite-plugin-vue-devtools`), nothing loads.
 
 They work wherever the framework's DevTools reach the page: an installed browser with the DevTools extension, and
-`vite-plugin-vue-devtools`, which runs inside the page, in every engine. WebView2 and the WebKit engines load no
-browser extensions; there, use the framework's standalone DevTools as its documentation describes. See
+`vite-plugin-vue-devtools`, which runs inside the page, in every engine. A WebView2 window in Development loads
+unpacked extensions such as React Developer Tools and Vue.js devtools from `DesktopHostOptions.DevToolsExtensions` or
+`RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` (see [WebView2 DevTools extensions](#the-browsers-developer-tools-per-engine)); how
+much of a panel works depends on WebView2's extension support. WKWebView and WebKitGTK load no browser extensions;
+there, use the framework's standalone DevTools as its documentation describes. See
 [React DevTools labels](../packages/web/react/README.md#react-devtools) and
 [Vue DevTools](../packages/web/vue/README.md#vue-devtools).
 
@@ -368,14 +371,33 @@ session file has it as `devtoolsExtensionId`. No private key exists: the extensi
 Its version is the tool's: `0.21.0` for 0.21.0, and for a prerelease `X.Y.Z-label.N` the manifest version is
 `X.Y.Z.N` (Chrome allows only numbers) while `chrome://extensions` shows the full version (`version_name`).
 
-After a tool update, load the new folder and remove the old entry. Chromium (not Google Chrome, whose branded builds
-ignore the switch since Chrome 137) and automation can also start with
-`--load-extension=<folder> --disable-extensions-except=<folder>`, for example in the `runtimeArgs` of a VS Code
-launch configuration that starts Chrome or Edge ([#1031](https://github.com/Runic-Artifex/runic-sdk/issues/1031)).
-For the Window, a WebView2 host in Development is to load the extension folders that
-`RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` lists ([#1043](https://github.com/Runic-Artifex/runic-sdk/issues/1043)): set it to
-the session file's `devtoolsExtension` until `dotnet runic dev` passes it by default. WKWebView and WebKitGTK have no
-extension support: use Runic Inspect and the dock there.
+After a tool update, load the new folder and remove the old entry. Chromium and Chrome for Testing (not Google
+Chrome, whose branded builds ignore the switch since Chrome 137) and automation can also start with
+`--load-extension=<folder> --disable-extensions-except=<folder>`.
+
+**In the Window on Windows.** `dotnet runic dev` loads the extension into the Window's WebView2 by default: in
+Development it appends the folder to the Window's `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS`, after any folders you listed
+there with `-e` or in your environment, and only when the folder is not listed already. Open the Window's DevTools
+(F12, or **Open DevTools** in its system menu) and choose the **Runic** panel. `dotnet runic dev --no-devtools-extension`
+leaves it out; with `--no-window` the session file's `window.environment` carries the variable for your IDE's launch.
+`dev` never sets it outside Development, and the host ignores it there. If WebView2 rejects the folder, the Window
+reports `devtools-extension-failed` and opens without it. WKWebView and WebKitGTK have no extension support: use
+Runic Inspect and the dock there.
+
+**In the IDE's Chrome (`--browser`).** `dotnet runic dev --browser` prints the folder and how to load it. The
+template's `Window in Chrome` configuration starts branded Chrome, which ignores `--load-extension`, and VS Code
+cannot read the session file's `devtoolsExtension` into `launch.json`, so the template passes nothing. Load it once
+with **Load unpacked** in the Chrome window that the launch opens; VS Code's JavaScript debugger keeps its own browser
+profile between launches by default (`userDataDir`), so it stays loaded until the tool's folder changes. To start
+Chromium or Chrome for Testing instead, set `runtimeExecutable` and add the folder that `dev` printed:
+
+```jsonc
+// .vscode/launch.json, the "Window in Chrome" configuration
+"runtimeExecutable": "/path/to/chromium",
+"runtimeArgs": ["--load-extension=/path/printed/by/dev/devtools-extension"]
+```
+
+The path names the tool's version, so update it after a tool update.
 
 **What it reads.** The extension has no permissions besides DevTools. It reads the page through
 `chrome.devtools.inspectedWindow.eval` of Runic Inspect's API (`snapshot()` and `describe($0)` on

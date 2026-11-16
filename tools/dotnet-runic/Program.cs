@@ -91,6 +91,7 @@ internal static partial class Program
         [Option("--browser", ConflictsWith = ["no-window", "webkit-inspector"], Description = "Serve the Window to a browser instead of opening it (serve-only mode), at http://127.0.0.1:9224/, for the JavaScript debugger of your IDE's Chrome or Edge. The pages run on Chromium, without native window features.")] bool browser,
         [Option("--no-debug-endpoint", ConflictsWith = ["webkit-inspector"], Description = "Linux: open no endpoint for debugging the Window's pages, neither Runic's CDP adapter for JavaScript debuggers (port 9222) nor WebKit's remote inspector.")] bool noDebugEndpoint,
         [Option("--webkit-inspector", ConflictsWith = ["no-debug-endpoint", "browser"], Description = "Linux: open WebKit's own Web Inspector over HTTP, for a browser, instead of the CDP adapter that JavaScript debuggers attach to. Needs WebKitGTK 2.54.3 or later; older versions get the inspector:// server.")] bool webkitInspector,
+        [Option("--no-devtools-extension", Description = "Windows: do not load the Runic DevTools extension into the Window's WebView2. By default dev adds it to RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS in Development.")] bool noDevToolsExtension,
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
@@ -120,6 +121,7 @@ internal static partial class Program
                     DebugEndpoint = !noDebugEndpoint,
                     WebKitInspector = webkitInspector,
                     Browser = browser,
+                    DevToolsExtension = !noDevToolsExtension,
                 };
                 return await DevApplication.RunAsync(context, options, cancellationToken,
                     evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false);

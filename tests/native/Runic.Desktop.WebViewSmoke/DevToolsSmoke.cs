@@ -26,6 +26,24 @@ internal static partial class DevToolsSmoke
     // Development with the second extension no longer listed, in the same user data folder (D067.6).
     private const string Pruned = "Pruned";
 
+    // The Runic DevTools extension (#1044) as the dotnet-runic tool ships it: its Release build output, with the stamped
+    // manifest, which the native job builds on win-x64 before this step. Its fixed key gives it this id in WebView2 too.
+    private const string RunicExtensionId = "cddbfcinbkaindmfgcfdgapddkjeadgh";
+
+    private static string? FindRunicExtension()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var folder = Path.Combine(directory.FullName, "tools", "dotnet-runic", "bin", "Release", "net10.0", "devtools-extension");
+            if (File.Exists(Path.Combine(folder, "manifest.json"))) return folder;
+            if (File.Exists(Path.Combine(directory.FullName, "global.json"))) break;
+        }
+        // The native job builds the tool on win-x64 only.
+        if (RuntimeInformation.OSArchitecture == Architecture.X64)
+            throw new InvalidOperationException("DevTools smoke: the dotnet-runic tool's Release build has no devtools-extension folder.");
+        return null;
+    }
+
     // --devtools, and the end of --menus: the phases, each in a child process, sharing the extensions and, for the
     // Development phases, the user data folder in one temporary folder.
     internal static async Task RunAsync()
@@ -104,8 +122,9 @@ internal static partial class DevToolsSmoke
         var extension = Path.Combine(root, "extension");
         var extra = Path.Combine(root, "extra");
         var profile = Path.Combine(root, development ? "development-profile" : "production-profile");
+        var runic = phase == Pruned ? null : FindRunicExtension();
         if (phase == Pruned) await CheckPrunedAsync(options, extension, profile);
-        else await CheckAsync(options, phase, [extension, extra], profile, development);
+        else await CheckAsync(options, phase, runic is null ? [extension, extra] : [extension, extra, runic], profile, development, runic);
     }
 
     // The second extension, which Runic installed in the Development phase, is removed: its script no longer runs, and
@@ -170,7 +189,8 @@ internal static partial class DevToolsSmoke
         Check(failures.Length == 0, $"{phase}: {string.Join("; ", failures.Select(static failure => failure.Message))}");
     }
 
-    private static async Task CheckAsync(DesktopHostOptions options, string phase, IReadOnlyList<string> extensions, string profile, bool development)
+    private static async Task CheckAsync(DesktopHostOptions options, string phase, IReadOnlyList<string> extensions, string profile, bool development,
+        string? runic)
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
         var host = await StartHostAsync(options, phase, extensions, diagnostics);
@@ -190,7 +210,15 @@ internal static partial class DevToolsSmoke
         if (development)
         {
             var record = Runic.Desktop.Internal.DevToolsExtensionRecord.Read(profile);
-            Check(record.Count == 2, $"{phase}: the profile's record holds {record.Count} extensions");
+            Check(record.Count == extensions.Count, $"{phase}: the profile's record holds {record.Count} extensions");
+            if (runic is not null)
+            {
+                // WebView2 installed the shipped extension under its fixed id (its manifest, key and pages parse).
+                Check(record.TryGetValue(RunicExtensionId, out var installed) && installed == runic,
+                    $"{phase}: the Runic DevTools extension is not recorded as {RunicExtensionId}: {string.Join(", ", record.Select(static entry => $"{entry.Key}={entry.Value}"))}");
+                Log(phase, $"Runic DevTools extension installed as {RunicExtensionId} from {runic}");
+            }
+            else Log(phase, "Runic DevTools extension skipped: the tool is not built on this runner");
         }
 
         var hasItem = false;

@@ -152,6 +152,12 @@ Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the
 | --- | --- |
 | `--browser` | Serves the Window to a browser instead of opening it (serve-only mode), at `http://127.0.0.1:9224/`, so the JavaScript debugger of your IDE's Chrome or Edge can open its pages. Cannot be combined with `--no-window` or `--webkit-inspector`. |
 
+Since 0.21, on Windows (see [The Runic DevTools extension](#the-runic-devtools-extension)):
+
+| Option | Effect |
+| --- | --- |
+| `--no-devtools-extension` | Does not add the Runic DevTools extension to the Window's `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS`, so its WebView2 does not load it. |
+
 `dev` passes these variables to the Window process:
 
 | Variable | Value |
@@ -162,6 +168,7 @@ Since 0.21, on every operating system (see [Debug the page in Chrome](#debug-the
 | `RUNIC_APPLICATION_DEVELOPMENT_ASSETS` | Without a development server, the absolute frontend output directory; cleared while one runs. An internal contract with the Runic Desktop host, which reads it only in a `Development` environment. |
 | `RUNIC_APPLICATION_VITE_*`, `RUNIC_APPLICATION_FRONTEND_*`, `RUNIC_APPLICATION_DEV_PROJECT` | The development server's address, entry and compiler integration while one runs; cleared otherwise. Internal. |
 | `RUNIC_APPLICATION_SERVE_ONLY` | `1` with `--browser`, over a value from `-e` or the environment; otherwise as you set it. |
+| `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` | On Windows, in a `Development` environment, with a development server and without `--browser` or `--no-devtools-extension`: your value from `-e` or the environment, with the [Runic DevTools extension](#the-runic-devtools-extension)'s folder appended after a `;` unless it is listed already. Otherwise as you set it. |
 
 `doctor` checks the Views Window opt-in, the .NET SDK, the declared JavaScript
 runtime and package manager, the matching lock file, the configured
@@ -806,8 +813,27 @@ as `devtoolsExtension`, with its fixed id `cddbfcinbkaindmfgcfdgapddkjeadgh` as
 key). The build stamps the manifest with the package version: `X.Y.Z`, or
 `X.Y.Z.N` for a prerelease `X.Y.Z-label.N` (a Chrome manifest version has only
 numbers), with the full version as `version_name`. Load it in Chrome or Edge with **Load unpacked** on
-`chrome://extensions` (Developer mode), or start Chromium with
-`--load-extension=<folder>`. There is no Chrome Web Store listing.
+`chrome://extensions` (Developer mode), or start Chromium or Chrome for Testing
+with `--load-extension=<folder>`; branded Chrome ignores that switch since
+Chrome 137. There is no Chrome Web Store listing.
+
+- **The Window on Windows.** `dev` loads the extension into the Window's
+  WebView2: in `Development` it appends the folder to the Window's
+  `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS`, after the folders you set there, once,
+  and prints `[dev] DevTools extension: the Window's WebView2 loads it …`. Open
+  the Window's DevTools and choose the **Runic** panel.
+  `--no-devtools-extension` leaves it out. With `--no-window`, the session
+  file's `window.environment` has the variable for the IDE's launch. Outside
+  `Development` `dev` sets nothing and the host loads no extensions.
+- **The IDE's Chrome (`--browser`).** `dev` prints a second line with the
+  folder: load it once with **Load unpacked** in the Chrome window that the
+  launch opens (VS Code's JavaScript debugger keeps that browser profile between
+  launches by default). The template's `Window in Chrome` configuration starts
+  branded Chrome and passes no `--load-extension`, because Chrome ignores it
+  and `launch.json` cannot read the session file. With Chromium or Chrome for
+  Testing as `runtimeExecutable`, add
+  `"runtimeArgs": ["--load-extension=<folder>"]` with the printed folder, and
+  update it after a tool update.
 [The Runic DevTools extension](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#the-runic-devtools-extension)
 in the debugging guide has the steps and what each pane shows.
 
@@ -948,7 +974,8 @@ same project write the same file; the later one wins. `--dry-run` writes none.
     "starts": 1,                    // how many Window processes have started in this session
     "environment": {                // what a Window that the IDE starts needs, as dev would set it
       "DOTNET_ENVIRONMENT": "Development"
-      // and RUNIC_APPLICATION_DEVELOPMENT_ASSETS without a development server, for Runic Desktop
+      // and RUNIC_APPLICATION_DEVELOPMENT_ASSETS without a development server, for Runic Desktop; on Windows since 0.21,
+      // RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS with the Runic DevTools extension unless --no-devtools-extension
     }
   },
   // With --browser (since 0.21): dev's address for a browser, and the Windows the running Window process serves,

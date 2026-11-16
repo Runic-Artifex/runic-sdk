@@ -49,6 +49,18 @@ internal sealed record DevOptions(
     internal bool Browser { get; init; }
 
     /// <summary>
+    /// False with <c>--no-devtools-extension</c>: on Windows, dev does not add the Runic DevTools extension to the
+    /// Window's <c>RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS</c> (<see cref="Tool.DevToolsExtension.ForWindow"/>).
+    /// </summary>
+    internal bool DevToolsExtension { get; init; } = true;
+
+    /// <summary>
+    /// The extension folder dev adds to the Window's <c>RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS</c> in Development, or null;
+    /// decided after the options are read (<see cref="Tool.DevToolsExtension.ForWindow"/>).
+    /// </summary>
+    internal string? WindowDevToolsExtension { get; init; }
+
+    /// <summary>
     /// Variables dev sets for the Window so its pages can be debugged, such as <c>WEBKIT_INSPECTOR_SERVER</c>; decided after
     /// the options are read. A Window that the IDE starts (<c>--no-window</c>) gets them from the session file.
     /// </summary>

@@ -135,7 +135,12 @@ internal static class DevApplication
         // Linux: WebKit's remote inspector for the Window and Runic's CDP adapter for JavaScript debuggers (D066.39).
         WebKitDebugging.Plan debugging = WebKitDebugging.Decide(configuration, options, Environment.GetEnvironmentVariable,
             OperatingSystem.IsLinux(), LoopbackPort.Reserve, WebKitDebugging.ReadInstalledVersion);
-        options = options with { DebugEnvironment = debugging.WindowEnvironment };
+        string? devToolsExtension = DevToolsExtension.Find();
+        options = options with
+        {
+            DebugEnvironment = debugging.WindowEnvironment,
+            WindowDevToolsExtension = DevToolsExtension.ForWindow(configuration, options, devToolsExtension, OperatingSystem.IsWindows()),
+        };
         // On Linux the adapter and --browser's address accept only connections of this user, and the adapter talks only to an
         // inspector port of this user.
         LoopbackSockets? sockets = LoopbackSockets.Current;
@@ -185,6 +190,9 @@ internal static class DevApplication
         if (configuration.HasDevelopmentServer && options.WatchFrontend && session.DevToolsExtension is { } extension)
         {
             Console.WriteLine(DevToolsExtension.Hint(extension));
+            if (options.Browser) Console.WriteLine(DevToolsExtension.BrowserHint(extension));
+            else if (OperatingSystem.IsWindows() && !configuration.RunsOnCsWebUiOnly)
+                Console.WriteLine(DevToolsExtension.WindowHint(options.WindowDevToolsExtension is not null));
         }
         WriteSession(session.Start);
         if (browser is not null)
