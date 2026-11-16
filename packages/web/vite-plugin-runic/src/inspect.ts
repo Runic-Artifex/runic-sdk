@@ -590,6 +590,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
       event.preventDefault();
       void open(location);
     });
+    bound.set(anchor, JSON.stringify(location));
     return anchor;
   }
 
@@ -600,14 +601,17 @@ export function installInspect(options: InspectOptions = {}): () => void {
       control.getAttribute("title") ?? "", control.textContent ?? ""].join("\u0000");
   }
 
+  /** What an overview control's click handler acts on (a link's location, an Edit button's message). */
+  const bound = new WeakMap<Element, string>();
+  /** A control and what it acts on: a control with the same identity can stand in for another. */
+  const identity = (control: Element): string => `${controlKey(control)}\u0000${bound.get(control) ?? ""}`;
+
   function render(description: RunicInspectDescription): void {
-    const { host: overlayHost, card, overview, editor } = overlay!;
-    // Rendering again replaces the overview's controls. A refresh (after a save, an edit elsewhere, a language switch)
-    // can arrive while the keyboard focus is on one of them, such as the Edit button Esc returned to: the focus moves
-    // to its counterpart instead of falling to the document.
-    const focused = overlayHost.shadowRoot?.activeElement;
-    const refocus = focused instanceof Element && overview.contains(focused) ? controlKey(focused) : undefined;
-    overview.replaceChildren();
+    const { host: overlayHost, card, overview: shown, editor } = overlay!;
+    // The overview is drawn apart and replaces the shown one only where it differs. A refresh after each text change of
+    // the page (scheduleRefresh) mostly describes the same thing; replacing the controls then would make a click whose
+    // mousedown and mouseup straddle the refresh reach no link (#1062).
+    const overview = document.createElement("div");
     const header = document.createElement("header");
     const title = document.createElement("h2");
     const { element } = description;
@@ -696,11 +700,76 @@ export function installInspect(options: InspectOptions = {}): () => void {
       overview.append(paragraph);
     }
     card.hidden = false;
-    if (refocus !== undefined) {
-      const counterpart = [...overview.querySelectorAll<HTMLElement>("button, a")].find((control) => controlKey(control) === refocus)
-        ?? overview.querySelector<HTMLElement>("button.close");
+    const focused = overlayHost.shadowRoot?.activeElement;
+    const refocus = focused instanceof Element && shown.contains(focused) ? controlKey(focused) : undefined;
+    patchChildren(shown, overview);
+    // A refresh can arrive while the focus is on a control that is now gone, such as the Edit button Esc returned to:
+    // the focus moves to its counterpart instead of falling to the document.
+    const active = overlayHost.shadowRoot?.activeElement;
+    if (refocus !== undefined && !(active instanceof Element && shown.contains(active))) {
+      const counterpart = [...shown.querySelectorAll<HTMLElement>("button, a")].find((control) => controlKey(control) === refocus)
+        ?? shown.querySelector<HTMLElement>("button.close");
       counterpart?.focus({ preventScroll: true });
     }
+  }
+
+  /** The overview's controls in and under `node`, which carry click handlers. */
+  function controlsOf(node: Node): Element[] {
+    if (!(node instanceof Element)) return [];
+    return [...node.matches("button, a") ? [node] : [], ...node.querySelectorAll("button, a")];
+  }
+
+  /** Whether `node` can stay for `next`: drawn the same way, and its controls act on the same things. */
+  function same(node: Node, next: Node): boolean {
+    if (!node.isEqualNode(next)) return false;
+    const controls = controlsOf(node), nextControls = controlsOf(next);
+    return controls.every((control, index) => bound.get(control) === bound.get(nextControls[index]!));
+  }
+
+  /** Whether `node` can be updated into `next` in place: the same kind of node, and not a control acting on another thing. */
+  function patchable(node: Node, next: Node): boolean {
+    if (node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) return false;
+    return !(node instanceof Element && node.matches("button, a")) || identity(node) === identity(next as Element);
+  }
+
+  /**
+   * Makes `parent`'s children look like `next`'s, keeping the nodes that can stay where they are. A kept node is never
+   * moved: moving a link between a click's mousedown and mouseup loses the click as replacing it does.
+   */
+  function patchChildren(parent: Node, next: Node): void {
+    let cursor = parent.firstChild;
+    for (const node of [...next.childNodes]) {
+      let match: ChildNode | null = cursor;
+      while (match !== null && !same(match, node)) match = match.nextSibling;
+      if (match !== null) {
+        while (cursor !== match) {
+          const removed: ChildNode = cursor!;
+          cursor = removed.nextSibling;
+          removed.remove();
+        }
+        cursor = match.nextSibling;
+      } else if (cursor !== null && patchable(cursor, node)) {
+        patch(cursor, node);
+        cursor = cursor.nextSibling;
+      } else {
+        parent.insertBefore(node, cursor);
+      }
+    }
+    while (cursor !== null) {
+      const removed: ChildNode = cursor;
+      cursor = removed.nextSibling;
+      removed.remove();
+    }
+  }
+
+  function patch(node: ChildNode, next: ChildNode): void {
+    if (!(node instanceof Element) || !(next instanceof Element)) {
+      if (node.nodeValue !== next.nodeValue) node.nodeValue = next.nodeValue;
+      return;
+    }
+    for (const { name } of [...node.attributes]) if (!next.hasAttribute(name)) node.removeAttribute(name);
+    for (const { name, value } of next.attributes) if (node.getAttribute(name) !== value) node.setAttribute(name, value);
+    patchChildren(node, next);
   }
 
   function editButton(message: RunicInspectMessage): HTMLElement {
@@ -711,6 +780,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
     button.dataset["message"] = `${message.catalog}:${message.key}`;
     button.setAttribute("aria-label", `Edit ${message.catalog}:${message.key}`);
     button.addEventListener("click", () => openEditor(message));
+    bound.set(button, JSON.stringify(message));
     return button;
   }
 

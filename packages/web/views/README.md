@@ -282,7 +282,7 @@ controllers in [Framework bindings](#framework-bindings).
 | Entry | For |
 | --- | --- |
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
-| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure` and the `Mock*` types of generated mocks |
+| `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure`, `releaseKeptViews` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
 | `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
@@ -577,6 +577,10 @@ follows the same connector takes it over with its state. The component shows its
   hidden), `state` stays the last state the controller showed, with `pending: true`; a different source shows
   nothing of the previous one.
 - An observed client (`useView(client)`) is never kept or disposed by a binding; its owner disposes it.
+- A kept client belongs to the Bridge it connected over. Once its instance uses another Bridge, such as a new mock
+  Bridge in the next test or a page runtime replaced at runtime, no binding takes it over: the next binding connects
+  to the new Bridge, and the kept client is released (since 0.21; before, the next test's binding took over the
+  client of the previous test's mock). `installMockBridge` releases them at once.
 
 `preloadView(source, { keepAlive? })` connects ahead of the component, as in a router's `load` function: it resolves
 with `source` once the client connected (and rejects with the failure, so the router shows its error page), and the
@@ -1253,7 +1257,8 @@ import { connectEditor } from "../src/generated/editor.js";
 import { mockEditor } from "../src/generated/editor.mock.js";
 
 let bridge: MockBridge;
-// Each test installs a new Bridge; generated clients then start from a new page runtime.
+// Each test installs a new Bridge; generated clients then start from a new page runtime, and the clients that
+// `useView` / `injectView` kept for the previous test's mock are released.
 beforeEach(() => { bridge = installMockBridge(createMockBridge()); });
 
 test("saving clears the dirty flag", async () => {
@@ -1273,6 +1278,13 @@ test("saving clears the dirty flag", async () => {
   assert.equal(outcome.ok && outcome.value.savedMessage, "Saved Groceries");
 });
 ```
+
+A framework binding keeps its client for `keepAlive` milliseconds after its component is destroyed ([Client
+lifetime](#client-lifetime)). With a new mock Bridge per test, the next test's binding does not take that client
+over, so a test needs no fake timers or wait for `defaultKeepAlive`. A suite that keeps one Bridge across tests calls
+`releaseKeptViews()` from `@runic-artifex/views/mock` after each test (after the framework destroyed the component,
+for example after `TestBed.resetTestingModule()` or React Testing Library's `cleanup()`): it releases the kept clients
+of the current instance at once, so the next test's bindings open their routes again.
 
 A View with a query collection takes its rows in `queries`, which the mock filters, sorts and serves by range, with
 optional latency (virtual time with `manual` scheduling). `queries.{name}` of the mock shows what the page loaded:

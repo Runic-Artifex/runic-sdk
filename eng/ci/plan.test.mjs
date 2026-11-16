@@ -5,8 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
-import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
-  everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
+import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, affectedPlatforms, parseAffected,
+  testReportArguments, everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, webKitCdpPaths, platformRules, neutralPaths }
   from './platforms.mjs';
 import { incomplete, platformSummary } from './gate.mjs';
@@ -70,6 +70,15 @@ test('package READMEs and fixtures are build inputs, not documentation', () => {
   for (const file of ['packages/web/views/README.md', 'packages/dotnet/Runic.Desktop/README.md',
     'tools/Runic.Application.Templates/content/runic-app/README.md', 'tests/fixtures/application/experiments/notes.md'])
     assert.notDeepEqual(plan([file]).skip, skippableJobs, file);
+});
+
+test('Markdown needs no Windows or macOS leg, even in a component with platform rules', () => {
+  for (const file of ['packages/dotnet/Runic.Desktop/README.md', 'packages/dotnet/Runic.Application.Views/README.md',
+    'packages/dotnet/Runic.Platform.Windows/README.md', 'tests/native/Runic.Packaging.Probe/README.md', 'eng/ci/README.md'])
+    assert.deepEqual(affectedPlatforms([file]).platforms, [], file);
+  assert.deepEqual(affectedPlatforms(['packages/dotnet/Runic.Desktop/README.md', 'packages/dotnet/Runic.Desktop/DesktopMenu.cs']).platforms, platforms);
+  // The analyzers' release tracking files are compiler inputs (AdditionalFiles), not documentation.
+  assert.deepEqual(affectedPlatforms(['packages/dotnet/Runic.Platform.Analyzers/AnalyzerReleases.Unshipped.md']).platforms, ['win-x64']);
 });
 
 test('a Views runtime change runs its consumers, packages, templates and native apps', () => {
