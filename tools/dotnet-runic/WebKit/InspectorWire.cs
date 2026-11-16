@@ -48,10 +48,28 @@ internal static class InspectorWire
     }
 
     /// <summary>
-    /// <c>SetupInspectorClient</c> with an empty backend-commands hash: it never matches the server's, so the server
-    /// answers with its <c>InspectorBackendCommands.js</c>, the protocol of exactly this WebKit.
+    /// <c>SetupInspectorClient</c> with a backend-commands hash. The empty hash never matches the server's, so the server
+    /// answers with its <c>InspectorBackendCommands.js</c>, the protocol of exactly this WebKit; the hash of that script
+    /// (<see cref="BackendCommandsHash"/>) gets an empty answer.
     /// </summary>
-    internal static byte[] SetupInspectorClient() => Frame("SetupInspectorClient", [0]);
+    internal static byte[] SetupInspectorClient(string backendCommandsHash = "")
+    {
+        var parameters = new byte[Encoding.ASCII.GetByteCount(backendCommandsHash) + 1];
+        Encoding.ASCII.GetBytes(backendCommandsHash, parameters);
+        return Frame("SetupInspectorClient", parameters);
+    }
+
+    /// <summary>
+    /// The hash under which WebKit's server knows a client's copy of the backend commands script: SHA-1, upper-case hex
+    /// (<c>RemoteInspectorUtils.cpp</c>, <c>backendCommandsHash</c>). A cache key, not a security measure.
+    /// </summary>
+    internal static string BackendCommandsHash(ReadOnlySpan<byte> parameters)
+    {
+        int end = parameters.IndexOf((byte)0);
+#pragma warning disable CA5350 // WebKit's cache key for its protocol description, not a security measure.
+        return Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(end < 0 ? parameters : parameters[..end]));
+#pragma warning restore CA5350
+    }
 
     internal static byte[] Setup(ulong connectionId, ulong targetId) => Frame("Setup", TwoIds(connectionId, targetId));
 

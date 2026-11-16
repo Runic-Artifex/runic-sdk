@@ -644,6 +644,23 @@ names. The session file lists both under `debugEndpoints`.
   on WebKitGTK 2.54.3 or later; older WebKitGTK lets any web page reach it
   (WebKit bug 330602). A `WEBKIT_INSPECTOR_SERVER` or `WEBKIT_INSPECTOR_HTTP_SERVER`
   that you set with `-e` or in `dev`'s environment is used as it is.
+- **Another client of WebKit's inspector.** WebKit's `inspector://` server has
+  one client slot, and a client that sets up takes it from the one that holds it
+  without telling that one (WebKitGTK 2.54). When that happens while a debugger is
+  attached, `dev` prints `[dev] Debugging: another client took over the Window's
+  WebKit inspector …`, the debugger's session ends as in Chrome when another
+  DevTools takes the page over (`Inspector.detached`, then
+  `Target.detachedFromTarget`), and `dev` sends nothing more to WebKit until a
+  debugger attaches again, which takes the inspector back. `dev` notices a new
+  connection to the inspector port in Linux's TCP tables and then checks whether
+  the Window still answers the adapter, so a Window stopped at a .NET breakpoint
+  does not count. Each time the adapter attaches to a page it claims the slot in
+  the same message, so a client that took the slot and left cannot make WebKit
+  crash the Window through the adapter. A client that connects and waits several
+  seconds before it sets up can go unnoticed; the session then stops answering
+  instead of ending. WebKit's own clients are not protected: after the adapter
+  took the slot from GNOME Web's `inspector://` page and released it, that page's
+  next attach can crash the Window.
 - **Port 9222 taken.** `dev` uses another free port and says which; change the
   attach configuration's `port`. `--no-debug-endpoint` opens nothing.
 - **Reporting a problem.** `RUNIC_DEV_CDP_TRACE=<file>` writes the adapter's
