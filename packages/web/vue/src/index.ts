@@ -64,8 +64,13 @@ import { missingViewMessage, reportMissingView, viewSourceIdentity } from "@runi
 import { isDevelopment } from "./development.js";
 import { releaseWithScope } from "./scope.js";
 import { useRunicInstance } from "./instance.js";
-// Vue DevTools: only the development build (src/development-build.d.ts) reaches this module.
+// Vue DevTools: only the development build (`__RUNIC_DEVELOPMENT__`) reaches this module.
 import { attachDevtools } from "./devtools.js";
+// `true` in the development build (`dist/development/`, the `development` export condition) and `false` in the
+// production build (`dist/`): scripts/build.mjs replaces it (eng/web/development-build.mjs). Declared in each module that
+// uses it, so a project that compiles this source through tsconfig `paths` sees it too; a bundler of this source defines
+// it, as the examples' build scripts do (`define: { __RUNIC_DEVELOPMENT__: "false" }`).
+declare const __RUNIC_DEVELOPMENT__: boolean;
 
 
 export interface ViewHandle<TClient extends ViewClient> {

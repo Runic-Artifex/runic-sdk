@@ -16,7 +16,8 @@ const result = await Bun.build({
   target: "browser",
   format: "esm",
   naming: "app.js",
-  define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  // The binding's source names the development-build constant that its own build replaces (eng/web/development-build.mjs).
+  define: { "process.env.NODE_ENV": JSON.stringify("production"), __RUNIC_DEVELOPMENT__: "false" },
   plugins: [{
     name: "react-editor",
     setup(build) {
