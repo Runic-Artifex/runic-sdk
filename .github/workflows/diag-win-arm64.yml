@@ -1,0 +1,68 @@
+# Temporary diagnostics for #373 and #391 (W319-004); not for merging.
+name: win-arm64 diagnostics
+on:
+  push:
+    branches: [v021/win-arm64-evidence]
+permissions:
+  contents: read
+concurrency:
+  group: diag-win-arm64
+  cancel-in-progress: true
+jobs:
+  diag:
+    name: diag / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-11-arm, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Session and image
+        run: |
+          "ImageOS=$env:ImageOS ImageVersion=$env:ImageVersion"
+          $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+          "Windows $($v.DisplayVersion) build $($v.CurrentBuild).$($v.UBR) $($v.EditionID)"
+          qwinsta
+          Get-Process explorer, ShellExperienceHost, StartMenuExperienceHost, sihost -ErrorAction SilentlyContinue | Format-Table Id, SessionId, StartTime, Path -AutoSize
+          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers' -Recurse -Filter cdb.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+          "cdb: $($cdb -join '; ')"
+          $arch = if ($env:RUNNER_ARCH -eq 'ARM64') { 'arm64' } else { 'x64' }
+          $pick = $cdb | Where-Object { $_ -like "*\$arch\cdb.exe" } | Select-Object -First 1
+          "DIAG_CDB=$pick" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\diag" | Out-Null
+          Copy-Item eng/ci/diag-win-arm64/WinArm64Diag.cs "$env:RUNNER_TEMP\diag\"
+          Set-Location "$env:RUNNER_TEMP\diag"
+          dotnet build WinArm64Diag.cs -c Release -v q
+      - name: "373: Shell_NotifyIcon(NIM_ADD) without Runic"
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/diag
+        run: dotnet run --no-build -c Release WinArm64Diag.cs -- notify
+      - name: "391: DoDragDrop variants without Runic"
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/diag
+        run: |
+          foreach ($case in @('plain ole form', 'plain ole desktop', 'shell ole form', 'shcreate sh form', 'plain sh form')) {
+            "=== drag $case"
+            dotnet run --no-build -c Release WinArm64Diag.cs -- drag @($case -split ' ')
+            "=== exit $LASTEXITCODE"
+            Start-Sleep 2
+          }
+          $global:LASTEXITCODE = 0
+      - name: "373: NIM_ADD after restarting Explorer"
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/diag
+        run: |
+          Stop-Process -Name explorer -Force
+          Start-Sleep 5
+          if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe; "started explorer" }
+          Start-Sleep 20
+          Get-Process explorer | Format-Table Id, SessionId, StartTime -AutoSize
+          dotnet run --no-build -c Release WinArm64Diag.cs -- notify
