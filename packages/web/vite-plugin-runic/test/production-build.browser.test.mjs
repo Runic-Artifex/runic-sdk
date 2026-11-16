@@ -21,6 +21,8 @@ const views = fileURLToPath(new URL("../../views/", import.meta.url));
 const markers = ["runic.views.calls", "createTask", "runic.translations.text", "__RUNIC_DEVELOPMENT__",
   // The View descriptions of views and the React DevTools labels of the React binding (#1041).
   "runic.views.describe", "declared failure", " · rev ",
+  // The console's custom object formatters (#1042).
+  "devtoolsFormatters",
   // The development tools' Views protocol features and their trace context (#958).
   "trace-context/1", "handler-timing/1", "traceparent"];
 const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;

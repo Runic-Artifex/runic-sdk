@@ -8,6 +8,7 @@ import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
 import { subscribeTextIn, windowLocaleIn } from "./translated-text.js";
 import { currentSlots, runInSlots, type Slots } from "./scope.js";
+import { markFieldState } from "./formatters.js";
 
 export {
   FieldError, type FieldErrorArguments, type FieldErrorDetail, type FieldErrorExpected, type FieldErrorKind, type FieldErrorReason,
@@ -341,7 +342,13 @@ export function createFieldController<TState, TClient, TValue>(
     commit: () => controller.commit(),
   };
   const liveRef = addLiveField(slots, live);
-  let current: FieldState<TValue> = Object.freeze({
+  // The development build's console formatters name the field's states (formatters.ts).
+  const frozen = (state: FieldState<TValue>): FieldState<TValue> => {
+    const result = Object.freeze(state);
+    if (__RUNIC_DEVELOPMENT__) markFieldState(result, definition.name);
+    return result;
+  };
+  let current: FieldState<TValue> = frozen({
     value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined, validating: false,
   });
 
@@ -377,7 +384,7 @@ export function createFieldController<TState, TClient, TValue>(
     if (Object.is(next.value, current.value) && next.text === current.text && next.editing === current.editing
       && Object.is(next.error, current.error) && next.errors === current.errors && next.conflict === current.conflict
       && next.validating === current.validating) return;
-    current = Object.freeze(next);
+    current = frozen(next);
     if (!notify || disposed) return;
     for (const listener of [...listeners]) {
       try { listener(); } catch (failure) { reportBridgeError(slots, failure); }
