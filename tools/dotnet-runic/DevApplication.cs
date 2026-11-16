@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
@@ -95,18 +96,29 @@ internal static class DevApplication
         WebKitDebugging.Plan debugging = WebKitDebugging.Decide(configuration, options, Environment.GetEnvironmentVariable,
             OperatingSystem.IsLinux(), LoopbackPort.Reserve, WebKitDebugging.ReadInstalledVersion);
         options = options with { DebugEnvironment = debugging.WindowEnvironment };
+        // On Linux the adapter accepts only connections of this user, and talks only to an inspector port of this user.
+        LoopbackSockets? sockets = LoopbackSockets.Current;
         await using WebKitDebugEndpoint? adapter = debugging.StartAdapter
-            ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort)
+            ? new WebKitDebugEndpoint(debugging.InspectorHost!, debugging.InspectorPort, sockets, Console.Error.WriteLine)
             : null;
         var webKitEndpoints = new List<DevSession.DebugEndpoint>(debugging.Endpoints);
         var debuggingHints = new List<string>(debugging.Hints);
         if (adapter is not null)
         {
+            // A fixed inspector port (--no-window, or the developer's) that another user holds already: say so now.
+            if (sockets is not null && IPAddress.TryParse(debugging.InspectorHost, out IPAddress? inspectorAddress) &&
+                sockets.ForeignListener(inspectorAddress, debugging.InspectorPort) is { } inspectorOwner)
+            {
+                debuggingHints.Add(WebKitDebugging.ForeignInspectorHint(debugging.InspectorHost!, debugging.InspectorPort, inspectorOwner));
+            }
             // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port.
             if (adapter.Start(WebKitDebugging.DefaultCdpPort) || adapter.Start(0))
             {
                 webKitEndpoints.Insert(0, WebKitDebugging.CdpEndpoint(adapter.Port!.Value));
-                debuggingHints.Add(WebKitDebugging.CdpHint(adapter.Port.Value, debugging));
+                uint? defaultPortOwner = adapter.Port.Value == WebKitDebugging.DefaultCdpPort
+                    ? null
+                    : sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
+                debuggingHints.AddRange(WebKitDebugging.CdpHints(adapter.Port.Value, debugging, defaultPortOwner));
             }
             else
             {
