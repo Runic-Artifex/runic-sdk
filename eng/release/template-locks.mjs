@@ -130,3 +130,52 @@ export function verifyPackagedTemplateLocks(nupkg, archives) {
   }, 0);
   return {locks: expected.size, entries};
 }
+
+// Binds a generated template's lock to the acceptance registry, after verifyTemplateLock passed. npm 12 requires
+// explicit local tarball URLs, so package-lock.json's Runic entries point at the registry; pnpm and Bun locks carry no
+// URL and resolve the scope's registry from .npmrc. Hashes, versions and dependency declarations stay; the only other
+// change is for the independently released Runic packages (the Translations Vite plugin): the registry passes them
+// through from npm, but while one is a train candidate (an archive here) it serves that archive instead, so every
+// lock format takes the candidate's integrity, because each upstream CI run packs the same version with a different
+// gitHead.
+export function bindTemplateLock(text, filename, candidates, registry) {
+  const train = [...candidates].filter(([name]) => isIndependentRunicPackage(name));
+  function candidateIntegrity(name, version) {
+    const candidate = candidates.get(name);
+    if (version !== candidate.version) throw new Error(`${filename}: ${name} ${version} is locked, but the train candidate is ${candidate.version}`);
+    return candidate.integrity;
+  }
+  function replaceEach(pattern, name, replace) {
+    let found = 0;
+    const result = text.replace(pattern, (...match) => { found++; return replace(...match); });
+    if (text.includes(`${name}@`) && !found) throw new Error(`${filename}: unparsed resolution of ${name}`);
+    return result;
+  }
+  const escape = value => value.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  if (filename.endsWith('package-lock.json')) {
+    if (!registry) return text;
+    const lock = JSON.parse(text);
+    for (const [path, entry] of Object.entries(lock.packages)) {
+      const name = path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length);
+      if (!path.includes('node_modules/') || !(candidates.has(name) || isIndependentRunicPackage(name))) continue;
+      entry.resolved = `${registry}/${name}/-/${name.slice(name.lastIndexOf('/') + 1)}-${entry.version}.tgz`;
+      if (isIndependentRunicPackage(name) && candidates.has(name)) entry.integrity = candidateIntegrity(name, entry.version);
+    }
+    return `${JSON.stringify(lock, null, 2)}\n`;
+  }
+  if (filename.endsWith('pnpm-lock.yaml')) {
+    for (const [name] of train) {
+      text = replaceEach(new RegExp(`^(  '${escape(name)}@([^'(]+)':\\n    resolution: \\{integrity: )(sha512-[^}]+)\\}`, 'gm'), name,
+        (_, prefix, version) => `${prefix}${candidateIntegrity(name, version)}}`);
+    }
+    return text;
+  }
+  if (filename.endsWith('bun.lock')) {
+    for (const [name] of train) {
+      text = replaceEach(new RegExp(`^(    "${escape(name)}": \\["${escape(name)}@([^"]+)", .*, ")(sha512-[^"]+)("\\],?)$`, 'gm'), name,
+        (_, prefix, version, integrity, suffix) => `${prefix}${candidateIntegrity(name, version)}${suffix}`);
+    }
+    return text;
+  }
+  throw new Error(`Unsupported template lock: ${filename}`);
+}

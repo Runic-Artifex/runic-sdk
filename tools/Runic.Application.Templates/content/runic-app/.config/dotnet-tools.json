@@ -8,7 +8,7 @@
 //#if (translations)
     },
     "dotnet-runic-translations": {
-      "version": "0.12.0",
+      "version": "0.13.0",
       "commands": ["runic-translations"]
 //#endif
     }

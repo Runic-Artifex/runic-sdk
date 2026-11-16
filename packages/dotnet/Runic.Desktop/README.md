@@ -126,7 +126,7 @@ macOS conventions on top:
 | --- | --- | --- |
 | `window.SetRepresentedFileAsync(path)` | The title bar's proxy icon and the path menu of Command-click on the title (`NSWindow.representedURL`); `null` removes them | Nothing |
 | `window.SetDocumentEditedAsync(edited)` | The dot in the close button (`NSWindow.documentEdited`) | Nothing |
-| `host.NoteRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Windows: Recent items and the Jump List (`SHAddToRecentDocs`). Linux: `recently-used.xbel`, which GTK and KDE file choosers list |
+| `host.AddRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Windows: Recent items and the Jump List (`SHAddToRecentDocs`). Linux: `recently-used.xbel`, which GTK and KDE file choosers list |
 | `host.ClearRecentDocumentsAsync()` | Empties them, as Clear Menu does | Windows: the application's Jump List destinations. Linux: this application's entries |
 | `MacOSDesktopOptions.OpenRecentMenu` | Adds Open Recent at the top of the standard File menu | Ignored |
 
@@ -150,7 +150,7 @@ return DesktopEventLoop.Run(options, async host =>
     opens.Opened += (_, request) => editor.OpenAll(request.Items);
     // After the user opened a document, or saved it with Save As:
     await window.SetRepresentedFileAsync(document.LocalPath);
-    await host.NoteRecentDocumentAsync(document.LocalPath);
+    await host.AddRecentDocumentAsync(document.LocalPath);
     // On each edit and each save:
     await window.SetDocumentEditedAsync(editor.HasUnsavedChanges);
     ...
@@ -176,7 +176,7 @@ In the App Sandbox the system does not grant access to a document chosen in
 Runic's Open Recent: a sandboxed application keeps its own recent documents as
 A1 bookmarks and reopens them itself. Store `CreateBookmarkAsync`'s bytes with
 the document's `LocalPath` after open and Save As, and note that path with
-`NoteRecentDocumentAsync` for the menu and the Dock, while the lease is open
+`AddRecentDocumentAsync` for the menu and the Dock, while the lease is open
 (AppKit's own bookmark of the noted file needs its access). When an open request
 arrives, look up the bookmark stored for its path and reopen the document with
 `IDesktopFileBookmarks.OpenDocumentAsync`:
@@ -894,6 +894,43 @@ application's origins besides the presented URL's in
 `DesktopWindowHostOptions.AdditionalOrigins`; `RunicWebView` applies it as the
 built-in hosts do.
 
+### The WebView2 DevTools window and DevTools extensions
+
+Since 0.21 a WebView2 window whose developer tools are on (in Development, by
+default) has an **Open DevTools** item in its system menu (Alt+Space, or a
+right click on the title bar), and `DesktopWindow.OpenDevToolsAsync` opens the
+same Edge DevTools window from code, for example from a menu item that the
+application declares only in Development. It returns `false` when the window's
+developer tools are off, as in production, and on WKWebView, WebKitGTK, an
+installed browser or a custom window host. A DevTools window that WebView2
+fails to open from the system menu is reported to `DiagnosticSink` as
+`devtools-window-failed`.
+
+`DesktopHostOptions.DevToolsExtensions` lists unpacked browser extensions, such
+as React Developer Tools or Vue.js devtools, that WebView2 windows load in
+Development, so their panels appear in the DevTools window. The
+`RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` variable adds folders for one session,
+separated by `;`, for example with `dotnet runic dev -e`.
+
+```csharp
+await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    DevToolsExtensions = [@"C:\Tools\react-devtools-extension"],
+});
+await window.OpenDevToolsAsync();
+```
+
+Only in Development does the WebView2 environment enable extensions; outside it
+the list is ignored and the environment keeps them off. Extensions belong to the
+WebView2 profile: a window installs them before its first page loads, once per
+profile and process, and every window of the profile then runs them. WebView2
+keeps an installed extension until its files change; in Development Runic
+removes the ones it installed whose folders are no longer listed, recorded in
+`Runic.DevToolsExtensions.json` in the user data folder, and never another
+extension. A folder it rejects is
+reported to `DiagnosticSink` as `devtools-extension-failed`. Hosted windows load
+none. See the [debugging guide](../../../docs/debugging.md#the-browsers-developer-tools-per-engine).
+
 ### Printing
 
 Runic has no printing API: the page prints itself with `window.print()`, and an
@@ -1088,7 +1125,7 @@ started from (1001 + 558 = 1559 pixels at 150 %, then 1001 again).
 | Linux GTK 4 (X11) | Logical pixels: visible frame position and content size | One `XMoveResizeWindow` | Position and content with `_NET_FRAME_EXTENTS` | `GDK_TOPLEVEL_STATE_TILED`, or the work-area geometry (best effort) |
 | Linux GTK 3 and GTK 4 (Wayland) | Content size; no position | Size only; a position fails with `window-position-unavailable` | `null` | GDK's tiled state |
 | Installed browser, WPF `RunicWebView` | `null` | Refused: `window-capability-unavailable` | `null` | `false` |
-| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowBoundsHost` | Host-defined | Host-defined | Host-defined |
+| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopBoundsWindowHost` | Host-defined | Host-defined | Host-defined |
 
 A serve-only application has no `DesktopWindow`, and a hosted application's
 guest (`runic-host/1`) asks its host to move or resize its window but cannot set
@@ -1155,7 +1192,7 @@ its edge. `MaximizeAsync` keeps the panel.
 
 The calls complete when the window has been asked: macOS animates and a window
 manager decides on Linux, so `StateChanged` reports the result. They need
-`DesktopWindowCapabilities.WindowPlacement`; a `Kiosk` window refuses
+`DesktopWindowCapabilities.Placement`; a `Kiosk` window refuses
 `MaximizeAsync`, `RestoreAsync` and a placement that is not full-screen with
 `InvalidOperationException`.
 
@@ -1167,7 +1204,7 @@ manager decides on Linux, so `StateChanged` reports the result. They need
 | Linux GTK 4 | `gtk_window_maximize` | Unmaximizes; a minimized window comes back by presenting it | Default size, `XMoveResizeWindow` on X11, then the state |
 | Wayland (GTK 3 and GTK 4) | Yes | Yes; Wayland reports no minimized window, so `FocusAsync` brings one back | Size and state; a placement with `X` and `Y` fails as a whole with `window-position-unavailable` and changes nothing |
 | Installed browser, WPF `RunicWebView` | Refused: `window-capability-unavailable` | Same | Same |
-| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowShowStateHost` | Same | Same |
+| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopShowStateWindowHost` | Same | Same |
 
 ### Side panel
 
@@ -1226,7 +1263,9 @@ if (result is DesktopSidePanelResult.Refused { Reason: var reason })
   `NoRoom` (the grown visible frame would leave the monitor's work area, or the
   panel is wider than half of it; the window is never moved to make room),
   `PositionUnavailable` (the left edge on Wayland), `AlreadyOpen`, `LoadFailed`
-  (the page did not load within `LoadTimeout`) and `Unsupported`: an installed
+  (the page did not load within `LoadTimeout`), `Closed` (the window, or the
+  panel asked to change, closed while the request ran; one closed before the
+  call throws `ObjectDisposedException`) and `Unsupported`: an installed
   browser, a custom window host or WPF's `RunicWebView`, a hosted application's
   window or region, a surface that admits several clients, and a host that
   lacks what the panel needs (a transparent GTK 3 window, for one). `DesktopWindow.CheckSidePanel(edge, width)`
@@ -2216,7 +2255,7 @@ The optional interfaces each add one feature:
 | --- | --- | --- |
 | `IDesktopNativeDispatchWindowHost` | `DesktopWindow.InvokeNativeAsync` and the platform services' owner thread | `SupportsNativeDispatch` |
 | `IDesktopWindowStateHost` | `DesktopWindow.State`, `StateChanged` and restoring `DesktopWindowHostOptions.Placement` ([Window state and restore](#window-state-and-restore)) | `DesktopWindowCapabilities.State` |
-| `IDesktopWindowShowStateHost` | `DesktopWindow.MaximizeAsync`, `RestoreAsync` and `SetPlacementAsync` ([Maximize, restore and placement of an open window](#maximize-restore-and-placement-of-an-open-window)) | `DesktopWindowCapabilities.WindowPlacement` |
+| `IDesktopShowStateWindowHost` | `DesktopWindow.MaximizeAsync`, `RestoreAsync` and `SetPlacementAsync` ([Maximize, restore and placement of an open window](#maximize-restore-and-placement-of-an-open-window)) | `DesktopWindowCapabilities.Placement` |
 | `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
 | `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |

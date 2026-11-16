@@ -157,15 +157,15 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot change its minimum size."));
 
-    /// <summary>Maximizes the window, idempotently (DesktopWindow.MaximizeAsync); requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    /// <summary>Maximizes the window, idempotently (DesktopWindow.MaximizeAsync); requires <see cref="DesktopWindowCapabilities.Placement"/>.</summary>
     ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot maximize its window on request."));
 
-    /// <summary>Returns the window to its normal bounds (DesktopWindow.RestoreAsync); requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    /// <summary>Returns the window to its normal bounds (DesktopWindow.RestoreAsync); requires <see cref="DesktopWindowCapabilities.Placement"/>.</summary>
     ValueTask ShowNormalAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot restore its window on request."));
 
-    /// <summary>Gives the open window a placement in the units of DesktopWindowState.Placement; requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>.</summary>
+    /// <summary>Gives the open window a placement in the units of DesktopWindowState.Placement; requires <see cref="DesktopWindowCapabilities.Placement"/>.</summary>
     ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot take a placement while it is open."));
 
@@ -178,6 +178,12 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Opens a side panel and grows the window by it; requires <see cref="SupportsSidePanel"/>.</summary>
     ValueTask<Internal.WebUiSidePanelOpening> OpenSidePanelAsync(Internal.WebUiSidePanelRequest request, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Internal.WebUiSidePanelOpening.Refused(DesktopSidePanelRefusal.Unsupported));
+
+    /// <summary>
+    /// Opens the page's developer tools in a window of their own (DesktopWindow.OpenDevToolsAsync); false where the
+    /// developer tools are off or the host cannot open them on request.
+    /// </summary>
+    ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(false);
 
     /// <summary>Applies DesktopHost.SetSpellCheckingLanguagesAsync; a host whose checker has no languages ignores it.</summary>
     ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
@@ -227,6 +233,10 @@ internal sealed record WebUiEmbeddedHostOptions
     public string? ProfilePath { get; init; }
 
     public string? BrowserArguments { get; init; }
+
+    // The unpacked DevTools extensions a WebView2 window installs when its DevTools are enabled, resolved for the process
+    // (DevToolsExtensionFolders): empty outside Development, for hosted windows and on other platforms.
+    public IReadOnlyList<string> DevToolsExtensions { get; init; } = [];
 
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 

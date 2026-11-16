@@ -1,6 +1,7 @@
 import {
   createElement,
   useCallback,
+  useDebugValue,
   useEffect,
   useInsertionEffect,
   useMemo,
@@ -63,9 +64,20 @@ import {
   isViewClient, missingViewMessage, reportMissingView, translationsTextRevision, viewSourceIdentity, viewSourcePreview,
 } from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
+// React DevTools labels: only the development build (`__RUNIC_DEVELOPMENT__`) reaches this module.
+import { clientLabel, commandLabel, fieldLabel, operationLabel, viewLabel } from "./debug-labels.js";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
+// `true` in the development build (`dist/development/`, the `development` export condition) and `false` in the
+// production build (`dist/`): scripts/build.mjs replaces it (eng/web/development-build.mjs). Declared in each module that
+// uses it, so a project that compiles this source through tsconfig `paths` sees it too; a bundler of this source defines
+// it, as the examples' build scripts do (`define: { __RUNIC_DEVELOPMENT__: "false" }`).
+declare const __RUNIC_DEVELOPMENT__: boolean;
+
+// The labels of useViewState and useTextField (debug-labels.ts); only the development build calls them.
+const selectedLabel = (client: unknown) => client === undefined ? "no View" : clientLabel(client);
+const textFieldLabel = (field: { readonly value: string; readonly editing: boolean; readonly error: unknown }) => fieldLabel("text", field);
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. While the same reference connects again it stays the last state. */
@@ -189,6 +201,14 @@ export function useView<TClient extends ViewClient>(source: ViewSource<TClient>,
   const current = useSyncExternalStore(store.subscribe, store.read, store.read);
   const retry = useCallback(() => controller.retry(), [controller]);
 
+  const handle = viewHandle(instance, source, identity, current, retry);
+  // React DevTools shows the View: `EditorViewModel · editor · rev 12`, or its connection phase.
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(handle, viewLabel);
+  return handle;
+}
+
+function viewHandle<TClient extends ViewClient>(instance: RunicInstance, source: ViewSource<TClient>, identity: object | undefined,
+  current: ViewControllerState<TClient>, retry: () => void): ViewHandle<TClient> {
   const observed = source && isViewClient(source) ? source : undefined;
   // A connected client is readable before the effect observes it.
   if (observed && current.client !== observed)
@@ -246,6 +266,7 @@ export function useViewState<TClient extends ViewClient, TSelected>(
   }, [client, fallback, selector, isEqual]);
   const value = useSyncExternalStore(subscribe, read, read);
   useEffect(() => { rendered.current = { value }; }, [value]);
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(client, selectedLabel);
   return value;
 }
 
@@ -421,6 +442,7 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
   const controller = useMountedController(() => createCommandController((...args: TArgs) => latest.current(...args)));
   const read = useCallback(() => controller.current, [controller]);
   const { pending, error, failure } = useSyncExternalStore(controller.subscribe, read, read);
+  if (__RUNIC_DEVELOPMENT__) useDebugValue({ pending, error, failure }, commandLabel);
   return { run: controller.run, pending, error, failure, reset: controller.reset };
 }
 
@@ -454,6 +476,7 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   }));
   const read = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, read, read);
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(current, operationLabel);
   return { ...current, run: controller.run, cancel: controller.cancel, reset: controller.reset };
 }
 
@@ -479,6 +502,7 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   const controller = useMountedController(() => createLatestOperationController<TResult, TFailure>());
   const read = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, read, read);
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(current, operationLabel);
   return { ...current, run: controller.run, clear: controller.clear };
 }
 
@@ -569,7 +593,9 @@ export function useTextField<TClient extends ViewClient>(
   }), [controller]);
   // Without a draft the field shows the state being rendered, which the effect passes to the controller after the render.
   const value = current.editing ? current.value : state === undefined ? "" : read(state);
-  return { value, editing: current.editing, error: current.error, ...handlers };
+  const handle = { value, editing: current.editing, error: current.error, ...handlers };
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(handle, textFieldLabel);
+  return handle;
 }
 
 /**
@@ -702,11 +728,14 @@ export function useField<TClient extends ViewClient, TValue>(
       value: text, onChange: actions.onChange, onCompositionStart: actions.onCompositionStart,
       onCompositionEnd: actions.onCompositionEnd, onBlur: actions.onBlur, "aria-invalid": invalid,
     };
-  return {
+  const handle: FieldHandle<TValue> = {
     value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict, validating,
     inputProps: inputProps as FieldInputProps<TValue>,
     input: actions.input, commit: actions.commit, retry: actions.retry, reset: actions.reset,
   };
+  // React DevTools shows the field's state: `title = "Draft" · editing · 1 error`.
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(handle, fieldHandle => fieldLabel(latest.current.name ?? "field", fieldHandle));
+  return handle;
 }
 
 export interface BridgeConnectionHandle {
@@ -742,6 +771,7 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
   const read = useCallback(() => store.state ??= currentBridgeConnection(instance, lostAfter === undefined ? {} : { lostAfter }),
     [instance, store, lostAfter]);
   const state = useSyncExternalStore(subscribe, read, serverConnectionState);
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(state);
   return { state };
 }
 

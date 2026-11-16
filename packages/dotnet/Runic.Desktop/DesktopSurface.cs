@@ -2040,6 +2040,35 @@ public sealed partial class DesktopWindow : IAsyncDisposable
             () => new ValueTask(_engine.AnnounceAsync(message, priority, cancellationToken)), cancellationToken);
     }
 
+    /// <summary>Opens the page's developer tools in a window of their own, for debugging in Development.</summary>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>
+    /// A task that completes with <see langword="true"/> when the window asked its WebView to open the developer tools, or
+    /// <see langword="false"/> when it cannot: its developer tools are off (<see cref="DesktopWebContentPolicy.DevTools"/>,
+    /// by default on only in Development), or the window is not a WebView2 window.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// WebView2 windows open Microsoft Edge DevTools (<c>ICoreWebView2::OpenDevToolsWindow</c>), the same window that F12,
+    /// Ctrl+Shift+I and Inspect open. While the developer tools are on, the window's system menu (Alt+Space, or a right
+    /// click on the title bar) also has an Open DevTools item. DevTools extensions in
+    /// <see cref="DesktopHostOptions.DevToolsExtensions"/> appear as panels of that window.
+    /// </para>
+    /// <para>
+    /// WKWebView and WebKitGTK windows return <see langword="false"/>; open their inspector with Inspect Element. An
+    /// installed browser has its own developer tools.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask<bool> OpenDevToolsAsync(CancellationToken cancellationToken = default)
+    {
+        var opened = false;
+        await _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.None,
+            async () => opened = await _engine.OpenDevToolsAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        return opened;
+    }
+
     /// <summary>Minimizes the window.</summary>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window has been minimized.</returns>
@@ -2180,7 +2209,7 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// </para>
     /// <para>Refusals:</para>
     /// <list type="bullet">
-    /// <item><description>An installed browser, a custom window host without <see cref="IDesktopWindowBoundsHost"/>, and
+    /// <item><description>An installed browser, a custom window host without <see cref="IDesktopBoundsWindowHost"/>, and
     /// WPF's <c>RunicWebView</c>, whose WPF window the application sizes itself, lack the capability
     /// (<c>window-capability-unavailable</c>). A serve-only application has no <see cref="DesktopWindow"/>, and a hosted
     /// application's guest (<c>runic-host/1</c>) only asks its host to move or resize the window; the host application's
@@ -2241,7 +2270,7 @@ public sealed partial class DesktopWindow : IAsyncDisposable
     /// it is restored.
     /// </para>
     /// <para>
-    /// Refusals: an installed browser, a custom window host without <see cref="IDesktopWindowBoundsHost"/> and WPF's
+    /// Refusals: an installed browser, a custom window host without <see cref="IDesktopBoundsWindowHost"/> and WPF's
     /// <c>RunicWebView</c> lack the capability (<c>window-capability-unavailable</c>).
     /// </para>
     /// </remarks>

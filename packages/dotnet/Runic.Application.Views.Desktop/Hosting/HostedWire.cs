@@ -213,8 +213,8 @@ internal static class HostedWire
             "open" => RunicHostedDialogKind.OpenFile,
             "open-multiple" => RunicHostedDialogKind.OpenFiles,
             "save" => RunicHostedDialogKind.SaveFile,
-            "folder" => RunicHostedDialogKind.OpenFolder,
-            _ => RunicHostedDialogKind.OpenFolders,
+            "folder" => RunicHostedDialogKind.OpenDirectory,
+            _ => RunicHostedDialogKind.OpenDirectories,
         };
         var directory = HostProtocol.String(message, "initialDirectory");
         if (directory is not null && !Path.IsPathFullyQualified(directory))
@@ -237,7 +237,7 @@ internal static class HostedWire
         {
             Filters = filters,
             InitialDirectory = directory,
-            AllowMultiple = kind is RunicHostedDialogKind.OpenFiles or RunicHostedDialogKind.OpenFolders,
+            AllowMultiple = kind is RunicHostedDialogKind.OpenFiles or RunicHostedDialogKind.OpenDirectories,
             ShowFilterChoice = HostProtocol.Boolean(message, "showFilterChoice") ?? false,
             Title = HostProtocol.String(message, "title"),
         });

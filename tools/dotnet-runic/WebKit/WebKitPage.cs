@@ -19,6 +19,7 @@ internal sealed class WebKitPage : IAsyncDisposable
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
     private readonly InspectorConnection _connection;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonObject>> _pending = new();
+    private readonly ConcurrentDictionary<long, TaskCompletionSource> _probes = new();
     private readonly TaskCompletionSource<string> _firstInnerTarget = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _closed = new();
     private string? _innerTarget;
@@ -40,6 +41,9 @@ internal sealed class WebKitPage : IAsyncDisposable
     /// <summary>The page went away: the Window closed, navigated away from the target or the connection closed.</summary>
     internal event Action? Detached;
 
+    /// <summary>Another client took WebKit's slot from the page's connection (<see cref="InspectorConnection.Abandon"/>).</summary>
+    internal bool ConnectionReplaced => _connection.IsReplaced;
+
     /// <summary>Attaches as the page's frontend, as WebKit's own inspector does.</summary>
     internal async Task OpenAsync(CancellationToken cancellationToken)
     {
@@ -47,6 +51,8 @@ internal sealed class WebKitPage : IAsyncDisposable
         _connection.Closed += OnDetached;
         await _connection.SetupAsync(Target, cancellationToken).ConfigureAwait(false);
         await _firstInnerTarget.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+        // Probed from now on: WebKit answers a page's probe once the page is set up.
+        _connection.PageOpened(this);
         // WebKit's own frontend sends these first; a target that waits for its frontend then continues.
         if (_connection.Protocol.HasCommand("Inspector.enable")) _ = SendQuietlyAsync("Inspector.enable");
         if (_connection.Protocol.HasCommand("Inspector.initialized")) _ = SendQuietlyAsync("Inspector.initialized");
@@ -107,6 +113,34 @@ internal sealed class WebKitPage : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Whether WebKit still sends this page's messages to this connection: a command for an unknown domain on the page's
+    /// own channel, which the Window's UI process answers with an error even while the page is paused or busy. When
+    /// another client holds WebKit's slot, the answer goes to that client, or nowhere once it left; a Window whose main
+    /// thread is stopped, for example at a .NET breakpoint, does not answer either.
+    /// </summary>
+    internal async Task<bool> ProbeAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        long id = Interlocked.Increment(ref _outerId);
+        var answer = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _probes[id] = answer;
+        try
+        {
+            await _connection.SendToBackendAsync(Target, new JsonObject { ["id"] = id, ["method"] = "Runic.probe" }.ToJsonString(), cancellationToken)
+                .ConfigureAwait(false);
+            await answer.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception error) when (error is TimeoutException or IOException)
+        {
+            return false;
+        }
+        finally
+        {
+            _probes.TryRemove(id, out _);
+        }
+    }
+
     private void OnMessage(ulong connectionId, ulong targetId, string text)
     {
         if (connectionId != Target.ConnectionId || targetId != Target.TargetId) return;
@@ -117,6 +151,12 @@ internal sealed class WebKitPage : IAsyncDisposable
         }
         catch (JsonException)
         {
+            return;
+        }
+        // The answer to a command on the page's own channel: Target.sendMessageToTarget's, or a probe's.
+        if (message["id"] is JsonValue outerValue && outerValue.TryGetValue(out long outer))
+        {
+            if (_probes.TryGetValue(outer, out TaskCompletionSource? probe)) probe.TrySetResult();
             return;
         }
         JsonObject? p = message["params"] as JsonObject;
@@ -174,6 +214,7 @@ internal sealed class WebKitPage : IAsyncDisposable
         bool open = Interlocked.Exchange(ref _closing, 1) == 0;
         _connection.MessageToFrontend -= OnMessage;
         _connection.Closed -= OnDetached;
+        _connection.PageClosed(this);
         _closed.Cancel();
         if (open && !_connection.IsClosed)
         {

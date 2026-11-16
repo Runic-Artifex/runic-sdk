@@ -180,7 +180,7 @@
           "Runic.Application.Views.Desktop": "[0.21.0, )",
           "Runic.Application.Views.ReactiveUI": "[0.21.0, )",
           "Runic.Desktop.Kestrel": "[0.21.0, )",
-          "Runic.Translations": "[0.12.0, )"
+          "Runic.Translations": "[0.13.0, )"
         }
       },
       "runic.application.testing": {
@@ -451,9 +451,9 @@
       },
       "Runic.Translations": {
         "type": "CentralTransitive",
-        "requested": "[0.12.0, )",
-        "resolved": "0.12.0",
-        "contentHash": "npP6sj4LsnZeAWZwSGM7w4iq1A0AtiVu/kDuRN8E7pbTTX2eP++by/diK7NLQC4hOqUg31rvRgq3FOFwWS7s9A=="
+        "requested": "[0.13.0, )",
+        "resolved": "0.13.0",
+        "contentHash": "j0v/cRX9fxTIktN1KSkpiy7gfymG3qptKBYSBwcEaNrC/Q8oQCIr+9JfAHq1V4/z0qIaf6PsiXK1mpwff3EyCQ=="
       },
       "Splat": {
         "type": "CentralTransitive",

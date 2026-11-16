@@ -210,10 +210,16 @@ configure_candidate_registry() {
   # I-167: npm waits 5 minutes for a stalled registry response before it retries, as long as the whole
   # URL wait below. A minute lets its retries (fetch-retries, 2 by default) recover from one stall.
   (cd "$output/Frontend" && npm config set --location=project fetch-timeout 60000)
-  if [[ "$manager" == npm ]]; then
-    RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
-      "$output/Frontend/package-lock.json" "${npm_archives[@]}" "${train_npm_archives[@]}"
-  fi
+  # Every manager's lock is checked against the candidates and takes the train candidates' integrities: a pnpm or
+  # Bun lock that kept the committed hash would fail on any newer upstream CI run of the same version.
+  local lock
+  case "$manager" in
+    npm) lock=package-lock.json ;;
+    pnpm) lock=pnpm-lock.yaml ;;
+    bun) lock=bun.lock ;;
+  esac
+  RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
+    "$output/Frontend/$lock" "${npm_archives[@]}" "${train_npm_archives[@]}"
 }
 
 frontend_script() {

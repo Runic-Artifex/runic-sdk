@@ -36,7 +36,7 @@ internal sealed partial class MacOsWkWebViewHost
     internal ValueTask SetDocumentEditedAsync(bool edited, CancellationToken cancellationToken) =>
         InvokeAsync(() => Api.SendVoidBool(_window, "setDocumentEdited:", edited), cancellationToken);
 
-    internal static ValueTask NoteRecentDocumentAsync(string path, CancellationToken cancellationToken) =>
+    internal static ValueTask AddRecentDocumentAsync(string path, CancellationToken cancellationToken) =>
         MacOsMainThread.InvokeAsync(() =>
         {
             if (DocumentController() is not 0 and var controller)

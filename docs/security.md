@@ -304,8 +304,9 @@ and its Bridge:
 - **WebKit's `inspector://` server.** It belongs to WebKit, so `dev` cannot
   filter its clients. Any local user can connect to it, also while a debugger
   is attached: WebKit serves one client and lets a new one take its place
-  (WebKitGTK 2.54). The Window can then crash when the replaced client sends
-  again.
+  (WebKitGTK 2.54). Runic's CDP adapter then detaches the debugger and sends
+  nothing more, but a replaced client of WebKit's own, such as GNOME Web's
+  `inspector://` page, can crash the Window when it sends again.
 
 On a machine that you share with other users, run `dev` with
 `--no-debug-endpoint`, which opens neither.

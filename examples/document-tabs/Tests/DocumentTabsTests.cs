@@ -34,14 +34,14 @@ public sealed class DocumentTabsTests : IAsyncDisposable
     {
         var tabs = await OpenAsync(2);
 
-        await Assert.That(tabs.Selected).IsEqualTo(1);
+        await Assert.That(tabs.SelectedIndex).IsEqualTo(1);
         await Assert.That(tabs.Regions.Select(region => region.Content?.Kind ?? "")).IsEquivalentTo(["document", "document"]);
         await Assert.That(Document(tabs, 0).Snapshot().Read(vm => vm.Title)).IsEqualTo("Untitled 1");
         await Assert.That(Document(tabs, 1).Snapshot().Read(vm => vm.Title)).IsEqualTo("Untitled 2");
 
         var selected = await Root.SelectRegionAsync(vm => vm.Documents, tabs.Keys[0]);
         await Assert.That(selected.RegionOutcome?.Kind).IsEqualTo(NavigationOutcomeKind.Committed);
-        await Assert.That(selected.State!.Regions(vm => vm.Documents).Selected).IsEqualTo(0);
+        await Assert.That(selected.State!.Regions(vm => vm.Documents).SelectedIndex).IsEqualTo(0);
     }
 
     [Test]
@@ -74,7 +74,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
         var switched = await Root.SelectRegionAsync(vm => vm.Documents, tabs.Keys[0]);
 
         await Assert.That(switched.RegionOutcome?.Kind).IsEqualTo(NavigationOutcomeKind.Committed);
-        await Assert.That(switched.State!.Regions(vm => vm.Documents).Selected).IsEqualTo(0);
+        await Assert.That(switched.State!.Regions(vm => vm.Documents).SelectedIndex).IsEqualTo(0);
         await Assert.That(Document(tabs, 1).Snapshot().Read(vm => vm.Body)).IsEqualTo("Draft");
     }
 
@@ -99,7 +99,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
         await Assert.That(closed.RegionOutcome?.Kind).IsEqualTo(NavigationOutcomeKind.Committed);
         var after = closed.State!.Regions(vm => vm.Documents);
         await Assert.That(after.Keys).IsEquivalentTo([tabs.Keys[1]]);
-        await Assert.That(after.Selected).IsEqualTo(0);
+        await Assert.That(after.SelectedIndex).IsEqualTo(0);
     }
 
     [Test]
@@ -121,7 +121,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
         await Assert.That(closed.RegionOutcome?.Kind).IsEqualTo(NavigationOutcomeKind.Committed);
         var after = closed.State!.Regions(vm => vm.Documents);
         await Assert.That(after.Regions).IsEmpty();
-        await Assert.That(after.Selected).IsNull();
+        await Assert.That(after.SelectedIndex).IsNull();
     }
 
     [Test]
@@ -138,7 +138,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
         await Assert.That(restored.IsComplete).IsTrue();
         var after = await TabsAsync();
         await Assert.That(after.Regions.Select(region => region.Content?.Kind ?? "")).IsEquivalentTo(["documentInfo", "document", "document"]);
-        await Assert.That(after.Selected).IsEqualTo(1);
+        await Assert.That(after.SelectedIndex).IsEqualTo(1);
         await Assert.That(Document(after, 1).Snapshot().Read(vm => vm.Title)).IsEqualTo("Untitled 2");
         await Assert.That(_host.View<DocumentInfoViewModel>(after.Regions[0].Content!).Snapshot().Read(vm => vm.Title)).IsEqualTo("Untitled 1");
     }
@@ -194,7 +194,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
         await Assert.That(await _host.ViewModel.OpenLinkAsync(new Uri("document-tabs://documents/1/info"))).IsTrue();
         var linked = await TabsAsync();
         await Assert.That(linked.Keys).IsEquivalentTo(tabs.Keys);
-        await Assert.That(linked.Selected).IsEqualTo(0);
+        await Assert.That(linked.SelectedIndex).IsEqualTo(0);
         await Assert.That(linked.Regions[0].Content?.Kind).IsEqualTo("documentInfo");
 
         // A document without a tab opens in a new one; unknown documents, routes and schemes open nothing.
@@ -225,7 +225,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
             await opened.Task.WaitAsync(TimeSpan.FromSeconds(10));
         }
         var tabs = await TabsAsync();
-        await Assert.That(tabs.Selected).IsEqualTo(0);
+        await Assert.That(tabs.SelectedIndex).IsEqualTo(0);
         await Assert.That(tabs.Regions[0].Content?.Kind).IsEqualTo("documentInfo");
 
         // A notification's activation link opens the same way.
@@ -233,7 +233,7 @@ public sealed class DocumentTabsTests : IAsyncDisposable
             new DesktopNotificationActivation("saved-2", "", new Uri("document-tabs://documents/2/info")) { IsTrusted = true });
         await Assert.That(activated).IsTrue();
         tabs = await TabsAsync();
-        await Assert.That(tabs.Selected).IsEqualTo(1);
+        await Assert.That(tabs.SelectedIndex).IsEqualTo(1);
         await Assert.That(tabs.Regions[1].Content?.Kind).IsEqualTo("documentInfo");
     }
 

@@ -13,6 +13,8 @@ Each section links the README that describes its tool in full.
 | See each Bridge call with the C# that ran and open it in the editor | [The Runic dock](#the-runic-dock) |
 | Click an element and see its commands, state, and texts | [Runic Inspect](#runic-inspect) |
 | See the same in Chrome's or Edge's own developer tools: a Runic panel and an Elements pane | [The Runic DevTools extension](#the-runic-devtools-extension) |
+| See View clients, states and field states readably in the console | [Custom object formatters](#custom-object-formatters) |
+| See a component's View, field state and operation status in React DevTools or Vue DevTools | [Framework DevTools](#react-devtools-and-vue-devtools) |
 | Time C# handlers, or follow a click into the ViewModel's HTTP and database calls | [Performance panel and traces](#performance-panel-async-stacks-and-traces) |
 | See Bridge errors before you build | [Analyzers](#bridge-errors-while-you-type) |
 
@@ -122,7 +124,7 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
 
 | Engine | Where | Open | Debugger and automation |
 | --- | --- | --- | --- |
-| WebView2 | Windows | F12, or Inspect from the page's context menu | A DevTools Protocol endpoint on request (below) |
+| WebView2 | Windows | F12, Ctrl+Shift+I, Inspect from the page's context menu, Open DevTools in the window's system menu (Alt+Space), or `DesktopWindow.OpenDevToolsAsync()` | A DevTools Protocol endpoint on request (below); DevTools extensions (below) |
 | WKWebView | macOS 13.3 and later | Safari ▸ Develop ▸ your Mac ▸ the window's page (turn on "Show features for web developers" in Safari's Advanced settings) | Safari's Web Inspector only; no DevTools Protocol endpoint |
 | WebKitGTK | Linux (GTK 3 and GTK 4) | Inspect Element from the page's context menu (WebKit's Web Inspector, docked or detached) | A DevTools Protocol endpoint for JavaScript debuggers under `dotnet runic dev` (preview, below), and WebKit's remote inspector |
 | Installed browser | CS-WebUI's default, and Runic Desktop's fallback without a WebView | The browser's own F12 | The browser's own rules: Runic's policy does not apply to it |
@@ -136,6 +138,36 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
   runs as administrator, its Window does too, so `dev` lists the endpoint under `unavailableDebugEndpoints` with
   `"reason": "elevated"` and prints a `[dev] Debugging:` hint. F12 still works; for the endpoint, run `dev` and your
   IDE without elevation.
+- **WebView2 DevTools window.** While a window's developer tools are on, its system menu (Alt+Space, or a right
+  click on the title bar) has **Open DevTools**, and `await window.OpenDevToolsAsync()` opens the same Edge DevTools
+  window from code, for example from a development-only menu item of your own. It returns `false` where the developer
+  tools are off, as in production, and on WKWebView, WebKitGTK and installed browsers.
+- **WebView2 DevTools extensions** (since 0.21). In Development a WebView2 window loads unpacked browser extensions,
+  such as React Developer Tools or Vue.js devtools, so their panels appear in its DevTools window and their hooks run
+  in the page. List the extension folders (each one holds a `manifest.json`) in `DesktopHostOptions.DevToolsExtensions`,
+  or for one session in `RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS`, separated by `;`:
+
+  ```csharp
+  var options = new DesktopHostOptions
+  {
+      DevToolsExtensions = [@"C:\Tools\react-devtools-extension"],
+  };
+  ```
+
+  ```powershell
+  dotnet runic dev -e RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS="C:\Tools\react-devtools-extension;C:\Tools\vue-devtools"
+  ```
+
+  Get an unpacked extension by building it from its source (React's `packages/react-devtools-extensions`, Vue's
+  `packages/chrome-extension`) or by extracting its release package. Outside Development the list is ignored and
+  WebView2's extensions stay off, also those that a development run installed into the same profile. Extensions are
+  installed into the window's WebView2 profile before its first page loads, so every window of that profile runs them;
+  WebView2 keeps one until its files change. When a folder leaves the list, the next Development run with a non-empty
+  list removes the extension that Runic installed from it; Runic records what it installed in
+  `Runic.DevToolsExtensions.json` in the user data folder and never removes an extension it did not install. A folder that WebView2 rejects is reported as `devtools-extension-failed`, and the
+  window opens without it. WKWebView, WebKitGTK and installed browsers ignore the list. Runic's CI checks that an
+  extension's content script runs in the page; whether a given extension's DevTools panel works is up to WebView2's
+  extension support, which does not cover every Chrome extension API.
 - **WKWebView** makes the page inspectable (`isInspectable`) in Development; macOS before 13.3 decides that itself.
 - **WebKitGTK.** `DevTools` controls WebKit's developer extras on both GTK hosts (and their side panels), so Inspect
   Element and the Web Inspector work in the window under `dotnet runic dev`. Since 0.21, `dotnet runic dev` also opens
@@ -259,6 +291,49 @@ See [Runic Inspect](../packages/web/vite-plugin-runic/README.md#runic-inspect),
 [Runic Inspect from another machine](../packages/web/vite-plugin-runic/README.md#runic-inspect-from-another-machine).
 `runic({ inspect: false })` turns it off.
 
+## React DevTools and Vue DevTools
+
+The development builds of the framework bindings show Runic's state in the framework's own DevTools (since 0.21):
+
+- **React DevTools.** The hooks label their values in a component's **hooks** pane: `useView` and `useSuspenseView`
+  show the View (`EditorViewModel · editor · rev 12`, or `connecting`, `failed: …`), `useField` and `useTextField` the
+  field's state (`title = "Draft" · editing · 1 error`), `useCommand` its status (`idle`, `running`, `failed: …`),
+  `useOperation` and `useLatestOperation` the operation's (`starting`, `running 40%`, `cancelling`, `succeeded`), and
+  `useBridgeConnection` the connection. React computes a label only while React DevTools shows the component.
+- **Vue DevTools.** A **Runic Views** inspector lists the page's Views by view model and route, with each View's
+  revision, presentations, state and its last 20 calls (outcome, duration, C# handler, error). The timeline has a
+  **Runic Bridge calls** layer with the start and end of each call. It needs `@vue/devtools-api` 8, an optional peer
+  dependency of `@runic-artifex/vue`: install it in the application (`npm install -D @vue/devtools-api`). Without
+  it, or without Vue DevTools on the page (the browser extension, or `vite-plugin-vue-devtools`), nothing loads.
+
+They work wherever the framework's DevTools reach the page: an installed browser with the DevTools extension, and
+`vite-plugin-vue-devtools`, which runs inside the page, in every engine. WebView2 and the WebKit engines load no
+browser extensions; there, use the framework's standalone DevTools as its documentation describes. See
+[React DevTools labels](../packages/web/react/README.md#react-devtools) and
+[Vue DevTools](../packages/web/vue/README.md#vue-devtools).
+
+## Custom object formatters
+
+In development, `@runic-artifex/views` registers custom object formatters (since 0.21), so the console and the Sources
+panel's scope and watch views show Runic objects readably instead of closures and proxies:
+
+| Object | Header | Expanded |
+| --- | --- | --- |
+| A View client (`await connectEditor()`, `view.client`) | `EditorViewModel · editor · rev 12` | view model, route, contract, revision, presentations, released, the state, and the raw client |
+| Its state (`client.snapshot`, a hook's or composable's state) | `EditorViewModel state · rev 12 {title: "Draft", …}` | each member |
+| A field controller's state (`controller.current`) | `title = "Draft" · editing · 1 error` | value, text, editing, error, errors, conflict, validating |
+
+The browser shows them only after you turn custom formatters on, once per browser profile:
+
+- **Chromium** (an installed Chrome or Edge, and WebView2's DevTools): open DevTools' **Settings** (F1, or the gear
+  icon), and under **Preferences** › **Console** check **Enable custom formatters**. Reopen DevTools.
+- **Firefox**: open DevTools' **Settings** (F1) and, under **Advanced settings**, check **Enable custom formatters**
+  (or set `devtools.custom-formatters.enabled` to `true` in `about:config`). Reopen DevTools.
+
+WebKit's Web Inspector (WKWebView, WebKitGTK, Safari) has no custom formatters and shows the objects as before. The
+production build of views contains no formatter and does not touch `window.devtoolsFormatters`. See
+[Custom object formatters](../packages/web/views/README.md#custom-object-formatters).
+
 ## The Runic DevTools extension
 
 Since 0.21, `dotnet-runic` ships an unpacked Chrome DevTools extension (Manifest V3) that shows Runic Inspect's data
@@ -344,8 +419,12 @@ None of this ships:
   build without call reporting, `console.createTask`, or trace context. `bun build` bundles the development build
   unless you pass `--production` or set `NODE_ENV=production`; the Views MSBuild targets set `NODE_ENV=production` for
   a Release build and `dotnet publish`. See [Development build](../packages/web/views/README.md#development-build).
+- Custom object formatters exist only in the development build of views.
+- `@runic-artifex/react` and `@runic-artifex/vue` have the same two builds (since 0.21): only the development build
+  labels the hooks for React DevTools or adds the Vue DevTools inspector, and only it imports `@vue/devtools-api`.
 - The source map stays in `obj`: it is not in generated TypeScript, build or publish output, or a package.
-- Outside Development, a Runic Desktop window has no developer tools in the window, replies carry no handler timing,
+- Outside Development, a Runic Desktop window has no developer tools in the window, no Open DevTools item and no
+  browser extensions (`DevToolsExtensions` is ignored), replies carry no handler timing,
   and failures carry no exception detail. A remote debugging endpoint that the process's environment asks for is the
   exception: see [the browser's developer tools per engine](#the-browsers-developer-tools-per-engine). Do not ship
   with `DOTNET_ENVIRONMENT=Development`; see the

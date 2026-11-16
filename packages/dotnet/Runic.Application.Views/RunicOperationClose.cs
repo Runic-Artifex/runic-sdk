@@ -128,7 +128,7 @@ public sealed record RunicCloseDrain
     public TimeSpan Timeout { get; }
 
     /// <summary>Whether the window stays visible after a decided close: every drain but <see cref="None"/>.</summary>
-    public bool KeepsWindow => Timeout != TimeSpan.Zero;
+    public bool KeepWindow => Timeout != TimeSpan.Zero;
 }
 
 // The registration of IRunicWindowContext.DrainOnClose's default implementation, which drains nothing.

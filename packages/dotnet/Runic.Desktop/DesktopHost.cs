@@ -115,14 +115,14 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is <see langword="null"/>.</exception>
     /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask NoteRecentDocumentAsync(string path, CancellationToken cancellationToken = default)
+    public ValueTask AddRecentDocumentAsync(string path, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(path);
         ValidateDocumentPath(path, nameof(path));
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
         return OperatingSystem.IsMacOS()
-            ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken)
+            ? MacOsWkWebViewHost.AddRecentDocumentAsync(path, cancellationToken)
             : IgnoreResultAsync(RecentDocuments.Shared.AddAsync(path, cancellationToken));
     }
 
@@ -220,6 +220,9 @@ public sealed class DesktopHost : IAsyncDisposable
     }
 
     private IReadOnlyList<string> _spellCheckingLanguages;
+
+    // DesktopHostOptions.DevToolsExtensions, for the windows' WebView2 environments.
+    internal IReadOnlyList<string> DevToolsExtensions => _options.DevToolsExtensions;
 
     private int _colorScheme;
 
@@ -960,6 +963,7 @@ public sealed class DesktopHost : IAsyncDisposable
         _ = DesktopMenuBar.Check(options.MenuBar, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
         options.StandardMenuTitles?.Validate();
         _ = CheckSpellCheckingLanguages(options.SpellCheckingLanguages, nameof(options));
+        Internal.DevToolsExtensionFolders.Validate(options.DevToolsExtensions, nameof(options));
         if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
         {
             throw new ArgumentOutOfRangeException(

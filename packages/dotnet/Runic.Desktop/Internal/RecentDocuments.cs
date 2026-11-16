@@ -7,7 +7,7 @@ using Runic.Platform;
 namespace Runic.Desktop.Internal;
 
 // B5: the application's recent documents on every desktop (IDesktopRecentDocuments). One implementation, which
-// DesktopHost.NoteRecentDocumentAsync and ClearRecentDocumentsAsync and the Views hosts' service share.
+// DesktopHost.AddRecentDocumentAsync and ClearRecentDocumentsAsync and the Views hosts' service share.
 // - macOS: NSDocumentController on the main thread (MacOsWkWebViewHost.Documents).
 // - Windows: SHAddToRecentDocs(SHARD_PATHW), which also fills the application's Jump List Recent category where it is
 //   registered for the file type. Clearing removes the application's Jump List destinations
@@ -58,7 +58,7 @@ internal sealed partial class RecentDocuments : IDesktopRecentDocuments, IDeskto
         if (_xbelPath is not null) return await Xbel.AddAsync(_xbelPath, _application, path, cancellationToken).ConfigureAwait(false);
         if (OperatingSystem.IsMacOS())
         {
-            await MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken).ConfigureAwait(false);
+            await MacOsWkWebViewHost.AddRecentDocumentAsync(path, cancellationToken).ConfigureAwait(false);
             return Done;
         }
         if (OperatingSystem.IsWindows()) return await Windows.AddAsync(path).ConfigureAwait(false);

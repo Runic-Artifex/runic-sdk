@@ -16,7 +16,7 @@ namespace Runic.Application.Views.Desktop;
 /// <remarks>
 /// <para>
 /// The host owns the window's frame, placement and activation; the guest owns its page, which the window loads from the
-/// guest's loopback address, and decides about its close. <see cref="Presentation"/> is the native window: the host can
+/// guest's loopback address, and decides about its close. <see cref="DesktopWindow"/> is the native window: the host can
 /// place, present and observe it as any of its windows. A user's close, and <see cref="RequestCloseAsync"/>, ask the guest
 /// first; the window closes when the guest's Window has closed, and <see cref="Closed"/> completes.
 /// </para>
@@ -69,7 +69,7 @@ public sealed class RunicHostedWindow
     /// The window has not opened yet, or it shows in a region (<see cref="PresentationKind"/>), which has no native window
     /// of its own: see <see cref="Region"/>.
     /// </exception>
-    public DesktopWindow Presentation => Region is not null
+    public DesktopWindow DesktopWindow => Region is not null
         ? throw new InvalidOperationException("The window shows in a region of a host page, which has no native window of its own; see Region.")
         : _presentation ?? throw new InvalidOperationException("The window has not opened yet.");
 

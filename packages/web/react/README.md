@@ -641,6 +641,32 @@ function Shell({ children }: { readonly children: ReactNode }) {
 }
 ```
 
+## React DevTools
+
+In development the hooks label their values in React DevTools' **hooks** pane (since 0.21), instead of showing
+opaque objects:
+
+| Hook | Label |
+| --- | --- |
+| `useView`, `useSuspenseView`, `useViewState` | The View: `EditorViewModel · editor · rev 12` (` · released` after its client was released), or `connecting`, `no View`, `failed: …` |
+| `useField` | The field: `title = "Draft" · editing · validating · conflict · failed: … · 2 errors` (the parts that apply) |
+| `useTextField` | `text = "Draft" · editing` |
+| `useCommand` | `idle`, `running`, `failed: …` or `declared failure` |
+| `useOperation`, `useLatestOperation` | `idle`, `starting`, `running 40%`, `cancelling`, `succeeded`, `failed: …`, `cancelled` (` · blocked` while admission is uncertain) |
+| `useBridgeConnection` | The connection state, such as `connected` |
+
+A label shows a value's preview (a string up to 40 characters, a number, `Array(3)`, `{…}`), not the whole value: the
+state itself stays in the hook's `SyncExternalStore` entry. React computes a label only while React DevTools shows the
+component. The package has a development build, like `@runic-artifex/views`
+([Development build](../views/README.md#development-build)): the `development` export condition, which `vite dev` and
+Vitest resolve, labels the hooks, and the production build has no labels and does not call `useDebugValue`. See
+[the debugging guide](../../../docs/debugging.md#react-devtools-and-vue-devtools).
+
+In the browser's console, `view.client` and `view.state` show as
+`EditorViewModel · editor · rev 12` and `EditorViewModel state · rev 12 {…}` once
+custom formatters are enabled in DevTools; see
+[Custom object formatters](../views/README.md#custom-object-formatters).
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

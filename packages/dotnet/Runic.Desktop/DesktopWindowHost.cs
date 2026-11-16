@@ -119,7 +119,7 @@ public interface IDesktopWindowStateHost : IDesktopWindowHost
 /// <see cref="DesktopWindow.SetMinimumSizeAsync"/> fail with <c>window-capability-unavailable</c>.
 /// </para>
 /// </remarks>
-public interface IDesktopWindowBoundsHost : IDesktopWindowHost
+public interface IDesktopBoundsWindowHost : IDesktopWindowHost
 {
     /// <summary>Moves and resizes the window in one native operation, so it is never shown moved but not resized.</summary>
     /// <param name="bounds">
@@ -148,8 +148,8 @@ public interface IDesktopWindowBoundsHost : IDesktopWindowHost
 /// </summary>
 /// <remarks>
 /// <para>
-/// Runic Desktop finds it by type, like <see cref="IDesktopWindowBoundsHost"/>, and calls its members only when
-/// <see cref="IDesktopWindowHost.Capabilities"/> includes <see cref="DesktopWindowCapabilities.WindowPlacement"/>. Each
+/// Runic Desktop finds it by type, like <see cref="IDesktopBoundsWindowHost"/>, and calls its members only when
+/// <see cref="IDesktopWindowHost.Capabilities"/> includes <see cref="DesktopWindowCapabilities.Placement"/>. Each
 /// member runs on the window's own thread and completes when the window has been asked; report the result through
 /// <see cref="IDesktopWindowStateHost.StateChanged"/>, with <see cref="DesktopWindowState.Placement"/> in the units the
 /// host applies at open (<see cref="DesktopWindowHostOptions.Placement"/>).
@@ -161,7 +161,7 @@ public interface IDesktopWindowBoundsHost : IDesktopWindowHost
 /// <c>window-capability-unavailable</c>.
 /// </para>
 /// </remarks>
-public interface IDesktopWindowShowStateHost : IDesktopWindowHost
+public interface IDesktopShowStateWindowHost : IDesktopWindowHost
 {
     /// <summary>Maximizes the window; does nothing when it already is.</summary>
     /// <param name="cancellationToken">Cancels the queued native work.</param>
@@ -199,6 +199,7 @@ public interface IDesktopWindowShowStateHost : IDesktopWindowHost
 
 /// <summary>An optional native host that enters full screen and places its window on a chosen monitor.</summary>
 /// <remarks>
+/// <para>
 /// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>. Report
 /// <see cref="DesktopWindowCapabilities.FullScreen"/> and <see cref="DesktopWindowCapabilities.MonitorPlacement"/> in
 /// <see cref="IDesktopWindowHost.Capabilities"/> for the operations the window supports; Runic Desktop calls a member only
@@ -206,6 +207,11 @@ public interface IDesktopWindowShowStateHost : IDesktopWindowHost
 /// <see cref="DesktopWindowPlacement.FullScreen"/> placement, and report <see cref="DesktopWindowState.IsFullScreen"/>,
 /// <see cref="DesktopWindowState.MonitorId"/> and <see cref="DesktopWindowPlacement.FullScreen"/> in the state. Monitor
 /// identifiers are those of <see cref="IDesktopWindowHostFactory.Monitors"/>.
+/// </para>
+/// <para>
+/// It covers the monitor and full screen only. Maximize, restore and a saved placement
+/// (<see cref="IDesktopShowStateWindowHost.SetPlacementAsync"/>) are on <see cref="IDesktopShowStateWindowHost"/>.
+/// </para>
 /// </remarks>
 public interface IDesktopPlacementWindowHost : IDesktopWindowHost
 {
@@ -766,27 +772,27 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             : ValueTask.FromException(new NotSupportedException("This window host cannot place its window on a monitor."));
 
     public ValueTask SetBoundsAsync(DesktopWindowBounds bounds, CancellationToken cancellationToken = default) =>
-        _host is IDesktopWindowBoundsHost boundsHost
+        _host is IDesktopBoundsWindowHost boundsHost
             ? boundsHost.SetBoundsAsync(bounds, cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot set its bounds in one operation."));
 
     public ValueTask SetMinimumSizeAsync(int width, int height, CancellationToken cancellationToken = default) =>
-        _host is IDesktopWindowBoundsHost boundsHost
+        _host is IDesktopBoundsWindowHost boundsHost
             ? boundsHost.SetMinimumSizeAsync(width, height, cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot change its minimum size."));
 
     public ValueTask ShowMaximizedAsync(CancellationToken cancellationToken = default) =>
-        _host is IDesktopWindowShowStateHost showStateHost
+        _host is IDesktopShowStateWindowHost showStateHost
             ? showStateHost.MaximizeAsync(cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot maximize its window on request."));
 
     public ValueTask ShowNormalAsync(CancellationToken cancellationToken = default) =>
-        _host is IDesktopWindowShowStateHost showStateHost
+        _host is IDesktopShowStateWindowHost showStateHost
             ? showStateHost.RestoreAsync(cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot restore its window on request."));
 
     public ValueTask SetPlacementAsync(DesktopWindowPlacement placement, CancellationToken cancellationToken = default) =>
-        _host is IDesktopWindowShowStateHost showStateHost
+        _host is IDesktopShowStateWindowHost showStateHost
             ? showStateHost.SetPlacementAsync(placement, cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot take a placement while it is open."));
 

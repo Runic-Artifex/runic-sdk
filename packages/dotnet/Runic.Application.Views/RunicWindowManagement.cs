@@ -119,17 +119,34 @@ public interface IRunicWindowResult<in TResult>
     ValueTask<bool> CompleteAsync(TResult result, CancellationToken cancellationToken = default);
 }
 
+/// <summary>What happened to a Window in <see cref="IRunicWindowService.WindowsChanged"/>.</summary>
+/// <remarks>
+/// An open set: a minor release may add kinds of change, such as a Window whose owner changed. A handler that switches
+/// over it ignores a value it does not know, with a default arm.
+/// </remarks>
+public enum RunicWindowsChange
+{
+    /// <summary>The Window opened and joined <see cref="IRunicWindowService.Windows"/>.</summary>
+    Opened,
+
+    /// <summary>The Window's close started and it left <see cref="IRunicWindowService.Windows"/>.</summary>
+    Closed,
+}
+
 /// <summary>A Window that opened or closed, for <see cref="IRunicWindowService.WindowsChanged"/>.</summary>
 /// <param name="window">The Window.</param>
-/// <param name="opened"><see langword="true"/> when it opened; <see langword="false"/> when its close started.</param>
+/// <param name="change">What happened to it.</param>
 /// <param name="windows">The open Windows after this change.</param>
-public sealed class RunicWindowsChangedEventArgs(IRunicWindow window, bool opened, IReadOnlyList<IRunicWindow> windows) : EventArgs
+public sealed class RunicWindowsChangedEventArgs(IRunicWindow window, RunicWindowsChange change, IReadOnlyList<IRunicWindow> windows) : EventArgs
 {
-    /// <summary>The Window that opened or started closing.</summary>
+    /// <summary>The Window that changed.</summary>
     public IRunicWindow Window { get; } = window ?? throw new ArgumentNullException(nameof(window));
 
-    /// <summary><see langword="true"/> when <see cref="Window"/> opened; <see langword="false"/> when its close started.</summary>
-    public bool Opened { get; } = opened;
+    /// <summary>
+    /// What happened to <see cref="Window"/>: <see cref="RunicWindowsChange.Opened"/>, or <see cref="RunicWindowsChange.Closed"/>
+    /// when its close started. An open set (<see cref="RunicWindowsChange"/>).
+    /// </summary>
+    public RunicWindowsChange Change { get; } = change;
 
     /// <summary>The open Windows right after this change, in the order they opened. Each event has its own list.</summary>
     public IReadOnlyList<IRunicWindow> Windows { get; } = windows ?? throw new ArgumentNullException(nameof(windows));

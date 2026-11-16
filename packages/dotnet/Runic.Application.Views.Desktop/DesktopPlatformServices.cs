@@ -812,7 +812,7 @@ public static partial class DesktopPlatformServices
     /// macOS adds them to Open Recent and the Dock menu (<c>NSDocumentController</c>, on the main thread that Runic
     /// Desktop's event loop serves), Windows to Recent items and the application's Jump List (<c>SHAddToRecentDocs</c>),
     /// and Linux to the freedesktop.org <c>recently-used.xbel</c> that GTK and KDE read, with either toolkit and without
-    /// loading GTK. The same as <c>DesktopHost.NoteRecentDocumentAsync</c> and <c>ClearRecentDocumentsAsync</c>, with
+    /// loading GTK. The same as <c>DesktopHost.AddRecentDocumentAsync</c> and <c>ClearRecentDocumentsAsync</c>, with
     /// their outcome. It needs no window. Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, whose Windows are shown in a
     /// browser that may run on another computer, every request reports
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. The instance that

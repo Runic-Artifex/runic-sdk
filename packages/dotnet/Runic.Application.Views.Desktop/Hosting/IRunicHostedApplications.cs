@@ -22,7 +22,7 @@ namespace Runic.Application.Views.Desktop;
 /// <para>
 /// Each <see cref="StartAsync"/> starts a guest process of its own, which serves this host session only. The guest must
 /// support hosted mode through a parameter it defines (<see cref="RunicGuestOptions"/>), which the start information
-/// names. For each of its Windows the host opens a native window (<see cref="RunicHostedWindow.Presentation"/>) that
+/// names. For each of its Windows the host opens a native window (<see cref="RunicHostedWindow.DesktopWindow"/>) that
 /// loads the guest's page from the guest's own loopback address, with a web view data store of the session's own that is
 /// not persisted, and without this application's credentials. <see cref="RunicHostedApplicationOptions.Policy"/> decides
 /// which windows open and what they may do; by default every window opens.

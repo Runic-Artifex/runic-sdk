@@ -16,11 +16,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "development": "./dist/development/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./experimental": {
       "types": "./dist/experimental.d.ts",
+      "development": "./dist/development/experimental.js",
       "import": "./dist/experimental.js",
       "default": "./dist/experimental.js"
     },
@@ -28,7 +30,7 @@
   },
   "scripts": {
     "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
-    "build": "bun run --bun clean && tsc -p tsconfig.build.json",
+    "build": "bun run --bun clean && tsc -p tsconfig.build.json && bun scripts/build.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "bun run --bun build && tsc -p tsconfig.json --noEmit && vitest run",
     "pack:check": "bun pm pack --dry-run"

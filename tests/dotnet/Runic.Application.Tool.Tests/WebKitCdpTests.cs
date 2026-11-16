@@ -37,6 +37,10 @@ internal sealed partial class ToolTests
         (ulong connection, ulong target, string message) = InspectorWire.ReadMessageToFrontend(parameters);
         Equal((7UL, 9UL, "{\"id\":1}"), (connection, target, message));
         Equal("SetupInspectorClient", InspectorWire.ReadBody(InspectorWire.SetupInspectorClient().AsSpan(InspectorWire.HeaderSize)).Name);
+        // WebKit's hash of its protocol description: SHA-1 in upper-case hex, up to the byte string's NUL.
+        Equal("A9993E364706816ABA3E25717850C26C9CD0D89D", InspectorWire.BackendCommandsHash("abc\0"u8));
+        Equal("A9993E364706816ABA3E25717850C26C9CD0D89D\0",
+            Encoding.ASCII.GetString(InspectorWire.ReadBody(InspectorWire.SetupInspectorClient("A9993E364706816ABA3E25717850C26C9CD0D89D").AsSpan(InspectorWire.HeaderSize)).Parameters));
 
         // Big-endian parameters and impossible sizes are refused.
         byte[] bigEndian = (byte[])frame.Clone();
@@ -267,6 +271,43 @@ internal sealed partial class ToolTests
 
         await session.TranslateEventAsync("Debugger.globalObjectCleared", []);
         Equal("Runtime.executionContextsCleared", webKit.Emitted[^1].Method);
+    }
+
+    [Test, DisplayName("a breakpoint that WebKit sets in a script parsed later reaches the debugger, as with Chromium")]
+    public async Task ResolvedBreakpointsReachTheDebugger()
+    {
+        // A breakpoint set while a reload replaced the script: WebKit has no location yet, and binds it once the new
+        // script is parsed. js-debug shows the breakpoint unverified until it hears of that location.
+        const string id = "http://h/src/App.tsx:68:13";
+        var webKit = new FakeWebKit
+        {
+            Answer = static (method, _) => method == "Debugger.setBreakpointByUrl" ? Json($$"""{"breakpointId":"{{id}}","locations":[]}""") : [],
+        };
+        CdpPageSession session = webKit.Session();
+        JsonObject set = await session.HandleAsync("Debugger.setBreakpointByUrl", Json("""{"url":"http://h/src/App.tsx","lineNumber":68,"columnNumber":13}"""));
+        Equal(0, set["locations"]!.AsArray().Count);
+        const string parsed = """{"scriptId":"4673","url":"http://h/src/App.tsx","startLine":0,"startColumn":0,"endLine":142,"endColumn":0,"sourceMapURL":"data:x"}""";
+        const string resolved = $$$"""{"breakpointId":"{{{id}}}","location":{"scriptId":"4673","lineNumber":70,"columnNumber":19}}""";
+        await session.TranslateEventAsync("Debugger.scriptParsed", Json(parsed));
+        string scriptId = webKit.Emitted[^1].Parameters["scriptId"]!.GetValue<string>();
+        await session.TranslateEventAsync("Debugger.breakpointResolved", Json(resolved));
+        (string method, JsonObject parameters) = webKit.Emitted[^1];
+        Equal(("Debugger.breakpointResolved", id, scriptId, 70, 19), (method, parameters["breakpointId"]!.GetValue<string>(),
+            parameters["location"]!["scriptId"]!.GetValue<string>(), parameters["location"]!["lineNumber"]!.GetValue<int>(),
+            parameters["location"]!["columnNumber"]!.GetValue<int>()));
+
+        // Not one that the debugger did not set.
+        int emitted = webKit.Emitted.Count;
+        await session.TranslateEventAsync("Debugger.breakpointResolved", Json("""{"breakpointId":"other","location":{"scriptId":"4673","lineNumber":1,"columnNumber":0}}"""));
+        Equal(emitted, webKit.Emitted.Count);
+
+        // In the replay of Debugger.enable, after the replayed scripts.
+        await session.TranslateEventAsync(CdpPageSession.ReplayStart, []);
+        await session.TranslateEventAsync("Debugger.scriptParsed", Json(parsed));
+        await session.TranslateEventAsync("Debugger.breakpointResolved", Json(resolved));
+        Equal(emitted, webKit.Emitted.Count);
+        await session.TranslateEventAsync(CdpPageSession.ReplayEnd, []);
+        SequenceEqual(["Debugger.scriptParsed", "Debugger.breakpointResolved"], [.. webKit.Emitted.Skip(emitted).Select(static e => e.Method)]);
     }
 
     [Test, DisplayName("the replay on attach is in creation order, without stale or superseded scripts")]
@@ -864,11 +905,210 @@ internal sealed partial class ToolTests
         lock (reported) Equal(0, reported.Count);
     }
 
-    // WebKit's remote inspector server, as far as one page and Runtime.evaluate go.
+    [Test, DisplayName("another client taking WebKit's inspector detaches the debugger, and the old connection sends nothing more")]
+    public async Task ReplacedInspectorConnectionDetachesTheDebugger()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        using var server = new FakeInspectorServer();
+        // The machine's TCP tables, without the other client's connection until it holds the slot.
+        // -1: nothing hidden (a listener's row has remote port 0).
+        int hidden = -1;
+        LoopbackSockets sockets = new(path => string.Join('\n', File.ReadAllText(path).Split('\n').Where(line =>
+            LoopbackSockets.Parse("x\n" + line).SingleOrDefault() is not { Local: not null } entry
+            || (entry.Local.Port != Volatile.Read(ref hidden) && entry.Remote.Port != Volatile.Read(ref hidden)))), LoopbackSockets.Current!.User);
+        var lines = new List<string>();
+        var lineWritten = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port, sockets, line =>
+            {
+                lock (lines) lines.Add(line);
+                lineWritten.TrySetResult(line);
+            })
+        {
+            WatchInterval = TimeSpan.FromMilliseconds(100),
+            ProbeTimeout = TestTimeouts.Scale(TimeSpan.FromMilliseconds(500)),
+        };
+        True(endpoint.Start(0), "the endpoint listens");
+        using var ide = await CdpSocket.ConnectAsync(endpoint.Port!.Value);
+        string target = (await ide.CommandAsync("Target.getTargets"))["result"]!["targetInfos"]![0]!["targetId"]!.GetValue<string>();
+        string session = (await ide.CommandAsync("Target.attachToTarget", new() { ["targetId"] = target, ["flatten"] = true }))["result"]!["sessionId"]!.GetValue<string>();
+        Equal(42, (await ide.CommandAsync("Runtime.evaluate", new() { ["expression"] = "6 * 7" }, session))["result"]!["result"]!["value"]!.GetValue<int>());
+
+        // Another client sets up: WebKit gives it the slot and tells the adapter nothing. The adapter sees its connection
+        // only once it holds the slot, so every probe goes to the other client.
+        using var other = new TcpClient(AddressFamily.InterNetwork);
+        other.Client.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        int otherPort = ((IPEndPoint)other.Client.LocalEndPoint!).Port;
+        Volatile.Write(ref hidden, otherPort);
+        await other.ConnectAsync(IPAddress.Loopback, server.Port);
+        await other.GetStream().WriteAsync(InspectorWire.SetupInspectorClient());
+        await server.WaitForHolderAsync(otherPort);
+        Volatile.Write(ref hidden, -1);
+        JsonObject detached = await ide.EventAsync("Inspector.detached");
+        Equal((session, CdpClient.ReplacedReason), (detached["sessionId"]?.GetValue<string>(), detached["params"]!["reason"]!.GetValue<string>()));
+        Equal(session, (await ide.EventAsync("Target.detachedFromTarget"))["params"]!["sessionId"]!.GetValue<string>());
+        // dev prints its line after the sessions ended.
+        Equal(WebKitDebugEndpoint.ReplacedLine($"127.0.0.1:{server.Port}"), await lineWritten.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)));
+
+        // Until the other client leaves and afterwards, the replaced connection sent only its probe: no Setup that could
+        // meet the empty slot, no FrontendDidClose that could end the other client's session.
+        other.Close();
+        await server.WaitForClientsAsync(0);
+        lock (server.ReceivedWithoutSlot) SequenceEqual(["SendMessageToBackend"], server.ReceivedWithoutSlot.Distinct().ToList());
+        // The debugger that was attached does not reconnect the endpoint by itself.
+        Equal(0, (await ide.CommandAsync("Target.getTargets"))["result"]!["targetInfos"]!.AsArray().Count);
+        Equal(2, server.Connections);
+
+        // The IDE attaches again: dev connects anew and the page works; WebKit never got a Setup without a client.
+        using var again = await CdpSocket.ConnectAsync(endpoint.Port.Value);
+        string next = (await again.CommandAsync("Target.getTargets"))["result"]!["targetInfos"]![0]!["targetId"]!.GetValue<string>();
+        True(target != next, "the page has a new target ID on the new connection");
+        string resumed = (await again.CommandAsync("Target.attachToTarget", new() { ["targetId"] = next, ["flatten"] = true }))["result"]!["sessionId"]!.GetValue<string>();
+        Equal(42, (await again.CommandAsync("Runtime.evaluate", new() { ["expression"] = "6 * 7" }, resumed))["result"]!["result"]!["value"]!.GetValue<int>());
+        False(server.SetupWithoutClient, "a Setup reached WebKit's empty client slot");
+        lock (lines) Equal(1, lines.Count);
+    }
+
+    [Test, DisplayName("a Setup on a connection that lost WebKit's slot unnoticed claims the slot first")]
+    public async Task SetupClaimsTheInspectorSlotFirst()
+    {
+        using var server = new FakeInspectorServer();
+        // Without the TCP tables the adapter cannot tell that it was replaced.
+        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port, null, static _ => { });
+        True(endpoint.Start(0), "the endpoint listens");
+        using var ide = await CdpSocket.ConnectAsync(endpoint.Port!.Value);
+        string target = (await ide.CommandAsync("Target.getTargets"))["result"]!["targetInfos"]![0]!["targetId"]!.GetValue<string>();
+        await ide.CommandAsync("Target.attachToTarget", new() { ["targetId"] = target, ["flatten"] = true });
+
+        // Another client takes the slot and leaves: WebKit's slot is empty, and a plain Setup would crash the Window.
+        using (var other = new TcpClient())
+        {
+            await other.ConnectAsync(IPAddress.Loopback, server.Port);
+            await other.GetStream().WriteAsync(InspectorWire.SetupInspectorClient());
+            await server.WaitForHolderAsync(((IPEndPoint)other.Client.LocalEndPoint!).Port);
+        }
+        await server.WaitForClientsAsync(1);
+
+        string second = (await ide.CommandAsync("Target.attachToTarget", new() { ["targetId"] = target, ["flatten"] = true }))["result"]!["sessionId"]!.GetValue<string>();
+        Equal(42, (await ide.CommandAsync("Runtime.evaluate", new() { ["expression"] = "6 * 7" }, second))["result"]!["result"]!["value"]!.GetValue<int>());
+        False(server.SetupWithoutClient, "a Setup reached WebKit's empty client slot");
+        // The claim's answer is the empty protocol description: the adapter keeps the one it has.
+        True(server.ShortDescriptions > 0, "the claim used WebKit's hash of the protocol description");
+    }
+
+    [Test, DisplayName("the inspector server's peers come from Linux's TCP tables, both ends and closed connections included")]
+    public void LoopbackSocketsListTheInspectorServersPeers()
+    {
+        // 127.0.0.1:45349 (B125) listening, the Window's own connection (AF7C), another client in TIME_WAIT (C86E) and a
+        // connection elsewhere that uses the same port number (to 10.0.0.1).
+        const string table = """
+              sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+               0: 0100007F:B125 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 36440807 1 0 100 0 0 10 0
+               1: 0100007F:B125 0100007F:AF7C 01 00000000:00000000 00:00000000 00000000  1000        0 36446005 1 0 20 4 30 10 -1
+               2: 0100007F:AF7C 0100007F:B125 01 00000000:00000000 00:00000000 00000000  1000        0 36446004 1 0 20 4 30 10 -1
+               3: 0100007F:C86E 0100007F:B125 06 00000000:00000000 03:00001234 00000000     0        0 0 3 0
+               4: 0100007F:D000 0100000A:B125 01 00000000:00000000 00:00000000 00000000  1000        0 36446010 1 0 20 4 30 10 -1
+            """;
+        SequenceEqual([0xAF7C, 0xC86E], new LoopbackSockets(path => path.EndsWith("tcp", StringComparison.Ordinal) ? table : null, 1000)
+            .Peers(IPAddress.Loopback, 0xB125).Order().ToList());
+        const string table6 = """
+              sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+               0: 0000000000000000FFFF00000100007F:9C40 0000000000000000FFFF00000100007F:B125 01 00000000:00000000 00:00000000 00000000  1000        0 1 1 0 20 4 30 10 -1
+            """;
+        SequenceEqual([0x9C40], new LoopbackSockets(path => path.EndsWith("tcp6", StringComparison.Ordinal) ? table6 : null, 1000)
+            .Peers(IPAddress.Loopback, 0xB125).ToList());
+    }
+
+    // A CDP WebSocket of a debugger at the endpoint's browser target, with its commands' replies and its events.
+    private sealed class CdpSocket : IDisposable
+    {
+        private readonly ClientWebSocket _socket = new();
+        private readonly List<JsonObject> _received = [];
+        private readonly SemaphoreSlim _arrived = new(0);
+        private int _id;
+
+        internal static async Task<CdpSocket> ConnectAsync(int port)
+        {
+            using var http = new HttpClient();
+            string browser = JsonNode.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version"))!["webSocketDebuggerUrl"]!.GetValue<string>();
+            var socket = new CdpSocket();
+            await socket._socket.ConnectAsync(new Uri(browser), CancellationToken.None);
+            _ = Task.Run(socket.ReceiveAsync);
+            return socket;
+        }
+
+        private async Task ReceiveAsync()
+        {
+            var buffer = new byte[1 << 16];
+            try
+            {
+                while (_socket.State == WebSocketState.Open)
+                {
+                    WebSocketReceiveResult received = await _socket.ReceiveAsync(buffer, CancellationToken.None);
+                    if (received.MessageType == WebSocketMessageType.Close) return;
+                    lock (_received) _received.Add(JsonNode.Parse(buffer.AsSpan(0, received.Count))!.AsObject());
+                    _arrived.Release();
+                }
+            }
+            catch (Exception error) when (error is WebSocketException or ObjectDisposedException)
+            {
+            }
+        }
+
+        internal async Task<JsonObject> CommandAsync(string method, JsonObject? parameters = null, string? sessionId = null)
+        {
+            int id = Interlocked.Increment(ref _id);
+            var command = new JsonObject { ["id"] = id, ["method"] = method, ["params"] = parameters ?? [] };
+            if (sessionId is not null) command["sessionId"] = sessionId;
+            await _socket.SendAsync(Encoding.UTF8.GetBytes(command.ToJsonString()), WebSocketMessageType.Text, true, CancellationToken.None);
+            return await WaitAsync(message => message["id"]?.GetValue<int>() == id, $"the answer to {method}");
+        }
+
+        internal Task<JsonObject> EventAsync(string method) => WaitAsync(message => message["method"]?.GetValue<string>() == method, method);
+
+        private async Task<JsonObject> WaitAsync(Func<JsonObject, bool> match, string what)
+        {
+            using CancellationTokenSource timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
+            while (true)
+            {
+                lock (_received)
+                {
+                    if (_received.FirstOrDefault(match) is { } found)
+                    {
+                        _received.Remove(found);
+                        return found;
+                    }
+                }
+                try
+                {
+                    await _arrived.WaitAsync(timeout.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new TimeoutException($"No {what} within {TestTimeouts.Scale(TimeSpan.FromSeconds(20)).TotalSeconds} s.");
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            _socket.Dispose();
+            _arrived.Dispose();
+        }
+    }
+
+    // WebKit's remote inspector server, as far as one page and Runtime.evaluate go, with its single client slot
+    // (RemoteInspectorServer.cpp in WebKitGTK 2.54): the last client that set up gets the target list and every page's
+    // messages; when it leaves, the server closes the pages it inspected and the slot is empty, where the real server
+    // sends a Setup's page messages to no client and crashes the Window.
     private sealed class FakeInspectorServer : IDisposable
     {
+        private const string BackendCommands = "InspectorBackend.registerCommand(\"Runtime.evaluate\", null, [], []);";
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource _stop = new();
+        private readonly object _gate = new();
+        private readonly HashSet<Client> _clients = [];
+        private readonly HashSet<(ulong, ulong)> _inspected = [];
+        private Client? _holder;
 
         internal FakeInspectorServer()
         {
@@ -876,9 +1116,53 @@ internal sealed partial class ToolTests
             _ = Task.Run(ServeAsync);
         }
 
+        private sealed class Client(TcpClient connection)
+        {
+            internal TcpClient Connection { get; } = connection;
+            internal SemaphoreSlim Write { get; } = new(1, 1);
+        }
+
         internal int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
         internal List<string> Commands { get; } = [];
+
+        /// <summary>The messages from clients that did not hold the slot.</summary>
+        internal List<string> ReceivedWithoutSlot { get; } = [];
+
+        /// <summary>A Setup arrived while no client held the slot: the real server crashes the Window.</summary>
+        internal bool SetupWithoutClient { get; private set; }
+
+        /// <summary>How many clients connected so far.</summary>
+        internal int Connections { get; private set; }
+
+        /// <summary>How many SetupInspectorClient answers were empty because the client had the protocol already.</summary>
+        internal int ShortDescriptions { get; private set; }
+
+        internal async Task WaitForClientsAsync(int count)
+        {
+            for (var deadline = System.Diagnostics.Stopwatch.StartNew(); deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(5));)
+            {
+                lock (_gate)
+                {
+                    if (_clients.Count == count) return;
+                }
+                await Task.Delay(25);
+            }
+            throw new TimeoutException($"The fake inspector server did not get to {count} clients.");
+        }
+
+        internal async Task WaitForHolderAsync(int clientPort)
+        {
+            for (var deadline = System.Diagnostics.Stopwatch.StartNew(); deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(5));)
+            {
+                lock (_gate)
+                {
+                    if ((_holder?.Connection.Client.RemoteEndPoint as IPEndPoint)?.Port == clientPort) return;
+                }
+                await Task.Delay(25);
+            }
+            throw new TimeoutException("The other client did not get the slot.");
+        }
 
         private async Task ServeAsync()
         {
@@ -886,7 +1170,13 @@ internal sealed partial class ToolTests
             {
                 while (!_stop.IsCancellationRequested)
                 {
-                    TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token);
+                    TcpClient connection = await _listener.AcceptTcpClientAsync(_stop.Token);
+                    var client = new Client(connection);
+                    lock (_gate)
+                    {
+                        _clients.Add(client);
+                        Connections++;
+                    }
                     _ = Task.Run(() => ClientAsync(client));
                 }
             }
@@ -905,56 +1195,125 @@ internal sealed partial class ToolTests
             return parameters;
         }
 
-        private async Task ClientAsync(TcpClient client)
+        private static async Task SendAsync(Client? client, byte[] frame)
         {
-            using (client)
+            if (client is null) return;
+            await client.Write.WaitAsync();
+            try
             {
-                NetworkStream stream = client.GetStream();
-                var header = new byte[InspectorWire.HeaderSize];
-                try
+                await client.Connection.GetStream().WriteAsync(frame);
+            }
+            catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidOperationException)
+            {
+            }
+            finally
+            {
+                client.Write.Release();
+            }
+        }
+
+        // The page's message for the client that holds the slot, as the real server routes it.
+        private Task ToFrontendAsync(ulong connection, ulong target, string text)
+        {
+            Client? holder;
+            lock (_gate) holder = _inspected.Contains((connection, target)) ? _holder : null;
+            return SendAsync(holder, InspectorWire.Frame("SendMessageToFrontend", ThreeParts(connection, target, text)));
+        }
+
+        private async Task ClientAsync(Client client)
+        {
+            NetworkStream stream = client.Connection.GetStream();
+            var header = new byte[InspectorWire.HeaderSize];
+            try
+            {
+                while (true)
                 {
-                    while (true)
+                    await stream.ReadExactlyAsync(header);
+                    var body = new byte[InspectorWire.ReadBodySize(header)];
+                    await stream.ReadExactlyAsync(body);
+                    (string name, byte[] parameters) = InspectorWire.ReadBody(body);
+                    lock (_gate)
                     {
-                        await stream.ReadExactlyAsync(header);
-                        var body = new byte[InspectorWire.ReadBodySize(header)];
-                        await stream.ReadExactlyAsync(body);
-                        (string name, byte[] parameters) = InspectorWire.ReadBody(body);
-                        switch (name)
+                        if (name != "SetupInspectorClient" && _holder != client) lock (ReceivedWithoutSlot) ReceivedWithoutSlot.Add(name);
+                    }
+                    switch (name)
+                    {
+                        case "SetupInspectorClient":
                         {
-                            case "SetupInspectorClient":
-                                await stream.WriteAsync(InspectorWire.Frame("DidSetupInspectorClient",
-                                    Encoding.UTF8.GetBytes("InspectorBackend.registerCommand(\"Runtime.evaluate\", null, [], []);\0")));
-                                await stream.WriteAsync(InspectorWire.Frame("SetTargetList",
-                                    InspectorWire.WriteTargetList(1, [new InspectorTarget(1, 1, "WebPage", "Fake page", "http://127.0.0.1:1/index.html")])));
-                                break;
-                            case "Setup":
-                                await stream.WriteAsync(InspectorWire.Frame("SendMessageToFrontend", ThreeParts(1, 1,
-                                    """{"method":"Target.targetCreated","params":{"targetInfo":{"targetId":"page-1","type":"page"}}}""")));
-                                break;
-                            case "SendMessageToBackend":
-                                (ulong connection, ulong target, string outer) = InspectorWire.ReadMessageToFrontend(parameters);
-                                JsonObject inner = JsonNode.Parse(JsonNode.Parse(outer)!["params"]!["message"]!.GetValue<string>())!.AsObject();
-                                lock (Commands) Commands.Add(inner["method"]!.GetValue<string>());
-                                JsonObject result = inner["method"]!.GetValue<string>() == "Runtime.evaluate"
-                                    ? new JsonObject { ["result"] = new JsonObject { ["type"] = "number", ["value"] = 42 } }
-                                    : [];
-                                string dispatched = new JsonObject
+                            byte[] commands = [.. Encoding.UTF8.GetBytes(BackendCommands), 0];
+                            bool known = Encoding.ASCII.GetString(parameters).TrimEnd('\0') == InspectorWire.BackendCommandsHash(commands);
+                            lock (_gate)
+                            {
+                                _holder = client;
+                                if (known) ShortDescriptions++;
+                            }
+                            await SendAsync(client, InspectorWire.Frame("DidSetupInspectorClient", known ? [0] : commands));
+                            await SendAsync(client, InspectorWire.Frame("SetTargetList",
+                                InspectorWire.WriteTargetList(1, [new InspectorTarget(1, 1, "WebPage", "Fake page", "http://127.0.0.1:1/index.html")])));
+                            break;
+                        }
+                        case "Setup":
+                        {
+                            (ulong connection, ulong target) = (BinaryPrimitives.ReadUInt64LittleEndian(parameters), BinaryPrimitives.ReadUInt64LittleEndian(parameters.AsSpan(8)));
+                            lock (_gate)
+                            {
+                                if (_holder is null) SetupWithoutClient = true;
+                                _inspected.Add((connection, target));
+                            }
+                            await ToFrontendAsync(connection, target, """{"method":"Target.targetCreated","params":{"targetInfo":{"targetId":"page-1","type":"page"}}}""");
+                            break;
+                        }
+                        case "FrontendDidClose":
+                            lock (_gate) _inspected.Remove((BinaryPrimitives.ReadUInt64LittleEndian(parameters), BinaryPrimitives.ReadUInt64LittleEndian(parameters.AsSpan(8))));
+                            break;
+                        case "SendMessageToBackend":
+                        {
+                            (ulong connection, ulong target, string text) = InspectorWire.ReadMessageToFrontend(parameters);
+                            JsonObject outer = JsonNode.Parse(text)!.AsObject();
+                            if (outer["params"]?["message"]?.GetValue<string>() is not { } innerText)
+                            {
+                                // A command on the page's own channel, such as the adapter's probe: the UI process answers.
+                                await ToFrontendAsync(connection, target, new JsonObject
                                 {
-                                    ["method"] = "Target.dispatchMessageFromTarget",
-                                    ["params"] = new JsonObject
-                                    {
-                                        ["targetId"] = "page-1",
-                                        ["message"] = new JsonObject { ["id"] = inner["id"]!.GetValue<long>(), ["result"] = result }.ToJsonString(),
-                                    },
-                                }.ToJsonString();
-                                await stream.WriteAsync(InspectorWire.Frame("SendMessageToFrontend", ThreeParts(connection, target, dispatched)));
+                                    ["error"] = new JsonObject { ["code"] = -32601, ["message"] = "domain was not found" },
+                                    ["id"] = outer["id"]!.GetValue<long>(),
+                                }.ToJsonString());
                                 break;
+                            }
+                            JsonObject inner = JsonNode.Parse(innerText)!.AsObject();
+                            lock (Commands) Commands.Add(inner["method"]!.GetValue<string>());
+                            JsonObject result = inner["method"]!.GetValue<string>() == "Runtime.evaluate"
+                                ? new JsonObject { ["result"] = new JsonObject { ["type"] = "number", ["value"] = 42 } }
+                                : [];
+                            await ToFrontendAsync(connection, target, new JsonObject
+                            {
+                                ["method"] = "Target.dispatchMessageFromTarget",
+                                ["params"] = new JsonObject
+                                {
+                                    ["targetId"] = "page-1",
+                                    ["message"] = new JsonObject { ["id"] = inner["id"]!.GetValue<long>(), ["result"] = result }.ToJsonString(),
+                                },
+                            }.ToJsonString());
+                            break;
                         }
                     }
                 }
-                catch (Exception error) when (error is IOException or EndOfStreamException or ObjectDisposedException or InvalidOperationException)
+            }
+            catch (Exception error) when (error is IOException or EndOfStreamException or ObjectDisposedException or InvalidOperationException)
+            {
+            }
+            finally
+            {
+                lock (_gate)
                 {
+                    _clients.Remove(client);
+                    if (_holder == client)
+                    {
+                        _holder = null;
+                        _inspected.Clear();
+                    }
                 }
+                client.Connection.Dispose();
             }
         }
 

@@ -145,7 +145,7 @@ them:
 | `PositionUnavailable` | The left edge on Wayland, where an application cannot move its window; the right edge works |
 | `NoRoom` | The grown window would leave the monitor's work area, or the panel is wider than half of it. The window is never moved to make room |
 | `LoadFailed` | The panel's page did not load within `LoadTimeout` (10 seconds by default) |
-| `Closed` | `IRunicWindowPresentation` only: the Window or the panel is closed |
+| `Closed` | The Window or the panel is closed. `DesktopWindow` reports it when the window or panel closes while the request runs; one that was closed before the call throws `ObjectDisposedException` there |
 
 The enum is open: treat a reason you do not know as `Unsupported`.
 

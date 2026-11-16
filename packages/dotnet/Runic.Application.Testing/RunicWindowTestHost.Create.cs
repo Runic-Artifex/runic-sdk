@@ -177,6 +177,7 @@ public static class RunicWindowTestHost
                 Locale = options.Locale,
                 MaximumInputBytes = options.MaximumInputBytes,
                 MaximumUploadBytes = options.MaximumUploadBytes,
+                MaximumPendingUploadBytes = options.MaximumPendingUploadBytes,
                 PublicationTimeout = options.PublicationTimeout,
             }) { Services = services, Platform = services.GetService<RunicTestPlatform>(), RestoreApplicationLocale = restore };
         }

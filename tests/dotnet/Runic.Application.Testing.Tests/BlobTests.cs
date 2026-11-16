@@ -132,6 +132,17 @@ internal sealed class BlobTests
     }
 
     [Test]
+    public async Task TheHostsPendingUploadLimitAppliesToItsWindow()
+    {
+        using var host = Host(new BlobViewModel(), maximumPendingUploadBytes: 2_048);
+        await host.UploadAsync(new byte[1_500]);
+        var refused = false;
+        try { await host.UploadAsync(new byte[1_500]); }
+        catch (InvalidOperationException) { refused = true; }
+        Require(refused && host.PendingUploadCount == 1, "An upload beyond MaximumPendingUploadBytes was stored.");
+    }
+
+    [Test]
     public async Task AHelloWithBlobsGetsTheConnectionsUploadGrant()
     {
         using var host = Host(new BlobViewModel());
@@ -158,8 +169,8 @@ internal sealed class BlobTests
         var path = Path.Combine(Path.GetTempPath(), $"runic-upload-test-{Guid.NewGuid():N}");
         try
         {
-            await upload.SaveAsAsync(path);
-            Require(await File.ReadAllTextAsync(path) == "bytes", "SaveAsAsync wrote other bytes.");
+            await upload.SaveToFileAsync(path);
+            Require(await File.ReadAllTextAsync(path) == "bytes", "SaveToFileAsync wrote other bytes.");
             var claimed = false;
             try { await upload.OpenReadAsync(); }
             catch (InvalidOperationException) { claimed = true; }
@@ -250,9 +261,14 @@ internal sealed class BlobTests
     private static string Wire(RunicUpload upload) =>
         $$"""{"id":"{{upload.Id}}","name":"{{upload.FileName}}","type":"{{upload.ContentType}}","size":{{upload.Length}}}""";
 
-    private static RunicWindowTestHost<BlobViewModel> Host(BlobViewModel model, long? maximumUploadBytes = null) =>
+    private static RunicWindowTestHost<BlobViewModel> Host(BlobViewModel model, long? maximumUploadBytes = null,
+        long? maximumPendingUploadBytes = null) =>
         new(model, (transport, content, vm) => new BlobBridge(transport, vm, content: content),
-            new RunicWindowTestHostOptions { RootRoute = Route, ViewLocator = new TestViewLocator(), MaximumUploadBytes = maximumUploadBytes });
+            new RunicWindowTestHostOptions
+            {
+                RootRoute = Route, ViewLocator = new TestViewLocator(), MaximumUploadBytes = maximumUploadBytes,
+                MaximumPendingUploadBytes = maximumPendingUploadBytes,
+            });
 
     private static void Require(bool condition, string message)
     {

@@ -38,7 +38,7 @@ test("binding and generator APIs are not in the application entries; graduated A
   for (const name of Object.keys(experimental)) assert.equal(name in root, false, `${name} must not be exported from the root entry`);
   const bindings = await import("@runic-artifex/views/bindings");
   assert.deepEqual(Object.keys(bindings).sort(), [
-    "checkKeepAlive", "defaultKeepAlive", "isViewClient", "missingViewMessage", "reportMissingView", "translationsTextRevision", "viewSourceIdentity",
+    "checkKeepAlive", "defaultKeepAlive", "describeViewClient", "isViewClient", "missingViewMessage", "reportMissingView", "translationsTextRevision", "viewSourceIdentity",
     "viewSourcePreview",
   ]);
 

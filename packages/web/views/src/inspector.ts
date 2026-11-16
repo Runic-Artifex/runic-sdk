@@ -11,6 +11,8 @@ const inspectorKey = Symbol.for("runic.views.inspector");
 export type ViewInspectorEvent =
   | {
     readonly kind: "state"; readonly route: string; readonly revision: number | undefined; readonly epoch: number | undefined;
+    /** The View contract of the route, `{C# view model}:{fingerprint}` (since 0.21). */
+    readonly contract: string;
     /** How many presentations of the page show the route. */
     readonly presentations: number;
     /** The exposed state; listeners must not change it. */

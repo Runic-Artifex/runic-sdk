@@ -15,7 +15,7 @@ an application whose environment is `Development` (`DOTNET_ENVIRONMENT` or
 
 | Variable | Read by | Purpose | Development |
 | --- | --- | --- | --- |
-| `RUNIC_DEV_ALLOW` | `@runic-artifex/vite-plugin-runic`; Runic Translations' Vite plugin | Addresses, CIDR networks or host names, separated by commas or spaces, that may use Runic Inspect's data and the in-page translation editor from another machine. Adds to `runic({ allow })`. Runic Translations also reads its older name, `RUNIC_TRANSLATIONS_EDIT_ALLOW`. See [vite-plugin-runic](../packages/web/vite-plugin-runic/README.md). | Yes |
+| `RUNIC_DEV_ALLOW` | `@runic-artifex/vite-plugin-runic`; Runic Translations' Vite plugin | Addresses, CIDR networks or host names, separated by commas or spaces, that may use Runic Inspect's data and the in-page translation editor from another machine. Adds to `runic({ allow })`. See [vite-plugin-runic](../packages/web/vite-plugin-runic/README.md). | Yes |
 | `RUNIC_DEV_CDP_TRACE` | `dotnet runic dev` (Linux) | A file to write the traffic of the JavaScript debugger adapter to, for reporting a debugger that does not work with it. The file holds the page's data. | Yes |
 | `RUNIC_APPLICATION_VITE_DEBUG` | `dotnet runic dev` | Passed to the Vite development server as `DEBUG`, in place of `DEBUG` itself, which `dev` keeps away from the build. | Yes |
 | `RUNIC_LOCALE` | `runic-app` template's `Program.cs` | The application's language at start (`RUNIC_LOCALE=de dotnet run`). Application code, which the application may change. | No |

@@ -62,7 +62,7 @@ internal sealed class CdpClient : IAsyncDisposable
         {
             if (_directPage is not null)
             {
-                InspectorTarget target = (await _endpoint.ListPagesAsync(linked.Token).ConfigureAwait(false))
+                InspectorTarget target = (await _endpoint.ListPagesAsync(linked.Token, this).ConfigureAwait(false))
                     .FirstOrDefault(page => page.PageId == _directPage)
                     ?? throw new IOException($"No page {_directPage}.");
                 await AttachAsync(target, "", linked.Token).ConfigureAwait(false);
@@ -146,12 +146,12 @@ internal sealed class CdpClient : IAsyncDisposable
             case "Target.setDiscoverTargets":
                 lock (_gate) _discover = p["discover"]?.GetValue<bool>() ?? false;
                 // Connects to the Window's inspector if needed, so the pages are known.
-                await _endpoint.ListPagesAsync(cancellationToken).ConfigureAwait(false);
+                await _endpoint.ListPagesAsync(cancellationToken, this).ConfigureAwait(false);
                 if (_discover) await TargetsChangedAsync().ConfigureAwait(false);
                 return [];
             case "Target.getTargets":
             {
-                IReadOnlyList<InspectorTarget> pages = await _endpoint.ListPagesAsync(cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<InspectorTarget> pages = await _endpoint.ListPagesAsync(cancellationToken, this).ConfigureAwait(false);
                 return new() { ["targetInfos"] = new JsonArray([.. pages.Select(page => (JsonNode)TargetInfo(page, IsAttached(page)))]) };
             }
             case "Target.getTargetInfo" when p["targetId"] is null:
@@ -159,7 +159,7 @@ internal sealed class CdpClient : IAsyncDisposable
             case "Target.attachToTarget":
             {
                 string targetId = p["targetId"]?.GetValue<string>() ?? "";
-                InspectorTarget target = (await _endpoint.ListPagesAsync(cancellationToken).ConfigureAwait(false))
+                InspectorTarget target = (await _endpoint.ListPagesAsync(cancellationToken, this).ConfigureAwait(false))
                     .FirstOrDefault(page => page.PageId == targetId)
                     ?? throw new CdpException(CdpException.InvalidParams, "No target with given id found");
                 string sessionId = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
@@ -222,7 +222,8 @@ internal sealed class CdpClient : IAsyncDisposable
     /// <summary>
     /// The page went away. When its Window restarts (<c>dotnet watch</c>), the session waits for the new Window's page and
     /// continues on it like after a reload, so the debugger stays attached; a page closed in a Window that keeps running
-    /// ends its session.
+    /// ends its session. When another client took WebKit's inspector, the session ends as Chrome ends one whose page
+    /// another DevTools took over: <c>Inspector.detached</c>, then <c>Target.detachedFromTarget</c>.
     /// </summary>
     private void PageGone(AttachedPage attached, WebKitPage page)
     {
@@ -230,6 +231,12 @@ internal sealed class CdpClient : IAsyncDisposable
         {
             if (attached.Page != page || attached.Suspended || !_sessions.ContainsKey(attached.SessionId)) return;
             attached.Suspended = true;
+        }
+        if (page.ConnectionReplaced)
+        {
+            CdpTrace.Write("adapter", $"another client took the inspector of page {page.Target.PageId}; session {attached.SessionId} ends");
+            _ = EndAsync(attached.SessionId, ReplacedReason);
+            return;
         }
         long generation = page.Target.Generation;
         CdpTrace.Write("adapter", $"page {page.Target.PageId} went away; session {attached.SessionId} waits for a restarted Window");
@@ -258,6 +265,8 @@ internal sealed class CdpClient : IAsyncDisposable
     }
 
     private static readonly TimeSpan RestartGrace = TimeSpan.FromSeconds(1.5);
+    // Chrome's Inspector.detached reason when another DevTools client takes the page over.
+    internal const string ReplacedReason = "replaced_with_devtools";
     private static readonly TimeSpan RestartTimeout = TimeSpan.FromMinutes(3);
 
     // Continues a waiting session on a page of the restarted Window.
@@ -297,8 +306,9 @@ internal sealed class CdpClient : IAsyncDisposable
         await attached.Page.DisposeAsync().ConfigureAwait(false);
     }
 
-    // The page is gone for good: the debugger learns that its target detached and was destroyed.
-    private async Task EndAsync(string sessionId)
+    // The page is gone for good: the debugger learns that its target detached and was destroyed. With a reason, the page's
+    // session hears Inspector.detached first.
+    private async Task EndAsync(string sessionId, string? detachReason = null)
     {
         AttachedPage? attached;
         lock (_gate)
@@ -308,6 +318,7 @@ internal sealed class CdpClient : IAsyncDisposable
         }
         attached.Session.Complete();
         await attached.Page.DisposeAsync().ConfigureAwait(false);
+        if (detachReason is not null) await EmitAsync(sessionId, "Inspector.detached", new() { ["reason"] = detachReason }).ConfigureAwait(false);
         if (sessionId.Length > 0)
         {
             await EmitAsync(BrowserSessionId, "Target.detachedFromTarget", new() { ["sessionId"] = sessionId, ["targetId"] = attached.TargetId }).ConfigureAwait(false);

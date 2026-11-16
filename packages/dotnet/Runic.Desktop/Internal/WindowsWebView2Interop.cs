@@ -69,6 +69,8 @@ internal static partial class WindowsWebView2Interop
     // ICoreWebView2::GetDevToolsProtocolEventReceiver, ICoreWebView2DevToolsProtocolEventReceiver::add_DevToolsProtocolEventReceived
     // and ICoreWebView2DevToolsProtocolEventReceivedEventArgs::get_ParameterObjectAsJson.
     internal const int GetDevToolsProtocolEventReceiverSlot = 42;
+    // ICoreWebView2::OpenDevToolsWindow (DesktopWindow.OpenDevToolsAsync).
+    internal const int OpenDevToolsWindowSlot = 51;
     internal const int DevToolsProtocolEventReceivedSlot = 3;
     internal const int DevToolsProtocolEventParametersSlot = 3;
     internal const int MoveFocusReasonSlot = 3;
@@ -106,6 +108,15 @@ internal static partial class WindowsWebView2Interop
     internal const int WebView13ProfileSlot = 105;
     internal const int ProfileGetPreferredColorSchemeSlot = 8;
     internal const int ProfilePreferredColorSchemeSlot = 9;
+    // ICoreWebView2Profile7::AddBrowserExtension and ICoreWebView2BrowserExtension::get_Id (WebView2 runtime 1.0.2210):
+    // the unpacked DevTools extensions of DesktopHostOptions.DevToolsExtensions, in Development only.
+    internal static readonly Guid Profile7Interface = new("7b4c7906-a1aa-4cb4-b723-db09f813d541");
+    internal const int ProfileAddBrowserExtensionSlot = 22;
+    internal const int ProfileGetBrowserExtensionsSlot = 23;
+    internal const int BrowserExtensionIdSlot = 3;
+    internal const int BrowserExtensionRemoveSlot = 5;
+    internal const int BrowserExtensionListCountSlot = 3;
+    internal const int BrowserExtensionListValueSlot = 4;
 
     // The COREWEBVIEW2_PREFERRED_COLOR_SCHEME for DesktopWindowOptions.ColorScheme.
     internal static int PreferredColorScheme(Runic.Platform.DesktopColorScheme colorScheme) => colorScheme switch
@@ -235,6 +246,19 @@ internal static partial class WindowsWebView2Interop
         return result;
     }
 
+    internal static unsafe void Call(nint instance, int slot)
+        => Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, int>)Slot(instance, slot))(instance));
+
+    internal static unsafe void CallWithHandler(nint instance, int slot, nint callback)
+        => Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, nint, int>)Slot(instance, slot))(instance, callback));
+
+    internal static unsafe void AddBrowserExtension(nint profile7, string folder, nint callback)
+    {
+        fixed (char* path = folder)
+            Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, char*, nint, int>)Slot(profile7, ProfileAddBrowserExtensionSlot))(
+                profile7, path, callback));
+    }
+
     internal static unsafe void SetInteger(nint instance, int slot, int value)
         => Marshal.ThrowExceptionForHR(((delegate* unmanaged[Stdcall]<nint, int, int>)Slot(instance, slot))(instance, value));
 
@@ -330,13 +354,26 @@ internal sealed class WindowsWebView2Controller : IDisposable
 
     internal static async Task<WindowsWebView2Controller> CreateAsync(nint window, WebUiEmbeddedHostOptions options)
     {
-        var environmentCompletion = new WebViewCompletion();
-        using var environmentHandler = new WebViewComReference<IWebViewEnvironmentCompleted>(environmentCompletion);
-        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(options.BrowserArguments, options.Language));
-        // D067.15: no DevTools Protocol endpoint from the environment outside Development.
-        WebView2BrowserArgumentsEnvironment.Apply();
-        WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, environmentHandler.Pointer);
-        var environment = await environmentCompletion.Task;
+        // Extensions are an option of the environment, which every window of the user data folder shares: the list is the
+        // process's (DevToolsExtensionFolders), not the window's, so two windows of one folder in this process never ask
+        // for different options. Empty outside Development and for hosted windows. Another process that holds the folder
+        // with extensions off (a production run, or an older Runic) refuses the option: the window then opens without
+        // extensions rather than not at all, and reports it.
+        nint environment;
+        Exception? extensionsRefused = null;
+        if (options.DevToolsExtensions.Count > 0)
+        {
+            try { environment = await CreateEnvironmentAsync(options, browserExtensions: true); }
+            catch (Exception error) when (error is InvalidOperationException or COMException or ArgumentException)
+            {
+                extensionsRefused = error;
+                environment = await CreateEnvironmentAsync(options, browserExtensions: false);
+            }
+        }
+        else
+        {
+            environment = await CreateEnvironmentAsync(options, browserExtensions: false);
+        }
         nint controller = 0;
         try
         {
@@ -358,7 +395,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
                 WindowsWebView2Interop.CreateController(environment, window, controllerHandler.Pointer);
             }
             controller = await controllerCompletion.Task;
-            return new WindowsWebView2Controller(environment, controller);
+            return new WindowsWebView2Controller(environment, controller) { ExtensionsRefused = extensionsRefused };
         }
         catch
         {
@@ -371,6 +408,22 @@ internal sealed class WindowsWebView2Controller : IDisposable
             throw;
         }
     }
+
+    private static async Task<nint> CreateEnvironmentAsync(WebUiEmbeddedHostOptions options, bool browserExtensions)
+    {
+        var completion = new WebViewCompletion();
+        using var handler = new WebViewComReference<IWebViewEnvironmentCompleted>(completion);
+        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(
+            options.BrowserArguments, options.Language, browserExtensions));
+        // D067.15: no DevTools Protocol endpoint from the environment outside Development; before every environment,
+        // also the retry without extensions (CreateAsync). Once per process.
+        WebView2BrowserArgumentsEnvironment.Apply();
+        WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, handler.Pointer);
+        return await completion.Task;
+    }
+
+    // Why the environment was created without the browser extensions it asked for (CreateAsync), or null.
+    internal Exception? ExtensionsRefused { get; private init; }
 
     // sdk#864, P2: a second controller in window from this controller's environment, so it shares the user data folder,
     // the browser process and the default profile, and with them the page's origin storage (side-panel/DESIGN.md §1.2).
@@ -580,6 +633,77 @@ internal sealed class WindowsWebView2Controller : IDisposable
             {
                 WindowsWebView2Interop.SetInteger(profile, WindowsWebView2Interop.ProfilePreferredColorSchemeSlot,
                     WindowsWebView2Interop.PreferredColorScheme(colorScheme));
+            }
+            finally { WindowsWebView2Interop.Release(profile); }
+        }
+        finally { WindowsWebView2Interop.Release(webView13); }
+    }
+
+    // DesktopWindow.OpenDevToolsAsync: WebView2's DevTools window for this page. The caller checked that the developer
+    // tools are enabled; WebView2 ignores the call otherwise.
+    internal void OpenDevToolsWindow() => WindowsWebView2Interop.Call(_webView, WindowsWebView2Interop.OpenDevToolsWindowSlot);
+
+    // Installs the unpacked extension in folder into the WebView's profile (ICoreWebView2Profile7), which keeps it until it
+    // is installed again or its files change; completes with its id. Adding the same folder again reinstalls it.
+    // NotSupportedException: a runtime without ICoreWebView2_13 or ICoreWebView2Profile7.
+    internal async Task<string?> AddBrowserExtensionAsync(string folder)
+    {
+        var completion = new WebViewBrowserExtensionCompletion();
+        using var handler = new WebViewComReference<IWebViewBrowserExtensionAdded>(completion);
+        AddBrowserExtension(folder, handler.Pointer);
+        return await completion.Task;
+    }
+
+    private void AddBrowserExtension(string folder, nint handler) =>
+        WithProfile7(profile7 => WindowsWebView2Interop.AddBrowserExtension(profile7, folder, handler));
+
+    // Removes the extensions of the WebView's profile whose ids are in ids (ICoreWebView2Profile7::GetBrowserExtensions,
+    // ICoreWebView2BrowserExtension::Remove). Completes with the ids that are no longer in the profile, those removed and
+    // those it did not have, and the failures of the others.
+    internal async Task<(IReadOnlyList<string> Gone, IReadOnlyList<(string Id, Exception Error)> Failed)> RemoveBrowserExtensionsAsync(IReadOnlyCollection<string> ids)
+    {
+        var listing = new WebViewBrowserExtensionList(ids);
+        using (var handler = new WebViewComReference<IWebViewBrowserExtensionsListed>(listing))
+        {
+            WithProfile7(profile7 => WindowsWebView2Interop.CallWithHandler(profile7, WindowsWebView2Interop.ProfileGetBrowserExtensionsSlot, handler.Pointer));
+            await listing.Task;
+        }
+        List<string> gone = [.. ids.Where(id => !listing.Found.Any(found => found.Id == id))];
+        List<(string, Exception)> failed = [];
+        foreach (var (id, extension) in listing.Found)
+        {
+            try
+            {
+                var removal = new WebViewBrowserExtensionRemoval();
+                using var handler = new WebViewComReference<IWebViewBrowserExtensionRemoved>(removal);
+                WindowsWebView2Interop.CallWithHandler(extension, WindowsWebView2Interop.BrowserExtensionRemoveSlot, handler.Pointer);
+                await removal.Task;
+                gone.Add(id);
+            }
+            catch (Exception error) when (error is InvalidOperationException or COMException) { failed.Add((id, error)); }
+            finally { WindowsWebView2Interop.Release(extension); }
+        }
+        return (gone, failed);
+    }
+
+    private void WithProfile7(Action<nint> call)
+    {
+        nint webView13;
+        try { webView13 = WindowsWebView2Interop.Query(_webView, WindowsWebView2Interop.WebView13Interface); }
+        catch (InvalidCastException error) { throw new NotSupportedException("The WebView2 runtime has no profiles (ICoreWebView2_13).", error); }
+        try
+        {
+            var profile = WindowsWebView2Interop.GetPointer(webView13, WindowsWebView2Interop.WebView13ProfileSlot);
+            try
+            {
+                nint profile7;
+                try { profile7 = WindowsWebView2Interop.Query(profile, WindowsWebView2Interop.Profile7Interface); }
+                catch (InvalidCastException error)
+                {
+                    throw new NotSupportedException("The WebView2 runtime has no browser extensions (ICoreWebView2Profile7).", error);
+                }
+                try { call(profile7); }
+                finally { WindowsWebView2Interop.Release(profile7); }
             }
             finally { WindowsWebView2Interop.Release(profile); }
         }
@@ -1081,6 +1205,100 @@ internal sealed partial class WebViewCompletion : IWebViewEnvironmentCompleted, 
     }
 }
 
+[GeneratedComInterface, Guid("df1aab27-82b9-4ab6-aae8-017a49398c14")]
+internal partial interface IWebViewBrowserExtensionAdded { [PreserveSig] int Invoke(int errorCode, nint extension); }
+
+// ICoreWebView2ProfileAddBrowserExtensionCompletedHandler: the id of the installed extension, which the borrowed
+// ICoreWebView2BrowserExtension holds.
+[GeneratedComClass]
+internal sealed partial class WebViewBrowserExtensionCompletion : IWebViewBrowserExtensionAdded
+{
+    private readonly TaskCompletionSource<string?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task<string?> Task => _completion.Task;
+    public int Invoke(int errorCode, nint extension)
+    {
+        if (errorCode < 0)
+        {
+            _completion.TrySetException(new InvalidOperationException("WebView2 did not install the browser extension.", Marshal.GetExceptionForHR(errorCode)));
+            return 0;
+        }
+        string? id = null;
+        if (extension != 0)
+        {
+            try
+            {
+                var value = WindowsWebView2Interop.GetPointer(extension, WindowsWebView2Interop.BrowserExtensionIdSlot);
+                try { id = Marshal.PtrToStringUni(value); }
+                finally { Marshal.FreeCoTaskMem(value); }
+            }
+            catch (Exception error) when (error is COMException or ArgumentException) { }
+        }
+        _completion.TrySetResult(id);
+        return 0;
+    }
+}
+
+[GeneratedComInterface, Guid("fce16a1c-f107-4601-8b75-fc4940ae25d0")]
+internal partial interface IWebViewBrowserExtensionsListed { [PreserveSig] int Invoke(int errorCode, nint list); }
+
+[GeneratedComInterface, Guid("8e41909a-9b18-4bb1-8cdf-930f467a50be")]
+internal partial interface IWebViewBrowserExtensionRemoved { [PreserveSig] int Invoke(int errorCode); }
+
+// ICoreWebView2ProfileGetBrowserExtensionsCompletedHandler: the profile's extensions whose ids are wanted, each with a
+// reference of its own (the list is borrowed), which the caller releases.
+[GeneratedComClass]
+internal sealed partial class WebViewBrowserExtensionList(IReadOnlyCollection<string> wanted) : IWebViewBrowserExtensionsListed
+{
+    private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task Task => _completion.Task;
+    internal List<(string Id, nint Extension)> Found { get; } = [];
+    public int Invoke(int errorCode, nint list)
+    {
+        if (errorCode < 0)
+        {
+            _completion.TrySetException(new InvalidOperationException("WebView2 did not list the profile's browser extensions.", Marshal.GetExceptionForHR(errorCode)));
+            return 0;
+        }
+        try
+        {
+            if (list != 0)
+            {
+                var count = WindowsWebView2Interop.GetUnsigned(list, WindowsWebView2Interop.BrowserExtensionListCountSlot);
+                for (uint index = 0; index < count; index++)
+                {
+                    var extension = WindowsWebView2Interop.GetIndexedPointer(list, WindowsWebView2Interop.BrowserExtensionListValueSlot, index);
+                    var value = WindowsWebView2Interop.GetPointer(extension, WindowsWebView2Interop.BrowserExtensionIdSlot);
+                    string? id;
+                    try { id = Marshal.PtrToStringUni(value); }
+                    finally { Marshal.FreeCoTaskMem(value); }
+                    // GetValueAtIndex returned an owned reference: kept for a wanted id, released otherwise.
+                    if (id is not null && wanted.Contains(id)) Found.Add((id, extension));
+                    else WindowsWebView2Interop.Release(extension);
+                }
+            }
+            _completion.TrySetResult();
+        }
+        catch (Exception error) when (error is COMException or ArgumentException)
+        {
+            _completion.TrySetException(new InvalidOperationException("The profile's browser extensions could not be read.", error));
+        }
+        return 0;
+    }
+}
+
+[GeneratedComClass]
+internal sealed partial class WebViewBrowserExtensionRemoval : IWebViewBrowserExtensionRemoved
+{
+    private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task Task => _completion.Task;
+    public int Invoke(int errorCode)
+    {
+        if (errorCode < 0) _completion.TrySetException(new InvalidOperationException("WebView2 did not remove the browser extension.", Marshal.GetExceptionForHR(errorCode)));
+        else _completion.TrySetResult();
+        return 0;
+    }
+}
+
 [GeneratedComInterface, Guid("b99369f3-9b11-47b5-bc6f-8e7895fcea17")]
 internal partial interface IWebViewScriptAdded { [PreserveSig] int Invoke(int errorCode, nint id); }
 
@@ -1126,10 +1344,22 @@ internal partial interface IWebViewEnvironmentOptions
     [PreserveSig] int SetAllowSingleSignOnUsingOSPrimaryAccount(int value);
 }
 
+// ICoreWebView2EnvironmentOptions6 (WebView2 runtime 1.0.2210), which WebView2 queries from the options.
+[GeneratedComInterface, Guid("57d29cc3-c84f-42a0-b0e2-effbd5e179de")]
+internal partial interface IWebViewEnvironmentOptions6
+{
+    [PreserveSig] int GetAreBrowserExtensionsEnabled(out int value);
+    [PreserveSig] int SetAreBrowserExtensionsEnabled(int value);
+}
+
 [GeneratedComClass]
 // The language is ICoreWebView2EnvironmentOptions::Language: the browser's UI language and its Accept-Language.
-internal sealed partial class WebViewEnvironmentOptions(string? arguments, string? language = null) : IWebViewEnvironmentOptions
+// browserExtensions is ICoreWebView2EnvironmentOptions6::AreBrowserExtensionsEnabled, set only for the DevTools extensions
+// of a window in Development (DevToolsExtensionFolders).
+internal sealed partial class WebViewEnvironmentOptions(string? arguments, string? language = null, bool browserExtensions = false)
+    : IWebViewEnvironmentOptions, IWebViewEnvironmentOptions6
 {
+    private int _browserExtensions = browserExtensions ? 1 : 0;
     private string? _arguments = arguments;
     private string? _language = language;
     private string? _version = "154.0.4258.31"; // CORE_WEBVIEW_TARGET_PRODUCT_VERSION in the pinned SDK.
@@ -1142,6 +1372,8 @@ internal sealed partial class WebViewEnvironmentOptions(string? arguments, strin
     public int SetTargetCompatibleBrowserVersion(nint value) { _version = Marshal.PtrToStringUni(value); return 0; }
     public int GetAllowSingleSignOnUsingOSPrimaryAccount(out int value) { value = _allowSingleSignOn; return 0; }
     public int SetAllowSingleSignOnUsingOSPrimaryAccount(int value) { _allowSingleSignOn = value; return 0; }
+    public int GetAreBrowserExtensionsEnabled(out int value) { value = _browserExtensions; return 0; }
+    public int SetAreBrowserExtensionsEnabled(int value) { _browserExtensions = value; return 0; }
 }
 
 // The frames of a WebView2 document, each listened to for Runic's drop messages until it is destroyed or the window

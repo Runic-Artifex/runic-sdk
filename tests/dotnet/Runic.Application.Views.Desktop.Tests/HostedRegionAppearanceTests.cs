@@ -258,9 +258,9 @@ internal sealed class HostedRegionAppearanceTests
             // Overrides the guest has not read yet are coalesced: the latest reaches the page, and the frame's scheme follows.
             var latest = new RunicHostedAppearance { ColorScheme = DesktopColorScheme.Dark, ReducedMotion = true };
             var results = await Task.WhenAll(
-                region.SetAppearanceAsync(RunicHostedAppearance.None, cancel.Token),
-                region.SetAppearanceAsync(new RunicHostedAppearance { Contrast = DesktopContrast.ForcedColors }, cancel.Token),
-                region.SetAppearanceAsync(latest, cancel.Token));
+                region.SetAppearanceAsync(RunicHostedAppearance.None, cancel.Token).AsTask(),
+                region.SetAppearanceAsync(new RunicHostedAppearance { Contrast = DesktopContrast.ForcedColors }, cancel.Token).AsTask(),
+                region.SetAppearanceAsync(latest, cancel.Token).AsTask());
             Check(results.All(static result => result), "A burst of overrides returned false.");
             Check(region.Appearance == latest && page.Get("check").ColorScheme == "dark", $"The page's frame shows {page.Get("check").ColorScheme}.");
             await ExpectAppearanceAsync(guestPage,

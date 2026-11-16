@@ -10,6 +10,8 @@ import { reportBridgeError, waitForBridgeIn } from "./transport.js";
 import { currentSlots, type Slots } from "./scope.js";
 import { publishConnectionState } from "./connection-state.js";
 import { reportToInspector } from "./inspector.js";
+import { describeWith, viewName } from "./describe.js";
+import { installFormatters, markSnapshot } from "./formatters.js";
 import { beginCall, endCall, noteCancelled, noteReply, requestCall, traced, withinCall, type BridgeCall } from "./calls.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
@@ -622,9 +624,11 @@ class RouteEntry {
       this.exposedEpoch = this.epoch;
       if (previous === undefined || !Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) {
         this.exposed = next;
+        // The development build's console formatters name the state (formatters.ts).
+        if (__RUNIC_DEVELOPMENT__) markSnapshot(next, this.route, this.contract, this.revision);
         deferNotification(this.deliver);
         reportToInspector(this.slots, () => ({
-          kind: "state", route: this.route, revision: this.revision, epoch: this.exposedEpoch,
+          kind: "state", route: this.route, contract: this.contract, revision: this.revision, epoch: this.exposedEpoch,
           presentations: this.presentations.size, state: next,
         }));
       } else {
@@ -913,6 +917,13 @@ async function connectRoute<TState>(slots: Slots, options: ViewConnectOptions<TS
   lease.epoch = entry.exposedEpoch;
   Object.defineProperty(dispose, refreshKey, { value: () => { if (live() && runtime.connected) void entry.recover(); } });
   Object.defineProperty(dispose, bridgeKey, { value: runtime.bridge });
+  // The development build describes the client for the bindings' DevTools labels (describe.ts) and the console's
+  // custom formatters (formatters.ts).
+  if (__RUNIC_DEVELOPMENT__) installFormatters();
+  if (__RUNIC_DEVELOPMENT__) describeWith(dispose, () => ({
+    view: viewName(entry.contract, route), route, contract: entry.contract, revision: entry.revision,
+    presentations: entry.presentations.size, released: !live(),
+  }));
 
   // A command waits for the handlers registered before it, so a request it raises can reach them.
   const ready = async () => { await lease.interactions?.ready(); await lease.requests?.ready(); };

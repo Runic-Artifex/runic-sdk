@@ -1,7 +1,8 @@
 // IDE debugging on Linux (#1029, D066.39): a generated React runic-app project under `dotnet runic dev` on Xvfb, and VS
 // Code's JavaScript debugger (vscode-js-debug's DAP server, pinned below) attached through dev's CDP adapter on 9222 to the
 // WebKitGTK Window (tests/webkit-cdp/dap-scenarios.mjs). Also checks the session file's debugEndpoints entry, the
-// `[dev] Debugging:` hint and the endpoint's refusal of other origins and host names.
+// `[dev] Debugging:` hint, the endpoint's refusal of other origins and host names, and dev's line when another client
+// took WebKit's inspector from the adapter.
 //
 //   node check-webkit-cdp.mjs --project <generated project directory> [--js-debug <unpacked js-debug directory>]
 //     [--only <scenario,…>] [--modules <count>] [--per-script-sourcemaps auto|yes|no] [--trace <js-debug log file>]
@@ -128,7 +129,7 @@ try {
   console.log("WEBKIT_CDP_SECURITY_OK|loopback without Origin 200|foreign Origin 403|foreign Host 403");
 
   const run = spawnSync(process.execPath, [scenarios, "--jsdebug", jsDebugDirectory, "--port", port,
-    "--frontend", join(project, "Frontend"), "--restart-file", csharp,
+    "--frontend", join(project, "Frontend"), "--restart-file", csharp, "--inspector", session.window.environment.WEBKIT_INSPECTOR_SERVER,
     ...["only", "modules", "per-script-sourcemaps", "trace"].flatMap(name => values[name] ? [`--${name}`, values[name]] : [])], { encoding: "utf8", timeout: scaled(900_000) });
   process.stdout.write(run.stdout);
   process.stderr.write(run.stderr);
@@ -138,6 +139,13 @@ try {
       await printTrace(name, from, to);
     }
     throw new Error(`js-debug scenarios failed (exit ${run.status ?? run.signal})`);
+  }
+  if (!values.only || values.only.split(",").includes("replaced-client")) {
+    // dev's output arrives once the event loop runs again after the synchronous scenario run.
+    for (let waited = 0; !/^\[dev\] Debugging: another client took over the Window's WebKit inspector at /m.test(output); waited += 250) {
+      if (waited > 10_000) throw new Error("dotnet runic dev printed no [dev] line when another client took the Window's WebKit inspector");
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
   }
   console.log(`WEBKIT_CDP_OK|${/^\[[\d.]+s\] (\d+\/\d+) passed$/m.exec(run.stdout)?.[1] ?? "?"}`);
 } catch (error) {

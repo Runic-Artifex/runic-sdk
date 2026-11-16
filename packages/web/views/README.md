@@ -317,7 +317,8 @@ page: [Bridge-call reports and async stack tagging](#bridge-calls-in-the-browser
 with the C# handler timing and trace context that a followed call asks for and
 carries (the Views protocol features `handler-timing/1` and `trace-context/1`),
 and the Runic Translations [text channel](#translated-text) that updates an
-edited message in place. The **production build** (`dist/`, the `import` and
+edited message in place, and the descriptions of connected clients that the
+bindings' DevTools labels show. The **production build** (`dist/`, the `import` and
 `default` conditions) leaves them out: a production bundle contains no
 call-reporting code, tags no call, creates no global for them, and its `hello`
 lists neither feature, so no request carries their members. Everything
@@ -355,6 +356,31 @@ runtime: the builds share their state through the
 [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)
 like any two copies of the package, and only the development build reports
 calls.
+
+The development build also describes each connected client (view model, route,
+revision) for the bindings' DevTools labels, through `describeViewClient` in
+`/bindings`; the production build describes none (since 0.21). The React and Vue
+bindings have a development build of their own, for their
+[React DevTools labels](../react/README.md#react-devtools) and
+[Vue DevTools plugin](../vue/README.md#vue-devtools).
+
+### Custom object formatters
+
+The development build adds a formatter to `window.devtoolsFormatters` when it
+connects its first client (since 0.21). With custom formatters enabled in
+DevTools (Chromium: Settings › Preferences › Console › **Enable custom
+formatters**; Firefox: Settings › Advanced settings › **Enable custom
+formatters**), the console and the Sources panel show:
+
+- a View client as `EditorViewModel · editor · rev 12`, expanding into its view
+  model, route, contract, revision, presentations, state and the raw client;
+- a state the client delivered as `EditorViewModel state · rev 12 {title: "Draft", …}`;
+- a field controller's state (`createFieldController(…).current`) as
+  `title = "Draft" · editing · 1 error`.
+
+Other objects keep DevTools' own presentation. WebKit has no custom formatters.
+The production build has no formatter. See
+[the debugging guide](../../../docs/debugging.md#custom-object-formatters).
 
 ## Incremental collections
 

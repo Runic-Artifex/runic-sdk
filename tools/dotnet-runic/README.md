@@ -650,9 +650,11 @@ names. The session file lists both under `debugEndpoints`.
   - WebKit's own `inspector://` port is WebKit's, so `dev` cannot filter it.
     Other local users can connect to it and script the Window, also while a
     debugger is attached: WebKit serves one client and lets a new one take
-    its place (WebKitGTK 2.54), and the Window can crash when the replaced
-    client sends again. On a machine that you share with other users, run
-    `dev` with `--no-debug-endpoint`.
+    its place (WebKitGTK 2.54). The adapter survives that (see "Another
+    client of WebKit's inspector" below), but the Window can crash when a
+    replaced client of WebKit's own, such as GNOME Web's `inspector://` page,
+    sends again. On a machine that you share with other users, run `dev` with
+    `--no-debug-endpoint`.
   - It runs only under `dotnet runic dev` and adds nothing to the application.
 - **Not supported.** Setting a variable to an object or a `const` (WebKit has no
   `setVariableValue`; a primitive is assigned in the frame), restarting a frame,
@@ -669,6 +671,23 @@ names. The session file lists both under `debugEndpoints`.
   warns when such an HTTP inspector runs on a WebKitGTK without that fix, and
   when either address is not loopback. Under `--no-window` the version check
   uses the WebKitGTK that `dev` loads, which can differ from the Window's.
+- **Another client of WebKit's inspector.** WebKit's `inspector://` server has
+  one client slot, and a client that sets up takes it from the one that holds it
+  without telling that one (WebKitGTK 2.54). When that happens while a debugger is
+  attached, `dev` prints `[dev] Debugging: another client took over the Window's
+  WebKit inspector …`, the debugger's session ends as in Chrome when another
+  DevTools takes the page over (`Inspector.detached`, then
+  `Target.detachedFromTarget`), and `dev` sends nothing more to WebKit until a
+  debugger attaches again, which takes the inspector back. `dev` notices a new
+  connection to the inspector port in Linux's TCP tables and then checks whether
+  the Window still answers the adapter, so a Window stopped at a .NET breakpoint
+  does not count. Each time the adapter attaches to a page it claims the slot in
+  the same message, so a client that took the slot and left cannot make WebKit
+  crash the Window through the adapter. A client that connects and waits several
+  seconds before it sets up can go unnoticed; the session then stops answering
+  instead of ending. WebKit's own clients are not protected: after the adapter
+  took the slot from GNOME Web's `inspector://` page and released it, that page's
+  next attach can crash the Window.
 - **Port 9222 taken.** `dev` uses another free port and says which; change the
   attach configuration's `port`. When another user holds 9222, or the
   inspector port 9223 under `--no-window`, the `[dev]` line is a warning.

@@ -74,10 +74,10 @@ internal static class InstallerProbe
             await UntilAsync(() => failures.Count(HighContrast) > 0 ? region : null, failures, installer, timeout.Token);
 
             At("detach the check");
-            var detached = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var detached = new TaskCompletionSource<RunicHostedRegionDetachReason?>(TaskCreationOptions.RunContinuationsAsynchronously);
             region.Detached += (_, e) => detached.TrySetResult(e.Reason);
             await region.DetachAsync(timeout.Token);
-            Check(await detached.Task.WaitAsync(timeout.Token) == "host", "The detach did not report the host as its reason.");
+            Check(await detached.Task.WaitAsync(timeout.Token) == RunicHostedRegionDetachReason.Host, "The detach did not report the host as its reason.");
             Check(region.State == RunicHostedRegionState.Detached && !region.Window.Closed.IsCompleted, "The detached window is not open and detached.");
 
             // The detached page's reports are in; the next one comes from the page that the attach loads.
