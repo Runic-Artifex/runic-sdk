@@ -7,7 +7,8 @@ to run on 1.0. An application still on a 0.7 or 0.8 preview starts with
 every breaking change planned before 1.0; 0.11.0 only
 added APIs but changed some defaults; 0.12.0 changed macOS behaviour and macOS
 packaging, which needed breaking changes; 0.13.0 replaced Views protocol 3 with
-protocol 4, which 1.0 keeps; the `1.0.0-rc.N` releases and 1.0.0 take fixes only.
+protocol 4, which 1.0 keeps; 0.21.0 renamed APIs added since 0.12 after the API
+review before 1.0; the `1.0.0-rc.N` releases and 1.0.0 take fixes only.
 An application already on 0.12 needs only [From 0.12 to 0.13](#from-012-to-013),
 and one on 0.11 also [From 0.11 to 0.12](#from-011-to-012). Each section links
 the release notes, which give the full detail and the pull requests:
@@ -92,6 +93,16 @@ the release notes, which give the full detail and the pull requests:
   [Trusted component mode for Angular guests](../eng/release/notes/0.20.0.md#trusted-component-mode-for-angular-guests-947-experimental),
   [Fixes](../eng/release/notes/0.20.0.md#fixes),
   [Known issues](../eng/release/notes/0.20.0.md#known-issues)
+- 0.21.0: [Upgrading from 0.20](../eng/release/notes/0.21.0.md#upgrading-from-020),
+  [JavaScript debugging on Linux](../eng/release/notes/0.21.0.md#javascript-debuggers-attach-to-the-window-on-linux-1029-preview),
+  [`dotnet runic dev --browser`](../eng/release/notes/0.21.0.md#debug-the-page-in-chrome-on-every-os-dotnet-runic-dev---browser-1053),
+  [React DevTools and Vue DevTools](../eng/release/notes/0.21.0.md#runic-state-in-react-devtools-and-vue-devtools-1041),
+  [Custom object formatters](../eng/release/notes/0.21.0.md#readable-view-clients-and-states-in-the-console-1042),
+  [WebView2 DevTools](../eng/release/notes/0.21.0.md#webview2-devtools-window-and-devtools-extensions-in-development-1056),
+  [The Runic DevTools panel](../eng/release/notes/0.21.0.md#a-runic-panel-in-chromes-and-edges-developer-tools-1060),
+  [Selection paths, Angular text locale and field types](../eng/release/notes/0.21.0.md#selection-paths-angular-text-locale-and-field-types-1064),
+  [Fixes](../eng/release/notes/0.21.0.md#fixes),
+  [Known issues](../eng/release/notes/0.21.0.md#known-issues)
 
 ## Before you start
 
@@ -104,8 +115,10 @@ the release notes, which give the full detail and the pull requests:
    and every `./experimental` import of 0.9 (see [npm packages](#npm-packages)).
    What is experimental now, hosted applications (`RUNICDESK103`), from 0.18
    the npm packages' new `./experimental` entries for hosted regions, and from
-   0.19 the side panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`), and
-   from 0.20 `runicComponentMount` in `@runic-artifex/angular/experimental`, is
+   0.19 the side panel (`RUNICDESK104`) and the close drain (`RUNICDESK105`),
+   from 0.20 `runicComponentMount` in `@runic-artifex/angular/experimental`, and
+   from 0.21 trusted component mode in the `./experimental` entries of
+   `@runic-artifex/views` and `@runic-artifex/vite-plugin-runic`, is
    listed in [experimental APIs](experimental.md).
 3. Commit your frontend's lock file (see [MSBuild](#msbuild)).
 4. Builds with `TreatWarningsAsErrors` meet the new warnings `RUNICNAV002`,
@@ -1500,3 +1513,79 @@ and the close drain ([`RUNICDESK105`](experimental.md#RUNICDESK105)) stay experi
 | An Angular guest could not be shown in trusted component mode | Build it with Vite and the Analog plugin and export `runicComponentMount(Component)` from `@runic-artifex/angular/experimental` as the component build's entry; `@angular/platform-browser` is a new optional peer of `@runic-artifex/angular` ([details](../eng/release/notes/0.20.0.md#trusted-component-mode-for-angular-guests-947-experimental)) |
 
 Details: 0.20.0 [Trusted component mode for Angular guests](../eng/release/notes/0.20.0.md#trusted-component-mode-for-angular-guests-947-experimental).
+
+## From 0.20 to 0.21
+
+0.21.0 adds development tools and makes the changes of the API review before 1.0: .NET members added since 0.12 are
+renamed, so code that uses them fails to compile until it is renamed, and trusted component mode's npm side moves to
+`./experimental`. Update every Runic NuGet and npm package to 0.21.0 together and rebuild, so that the generated clients
+are regenerated. An application that uses Runic Translations moves every Translations package, NuGet and npm, to 0.13.0;
+Runic Command Line stays at 0.13.0. The Views protocol is unchanged, so a 0.20 page and a 0.21 host connect. Update
+Runic's editor extensions to 0.21.0 too: 0.20's VS Code extension does not read 0.21's development source map.
+
+### Renamed APIs
+
+Rename the calls; nothing else changes. Saved navigation paths still load: `NavigationPath.ToJson` and
+`NavigationSelectionPath.ToJson` still write a selection's index as `"selected"`.
+
+| 0.20 | 0.21 |
+| --- | --- |
+| `IDesktopWindowBoundsHost`, `IDesktopWindowShowStateHost` (`Runic.Desktop`, for a custom window host) | `IDesktopBoundsWindowHost`, `IDesktopShowStateWindowHost` |
+| `DesktopWindowCapabilities.WindowPlacement` | `DesktopWindowCapabilities.Placement` (same value) |
+| `DesktopHost.NoteRecentDocumentAsync(path)` | `DesktopHost.AddRecentDocumentAsync(path)` |
+| `NavigationSelectionPath.Selected`, `RunicRegionCollectionState.Selected` | `SelectedIndex` |
+| `RunicWindowOptions.MaximumWindowUploadBytes`, `WindowContentSessionOptions.MaximumWindowUploadBytes` | `MaximumPendingUploadBytes`, which `RunicDesktopHostOptions`, `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions` now also have as the host-wide default |
+| `RunicWindowsChangedEventArgs.Opened` (`bool`) and the `bool opened` constructor parameter | `RunicWindowsChangedEventArgs.Change`, an open enum `RunicWindowsChange` (`Opened`, `Closed`): `args.Opened` becomes `args.Change == RunicWindowsChange.Opened` |
+| `RunicUpload.SaveAsAsync(path, overwrite)` | `RunicUpload.SaveToFileAsync(path, overwrite)` |
+| `RunicServeOnlyTestPlatform.EnqueueOpenFile`, `EnqueueSaveFile`, `EnqueueOpenDirectory`, `EnqueueFileDialogDismissed`, `EnqueueFileDialogUnavailable`, `EnqueueFileDialogFailed` | `platform.FileDialogs.EnqueueOpen`, `EnqueueSave`, `EnqueueOpenDirectory`, `EnqueueDismissed`, `EnqueueUnavailable`, `EnqueueFailed`, as on `RunicTestPlatform` |
+| `RunicServeOnlyTestPlatform.EnqueueMessageBoxAnswer` | `platform.MessageBoxes.EnqueueAnswer` |
+| `RunicServeOnlyTestPlatform.EnqueueContextMenuChoice`, `EnqueueContextMenuDismissed` | `platform.ContextMenus.EnqueueChoice`, `EnqueueDismissed` |
+| `RunicServeOnlyTestPlatform.SetClipboard`, `SetClipboardText` | `platform.Clipboard.SetContent`, `SetText` |
+| A project target hooked with `BeforeTargets` or `AfterTargets` onto a Runic package target such as `RunicDesktopValidateServer`, or a project that read a property such as `RunicDesktopKestrelReferenced` | The twelve internal names start with `_Runic` (`_RunicDesktopValidateServer`). Only `RunicViewsGenerateBridge`, `RunicViewsBuildFrontend` and `RunicViewsCopyFrontend` are extension points; hook other targets onto an MSBuild target ([MSBuild properties and items](msbuild.md)). No documented setting changed |
+
+Details: 0.21.0 [Breaking changes](../eng/release/notes/0.21.0.md#breaking-changes).
+
+### Behaviour
+
+| 0.20 | 0.21 |
+| --- | --- |
+| `Runic.Application.Views.Translations` required Runic Translations `[0.12.0, 0.13.0)` | It requires `[0.13.0, 0.14.0)`: move every Translations package, NuGet and npm, to 0.13.0, and replace `.Add(` with `.AddCatalog(` where a `TranslationContext.CreateBuilder()` chain registers a catalog. In-page editing reads only `RUNIC_DEV_ALLOW`; rename a `RUNIC_TRANSLATIONS_EDIT_ALLOW` ([Translations 0.13.0 notes](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/eng/release/notes/0.13.0.md#upgrading-from-012)). The tools still bundle Command Line 0.13.0 |
+| The development source map's `format` was `runic-bridge-sources/1`, and `/__runic/handlers` answered `runic-handlers/1` | `runic.views.bridge-sources/1` and `runic.vite.handlers/1`, with the same content. A tool of your own that reads `sources.json` or `/__runic/sources` accepts the new name; vite-plugin-runic still reads an old map through 0.21 |
+| `/__runic/state` and `/__runic/diagnostics` answered any client the Vite server admitted, and any client could send Runic's HMR events | They answer loopback and the hosts and networks of `runic({ allow })` or `RUNIC_DEV_ALLOW`, `/__runic/state` refuses pages of another origin, and HMR events from other clients are ignored. With `server.allowedHosts: true` Runic checks `Host` itself. A tool that reads the state from another machine needs that machine in the allow list. On Linux, open-in-editor admits only the dev server's user |
+| On Windows, `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` with `--remote-debugging-port` opened a DevTools Protocol endpoint in any build, also with `DevTools` off | Unless `DOTNET_ENVIRONMENT` (or else `ASPNETCORE_ENVIRONMENT`) is `Development`, the WebView2 host removes the variable before it creates its environment, and processes the application starts no longer inherit it. `DesktopWindowOptions.BrowserArguments` is not changed. Run with `DOTNET_ENVIRONMENT=Development` to debug a build this way ([debugging](debugging.md#the-browsers-developer-tools-per-engine)) |
+| A client that a binding kept for its `keepAlive` period was taken over by the next binding of the same View, also after a new mock Bridge | It is taken over only on its own Bridge; `installMockBridge` releases the kept clients at once, and a suite with one Bridge calls `releaseKeptViews()` from `@runic-artifex/views/mock` after each test ([Client lifetime](../packages/web/views/README.md#client-lifetime)) |
+
+Details: 0.21.0 [Upgrading from 0.20](../eng/release/notes/0.21.0.md#upgrading-from-020).
+
+### Templates
+
+Nothing has to change: applications created from the 0.20 template keep working. These rows bring one up to the 0.21
+template:
+
+| 0.20 | 0.21 |
+| --- | --- |
+| `.vscode/launch.json`'s `Attach to WebView2 (Windows)` | `Attach to the page (JavaScript)`, the same attach on port 9222 for Windows and Linux, a `Window with JavaScript debugging (Linux)` configuration and a `Window + WebKitGTK (Linux)` compound ([details](../eng/release/notes/0.21.0.md#javascript-debuggers-attach-to-the-window-on-linux-1029-preview)) |
+| No IDE JavaScript debugging on macOS | A `Window in Chrome` launch configuration and a `runic: dev --browser` task in `.vscode/tasks.json` ([details](../eng/release/notes/0.21.0.md#debug-the-page-in-chrome-on-every-os-dotnet-runic-dev---browser-1053)) |
+| SvelteKit: `@sveltejs/kit` 3.0.0 and `@sveltejs/adapter-static` 4.0.0 | `@sveltejs/kit` 3.1.1 and `@sveltejs/adapter-static` 4.0.1, which fix [GHSA-mw6w-2fmv-pvw3](https://github.com/advisories/GHSA-mw6w-2fmv-pvw3) and [GHSA-jf9x-2fg2-hx4w](https://github.com/advisories/GHSA-jf9x-2fg2-hx4w); the template's static output was not affected |
+
+### Hosted applications
+
+Nothing changes for a host that does not opt in. Hosted applications ([`RUNICDESK103`](experimental.md#RUNICDESK103)),
+the side panel ([`RUNICDESK104`](experimental.md#RUNICDESK104)) and the close drain
+([`RUNICDESK105`](experimental.md#RUNICDESK105)) stay experimental, with these changes:
+
+| 0.20 | 0.21 |
+| --- | --- |
+| Trusted component mode from `@runic-artifex/views/component`, and `runic({ component })` from `@runic-artifex/vite-plugin-runic` | Import `defineRunicComponent`, `connectComponentBridge` and the `RunicComponent*` types from `@runic-artifex/views/experimental`, and `runic` from `@runic-artifex/vite-plugin-runic/experimental` for the `component` option. `./component` is removed, and the root entry's `runic` throws for `component` |
+| `RunicHostedDialogKind.OpenFolder`, `OpenFolders` (also on `RunicTestDialogKind`) | `OpenDirectory`, `OpenDirectories` |
+| `RunicHostedWindow.Presentation` | `RunicHostedWindow.DesktopWindow` |
+| `RunicHostedRegion.DetachAsync`, `MoveToAsync` returned `Task`, `SetAppearanceAsync` `Task<bool>` | `ValueTask` and `ValueTask<bool>`; a caller that stores the task calls `.AsTask()` |
+| `RunicHostedRegionEventArgs.Reason` was a `string` | An open enum `RunicHostedRegionDetachReason` (`Removed`, `Reload`, `Crashed`, `Host`, `Closed`) |
+| `RunicTestDialogRequest.Kind` was the wire kind (`string`), beside `DialogKind`; `RunicTestPresentationRequest.Kind` a `string` | `RunicTestDialogRequest.Kind` is the `RunicTestDialogKind` and `DialogKind` is removed; `RunicTestPresentationRequest.Kind` is an open enum `RunicTestPresentationKind` (`SetFullScreen`) |
+| A window or panel that closed while `OpenSidePanelAsync` ran threw `ObjectDisposedException` (`RUNICDESK104`) | `OpenSidePanelAsync`, `MoveToEdgeAsync` and `SetWidthAsync` refuse with the new `DesktopSidePanelRefusal.Closed` |
+| `RunicCloseDrain.KeepsWindow` (`RUNICDESK105`) | `RunicCloseDrain.KeepWindow` |
+| On Linux, a guest that held capabilities without running as root counted as not elevated | It runs elevated: it refuses hosted mode with `guest-elevated`, or with both opt-ins `guest-elevated-host-not-elevated`. In a root elevated pair the parent must hold every capability the guest holds |
+
+The host protocol's wire tokens are unchanged.
+
+Details: 0.21.0 [Experimental features and how to opt in](../eng/release/notes/0.21.0.md#experimental-features-and-how-to-opt-in).
