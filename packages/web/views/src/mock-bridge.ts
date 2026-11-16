@@ -15,6 +15,8 @@ import { evaluateMockQuery, type MockQueryCollection, type MockQueryLoad, type M
 import { normalizeQuery, type QueryCollectionQuery } from "./query.js";
 import { blobsFeature, type BlobRef } from "./blob-wire.js";
 import type { HostUploadRequest } from "./blobs.js";
+import { releaseKeptConnections } from "./keep-alive.js";
+import { currentSlots, type Slots } from "./scope.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -2223,8 +2225,24 @@ export function mockBridgeInternals(bridge: MockBridge): MockBridgeInternals {
 /**
  * Installs a mock as `window.__runicBridge`, so generated clients connect to it
  * instead of waiting for a .NET host. Call it before the first `connect*()`.
+ *
+ * The clients that framework bindings keep after their component went away (README, "Client lifetime") belong to
+ * the Bridge they connected over: installing another Bridge releases them, so the next test's bindings connect to the
+ * new mock instead of taking over a client of the previous one.
  */
 export function installMockBridge(bridge: MockBridge = createMockBridge()): MockBridge {
   (globalThis as unknown as { __runicBridge?: RunicBridgeClient }).__runicBridge = bridge;
+  releaseKeptConnections(globalThis as unknown as Slots, true);
   return bridge;
+}
+
+/**
+ * Releases at once the clients that framework bindings (`useView`, `injectView`, `createViewController`,
+ * `preloadView`) keep for their `keepAlive` period in the current instance (the page's, or that of the
+ * `RunicInstance.run` it is called in), and returns how many it released. For a suite that keeps one Bridge across
+ * tests: call it after each test, so the next test's bindings connect again instead of taking over a client of the
+ * previous one. A suite that installs a new mock Bridge per test does not need it.
+ */
+export function releaseKeptViews(): number {
+  return releaseKeptConnections(currentSlots());
 }
