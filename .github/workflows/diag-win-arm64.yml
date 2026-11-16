@@ -45,17 +45,82 @@ jobs:
         continue-on-error: true
         working-directory: ${{ runner.temp }}/diag
         run: dotnet run --no-build -c Release WinArm64Diag.cs -- notify
-      - name: "391: DoDragDrop variants without Runic"
+      - name: Windows on the desktop
         continue-on-error: true
         working-directory: ${{ runner.temp }}/diag
+        run: dotnet run --no-build -c Release WinArm64Diag.cs -- probe
+      - name: "391: DoDragDrop without Runic, as the image starts"
+        continue-on-error: true
+        timeout-minutes: 15
+        working-directory: ${{ runner.temp }}/diag
+        env:
+          DIAG_CASES: plain ole form
         run: |
-          foreach ($case in @('plain ole form', 'plain ole desktop', 'shell ole form', 'shcreate sh form', 'plain sh form')) {
+          $dumps = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\dumps"
+          foreach ($case in $env:DIAG_CASES -split ',') {
             "=== drag $case"
-            dotnet run --no-build -c Release WinArm64Diag.cs -- drag @($case -split ' ')
-            "=== exit $LASTEXITCODE"
+            $env:DIAG_DUMP = Join-Path $dumps "$($case -replace ' ', '-').dmp"
+            $log = Join-Path $dumps "$($case -replace ' ', '-').log"
+            $p = Start-Process dotnet -ArgumentList (@('run', '--no-build', '-c', 'Release', 'WinArm64Diag.cs', '--', 'drag') + ($case -split ' ')) -NoNewWindow -PassThru -RedirectStandardOutput $log
+            if (-not $p.WaitForExit(90000)) { taskkill /T /F /PID $p.Id; "=== killed after 90 s" } else { "=== exit $($p.ExitCode)" }
+            Get-Content $log
+            if ((Test-Path $env:DIAG_DUMP) -and $env:DIAG_CDB -and -not $stacked) {
+              $stacked = $true
+              $out = Join-Path $dumps "$($case -replace ' ', '-').stacks.txt"
+              $p = Start-Process $env:DIAG_CDB -ArgumentList @('-z', "`"$env:DIAG_DUMP`"", '-y', 'srv*C:\symcache*https://msdl.microsoft.com/download/symbols', '-c', '"~*kn 40; q"') -RedirectStandardOutput $out -NoNewWindow -PassThru
+              if (-not $p.WaitForExit(240000)) { $p.Kill(); "cdb timed out" }
+              "----- stacks ($case) -----"
+              Get-Content $out | Where-Object { $_ -match '^\s*[0-9a-f]{2} |^\s*[#.]?\s*\d+\s+Id:' }
+              "----- end of stacks -----"
+            }
             Start-Sleep 2
           }
           $global:LASTEXITCODE = 0
+      - name: Dismiss the CoreWindow over the desktop
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/diag
+        run: |
+          dotnet run --no-build -c Release WinArm64Diag.cs -- dismiss
+          Start-Sleep 3
+          dotnet run --no-build -c Release WinArm64Diag.cs -- probe
+      - name: "391: DoDragDrop variants after dismissing it"
+        continue-on-error: true
+        timeout-minutes: 15
+        working-directory: ${{ runner.temp }}/diag
+        env:
+          DIAG_CASES: plain ole form,plain ole desktop,shell ole form,shcreate sh form,plain sh form
+        run: |
+          $dumps = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\dumps"
+          foreach ($case in $env:DIAG_CASES -split ',') {
+            "=== drag $case"
+            $env:DIAG_DUMP = Join-Path $dumps "$($case -replace ' ', '-').dmp"
+            $log = Join-Path $dumps "$($case -replace ' ', '-').log"
+            $p = Start-Process dotnet -ArgumentList (@('run', '--no-build', '-c', 'Release', 'WinArm64Diag.cs', '--', 'drag') + ($case -split ' ')) -NoNewWindow -PassThru -RedirectStandardOutput $log
+            if (-not $p.WaitForExit(90000)) { taskkill /T /F /PID $p.Id; "=== killed after 90 s" } else { "=== exit $($p.ExitCode)" }
+            Get-Content $log
+            if ((Test-Path $env:DIAG_DUMP) -and $env:DIAG_CDB -and -not $stacked2) {
+              $stacked2 = $true
+              $out = Join-Path $dumps "$($case -replace ' ', '-').stacks.txt"
+              $p = Start-Process $env:DIAG_CDB -ArgumentList @('-z', "`"$env:DIAG_DUMP`"", '-y', 'srv*C:\symcache*https://msdl.microsoft.com/download/symbols', '-c', '"~*kn 40; q"') -RedirectStandardOutput $out -NoNewWindow -PassThru
+              if (-not $p.WaitForExit(240000)) { $p.Kill(); "cdb timed out" }
+              "----- stacks ($case) -----"
+              Get-Content $out | Where-Object { $_ -match '^\s*[0-9a-f]{2} |^\s*[#.]?\s*\d+\s+Id:' }
+              "----- end of stacks -----"
+            }
+            Start-Sleep 2
+          }
+          $global:LASTEXITCODE = 0
+      - name: "373: NIM_ADD after dismissing it"
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/diag
+        run: dotnet run --no-build -c Release WinArm64Diag.cs -- notify
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: diag-dumps-${{ matrix.os }}
+          path: ${{ runner.temp }}/dumps
+          if-no-files-found: ignore
+          retention-days: 7
       - name: "373: NIM_ADD after restarting Explorer"
         continue-on-error: true
         working-directory: ${{ runner.temp }}/diag

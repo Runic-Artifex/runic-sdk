@@ -31,6 +31,8 @@ internal static class Program
         {
             "notify" => Notify.Run(),
             "drag" => DragCase.Run(args[1], args[2], args[3]),
+            "probe" => Native.Probe(),
+            "dismiss" => Native.Dismiss(),
             _ => 2,
         };
     }
@@ -132,7 +134,8 @@ internal static class DragCase
         while (!ended && watch.Elapsed < TimeSpan.FromSeconds(5)) Thread.Sleep(100);
         Program.Log($"after Escape: ended={ended}, QueryContinueDrag {queryCalls}");
         Console.WriteLine($"DRAG RESULT: hang, QueryContinueDrag {queryCalls}, GiveFeedback {feedbackCalls}, target DragOver {dragOvers}");
-        Environment.Exit(3);
+        Console.Out.Flush();
+        Process.GetCurrentProcess().Kill();
     }
 
     private static int Drag(string data, string api, string[] paths, (int X, int Y) start, (int X, int Y) end)
@@ -278,8 +281,77 @@ internal static unsafe partial class Native
         var name = new char[256];
         var length = GetClassName(window, name, name.Length);
         GetWindowThreadProcessId(window, out var pid);
-        return $"{window:X} '{new string(name, 0, length)}' pid {pid}";
+        return $"{window:X} '{new string(name, 0, length)}' pid {pid} {ProcessName(pid)} {Describe(window)}";
     }
+
+    private static string ProcessName(uint pid)
+    {
+        try { using var process = Process.GetProcessById((int)pid); return $"{process.ProcessName} (started {process.StartTime:HH:mm:ss}, suspended threads {process.Threads.Cast<ProcessThread>().Count(static t => t.ThreadState == System.Diagnostics.ThreadState.Wait && t.WaitReason == ThreadWaitReason.Suspended)}/{process.Threads.Count})"; }
+        catch (Exception error) { return $"? ({error.GetType().Name})"; }
+    }
+
+    private static string Describe(nint window)
+    {
+        GetWindowRect(window, out var bounds);
+        int cloaked = 0;
+        _ = DwmGetWindowAttribute(window, 14, &cloaked, 4); // DWMWA_CLOAKED
+        var title = new char[256];
+        var length = GetWindowText(window, title, title.Length);
+        var exStyle = GetWindowLongPtr(window, -20);
+        return $"'{new string(title, 0, length)}' [{bounds.Left},{bounds.Top} {bounds.Right - bounds.Left}x{bounds.Bottom - bounds.Top}] visible {IsWindowVisible(window)} cloaked 0x{cloaked:X} exstyle 0x{exStyle:X} hung {IsHungAppWindow(window)}";
+    }
+
+    // The visible top-level windows in z-order, the windows under the smoke's points and the foreground window.
+    internal static int Probe()
+    {
+        Program.Log($"foreground {WindowAt0(GetForegroundWindow())}");
+        foreach (var point in new[] { (240, 240), (540, 380), (150, 680), (512, 384) }) Program.Log($"under {point}: {WindowAt(point)}");
+        var index = 0;
+        EnumWindows((window, _) =>
+        {
+            if (IsWindowVisible(window))
+            {
+                var name = new char[256];
+                var length = GetClassName(window, name, name.Length);
+                GetWindowThreadProcessId(window, out var pid);
+                Program.Log($"z{index++,-3} {window:X} '{new string(name, 0, length)}' pid {pid} {ProcessName(pid)} {Describe(window)}");
+            }
+            return index < 60;
+        }, 0);
+        return 0;
+    }
+
+    // Stops the process that owns the window at the screen centre unless it is Explorer.
+    internal static int Dismiss()
+    {
+        var window = WindowFromPoint(new Point { X = 512, Y = 384 });
+        GetWindowThreadProcessId(window, out var pid);
+        using var process = Process.GetProcessById((int)pid);
+        Program.Log($"window at the screen centre: {WindowAt((512, 384))}, path {process.MainModule?.FileName}");
+        if (process.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase)) return 0;
+        process.Kill();
+        process.WaitForExit(10_000);
+        Program.Log($"stopped {pid}");
+        return 0;
+    }
+
+    private static string WindowAt0(nint window)
+    {
+        var name = new char[256];
+        var length = GetClassName(window, name, name.Length);
+        GetWindowThreadProcessId(window, out var pid);
+        return $"{window:X} '{new string(name, 0, length)}' pid {pid} {ProcessName(pid)} {Describe(window)}";
+    }
+
+    private delegate bool EnumWindowsProc(nint window, nint parameter);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, nint parameter);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint window);
+    [DllImport("user32.dll")] private static extern bool IsHungAppWindow(nint window);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint window, out Rect bounds);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(nint window, char[] text, int length);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern nint GetWindowLongPtr(nint window, int index);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(nint window, int attribute, void* value, int size);
+    [StructLayout(LayoutKind.Sequential)] private struct Rect { internal int Left; internal int Top; internal int Right; internal int Bottom; }
 
     internal static string InputDesktopName()
     {
@@ -330,20 +402,20 @@ internal static unsafe partial class Native
         SendInput(2, inputs, sizeof(Input));
     }
 
-    // Native stacks of every thread of this process through cdb, when the image has the Debugging Tools.
+    // A minidump of this process (all thread stacks) into DIAG_DUMP; the workflow reads its stacks with cdb -z.
     internal static void DumpStacks()
     {
-        var cdb = Environment.GetEnvironmentVariable("DIAG_CDB");
-        if (string.IsNullOrEmpty(cdb) || !File.Exists(cdb)) { Program.Log("no cdb on this image; no stacks"); return; }
-        var info = new ProcessStartInfo(cdb, $"-pv -p {Environment.ProcessId} -c \".symfix C:\\symcache; .reload; ~*kn 40; qd\"")
-        { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        using var debugger = Process.Start(info);
-        var output = debugger.StandardOutput.ReadToEndAsync();
-        if (!debugger.WaitForExit(150_000)) { debugger.Kill(); Program.Log("cdb timed out"); }
-        Console.WriteLine("----- cdb stacks -----");
-        Console.WriteLine(output.Wait(5000) ? output.Result : "(no output)");
-        Console.WriteLine("----- end of cdb stacks -----");
+        var path = Environment.GetEnvironmentVariable("DIAG_DUMP");
+        if (string.IsNullOrEmpty(path)) return;
+        using var file = new FileStream(path, FileMode.Create);
+        using var self = Process.GetCurrentProcess();
+        // MiniDumpWithThreadInfo | MiniDumpWithUnloadedModules | MiniDumpWithHandleData | MiniDumpWithProcessThreadData
+        var written = MiniDumpWriteDump(self.Handle, (uint)Environment.ProcessId, file.SafeFileHandle.DangerousGetHandle(), 0x1000 | 0x20 | 0x4 | 0x100, 0, 0, 0);
+        Program.Log($"minidump {path}: {written} (error {Marshal.GetLastPInvokeError()})");
     }
+
+    [DllImport("dbghelp.dll", SetLastError = true)]
+    private static extern bool MiniDumpWriteDump(nint process, uint processId, nint file, uint type, nint exception, nint user, nint callback);
 
     internal static nint DropFiles(string[] paths)
     {
