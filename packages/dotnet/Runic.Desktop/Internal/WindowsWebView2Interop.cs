@@ -347,15 +347,26 @@ internal sealed class WindowsWebView2Controller : IDisposable
 
     internal static async Task<WindowsWebView2Controller> CreateAsync(nint window, WebUiEmbeddedHostOptions options)
     {
-        var environmentCompletion = new WebViewCompletion();
-        using var environmentHandler = new WebViewComReference<IWebViewEnvironmentCompleted>(environmentCompletion);
         // Extensions are an option of the environment, which every window of the user data folder shares: the list is the
-        // process's (DevToolsExtensionFolders), not the window's, so two windows of one folder never ask for different
-        // options. Empty outside Development and for hosted windows.
-        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(
-            options.BrowserArguments, options.Language, browserExtensions: options.DevToolsExtensions.Count > 0));
-        WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, environmentHandler.Pointer);
-        var environment = await environmentCompletion.Task;
+        // process's (DevToolsExtensionFolders), not the window's, so two windows of one folder in this process never ask
+        // for different options. Empty outside Development and for hosted windows. Another process that holds the folder
+        // with extensions off (a production run, or an older Runic) refuses the option: the window then opens without
+        // extensions rather than not at all, and reports it.
+        nint environment;
+        Exception? extensionsRefused = null;
+        if (options.DevToolsExtensions.Count > 0)
+        {
+            try { environment = await CreateEnvironmentAsync(options, browserExtensions: true); }
+            catch (Exception error) when (error is InvalidOperationException or COMException or ArgumentException)
+            {
+                extensionsRefused = error;
+                environment = await CreateEnvironmentAsync(options, browserExtensions: false);
+            }
+        }
+        else
+        {
+            environment = await CreateEnvironmentAsync(options, browserExtensions: false);
+        }
         nint controller = 0;
         try
         {
@@ -377,7 +388,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
                 WindowsWebView2Interop.CreateController(environment, window, controllerHandler.Pointer);
             }
             controller = await controllerCompletion.Task;
-            return new WindowsWebView2Controller(environment, controller);
+            return new WindowsWebView2Controller(environment, controller) { ExtensionsRefused = extensionsRefused };
         }
         catch
         {
@@ -390,6 +401,19 @@ internal sealed class WindowsWebView2Controller : IDisposable
             throw;
         }
     }
+
+    private static async Task<nint> CreateEnvironmentAsync(WebUiEmbeddedHostOptions options, bool browserExtensions)
+    {
+        var completion = new WebViewCompletion();
+        using var handler = new WebViewComReference<IWebViewEnvironmentCompleted>(completion);
+        using var environmentOptions = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions(
+            options.BrowserArguments, options.Language, browserExtensions));
+        WindowsWebView2Interop.CreateEnvironment(options.ProfilePath, environmentOptions.Pointer, handler.Pointer);
+        return await completion.Task;
+    }
+
+    // Why the environment was created without the browser extensions it asked for (CreateAsync), or null.
+    internal Exception? ExtensionsRefused { get; private init; }
 
     // sdk#864, P2: a second controller in window from this controller's environment, so it shares the user data folder,
     // the browser process and the default profile, and with them the page's origin storage (side-panel/DESIGN.md §1.2).

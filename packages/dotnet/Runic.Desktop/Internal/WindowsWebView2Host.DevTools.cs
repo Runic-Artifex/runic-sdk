@@ -19,6 +19,9 @@ internal sealed partial class WindowsWebView2Host
     // not install them again, which would reload them under the first window's DevTools.
     private static readonly ConcurrentDictionary<string, byte> InstalledExtensions = new(StringComparer.OrdinalIgnoreCase);
 
+    // How long the first page waits for each extension's installation.
+    internal static readonly TimeSpan ExtensionInstallDeadline = TimeSpan.FromSeconds(15);
+
     // Window thread: whether WebContentRules enabled the developer tools of this window.
     private bool _devToolsEnabled;
 
@@ -49,8 +52,14 @@ internal sealed partial class WindowsWebView2Host
         _devToolsEnabled = devToolsEnabled;
         if (!devToolsEnabled) return;
         AddDevToolsSystemMenuItem();
-        if (options.EphemeralDataStore is null && options.DevToolsExtensions.Count > 0)
-            await InstallDevToolsExtensionsAsync(options);
+        if (options.EphemeralDataStore is not null || options.DevToolsExtensions.Count == 0) return;
+        if (_controller?.ExtensionsRefused is { } refused)
+        {
+            ReportExtensionFailure(options, options.DevToolsExtensions[0], new InvalidOperationException(
+                "The user data folder's WebView2 environment runs without browser extensions, for example in another process.", refused));
+            return;
+        }
+        await InstallDevToolsExtensionsAsync(options);
     }
 
     // Alt+Space or a right click on the title bar; a frameless window has the menu too, through Alt+Space.
@@ -84,14 +93,17 @@ internal sealed partial class WindowsWebView2Host
             if (!InstalledExtensions.TryAdd(key, 0)) continue;
             try
             {
-                await _controller!.AddBrowserExtensionAsync(folder);
+                // The first page waits for the installation; one that never completes must not hold the window.
+                await _controller!.AddBrowserExtensionAsync(folder).WaitAsync(ExtensionInstallDeadline);
             }
-            catch (Exception error) when (error is NotSupportedException or InvalidOperationException or COMException)
+            catch (Exception error) when (error is NotSupportedException or InvalidOperationException or COMException or TimeoutException)
             {
                 InstalledExtensions.TryRemove(key, out _);
-                ReportExtensionFailure(options, folder, error);
-                // A runtime without extensions installs none of the others either.
-                if (error is NotSupportedException) return;
+                ReportExtensionFailure(options, folder, error is TimeoutException
+                    ? new TimeoutException($"WebView2 did not install it within {ExtensionInstallDeadline.TotalSeconds:0} seconds.")
+                    : error);
+                // A runtime without extensions, or one that does not answer, installs none of the others either.
+                if (error is NotSupportedException or TimeoutException) return;
             }
         }
     }

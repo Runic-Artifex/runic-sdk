@@ -326,7 +326,8 @@ public sealed record DesktopHostOptions
     /// its files change; removing a folder from the list does not uninstall it. Hosted windows load none. WKWebView,
     /// WebKitGTK and installed browsers ignore the option. A folder that WebView2 cannot install, or a runtime without
     /// extensions, is reported to <see cref="DiagnosticSink"/> as <c>devtools-extension-failed</c> and the window opens
-    /// without it. Building the host throws <see cref="ArgumentException"/> for an entry that is not a full path.
+    /// without it; so does an installation that takes longer than 15 seconds, and a profile folder that another process
+    /// holds with extensions off, whose window then opens without extensions. Building the host throws <see cref="ArgumentException"/> for an entry that is not a full path.
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> DevToolsExtensions { get; init; } = [];

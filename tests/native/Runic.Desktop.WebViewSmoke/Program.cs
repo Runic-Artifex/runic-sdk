@@ -37,14 +37,17 @@ try
     else if (args.Contains("--menus", StringComparer.Ordinal) && OperatingSystem.IsWindows())
     {
         await WindowsMenuSmoke.RunAsync(CreateHostOptions());
-        // sdk#1043: the system menu's Open DevTools item, OpenDevToolsAsync and DevTools extensions, in the same CI step,
-        // with a deadline of their own.
-        SmokeSoak.Watchdog?.Change(TimeSpan.FromSeconds(180), Timeout.InfiniteTimeSpan);
-        await DevToolsSmoke.RunAsync(CreateHostOptions());
+        // sdk#1043: the system menu's Open DevTools item, OpenDevToolsAsync and DevTools extensions, in the same CI step;
+        // each phase runs in a process of its own.
+        await DevToolsSmoke.RunAsync();
+    }
+    else if (args.Contains("--devtools-phase", StringComparer.Ordinal) && OperatingSystem.IsWindows())
+    {
+        await DevToolsSmoke.RunPhaseAsync(CreateHostOptions(), args[Array.IndexOf(args, "--devtools-phase") + 1]);
     }
     else if (args.Contains("--devtools", StringComparer.Ordinal) && OperatingSystem.IsWindows())
     {
-        await DevToolsSmoke.RunAsync(CreateHostOptions());
+        await DevToolsSmoke.RunAsync();
     }
     else if (args.Contains("--dpi", StringComparer.Ordinal))
     {
