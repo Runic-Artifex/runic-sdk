@@ -1179,6 +1179,19 @@ to the Window: neither 9224 nor any free port. Exit code 1. Since 0.21.
 sandbox or container. See
 [Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).
 
+### RAPPDEV1017
+
+`dev --no-window` on Linux could not open Runic's CDP adapter on port 9222,
+which the IDE's attach configuration names (the template's
+`Attach to the page (JavaScript)`): another process holds it, often another
+`dotnet runic dev` session or a browser with remote debugging. Without
+`--no-window`, `dev` moves the adapter to a free port and names it instead.
+Exit code 1. Since 0.21.
+
+**Fix:** stop the process that holds 9222, or run `dev` with
+`--no-debug-endpoint`. See
+[Debug the page's JavaScript on Linux](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview).
+
 ### RAPPPKG1001
 
 `package` found an invalid application identity: `ApplicationId` is not a

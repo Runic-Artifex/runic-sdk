@@ -12,7 +12,7 @@ namespace Runic.Application.Tool.WebKit;
 /// <summary>
 /// The CDP adapter for the Window's WebKitGTK pages under <c>dotnet runic dev</c> on Linux (D066.39): a
 /// <see cref="CdpServer"/> on loopback, and a connection to the Window's WebKit remote inspector server that exists only
-/// while a debugger is connected, since WebKit admits one client and GNOME Web may want <c>inspector://</c> otherwise.
+/// while a debugger is connected, since WebKit serves one client and GNOME Web may want <c>inspector://</c> otherwise.
 /// When the Window restarts (<c>dotnet watch</c>), the connection closes with it; while debuggers stay connected, the
 /// endpoint reconnects to the new Window's server and announces its pages. On Linux it talks only to an inspector port
 /// whose listener belongs to the user who runs dev, so another user who took the port first does not receive the

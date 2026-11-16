@@ -116,9 +116,13 @@ The `native` matrix (`nativeLegs` in `eng/ci/platforms.mjs`) runs on `linux-x64`
 [`eng/support.json`](../support.json), and `eng/support.test.mjs` keeps them equal.
 Matrix entries with `cswebui: false` (`win-arm64`) skip the CS-WebUI window probes,
 because CS-WebUI ships no native library there; `Runic.Platform.Administration.Windows`
-and the IDE reload check run on Windows x64 only. So does the notification-area status
-icon: the `windows-11-arm` image's Explorer refuses `Shell_NotifyIcon(NIM_ADD)` with
-`E_FAIL`, also from a plain P/Invoke outside Runic. The WPF job runs its hosts on
+and the IDE reload check run on Windows x64 only. The `windows-11-arm` image starts
+its session with Windows' full-screen "Microsoft account" prompt (`WWAHost.exe`) over the
+desktop; while it is up, Explorer refuses `Shell_NotifyIcon(NIM_ADD)` with `E_FAIL` and
+`DoDragDrop` never starts its loop, also outside Runic (#373). The native and WPF jobs
+close it first (`eng/ci/windows-dismiss-oobe.ps1`), so the status icon runs on both
+Windows legs. The runner still delivers no `SendInput` to WebView2 on arm64, so the drops
+onto and drags out of WebView2 stay unverified there (#391). The WPF job runs its hosts on
 `win-x64` and `win-arm64`, and the architecture-independent generator and packed
 consumer checks on `win-x64`.
 

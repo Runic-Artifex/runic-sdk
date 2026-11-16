@@ -209,6 +209,24 @@ internal static class WebKitDebugging
               "adapter does not connect to it.";
     }
 
+    internal const string NoWindowCdpPortTakenCode = "RAPPDEV1017";
+
+    /// <summary>
+    /// Under <c>--no-window</c> the IDE's attach configuration names the CDP port, 9222 in the template's, so dev does not
+    /// move the adapter to another port when 9222 is taken (#1065): the attach would fail with "Cannot connect", or reach
+    /// whatever holds 9222. <paramref name="owner"/> is that process's user when it is another user's.
+    /// </summary>
+    internal static string NoWindowCdpPortTakenMessage(uint? owner)
+    {
+        string port = DefaultCdpPort.ToString(CultureInfo.InvariantCulture);
+        string holder = owner is { } uid
+            ? $"another user (uid {uid.ToString(CultureInfo.InvariantCulture)}) holds it"
+            : "another process holds it, such as another dotnet runic dev session or a browser with remote debugging";
+        return $"--no-window needs port {port} for Runic's CDP adapter, which the IDE's attach configuration names, but " +
+            $"{holder}. Stop that process, or run dotnet runic dev without --no-window, which moves the adapter to a " +
+            "free port and names it, or with --no-debug-endpoint.";
+    }
+
     internal const string CdpUnavailableHint =
         "[dev] Debugging: no loopback port for Runic's CDP adapter could be opened, so JavaScript debuggers cannot attach.";
 

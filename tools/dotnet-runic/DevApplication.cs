@@ -158,14 +158,20 @@ internal static class DevApplication
             {
                 debuggingHints.Add(WebKitDebugging.ForeignInspectorHint(debugging.InspectorHost!, debugging.InspectorPort, inspectorOwner));
             }
-            // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port.
-            if (adapter.Start(WebKitDebugging.DefaultCdpPort) || adapter.Start(0))
+            // 9222 like WebView2's endpoint, so one attach configuration serves Windows and Linux; else any free port, but
+            // not under --no-window, whose IDE attach configuration expects 9222 (#1065).
+            if (adapter.Start(WebKitDebugging.DefaultCdpPort) || (options.StartWindow && adapter.Start(0)))
             {
                 webKitEndpoints.Insert(0, WebKitDebugging.CdpEndpoint(adapter.Port!.Value));
                 uint? defaultPortOwner = adapter.Port.Value == WebKitDebugging.DefaultCdpPort
                     ? null
                     : sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort);
                 debuggingHints.AddRange(WebKitDebugging.CdpHints(adapter.Port.Value, debugging, defaultPortOwner));
+            }
+            else if (!options.StartWindow)
+            {
+                throw new DevDevelopmentException(WebKitDebugging.NoWindowCdpPortTakenCode, WebKitDebugging.NoWindowCdpPortTakenMessage(
+                    sockets?.ForeignListener(IPAddress.Loopback, WebKitDebugging.DefaultCdpPort)));
             }
             else
             {
