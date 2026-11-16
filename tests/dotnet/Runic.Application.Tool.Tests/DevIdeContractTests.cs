@@ -352,6 +352,34 @@ internal sealed partial class ToolTests
         Equal(0, document.RootElement.GetProperty("debugEndpoints").GetArrayLength());
     }
 
+    // #1044: the unpacked Runic DevTools extension ships beside the tool, and the session file names it for a browser's
+    // --load-extension and a WebView2 Window's extension loading.
+    [Test, DisplayName("the tool ships the DevTools extension and the session file names its directory")]
+    public void DevSessionNamesTheDevToolsExtension()
+    {
+        string extension = DevToolsExtension.Find() ?? throw new InvalidOperationException("The tool has no DevTools extension beside it.");
+        using (JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(extension, "manifest.json"))))
+        {
+            Equal(3, manifest.RootElement.GetProperty("manifest_version").GetInt32());
+            string page = manifest.RootElement.GetProperty("devtools_page").GetString()!;
+            True(File.Exists(Path.Combine(extension, page)), page);
+        }
+        True(File.Exists(Path.Combine(extension, "panel.html")) && File.Exists(Path.Combine(extension, "sidebar.html")), "The extension's pages are missing.");
+        StartsWith(DevToolsExtension.Hint(extension), $"[dev] DevTools extension: {extension} ");
+        Equal(null, DevToolsExtension.Find(Path.GetTempPath()));
+
+        using var workspace = new TestWorkspace();
+        var options = new DevOptions(null, "Debug", true, true, true, false, []);
+        var session = new DevSession(CreateConfiguration(workspace, "vite"), options, [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, extension);
+        using (JsonDocument document = JsonDocument.Parse(session.Render()))
+        {
+            Equal(extension, document.RootElement.GetProperty("devtoolsExtension").GetString());
+        }
+        var without = new DevSession(CreateConfiguration(workspace, "vite"), options, [], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        using JsonDocument none = JsonDocument.Parse(without.Render());
+        Equal(JsonValueKind.Null, none.RootElement.GetProperty("devtoolsExtension").ValueKind);
+    }
+
     [Test, DisplayName("the session lists WebView2's debugging port when the Window's environment enables it")]
     public void DevSessionFindsWebView2DebuggingPort()
     {

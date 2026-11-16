@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <None Update="README.md" Pack="true" PackagePath="\" />
+    <!-- The unpacked Runic DevTools extension (DevToolsExtension.cs): beside the tool's assembly, so its path is stable. -->
+    <None Update="devtools-extension/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="metadata/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
     <PackageReference Include="Runic.CommandLine" />

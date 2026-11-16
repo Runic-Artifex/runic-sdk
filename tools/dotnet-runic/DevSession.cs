@@ -56,15 +56,20 @@ internal sealed partial class DevSession
         DevOptions options,
         IReadOnlyList<DebugEndpoint> debugEndpoints,
         DateTimeOffset startedAt,
-        DateTimeOffset processStartedAt)
+        DateTimeOffset processStartedAt,
+        string? devToolsExtension = null)
     {
         _configuration = configuration;
         _options = options;
         _debugEndpoints = debugEndpoints;
         _startedAt = startedAt;
         _processStartedAt = processStartedAt.ToUniversalTime();
+        DevToolsExtension = devToolsExtension;
         Path = System.IO.Path.Combine(configuration.SessionDirectory, FileName);
     }
+
+    /// <summary>The Runic DevTools extension's unpacked directory beside the tool, or null without one.</summary>
+    internal string? DevToolsExtension { get; }
 
     /// <summary>The absolute path of the session file.</summary>
     internal string Path { get; }
@@ -137,7 +142,8 @@ internal sealed partial class DevSession
             [.. FindDebugEndpoints(configuration, options.Environment, Environment.GetEnvironmentVariable, OperatingSystem.IsWindows(),
                 Environment.IsPrivilegedProcess), .. webKitEndpoints ?? []],
             DateTimeOffset.UtcNow,
-            new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero));
+            new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero),
+            Tool.DevToolsExtension.Find());
     }
 
     /// <summary>The debugging endpoints that the Window's environment asks for but cannot open, with the reason.</summary>
@@ -322,6 +328,9 @@ internal sealed partial class DevSession
                 json.WriteEndObject();
             }
             json.WriteEndArray();
+            // The unpacked Runic DevTools extension that ships with this tool, for a browser's --load-extension or a
+            // WebView2 Window's extension loading; null when the tool has none.
+            WriteStringOrNull(json, "devtoolsExtension", DevToolsExtension);
             json.WriteEndObject();
         }
         return stream.ToArray();

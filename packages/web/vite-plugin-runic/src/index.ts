@@ -44,6 +44,7 @@ export type {
   RunicInspectCall, RunicInspectCommand, RunicInspectComponent, RunicInspectDescription, RunicInspectEvidence,
   RunicInspectLocation, RunicInspectMember, RunicInspectMessage, RunicInspectText, RunicInspectViewModel,
 } from "./inspect-data.js";
+export type { RunicInspectRecentCall, RunicInspectSnapshot, RunicInspectView } from "./inspect-snapshot.js";
 export type {
   RunicSourceLocation, RunicSourceMap, RunicSourceMember, RunicSourceMemberKind, RunicSourceViewModel,
 } from "./sources.js";

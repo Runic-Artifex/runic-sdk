@@ -117,6 +117,10 @@ internal static class DevApplication
         var session = DevSession.Create(configuration, options, webKitEndpoints);
         foreach (DevSession.DebugEndpoint endpoint in session.UnavailableDebugEndpoints) Console.WriteLine(UnavailableEndpointHint(endpoint));
         foreach (string hint in debuggingHints) Console.WriteLine(hint);
+        if (configuration.HasDevelopmentServer && options.WatchFrontend && session.DevToolsExtension is { } extension)
+        {
+            Console.WriteLine(DevToolsExtension.Hint(extension));
+        }
         WriteSession(session.Start);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
