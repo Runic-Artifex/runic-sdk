@@ -260,7 +260,7 @@ async function withPage(files, plugins, run, engine = engines.chromium) {
       `Server warnings: ${warnings.length === 0 ? "none" : warnings.join(" | ")}`,
       `Page clicks: ${(await page.evaluate(() => globalThis.runicTestClicks.slice(-6)).catch(() => [])).join(" | ") || "none"}`,
     ].join("\n"));
-    await run({ page, root, csharp: file, opened });
+    await run({ page, root, csharp: file, record, opened });
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
@@ -431,11 +431,10 @@ async function exerciseMessages({ page, root, opened }) {
   const card = page.locator("runic-inspect .card");
   await card.getByText("app:heading").waitFor({ timeout: scaled(10_000) });
   assert.match(await card.textContent(), /app:heading \[en\] "Counter"/u);
-  // The click goes to the link in one dispatch (#1054). The card is still open from exercise's select(), so its Escape
-  // and the Alt+Shift+X above changed the text while it showed, and Runic Inspect renders the overview again 60 ms
-  // later (inspect.ts, scheduleRefresh). A pointer click whose mousedown and mouseup straddle that render reaches no
-  // link and opens nothing. exercise's links show the pointer path through select mode.
-  await card.locator("a", { hasText: "translations/en.rmf2:2" }).dispatchEvent("click");
+  // The card is still open from exercise's select(), so its Escape and the Alt+Shift+X above changed the text while it
+  // showed: Inspect describes the heading again 60 ms later, possibly during this click, and keeps the unchanged link
+  // (#1054, #1062).
+  await card.locator("a", { hasText: "translations/en.rmf2:2" }).click();
   if (process.platform !== "win32") assert.deepEqual(await opened(), [rmf2, "2", "1"]);
 
   // Off: the page renders its plain text again.
@@ -765,7 +764,7 @@ createRoot(document.getElementById("root")).render(<CounterPage />);
     "CounterPage.jsx": counter,
     "translations.js": translations,
     "translations/en.rmf2": translationSource,
-  }, [translationsApi()], async ({ page, root, record }) => {
+  }, [translationsApi()], async ({ page, root, opened }) => {
     const rmf2 = join(root, "translations", "en.rmf2");
     await page.keyboard.press("Alt+Shift+X");
     await page.waitForFunction(() => document.querySelector("#heading").textContent !== "Counter", null, { timeout: scaled(10_000) });
@@ -786,7 +785,7 @@ createRoot(document.getElementById("root")).render(<CounterPage />);
       await page.mouse.down();
       await change();
       await page.mouse.up();
-      assert.deepEqual(await readRecord(record), [rmf2, "2", "1"]);
+      assert.deepEqual(await opened(), [rmf2, "2", "1"]);
     };
 
     // Unchanged: the refresh 60 ms after the change describes the same thing, and the overview stays as it is.
