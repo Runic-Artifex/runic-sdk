@@ -27,11 +27,10 @@ import { allowVariable, parseAllowList, resolveAccessList } from "./access.js";
 import { answerHandlers, createHandlerAnalyzer, handlerFile } from "./handlers.js";
 import { createOtlpForwarder, resolveOtlp, spanEvent, type OtlpForwarder, type RunicOtlpOptions } from "./otlp.js";
 import {
-  buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, resolveComponentOptions,
-  type RunicComponentOptions,
+  buildComponent, componentEnvironment, componentEnvironmentOptions, componentHooks, experimentalComponentOption,
+  resolveComponentOptions, type RunicComponentOptions,
 } from "./component.js";
 
-export type { RunicComponentOptions } from "./component.js";
 export type { RunicOtlpOptions } from "./otlp.js";
 
 export { runicDevSessionProxy } from "./dev-session.js";
@@ -112,12 +111,6 @@ export interface RunicViteOptions {
     bootstrapUrl?: string;
   }>;
   /**
-   * Adds the `component` build target (trusted component mode): `vite build` also builds the guest's Views as an ES
-   * module that defines a custom element, into `_runic_component/` of the build output. Requires base `./`. The
-   * development server serves the page only.
-   */
-  readonly component?: RunicComponentOptions;
-  /**
    * The development source map that the Bridge generator writes to `obj` (`runic-bridge/sources.json`), which
    * `vite dev` serves at `/__runic/sources` and opens in the editor through `/__runic/open`. A path names the file or
    * a directory to search, relative to the Vite root. By default the plugin takes the path `dotnet runic dev` passes,
@@ -152,6 +145,12 @@ export interface RunicViteOptions {
 }
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
+  // The `component` build target is experimental (docs/experimental.md, "npm packages"): only the `runic` of
+  // `@runic-artifex/vite-plugin-runic/experimental` takes it, and hands it over under experimentalComponentOption.
+  if ((options as { readonly component?: unknown }).component !== undefined) {
+    throw new TypeError("component is experimental: import runic from \"@runic-artifex/vite-plugin-runic/experimental\" to build a component.");
+  }
+  const componentOptions = (options as { readonly [experimentalComponentOption]?: RunicComponentOptions })[experimentalComponentOption];
   const maxTimelineEntries = timelineLimit(options.maxTimelineEntries);
   if (options.staleInputWarning !== undefined && typeof options.staleInputWarning !== "boolean") {
     throw new TypeError("staleInputWarning must be true or false.");
@@ -185,7 +184,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   if (!html && desktopBootstrapUrl !== undefined) {
     throw new TypeError("desktop requires html: true: the Desktop bootstrap is a script tag the plugin adds to the HTML.");
   }
-  const component = resolveComponentOptions(options.component);
+  const component = resolveComponentOptions(componentOptions);
   const relocatable = desktopBootstrapUrl !== undefined || component !== undefined;
   const relocatableOption = desktopBootstrapUrl !== undefined ? "desktop: true" : "component";
   const components = component === undefined ? undefined : componentHooks(component, () => resolvedRoot);

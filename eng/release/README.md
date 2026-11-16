@@ -786,7 +786,9 @@ requirement, not a consumer one.
   a minor release; graduation moves an export to the root entry. 0.10.0 removed
   every `./experimental` entry; 0.18 added new ones for hosted regions, 0.19
   `onBridgeDraining` for the close drain, and 0.20 `runicComponentMount` in
-  `@runic-artifex/angular` for Angular guests in trusted component mode.
+  `@runic-artifex/angular` for Angular guests in trusted component mode; 0.21
+  moved trusted component mode of `@runic-artifex/views` and the `component`
+  build target of `@runic-artifex/vite-plugin-runic` there.
 - **Preview:** `Runic.Application.Views.CsWebUi` is the only preview package. It
   depends on the prerelease `CsWebUi`, so it ships with each release on a
   prerelease version, `<release major.minor.patch>-preview.N` with a counter of its

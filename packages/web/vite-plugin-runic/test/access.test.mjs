@@ -66,7 +66,7 @@ export function Page({ client }) {
   await mkdir(join(root, "node_modules", "@runic-artifex"));
   await symlink(here, join(root, "node_modules", "@runic-artifex", "vite-plugin-runic"), "dir");
   await writeFile(join(root, "sources.json"), JSON.stringify({
-    format: "runic-bridge-sources/1",
+    format: "runic.views.bridge-sources/1",
     viewModels: [{ id: "Demo.Counter", name: "Counter", route: "counter", contract: "Demo.Counter:00", pageKinds: ["counter"], symbol: "Demo.Counter" }],
     members: [{ id: "Demo.Counter/command/save", viewModel: "Demo.Counter", member: "save", kind: "command", symbol: "Demo.Counter.Save()",
       location: { file: join(root, "Counter.cs"), line: 1, column: 1 } }],

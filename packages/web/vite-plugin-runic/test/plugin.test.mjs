@@ -9,6 +9,7 @@ import { DevTools } from "@vitejs/devtools";
 import { build, createServer } from "vite";
 import * as pluginModule from "../dist/index.js";
 import { runic, runicDevSessionProxy } from "../dist/index.js";
+import { runic as experimentalRunic } from "../dist/experimental.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -968,10 +969,12 @@ async function ssrRevisionAfterUpdate(server) {
 }
 
 test("component validates its options and needs a relocatable base", async () => {
-  assert.throws(() => runic({ component: {} }), /component\.entry/);
-  assert.throws(() => runic({ component: { entry: "src/component.ts", name: "Acme" } }), /component\.name/);
-  assert.throws(() => runic({ component: { entry: "src/component.ts", name: "1acme" } }), /component\.name/);
-  const plugin = runic({ devtools: false, component: { entry: "src/component.ts", name: "acme-checks" } });
+  // The component target is experimental: the root entry's runic refuses it (0.21).
+  assert.throws(() => runic({ component: { entry: "src/component.ts" } }), /vite-plugin-runic\/experimental/);
+  assert.throws(() => experimentalRunic({ component: {} }), /component\.entry/);
+  assert.throws(() => experimentalRunic({ component: { entry: "src/component.ts", name: "Acme" } }), /component\.name/);
+  assert.throws(() => experimentalRunic({ component: { entry: "src/component.ts", name: "1acme" } }), /component\.name/);
+  const plugin = experimentalRunic({ devtools: false, component: { entry: "src/component.ts", name: "acme-checks" } });
   const config = plugin.config({}, { command: "build", mode: "production" });
   assert.equal(config.base, "./");
   assert.deepEqual(config.builder, {});

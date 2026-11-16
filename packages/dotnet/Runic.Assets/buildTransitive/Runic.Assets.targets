@@ -59,7 +59,7 @@
   <!-- AssetArchive.ReadEmbedded does not check the SHA-256 digests of an embedded archive at run time (since 0.15):
        the build checks what it embeds. The packer reads back every archive it writes; an archive that the project
        brings itself (RunicAssetsEmbeddedArchive) is checked here, again only when it or the packer changes. -->
-  <Target Name="RunicAssetsVerifyEmbeddedArchive"
+  <Target Name="_RunicAssetsVerifyEmbeddedArchive"
           Condition="'$(RunicAssetsEmbeddedArchive)' != '' and '$(RunicAssetsDist)' == '' and Exists('$(RunicAssetsEmbeddedArchive)') and '$(DesignTimeBuild)' != 'true'"
           Inputs="$(RunicAssetsEmbeddedArchive);$(RunicAssetsPackerPath)"
           Outputs="$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).embedded-archive.verified">
@@ -84,7 +84,7 @@
 
   <Target Name="RunicAssetsEmbedFileSystem"
           BeforeTargets="SplitResourcesByCulture"
-          DependsOnTargets="RunicAssetsPackFileSystem;RunicAssetsVerifyEmbeddedArchive"
+          DependsOnTargets="RunicAssetsPackFileSystem;_RunicAssetsVerifyEmbeddedArchive"
           Condition="('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '') and '$(DesignTimeBuild)' != 'true' and '$(_RunicAssetsDistStaged)' != 'true'">
     <PropertyGroup>
       <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>

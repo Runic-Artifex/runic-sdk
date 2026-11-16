@@ -1,4 +1,4 @@
-import type { RunicComponentMount } from "@runic-artifex/views/component";
+import type { RunicComponentMount } from "@runic-artifex/views/experimental";
 import { renderWidget } from "./widget";
 // The component's CSS becomes constructable stylesheets that the element adopts in its shadow root.
 import "./widget.css";

@@ -191,7 +191,7 @@ export class CounterComponent {
 
 // Matching ---------------------------------------------------------------------------------------------------------
 
-const analysis = (file, bindings) => ({ format: "runic-handlers/1", file, framework: "react", bindings });
+const analysis = (file, bindings) => ({ format: "runic.vite.handlers/1", file, framework: "react", bindings });
 const call = (member, file = "/app/A.tsx") => ({ member, file, line: 3, column: 9, via: "direct" });
 const bound = (tag, event, line, column, expression, calls, file = "/app/A.tsx") =>
   ({ file, line, column, tag, event, expression, calls: calls.map((member) => call(member, file)), external: [] });
@@ -229,7 +229,7 @@ test("matching: Vue and Angular listeners by their compiled handlers", () => {
   assert.deepEqual(match(listeners("vue", ["/app/D.vue"], [{ event: "click", text: "$event => ($setup.increment())" }])), []);
 
   // Angular: an external template's bindings are named by the analysis of the component's script.
-  const angular = { format: "runic-handlers/1", file: "/app/counter.ts", framework: "angular", bindings: [
+  const angular = { format: "runic.vite.handlers/1", file: "/app/counter.ts", framework: "angular", bindings: [
     bound("button", "click", 2, 3, "increment.run()", ["increment"], "/app/counter.html"),
     bound("button", "click", 3, 3, "save()", ["save"], "/app/counter.html")] };
   const ng = (text) => matchBindings([listeners("angular", ["/app/counter.ts"], [{ event: "click", text }])], [angular]).calls.map((entry) => entry.member);
@@ -272,7 +272,7 @@ test("probes: Svelte, Vue and Angular development metadata", () => {
 // The overview -----------------------------------------------------------------------------------------------------
 
 const sourceMap = {
-  format: "runic-bridge-sources/1",
+  format: "runic.views.bridge-sources/1",
   viewModels: [{ id: "Demo.CounterViewModel", name: "Counter", route: "counter", contract: "Demo.CounterViewModel:F", pageKinds: ["counter"],
     symbol: "Demo.CounterViewModel" }],
   members: [{ id: "Demo.CounterViewModel/command/increment", viewModel: "Demo.CounterViewModel", member: "increment", kind: "command",
@@ -375,7 +375,7 @@ test("/__runic/handlers answers pages of this machine under runic() and runicDev
       let response = await get(join(root, "src", "Page.jsx"));
       assert.equal(response.status, 200);
       const body = await response.json();
-      assert.equal(body.format, "runic-handlers/1");
+      assert.equal(body.format, "runic.vite.handlers/1");
       assert.deepEqual(summary(body.bindings), ["button click: save(helper)"]);
       // Relative to the root, as Angular's debug info names a component's file.
       response = await get("src/counter.ts");

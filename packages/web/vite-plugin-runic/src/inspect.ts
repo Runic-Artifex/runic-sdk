@@ -285,7 +285,7 @@ export function installInspect(options: InspectOptions = {}): () => void {
         if (!response.ok) return undefined;
         analysis = await response.json() as RunicHandlerAnalysis;
       }
-      return analysis?.format === "runic-handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
+      return analysis?.format === "runic.vite.handlers/1" && Array.isArray(analysis.bindings) ? { ...analysis, requested: file } : undefined;
     } catch {
       return undefined;
     }
