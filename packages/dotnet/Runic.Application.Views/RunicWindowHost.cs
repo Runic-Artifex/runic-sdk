@@ -225,10 +225,10 @@ public sealed record RunicWindowOptions
 
     /// <summary>
     /// The most bytes that the window's unclaimed uploads may take at once
-    /// (<see cref="WindowContentSessionOptions.MaximumWindowUploadBytes"/>), at least 1 KiB. <see langword="null"/>, the
+    /// (<see cref="WindowContentSessionOptions.MaximumPendingUploadBytes"/>), at least 1 KiB. <see langword="null"/>, the
     /// default, is 1 GiB.
     /// </summary>
-    public long? MaximumWindowUploadBytes { get; init; }
+    public long? MaximumPendingUploadBytes { get; init; }
 
     /// <summary>
     /// How long the Window stays visible after its close was decided, while its accepted work drains
@@ -289,7 +289,7 @@ public sealed record RunicWindowOptions
         if (Modality != RunicWindowModality.None && Owner is null)
             throw new ArgumentException("A window-modal Window needs an Owner: set Owner, or Modality to None.", nameof(Modality));
         BridgeInputLimit.ResolveUpload(MaximumUploadBytes, nameof(MaximumUploadBytes));
-        BridgeInputLimit.ResolveUpload(MaximumWindowUploadBytes, nameof(MaximumWindowUploadBytes));
+        BridgeInputLimit.ResolveUpload(MaximumPendingUploadBytes, nameof(MaximumPendingUploadBytes));
     }
 }
 

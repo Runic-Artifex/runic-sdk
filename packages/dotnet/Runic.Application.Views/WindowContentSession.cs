@@ -94,7 +94,7 @@ public sealed class WindowContentSession : IDisposable
         Validation = options.Validation;
         MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
         var maximumUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumUploadBytes, nameof(options.MaximumUploadBytes));
-        var maximumWindowUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumWindowUploadBytes, nameof(options.MaximumWindowUploadBytes));
+        var maximumPendingUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumPendingUploadBytes, nameof(options.MaximumPendingUploadBytes));
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
@@ -132,7 +132,7 @@ public sealed class WindowContentSession : IDisposable
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
             dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger, options.FlowCultureFromLocale);
-            dispatcher.Blobs.Configure(maximumUploadBytes, maximumWindowUploadBytes);
+            dispatcher.Blobs.Configure(maximumUploadBytes, maximumPendingUploadBytes);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
             // A departure of this window's models flushes its pages first (field-flush/1).
             if (ModelContext is { } flushContext)

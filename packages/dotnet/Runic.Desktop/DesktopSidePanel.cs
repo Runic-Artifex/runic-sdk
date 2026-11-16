@@ -109,6 +109,12 @@ public enum DesktopSidePanelRefusal
 
     /// <summary>The panel's page did not load within <see cref="DesktopSidePanelOptions.LoadTimeout"/>, or failed to load.</summary>
     LoadFailed,
+
+    /// <summary>
+    /// The window, or the panel asked to change, closed while the request ran. A window or panel that was closed before
+    /// the call still throws <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    Closed,
 }
 
 /// <summary>Why a side panel closed, for <see cref="DesktopSidePanel.Closed"/>.</summary>
@@ -210,7 +216,8 @@ public sealed class DesktopSidePanel : IAsyncDisposable
         if (!Enum.IsDefined(edge)) throw new ArgumentOutOfRangeException(nameof(edge));
         ObjectDisposedException.ThrowIf(!IsOpen, this);
         var left = DesktopWindowBounds.ResolvesToLeft(edge, _window.LayoutDirection);
-        return left == Native.IsLeft ? ValueTask.FromResult<DesktopSidePanelRefusal?>(null) : Native.MoveAsync(left, cancellationToken);
+        return left == Native.IsLeft ? ValueTask.FromResult<DesktopSidePanelRefusal?>(null)
+            : RefuseWhenClosedAsync(Native.MoveAsync(left, cancellationToken));
     }
 
     /// <summary>
@@ -230,7 +237,15 @@ public sealed class DesktopSidePanel : IAsyncDisposable
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, DesktopSidePanelOptions.MinimumWidth);
         ObjectDisposedException.ThrowIf(!IsOpen, this);
-        return width == Native.Width ? ValueTask.FromResult<DesktopSidePanelRefusal?>(null) : Native.SetWidthAsync(width, cancellationToken);
+        return width == Native.Width ? ValueTask.FromResult<DesktopSidePanelRefusal?>(null)
+            : RefuseWhenClosedAsync(Native.SetWidthAsync(width, cancellationToken));
+    }
+
+    // The panel or its window closed while the change ran: Closed, as RunicSidePanelRefusal reports it (API-14).
+    private async ValueTask<DesktopSidePanelRefusal?> RefuseWhenClosedAsync(ValueTask<DesktopSidePanelRefusal?> change)
+    {
+        try { return await change.ConfigureAwait(false); }
+        catch (InvalidOperationException) when (!IsOpen || !_window.IsOpen) { return DesktopSidePanelRefusal.Closed; }
     }
 
     /// <summary>Moves the keyboard focus into the panel's page, to its focused element or its first one.</summary>

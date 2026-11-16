@@ -383,7 +383,8 @@ Since 0.16, the service also manages the open Windows:
   the service or `host.OpenWindowAsync`, in the order they opened, until its
   close starts: the application closed it, a close request decided to close it,
   `CompleteAsync` completed it, or the user closed it. `WindowsChanged` reports
-  each open and close, one change at a time and in order, on a thread-pool
+  each open and close (`Change` is `RunicWindowsChange.Opened` or `Closed`, an
+  open enum), one change at a time and in order, on a thread-pool
   thread, each with its own `Windows` list. It is not raised in any Window's
   model context, so a ViewModel posts what it does to its own.
   `ObserveWindows()` returns the list now and after each change as a plain
@@ -1096,7 +1097,7 @@ _settings.WindowPlacement = _window.Placement;
   report `Conflict`.
 
 A custom Runic Desktop window host supports them by implementing
-`IDesktopWindowShowStateHost` and reporting `DesktopWindowCapabilities.WindowPlacement`.
+`IDesktopShowStateWindowHost` and reporting `DesktopWindowCapabilities.Placement`.
 
 #### A side panel beside the Window's page
 
@@ -4254,7 +4255,7 @@ The page receives `{url, type, size, name}` and uses `url` directly:
 private async Task AttachAsync(RunicUpload file, CancellationToken cancellationToken)
 {
     // Everything about an upload comes from the page: check what you read before you use it.
-    await file.SaveAsAsync(Path.Combine(_attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
+    await file.SaveToFileAsync(Path.Combine(_attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
     Attachments.Add(new Attachment(file.FileName, file.Length));
 }
 ```
@@ -4273,7 +4274,7 @@ await client.attach(ref);
   Bridge carries only the reference.
 - An upload decodes only for the Window and the page connection that uploaded
   it, and only once: the first `OpenReadAsync` (a seekable stream; disposing it
-  deletes the content), `SaveAsAsync` (a rename on the same volume, otherwise a
+  deletes the content), `SaveToFileAsync` (a rename on the same volume, otherwise a
   copy) or `Discard` claims it, and a later request that names it is rejected
   as invalid input. An unclaimed upload is deleted when its connection closes,
   when the Window closes, or after 10 minutes.
@@ -4283,9 +4284,9 @@ await client.attach(ref);
 - An upload whose body sends nothing for 30 seconds is dropped (HTTP 408), on
   every host.
 - Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
-  and `MaximumWindowUploadBytes` (unclaimed uploads of a Window at once, default
-  1 GiB), with host defaults `RunicDesktopHostOptions.MaximumUploadBytes` and
-  `RunicCsWebUiHostOptions.MaximumUploadBytes`, and
+  and `MaximumPendingUploadBytes` (unclaimed uploads of a Window at once, default
+  1 GiB), with host defaults of the same names on `RunicDesktopHostOptions`,
+  `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions`, and
   `WindowContentSessionOptions` for a session you create. The WPF host uses the
   defaults.
 - Uploads are stored in a new folder of each Window, `runic-uploads-{random}`

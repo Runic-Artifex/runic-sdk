@@ -579,10 +579,10 @@ public enum RunicHostedDialogKind
     SaveFile,
 
     /// <summary>A dialog that selects one directory (<c>folder</c>).</summary>
-    OpenFolder,
+    OpenDirectory,
 
     /// <summary>A dialog that selects one or more directories (<c>folder-multiple</c>).</summary>
-    OpenFolders,
+    OpenDirectories,
 
     /// <summary>A message box (<c>message-box</c>).</summary>
     MessageBox,

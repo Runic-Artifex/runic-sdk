@@ -61,9 +61,9 @@ internal sealed class BlobStoreChecks
         }
         Check(Read(first) == "uploaded bytes", "A link in place of the upload was followed.");
         var destination = Path.Combine(work.Root, "saved.txt");
-        await second.SaveAsAsync(destination);
+        await second.SaveToFileAsync(destination);
         Check(new FileInfo(destination).LinkTarget is null && await File.ReadAllTextAsync(destination) == "second upload",
-            "SaveAsAsync moved the link instead of the upload.");
+            "SaveToFileAsync moved the link instead of the upload.");
         Check(File.Exists(work.Secret) && await File.ReadAllTextAsync(work.Secret) == "secret", "The link's target was changed.");
         Check(!Directory.EnumerateFileSystemEntries(blobs.UploadFolder!).Any(), "A claimed upload left its file or link.");
     }

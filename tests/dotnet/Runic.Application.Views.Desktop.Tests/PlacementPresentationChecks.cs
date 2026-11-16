@@ -68,8 +68,8 @@ internal sealed class PlacementPresentationChecks
         await using var window = await TestWindows.EmbeddedHtml(provider, desktop).OpenWindowAsync<PresentationWindow>();
         var presentation = window.Presentation;
         Require((presentation.Features & (RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement)) == 0,
-            $"A host without WindowPlacement reports {presentation.Features}.");
-        Require(presentation.Placement is null, "A host without WindowPlacement reports a placement.");
+            $"A host without Placement reports {presentation.Features}.");
+        Require(presentation.Placement is null, "A host without Placement reports a placement.");
         foreach (var result in new[]
         {
             await presentation.MaximizeAsync(), await presentation.RestoreAsync(),
@@ -77,7 +77,7 @@ internal sealed class PlacementPresentationChecks
         })
         {
             Require(result is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
-                $"A host without WindowPlacement answered {result}.");
+                $"A host without Placement answered {result}.");
         }
     }
 
@@ -108,8 +108,8 @@ internal sealed class PlacementPresentationChecks
         Require(runic.ToDesktopPlacement() == desktop, "The placement did not round-trip.");
         Require(new RunicWindowPlacement { Width = 800, Height = 600 }.ToDesktopPlacement() is { X: null, Y: null, Origin: DesktopCoordinateOrigin.TopLeft },
             "A placement without a position does not keep it.");
-        Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.WindowPlacement, open: true, macOS: false)
-            == (RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement), "WindowPlacement is not Maximize and Placement.");
+        Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.Placement, open: true, macOS: false)
+            == (RunicWindowPresentationFeatures.Maximize | RunicWindowPresentationFeatures.Placement), "Placement is not Maximize and Placement.");
         RequireThrows<ArgumentNullException>(() => ((DesktopWindowPlacement)null!).ToRunicPlacement(), "ToRunicPlacement(null)");
         RequireThrows<ArgumentNullException>(() => ((RunicWindowPlacement)null!).ToDesktopPlacement(), "ToDesktopPlacement(null)");
     }

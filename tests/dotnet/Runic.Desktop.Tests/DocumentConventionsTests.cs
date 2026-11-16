@@ -53,23 +53,23 @@ public sealed class DocumentConventionsTests
     private static async Task CheckRecentDocumentsAsync()
     {
         var host = await StartAsync();
-        await Assert.ThrowsAsync<ArgumentNullException>(async () => await host.NoteRecentDocumentAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(async () => await host.AddRecentDocumentAsync(null!));
         foreach (var invalid in (string[])["", "plan.md", "./plan.md", "/tmp/a\0b"])
-            await Assert.ThrowsAnyAsync<ArgumentException>(async () => await host.NoteRecentDocumentAsync(invalid));
+            await Assert.ThrowsAnyAsync<ArgumentException>(async () => await host.AddRecentDocumentAsync(invalid));
         using (var cancelled = new CancellationTokenSource())
         {
             await cancelled.CancelAsync();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await host.NoteRecentDocumentAsync(Document, cancelled.Token));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await host.AddRecentDocumentAsync(Document, cancelled.Token));
             await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await host.ClearRecentDocumentsAsync(cancelled.Token));
         }
         if (!OperatingSystem.IsMacOS())
         {
-            await host.NoteRecentDocumentAsync(Document);
+            await host.AddRecentDocumentAsync(Document);
             await host.ClearRecentDocumentsAsync();
         }
 
         await host.DisposeAsync();
-        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await host.NoteRecentDocumentAsync(Document));
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await host.AddRecentDocumentAsync(Document));
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await host.ClearRecentDocumentsAsync());
     }
 

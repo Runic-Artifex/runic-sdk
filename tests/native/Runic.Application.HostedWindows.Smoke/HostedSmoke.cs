@@ -76,7 +76,7 @@ internal static class HostedSmoke
         var foldersA = HostedFolders().Except(foldersBefore).ToArray();
         var windowA = await WindowOf(a);
         CheckPage(reportA, "a", host.Desktop.Port, mustNotSee: ["runic_host_probe"]);
-        Check(windowA.IsOpen && windowA.Presentation.Browser == BrowserKind.Embedded && windowA.Presentation.NativeHandle != 0,
+        Check(windowA.IsOpen && windowA.DesktopWindow.Browser == BrowserKind.Embedded && windowA.DesktopWindow.NativeHandle != 0,
             "Guest a's window is not an open native embedded window of the host.");
         Console.WriteLine($"PASS hosted {toolkit}: guest a's page loaded from {reportA["origin"]} in a window of the host, without the host's cookie.");
 
@@ -88,7 +88,7 @@ internal static class HostedSmoke
         Console.WriteLine($"PASS hosted {toolkit}: guest b's page sees neither the host's nor guest a's cookie.");
         Check(await b.Exited.WaitAsync(TestTimeouts.Scale(Wait)) == CrashExitCode, "Guest b's exit code was not reported.");
         await windowB.Closed.WaitAsync(TestTimeouts.Scale(Wait));
-        Check(!windowB.Presentation.IsOpen && windowA.IsOpen, "The crashed guest's window is open, or guest a's closed.");
+        Check(!windowB.DesktopWindow.IsOpen && windowA.IsOpen, "The crashed guest's window is open, or guest a's closed.");
         Console.WriteLine($"PASS hosted {toolkit}: the host closed the crashed guest's window and reported its exit code.");
 
         // menus/1: guest a's bar shows in its native window, and the window's menu command path (the native bar and its
@@ -100,23 +100,23 @@ internal static class HostedSmoke
         var openItem = windowA.MenuBar.Single(static menu => menu.Title == "Smoke File").Items.OfType<DesktopMenuItem>().Single();
         Check(windowA.MenuBar.Count == 2 && windowA.MenuBar[0].Role == DesktopMenuRole.File && openItem.Title == "Open…" &&
             openItem.Shortcut == new DesktopShortcut("O"), "Guest a's menu bar did not reach its window.");
-        await CheckNativeMenusAsync(toolkit, windowA.Presentation, hostWindow);
-        Check(await windowA.Presentation.TryExecuteMenuItemAsync(openItem), "The window's menu command path did not run guest a's item.");
+        await CheckNativeMenusAsync(toolkit, windowA.DesktopWindow, hostWindow);
+        Check(await windowA.DesktopWindow.TryExecuteMenuItemAsync(openItem), "The window's menu command path did not run guest a's item.");
         var ran = await logs.ReportAsync("a-menu");
         Check(ran["command"]!.GetValue<string>() == "file.open", $"Guest a ran {ran}.");
         Console.WriteLine($"PASS hosted {toolkit}: guest a's menu bar is in its window, and choosing its item ran the guest's command.");
         if (toolkit == "wkwebview")
         {
             // The hosted window is key again when it closes: the application menu bar returns to the host's menus.
-            await windowA.Presentation.FocusAsync();
-            var again = await NativeMenus.WaitAsync(windowA.Presentation, toolkit, static titles => titles.Contains("Smoke File"), TestTimeouts.Scale(Wait));
+            await windowA.DesktopWindow.FocusAsync();
+            var again = await NativeMenus.WaitAsync(windowA.DesktopWindow, toolkit, static titles => titles.Contains("Smoke File"), TestTimeouts.Scale(Wait));
             Check(again.Contains("Smoke File"), $"The application menu bar did not show guest a's menus again: [{string.Join(", ", again)}].");
         }
 
         // A close through the guest: its Window closes, then the host's window.
         Check(await windowA.RequestCloseAsync(), "Guest a refused the close.");
         await windowA.Closed.WaitAsync(TestTimeouts.Scale(Wait));
-        Check(!windowA.Presentation.IsOpen && !a.Exited.IsCompleted, "Guest a's window is open, or guest a exited with it.");
+        Check(!windowA.DesktopWindow.IsOpen && !a.Exited.IsCompleted, "Guest a's window is open, or guest a exited with it.");
         Console.WriteLine($"PASS hosted {toolkit}: the window closed through the guest.");
         if (toolkit == "wkwebview")
         {
@@ -148,9 +148,9 @@ internal static class HostedSmoke
         _ = await logs.ReportAsync("c");
         var windowC = await WindowOf(c);
         // Guest c declares no bar: its window stays as before a guest's first bar.
-        await CheckBarBeforeTheGuestsAsync(toolkit, windowC.Presentation);
+        await CheckBarBeforeTheGuestsAsync(toolkit, windowC.DesktopWindow);
         Check(await c.StopAsync().AsTask().WaitAsync(TestTimeouts.Scale(Wait)) == 0, "Guest c did not exit cleanly after shutdown.");
-        Check(windowC.Closed.IsCompleted && !windowC.Presentation.IsOpen, "Guest c's window is still open after it stopped.");
+        Check(windowC.Closed.IsCompleted && !windowC.DesktopWindow.IsOpen, "Guest c's window is still open after it stopped.");
         Check(applications.Applications.Count == 0, "A guest is still listed after it exited.");
         Console.WriteLine($"PASS hosted {toolkit}: the stopped guest's window closed and the guest exited.");
 

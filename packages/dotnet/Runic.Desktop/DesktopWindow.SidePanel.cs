@@ -50,7 +50,8 @@ public sealed partial class DesktopWindow
     /// The panel opens only in a window of its own that a built-in host shows: WebView2 on Windows, WKWebView on macOS
     /// and WebKitGTK on Linux (GTK 3, and GTK 4 with <c>Runic.Desktop.Gtk4</c>; on Wayland only on the right edge). Every
     /// other presentation refuses with <see cref="DesktopSidePanelRefusal.Unsupported"/>. The other refusals are the
-    /// window's state (<see cref="CheckSidePanel"/>), a panel that is open already, and a page that did not load.
+    /// window's state (<see cref="CheckSidePanel"/>), a panel that is open already, a page that did not load, and a window
+    /// that closed while the panel opened (<see cref="DesktopSidePanelRefusal.Closed"/>).
     /// Experimental (<c>RUNICDESK104</c>); see <c>docs/experimental.md</c>.
     /// </para>
     /// </remarks>
@@ -60,7 +61,7 @@ public sealed partial class DesktopWindow
     /// timeout is not positive.
     /// </exception>
     /// <exception cref="ArgumentException">The path is empty, absolute, or leaves the surface.</exception>
-    /// <exception cref="ObjectDisposedException">The window is closed or was replaced.</exception>
+    /// <exception cref="ObjectDisposedException">The window was closed or replaced before the call.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     [Experimental("RUNICDESK104", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
     public async ValueTask<DesktopSidePanelResult> OpenSidePanelAsync(DesktopSidePanelOptions options,
@@ -100,7 +101,7 @@ public sealed partial class DesktopWindow
             catch (InvalidOperationException) when (!IsOpen)
             {
                 _surface.CloseSidePanelSlot();
-                throw new ObjectDisposedException(nameof(DesktopWindow), "The window closed while the side panel opened.");
+                return Refused(DesktopSidePanelRefusal.Closed);
             }
             catch
             {

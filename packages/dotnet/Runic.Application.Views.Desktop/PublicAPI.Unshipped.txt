@@ -1,1 +1,25 @@
 #nullable enable
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenDirectories = 4 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenDirectory = 3 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFolder = 3 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedDialogKind.OpenFolders = 4 -> Runic.Application.Views.Desktop.RunicHostedDialogKind
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DetachAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.DetachAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.MoveToAsync(Runic.Application.Views.IRunicWindow! window, string! region, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.MoveToAsync(Runic.Application.Views.IRunicWindow! window, string! region, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.SetAppearanceAsync(Runic.Application.Views.Desktop.RunicHostedAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegion.SetAppearanceAsync(Runic.Application.Views.Desktop.RunicHostedAppearance? appearance, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Closed = 4 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Crashed = 2 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Host = 3 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Reload = 1 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionDetachReason.Removed = 0 -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Reason.get -> Runic.Application.Views.Desktop.RunicHostedRegionDetachReason?
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.Reason.get -> string?
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.RunicHostedRegionEventArgs(Runic.Application.Views.Desktop.RunicHostedRegion! region, Runic.Application.Views.Desktop.RunicHostedRegionDetachReason? reason = null) -> void
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedRegionEventArgs.RunicHostedRegionEventArgs(Runic.Application.Views.Desktop.RunicHostedRegion! region, string? reason = null) -> void
+[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.DesktopWindow.get -> Runic.Desktop.DesktopWindow!
+*REMOVED*[RUNICDESK103]Runic.Application.Views.Desktop.RunicHostedWindow.Presentation.get -> Runic.Desktop.DesktopWindow!
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumPendingUploadBytes.get -> long?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumPendingUploadBytes.init -> void

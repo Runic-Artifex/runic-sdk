@@ -126,9 +126,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
         DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme |
         DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.Bounds | DesktopWindowCapabilities.MinimumSize |
-        DesktopWindowCapabilities.WindowPlacement;
+        DesktopWindowCapabilities.Placement;
     // A sheet (a window-modal window) stays attached to its owner: AppKit places it, so it takes no placement.
-    public DesktopWindowCapabilities Capabilities => (_sheet ? KnownCapabilities & ~DesktopWindowCapabilities.WindowPlacement : KnownCapabilities) |
+    public DesktopWindowCapabilities Capabilities => (_sheet ? KnownCapabilities & ~DesktopWindowCapabilities.Placement : KnownCapabilities) |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
     public DesktopWindowState? State => Volatile.Read(ref _state);

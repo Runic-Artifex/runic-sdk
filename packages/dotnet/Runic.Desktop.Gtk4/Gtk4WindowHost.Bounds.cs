@@ -4,7 +4,7 @@ namespace Runic.Desktop.Gtk4;
 
 // DesktopWindow.SetBoundsAsync and SetMinimumSizeAsync, and the exact, visible and snapped parts of DesktopWindowState
 // (#864, B1). Logical pixels: the X11 position of the visible frame and the content size, as the state reports them.
-internal sealed partial class Gtk4WindowHost : IDesktopWindowBoundsHost
+internal sealed partial class Gtk4WindowHost : IDesktopBoundsWindowHost
 {
     private const int GdkToplevelStateTiled = 1 << 7;
     // GDK_TOPLEVEL_STATE_TOP_TILED, RIGHT_TILED, BOTTOM_TILED and LEFT_TILED.

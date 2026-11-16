@@ -298,7 +298,7 @@ internal sealed class HostRoleConformanceTests
 
         private DesktopWindow NativeWindow(string id) => _pages.TryGetValue(id, out var page)
             ? page.Window ?? throw new InvalidOperationException($"The browser host's page {id} has no native window.")
-            : Window(id).Presentation;
+            : Window(id).DesktopWindow;
 
         // A host window whose page the scenario plays (HostedRegionTestPage), opened at its first region. In a browser
         // (serve-only) host the page runs in the user's browser, and no native window shows it.
@@ -508,18 +508,18 @@ internal sealed class HostRoleConformanceTests
                     _departures.Enqueue(departing.CanDepartAsync(null!, CancellationToken.None).AsTask());
                     break;
                 case "detachRegion":
-                    await Window(user["window"]!.GetValue<string>()).Region!.DetachAsync().WaitScaledAsync(StepTimeout);
+                    await Window(user["window"]!.GetValue<string>()).Region!.DetachAsync().AsTask().WaitScaledAsync(StepTimeout);
                     break;
                 case "moveRegion":
                     var target = (await PageAsync(user["to"]!.GetValue<string>())).Page.Window!;
-                    await Window(user["window"]!.GetValue<string>()).Region!.MoveToAsync(target, user["name"]!.GetValue<string>()).WaitScaledAsync(StepTimeout);
+                    await Window(user["window"]!.GetValue<string>()).Region!.MoveToAsync(target, user["name"]!.GetValue<string>()).AsTask().WaitScaledAsync(StepTimeout);
                     break;
                 case "focusHost":
                     _pages[user["window"]!.GetValue<string>()].Page.FocusHost(user["focused"]?.GetValue<bool>() ?? true);
                     break;
                 // region-appearance/1: the host application changes the region's override; expect applied reads its result.
                 case "setRegionAppearance":
-                    _appearanceResults.Enqueue(Window(user["window"]!.GetValue<string>()).Region!.SetAppearanceAsync(HostedAppearance(user["appearance"])));
+                    _appearanceResults.Enqueue(Window(user["window"]!.GetValue<string>()).Region!.SetAppearanceAsync(HostedAppearance(user["appearance"])).AsTask());
                     break;
                 default: throw new InvalidOperationException($"The host runner does not implement the user action '{action}'.");
             }
@@ -880,8 +880,8 @@ internal sealed class HostRoleConformanceTests
                 RunicHostedDialogKind.OpenFile => "open",
                 RunicHostedDialogKind.OpenFiles => "open-multiple",
                 RunicHostedDialogKind.SaveFile => "save",
-                RunicHostedDialogKind.OpenFolder => "folder",
-                RunicHostedDialogKind.OpenFolders => "folder-multiple",
+                RunicHostedDialogKind.OpenDirectory => "folder",
+                RunicHostedDialogKind.OpenDirectories => "folder-multiple",
                 _ => "message-box",
             };
             var shown = new Shown(dialog, kind, new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously), cancellationToken);

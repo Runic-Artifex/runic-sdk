@@ -157,7 +157,7 @@ internal sealed class HostedMenusAndDialogsTests
                     { Kind: RunicHostedDialogKind.OpenFile, File.Title: "Dismiss" } => null,
                     { Kind: RunicHostedDialogKind.OpenFiles } => (IReadOnlyList<string>)[notes, second],
                     { Kind: RunicHostedDialogKind.SaveFile } => (IReadOnlyList<string>)[report],
-                    { Kind: RunicHostedDialogKind.OpenFolder } => (IReadOnlyList<string>)[folder.FullName],
+                    { Kind: RunicHostedDialogKind.OpenDirectory } => (IReadOnlyList<string>)[folder.FullName],
                     { Kind: RunicHostedDialogKind.MessageBox, MessageBox.Message: "Save changes?" } => "discard",
                     { Kind: RunicHostedDialogKind.MessageBox, MessageBox.Message: "Hold" } => await Hold(cancellationToken),
                     _ => null,
@@ -208,7 +208,7 @@ internal sealed class HostedMenusAndDialogsTests
             // The policy refuses: the guest learns PermissionDenied, and the host showed nothing.
             Expect("REFUSED failed PermissionDenied");
             Check(!dialogs.Shown.Any(static dialog => dialog.MessageBox?.Message == "Refuse"), "The host showed a refused dialog.");
-            Check(policy.Kinds.Contains(RunicHostedDialogKind.OpenFolder) && policy.Kinds.Contains(RunicHostedDialogKind.MessageBox),
+            Check(policy.Kinds.Contains(RunicHostedDialogKind.OpenDirectory) && policy.Kinds.Contains(RunicHostedDialogKind.MessageBox),
                 "The policy did not see the dialogs.");
 
             Check(await window.RequestCloseAsync(), "The guest refused the close.");

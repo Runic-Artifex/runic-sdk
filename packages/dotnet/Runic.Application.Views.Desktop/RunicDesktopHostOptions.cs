@@ -116,6 +116,14 @@ public sealed record RunicDesktopHostOptions
     public long? MaximumUploadBytes { get; init; }
 
     /// <summary>
+    /// The most bytes that unclaimed uploads may take at once in Windows whose
+    /// <see cref="RunicWindowOptions.MaximumPendingUploadBytes"/> is <see langword="null"/>
+    /// (<see cref="WindowContentSessionOptions.MaximumPendingUploadBytes"/>), at least 1 KiB. <see langword="null"/>,
+    /// the default, is 1 GiB. The host reads it when each Window opens.
+    /// </summary>
+    public long? MaximumPendingUploadBytes { get; init; }
+
+    /// <summary>
     /// How long Windows whose <see cref="RunicWindowOptions.CloseDrain"/> is <see langword="null"/> stay visible after
     /// their close was decided, while their accepted work drains. <see langword="null"/>, the default, is
     /// <see cref="RunicCloseDrain.None"/>: the window closes at once, as before 0.19. The host reads it when each Window

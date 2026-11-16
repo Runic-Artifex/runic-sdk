@@ -617,7 +617,7 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public bool Directs { get; init; }
     // Runs while a window opens, before OpenAsync returns.
     public Action? Opening { get; init; }
-    // A window host that maximizes, restores and places its open window (WindowPlacement), and reports it in its state;
+    // A window host that maximizes, restores and places its open window (Placement), and reports it in its state;
     // with PositionUnavailable, a placement with a position fails as on Wayland.
     public bool Places { get; init; }
     public bool PositionUnavailable { get; init; }
@@ -644,7 +644,7 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 // A headless embedded host whose "native thread" is a dedicated worker.
 sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost,
     IDesktopDragSourceWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost,
-    IDesktopWindowShowStateHost
+    IDesktopShowStateWindowHost
 {
     public bool Places { get; init; }
     public bool PositionUnavailable { get; init; }
@@ -753,7 +753,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         (InitialActivity is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme) |
         (Owns ? DesktopWindowCapabilities.Ownership : DesktopWindowCapabilities.None) |
         (Directs ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None) |
-        (Places ? DesktopWindowCapabilities.WindowPlacement : DesktopWindowCapabilities.None);
+        (Places ? DesktopWindowCapabilities.Placement : DesktopWindowCapabilities.None);
     public bool Owns { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)

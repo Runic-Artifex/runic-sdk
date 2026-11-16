@@ -119,6 +119,10 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         if (options.MaximumUploadBytes is < 1_024)
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
         _maximumUploadBytes = options.MaximumUploadBytes;
+        if (options.MaximumPendingUploadBytes is < 1_024)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumPendingUploadBytes,
+                "MaximumPendingUploadBytes must be at least 1 024 bytes.");
+        _maximumPendingUploadBytes = options.MaximumPendingUploadBytes;
         _closeDrain = options.CloseDrain;
         if (options.Guest is not null && !startsGuest)
             throw new ArgumentException("Hosted mode starts with RunicDesktopHost.Run; RunicDesktopHostOptions.Guest is not supported here.", nameof(options));
@@ -242,6 +246,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     private readonly bool? _flowCultureFromLocale;
     private readonly int? _maximumInputBytes;
     private readonly long? _maximumUploadBytes;
+    private readonly long? _maximumPendingUploadBytes;
     // RunicDesktopHostOptions.CloseDrain: the drain of the Windows whose options set none (sdk#900).
     private readonly RunicCloseDrain? _closeDrain;
     private readonly string? _contentSecurityPolicy;
@@ -575,7 +580,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? _flowCultureFromLocale ?? false,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
-                MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,
+                MaximumPendingUploadBytes = opening.Options.MaximumPendingUploadBytes ?? _maximumPendingUploadBytes,
             });
             // The reserved route of an in-page menu bar, served before the page loads. The transport reports closed
             // connections to the window's dispatcher, which releases their mounts and menu bar watches.
@@ -614,7 +619,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
-                if (CloseDrainFor(opening.Options).KeepsWindow) opening.ReportCloseDrainUnavailable("serve-only mode");
+                if (CloseDrainFor(opening.Options).KeepWindow) opening.ReportCloseDrainUnavailable("serve-only mode");
                 opening.ReportOwnerIgnored("serve-only mode shows no window");
                 owner.ServeUntil(ServeOnlyStopped());
                 // region/1: a browser host's pages show guests' windows in their regions too (host-protocol.md, Browser
@@ -632,7 +637,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             }
             var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options, content.Locale));
             var drain = CloseDrainFor(opening.Options);
-            if (drain.KeepsWindow) windowOptions = DrainingWindowOptions(opening.Window, owner, drain, windowOptions);
+            if (drain.KeepWindow) windowOptions = DrainingWindowOptions(opening.Window, owner, drain, windowOptions);
             if (Placement is { } choosePlacement && choosePlacement(opening.Window) is { } placement)
                 windowOptions = windowOptions with { Placement = placement };
             windowOptions = OwnedWindowOptions(opening, windowOptions);
@@ -644,7 +649,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (opening.CloseGuard is not null && windowOptions.ConfirmCloseAsync is not null && !confirmsClose)
                 opening.ReportCloseGuardUnavailable("the browser fallback");
             // A presentation that cannot refuse a close cannot stay open while the Window drains (sdk#900).
-            if (drain.KeepsWindow && !presentation.DrainsVisibly)
+            if (drain.KeepWindow && !presentation.DrainsVisibly)
                 opening.ReportCloseDrainUnavailable(presentation.Browser == BrowserKind.Embedded
                     ? "the configured embedded-window host"
                     : presentation.IsFallback ? "the browser fallback" : $"the {presentation.Browser} browser");
@@ -728,7 +733,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         var drain = CloseDrainFor(opening.Options);
         var hosted = await guest.OpenWindowAsync(request, opening.CloseGuard, () =>
         {
-            if (drain.KeepsWindow)
+            if (drain.KeepWindow)
             {
                 window.MarkClosing();
                 Desktop.TrackDrain(owner.DrainForCloseAsync(drain.Timeout, Desktop.DrainsEnded));
@@ -739,7 +744,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         guest.Track(window, hosted);
         // RunicWindow.RequestCloseAsync with a close drain: the guard decides, as the host's close-request does, and the
         // Window drains; the request returns once the close was decided, and a request during the drain is ignored.
-        if (drain.KeepsWindow)
+        if (drain.KeepWindow)
             opening.UseCloseRequest(async cancellationToken =>
             {
                 if (!await hosted.DecideCloseAsync(force: false).WaitAsync(cancellationToken).ConfigureAwait(false))

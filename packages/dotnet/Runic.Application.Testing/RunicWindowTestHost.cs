@@ -441,6 +441,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             FlowCultureFromLocale = options?.FlowCultureFromLocale ?? false,
             MaximumInputBytes = options?.MaximumInputBytes,
             MaximumUploadBytes = options?.MaximumUploadBytes,
+            MaximumPendingUploadBytes = options?.MaximumPendingUploadBytes,
         };
     }
 }

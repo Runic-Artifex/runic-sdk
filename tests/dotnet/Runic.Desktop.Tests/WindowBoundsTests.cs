@@ -229,7 +229,7 @@ public sealed class WindowBoundsTests
     }
 
     // A custom host as an application would write one: native units of its own, one call per bounds change.
-    private sealed class BoundsHost(DesktopWindowCapabilities capabilities, bool refusePosition) : IDesktopWindowBoundsHost, IDesktopWindowStateHost
+    private sealed class BoundsHost(DesktopWindowCapabilities capabilities, bool refusePosition) : IDesktopBoundsWindowHost, IDesktopWindowStateHost
     {
         public event EventHandler? Closed;
         public event EventHandler? StateChanged;

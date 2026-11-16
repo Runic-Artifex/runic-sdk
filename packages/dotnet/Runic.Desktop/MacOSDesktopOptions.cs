@@ -23,7 +23,7 @@ public sealed record MacOSDesktopOptions
 
     /// <summary>
     /// Gets whether the standard File menu starts with Open Recent, the submenu of the documents noted with
-    /// <see cref="DesktopHost.NoteRecentDocumentAsync"/>; <see langword="false"/>, the default, for none.
+    /// <see cref="DesktopHost.AddRecentDocumentAsync"/>; <see langword="false"/>, the default, for none.
     /// </summary>
     /// <remarks>
     /// <para>

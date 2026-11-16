@@ -62,7 +62,7 @@ public sealed class InstallerViewModel : ReactiveObject, IDisposable
     // The title of the check's page, which the step indicator shows, such as "System check: passed".
     public string CheckTitle { get => _checkTitle; private set => this.RaiseAndSetIfChanged(ref _checkTitle, value); }
 
-    // The latest attach or detach, with the reason of a detach, such as "detached (removed)".
+    // The latest attach or detach, with the reason of a detach, such as "detached (Removed)".
     public string CheckEvent { get => _checkEvent; private set => this.RaiseAndSetIfChanged(ref _checkEvent, value); }
 
     // Why the page shows no check while it is detached: the fallback content says it (Frontend/index.html).
