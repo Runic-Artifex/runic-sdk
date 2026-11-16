@@ -5,3 +5,13 @@ export { isViewClient, viewSourceIdentity, viewSourcePreview } from "./controlle
 export { checkKeepAlive, defaultKeepAlive } from "./keep-alive.js";
 export { missingViewMessage, reportMissingView } from "./missing-view.js";
 export { translationsTextRevision } from "./translated-text.js";
+export type { ViewDescription } from "./describe.js";
+import { describe, type ViewDescription } from "./describe.js";
+
+/**
+ * The View of a connected client, for a binding's DevTools labels: its view model, route and revision. Only the
+ * development build (the `development` export condition) describes clients; the production build returns `undefined`.
+ */
+export function describeViewClient(client: unknown): ViewDescription | undefined {
+  return __RUNIC_DEVELOPMENT__ ? describe(client) : undefined;
+}

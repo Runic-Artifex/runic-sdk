@@ -7,3 +7,4 @@ export const development = await load("index.js") as typeof import("../../dist/i
 export const developmentGenerated = await load("generated.js") as typeof import("../../dist/generated.js");
 export const developmentWire = await load("wire.js") as typeof import("../../dist/wire.js");
 export const developmentMock = await load("mock.js") as typeof import("../../dist/mock.js");
+export const developmentBindings = await load("bindings.js") as typeof import("../../dist/bindings.js");

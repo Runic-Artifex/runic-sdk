@@ -12,6 +12,7 @@ Each section links the README that describes its tool in full.
 | See each Bridge call with the C# that ran and open it in the editor | [The Runic dock](#the-runic-dock) |
 | Click an element and see its commands, state, and texts | [Runic Inspect](#runic-inspect) |
 | See the same in Chrome's or Edge's own developer tools: a Runic panel and an Elements pane | [The Runic DevTools extension](#the-runic-devtools-extension) |
+| See a component's View, field state and operation status in React DevTools or Vue DevTools | [Framework DevTools](#react-devtools-and-vue-devtools) |
 | Time C# handlers, or follow a click into the ViewModel's HTTP and database calls | [Performance panel and traces](#performance-panel-async-stacks-and-traces) |
 | See Bridge errors before you build | [Analyzers](#bridge-errors-while-you-type) |
 
@@ -238,6 +239,27 @@ See [Runic Inspect](../packages/web/vite-plugin-runic/README.md#runic-inspect),
 [Runic Inspect from another machine](../packages/web/vite-plugin-runic/README.md#runic-inspect-from-another-machine).
 `runic({ inspect: false })` turns it off.
 
+## React DevTools and Vue DevTools
+
+The development builds of the framework bindings show Runic's state in the framework's own DevTools (since 0.21):
+
+- **React DevTools.** The hooks label their values in a component's **hooks** pane: `useView` and `useSuspenseView`
+  show the View (`EditorViewModel · editor · rev 12`, or `connecting`, `failed: …`), `useField` and `useTextField` the
+  field's state (`title = "Draft" · editing · 1 error`), `useCommand` its status (`idle`, `running`, `failed: …`),
+  `useOperation` and `useLatestOperation` the operation's (`starting`, `running 40%`, `cancelling`, `succeeded`), and
+  `useBridgeConnection` the connection. React computes a label only while React DevTools shows the component.
+- **Vue DevTools.** A **Runic Views** inspector lists the page's Views by view model and route, with each View's
+  revision, presentations, state and its last 20 calls (outcome, duration, C# handler, error). The timeline has a
+  **Runic Bridge calls** layer with the start and end of each call. It needs `@vue/devtools-api` 8, an optional peer
+  dependency of `@runic-artifex/vue`: install it in the application (`npm install -D @vue/devtools-api`). Without
+  it, or without Vue DevTools on the page (the browser extension, or `vite-plugin-vue-devtools`), nothing loads.
+
+They work wherever the framework's DevTools reach the page: an installed browser with the DevTools extension, and
+`vite-plugin-vue-devtools`, which runs inside the page, in every engine. WebView2 and the WebKit engines load no
+browser extensions; there, use the framework's standalone DevTools as its documentation describes. See
+[React DevTools labels](../packages/web/react/README.md#react-devtools) and
+[Vue DevTools](../packages/web/vue/README.md#vue-devtools).
+
 ## The Runic DevTools extension
 
 Since 0.21, `dotnet-runic` ships an unpacked Chrome DevTools extension (Manifest V3) that shows Runic Inspect's data
@@ -323,6 +345,8 @@ None of this ships:
   build without call reporting, `console.createTask`, or trace context. `bun build` bundles the development build
   unless you pass `--production` or set `NODE_ENV=production`; the Views MSBuild targets set `NODE_ENV=production` for
   a Release build and `dotnet publish`. See [Development build](../packages/web/views/README.md#development-build).
+- `@runic-artifex/react` and `@runic-artifex/vue` have the same two builds (since 0.21): only the development build
+  labels the hooks for React DevTools or adds the Vue DevTools inspector, and only it imports `@vue/devtools-api`.
 - The source map stays in `obj`: it is not in generated TypeScript, build or publish output, or a package.
 - Outside Development, a Runic Desktop window has no developer tools in the window, replies carry no handler timing,
   and failures carry no exception detail. A remote debugging endpoint that the process's environment asks for is the

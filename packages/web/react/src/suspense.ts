@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useReducer, useSyncExternalStore } from "react";
+import { useCallback, useDebugValue, useEffect, useReducer, useSyncExternalStore } from "react";
 import { defaultInstance, type RunicInstance, type ViewClient, type ViewConnector } from "@runic-artifex/views";
 import { checkKeepAlive, isViewClient } from "@runic-artifex/views/bindings";
 import { useRunicInstance } from "./instance.js";
+import { clientLabel } from "./debug-labels.js";
+// `true` in the development build (`dist/development/`, the `development` export condition) and `false` in the
+// production build (`dist/`): scripts/build.mjs replaces it (eng/web/development-build.mjs). Declared in each module that
+// uses it, so a project that compiles this source through tsconfig `paths` sees it too; a bundler of this source defines
+// it, as the examples' build scripts do (`define: { __RUNIC_DEVELOPMENT__: "false" }`).
+declare const __RUNIC_DEVELOPMENT__: boolean;
 
 type SuspendedConnection = {
   status: "pending" | "ready" | "failed";
@@ -159,6 +165,8 @@ export function useSuspenseView<TClient extends ViewClient>(
   const subscribe = useCallback((onChange: () => void) => client.subscribe(() => onChange()), [client]);
   const read = useCallback(() => client.snapshot as TClient["snapshot"], [client]);
   const state = useSyncExternalStore(subscribe, read, read);
+  // React DevTools shows the View: `EditorViewModel · editor · rev 12` (debug-labels.ts, development build only).
+  if (__RUNIC_DEVELOPMENT__) useDebugValue(client, clientLabel);
   return { state, client };
 }
 

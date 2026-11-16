@@ -2,6 +2,7 @@ import {
   computed,
   customRef,
   defineComponent,
+  getCurrentInstance,
   h,
   reactive,
   shallowRef,
@@ -63,6 +64,13 @@ import { missingViewMessage, reportMissingView, viewSourceIdentity } from "@runi
 import { isDevelopment } from "./development.js";
 import { releaseWithScope } from "./scope.js";
 import { useRunicInstance } from "./instance.js";
+// Vue DevTools: only the development build (`__RUNIC_DEVELOPMENT__`) reaches this module.
+import { attachDevtools } from "./devtools.js";
+// `true` in the development build (`dist/development/`, the `development` export condition) and `false` in the
+// production build (`dist/`): scripts/build.mjs replaces it (eng/web/development-build.mjs). Declared in each module that
+// uses it, so a project that compiles this source through tsconfig `paths` sees it too; a bundler of this source defines
+// it, as the examples' build scripts do (`define: { __RUNIC_DEVELOPMENT__: "false" }`).
+declare const __RUNIC_DEVELOPMENT__: boolean;
 
 
 export interface ViewHandle<TClient extends ViewClient> {
@@ -107,6 +115,11 @@ function controllerOptions<TClient extends ViewClient>(options: UseViewOptions<T
 export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<ViewSource<TClient>>,
   options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
   // The controller connects in the component's Runic instance, also when its source changes or it retries.
+  // The development build adds the Runic inspector and timeline layer to Vue DevTools when it is on the page.
+  if (__RUNIC_DEVELOPMENT__) {
+    const app = getCurrentInstance()?.appContext.app;
+    if (app) attachDevtools(app);
+  }
   const controller = useRunicInstance().run(() => createViewController<TClient>(controllerOptions(options)));
   const state = shallowRef<TClient["snapshot"] | undefined>();
   const client = shallowRef<TClient | undefined>();

@@ -317,7 +317,8 @@ page: [Bridge-call reports and async stack tagging](#bridge-calls-in-the-browser
 with the C# handler timing and trace context that a followed call asks for and
 carries (the Views protocol features `handler-timing/1` and `trace-context/1`),
 and the Runic Translations [text channel](#translated-text) that updates an
-edited message in place. The **production build** (`dist/`, the `import` and
+edited message in place, and the descriptions of connected clients that the
+bindings' DevTools labels show. The **production build** (`dist/`, the `import` and
 `default` conditions) leaves them out: a production bundle contains no
 call-reporting code, tags no call, creates no global for them, and its `hello`
 lists neither feature, so no request carries their members. Everything
@@ -355,6 +356,13 @@ runtime: the builds share their state through the
 [shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)
 like any two copies of the package, and only the development build reports
 calls.
+
+The development build also describes each connected client (view model, route,
+revision) for the bindings' DevTools labels, through `describeViewClient` in
+`/bindings`; the production build describes none (since 0.21). The React and Vue
+bindings have a development build of their own, for their
+[React DevTools labels](../react/README.md#react-devtools) and
+[Vue DevTools plugin](../vue/README.md#vue-devtools).
 
 ## Incremental collections
 
