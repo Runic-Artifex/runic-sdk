@@ -1,6 +1,6 @@
 import {test, expect} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {templateLockDirectories, templateTranslationsVitePlugin, verifyTemplateLock} from './template-locks.mjs';
+import {bindTemplateLock, templateLockDirectories, templateTranslationsVitePlugin, verifyTemplateLock} from './template-locks.mjs';
 
 const name = '@runic-artifex/svelte';
 const version = '0.2.0-preview.1';
@@ -68,4 +68,50 @@ test('the translated Vite frontends resolve the published Translations Vite plug
   // It still comes from npm itself.
   lock.packages[plugin].resolved = 'http://127.0.0.1:42111/x.tgz';
   expect(() => verifyTemplateLock(JSON.stringify(lock), 'package-lock.json', candidates)).toThrow('nonpublic');
+});
+// The template tests bind every manager's lock to the train candidate of the independently released Translations Vite
+// plugin: each upstream CI run packs the same version with a different gitHead, so the committed hash goes stale.
+const registry = 'http://127.0.0.1:42111';
+const trainIntegrity = 'sha512-train-candidate-of-this-run';
+for (const {directory, runicPackages, independentPackages} of templateLockDirectories.filter(entry => entry.translations)) {
+  test(`${directory} locks of every manager take the Translations train candidate's integrity`, () => {
+    const base = new URL(`../../tools/Runic.Application.Templates/content/${directory}/`, import.meta.url);
+    const npm = JSON.parse(readFileSync(new URL('package-lock.json', base), 'utf8'));
+    const locked = name => npm.packages[`node_modules/${name}`];
+    const published = locked(templateTranslationsVitePlugin).integrity;
+    const sdk = new Map(runicPackages.map(name => [name, {version: locked(name).version, integrity: locked(name).integrity}]));
+    const train = new Map([...sdk, [templateTranslationsVitePlugin, {version: locked(templateTranslationsVitePlugin).version, integrity: trainIntegrity}]]);
+    for (const filename of ['package-lock.json', 'pnpm-lock.yaml', 'bun.lock']) {
+      const text = readFileSync(new URL(filename, base), 'utf8');
+      expect(text).toContain(published);
+      const bound = bindTemplateLock(text, filename, train, registry);
+      expect(bound).not.toContain(published);
+      expect(bound).toContain(trainIntegrity);
+      // Only the plugin's integrity (and npm's URLs) change; the Runic SDK candidates stay verified.
+      if (filename !== 'package-lock.json') {
+        expect(bound).toBe(text.replaceAll(published, trainIntegrity));
+        expect(verifyTemplateLock(bound, filename, sdk, {expectedPackages: [...runicPackages, ...independentPackages]})).toBe(sdk.size);
+      } else {
+        const lock = JSON.parse(bound);
+        const plugin = lock.packages[`node_modules/${templateTranslationsVitePlugin}`];
+        expect(plugin.integrity).toBe(trainIntegrity);
+        expect(plugin.resolved).toStartWith(`${registry}/${templateTranslationsVitePlugin}/-/`);
+      }
+      // Without a train candidate the registry passes npm's package through, so the lock keeps npm's integrity.
+      const passthrough = bindTemplateLock(text, filename, sdk, registry);
+      expect(passthrough).toContain(published);
+      if (filename !== 'package-lock.json') expect(passthrough).toBe(text);
+      // A candidate of another version is refused.
+      const other = new Map([...sdk, [templateTranslationsVitePlugin, {version: '0.0.1', integrity: trainIntegrity}]]);
+      expect(() => bindTemplateLock(text, filename, other, registry)).toThrow('is locked, but the train candidate is 0.0.1');
+    }
+  });
+}
+test('a pnpm or Bun lock whose Translations resolution the binding cannot parse fails closed', () => {
+  const train = new Map([[templateTranslationsVitePlugin, {version: '0.13.0', integrity: trainIntegrity}]]);
+  const pnpm = `packages:\n  '${templateTranslationsVitePlugin}@0.13.0':\n    resolution: {tarball: x}\n`;
+  expect(() => bindTemplateLock(pnpm, 'pnpm-lock.yaml', train, registry)).toThrow('unparsed resolution');
+  const bun = `  "packages": {\n    "${templateTranslationsVitePlugin}": ["${templateTranslationsVitePlugin}@0.13.0", "", {}],\n  },\n`;
+  expect(() => bindTemplateLock(bun, 'bun.lock', train, registry)).toThrow('unparsed resolution');
+  expect(() => bindTemplateLock('', 'yarn.lock', train, registry)).toThrow('Unsupported template lock');
 });
