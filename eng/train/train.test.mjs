@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareVersions, lineUpperBound, parseRange, rangeContains, sameLine } from './versions.mjs';
 import { nugetConfig, parseNuspec, repoOf } from './nuget.mjs';
-import { parseSpec, versionForRelease } from './sources.mjs';
+import { parseSpec, successfulMainRuns, versionForRelease } from './sources.mjs';
 import { keyCoverage, keysFromJson, keysFromMarkdown, lintLockstep, lintRanges, lintTemplatePins, lintToolPins, rmf2MessageNames } from './checks.mjs';
 import { activeEntries, classify, loadExpected } from './expected.mjs';
-import { errorLines, scenarios } from './scenarios.mjs';
+import { bindingError, errorLines, scenarios } from './scenarios.mjs';
 import { engineeringOnly } from '../run.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(new URL('../../.github/workflows/train-compat.yml', import.meta.url), 'utf8'));
@@ -185,4 +185,22 @@ test('the gate runs on dispatch, from publish workflows, nightly and for its own
   expect(scenarios.map(item => `${item.id}${item.required ? '' : '?'}`)).toEqual(['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8?']);
   // The gate is read only by train-compat.yml and these tests, so a gate change plans no product jobs.
   for (const file of ['eng/train/gate.mjs', 'eng/train/expected-failures.json', '.github/workflows/train-compat.yml']) expect(engineeringOnly(file)).toBe(true);
+});
+
+test('the newest successful main run is chosen from the unfiltered listing', () => {
+  const runs = [
+    { id: 5, head_branch: 'main', status: 'completed', conclusion: 'cancelled' },
+    { id: 7, head_branch: 'main', status: 'in_progress', conclusion: null },
+    { id: 4, head_branch: 'main', status: 'completed', conclusion: 'success' },
+    { id: 6, head_branch: 'main', status: 'completed', conclusion: 'success' },
+    { id: 8, head_branch: 'feature', status: 'completed', conclusion: 'success' },
+  ];
+  expect(successfulMainRuns(runs).map(run => run.id)).toEqual([6, 4]);
+  expect(successfulMainRuns(undefined)).toEqual([]);
+});
+
+test('a failed binding reports the script\'s error, not Bun\'s banner', () => {
+  const output = 'error: x/package-lock.json: @runic-artifex/vite-plugin-runic-translations 0.12.0 is locked, but the train candidate is 0.13.0\n      at main (bind.mjs:12:5)\n\nBun v1.4.4 (Linux x64)\n';
+  expect(bindingError(output)).toBe('error: x/package-lock.json: @runic-artifex/vite-plugin-runic-translations 0.12.0 is locked, but the train candidate is 0.13.0');
+  expect(bindingError('Bun v1.4.4 (Linux x64)\n')).toBe('(no output)');
 });

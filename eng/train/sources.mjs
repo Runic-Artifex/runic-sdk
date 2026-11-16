@@ -172,6 +172,15 @@ async function resolveLocal(repo, spec, directory) {
   return { version: anchor.version, packages, npm, run: null };
 }
 
+// The main runs of a workflow, newest first. GitHub's `status=success` filter on this listing can omit a run that
+// completed successfully, for an hour or more (2026-11-16: run 43913357796 was missing from it while the unfiltered
+// listing showed it completed/success), so the gate lists every run and filters here.
+export const mainRunsQuery = new URLSearchParams({ branch: 'main', per_page: '50' });
+export function successfulMainRuns(runs) {
+  return (runs ?? []).filter(run => run.head_branch === 'main' && run.status === 'completed' && run.conclusion === 'success')
+    .sort((a, b) => b.id - a.id);
+}
+
 // A CI run's package artifact of one repository (exported for eng/ci/train-feed.mjs).
 export async function resolveRun(repo, spec, directory, options) {
   let run;
@@ -180,9 +189,8 @@ export async function resolveRun(repo, spec, directory, options) {
     if (!isNamedCiRun(run, repo)) throw new Error(`Run ${spec.argument} is not a ${CI_WORKFLOW} run of ${repo.repository}`);
     if (run.status !== 'completed' || run.conclusion !== 'success') throw new Error(`CI run ${run.html_url} is ${run.status}/${run.conclusion}, not a success`);
   } else {
-    const query = new URLSearchParams({ branch: 'main', status: 'success', per_page: '30' });
-    const { workflow_runs: runs } = await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${query}`, options);
-    for (const candidate of runs.filter(item => isCiRun(item, repo) && item.head_branch === 'main').sort((a, b) => b.id - a.id))
+    const { workflow_runs: runs } = await json(`${GITHUB}/repos/${repo.repository}/actions/workflows/${CI_WORKFLOW}/runs?${mainRunsQuery}`, options);
+    for (const candidate of successfulMainRuns(runs).filter(item => isCiRun(item, repo)))
       if (await runArtifact(repo, candidate, options)) { run = candidate; break; }
     if (!run) throw new Error(`${repo.repository} has no successful ${CI_WORKFLOW} run on main with a ${repo.artifact('<run id>')} artifact`);
   }

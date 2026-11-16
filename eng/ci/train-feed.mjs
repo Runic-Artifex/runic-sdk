@@ -24,7 +24,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repos } from '../train/nuget.mjs';
-import { flatVersions, parseSpec, resolveRun } from '../train/sources.mjs';
+import { flatVersions, mainRunsQuery, parseSpec, resolveRun, successfulMainRuns } from '../train/sources.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 export const TRAIN_FEED_ARTIFACT = 'train-feed';
@@ -115,10 +115,9 @@ async function upstreamRun(key, spec, version, work, options) {
       throw new Error(`CI run ${resolved.run.url} has ${repo.anchor} ${resolved.version}, but Directory.Packages.props pins ${version}`);
     return resolved;
   }
-  const query = new URLSearchParams({ branch: 'main', status: 'success', per_page: '20' });
-  const { workflow_runs: runs } = await json(`https://api.github.com/repos/${repo.repository}/actions/workflows/ci.yml/runs?${query}`, options.token);
+  const { workflow_runs: runs } = await json(`https://api.github.com/repos/${repo.repository}/actions/workflows/ci.yml/runs?${mainRunsQuery}`, options.token);
   const seen = [];
-  for (const run of runs.filter(item => item.head_branch === 'main').sort((a, b) => b.id - a.id).slice(0, 5)) {
+  for (const run of successfulMainRuns(runs).slice(0, 5)) {
     let resolved;
     try {
       resolved = await resolveRun(repo, { kind: 'run', argument: String(run.id) }, join(work, String(run.id)), options);

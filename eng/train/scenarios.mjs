@@ -30,6 +30,12 @@ export function errorLines(output) {
     .filter(line => line.length).slice(0, 25);
 }
 
+// The message of a failed Bun script: its `error: …` line, not the runtime banner Bun prints after it.
+export function bindingError(output) {
+  const lines = output.trim().split(/\r?\n/).map(line => line.trim()).filter(line => line && !/^Bun v\d/.test(line));
+  return lines.findLast(line => /^error\b/i.test(line)) ?? lines.at(-1) ?? '(no output)';
+}
+
 export function createRunner(context) {
   let index = 0;
   return function run(scenario, command, args, { cwd = context.work, env = {}, timeout = 20 * 60_000, input } = {}) {
@@ -200,7 +206,7 @@ async function templateApp(context, scenario, name, extra) {
     context.run(scenario, 'npm', ['config', 'set', '--location=project', 'fetch-timeout', '60000'], { cwd: frontend });
     const bound = context.run(scenario, 'bun', [join(context.root, 'tests/templates/bind-template-candidate-integrities.mjs'), join(frontend, 'package-lock.json'), ...context.npmRegistry.archives],
       { env: { RUNIC_TEMPLATE_NPM_REGISTRY: context.npmRegistry.url } });
-    if (bound.code !== 0) { context.fail(scenario, 'npm', `The template's npm lock does not match the runic-sdk npm candidates: ${bound.output.trim().split('\n').at(-1)}`); return null; }
+    if (bound.code !== 0) { context.fail(scenario, 'npm', `The template's npm lock does not match the runic-sdk npm candidates: ${bindingError(bound.output)}`); return null; }
   }
   return output;
 }
