@@ -21,7 +21,7 @@
   "devDependencies": {
     "@runic-artifex/sveltekit": "__RUNIC_NPM_VERSION__",
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
-    "@runic-artifex/vite-plugin-runic-translations": "0.11.0",
+    "@runic-artifex/vite-plugin-runic-translations": "0.12.0",
     "@sveltejs/adapter-static": "4.0.0",
     "@sveltejs/kit": "3.0.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",

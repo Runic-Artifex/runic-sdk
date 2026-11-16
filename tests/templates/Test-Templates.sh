@@ -212,7 +212,7 @@ configure_candidate_registry() {
   (cd "$output/Frontend" && npm config set --location=project fetch-timeout 60000)
   if [[ "$manager" == npm ]]; then
     RUNIC_TEMPLATE_NPM_REGISTRY="$registry_url" bun "$script_directory/bind-template-candidate-integrities.mjs" \
-      "$output/Frontend/package-lock.json" "${npm_archives[@]}"
+      "$output/Frontend/package-lock.json" "${npm_archives[@]}" "${train_npm_archives[@]}"
   fi
 }
 

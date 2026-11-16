@@ -35,9 +35,9 @@
       },
       "Runic.Translations.Build": {
         "type": "Direct",
-        "requested": "[0.11.0, )",
-        "resolved": "0.11.0",
-        "contentHash": "RpAHF+uAEADe3GqzvD8hP3DhaMLMZiksJHMFcoZuZqncktQ0q/8lzbMA8hURaFC9H1r3pLC5VbuuIHQT6dHX6g=="
+        "requested": "[0.12.0, )",
+        "resolved": "0.12.0",
+        "contentHash": "/Bd01/ZzdXNpRDM8UcIFsEfdRH4Qqv7IyD92WWMPOtLmvbje51q8zvAvvUP+G0kdQ+hla+gmPrt/e9LwzmFRJg=="
       },
       "TUnit.Core": {
         "type": "Direct",
@@ -97,7 +97,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, 11.0.0)",
-          "Runic.Application.Views": "[0.20.0, )"
+          "Runic.Application.Views": "[0.21.0, )"
         }
       },
       "runic.application.views": {
@@ -105,17 +105,17 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.20.0, )",
-          "Runic.Platform": "[0.20.0, )"
+          "Runic.Navigation": "[0.21.0, )",
+          "Runic.Platform": "[0.21.0, )"
         }
       },
       "runic.application.views.translations": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
-          "Runic.Application.Views": "[0.20.0, )",
-          "Runic.Translations": "[0.11.0, )",
-          "Runic.Translations.Hosting": "[0.11.0, )"
+          "Runic.Application.Views": "[0.21.0, )",
+          "Runic.Translations": "[0.12.0, )",
+          "Runic.Translations.Hosting": "[0.12.0, )"
         }
       },
       "runic.desktop": {
@@ -124,14 +124,14 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.20.0, )",
-          "Runic.Platform.Linux.DBus": "[0.20.0, )"
+          "Runic.Platform": "[0.21.0, )",
+          "Runic.Platform.Linux.DBus": "[0.21.0, )"
         }
       },
       "runic.desktop.kestrel": {
         "type": "Project",
         "dependencies": {
-          "Runic.Desktop": "[0.20.0, )"
+          "Runic.Desktop": "[0.21.0, )"
         }
       },
       "runic.navigation": {
@@ -148,7 +148,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
-          "Runic.Platform": "[0.20.0, )",
+          "Runic.Platform": "[0.21.0, )",
           "Tmds.DBus.Protocol": "[0.95.2, )"
         }
       },
@@ -181,18 +181,18 @@
       },
       "Runic.Translations": {
         "type": "CentralTransitive",
-        "requested": "[0.11.0, )",
-        "resolved": "0.11.0",
-        "contentHash": "X1JiCkq72tRq6YX1opWUWmJtSWY0Lg+zvbLQbayZ5Bd7A3ZvLWfi6wz+dQDvcCl6vg/zET8Yax7TywKI1ypQeg=="
+        "requested": "[0.12.0, )",
+        "resolved": "0.12.0",
+        "contentHash": "npP6sj4LsnZeAWZwSGM7w4iq1A0AtiVu/kDuRN8E7pbTTX2eP++by/diK7NLQC4hOqUg31rvRgq3FOFwWS7s9A=="
       },
       "Runic.Translations.Hosting": {
         "type": "CentralTransitive",
-        "requested": "[0.11.0, )",
-        "resolved": "0.11.0",
-        "contentHash": "1igrfbknGSlvrjcPiUMxh1KBrjNLI2y+pNuz9+yMm4sMygjRhrCFWlzEB3upNFVlrVbYm5omIBSz8rlMjiStNQ==",
+        "requested": "[0.12.0, )",
+        "resolved": "0.12.0",
+        "contentHash": "hpUKhSgfkN3/rC4iWXFnLwOdSWwOJCH3SwMUnlwGvqjEBIYMEUpVH4CnXrBMNaP7q2WG1rWIAV4u5iOTShlsgw==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
-          "Runic.Translations": "[0.11.0, 0.12.0-0.0)"
+          "Runic.Translations": "[0.12.0, 0.13.0-0.0)"
         }
       },
       "Tmds.DBus.Protocol": {
