@@ -134,4 +134,31 @@ public sealed class WebContentRulesTests
         Assert.Empty(Cleared(Environment("Development", null)));
         Assert.Empty(Cleared(Environment(null, "development")));
     }
+
+    // D067.15: the WebView2 host clears WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS by the same test, before its environment
+    // exists; the --webview2-environment smoke checks it in the real host on Windows.
+    [Test]
+    public void WebView2BrowserArgumentsAreClearedOutsideDevelopment()
+    {
+        static Func<string, string?> Environment(string? dotnet, string? aspnet, string? arguments = "--remote-debugging-port=9222") => name => name switch
+        {
+            "DOTNET_ENVIRONMENT" => dotnet,
+            "ASPNETCORE_ENVIRONMENT" => aspnet,
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS" => arguments,
+            _ => null,
+        };
+        static string[] Cleared(Func<string, string?> read)
+        {
+            var cleared = new List<string>();
+            WebView2BrowserArgumentsEnvironment.Apply(read, cleared.Add);
+            return [.. cleared];
+        }
+        string[] variable = ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"];
+        Assert.True(Cleared(Environment(null, null)).SequenceEqual(variable));
+        Assert.True(Cleared(Environment("Production", "Development")).SequenceEqual(variable));
+        Assert.True(Cleared(Environment(null, null, "--disable-gpu --remote-debugging-pipe")).SequenceEqual(variable));
+        Assert.Empty(Cleared(Environment("Development", null)));
+        Assert.Empty(Cleared(Environment(null, "development")));
+        Assert.Empty(Cleared(Environment(null, null, null)));
+    }
 }

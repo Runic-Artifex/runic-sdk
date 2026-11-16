@@ -245,14 +245,14 @@ diagnostics that report grants a presentation cannot apply.
   WebKitGTK. They are the engine's, not Runic's: `DesktopWebContentPolicy.DevTools`
   does not close WebKitGTK's and is not documented to close WebView2's.
   Outside Development the GTK 3 and GTK 4 hosts remove both WebKit variables
-  from the process's environment before they create their first web view, so a
-  release started with one set opens no inspector port and passes neither
-  variable on to the processes it starts later. WebView2's variable is not
-  cleared: whoever controls a Windows release process's environment can open
-  its endpoint and script the page and its Bridge; such a person can usually do
-  more than this already (load a library into the process, for example), so
-  Runic does not count it as a separate threat. Do not set it for a distributed
-  build. See
+  from the process's environment before they create their first web view, and
+  the WebView2 host removes `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` before it
+  creates its WebView2 environment. So a release started with one of them set
+  opens no debugging endpoint and passes the variable on to none of the
+  processes it starts later. The whole WebView2 variable goes, since its other
+  switches can open debugging or extension access too. Arguments that the
+  application passes itself (`DesktopWindowOptions.BrowserArguments`) are not
+  changed. See
   [the browser's developer tools per engine](debugging.md#the-browsers-developer-tools-per-engine).
 - **Failure detail** (exception type, message and stack) reaches the page only in
   Development, or when a window sets `IncludeFailureDetail`. Detail can contain
@@ -658,9 +658,9 @@ Runic protects:
   other browser tabs and sites, and the network, with the defaults above;
 - the ViewModel from oversized and malformed Bridge input;
 - embedded windows from navigating away from the application, opening new
-  WebView windows, downloading and exposing their developer tools in Release
-  (WebView2's debugging endpoint, which the environment can open, is not
-  covered; see [release builds](#release-builds));
+  WebView windows, downloading and exposing their developer tools or an
+  engine debugging endpoint that the environment asks for in Release (see
+  [release builds](#release-builds));
 - platform calls from unsafe arguments: link schemes, `mailto` attachments,
   executable file types (best effort) and undeclared privileged programs.
 
