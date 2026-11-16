@@ -134,7 +134,7 @@ RUNIC_HOST_REFUSED={"code":"protocol-unsupported","message":"The host offers run
 | `offer-invalid` | The offer is not a JSON object with valid `protocols`, `nonce` and `host`. |
 | `protocol-unsupported` | It implements none of the offer's `protocols`. |
 | `host-not-accepted` | The application's own filter (`RunicGuestOptions.AcceptHost`) declined the offer's `host`. |
-| `guest-elevated` | It runs elevated: as root on Linux or macOS, or with an elevated token on Windows; and it does not allow an elevated host, or the offer has no `elevatedGuest` ([elevated host](#elevated-host)). |
+| `guest-elevated` | It runs elevated: as root on Linux or macOS, on Linux also with a non-empty effective or permitted capability set, or with an elevated token on Windows; and it does not allow an elevated host, or the offer has no `elevatedGuest` ([elevated host](#elevated-host)). |
 | `guest-elevated-host-not-elevated` | It runs elevated and both sides allow an elevated pair, but its parent, of the same user, does not run elevated ([elevated host](#elevated-host)). |
 | `guest-other-user` | It runs as another user than the process that started it, or it cannot tell ([same user](#same-user)). |
 | `network-exposure` | Its Desktop host is configured to listen on other interfaces than loopback (`DesktopHostOptions.NetworkExposure`). |
@@ -166,12 +166,25 @@ elevated host (`RunicGuestOptions.AllowElevatedHost`) and the offer has `elevate
 parent, as the [same user](#same-user) check finds and verifies it, also runs elevated:
 
 - **Linux.** The parent's effective uid (`Uid:`, second field) is 0, from the same read of `/proc/<ppid>/status` as the
-  same-user check, which already requires its real and effective uids, and the guest's, to be equal.
+  same-user check, which already requires its real and effective uids, and the guest's, to be equal. From that same
+  read, the parent's effective and permitted capability sets (`CapEff:`, `CapPrm:`) together hold every capability
+  of the guest's two sets; a parent status without both sets fails.
 - **macOS.** The parent's effective uid (`pbi_uid`) is 0, from the same `proc_pidinfo` call.
 - **Windows.** The parent's token, read while the parent is held open and after its creation time showed that it is
   the parent and not a newer process that reused its id, is elevated (`TokenElevation`) or has an integrity level of
   High or above (`TokenIntegrityLevel`). The user SID of an elevated token is that of the unelevated one, so the
   same-user check alone does not tell them apart.
+
+**Linux capabilities.** On Linux a guest also runs elevated when it holds capabilities without running as root: when
+its effective or permitted capability set (`CapEff:`, `CapPrm:` in `/proc/self/status`, hexadecimal masks) is not
+empty, for example from file capabilities (`setcap`) or ambient capabilities inherited from its parent. A status
+without both sets counts as elevated. The guest reads them in the same read of `/proc/self/status` as its uids for the
+same-user check. Such a guest refuses with `guest-elevated` and the same rules as root; since the elevated pair needs
+a parent that runs as root, and the same-user check needs the guest's uids to equal its parent's, a guest that holds
+capabilities without running as root is never hosted: with both opt-ins it refuses with
+`guest-elevated-host-not-elevated`. Elevated-peer admission on Linux identifies an elevated peer by a root-owned
+socket, and T18 relies on what processes that do not run as root cannot do to a root process, so the pair keeps root.
+Runic's guest logs the refusal (event 2010) with a message that names the capability sets.
 
 The guest checks in that order: without its own opt-in, or without `elevatedGuest`, it refuses with `guest-elevated`;
 a parent that fails the same-user check refuses with `guest-other-user`; a parent of the same user that does not run
@@ -1354,7 +1367,7 @@ in regions of its pages, with fewer features than a host with native windows:
   opened through `localhost` names `http://localhost:<port>` and the guest serves its frame from `[::1]`, else
   `127.0.0.1` ([guest origin](#guest-origin)). Runic's surfaces admit a page's connection only from their own origin or
   one of their additional origins.
-- **Elevated guests.** A guest that runs elevated refuses every `region-attach` with `browser: true` (`rejected`,
+- **Elevated guests.** A guest that runs elevated ([elevated host](#elevated-host), on Linux also with capabilities) refuses every `region-attach` with `browser: true` (`rejected`,
   `guest-elevated`): its page would run in a process that does not run elevated. The window stays open and unattached.
   [Elevated-peer admission](#elevated-peer-admission) refuses such a browser's connections in any case.
 
