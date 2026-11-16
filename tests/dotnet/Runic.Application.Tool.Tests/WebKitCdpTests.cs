@@ -740,11 +740,16 @@ internal sealed partial class ToolTests
         using var server = new FakeInspectorServer();
         var peers = new HashSet<int>();
         var lines = new List<string>();
-        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port, line => { lock (lines) lines.Add(line); },
+        var lineWritten = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var endpoint = new WebKitDebugEndpoint("127.0.0.1", server.Port, line =>
+            {
+                lock (lines) lines.Add(line);
+                lineWritten.TrySetResult(line);
+            },
             () => { lock (peers) return new HashSet<int>(peers); })
         {
             WatchInterval = TimeSpan.FromMilliseconds(100),
-            ProbeTimeout = TimeSpan.FromMilliseconds(500),
+            ProbeTimeout = TestTimeouts.Scale(TimeSpan.FromMilliseconds(500)),
         };
         True(endpoint.Start(0), "the endpoint listens");
         using var ide = await CdpSocket.ConnectAsync(endpoint.Port!.Value);
@@ -752,24 +757,19 @@ internal sealed partial class ToolTests
         string session = (await ide.CommandAsync("Target.attachToTarget", new() { ["targetId"] = target, ["flatten"] = true }))["result"]!["sessionId"]!.GetValue<string>();
         Equal(42, (await ide.CommandAsync("Runtime.evaluate", new() { ["expression"] = "6 * 7" }, session))["result"]!["result"]!["value"]!.GetValue<int>());
 
-        // Another client sets up: WebKit gives it the slot and tells the adapter nothing; the adapter sees its connection.
+        // Another client sets up: WebKit gives it the slot and tells the adapter nothing. The adapter sees its connection
+        // only once it holds the slot, so every probe goes to the other client.
         using var other = new TcpClient();
         await other.ConnectAsync(IPAddress.Loopback, server.Port);
         await other.GetStream().WriteAsync(InspectorWire.SetupInspectorClient());
-        lock (peers) peers.Add(((IPEndPoint)other.Client.LocalEndPoint!).Port);
+        int otherPort = ((IPEndPoint)other.Client.LocalEndPoint!).Port;
+        await server.WaitForHolderAsync(otherPort);
+        lock (peers) peers.Add(otherPort);
         JsonObject detached = await ide.EventAsync("Inspector.detached");
         Equal((session, CdpClient.ReplacedReason), (detached["sessionId"]?.GetValue<string>(), detached["params"]!["reason"]!.GetValue<string>()));
         Equal(session, (await ide.EventAsync("Target.detachedFromTarget"))["params"]!["sessionId"]!.GetValue<string>());
         // dev prints its line after the sessions ended.
-        for (int attempt = 0; attempt < 200; attempt++)
-        {
-            lock (lines)
-            {
-                if (lines.Count > 0) break;
-            }
-            await Task.Delay(25);
-        }
-        lock (lines) Equal(WebKitDebugEndpoint.ReplacedLine($"127.0.0.1:{server.Port}"), lines.Single());
+        Equal(WebKitDebugEndpoint.ReplacedLine($"127.0.0.1:{server.Port}"), await lineWritten.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)));
 
         // Until the other client leaves and afterwards, the replaced connection sent only its probe: no Setup that could
         // meet the empty slot, no FrontendDidClose that could end the other client's session.
@@ -787,6 +787,7 @@ internal sealed partial class ToolTests
         string resumed = (await again.CommandAsync("Target.attachToTarget", new() { ["targetId"] = next, ["flatten"] = true }))["result"]!["sessionId"]!.GetValue<string>();
         Equal(42, (await again.CommandAsync("Runtime.evaluate", new() { ["expression"] = "6 * 7" }, resumed))["result"]!["result"]!["value"]!.GetValue<int>());
         False(server.SetupWithoutClient, "a Setup reached WebKit's empty client slot");
+        lock (lines) Equal(1, lines.Count);
     }
 
     [Test, DisplayName("a Setup on a connection that lost WebKit's slot unnoticed claims the slot first")]
@@ -886,7 +887,7 @@ internal sealed partial class ToolTests
 
         private async Task<JsonObject> WaitAsync(Func<JsonObject, bool> match, string what)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using CancellationTokenSource timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
             while (true)
             {
                 lock (_received)
@@ -903,7 +904,7 @@ internal sealed partial class ToolTests
                 }
                 catch (OperationCanceledException)
                 {
-                    throw new TimeoutException($"No {what} within 20 s.");
+                    throw new TimeoutException($"No {what} within {TestTimeouts.Scale(TimeSpan.FromSeconds(20)).TotalSeconds} s.");
                 }
             }
         }
@@ -959,7 +960,7 @@ internal sealed partial class ToolTests
 
         internal async Task WaitForClientsAsync(int count)
         {
-            for (int attempt = 0; attempt < 200; attempt++)
+            for (var deadline = System.Diagnostics.Stopwatch.StartNew(); deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(5));)
             {
                 lock (_gate)
                 {
@@ -972,7 +973,7 @@ internal sealed partial class ToolTests
 
         internal async Task WaitForHolderAsync(int clientPort)
         {
-            for (int attempt = 0; attempt < 200; attempt++)
+            for (var deadline = System.Diagnostics.Stopwatch.StartNew(); deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(5));)
             {
                 lock (_gate)
                 {
