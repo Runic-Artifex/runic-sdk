@@ -113,9 +113,9 @@ internal sealed class CdpClient : IAsyncDisposable
         string? sessionId = command["sessionId"]?.GetValue<string>() ?? (_directPage is null ? null : "");
         var reply = new JsonObject { ["id"] = id };
         if (!string.IsNullOrEmpty(sessionId)) reply["sessionId"] = sessionId;
+        AttachedPage? page = null;
         try
         {
-            AttachedPage? page = null;
             if (sessionId is not null) lock (_gate) _sessions.TryGetValue(sessionId, out page);
             reply["result"] = page is not null
                 ? await page.Session.HandleAsync(method, parameters, cancellationToken).ConfigureAwait(false)
@@ -134,6 +134,7 @@ internal sealed class CdpClient : IAsyncDisposable
             return;
         }
         await SendAsync(reply).ConfigureAwait(false);
+        page?.Session.Replied();
     }
 
     private async Task<JsonObject> HandleBrowserAsync(string method, JsonObject p, CancellationToken cancellationToken)
