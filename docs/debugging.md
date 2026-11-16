@@ -9,6 +9,7 @@ Each section links the README that describes its tool in full.
 | --- | --- |
 | Stop on a breakpoint in a ViewModel | [Your IDE's .NET debugger](#the-net-debugger-in-your-ide) |
 | Inspect the page's DOM, console, network, and scripts | [The browser's developer tools](#the-browsers-developer-tools-per-engine) |
+| Stop on a breakpoint in the frontend's sources from your IDE, on any OS | [The page in Chrome](#the-page-in-chrome-dotnet-runic-dev---browser) |
 | See each Bridge call with the C# that ran and open it in the editor | [The Runic dock](#the-runic-dock) |
 | Click an element and see its commands, state, and texts | [Runic Inspect](#runic-inspect) |
 | See the same in Chrome's or Edge's own developer tools: a Runic panel and an Elements pane | [The Runic DevTools extension](#the-runic-devtools-extension) |
@@ -67,6 +68,7 @@ tool. Without `dev`, F5 builds the production frontend and the Window shows that
 | --- | --- |
 | `Window` | Runs the `runic: dev --no-window` task until `[dev] Ready`, builds, and starts the Window under the debugger. |
 | `Attach to the Window (dotnet runic dev)` | Runs the `runic: dev` task and attaches to the Window process. |
+| `Window in Chrome` | Every OS: runs the `runic: dev --browser` task and opens the Window's page in Chrome under VS Code's JavaScript debugger ([The page in Chrome](#the-page-in-chrome-dotnet-runic-dev---browser)). |
 | `Window + WebView2 (Windows)` | Runic Desktop on Windows: the Window with WebView2's endpoint on port 9222, and VS Code's JavaScript debugger attached to the page, so breakpoints in `Frontend/src` stop too. |
 | `Window + WebKitGTK (Linux)` | Runic Desktop on Linux (preview): the same with WebKitGTK, through `dotnet runic dev`'s CDP adapter on port 9222. |
 | `Attach to the page (JavaScript)` | VS Code's JavaScript debugger on port 9222 alone: the Window that `dotnet runic dev` started on Linux, or a WebView2 Window started with the port on Windows. |
@@ -93,14 +95,15 @@ IDE tasks and extensions read `dotnet runic dev` through stable lines and a sess
 [IDE contract](../tools/dotnet-runic/README.md#ide-contract):
 
 - **Lines:** `[dev] Window started: process <pid>` (the process to attach to), `[dev] Ready`, and
-  `[dev] Window exited: process <pid>`. A failure is one line in MSBuild's form,
+  `[dev] Window exited: process <pid>`, and with `--browser` `[dev] Browser: Window serves at <url>`. A failure is one line in MSBuild's form,
   `<project> : error RAPPDEV1007: <message>`, which `$msCompile` matches.
 - **Session file:** `obj/runic/dev-session.json` (`runic.application.tool.dev-session/1`), rewritten on each change.
   `state` is `starting`, `ready` or `stopped`; a `dev` that was killed leaves its last state, so a reader trusts
   `starting` and `ready` only while a process with `processId` runs and started at `processStartedAt` (to within a
   second). It also lists the development server's URL, the pages, the Window's process and owner (`dev`, or `ide`
   with `--no-window`), `debugEndpoints` (WebView2's DevTools Protocol endpoint when the environment opens one),
-  `unavailableDebugEndpoints` (one that the engine will not open, with a `reason`), and `sourceMap`, the Bridge
+  `unavailableDebugEndpoints` (one that the engine will not open, with a `reason`), `browser` (the address that
+  `--browser` serves the Window at), and `sourceMap`, the Bridge
   source map that the page's tools read. See [Session file](../tools/dotnet-runic/README.md#session-file).
 
 ## The browser's developer tools per engine
@@ -194,6 +197,24 @@ release build's page that way, run it with `DOTNET_ENVIRONMENT=Development`.
   after 2.54.2). Their HTTP inspector accepts connections with any website's `Origin` and `Host`, so while the port is
   open, any web page you visit can drive the Window's page and, through it, the Bridge. `--webkit-inspector` refuses
   them and opens the `inspector://` server instead, which speaks a protocol that no browser page can.
+
+## The page in Chrome (`dotnet runic dev --browser`)
+
+Since 0.21, `dotnet runic dev --browser` serves the Window without a native window, and your IDE's JavaScript
+debugger opens its page in Chrome or Edge at `http://127.0.0.1:9224/`, which `dev` redirects to the Window's own
+address (it changes with every start and carries the Window's credential). This works the same on Windows, Linux and
+macOS, so it is the IDE route to breakpoints in `Frontend/src` on macOS, where WKWebView has no DevTools Protocol
+endpoint. The template's `Window in Chrome` configuration (`--editor vscode`) runs it: breakpoints through the
+development server's source maps, stepping, conditions, logpoints, exceptions, the console, reloads and HMR.
+
+Two differences from the Window: the page runs on **Chromium**, not on the Window's engine, so check WebKit- or
+WebView2-specific behaviour in the Window; and it has **no native window features**: file dialogs, menus and the
+window's commands report `OwnerUnavailable`, and there is no side panel. On Linux the address answers only the user who
+runs `dev`; macOS and Windows cannot tell a loopback connection's user, so on a shared machine another local user's
+process can follow it there. The Window admits one browser, and after
+`dotnet watch` restarts it, open the address again. Attach the .NET debugger to the process that
+`[dev] Window started` names, as without `--browser`. See the dotnet-runic README's
+[Debug the page in Chrome](../tools/dotnet-runic/README.md#debug-the-page-in-chrome---browser).
 
 **For agents.** Where a DevTools Protocol endpoint is open (WebView2 above, or a Chromium browser started with
 remote debugging), `chrome-devtools-mcp --browser-url=http://127.0.0.1:9222` or Playwright's `connectOverCDP`

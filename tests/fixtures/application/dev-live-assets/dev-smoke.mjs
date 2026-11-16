@@ -1,7 +1,9 @@
 // `dotnet runic dev` without a Vite or Angular development server (its mode 2): the frontend watcher (`bun run dev`)
 // writes Frontend/dist, and the Runic Desktop host serves that directory live and reloads its window when it changes.
-// RUNIC_APPLICATION_SERVE_ONLY=1 serves the window's surface without a native window, so headless Chromium is the
-// window's page. Run from the SDK root after a Release build of tools/dotnet-runic:
+// `--browser` (#1031) serves the window's surface without a native window (serve-only), and headless Chromium opens it
+// through dev's entry address from the session file, as the template's "Window in Chrome" configuration does. The
+// surface's own address, which carries its credential, stays out of dev's output.
+// Run from the SDK root after a Release build of tools/dotnet-runic:
 //   node tests/fixtures/application/dev-live-assets/dev-smoke.mjs
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -33,11 +35,14 @@ function run(command, args) {
 
 // dev --no-restore installs nothing; the frontend declares no dependencies, so only .NET needs a restore.
 await run("dotnet", ["restore", project]);
-const dev = spawn("dotnet", [tool, "dev", "--project", project, "-c", "Release", "--no-restore", "--no-dotnet-watch"], {
+const environment = { ...process.env };
+delete environment.RUNIC_APPLICATION_SERVE_ONLY;
+const dev = spawn("dotnet", [tool, "dev", "--project", project, "-c", "Release", "--no-restore", "--no-dotnet-watch", "--browser"], {
   cwd: root,
-  env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1" },
+  env: environment,
   stdio: ["ignore", "pipe", "pipe"],
 });
+const sessionFile = join(fixture, "obj/runic/dev-session.json");
 let output = "", errors = "", browser;
 dev.stdout.on("data", chunk => { output += chunk; });
 dev.stderr.on("data", chunk => { errors += chunk; });
@@ -55,11 +60,17 @@ const save = async text => {
 };
 
 try {
+  // Ready once the Window serves its first page; the session file lists the entry address.
   const started = await until(() => dev.exitCode !== null ? { exited: dev.exitCode }
-    : output.match(/RUNIC_APPLICATION_URL=(\S+)/)?.[1], "the Window's surface URL", 180_000);
+    : /^\[dev\] Ready$/m.test(output) && output.match(/^\[dev\] Browser: Window serves at (\S+)$/m)?.[1], "the Window's entry address", 180_000);
   if (typeof started !== "string")
     throw new Error(`dotnet runic dev exited with ${started.exited}:\n${tail(output)}\n${tail(errors)}`);
-  const url = started;
+  const session = JSON.parse(await readFile(sessionFile, "utf8"));
+  const url = session.browser?.url;
+  if (url !== started || !/^http:\/\/127\.0\.0\.1:\d+\/$/.test(url) || session.state !== "ready" || session.browser.windows[0]?.url !== url)
+    throw new Error(`The session file does not list the entry address ${started}: ${JSON.stringify(session)}`);
+  if (session.debugEndpoints.length !== 0) throw new Error(`--browser listed debugging endpoints: ${JSON.stringify(session.debugEndpoints)}`);
+  if (/RUNIC_APPLICATION_(URL|WINDOW)=/.test(output + errors)) throw new Error(`dev printed the surface's address:\n${tail(output)}`);
   if (!/\[dev\] Assets: .*dist \(served live; windows reload on change\)/.test(output))
     throw new Error(`dev did not report the live assets:\n${tail(output)}`);
   browser = await launchChromium(url, { profilePrefix: "runic-dev-assets-" });
@@ -75,7 +86,10 @@ try {
   // The frontend watcher copies an edited page into dist/; the window follows it too.
   await save(withMarker("three"));
   await until(async () => (await marker()) === "three", "the reload after the watcher rebuilt dist/", 20_000);
-  console.log("DEV_LIVE_ASSETS_OK|served-live|www-fallback|reload-on-dist-change|reload-after-watcher");
+  // The browser's address is the surface's own page, not the entry's.
+  const location = await browser.evaluate("location.origin");
+  if (location === new URL(url).origin) throw new Error(`The browser stayed at the entry address ${location}.`);
+  console.log("DEV_LIVE_ASSETS_OK|browser-entry|served-live|www-fallback|reload-on-dist-change|reload-after-watcher");
 } finally {
   await rm(`${page}.tmp`, { force: true });
   await writeFile(page, original);

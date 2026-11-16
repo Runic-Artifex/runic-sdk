@@ -9,6 +9,9 @@
 // usage: node dap-scenarios.mjs --jsdebug <js-debug dir> --port <cdp port> --frontend <Frontend dir>
 //          [--restart-file <a .cs file of the application>] [--inspector <WebKit inspector host:port>] [--modules <count>]
 //          [--per-script-sourcemaps auto|yes|no] [--only a,b] [--trace <js-debug log file>]
+// With --launch, js-debug instead launches Chrome at that address, as the template's `"request": "launch"` configuration
+// "Window in Chrome" does for `dotnet runic dev --browser` (#1031): the same scenarios on Chromium.
+//        node dap-scenarios.mjs --jsdebug <js-debug dir> --launch <url> --frontend <Frontend dir> [--browser <executable>] …
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -27,6 +30,8 @@ const { values: a } = parseArgs({ options: {
   "per-script-sourcemaps": { type: "string", default: "auto" },
   // The attach configuration's type: pwa-chrome ("chrome" in launch.json) or pwa-msedge with useWebView, the template's.
   type: { type: "string", default: "pwa-chrome" },
+  // A launch configuration's url, and the Chrome or Chromium it starts: js-debug's installed Chrome ("stable") by default.
+  launch: { type: "string" }, browser: { type: "string" },
 } });
 const app = `${a.frontend}/src/App.tsx`;
 const counterPage = `${a.frontend}/src/pages/CounterPage.tsx`;
@@ -47,7 +52,14 @@ const dapPort = await new Promise((resolve, reject) => {
   const probe = net.createServer().once("error", reject).listen(0, "127.0.0.1", () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
 });
 const server = spawn(process.execPath, [`${a.jsdebug}/src/dapDebugServer.js`, String(dapPort), "127.0.0.1"], { stdio: ["ignore", "ignore", "pipe"] });
-server.stderr.on("data", d => process.stderr.write(`[js-debug] ${d}`));
+// js-debug's DAP server reports a launch or attach it cannot do (no browser, no target) only here, without a response.
+let reportRefusal;
+const serverRefusal = new Promise(resolve => { reportRefusal = resolve; });
+server.stderr.on("data", d => {
+  process.stderr.write(`[js-debug] ${d}`);
+  const refusal = /Unable to (?:launch browser|attach to browser)[^\n]*/.exec(String(d));
+  if (refusal) reportRefusal({ message: refusal[0] });
+});
 const done = code => { try { server.kill(); } catch {} setTimeout(() => process.exit(code), 200); };
 setTimeout(() => { log("overall timeout"); done(1); }, 900000);
 // A failure before or between the scenarios (attach, page readiness) is a FAIL line too, not a bare exit code.
@@ -92,7 +104,12 @@ const init = { clientID: "runic-webkit-cdp", adapterID: a.type, linesStartAt1: t
 const breakpoints = new Map();
 let current = null;
 let children = 0;
-// Attaches as VS Code does when debugging starts: the parent session, then its first child session.
+// Starts debugging as VS Code does: the parent session, then its first child session. With --launch, the first call
+// launches Chrome at that address; otherwise, and for a later call (replaced-client), it attaches to the CDP port.
+// A launch or attach that js-debug refuses, such as a browser it cannot start or attach to, starts no page session: each
+// setup step then fails with js-debug's message instead of waiting for the overall timeout. The refusal is an
+// unsuccessful response, or only a line on js-debug's standard error.
+let launched = false;
 async function attachIde() {
   const parent = new Dap("parent"); await parent.connect();
   let own = 0;
@@ -109,11 +126,26 @@ async function attachIde() {
   }; });
   const parentInitialized = parent.wait("initialized", () => true, 120000);
   await parent.send("initialize", init);
-  const pa = parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
-    perScriptSourcemaps: a["per-script-sourcemaps"],
-    ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
-  await parentInitialized; await parent.send("configurationDone"); await pa;
-  const first = await childP;
+  const launch = a.launch && !launched;
+  launched = true;
+  const pa = launch
+    // Headless without a display; --no-sandbox for CI runners whose kernel refuses Chrome's sandbox.
+    ? parent.send("launch", { type: a.type, request: "launch", name: "browser", url: a.launch, webRoot: a.frontend, timeout: 30000,
+      perScriptSourcemaps: a["per-script-sourcemaps"], runtimeExecutable: a.browser ?? "stable", runtimeArgs: ["--headless=new", "--no-sandbox"],
+      ...(a.trace ? { trace: { logFile: a.trace } } : {}) })
+    : parent.send("attach", { type: a.type, request: "attach", name: "webkit-cdp", port: Number(a.port), webRoot: a.frontend, timeout: 15000,
+      perScriptSourcemaps: a["per-script-sourcemaps"],
+      ...(a.type === "pwa-msedge" ? { useWebView: true } : {}), ...(a.trace ? { trace: { logFile: a.trace } } : {}) });
+  const refused = Promise.race([pa.then(response => response.success ? new Promise(() => {}) : response), serverRefusal]);
+  const orRefused = async step => {
+    const outcome = await Promise.race([step.then(value => ({ value })), refused.then(response => ({ response }))]);
+    if (!outcome.response) return outcome.value;
+    log(`FAIL setup: js-debug's ${launch ? "launch" : "attach"} failed: ${outcome.response.message ?? JSON.stringify(outcome.response.body)}`);
+    done(1);
+    return new Promise(() => {});
+  };
+  await orRefused(parentInitialized); await orRefused(parent.send("configurationDone")); await orRefused(pa);
+  const first = await orRefused(childP);
   await first.c.send("configurationDone"); await first.attached;
   return { parent, child: first.c };
 }

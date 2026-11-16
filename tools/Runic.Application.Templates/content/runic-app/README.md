@@ -116,6 +116,14 @@ To keep `dotnet runic dev` starting the Window instead, attach the IDE's
 debugger to the process that `[dev] Window started: process <pid>` names. That
 debugger ends when `dotnet watch` restarts the Window after a C# edit.
 
+To set breakpoints in the page's JavaScript on any operating system, run
+`dotnet runic dev --browser`. The Window then serves its page without a native
+window, and `http://127.0.0.1:9224/` opens it in a browser; open that address
+from your IDE's JavaScript debugger with Chrome or Edge. The page runs on
+Chromium rather than the Window's WebView (WebKit on Linux and macOS), and native
+window features such as file dialogs and menus are unavailable there. Open the
+address again after `dotnet watch` restarts the Window.
+
 <!--#if (editor == "vscode") -->
 ### VS Code
 
@@ -127,6 +135,7 @@ Kit is not needed. Choose a configuration in Run and Debug:
 | --- | --- |
 | `Window` | Runs the `runic: dev --no-window` task until `[dev] Ready`, builds, and starts the Window under the debugger: the steps above. |
 | `Attach to the Window (dotnet runic dev)` | Runs the `runic: dev` task and attaches to the Window process you pick, the one `[dev] Window started: process <pid>` names. |
+| `Window in Chrome` | Every OS: runs the `runic: dev --browser` task until `[dev] Ready` and opens the Window's page in Chrome under VS Code's JavaScript debugger, so breakpoints in `Frontend/src` stop on Linux and macOS too. The page runs on Chromium, without native window features. For Edge, change its `type` to `msedge`. |
 <!--#if (desktopHost) -->
 | `Window + WebView2 (Windows)` | Windows: starts the Window with WebView2's DevTools Protocol on port 9222 and attaches VS Code's JavaScript debugger to the page (`msedge` with `useWebView`), so breakpoints in `Frontend/src` stop too. Elevated Windows get no port, as for the launch profile. |
 | `Window + WebKitGTK (Linux)` | Linux (preview): the same with WebKitGTK. The Window starts with WebKit's inspector on port 9223, and `dotnet runic dev --no-window` serves it to the JavaScript debugger on port 9222. |
@@ -134,7 +143,7 @@ Kit is not needed. Choose a configuration in Run and Debug:
 <!--#endif -->
 
 The tasks (Terminal > Run Task) are `runic: dev`, `runic: dev --no-window`,
-`build` and `runic: doctor`. Failures of `dotnet runic dev` (its `RAPPDEV` codes)
+`runic: dev --browser`, `build` and `runic: doctor`. Failures of `dotnet runic dev` (its `RAPPDEV` codes)
 and build errors appear in the Problems panel. The `dev` tasks keep running
 after a debug session ends, so the next F5 starts faster; stop them with
 Terminal > Terminate Task. The launch configurations start the build output in

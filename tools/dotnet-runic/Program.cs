@@ -87,9 +87,10 @@ internal static partial class Program
         [Option("--no-dotnet-watch", Description = "Run the application once instead of restarting it under dotnet watch after C# edits.")] bool noDotNetWatch,
         [Option("--dry-run", Description = "Print the evaluated project configuration and exit without changing files or starting processes.")] bool dryRun,
         [Option("--no-build", Description = "Skip the .NET restore and build before the Window starts, as dotnet run --no-build does. dotnet watch still builds after C# edits.")] bool noBuild,
-        [Option("--no-window", Description = "Run only the frontend; start the Window from your IDE, under its debugger. The IDE's build keeps dev's development pages while dev runs.")] bool noWindow,
+        [Option("--no-window", ConflictsWith = ["browser"], Description = "Run only the frontend; start the Window from your IDE, under its debugger. The IDE's build keeps dev's development pages while dev runs.")] bool noWindow,
+        [Option("--browser", ConflictsWith = ["no-window", "webkit-inspector"], Description = "Serve the Window to a browser instead of opening it (serve-only mode), at http://127.0.0.1:9224/, for the JavaScript debugger of your IDE's Chrome or Edge. The pages run on Chromium, without native window features.")] bool browser,
         [Option("--no-debug-endpoint", ConflictsWith = ["webkit-inspector"], Description = "Linux: open no endpoint for debugging the Window's pages, neither Runic's CDP adapter for JavaScript debuggers (port 9222) nor WebKit's remote inspector.")] bool noDebugEndpoint,
-        [Option("--webkit-inspector", ConflictsWith = ["no-debug-endpoint"], Description = "Linux: open WebKit's own Web Inspector over HTTP, for a browser, instead of the CDP adapter that JavaScript debuggers attach to. Needs WebKitGTK 2.54.3 or later; older versions get the inspector:// server.")] bool webkitInspector,
+        [Option("--webkit-inspector", ConflictsWith = ["no-debug-endpoint", "browser"], Description = "Linux: open WebKit's own Web Inspector over HTTP, for a browser, instead of the CDP adapter that JavaScript debuggers attach to. Needs WebKitGTK 2.54.3 or later; older versions get the inspector:// server.")] bool webkitInspector,
         [Option("--environment", "-e", AllowMultipleValues = true, ValueName = "NAME=VALUE", Description = "Set an environment variable for the Window process, as dotnet run -e does. Repeat it for several variables.")] IReadOnlyList<string> environment,
         [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
@@ -118,6 +119,7 @@ internal static partial class Program
                     Environment = ToolOptionValues.ParseEnvironment(environment),
                     DebugEndpoint = !noDebugEndpoint,
                     WebKitInspector = webkitInspector,
+                    Browser = browser,
                 };
                 return await DevApplication.RunAsync(context, options, cancellationToken,
                     evaluated => result = DevCommandResult.Create(evaluated, dryRun)).ConfigureAwait(false);

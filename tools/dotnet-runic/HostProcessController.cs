@@ -12,6 +12,7 @@ internal sealed class HostProcessController : IAsyncDisposable
     private readonly DevProjectConfiguration _configuration;
     private readonly DevOptions _options;
     private readonly IReadOnlyDictionary<string, string?> _developmentEnvironment;
+    private readonly Action<string>? _serveOnlyLine;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TaskCompletionSource<int> _unexpectedExit =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -38,11 +39,13 @@ internal sealed class HostProcessController : IAsyncDisposable
         string dotnetHost,
         DevProjectConfiguration configuration,
         DevOptions options,
-        IReadOnlyDictionary<string, string?>? developmentEnvironment = null)
+        IReadOnlyDictionary<string, string?>? developmentEnvironment = null,
+        Action<string>? serveOnlyLine = null)
     {
         _dotnetHost = dotnetHost;
         _configuration = configuration;
         _options = options;
+        _serveOnlyLine = serveOnlyLine;
         _developmentEnvironment = developmentEnvironment
             ?? new Dictionary<string, string?>(StringComparer.Ordinal);
     }
@@ -196,14 +199,28 @@ internal sealed class HostProcessController : IAsyncDisposable
             _configuration.ProjectDirectory,
             arguments,
             CreateDevelopmentEnvironment(_configuration, _developmentEnvironment, environment: _options.Environment,
-                debugEnvironment: _options.DebugEnvironment),
-            _options.WatchHost ? IsExpectedTerminationNotice : null);
+                debugEnvironment: _options.DebugEnvironment, browser: _options.Browser),
+            SuppressLine,
+            _options.Browser ? ObserveServeOnly : null,
+            holdInput: _options.Browser);
         if (_options.WatchHost)
         {
             process.OutputReceived += ObserveOutput;
         }
 
         return process;
+    }
+
+    /// <summary>
+    /// dotnet watch's notice of an expected stop, and with <c>--browser</c> the serve-only lines, which carry the surface's
+    /// credential: dev prints the entry address instead (<see cref="BrowserEntry"/>).
+    /// </summary>
+    private bool SuppressLine(string line) =>
+        (_options.WatchHost && IsExpectedTerminationNotice(line)) || (_options.Browser && BrowserEntry.IsServeOnlyLine(line));
+
+    private void ObserveServeOnly(string line)
+    {
+        if (BrowserEntry.IsServeOnlyLine(line)) _serveOnlyLine?.Invoke(line);
     }
 
     internal static IReadOnlyList<string> CreateWatchArguments(
@@ -291,7 +308,8 @@ internal sealed class HostProcessController : IAsyncDisposable
         IReadOnlyDictionary<string, string?> developmentEnvironment,
         Func<string, string?>? readEnvironment = null,
         IReadOnlyList<KeyValuePair<string, string>>? environment = null,
-        IReadOnlyList<KeyValuePair<string, string>>? debugEnvironment = null)
+        IReadOnlyList<KeyValuePair<string, string>>? debugEnvironment = null,
+        bool browser = false)
     {
         readEnvironment ??= Environment.GetEnvironmentVariable;
         var variables = new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -341,6 +359,11 @@ internal sealed class HostProcessController : IAsyncDisposable
         foreach ((string key, string? value) in developmentEnvironment)
         {
             variables[key] = value;
+        }
+        // --browser: the Window serves its pages without presenting them, whatever -e or dev's environment say.
+        if (browser)
+        {
+            variables[BrowserEntry.ServeOnlyVariable] = "1";
         }
         return variables;
     }
