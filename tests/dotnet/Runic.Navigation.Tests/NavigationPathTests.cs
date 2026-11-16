@@ -311,6 +311,9 @@ internal sealed partial class NavigationTests
         Require(json == """{"version":1,"regions":[{"entries":[{"route":"a","regions":[],"selections":[{"selected":0,"regions":[{"entries":[{"route":null,"regions":[],"selections":[]}]}]}]}]}],"selections":[]}""",
             $"The JSON format changed: {json}");
         Require(NavigationPath.FromJson(json).ToJson() == json, "The JSON did not round-trip.");
+        // 0.21 renamed NavigationSelectionPath.Selected to SelectedIndex; the JSON property stays "selected" (format 1).
+        Require(NavigationPath.FromJson("""{"version":1,"selections":[{"selected":2,"regions":[]}]}""").Selections is [{ SelectedIndex: 2 }],
+            "The selected index was not read from \"selected\".");
         Require(NavigationPath.FromJson("""{"regions":[{"entries":[{"route":"a","extra":1}]}]}""").Regions[0].Entries[0].Route == "a",
             "Unknown properties or a missing version were refused.");
         foreach (var bad in new[] { "[]", "{\"version\":2}", "{\"regions\":{}}", "{\"regions\":[{\"entries\":[{\"route\":3}]}]}", "not json" })
@@ -332,9 +335,9 @@ internal sealed partial class NavigationTests
         Require(json == """{"version":1,"regions":[],"selections":[{"selected":1,"regions":[{"entries":[{"route":"customers","regions":[],"selections":[]},{"route":"customers/42","regions":[],"selections":[]}]},{"entries":[]}]}]}""",
             $"The selection JSON format changed: {json}");
         var read = NavigationSelectionPath.FromJson(json);
-        Require(read.Selected == 1 && read.Regions.Count == 2 && read.Regions[0].Entries[1].Route == "customers/42" && read.ToJson() == json,
+        Require(read.SelectedIndex == 1 && read.Regions.Count == 2 && read.Regions[0].Entries[1].Route == "customers/42" && read.ToJson() == json,
             $"The selection JSON did not round-trip: {read.ToJson()}");
-        Require(NavigationSelectionPath.FromJson("""{"selections":[{"regions":[]}]}""").Selected == -1,
+        Require(NavigationSelectionPath.FromJson("""{"selections":[{"regions":[]}]}""").SelectedIndex == -1,
             "A selection without 'selected' did not read as empty.");
 
         var region = new NavigationRegionPath([new("overview")]);

@@ -14,7 +14,7 @@ await buildDevelopment({
   // What only the development build may contain: the Bridge-call channel and its async stack tasks (calls.ts), with the
   // development tools' Views protocol features and trace context (calls.ts, #958), the Runic Translations text channel
   // (translated-text.ts), the View descriptions that the bindings' DevTools labels read (describe.ts, #1041), and the
-// console's custom object formatters (formatters.ts, #1042).
+  // console's custom object formatters (formatters.ts, #1042).
   markers: ["runic.views.calls", "createTask", "runic.translations.text", "trace-context/1", "handler-timing/1", "traceparent",
     "runic.views.describe", "devtoolsFormatters"],
 });

@@ -420,7 +420,7 @@ public sealed partial class RunicNavigator
                     if (!added) await this.AfterUserCode(navigator.DiscardRegionAsync(created.Core));
                 }
             }
-            if (path.Selected >= 0 && path.Selected < restored.Length && restored[path.Selected] is { } target
+            if (path.SelectedIndex >= 0 && path.SelectedIndex < restored.Length && restored[path.SelectedIndex] is { } target
                 && !ReferenceEquals(selection.Selected, target) && selection.Regions.Contains(target))
             {
                 var result = await this.AfterUserCode(selection.SelectAsync(target, Options, cancellationToken));

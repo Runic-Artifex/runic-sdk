@@ -37,8 +37,8 @@ internal static class WindowPlacementSmoke
         });
         try
         {
-            Require(window.Capabilities.HasFlag(DesktopWindowCapabilities.WindowPlacement),
-                $"the WindowPlacement capability, not {window.Capabilities}");
+            Require(window.Capabilities.HasFlag(DesktopWindowCapabilities.Placement),
+                $"the Placement capability, not {window.Capabilities}");
             await surface.ExecuteJavaScriptAsync("return document.readyState;", Deadline);
             await WaitForAsync(window, static state => state.Bounds is not null, "its state");
             var opened = (await WaitForStableAsync(window)).Placement;

@@ -36,7 +36,7 @@ public static class ProjectServices
         // application.
         services.AddSingleton(provider =>
         {
-            var translations = TranslationContext.CreateBuilder().Add(ProjectTextCatalog.Registration).Build();
+            var translations = TranslationContext.CreateBuilder().AddCatalog(ProjectTextCatalog.Registration).Build();
             provider.GetRequiredService<IRunicApplicationLocale>().Follow(translations.SetLocaleAsync);
             return translations;
         });

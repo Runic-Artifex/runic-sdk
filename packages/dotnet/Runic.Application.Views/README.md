@@ -383,7 +383,8 @@ Since 0.16, the service also manages the open Windows:
   the service or `host.OpenWindowAsync`, in the order they opened, until its
   close starts: the application closed it, a close request decided to close it,
   `CompleteAsync` completed it, or the user closed it. `WindowsChanged` reports
-  each open and close, one change at a time and in order, on a thread-pool
+  each open and close (`Change` is `RunicWindowsChange.Opened` or `Closed`, an
+  open enum), one change at a time and in order, on a thread-pool
   thread, each with its own `Windows` list. It is not raised in any Window's
   model context, so a ViewModel posts what it does to its own.
   `ObserveWindows()` returns the list now and after each change as a plain
@@ -1096,7 +1097,7 @@ _settings.WindowPlacement = _window.Placement;
   report `Conflict`.
 
 A custom Runic Desktop window host supports them by implementing
-`IDesktopWindowShowStateHost` and reporting `DesktopWindowCapabilities.WindowPlacement`.
+`IDesktopShowStateWindowHost` and reporting `DesktopWindowCapabilities.Placement`.
 
 #### A side panel beside the Window's page
 
@@ -3502,27 +3503,27 @@ tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
 Text that a ViewModel produces, such as a status line or a validation
 message, can follow the window's language without a call per string. The
 ViewModel produces a text reference of
-[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/transport.md)
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/transport.md)
 (a message key, typed arguments and a fallback text) instead of a sentence, and
 the page formats it with its Translations runtime (the `translation-text/1`
 feature). When the language changes, the page formats the references it has
 again.
 
-The guide [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/runic-views.md)
+The guide [Translate a Runic Views app](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/runic-views.md)
 walks through one catalog for the page and C#, the application's language,
 native text and tests, step by step. This section is the reference. It needs
-Runic Translations 0.12.0 or later. `dotnet new runic-app --translations` starts
+Runic Translations 0.13.0 or later. `dotnet new runic-app --translations` starts
 an application with all of it, and the
 [multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
 shows it in English, German and Arabic.
 
 **One catalog.** Keep the catalog with the frontend and name its `runic.json`
 in the .NET project, which then gets the generated C# API for every message
-([Strings outside the Views](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)):
+([Strings outside the Views](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)):
 
 ```xml
-<PackageReference Include="Runic.Translations" Version="0.12.0" />
-<PackageReference Include="Runic.Translations.Build" Version="0.12.0" PrivateAssets="all" />
+<PackageReference Include="Runic.Translations" Version="0.13.0" />
+<PackageReference Include="Runic.Translations.Build" Version="0.13.0" PrivateAssets="all" />
 <RunicTranslationProject Include="Frontend/translations/runic.json" />
 ```
 
@@ -3750,7 +3751,7 @@ Views packages do not reference Runic Translations: `Follow` takes any
 // SynchronizationContext it subscribed on: in WPF's startup, the UI thread. A Runic
 // Desktop body has none, so it runs on the switch's thread; SetMenuBar is thread-safe.
 TranslationContext translations = await TranslationContext.CreateBuilder()
-    .Add(NotesTextCatalog.Registration)              // and the catalogs of your libraries
+    .AddCatalog(NotesTextCatalog.Registration)       // and the catalogs of your libraries
     .BuildAsync();
 var locale = services.GetRequiredService<IRunicApplicationLocale>();
 locale.Follow(translations.SetLocaleAsync);        // every catalog of the context switches first
@@ -3932,7 +3933,7 @@ validation text, resolve them by catalog with the generated transport's
 one of a catalog the page does not list shows its fallback text. One written
 against another release of a catalog is checked key by key: it translates while
 its key and arguments still match, and shows its fallback text otherwise
-([Runic Translations' rules](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/transport.md)):
+([Runic Translations' rules](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/transport.md)):
 
 ```ts
 import * as appTransport from "virtual:runic-translations/app/transport";
@@ -3953,7 +3954,7 @@ configureTranslatedText({
 With the Vite plugin's `dependencies: "auto"`, the page's copy of a library
 catalog is regenerated with the application's `overrides`, so a reference
 resolves to the same text as in C#
-([Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/libraries.md)).
+([Ship translations in a library](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/libraries.md)).
 
 **Right-to-left text.** Since Runic Translations 0.9, a catalog that declares a
 right-to-left locale, such as `ar` or `he`, isolates the placeholders of its
@@ -3964,7 +3965,7 @@ them correctly; compare such text in tests after the runtime's
 in `runic.json` turns it on or off. The runtime's `localeDirection`, passed as
 `direction`, gives `syncDocumentLocale` and `textDirection()` the direction of
 each locale; see
-[Bidirectional text](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.12.0/docs/guides/translations/bidi.md).
+[Bidirectional text](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.13.0/docs/guides/translations/bidi.md).
 
 `syncDocumentLocale()` sets `lang` and `dir` on `<html>` (direction from the
 runtime's `direction`, such as `localeDirection`, else the locale's script) and
@@ -4254,7 +4255,7 @@ The page receives `{url, type, size, name}` and uses `url` directly:
 private async Task AttachAsync(RunicUpload file, CancellationToken cancellationToken)
 {
     // Everything about an upload comes from the page: check what you read before you use it.
-    await file.SaveAsAsync(Path.Combine(_attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
+    await file.SaveToFileAsync(Path.Combine(_attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
     Attachments.Add(new Attachment(file.FileName, file.Length));
 }
 ```
@@ -4273,7 +4274,7 @@ await client.attach(ref);
   Bridge carries only the reference.
 - An upload decodes only for the Window and the page connection that uploaded
   it, and only once: the first `OpenReadAsync` (a seekable stream; disposing it
-  deletes the content), `SaveAsAsync` (a rename on the same volume, otherwise a
+  deletes the content), `SaveToFileAsync` (a rename on the same volume, otherwise a
   copy) or `Discard` claims it, and a later request that names it is rejected
   as invalid input. An unclaimed upload is deleted when its connection closes,
   when the Window closes, or after 10 minutes.
@@ -4283,9 +4284,9 @@ await client.attach(ref);
 - An upload whose body sends nothing for 30 seconds is dropped (HTTP 408), on
   every host.
 - Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
-  and `MaximumWindowUploadBytes` (unclaimed uploads of a Window at once, default
-  1 GiB), with host defaults `RunicDesktopHostOptions.MaximumUploadBytes` and
-  `RunicCsWebUiHostOptions.MaximumUploadBytes`, and
+  and `MaximumPendingUploadBytes` (unclaimed uploads of a Window at once, default
+  1 GiB), with host defaults of the same names on `RunicDesktopHostOptions`,
+  `RunicCsWebUiHostOptions` and `RunicWindowTestHostOptions`, and
   `WindowContentSessionOptions` for a session you create. The WPF host uses the
   defaults.
 - Uploads are stored in a new folder of each Window, `runic-uploads-{random}`

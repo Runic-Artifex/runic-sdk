@@ -17,6 +17,7 @@ import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText }
 import { packageVersion } from "./version.mjs";
 import { npmReleaseAgeArguments } from "./dependencies/release-age.mjs";
 import { trainFeedNpmSpec, trainFeedSource } from "./ci/train-feed.mjs";
+import { packageSourceMapProblems } from "./source-map-comments.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -484,7 +485,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           react: "19.3.0",
           "@types/react": "19.3.0",
           vue: "3.5.43",
-          "@sveltejs/kit": "3.0.0",
+          "@sveltejs/kit": "3.1.1",
           "@sveltejs/adapter-static": "4.0.1",
           "@sveltejs/vite-plugin-svelte": "7.3.1",
           // The release of the compiler that builds the runic-views catalog (one pin, eng/workspace.test.mjs).
@@ -515,6 +516,8 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
       path.startsWith(frontend),
       `${name} is linked to the source workspace`,
     );
+    // A debugger reads a source map comment anywhere in a file as its source map (#1050).
+    assert.deepEqual(packageSourceMapProblems(path), [], `${name} ships JavaScript with a source map comment that is not its own trailing one`);
     const manifest = JSON.parse(
       readFileSync(join(path, "package.json"), "utf8"),
     );

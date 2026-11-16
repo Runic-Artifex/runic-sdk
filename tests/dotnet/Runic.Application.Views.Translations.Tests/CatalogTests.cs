@@ -109,7 +109,7 @@ public sealed class CatalogTests
     }
 
     internal static TranslationContext Context(string locale) =>
-        TranslationContext.CreateBuilder().Add(RunicViewsTranslations.CatalogRegistration).Build(locale);
+        TranslationContext.CreateBuilder().AddCatalog(RunicViewsTranslations.CatalogRegistration).Build(locale);
 
     internal static void Require(bool condition, string message)
     {

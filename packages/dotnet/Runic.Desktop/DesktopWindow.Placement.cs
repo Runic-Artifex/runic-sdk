@@ -9,7 +9,7 @@ public sealed partial class DesktopWindow
     /// <returns>A task that completes when the window has been asked to maximize; <see cref="StateChanged"/> reports it.</returns>
     /// <remarks>
     /// <para>
-    /// Requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>. Unlike <see cref="ToggleMaximizedAsync"/>, a second
+    /// Requires <see cref="DesktopWindowCapabilities.Placement"/>. Unlike <see cref="ToggleMaximizedAsync"/>, a second
     /// call leaves the window maximized. A full-screen window leaves full screen first and then maximizes; a minimized
     /// window is restored maximized; a hidden window stays hidden and shows maximized when it is next shown. With a side
     /// panel open the window keeps it.
@@ -27,7 +27,7 @@ public sealed partial class DesktopWindow
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
     {
         RequireNotKiosk();
-        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.WindowPlacement,
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Placement,
             () => _engine.ShowMaximizedAsync(cancellationToken), cancellationToken);
     }
 
@@ -39,7 +39,7 @@ public sealed partial class DesktopWindow
     /// <returns>A task that completes when the window has been asked to restore; <see cref="StateChanged"/> reports it.</returns>
     /// <remarks>
     /// <para>
-    /// Requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>. The window ends at the bounds that
+    /// Requires <see cref="DesktopWindowCapabilities.Placement"/>. The window ends at the bounds that
     /// <see cref="DesktopWindowState.Placement"/> reports, also when it was minimized while maximized, where Windows and the
     /// window managers would return it maximized. <see cref="FocusAsync"/> keeps that platform behaviour. A hidden
     /// window stays hidden and shows at its normal bounds when it is next shown.
@@ -57,7 +57,7 @@ public sealed partial class DesktopWindow
     public ValueTask RestoreAsync(CancellationToken cancellationToken = default)
     {
         RequireNotKiosk();
-        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.WindowPlacement,
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Placement,
             () => _engine.ShowNormalAsync(cancellationToken), cancellationToken);
     }
 
@@ -88,7 +88,7 @@ public sealed partial class DesktopWindow
     /// </returns>
     /// <remarks>
     /// <para>
-    /// Requires <see cref="DesktopWindowCapabilities.WindowPlacement"/>. Unlike <see cref="SetBoundsAsync"/>, which takes the
+    /// Requires <see cref="DesktopWindowCapabilities.Placement"/>. Unlike <see cref="SetBoundsAsync"/>, which takes the
     /// exact native frame of a normal window, this sets the bounds a maximized, minimized, full-screen or hidden window
     /// restores to: a maximized window stays maximized with new restored bounds unless
     /// <see cref="DesktopWindowPlacement.Maximized"/> is <see langword="false"/>, a minimized one stays minimized and a hidden
@@ -144,7 +144,7 @@ public sealed partial class DesktopWindow
             Width = Math.Min(Math.Max(0, placement.Width), Internal.WindowPlacementClamp.MaximumDimension),
             Height = Math.Min(Math.Max(0, placement.Height), Internal.WindowPlacementClamp.MaximumDimension),
         };
-        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.WindowPlacement,
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Placement,
             () => _engine.SetPlacementAsync(sanitized, cancellationToken), cancellationToken);
     }
 

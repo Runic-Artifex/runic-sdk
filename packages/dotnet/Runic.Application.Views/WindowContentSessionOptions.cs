@@ -106,5 +106,5 @@ public sealed class WindowContentSessionOptions
     /// An upload beyond it is refused with HTTP 507. <see langword="null"/>, the default, is 1 GiB. A value must be at
     /// least 1 KiB (1 024); the session throws <see cref="ArgumentOutOfRangeException"/> for another one.
     /// </summary>
-    public long? MaximumWindowUploadBytes { get; init; }
+    public long? MaximumPendingUploadBytes { get; init; }
 }

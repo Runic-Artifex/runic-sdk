@@ -29,7 +29,7 @@ public static class RunicViewsTranslations
 
     /// <summary>
     /// The <c>runic-views</c> catalog, for a <see cref="TranslationContext"/> builder:
-    /// <c>TranslationContext.CreateBuilder().Add(AppTextCatalog.Registration).Add(RunicViewsTranslations.CatalogRegistration)</c>.
+    /// <c>TranslationContext.CreateBuilder().AddCatalog(AppTextCatalog.Registration).AddCatalog(RunicViewsTranslations.CatalogRegistration)</c>.
     /// <c>AddRunicViewsTranslations()</c> registers it with <c>Runic.Translations.Hosting</c>.
     /// </summary>
     public static TranslationCatalogRegistration CatalogRegistration => RunicViewsTextCatalog.Registration;

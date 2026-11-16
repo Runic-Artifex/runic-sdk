@@ -214,7 +214,7 @@ public sealed class RunicHostedRegion
     /// It can be called from any thread. Overrides that the guest has not read yet are coalesced: the guest receives the
     /// latest. It does not wait for an attach or a detach in progress.
     /// </remarks>
-    public async Task<bool> SetAppearanceAsync(RunicHostedAppearance? appearance, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> SetAppearanceAsync(RunicHostedAppearance? appearance, CancellationToken cancellationToken = default)
     {
         bool changed;
         lock (_stateGate)
@@ -251,8 +251,7 @@ public sealed class RunicHostedRegion
     public event EventHandler<RunicHostedRegionEventArgs>? Attached;
 
     /// <summary>
-    /// Raised when the region no longer shows the window, with the reason (<see cref="RunicHostedRegionEventArgs.Reason"/>):
-    /// <c>removed</c>, <c>reload</c>, <c>crashed</c>, <c>host</c> or <c>closed</c>.
+    /// Raised when the region no longer shows the window, with the reason (<see cref="RunicHostedRegionEventArgs.Reason"/>).
     /// </summary>
     public event EventHandler<RunicHostedRegionEventArgs>? Detached;
 
@@ -292,12 +291,12 @@ public sealed class RunicHostedRegion
     /// </summary>
     /// <param name="cancellationToken">Cancels the wait; the detach still happens.</param>
     /// <returns>A task that completes when the guest was told.</returns>
-    public Task DetachAsync(CancellationToken cancellationToken = default) =>
-        Enqueue(async () =>
+    public ValueTask DetachAsync(CancellationToken cancellationToken = default) =>
+        new(Enqueue(async () =>
         {
             _ = _directory.Detach(this);
             await DetachGuestAsync("host").ConfigureAwait(false);
-        }).WaitAsync(cancellationToken);
+        }).WaitAsync(cancellationToken));
 
     /// <summary>
     /// Shows the window in the region <paramref name="region"/> of the page of <paramref name="window"/>, such as another
@@ -309,18 +308,18 @@ public sealed class RunicHostedRegion
     /// <param name="cancellationToken">Cancels the wait; the move still happens.</param>
     /// <returns>A task that completes when the move started: the window is detached, and attaches when the region takes it.</returns>
     /// <exception cref="ArgumentException"><paramref name="region"/> is not a region name.</exception>
-    public Task MoveToAsync(IRunicWindow window, string region, CancellationToken cancellationToken = default)
+    public ValueTask MoveToAsync(IRunicWindow window, string region, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(window);
         RequireName(region, nameof(region));
-        return Enqueue(async () =>
+        return new(Enqueue(async () =>
         {
             if (IsEnded) return;
             _ = _directory.Detach(this);
             await DetachGuestAsync("host").ConfigureAwait(false);
             // The attach follows in the queue; the move has started once the guest learned of the detach.
             if (_directory.Retarget(this, window, region) is { } slot) OnBound(slot);
-        }).WaitAsync(cancellationToken);
+        }).WaitAsync(cancellationToken));
     }
 
     internal static string RequireName(string name, string parameter)
@@ -974,7 +973,7 @@ public sealed class RunicHostedRegion
     private void Raise(EventHandler<RunicHostedRegionEventArgs>? handler, string? reason)
     {
         if (handler is null) return;
-        _application.Post(() => handler(this, new RunicHostedRegionEventArgs(this, reason)));
+        _application.Post(() => handler(this, new RunicHostedRegionEventArgs(this, RunicHostedRegionEventArgs.ReasonOf(reason))));
     }
 
     private sealed class DepartureGuard(RunicHostedRegion region) : INavigationDepartureGuard
@@ -1089,7 +1088,7 @@ public sealed class RunicHostedRegionEventArgs : EventArgs
     /// <summary>Creates the arguments for a region.</summary>
     /// <param name="region">The region.</param>
     /// <param name="reason">Why it detached, or <see langword="null"/>.</param>
-    public RunicHostedRegionEventArgs(RunicHostedRegion region, string? reason = null)
+    public RunicHostedRegionEventArgs(RunicHostedRegion region, RunicHostedRegionDetachReason? reason = null)
     {
         ArgumentNullException.ThrowIfNull(region);
         Region = region;
@@ -1099,12 +1098,43 @@ public sealed class RunicHostedRegionEventArgs : EventArgs
     /// <summary>The region.</summary>
     public RunicHostedRegion Region { get; }
 
-    /// <summary>
-    /// For a detach, why: <c>removed</c> (the page removed the region), <c>reload</c> (the page reloaded, navigated or
-    /// lost its connection), <c>crashed</c>, <c>host</c> (the host application detached or moved it) or <c>closed</c>
-    /// (the window closed or its guest went away). An open set. <see langword="null"/> otherwise.
-    /// </summary>
-    public string? Reason { get; }
+    /// <summary>For a detach, why (an open set); <see langword="null"/> otherwise.</summary>
+    public RunicHostedRegionDetachReason? Reason { get; }
+
+    // The region-detach token of host-protocol.md, which the guest receives, as the reason.
+    internal static RunicHostedRegionDetachReason? ReasonOf(string? token) => token switch
+    {
+        null => null,
+        "removed" => RunicHostedRegionDetachReason.Removed,
+        "reload" => RunicHostedRegionDetachReason.Reload,
+        "crashed" => RunicHostedRegionDetachReason.Crashed,
+        "host" => RunicHostedRegionDetachReason.Host,
+        _ => RunicHostedRegionDetachReason.Closed,
+    };
+}
+
+/// <summary>Why a region no longer shows its window (<see cref="RunicHostedRegionEventArgs.Reason"/>).</summary>
+/// <remarks>
+/// Open: a later release can add reasons; handle an unknown one as <see cref="Closed"/>. Each is a <c>region-detach</c>
+/// token of the host protocol, which stays unchanged. Experimental; see <c>docs/experimental.md</c>.
+/// </remarks>
+[Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public enum RunicHostedRegionDetachReason
+{
+    /// <summary>The page removed the region (<c>removed</c>).</summary>
+    Removed,
+
+    /// <summary>The page reloaded, navigated or lost its connection (<c>reload</c>).</summary>
+    Reload,
+
+    /// <summary>The guest's page crashed (<c>crashed</c>).</summary>
+    Crashed,
+
+    /// <summary>The host application detached or moved the window (<c>host</c>).</summary>
+    Host,
+
+    /// <summary>The window closed or its guest went away (<c>closed</c>).</summary>
+    Closed,
 }
 
 /// <summary>How a guest's window shows (<see cref="RunicHostedWindow.PresentationKind"/>).</summary>
@@ -1112,7 +1142,7 @@ public sealed class RunicHostedRegionEventArgs : EventArgs
 [Experimental("RUNICDESK103", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum RunicHostedWindowPresentationKind
 {
-    /// <summary>In a native window of its own (<see cref="RunicHostedWindow.Presentation"/>).</summary>
+    /// <summary>In a native window of its own (<see cref="RunicHostedWindow.DesktopWindow"/>).</summary>
     Window,
 
     /// <summary>In a region of a host page (<see cref="RunicHostedWindow.Region"/>).</summary>

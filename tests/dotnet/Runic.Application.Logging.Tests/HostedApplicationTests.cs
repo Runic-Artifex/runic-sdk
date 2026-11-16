@@ -103,7 +103,7 @@ internal sealed class HostedApplicationTests
             Require(host.StandardError.Contains("RAN file.open", StringComparison.Ordinal) &&
                 host.StandardError.Contains("OPEN " + Path.GetFileName(file) + " rows Data", StringComparison.Ordinal) &&
                 host.StandardError.Contains("BOX undo", StringComparison.Ordinal), "The guest's command or dialogs did not report.", host);
-            Require(window.DialogRequests.Select(static request => request.DialogKind)
+            Require(window.DialogRequests.Select(static request => request.Kind)
                     .SequenceEqual([RunicTestDialogKind.OpenFile, RunicTestDialogKind.MessageBox, RunicTestDialogKind.ContextMenu]) &&
                 window.DialogRequests[0] is { Title: "Import", FilterNames: ["Text", "Data"], SuggestedName: null } &&
                 window.DialogRequests[1] is { Text: "Keep the import?", ButtonIds: ["keep", "undo"] }, "The test host did not record the dialogs.", host);

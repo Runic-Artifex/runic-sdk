@@ -45,7 +45,7 @@ public static class WorkspaceServices
         // before the Windows on every switch; both are singletons, so the subscription lasts as long as the application.
         services.AddSingleton(provider =>
         {
-            var translations = TranslationContext.CreateBuilder().Add(AppTextCatalog.Registration).Build();
+            var translations = TranslationContext.CreateBuilder().AddCatalog(AppTextCatalog.Registration).Build();
             provider.GetRequiredService<IRunicApplicationLocale>().Follow(translations.SetLocaleAsync);
             return translations;
         });

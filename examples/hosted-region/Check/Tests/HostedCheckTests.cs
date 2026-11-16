@@ -60,7 +60,7 @@ public sealed class HostedCheckTests
         // The checks run for about two seconds after the Window opened.
         await Assert.That(await window.RequestCloseAsync()).IsFalse();
         var question = window.DialogRequests[0];
-        await Assert.That(question.DialogKind).IsEqualTo(RunicTestDialogKind.MessageBox);
+        await Assert.That(question.Kind).IsEqualTo(RunicTestDialogKind.MessageBox);
         await Assert.That(question.Text).IsEqualTo("The system check is still running. Stop it?");
         await Assert.That(question.ButtonIds).IsEquivalentTo(["stop", "continue"]);
 

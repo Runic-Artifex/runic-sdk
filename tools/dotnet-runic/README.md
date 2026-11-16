@@ -613,7 +613,10 @@ such as the template's `Attach to the page (JavaScript)` (`"type": "msedge"` wit
 directory: breakpoints in the frontend's sources through the development
 server's source maps, stepping, conditions, logpoints, exceptions, the console,
 the page's variables and hover all work, also after a reload or an HMR update.
-When `dotnet watch` restarts the Window after a C# edit, the debugger stays
+Breakpoints and logpoints also hit code that runs while the page loads, in a
+module that loads after thousands of others too: as Chromium does, the adapter
+stops each script with a source map before it runs until the debugger has its
+source map. When `dotnet watch` restarts the Window after a C# edit, the debugger stays
 attached and continues on the new Window's page with its breakpoints.
 
 How it works: `dev` starts the Window with `WEBKIT_INSPECTOR_SERVER` on a free

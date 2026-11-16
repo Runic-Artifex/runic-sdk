@@ -45,7 +45,7 @@ public sealed partial class ProfileViewModel : ObservableObject, IDisposable
     private async Task AttachAsync(RunicUpload file, CancellationToken cancellationToken)
     {
         var path = Path.Combine(_folder, Guid.NewGuid().ToString("N"));
-        await file.SaveAsAsync(path, cancellationToken: cancellationToken);
+        await file.SaveToFileAsync(path, cancellationToken: cancellationToken);
         Attachments = Attachments.Add(new Attachment(file.FileName, file.Length,
             RunicBlob.FromFile(path, "application/octet-stream", file.FileName, RunicBlobDisposition.Attachment)));
     }
