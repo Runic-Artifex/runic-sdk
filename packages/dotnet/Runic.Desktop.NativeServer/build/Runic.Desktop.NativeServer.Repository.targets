@@ -4,7 +4,7 @@
        eng/native/build-runic-server.sh wrote under artifacts/native/runic-server/<rid>/ (or the directory a Nix build
        passes as RunicDesktopNativeServerLibraryDirectory). Not packed. -->
   <PropertyGroup>
-    <RunicDesktopNativeServerReferenced>true</RunicDesktopNativeServerReferenced>
+    <_RunicDesktopNativeServerReferenced>true</_RunicDesktopNativeServerReferenced>
     <_RunicDesktopNativeServerRepositoryRuntime>$(RuntimeIdentifier)</_RunicDesktopNativeServerRepositoryRuntime>
     <_RunicDesktopNativeServerRepositoryRuntime Condition="'$(_RunicDesktopNativeServerRepositoryRuntime)' == ''">$(NETCoreSdkRuntimeIdentifier)</_RunicDesktopNativeServerRepositoryRuntime>
     <RunicDesktopNativeServerLibraryDirectory Condition="'$(RunicDesktopNativeServerLibraryDirectory)' == ''">$(MSBuildThisFileDirectory)../../../../artifacts/native/runic-server/$(_RunicDesktopNativeServerRepositoryRuntime)/</RunicDesktopNativeServerLibraryDirectory>
@@ -15,7 +15,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Condition="'@(PackageReference->WithMetadataValue('Identity', 'Microsoft.Extensions.DependencyInjection'))' == ''" />
     <PackageReference Include="Microsoft.Extensions.Logging" Condition="'@(PackageReference->WithMetadataValue('Identity', 'Microsoft.Extensions.Logging'))' == ''" />
   </ItemGroup>
-  <Target Name="RunicDesktopRequireRepositoryNativeServer" BeforeTargets="PrepareForBuild">
+  <Target Name="_RunicDesktopRequireRepositoryNativeServer" BeforeTargets="PrepareForBuild">
     <Error Condition="!Exists('$(_RunicDesktopNativeServerOverride)$(_RunicDesktopNativeServerSharedName)')"
            Text="RunicDesktopServer=Native needs the native server for $(_RunicDesktopNativeServerRepositoryRuntime) in $(RunicDesktopNativeServerLibraryDirectory). Run eng/native/build-runic-server.sh $(_RunicDesktopNativeServerRepositoryRuntime) first." />
   </Target>

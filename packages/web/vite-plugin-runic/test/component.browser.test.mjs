@@ -11,7 +11,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright-core";
 import { createBuilder } from "vite";
-import { runic } from "../dist/index.js";
+import { runic } from "../dist/experimental.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 const fixtures = fileURLToPath(new URL("./fixtures/components/", import.meta.url));

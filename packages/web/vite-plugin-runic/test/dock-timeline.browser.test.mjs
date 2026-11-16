@@ -41,7 +41,7 @@ public sealed partial class EditorViewModel : ObservableObject
 
 function sourceMap(file) {
   return {
-    format: "runic-bridge-sources/1",
+    format: "runic.views.bridge-sources/1",
     viewModels: [{
       id: "Demo.EditorViewModel", name: "Editor", route: "editor", contract: "Demo.EditorViewModel:00", pageKinds: ["editor"],
       symbol: "Demo.EditorViewModel", location: { file, line: 3, column: 29 },

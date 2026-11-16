@@ -34,7 +34,7 @@ async function project() {
 
 function sourceMap(source, line = 6) {
   return {
-    format: "runic-bridge-sources/1",
+    format: "runic.views.bridge-sources/1",
     viewModels: [{
       id: "Demo.CounterViewModel", name: "Counter", route: "counter", contract: "Demo.CounterViewModel:00", pageKinds: ["counter"],
       symbol: "Demo.CounterViewModel", location: { file: source, line: 3, column: 29 },
@@ -76,11 +76,11 @@ async function withServer(root, options, run, plugins = []) {
 
 const exists = (path) => stat(path).then(() => true, () => false);
 
-test("parses only well-formed runic-bridge-sources/1 entries and finds only locations in listed files", () => {
+test("parses only well-formed runic.views.bridge-sources/1 entries and finds only locations in listed files", () => {
   assert.equal(parseSourceMap({ format: "other", viewModels: [], members: [] }), undefined);
   assert.equal(parseSourceMap(null), undefined);
   const map = parseSourceMap({
-    format: "runic-bridge-sources/1",
+    format: "runic.views.bridge-sources/1",
     viewModels: [{ id: "A", name: "A", route: "a", contract: "A:0", pageKinds: ["a"], symbol: "A", location: { file: "relative.cs", line: 1, column: 1 } }],
     members: [
       { id: "A/command/go", viewModel: "A", member: "go", kind: "command", symbol: "A.Go()", location: { file: "/src/A.cs", line: 4, column: 9 } },
@@ -90,6 +90,8 @@ test("parses only well-formed runic-bridge-sources/1 entries and finds only loca
     ],
   });
   assert.deepEqual(map.members.map((entry) => entry.id), ["A/command/go", "A/state/x"], "an unknown kind is dropped");
+  // The 0.20 name of the format is read through 0.21 and answered with the new one.
+  assert.equal(parseSourceMap({ format: "runic-bridge-sources/1", viewModels: [], members: [] })?.format, "runic.views.bridge-sources/1");
   assert.equal(map.viewModels[0].location, undefined, "a relative path is no location");
   assert.equal(map.members[1].location, undefined, "line 0 is no location");
   assert.deepEqual(findOpenLocation(map, { id: "A/command/go" }), { file: "/src/A.cs", line: 4, column: 9 });
@@ -294,7 +296,7 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
     const ask = (message, { read = () => map, peer = "127.0.0.1", access } = {}) => answerClientRequest(message, {
       read, peer, ...(access === undefined ? {} : { access }), launch: (target) => launched.push(target),
       resolution: { frontendFile: (file) => file.startsWith(`${fixture.frontend}/`) },
-      analyze: async (file) => file === "src/App.tsx" ? { format: "runic-handlers/1", bindings: [] } : undefined,
+      analyze: async (file) => file === "src/App.tsx" ? { format: "runic.vite.handlers/1", bindings: [] } : undefined,
       message: async (reference) => reference.key === "heading" ? { message: { catalog: reference.catalog, key: reference.key, locales: [] } } : undefined,
     });
     assert.deepEqual(await ask({ id: 1, kind: "sources" }), { id: 1, status: 200, body: map });
@@ -303,7 +305,7 @@ test("requests over Vite's connection answer like the HTTP endpoints and open on
     assert.deepEqual(await ask({ id: 4, kind: "open", target: { file: page, line: 2 } }), { id: 4, status: 200 }, "a served frontend file");
     assert.deepEqual(launched, [location, { file: page, line: 2, column: 1 }]);
     launched.length = 0;
-    assert.deepEqual(await ask({ id: 7, kind: "handlers", file: "src/App.tsx" }), { id: 7, status: 200, body: { format: "runic-handlers/1", bindings: [] } });
+    assert.deepEqual(await ask({ id: 7, kind: "handlers", file: "src/App.tsx" }), { id: 7, status: 200, body: { format: "runic.vite.handlers/1", bindings: [] } });
     assert.deepEqual(await ask({ id: 8, kind: "handlers", file: "src/Missing.tsx" }), { id: 8, status: 404 });
     assert.deepEqual(await ask({ id: 9, kind: "handlers" }), { id: 9, status: 400 });
     assert.deepEqual(await ask({ id: 10, kind: "message", target: { catalog: "app", key: "heading" } }),

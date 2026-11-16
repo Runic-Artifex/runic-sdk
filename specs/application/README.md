@@ -171,7 +171,7 @@ can share one document.
 - Document-level resources stay with the document: `installNavigationPath` and `installBackNavigation` own the page's
   history, and `installErrorReporting` in an instance other than the page instance reports only the errors its runtime
   catches, not the document's uncaught errors.
-- A **component bundle** (`@runic-artifex/views/component`, built by the `component` target of
+- A **component bundle** (`@runic-artifex/views/experimental`, built by the `component` target of
   `@runic-artifex/vite-plugin-runic`) carries its own copy of the package. Each element of its custom element creates
   an instance on its own Bridge and mounts the guest's Views in its shadow root inside that instance. The copy's default
   instance is that element's instance while exactly one element of the bundle is connected; with none or several it is
@@ -1898,7 +1898,7 @@ Pushes (producer → the connection that declared the region):
 - **The component.** For `embedding: "component"`, a client imports `module` (a dynamic `import()`, so the page's
   Content-Security-Policy must admit the guest's origin in `script-src`, and in `connect-src` for `url`), creates an
   element of the name the module exports as `tag`, places it in the region and connects it with `{url, token}`
-  (`element.connect`, from `@runic-artifex/views/component`). It holds the token only for that call. A module that does
+  (`element.connect`, from `@runic-artifex/views/experimental`). It holds the token only for that call. A module that does
   not load, or exports no tag of a defined element with `connect`, leaves the region unsupported, with an error in the
   console. Removing the region's content removes the element, which closes its connection. A component is part of the
   page's focus order: `hosted-region-focus` does not move the focus into it.

@@ -41,7 +41,7 @@ export default defineConfig({
 
 That adds the Translations development loop (an edited message reaches the
 page without a build), the Runic DevTools dock and the
-[component build target](../vite-plugin-runic/README.md#component-build-target),
+[component build target](../vite-plugin-runic/README.md#component-build-target-experimental),
 which the Angular CLI cannot build ([components](#components-experimental)). `vite build` checks no types: run
 `ngc -p tsconfig.app.json --noEmit` for that, as the template's `build` and
 `typecheck` scripts do. Without `angular.json`, `dotnet runic dev` serves the
@@ -929,11 +929,13 @@ Add `RunicHostedRegion` to the component's `imports`.
 In [trusted component mode](../../../docs/hosted-regions.md#component-mode) a
 guest's Views render as a custom element in the host application's page. A
 guest built with Vite and the Analog plugin builds its component with the
-`component` target of `runic()`, and `runicComponentMount` from
+`component` target of `runic()` from `@runic-artifex/vite-plugin-runic/experimental`, and `runicComponentMount` from
 `@runic-artifex/angular/experimental` is the entry's mount function:
 
 ```ts
 // vite.config.ts
+import { runic } from "@runic-artifex/vite-plugin-runic/experimental";
+
 export default defineConfig({
   base: "./",
   plugins: [angular(), runic({ component: { entry: "src/component.ts", name: "service-widget" } })],
@@ -980,7 +982,7 @@ application; leave out document-level ones such as the router's history,
 - **Text outside DI.** Code outside an injection context, such as an event
   handler calling `defaultInstance()`, reaches the element's instance while one
   element of the bundle is on the page
-  ([components](../views/README.md#components)).
+  ([components](../views/README.md#components-experimental)).
 
 The [hosted components example](../../../examples/hosted-components/README.md#an-angular-widget)
 shows a widget built this way. Angular's private `ɵSHARED_STYLES_HOST` is

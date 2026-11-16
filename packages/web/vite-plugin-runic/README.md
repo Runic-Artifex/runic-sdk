@@ -211,7 +211,7 @@ it.
 ```jsonc
 // GET /__runic/sources
 {
-  "format": "runic-bridge-sources/1",
+  "format": "runic.views.bridge-sources/1",
   "viewModels": [{
     "id": "Demo.CounterViewModel", "name": "Counter", "route": "counter",
     "contract": "Demo.CounterViewModel:EE06…", "pageKinds": ["counter"],
@@ -592,14 +592,21 @@ setting that allows it.
   output: the build is byte-identical with and without Runic Inspect, the
   editor and the allow list.
 
-## Component build target
+## Component build target (experimental)
 
 Trusted component mode embeds a guest's Views as a custom element in a host
 page's own document instead of a frame. `component` adds that build next to the
-page:
+page. Like the rest of trusted component mode (the .NET side is the experimental
+family `RUNICDESK103`), it is experimental
+([docs/experimental.md](../../../docs/experimental.md#npm-packages)): only the
+`runic` of `@runic-artifex/vite-plugin-runic/experimental` takes the option, with
+`RunicExperimentalViteOptions` and `RunicComponentOptions`, and the root entry's
+`runic` throws for it. Until 0.20 the root entry took it.
 
 ```ts
 // vite.config.ts
+import { runic } from "@runic-artifex/vite-plugin-runic/experimental";
+
 export default defineConfig({
   base: "./",
   plugins: [react(), runic({ desktop: true, component: { entry: "src/component.tsx" } })],
@@ -607,7 +614,7 @@ export default defineConfig({
 ```
 
 The entry's default export is the mount function of
-[`@runic-artifex/views/component`](../views/README.md#components). With Angular,
+[`@runic-artifex/views/experimental`](../views/README.md#components-experimental). With Angular,
 the Analog plugin (`angular()`) compiles the component's code ahead of time as
 it does the page's, and `runicComponentMount` of `@runic-artifex/angular/experimental`
 is the mount function; it keeps Angular's component styles, which Angular adds
