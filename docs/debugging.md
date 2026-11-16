@@ -11,6 +11,7 @@ Each section links the README that describes its tool in full.
 | Inspect the page's DOM, console, network, and scripts | [The browser's developer tools](#the-browsers-developer-tools-per-engine) |
 | See each Bridge call with the C# that ran and open it in the editor | [The Runic dock](#the-runic-dock) |
 | Click an element and see its commands, state, and texts | [Runic Inspect](#runic-inspect) |
+| See the same in Chrome's or Edge's own developer tools: a Runic panel and an Elements pane | [The Runic DevTools extension](#the-runic-devtools-extension) |
 | Time C# handlers, or follow a click into the ViewModel's HTTP and database calls | [Performance panel and traces](#performance-panel-async-stacks-and-traces) |
 | See Bridge errors before you build | [Analyzers](#bridge-errors-while-you-type) |
 
@@ -235,6 +236,56 @@ See [Runic Inspect](../packages/web/vite-plugin-runic/README.md#runic-inspect),
 [Edit a translation on the page](../packages/web/vite-plugin-runic/README.md#edit-a-translation-on-the-page), and
 [Runic Inspect from another machine](../packages/web/vite-plugin-runic/README.md#runic-inspect-from-another-machine).
 `runic({ inspect: false })` turns it off.
+
+## The Runic DevTools extension
+
+Since 0.21, `dotnet-runic` ships an unpacked Chrome DevTools extension (Manifest V3) that shows Runic Inspect's data
+inside the browser's own developer tools. It has no Chrome Web Store listing; you load it from the tool's folder.
+
+- The **Runic** panel (a tab next to Elements and Console) lists the page's **Views**: each route with its C#
+  ViewModel, revision and state, and its **recent Bridge calls** (the last 50): kind, outcome, time, revision, the C#
+  member from the development source map, and the C# handler's name and duration when a .NET host in Development
+  reports them. It refreshes every second while it is visible; **Pause** stops that. A C# location opens in the
+  editor through the development server, as Runic Inspect's links do.
+- The **Runic** pane of the Elements panel (next to Styles) describes the **selected element** (`$0`) as Runic Inspect
+  does: its component, ViewModels, bound members with their values, the commands it calls with their C# handlers,
+  its recent calls, texts and messages, and what it cannot tell.
+
+**Where it is.** `dotnet runic dev` prints `[dev] DevTools extension: <folder>` when the page has a development
+server, and the [session file](../tools/dotnet-runic/README.md#session-file) has the same folder as
+`devtoolsExtension`. It is the `devtools-extension` folder beside the tool, for example
+`~/.nuget/packages/dotnet-runic/0.21.0/tools/net10.0/any/devtools-extension` for the template's local tool. The folder
+changes with the tool's version.
+
+**Load it in Chrome or Edge:**
+
+1. Open `chrome://extensions` (Edge: `edge://extensions`).
+2. Turn on **Developer mode**.
+3. Choose **Load unpacked** and select the folder that `dev` printed.
+4. Open the page's developer tools (F12, or Inspect) and choose the **Runic** panel, or the **Runic** pane in
+   Elements. Reopen developer tools that were open before you loaded it.
+
+Its id is always `cddbfcinbkaindmfgcfdgapddkjeadgh` (the manifest's public `key` fixes it, whatever folder you
+load), so its pages are `chrome-extension://cddbfcinbkaindmfgcfdgapddkjeadgh/…` and an allowlist can name it. The
+session file has it as `devtoolsExtensionId`. No private key exists: the extension is not signed or published.
+Its version is the tool's: `0.21.0` for 0.21.0, and for a prerelease `X.Y.Z-label.N` the manifest version is
+`X.Y.Z.N` (Chrome allows only numbers) while `chrome://extensions` shows the full version (`version_name`).
+
+After a tool update, load the new folder and remove the old entry. Chromium (not Google Chrome, whose branded builds
+ignore the switch since Chrome 137) and automation can also start with
+`--load-extension=<folder> --disable-extensions-except=<folder>`, for example in the `runtimeArgs` of a VS Code
+launch configuration that starts Chrome or Edge ([#1031](https://github.com/Runic-Artifex/runic-sdk/issues/1031)).
+For the Window, a WebView2 host in Development is to load the extension folders that
+`RUNIC_DESKTOP_DEVTOOLS_EXTENSIONS` lists ([#1043](https://github.com/Runic-Artifex/runic-sdk/issues/1043)): set it to
+the session file's `devtoolsExtension` until `dotnet runic dev` passes it by default. WKWebView and WebKitGTK have no
+extension support: use Runic Inspect and the dock there.
+
+**What it reads.** The extension has no permissions besides DevTools. It reads the page through
+`chrome.devtools.inspectedWindow.eval` of Runic Inspect's API (`snapshot()` and `describe($0)` on
+`globalThis[Symbol.for("runic.vite.inspect")]`), so it shows data only where Runic Inspect runs: pages under
+`vite dev` or `dotnet runic dev` with vite-plugin-runic 0.21 or later, and `runic({ inspect })` not `false`. On a
+production build its panes say so. It sends nothing anywhere; "open in editor" goes to the development server, with
+Runic Inspect's rules.
 
 ## Performance panel, async stacks and traces
 

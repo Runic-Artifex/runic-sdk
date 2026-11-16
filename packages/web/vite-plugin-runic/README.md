@@ -434,11 +434,20 @@ const overview = await inspect.describe(document.querySelector("#save"));
 // { element, component, viewModels, members, commands, calls, texts, messages, notes }
 await inspect.select(document.querySelector("#save")); // shows the overview card
 await inspect.open(overview.commands[0].location); // opens it in the editor
+const page = await inspect.snapshot();
+// { version: 1, views: [{ route, revision, contract, viewModel, state }], calls: [{ id, kind, member, duration,
+//   outcome, revision, handler, symbol, location }], notes } — calls newest first, the last 50
 ```
 
 `describe(element)` resolves to JSON-safe data (the type is exported as
 `RunicInspectDescription`); values are shortened, and `notes` says what the
-overview cannot tell, such as a missing source map. `messages` is filled only
+overview cannot tell, such as a missing source map. `snapshot()` (since 0.21,
+`RunicInspectSnapshot`) is the page's open Views with their states and C#
+ViewModels and its recent Bridge calls with their C# members from the source
+map and, from a .NET host in Development, their C# handlers' names and
+durations; the
+[Runic DevTools extension](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/debugging.md#the-runic-devtools-extension)
+reads it and `describe($0)`. `messages` is filled only
 while select mode is on: call `toggle(true)` and let the page render once
 before `describe`. With `chrome-devtools-mcp` or Playwright, evaluate it in
 the page.
