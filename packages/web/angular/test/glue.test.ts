@@ -17,6 +17,7 @@ import {
 } from "@runic-artifex/views";
 import { connectView, decodeQueryCollectionState, defineQueryCollection } from "@runic-artifex/views/generated";
 import type { QueryCollectionState } from "@runic-artifex/views";
+import * as views from "@runic-artifex/views";
 import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 
 // Hoisted above the imports, so it sees the warnings Angular logs while the package's
@@ -640,10 +641,10 @@ describe("injectBridgeConnection", () => {
   test("requires an injection context or an injector, and is a root export (0.11)", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
-      "RUNIC_INSTANCE", "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
+      "FieldError", "RUNIC_INSTANCE", "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "appearance", "commitAllFields", "configureFieldErrorText",
       "configureTranslatedText", "createRunicInstance", "fieldErrorText", "injectAppearance", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectRunicInstance", "injectText",
-      "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
+      "injectTextField", "injectTextLocale", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
       "installNavigationPath", "navigateBack", "onAppearance", "onBridgeConnection", "onNavigationPath", "openNavigationPath",
       "pageInstance", "provideRunicInstance", "regionEntries", "resolveText", "selectedRegion", "syncDocumentLocale", "textDirection", "textLocaleSignal", "upload",
       "windowLocale",
@@ -652,6 +653,15 @@ describe("injectBridgeConnection", () => {
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);
     expectTypeOf<root.BridgeConnectionState>().toEqualTypeOf<ViewsBridgeConnectionState>();
     expectTypeOf<root.BridgeConnectionOptions>().toEqualTypeOf<ViewsBridgeConnectionOptions>();
+    // The field types of injectField's and injectForm's signatures are re-exported, as in React, Vue and Svelte (0.21).
+    expect(root.FieldError).toBe(views.FieldError);
+    expectTypeOf<root.BridgeField<unknown, unknown, string>>().toEqualTypeOf<views.BridgeField<unknown, unknown, string>>();
+    expectTypeOf<root.BridgeFieldConstraints>().toEqualTypeOf<views.BridgeFieldConstraints>();
+    expectTypeOf<root.BridgeFieldKind>().toEqualTypeOf<views.BridgeFieldKind>();
+    expectTypeOf<root.FieldBaseline<string>>().toEqualTypeOf<views.FieldBaseline<string>>();
+    expectTypeOf<root.FieldDefinition<unknown, unknown, string>>().toEqualTypeOf<views.FieldDefinition<unknown, unknown, string>>();
+    expectTypeOf<root.FieldErrorKind>().toEqualTypeOf<views.FieldErrorKind>();
+    expectTypeOf<root.FieldState<string>>().toEqualTypeOf<views.FieldState<string>>();
   });
 });
 

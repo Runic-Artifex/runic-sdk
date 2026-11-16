@@ -67,6 +67,21 @@ export function injectWindowLocale({ injector: provided }: InjectTextOptions = {
   return locale.asReadonly();
 }
 
+/**
+ * The locale that text is shown in, as `textLocaleSignal` returns it for the Runic instance of the injection context
+ * (or of `injector`): the same one signal per instance. Use it in components and services, like the other `inject*`
+ * functions; use `textLocaleSignal` where there is no injection context, such as the page's locale resolver in `main.ts`.
+ *
+ * ```ts
+ * readonly locale = injectTextLocale();
+ * // <time [attr.lang]="locale()">…</time>
+ * ```
+ */
+export function injectTextLocale({ injector: provided }: InjectTextOptions = {}): Signal<string | undefined> {
+  if (!provided) assertInInjectionContext(injectTextLocale);
+  return textLocaleSignal(instanceOf(provided ?? inject(Injector)));
+}
+
 const textLocales = new WeakMap<RunicInstance, Signal<string | undefined>>();
 
 /**
