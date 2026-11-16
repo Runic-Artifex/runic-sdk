@@ -128,7 +128,10 @@ export async function runGate(values) {
     packageFile: (repo, id) => packageFile(sources[repo], id, join(work, 'candidates'), {}),
   };
   context.run = createRunner(context);
-  if (sources.sdk.kind !== 'published') context.npmRegistry = await startNpmRegistry(context, sources.sdk.npm.map(item => item.file));
+  // The registry serves runic-sdk's npm candidates and, while Translations is a candidate too, its npm packages: a
+  // --translations template locks the Translations Vite plugin of the train, which is not on npm before its release.
+  const npmArchives = [sources.sdk, sources.translations].filter(source => source.kind !== 'published').flatMap(source => source.npm.map(item => item.file));
+  if (sources.sdk.kind !== 'published') context.npmRegistry = await startNpmRegistry(context, npmArchives);
 
   const selected = values.only ? new Set(values.only.split(',').map(item => item.trim())) : null;
   try {
