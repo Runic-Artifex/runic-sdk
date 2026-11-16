@@ -319,10 +319,10 @@ internal static partial class WindowsFileDropSmoke
 
     private static async Task DragOutAsync(DesktopHost host, string[] paths)
     {
-        // win-arm64: the OLE drag loop does not start on the runner (I-077, I-103).
+        // win-arm64: the runner delivers no SendInput to WebView2, so the page never starts the drag (#391).
         if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
         {
-            Console.WriteLine("Drag out and frame drops: unverified on Windows arm64, whose runner does not run the OLE drag loop (I-077).");
+            Console.WriteLine("Drag out and frame drops: unverified on Windows arm64, whose runner delivers no SendInput to WebView2 (#391).");
             return;
         }
         if (!await RunDragOutAsync(host, paths)) return;
