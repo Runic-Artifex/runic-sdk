@@ -276,6 +276,26 @@ Add the plugin as the
 [`dotnet runic dev` documentation](../tools/dotnet-runic/README.md) describes
 for your frontend.
 
+On Linux, `dev` also opens two debugging endpoints for the Window's WebKitGTK
+pages, as the
+[`dotnet runic dev` documentation](../tools/dotnet-runic/README.md#debug-the-pages-javascript-on-linux-preview)
+describes. Both listen on loopback only, and both can script the Window's page
+and its Bridge:
+
+- **Runic's CDP adapter (port 9222).** It refuses requests that carry an
+  `Origin` or a `Host` that is not an IP address or `localhost`, so web pages
+  in a browser cannot reach it. Loopback admits every local user, so `dev`
+  also closes each connection whose other end belongs to another user. It
+  finds that user in `/proc/net/tcp` and reports the refusal in a `[dev]` line.
+  The adapter connects only to a WebKit inspector port whose listener belongs
+  to the same user, and `dev` warns when another user holds 9222.
+- **WebKit's `inspector://` server.** It belongs to WebKit, so `dev` cannot
+  filter its clients. While no debugger is attached, any local user can
+  connect to it.
+
+On a machine that you share with other users, run `dev` with
+`--no-debug-endpoint`, which opens neither.
+
 ## Hosted application windows
 
 A Runic Desktop application can show another Runic Desktop application's windows: the **host** starts the
