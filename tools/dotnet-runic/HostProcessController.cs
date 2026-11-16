@@ -199,7 +199,8 @@ internal sealed class HostProcessController : IAsyncDisposable
             _configuration.ProjectDirectory,
             arguments,
             CreateDevelopmentEnvironment(_configuration, _developmentEnvironment, environment: _options.Environment,
-                debugEnvironment: _options.DebugEnvironment, browser: _options.Browser),
+                debugEnvironment: _options.DebugEnvironment, browser: _options.Browser,
+                devToolsExtension: _options.WindowDevToolsExtension),
             SuppressLine,
             _options.Browser ? ObserveServeOnly : null,
             holdInput: _options.Browser);
@@ -309,7 +310,8 @@ internal sealed class HostProcessController : IAsyncDisposable
         Func<string, string?>? readEnvironment = null,
         IReadOnlyList<KeyValuePair<string, string>>? environment = null,
         IReadOnlyList<KeyValuePair<string, string>>? debugEnvironment = null,
-        bool browser = false)
+        bool browser = false,
+        string? devToolsExtension = null)
     {
         readEnvironment ??= Environment.GetEnvironmentVariable;
         var variables = new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -360,12 +362,29 @@ internal sealed class HostProcessController : IAsyncDisposable
         {
             variables[key] = value;
         }
+        // Windows: the Runic DevTools extension joins the folders the developer listed (-e or dev's own environment), in
+        // Development only; the host loads none outside Development either.
+        if (devToolsExtension is not null &&
+            DevToolsExtension.AppendTo(devToolsExtension, name => Lookup(variables, name, readEnvironment)) is { } extensions)
+        {
+            variables[DevToolsExtension.WindowVariable] = extensions;
+        }
         // --browser: the Window serves its pages without presenting them, whatever -e or dev's environment say.
         if (browser)
         {
             variables[BrowserEntry.ServeOnlyVariable] = "1";
         }
         return variables;
+    }
+
+    // A variable of the Window's environment as composed so far, else dev's own; a null value is one dev clears.
+    private static string? Lookup(Dictionary<string, string?> variables, string name, Func<string, string?> readEnvironment)
+    {
+        foreach ((string key, string? value) in variables)
+        {
+            if (key.Equals(name, StringComparison.OrdinalIgnoreCase)) return value;
+        }
+        return readEnvironment(name);
     }
 
     /// <summary>Exit codes of an application that stopped on SIGTERM or Ctrl+C: 128 + 15, 128 + 2, and Windows' STATUS_CONTROL_C_EXIT.</summary>

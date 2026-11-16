@@ -384,7 +384,8 @@ internal sealed partial class DevSession
     /// <summary>
     /// The variables a Window that the IDE starts needs for this session, as dev would set them: a Development
     /// environment, without a development server the frontend output directory that Runic Desktop serves live, and on
-    /// Linux the WebKit inspector address that dev's CDP adapter attaches to (<see cref="DevOptions.DebugEnvironment"/>).
+    /// Linux the WebKit inspector address that dev's CDP adapter attaches to (<see cref="DevOptions.DebugEnvironment"/>), and on
+    /// Windows the Runic DevTools extension for WebView2 (<see cref="DevOptions.WindowDevToolsExtension"/>).
     /// </summary>
     internal static IReadOnlyList<KeyValuePair<string, string>> WindowEnvironment(DevProjectConfiguration configuration, DevOptions options)
     {
@@ -394,6 +395,11 @@ internal sealed partial class DevSession
             variables.Add(new(HostProcessController.DevelopmentAssetsVariable, System.IO.Path.GetFullPath(configuration.FrontendOutputDirectory)));
         }
         variables.AddRange(options.DebugEnvironment);
+        if (options.WindowDevToolsExtension is { } extension &&
+            Tool.DevToolsExtension.AppendTo(extension, name => name == "DOTNET_ENVIRONMENT" ? "Development" : System.Environment.GetEnvironmentVariable(name)) is { } extensions)
+        {
+            variables.Add(new(Tool.DevToolsExtension.WindowVariable, extensions));
+        }
         return variables;
     }
 
