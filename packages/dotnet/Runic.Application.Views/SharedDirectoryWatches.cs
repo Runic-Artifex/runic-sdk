@@ -5,8 +5,9 @@ internal interface IDirectoryWatchSink
     // A path below the watched directory was created, deleted, written or renamed (old and new path).
     void OnPath(string fullPath);
 
-    // The watch with this key overflowed (stopped: false) or failed and was removed (stopped: true).
-    void OnFailure(string key, string directory, Exception exception, bool stopped);
+    // The watch with this key overflowed (stopped: false) or failed and was removed (stopped: true). Replaced: it stopped
+    // because its directory was deleted or replaced, which is no failure of the watch; a new one can start at once.
+    void OnFailure(string key, string directory, Exception exception, bool stopped, bool replaced);
 }
 
 internal interface IDirectoryWatchLease : IDisposable
@@ -200,19 +201,26 @@ internal static class SharedDirectoryWatches
         {
             var exception = e.GetException();
             var stopped = exception is not InternalBufferOverflowException;
+            // Windows stops a watch whose directory is deleted (ERROR_ACCESS_DENIED from ReadDirectoryChangesW), and the
+            // error can arrive before a lease restarts the watch for the directory's replacement (#1008). A missing or
+            // delete-pending directory has no identity and does not exist.
+            var identity = stopped ? DirectoryIdentity.Read(Directory) : null;
+            var missing = stopped && identity is null && !System.IO.Directory.Exists(Directory);
             IDirectoryWatchSink[] sinks;
             FileSystemWatcher? failed = null;
+            bool replaced;
             lock (Gate)
             {
                 // A watcher replaced by Restart reports for a directory that is gone.
                 if (!ReferenceEquals(sender, _watcher)) return;
                 sinks = Sinks;
+                replaced = stopped && (missing || IsReplacedBy(identity));
                 // Any other failure can leave the watcher stopped; drop it so the next lease starts a new one.
                 if (stopped) failed = Stop();
             }
             // Not on this thread: on macOS this is the FSEvents thread that disposal waits for.
             if (failed is not null) ThreadPool.QueueUserWorkItem(static watcher => watcher.Dispose(), failed, preferLocal: false);
-            foreach (var sink in sinks) sink.OnFailure(Key, Directory, exception, stopped);
+            foreach (var sink in sinks) sink.OnFailure(Key, Directory, exception, stopped, replaced);
         }
     }
 }
